@@ -55,6 +55,39 @@ a `Command` → `Event`/`GameEvent` union (`UNIT_MOVE`, `UNIT_ATTACK`,
 unit do" without mutating state. The vocabulary carries over unchanged; only
 what's behind it changes (TS engine instead of a WASM postMessage shim).
 
+## Animation event context: what attempt #1 actually got stuck on
+
+It's worth being precise about this, since it's the thing that stalled
+attempt #1 and the natural worry is that porting the engine *and* imposing a
+clean state/presentation split at the same time compounds the risk. It
+doesn't, and here's why: attempt #1 already had a clean split (WASM engine →
+`GameEvent`s → TS renderer over a worker boundary). What actually stalled
+was (a) bit-exact image compositing, now solved and reused verbatim (see
+above), and (b) **incomplete context in the events** —
+`queryUnitTypeAnimations` used a hardcoded context because facing/terrain/
+weapon/hit-or-miss were never fully plumbed through. That's a completeness
+problem that exists in *any* architecture — a monolith has to compute
+"which frame to draw" too, or animations don't work. Translating
+`units/animation.cpp`/`frame.cpp`'s matching logic is just more C++-to-TS
+translation, the same kind of work as everything else in this plan; the
+only design decision is where the translated matcher lives (here,
+`packages/renderer`, alongside terrain-image layering — WML-driven but
+presentational, no gameplay-rule content) and what fields the engine must
+hand it.
+
+Usefully, upstream Wesnoth has already done the analysis for us:
+`units/animation.hpp` declares both `matches()` (display-coupled) and
+`matches_headless()`, the latter added — per its own doc comment — "to be
+callable without an active display (e.g. from the wesnothlite WASM API)".
+Its parameter list *is* the complete animation-context schema: `loc`,
+`second_loc`, `my_unit`, an `event` string ("attack"/"defend"/"movement"/
+etc.), a damage `value`/`value2` pair, a `hit` result (`strike_result::type`
+— hit/miss/kill), the `attack`/`second_attack` weapons involved, the
+`terrain_at_loc`, and `second_unit`. **Phase 2 transcribes this signature
+directly into the TS combat/move event schema** as a named, tested contract
+— rather than discovering missing fields piecemeal while debugging
+animations in Phase 4, which is what happened last time.
+
 ## Why the engine must decouple state from presentation itself
 
 In upstream Wesnoth, `actions/move.cpp` and `actions/attack.cpp` call into

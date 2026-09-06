@@ -26,6 +26,7 @@ images) for a given fixed input:**
 | `wl-rng-oracle` | `mt_rng.cpp`/`random_deterministic.cpp` | N draws for a given seed | `packages/engine` MT19937 port — must be bit-exact |
 | `wl-combat-oracle` | `actions/attack.cpp`, `attack_prediction.cpp` | damage/hit-chance/outcome distribution for fixed attacker/defender/terrain/seed | `packages/engine` combat resolution |
 | `wl-pathfind-oracle` | `pathfind/astarsearch.cpp`, `pathfind.cpp` | reachable hexes + path cost for a fixed unit/map/location | `packages/engine` pathfinding |
+| `wl-animation-oracle` | `units/animation.hpp`'s `matches_headless()` | which animation is selected for a fixed context (location, event type, hit/miss, weapons, terrain, second unit) | `packages/renderer` animation-selection logic, and that `packages/engine` events actually carry every field `matches_headless()` needs |
 
 Each oracle is a thin `main()` that loads the relevant pieces of the real
 engine (most of this is already possible without SDL/display init, since

@@ -77,11 +77,21 @@ design (multiplayer relay).
 - Define and emit the engine's event vocabulary (`UNIT_MOVE`,
   `UNIT_ATTACK`, `UNIT_DIE`, `RECRUIT`, `ADVANCE`, `MESSAGE`, `SOUND`, ...)
   plus the `Query`/`Answer` side channel (`QUERY_REACH` etc.) — this is
-  the seam the whole rest of the project renders against.
+  the seam the whole rest of the project renders against. Combat/move
+  events carry the **full animation-context schema**, transcribed directly
+  from `units/animation.hpp`'s `matches_headless()` parameter list (see
+  `ARCHITECTURE.md`) — not whatever subset seems sufficient at the time.
+  This is the one deliberate correction against attempt #1's actual failure
+  mode (incomplete event context discovered late), so it's an explicit
+  exit criterion here, not a Phase 4 concern.
 - **Milestone**: a hand-written minimal scenario (no `[lua]`) plays start to
   finish headlessly via scripted commands, with combat outcomes matching
   `wl-combat-oracle` for the same seeds, snapshotted as a golden-scenario
-  regression test.
+  regression test — including asserting the emitted events carry every
+  `matches_headless()` field, checked against real engine output via a new
+  `wl-animation-oracle` (feeds fixed contexts through the real
+  `matches_headless()` and dumps which animation it selects) even before
+  the renderer exists to consume them.
 
 ## Phase 3 — Lua integration
 
@@ -93,7 +103,12 @@ design (multiplayer relay).
 - **Milestone**: a real mainline scenario that uses `[lua]` for custom logic
   (pick one of the simpler ones) plays correctly headlessly.
 
-## Phase 4 — Rendering (PixiJS)
+## Phase 4 — Rendering (PixiJS), target: Dead Water's first scenario
+
+First playable-scenario milestone targets `Dead_Water` (mainline campaign),
+starting with just its first scenario.
+
+
 
 - Board renderer consuming the Phase 2 event stream: terrain layer (reusing
   Phase 0's `ImageCache`/`ipf` work), unit sprites, `cycle_id`-grouped
@@ -110,7 +125,7 @@ design (multiplayer relay).
 - **Milestone**: the Phase 2 golden scenario visibly plays in a browser tab
   with correct terrain/unit rendering and animation.
 
-## Phase 5 — UI shell (Svelte)
+## Phase 5 — UI shell (Svelte), target: Dead Water's first scenario
 
 - Campaign/scenario picker, side panel, recruit/recall dialog, combat
   prediction popup (fed by Phase 2's `attack_prediction` port), objectives/
@@ -122,23 +137,29 @@ design (multiplayer relay).
 
 ## Phase 6 — Content breadth
 
-- Iteratively load and play real mainline campaigns one at a time; every
-  failure is a missing WML tag, WFL feature, or Lua API surface to port,
-  driven by concrete repro cases rather than up-front spec-reading.
+- Finish `Dead_Water` (remaining scenarios), then expand to other mainline
+  campaigns one at a time; every failure is a missing WML tag, WFL feature,
+  or Lua API surface to port, driven by concrete repro cases rather than
+  up-front spec-reading. Mainline only — add-ons are out of scope for now.
 
 ## Phase 7 — AI opponent
 
 - MVP: a simple heuristic AI (greedy attack/move) as a placeholder, since
   mainline AI is a 60-file candidate-action framework substantially driven
   by Lua (`data/ai/`, 131 files using `[lua]`) — not worth porting before
-  the game is otherwise playable.
+  the game is otherwise playable. This is a placeholder to unblock
+  single-player testing, **not** a decision to skip real AI — a
+  genuine opponent is a required deliverable, just a late-stage one.
 - Later: port the candidate-action framework and relevant Lua micro-AIs
   using the Phase 3 Lua VM, for closer-to-original behavior.
 
-## Phase 8 — Multiplayer (deferred, optional)
+## Phase 8 — Multiplayer (future work, not currently in scope)
 
-- A Node/WS relay service (not necessarily wire-compatible with `wesnothd`)
-  plus exact determinism, leaning on Phase 2's RNG/combat work. Large,
-  orthogonal to the core single-player experience — do not start before
-  Phases 0–6 are solid, and treat as optional depending on how the project
-  is going by then.
+- Not a priority now, but expected eventually — keep Phase 2's RNG/combat
+  determinism work compatible with it (exact MT19937 reproducibility,
+  command-based rather than ad hoc action resolution) so this doesn't
+  require revisiting settled design later.
+- When picked up: a Node/WS relay service (not necessarily wire-compatible
+  with `wesnothd`) implementing the lockstep-replay model described in
+  `ARCHITECTURE.md`. Large and orthogonal to the core single-player
+  experience — do not start before Phases 0–6 are solid.
