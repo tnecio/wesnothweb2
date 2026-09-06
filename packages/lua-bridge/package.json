@@ -1,0 +1,20 @@
+{
+  "name": "@wesnothweb2/lua-bridge",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@wesnothweb2/engine": "*",
+    "fengari": "^0.1.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.6"
+  }
+}
