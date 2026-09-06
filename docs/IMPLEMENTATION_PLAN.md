@@ -1,0 +1,144 @@
+# Implementation plan
+
+Phased so each phase ends with something concretely checkable (a headless
+test passing, a scenario rendering, a scenario playable end-to-end), not
+just "code written." Later phases assume earlier ones are solid, but within
+a phase, work is generally LLM-agent-friendly: a lot of it is close
+translation of existing, readable C++ into TypeScript, subsystem by
+subsystem, checked against an oracle (see `TESTING_STRATEGY.md`).
+
+Explicitly **not ported, ever**: `display.cpp`, `draw*.cpp`, `sdl/`,
+`units/animation.cpp`'s SDL-drawing half, all of `gui/` (382 files —
+GUI2 dialogs/widgets), `src/server/wesnothd`'s implementation (may inform a
+replacement, isn't reused), any Emscripten/WASM build tooling. These are
+either replaced outright (PixiJS, Svelte) or superseded by a from-scratch
+design (multiplayer relay).
+
+## Phase 0 — Foundations
+
+- Monorepo scaffold: npm workspaces (matches attempt #1's tooling — no need
+  for pnpm/Nx/Turborepo at this scale), `packages/{engine,lua-bridge,
+  renderer,ui,oracle-tools}`, `apps/web` (Vite).
+- Add `wesnoth` as a git submodule. Decide fork-vs-upstream (see
+  `OPEN_QUESTIONS.md`); either way, install a native (non-WASM) CMake build
+  so `packages/oracle-tools` can compile CLI oracles from it — this needs
+  `cmake` and a C++ toolchain on this VM (currently only `g++` is present,
+  no `cmake`).
+- Stand up `wl-image-oracle` (already exists on the `wesnothlite` branch —
+  port the CMake target forward or rebuild it) and a new `wl-rng-oracle` and
+  `wl-wml-oracle`, since Phase 1 needs ground truth for WML parsing and RNG
+  immediately, not after the fact.
+- Copy forward from `wesnothweb`, adapting as needed: `board/images/ipf.ts`,
+  `ImageCache.ts`, `teamColor.ts`, hex-grid math from `lib/utils.ts`, the
+  `tween.ts`/`FloatingText.ts` animation helpers. These land in
+  `packages/renderer` now even though rendering is a Phase 4 concern — no
+  reason to re-derive fidelity work that already exists.
+- **Milestone**: `npm test` runs (empty/trivial), `wl-image-oracle` and
+  `wl-rng-oracle` build and run from the submodule, CI skeleton in place.
+
+## Phase 1 — Data layer (WML + core model)
+
+- Port `serialization/{tokenizer,preprocessor,parser}.cpp` → the WML
+  pipeline. The preprocessor (macro/`#define`/`{include}`/`#ifdef`
+  expansion, ~1800 lines upstream) is the hardest single piece in this
+  phase — budget accordingly. Verify against `wl-wml-oracle` on a growing
+  set of real `data/core/` and `data/campaigns/` files.
+- Port `config.cpp`/`config_attribute_value.cpp` → the `Config` tree type.
+- Port map/terrain (`map/map.cpp`, `map/location.cpp`,
+  `terrain/type_data.cpp`, `terrain/translation.cpp`) and hook up to the
+  hex-grid math already sitting in `packages/renderer` from Phase 0.
+- Port `units/unit.cpp`'s data (stats, leveling, XP, status) *without* its
+  `display.hpp`/`udisplay.cpp`/`drawer.cpp`/`animation.cpp` calls, and
+  `game_board.cpp` (map+units+teams container).
+- Port the WFL interpreter (`formula/*`, ~25 files, small and
+  self-contained) — needed here because unit filters (`formula=`) and some
+  ability conditions are evaluated while just building the data model.
+- **Milestone**: given a real mainline scenario file, load WML → build a
+  populated `GameBoard` (map, terrain, units, sides) → print/query it.
+  No rules, no rendering, no Lua yet.
+
+## Phase 2 — Rules engine (headless)
+
+- Port RNG (`random.cpp`, `random_deterministic.cpp`, `mt_rng.cpp`) —
+  bit-exact MT19937, verified against `wl-rng-oracle`.
+- Port pathfinding (`pathfind/astarsearch.cpp`, `pathfind.cpp`,
+  `teleport.cpp`) — small, clean, verify against a new `wl-pathfind-oracle`.
+- Port actions (`actions/*`: move, attack + `attack_prediction.cpp`,
+  create/recruit/recall, heal, advancement, the undo-stack family) —
+  **deliberately split** state mutation from the animation-triggering the
+  original interleaves (see `ARCHITECTURE.md`). Verify combat resolution
+  against a new `wl-combat-oracle` for fixed attacker/defender/terrain/seed
+  inputs.
+- Port the WML event pump and common action tags (`game_events/pump.cpp`,
+  `action_wml.cpp`: `[message]`, `[if]`, `[modify_unit]`, `[store_unit]`,
+  etc. — enough to drive simple scenario scripts) and the top-level
+  single-player game loop (`play_controller.cpp` +
+  `playsingle_controller.cpp`).
+- Define and emit the engine's event vocabulary (`UNIT_MOVE`,
+  `UNIT_ATTACK`, `UNIT_DIE`, `RECRUIT`, `ADVANCE`, `MESSAGE`, `SOUND`, ...)
+  plus the `Query`/`Answer` side channel (`QUERY_REACH` etc.) — this is
+  the seam the whole rest of the project renders against.
+- **Milestone**: a hand-written minimal scenario (no `[lua]`) plays start to
+  finish headlessly via scripted commands, with combat outcomes matching
+  `wl-combat-oracle` for the same seeds, snapshotted as a golden-scenario
+  regression test.
+
+## Phase 3 — Lua integration
+
+- Embed a JS Lua VM (see `OPEN_QUESTIONS.md`) in `packages/lua-bridge`.
+- Hand-port the subset of `scripting/game_lua_kernel.cpp`'s `wesnoth.*` API
+  surface that mainline content and `data/lua/*.lua` actually exercise
+  (unit/map/effect accessors, event triggers; UI-hook parts of the API stub
+  out until Phase 5's UI exists). `data/lua/*.lua` itself runs unmodified.
+- **Milestone**: a real mainline scenario that uses `[lua]` for custom logic
+  (pick one of the simpler ones) plays correctly headlessly.
+
+## Phase 4 — Rendering (PixiJS)
+
+- Board renderer consuming the Phase 2 event stream: terrain layer (reusing
+  Phase 0's `ImageCache`/`ipf` work), unit sprites, `cycle_id`-grouped
+  animation, fog/shroud.
+- Context-aware unit animation selection, ported properly from
+  `units/animation.cpp`/`frame.cpp` matching logic (facing/terrain/weapon/
+  damage-state) — attempt #1's biggest unfinished item.
+- Time-of-day tinting, frame position/halo/blend fields (attack-lunge
+  positioning), sound-in-frame playback, per-blow HP sync points,
+  scenario-local `[terrain_graphics]` — all explicitly left undone by
+  attempt #1, all in scope here.
+- Verify visually via a generalized `compare-images.js`: render fixed
+  scenes and diff against `wl-image-oracle` screenshots.
+- **Milestone**: the Phase 2 golden scenario visibly plays in a browser tab
+  with correct terrain/unit rendering and animation.
+
+## Phase 5 — UI shell (Svelte)
+
+- Campaign/scenario picker, side panel, recruit/recall dialog, combat
+  prediction popup (fed by Phase 2's `attack_prediction` port), objectives/
+  turn dialog, save/load (Phase 2's `Config`-tree serializer, gzipped, in
+  IndexedDB). Mine attempt #1's Svelte components and upstream's
+  `gui/dialogs/` for required data shape only.
+- **Milestone**: a full scenario is playable start-to-finish through the UI
+  by a human, not just scripted commands.
+
+## Phase 6 — Content breadth
+
+- Iteratively load and play real mainline campaigns one at a time; every
+  failure is a missing WML tag, WFL feature, or Lua API surface to port,
+  driven by concrete repro cases rather than up-front spec-reading.
+
+## Phase 7 — AI opponent
+
+- MVP: a simple heuristic AI (greedy attack/move) as a placeholder, since
+  mainline AI is a 60-file candidate-action framework substantially driven
+  by Lua (`data/ai/`, 131 files using `[lua]`) — not worth porting before
+  the game is otherwise playable.
+- Later: port the candidate-action framework and relevant Lua micro-AIs
+  using the Phase 3 Lua VM, for closer-to-original behavior.
+
+## Phase 8 — Multiplayer (deferred, optional)
+
+- A Node/WS relay service (not necessarily wire-compatible with `wesnothd`)
+  plus exact determinism, leaning on Phase 2's RNG/combat work. Large,
+  orthogonal to the core single-player experience — do not start before
+  Phases 0–6 are solid, and treat as optional depending on how the project
+  is going by then.
