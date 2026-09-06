@@ -126,14 +126,29 @@ computes an outcome and appends a semantic event describing it; nothing in
     upstream already uses, gzipped) — trivial once the WML serializer
     exists; store in IndexedDB.
 
-- `packages/lua-bridge` — an in-browser Lua VM (see `OPEN_QUESTIONS.md` for
-  the Fengari-vs-wasmoon choice) plus a hand-ported subset of the
-  `wesnoth.*` host API that `scripting/game_lua_kernel.cpp` exposes:
-  unit/map/effect accessors, event triggers, UI hook stubs. `data/lua/*.lua`
-  (the standard library layer mainline content depends on) runs unmodified
-  once the host API it calls exists. Lua is **load-bearing**, not optional —
-  it's used directly in ~8% of mainline `.cfg` files and pervasively by
-  abilities/AI beneath that.
+- `packages/lua-bridge` — Fengari (see `OPEN_QUESTIONS.md`) plus a
+  hand-ported subset of the `wesnoth.*` host API that
+  `scripting/game_lua_kernel.cpp` exposes: unit/map/effect accessors, event
+  triggers, UI hook stubs. Lua is **load-bearing**, not optional — it's used
+  directly in ~8% of mainline `.cfg` files and pervasively by abilities/AI
+  beneath that.
+
+  One wrinkle: Wesnoth vendors Lua 5.4.7, and `data/lua/`'s own standard
+  library — `core/wml.lua`, `wml-flow.lua`, `wml-tags.lua`, and four
+  `wml/*.lua` action-tag implementations, plus `functional.lua` — uses
+  Lua 5.4's `<const>`/`<close>` variable-attribute syntax (a `scoped_var()`
+  helper relies on `<close>`'s to-be-closed semantics to restore WML
+  variables safely even on error). Fengari only implements Lua 5.3 and
+  can't parse this syntax at all. `data/lua/*.lua` therefore does **not**
+  run fully unmodified: `packages/lua-bridge` carries a small, maintained
+  patch to those ~8 files — `<const>` is dropped outright (compile-time-only,
+  no runtime effect), `<close>` call sites are rewritten to explicit
+  pcall-based cleanup preserving the same error-safety guarantee. This
+  patch needs re-checking whenever the `wesnoth` submodule is rebased on
+  upstream (see `OPEN_QUESTIONS.md` decision 1). The wasmoon (WASM Lua 5.4)
+  alternative would avoid this entirely but was rejected in favor of
+  keeping Lua embedding WASM-free — see `OPEN_QUESTIONS.md` decision 2 for
+  the tradeoff.
 
 - `packages/renderer` — PixiJS-based board renderer. Ports forward,
   near-verbatim, the parts of attempt #1's `frontend/src/board/` that had no

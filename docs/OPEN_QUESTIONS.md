@@ -17,6 +17,25 @@ though we're not building WASM (see `ARCHITECTURE.md`).
 **Decided: Fengari** (pure JS) — avoids reintroducing WASM toolchain
 complexity for a component unlikely to be a performance bottleneck.
 
+**Revisited 2026-09-06** after discovering Wesnoth vendors Lua 5.4.7 and
+`data/lua/`'s own standard library (`core/wml.lua`, `wml-flow.lua`,
+`wml-tags.lua`, four `wml/*.lua` action-tag files, `functional.lua` — the
+layer underneath essentially all WML action-tag execution, not an edge
+case) uses Lua 5.4's `<const>`/`<close>` attribute syntax, which Fengari
+(Lua 5.3 only, confirmed via its own docs — no 5.4 roadmap found) cannot
+even parse. No mature actively-maintained pure-JS Lua 5.4 alternative to
+Fengari was found.
+
+**Re-decided: stay with Fengari**, and carry a small maintained patch to
+the ~8 affected `data/lua/` files (strip `<const>`, rewrite `<close>` call
+sites to explicit pcall-based cleanup) rather than switch to wasmoon. This
+keeps Lua embedding WASM-free at the cost of a bounded, mechanical patch
+that needs re-checking on every submodule rebase (decision 1). See
+`ARCHITECTURE.md`'s `packages/lua-bridge` section for the specifics.
+`Dead_Water` (decision 3) doesn't use `<const>`/`<close>` directly, so this
+doesn't block the MVP milestone, but the patch is still needed since
+`Dead_Water` depends on `wml-tags.lua`/`wml-flow.lua` like everything else.
+
 ## 3. MVP target content
 
 **Decided: `Dead_Water`** (mainline campaign; used for debugging in

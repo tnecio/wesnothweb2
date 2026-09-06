@@ -95,11 +95,20 @@ design (multiplayer relay).
 
 ## Phase 3 — Lua integration
 
-- Embed a JS Lua VM (see `OPEN_QUESTIONS.md`) in `packages/lua-bridge`.
+- Embed Fengari in `packages/lua-bridge` (see `OPEN_QUESTIONS.md`).
+- Patch the ~8 `data/lua/` files using Lua 5.4's `<const>`/`<close>` syntax
+  (`core/wml.lua`, `wml-flow.lua`, `wml-tags.lua`, four `wml/*.lua`
+  action-tag files, `functional.lua`) so Fengari (Lua 5.3) can parse them:
+  drop `<const>`, rewrite `<close>` call sites (the `scoped_var()` pattern)
+  to explicit pcall-based cleanup preserving the same restore-on-error
+  guarantee. Small and mechanical, but track it as a real task, not an
+  afterthought — this was only discovered by actually grepping for the
+  syntax, not by reading upstream docs.
 - Hand-port the subset of `scripting/game_lua_kernel.cpp`'s `wesnoth.*` API
   surface that mainline content and `data/lua/*.lua` actually exercise
   (unit/map/effect accessors, event triggers; UI-hook parts of the API stub
-  out until Phase 5's UI exists). `data/lua/*.lua` itself runs unmodified.
+  out until Phase 5's UI exists). Everything in `data/lua/*.lua` other than
+  the patched files above runs unmodified.
 - **Milestone**: a real mainline scenario that uses `[lua]` for custom logic
   (pick one of the simpler ones) plays correctly headlessly.
 
