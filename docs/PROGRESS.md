@@ -93,6 +93,64 @@ would likely reject new agent spawns too.
   milestone (load real Dead_Water scenario 1 into a queryable in-memory
   model, headless).
 
+## 2026-09-07: Phase 2 core done -- RNG, pathfinding, event pump, actions/combat
+
+All landed as subagents (with two more rate-limit interruptions along the
+way, reset times shifting later each time -- account-wide, affects
+subagent spawns and my own direct work equally once hit). RNG and
+pathfinding finished cleanly with real verification built in by the
+agents themselves (RNG against throwaway native C++ oracles plus a
+published std::mt19937 test vector; pathfinding against Home_1.map's real
+smallfoot/swimmer movetypes). The WML event pump landed cleanly too, with
+a real test firing Dead_Water scenario 1's actual prestart event through
+the real pump and checking real dialogue text and macro-computed values.
+
+The actions/combat agent was cut off by a rate limit before writing a
+single test for 2714 lines of code, including the highest-risk module in
+the project (attackPrediction.ts, the from-scratch combat-probability
+matrix engine). Picked this up directly rather than re-spawning (same
+account-wide limit would likely reject a new spawn too) and wrote real
+verification myself, which found two severe, confirmed bugs before
+anything downstream could build on them:
+
+1. **attackPrediction.ts**: `ProbMatrix` used maxHp values directly as
+   row/column counts instead of maxHp+1, silently shifting every combat
+   outcome down by one HP and dropping the top HP value's probability
+   mass entirely. Confirmed against `attack_prediction.cpp` (`prob_matrix`'s
+   real constructor does `rows_(a_max+1)`) and caught by a hand-computed
+   binomial ground-truth test that needed no C++ oracle to know the right
+   answer (two independent 50% hits must split HP exactly 0.25/0.5/0.25).
+2. **MoveType.ts** (data model, outside the actions work's scope, but a
+   clear one-liner worth fixing on sight): `resistanceAgainst` defaulted
+   an unlisted damage type to 0 instead of the real default of 100,
+   confirmed directly against `movetype.cpp`. Since real units only
+   declare resistances for damage types they're unusually strong/weak
+   against, this would have made most real combat deal 1 damage (the
+   rounding floor) instead of the correct amount -- a bug broad enough to
+   corrupt the overwhelming majority of real combat outcomes.
+
+Also worth remembering for future test-writing in this repo: (a) small
+hand-built test maps need extra border padding (an NxN map string parses
+to (N-2)x(N-2) *playable* hexes -- caught this same thing on Home_1.map
+during Phase 1 too, and hit it again writing new tests, so it's clearly
+an easy trap, not a one-off); (b) MoveType per-terrain tables must be
+keyed by `TerrainTypeData`'s *resolved* id (falls back to the terrain
+code's own string, e.g. "Gg", when nothing's registered), not a made-up
+label, since an unmatched key silently falls through to the table's
+default rather than erroring.
+
+183 passing engine tests total, clean typecheck. Phase 2's stated
+milestone (a golden-scenario regression test playing a full scenario
+headlessly, combat checked against a `wl-combat-oracle`) is NOT done yet
+-- what exists is thorough per-module verification (RNG bit-exact,
+pathfinding/combat against real content and hand-computed ground truth,
+events against a real scenario's prestart handler), but no
+`wl-combat-oracle` was built and no single test exercises RNG+pathfinding+
+combat+events together end-to-end yet. That integration (and wiring the
+event pump's `attack`/`recruit`/`move_unit` extension-point placeholders
+to the real actions/ functions) is the natural next step before calling
+Phase 2 fully done.
+
 ## 2026-09-07: vertical slice done -- real scenario renders in the browser
 
 Task #3 (the browser-visible checkpoint, prioritized ahead of full Phase 2
