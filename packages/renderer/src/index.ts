@@ -15,6 +15,7 @@ export {
 export {
   ImageCache,
   hexedRef,
+  todRef,
   imageUrl,
   setImageBaseUrl,
 } from './images/ImageCache'
@@ -62,6 +63,58 @@ export {
 export {
   showFloatingText,
 } from './effects/FloatingText'
+
+// ── Unit animation: context schema, filter matching/selection, frame
+//    extraction, time-of-day tinting (see packages/renderer/src/animation) ──
+export {
+  type AnimationContext,
+  type StrikeResult,
+  strikeResultOf,
+  terrainLookup,
+  buildAttackBlowAnimationContexts,
+  buildAttackAnimationContexts,
+  buildMovementAnimationContext,
+  buildMovementAnimationContexts,
+} from './animation/animationContext'
+
+export {
+  MATCH_FAIL,
+  DEFAULT_ANIM,
+  type AnimBranch,
+  type UnitAnimationDef,
+  type MatchOptions,
+  expandAnimationBranches,
+  parseUnitAnimations,
+  attackMatchesFilter,
+  matchAnimation,
+  scoreAnimations,
+  selectTopAnimations,
+  chooseAnimation,
+} from './animation/unitAnimation'
+
+export {
+  type UnitFrameDef,
+  type StepSequenceItem,
+  type ProgressiveSegment,
+  type ResolvedFrameImage,
+  type HexPixelPos,
+  parseDurationMs,
+  squareParentheticalSplit,
+  parseStepSequence,
+  parseProgressivePair,
+  sampleProgressivePair,
+  parseFrame,
+  resolveFrameImage,
+  frameCenterPosition,
+  applyFrameEffects,
+} from './animation/frame'
+
+export {
+  type TodColor,
+  NEUTRAL_TOD_COLOR,
+  todColorFromTimeConfig,
+  applyTodTint,
+} from './animation/timeOfDay'
 
 // ── Vertical-slice scenario snapshot board (see module doc comment) ────────
 export {

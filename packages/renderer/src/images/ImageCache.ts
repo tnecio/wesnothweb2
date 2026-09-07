@@ -33,6 +33,7 @@ import { joinRef, parseAlpha, parseIpf, splitRef } from './ipf'
 import {
   applyColorMapping, DEFAULT_TC_PALETTE, generateColorMapping, type ColorData,
 } from './teamColor'
+import { applyTodTint, type TodColor } from '../animation/timeOfDay'
 
 /** Hex tile size, and the alpha mask every terrain image is clipped by. */
 const TILE = 72
@@ -48,6 +49,21 @@ const HEX_MASK = 'terrain/alphamask.png'
  */
 export function hexedRef(ref: string): string {
   return `${ref}~HEXED()`
+}
+
+/**
+ * Wrap a reference with a time-of-day tint (see `../animation/timeOfDay.ts`).
+ *
+ * Like `~HEXED()`, this is not a real IPF modifier — upstream applies
+ * time-of-day colour as a separate global blit stage
+ * (`image::set_color_adjustment`/`get_tod_colored`), not via a locator's own
+ * modifier chain — so it's modelled the same way: a trailing pseudo-op that
+ * still participates in the cache key (a unit under a red dusk tint is a
+ * different texture from the same unit at midday).
+ */
+export function todRef(ref: string, tod: TodColor): string {
+  if (tod.r === 0 && tod.g === 0 && tod.b === 0) return ref
+  return `${ref}~TOD(${tod.r},${tod.g},${tod.b})`
 }
 
 /** Ops we have not implemented, warned about once each rather than per use. */
@@ -428,6 +444,18 @@ class ImageCacheImpl {
           g.drawImage(mask as CanvasImageSource, 0, 0)
         }
         return out
+      }
+
+      // ~TOD(r,g,b) — see `todRef` above: additive time-of-day tint, not a
+      // real engine IPF op, appended the same way `~HEXED()` is.
+      case 'TOD': {
+        const [r, g, b] = args.map(Number)
+        if (![r, g, b].every(Number.isFinite)) return src
+        const g2 = ctx2d(src)
+        const img = g2.getImageData(0, 0, src.width, src.height)
+        applyTodTint(img.data, { r: r!, g: g!, b: b! })
+        g2.putImageData(img, 0, 0)
+        return src
       }
 
       // ~GS() — greyscale.
