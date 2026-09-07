@@ -1,0 +1,32 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Golden scenario: a hand-written minimal scenario played headlessly via scripted commands > parses, loads, and plays deterministically: move -> attack -> kill, snapshotted 1`] = `
+{
+  "attackerHp": 28,
+  "attackerXp": 8,
+  "blows": [
+    {
+      "attackerTurn": true,
+      "damage": 8,
+      "hit": true,
+    },
+    {
+      "attackerTurn": false,
+      "damage": 4,
+      "hit": true,
+    },
+    {
+      "attackerTurn": true,
+      "damage": 8,
+      "hit": true,
+    },
+    {
+      "attackerTurn": true,
+      "damage": 8,
+      "hit": true,
+    },
+  ],
+  "defenderAlive": false,
+  "defenderDied": true,
+}
+`;
