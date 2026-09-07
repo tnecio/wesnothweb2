@@ -233,6 +233,12 @@ function readDefineBody(
 
     if (found.word === 'deprecated') {
       // #deprecated LEVEL [VERSION] message-until-eol -- recognized and discarded (see module doc).
+      // Unlike processDirective's top-level directives, no explicit '\n'
+      // needs adding here: the next loop iteration's `body += src.slice(pos,
+      // found.index)` naturally starts right after this line and captures
+      // through the following directive, newline included -- confirmed by
+      // tracing `#define FOO\nsome_text\n#deprecated ...\nmore_text\n#enddef`
+      // through by hand; adding a newline here double-spaces it instead.
       pos = found.index + 1 + 'deprecated'.length;
       pos = skipToEol(src, pos);
       continue;
@@ -745,17 +751,29 @@ function processDirective(
     return finishConditional(src, p, ctx, active, takeIf);
   }
 
+  // NOTE: every branch below consumes an entire source line (up to and
+  // including its newline, via skipToEol) but must produce a `text: '\n'`,
+  // not `text: ''`, in its place. We don't track #line-style source
+  // positions the way upstream's streambuf does (see module doc comment),
+  // so the newline the directive line occupied has to survive into the
+  // flat expanded output itself, or the line before and the line after
+  // silently concatenate into one -- exactly what happened before this was
+  // fixed: `key=value # trailing comment\nnext_key=...` collapsed into
+  // `key=value     next_key=...`, corrupting real content (data/core/
+  // terrain.cfg's `string=Exos # comment` / `aliasof=...` pair, caught by
+  // GameBoard's real-content integration test).
+
   if (command === 'else' || command === 'endif') {
     if (!stopAtElseOrEndif) fail(src, pos, `Unexpected #${command}`);
     const p = skipToEol(src, afterCommand);
-    return { text: '', pos: p, stoppedBy: command };
+    return { text: '\n', pos: p, stoppedBy: command };
   }
 
   if (command === 'textdomain') {
     const p1 = skipSpacesTabs(src, afterCommand);
     const { word: domain, pos: afterWord } = readWord(src, p1);
     if (domain) ctx.domain.value = domain;
-    return { text: '', pos: skipToEol(src, afterWord), stoppedBy: null };
+    return { text: '\n', pos: skipToEol(src, afterWord), stoppedBy: null };
   }
 
   if (command === 'enddef') {
@@ -766,14 +784,14 @@ function processDirective(
     const p = skipSpacesTabs(src, afterCommand);
     const { word: symbol, pos: afterSym } = readWord(src, p);
     if (active) ctx.defines.delete(symbol);
-    return { text: '', pos: skipToEol(src, afterSym), stoppedBy: null };
+    return { text: '\n', pos: skipToEol(src, afterSym), stoppedBy: null };
   }
 
   if (command === 'error') {
     const p = skipSpacesTabs(src, afterCommand);
     const { text: msg, pos: afterMsg } = restOfLine(src, p);
     if (active) fail(src, pos, `#error: "${msg}"`);
-    return { text: '', pos: skipToEol(src, afterMsg), stoppedBy: null };
+    return { text: '\n', pos: skipToEol(src, afterMsg), stoppedBy: null };
   }
 
   if (command === 'warning') {
@@ -783,16 +801,16 @@ function processDirective(
       // eslint-disable-next-line no-console
       console.warn(`WML #warning: ${msg} (line ${lineAt(src, pos)})`);
     }
-    return { text: '', pos: skipToEol(src, afterMsg), stoppedBy: null };
+    return { text: '\n', pos: skipToEol(src, afterMsg), stoppedBy: null };
   }
 
   if (command === 'deprecated') {
     // Top-level "this file is deprecated" notice -- recognized and discarded, see module doc.
-    return { text: '', pos: skipToEol(src, afterCommand), stoppedBy: null };
+    return { text: '\n', pos: skipToEol(src, afterCommand), stoppedBy: null };
   }
 
   // Unrecognized `#word`: an ordinary comment line.
-  return { text: '', pos: skipToEol(src, afterCommand), stoppedBy: null };
+  return { text: '\n', pos: skipToEol(src, afterCommand), stoppedBy: null };
 }
 
 function finishConditional(
