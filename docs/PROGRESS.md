@@ -93,6 +93,38 @@ would likely reject new agent spawns too.
   milestone (load real Dead_Water scenario 1 into a queryable in-memory
   model, headless).
 
+## 2026-09-07: Phase 3 done -- Fengari embedded, Lua 5.4 patch, host API subset
+
+Landed cleanly as a single large subagent run (~35 min, ~300K tokens --
+the biggest single task of the session), with real verification built in
+by the agent itself rather than needing rescue work afterward (unlike the
+actions/combat agent earlier). Independently re-verified: typecheck
+clean, all 32 of its own tests pass, and spot-checked its most notable
+claims directly (the `debug.getmetatable` fix is really in the patched
+`wml-flow.lua`; the `RETREAT_WHEN_WEAK` Lua snippet it claims to extract
+really is at that exact line in the real `Heir_To_The_Throne/utils/
+side_ai.cfg`). Full 265-test suite across all four packages passes.
+
+The 8 Lua-5.4-syntax files (`<const>`/`<close>`) are patched in
+`packages/lua-bridge/vendor-lua-patches/`, substituted transparently by a
+loader that reads everything else straight from the submodule unmodified.
+Real bug caught by its own tests, not by inspection: the first patch
+attempt used `getmetatable(x).__close`, which silently returned `nil`
+because `scoped_var()`'s `__metatable` field shadows plain `getmetatable`
+with a string -- only surfaced once a test asserted the WML variable was
+actually restored after a thrown error, not just that the files parsed.
+
+Host API scope is deliberately narrow: `wml.variables` bridged to the
+real `VariableStore`, `wesnoth.units.get` bridged to real `GameBoard`/
+`Unit` objects (6 fields), a minimal `require`, and a hand-written `wml`/
+`wesnoth` bootstrap covering just what the patched standard-library files
+and its own verification targets need -- not the full `core/wml.lua`
+bootstrap or directory-cascading `require()`. Verified against real,
+unmodified content: extracted the literal `[lua]` conditional from
+`Heir_To_The_Throne/utils/side_ai.cfg`'s `RETREAT_WHEN_WEAK` macro via
+regex on the actual file (not retyped) and ran it through the bridge for
+several turn numbers.
+
 ## 2026-09-07: Phase 2 core done -- RNG, pathfinding, event pump, actions/combat
 
 All landed as subagents (with two more rate-limit interruptions along the
