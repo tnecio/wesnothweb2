@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@wesnothweb2/engine": "*",
-    "fengari": "^0.1.4"
+    "fengari": "^0.1.5",
+    "fengari-interop": "^0.1.4"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
