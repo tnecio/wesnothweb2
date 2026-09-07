@@ -123,9 +123,22 @@ function mergeIntTable(base: ReadonlyMap<string, number>, overrides: WmlConfig |
 export class Resistances {
   constructor(private readonly byDamageType: ReadonlyMap<string, number> = new Map()) {}
 
-  /** Vulnerability to `damageType` (>100 = weak to it, <100 = resistant), 0 if unspecified. */
+  /**
+   * Vulnerability to `damageType` (>100 = weak to it, <100 = resistant),
+   * 100 (i.e. normal, unmodified damage) if unspecified -- mirrors
+   * `movetype::resistances::resistance_against`'s exact fallback
+   * (`cfg_[damage_type].to_int(100)` in movetype.cpp), confirmed against
+   * that source directly. A prior version of this defaulted to 0, which
+   * silently made every unit nearly immune (1 damage, the roundDamage()
+   * floor) to any damage type its [resistance] table didn't explicitly
+   * list -- almost all real content only lists the damage types a unit is
+   * unusually strong/weak against and relies on this default for
+   * everything else, so that bug would have corrupted the overwhelming
+   * majority of real combat outcomes. Caught by
+   * packages/engine/test/actions/combat.test.ts.
+   */
   resistanceAgainst(damageType: string): number {
-    return this.byDamageType.get(damageType) ?? 0;
+    return this.byDamageType.get(damageType) ?? 100;
   }
 
   damageTable(): ReadonlyMap<string, number> {
