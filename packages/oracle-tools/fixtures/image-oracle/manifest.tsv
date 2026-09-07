@@ -1,0 +1,4 @@
+index	status	width	height	file	locator
+0	OK	72	72	00000_units_saurians_oracle_oracle.png.png	units/saurians/oracle/oracle.png
+1	OK	72	72	00001_terrain_water_waves-concave-A01.png_MASK_terrain_masks_7hex-r.png_.png	terrain/water/waves-concave-A01.png~MASK(terrain/masks/7hex-r.png)
+2	OK	72	72	00002_units_saurians_oracle_oracle.png_TC_1_ff0000_.png	units/saurians/oracle/oracle.png~TC(1,ff0000)
