@@ -41,6 +41,58 @@ This is a scope/ordering judgment call, not a change to the plan itself.
   (map/terrain/unit/team/game-board). Results and integration to follow in
   the next log entries.
 
+## 2026-09-07: rate limit hit, Phase 1 finished directly
+
+Both the WML-pipeline and core-data-model agents were cut off mid-task by
+an account-wide spend limit (reset ~2:10am UTC) partway through. Rather
+than wait, picked up their (already-substantial, already-typechecking)
+work directly rather than re-spawning agents, since a shared account limit
+would likely reject new agent spawns too.
+
+- **WML pipeline**: verified it actually parses Dead_Water's real scenario
+  1 end-to-end (not just synthetic snippets) -- required two "game-level"
+  macro flags (`CAMPAIGN_DEAD_WATER`, the difficulty flag `NORMAL`) that
+  upstream's `game_config_manager` injects before preprocessing, not
+  something `preprocessor.cpp`'s job. Documented as a real integration
+  test (`test/wml/deadWaterIntegration.test.ts`) and in ARCHITECTURE-
+  adjacent code comments for whoever writes the scenario loader in Phase 2.
+- **Found and fixed a real preprocessor bug** while chasing this down: any
+  directive that consumes through end-of-line (plain `# comment`,
+  `#textdomain`, `#undef`, `#error`, `#warning`, `#deprecated`, `#else`/
+  `#endif`) was dropping the newline it consumed from the *output* text,
+  silently merging that line with the next one. Not a narrow edge case --
+  `data/core/terrain.cfg` hit it on an ordinary trailing `# comment` after
+  a value, and any real WML file could. Fixed all 7 call sites; see the
+  commit for the one look-alike spot (inside macro-body capture) that was
+  traced by hand and confirmed NOT to need the same fix (would have
+  double-spaced instead).
+- **Core data model**: finished `Team.ts` and `GameBoard.ts` (the two files
+  the interrupted agent hadn't reached yet) on top of its already-solid
+  `Location`/`Map`/`Terrain`/`MoveType`/`Unit`/`UnitType`. Wrote a
+  real-content integration test loading Dead_Water scenario 1's actual map
+  file and `[side]`/`[unit]` data through `GameBoard.fromConfig`, which
+  caught a genuine bug in that same new code: inline `[side]` leaders with
+  no explicit `x=`/`y=` (the normal case -- confirmed neither of this
+  scenario's two leaders have one) all resolved to the same invalid-
+  location sentinel and silently overwrote each other. Fixed with a
+  `map.startingPosition(side)` fallback, matching upstream's real
+  placement logic. The test also surfaced (and now documents rather than
+  asserts around incorrectly) a *known, expected* Phase 1 limitation: units
+  placed via `[event]`-nested `[unit]` tags from what are really two
+  different, mutually-exclusive scenario events can collide on the same
+  hex when naively loaded "all at once," because nothing here understands
+  event timing yet -- that needs Phase 2's WML event pump, not a Phase 1
+  data-model fix.
+- Real unit-type-database loading (`data/core/units/`, which needs
+  `[base_unit]`/gender-variation inheritance flattening that `UnitType.
+  fromConfig`'s own module doc explicitly defers) is NOT done -- the
+  GameBoard test uses a permissive stub `resolveType`. This is the next
+  concrete gap, not yet a blocker for anything attempted so far.
+- All 83 engine tests + 45 renderer tests + 3 oracle-tools tests passing,
+  clean typecheck across every package. Phase 1 is DONE for its stated
+  milestone (load real Dead_Water scenario 1 into a queryable in-memory
+  model, headless).
+
 ## 2026-09-07: renderer + oracle tooling landed
 
 - Renderer port-forward (ipf/ImageCache/teamColor/hex-geometry/tween/
