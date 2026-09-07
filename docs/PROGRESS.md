@@ -93,6 +93,32 @@ would likely reject new agent spawns too.
   milestone (load real Dead_Water scenario 1 into a queryable in-memory
   model, headless).
 
+## 2026-09-07: Phase 4 (unit animation slice) done -- terrain layering still deferred
+
+Landed cleanly (~34 min, ~330K tokens), independently re-verified
+(typecheck clean, 106/106 own tests, spot-checked the flagged ImageCache
+change and the real Elvish/Merman Fighter content usage directly). See
+the commit for full detail: the `matches_headless()`-derived animation-
+context schema, real `[if]`/`[else]` branch expansion (a real load-
+bearing macro dependency, not a stub), frame/position extraction, and a
+ToD tint wired into `ImageCache` as a new `~TOD()` pseudo-op. Caught a
+real bug via its own real-content test: the WML parser coerces
+`hits=yes`/`hits=no` into booleans, which broke `hits_` filter parsing
+until a dedicated string-reading fix landed.
+
+Deliberately NOT attempted: full terrain *image* compositing
+(`terrain/builder.cpp`'s `[terrain_graphics]` rule layering) -- this is
+the specific thing that stalled the original wesnothweb attempt for
+months, and it's flagged in this project's own plan as high-risk/
+deferred. `SnapshotBoard.ts`'s flat-coloured terrain placeholder from the
+vertical slice is untouched. Also not done: wiring the new animation
+system into `SnapshotBoard` so combat actually animates visually in the
+browser demo (the animation *logic* is real and tested; nothing yet
+calls it from the renderer's PixiJS drawing code) -- a reasonable next
+increment whenever picked back up, but not attempted this pass in favor
+of moving on to Phase 5 given the user's original "up to phase 5"
+request and the size this session has already reached.
+
 ## 2026-09-07: Phase 3 done -- Fengari embedded, Lua 5.4 patch, host API subset
 
 Landed cleanly as a single large subagent run (~35 min, ~300K tokens --
