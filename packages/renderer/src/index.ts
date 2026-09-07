@@ -62,3 +62,13 @@ export {
 export {
   showFloatingText,
 } from './effects/FloatingText'
+
+// ── Vertical-slice scenario snapshot board (see module doc comment) ────────
+export {
+  SnapshotBoard,
+  type ScenarioSnapshot,
+  type SnapshotTerrainHex,
+  type SnapshotUnit,
+  type SnapshotTeam,
+  type SnapshotBoardOptions,
+} from './SnapshotBoard'

@@ -6,16 +6,19 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
     "@wesnothweb2/engine": "*",
     "@wesnothweb2/renderer": "*",
-    "@wesnothweb2/ui": "*"
+    "@wesnothweb2/ui": "*",
+    "pixi.js": "^8.14.3"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.1",
     "svelte": "^5.43.8",
+    "svelte-check": "^4.4.5",
     "typescript": "^5.9.3",
     "vite": "^6.4.3"
   }
