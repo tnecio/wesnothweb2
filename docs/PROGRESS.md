@@ -93,6 +93,47 @@ would likely reject new agent spawns too.
   milestone (load real Dead_Water scenario 1 into a queryable in-memory
   model, headless).
 
+## 2026-09-07: vertical slice done -- real scenario renders in the browser
+
+Task #3 (the browser-visible checkpoint, prioritized ahead of full Phase 2
+per this log's opening strategy note): `npm run dev` now serves
+Dead_Water scenario 1 with real terrain, real sides/units (13 of them,
+correctly positioned), and real unit sprite art, all sourced from the
+actual `wesnoth/` submodule content via the real WML/data-model pipeline
+built in Phase 1 -- see the commit for full detail. Two honest
+simplifications, both clearly marked in code and intended to be temporary:
+
+1. **Build-time snapshot, not live in-browser WML loading.** The WML
+   preprocessor's file-access is synchronous (mirrors Node's `fs`); making
+   that work over `fetch()` (inherently async) is real, undone work.
+   `apps/web/scripts/build-scenario-snapshot.mjs` bridges this by running
+   the real pipeline in Node at build time and shipping the result as
+   static JSON. Revisit when a real in-browser scenario loader is built.
+2. **Flat-coloured terrain hexes, not real terrain image compositing.**
+   That's genuinely Phase 4 scope (terrain_graphics rule matching), not
+   something either interrupted Phase 1 agent was ever asked to build.
+   Units DO use real sprite art through the ported ImageCache/ipf
+   pipeline -- only terrain is a placeholder.
+
+Also had to reconcile a real coordinate-convention mismatch between the
+engine's `Location` (0-based, odd columns shifted down, verified against
+`map_location.cpp`) and the renderer's `hexGeometry.ts` (1-based, even
+columns shifted down, ported from attempt #1). Confirmed algebraically
+these are the *same* convention once you account for the indexing offset
+-- `location.wmlX`/`wmlY` feed `hexToPixel` directly, no transform needed
+-- and documented this in `SnapshotBoard.ts` since it's exactly the kind
+of thing the core-data-model agent flagged as a risk to get wrong.
+
+Couldn't get an actual screenshot: Playwright requires Node 20+, this VM
+has 18.20.4, and upgrading Node felt like too much risk for a
+verification-only need. Verified everything else thoroughly instead --
+`svelte-check` (plain `tsc` silently skips `.svelte` files, so this needed
+setting up separately) passes clean, and curl confirmed every real request
+the app makes at runtime (HTML, JS transforms, the workspace package's
+source resolution through Vite, the snapshot JSON, real PNG assets)
+resolves correctly. High confidence, but not the same as having looked at
+pixels -- worth an actual look next time a browser is available.
+
 ## 2026-09-07: renderer + oracle tooling landed
 
 - Renderer port-forward (ipf/ImageCache/teamColor/hex-geometry/tween/
