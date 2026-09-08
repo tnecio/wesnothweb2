@@ -22,6 +22,21 @@
  * are what hexGeometry.ts's HexCoord expects, with no further transform.
  * Do not feed it `location.x`/`location.y` directly -- half the columns
  * will render on the wrong row.
+ *
+ * ## Phase 5 interactivity (packages/ui)
+ *
+ * `onHexClick` (constructor option) makes every terrain hex tile
+ * pointer-interactive and reports its engine-convention (0-based) `(x,y)`
+ * on click. Deliberately only the TERRAIN tiles are made interactive, not
+ * unit sprites: terrain tiles tile the whole board with no gaps, so a
+ * click anywhere always resolves to exactly one hex, and PixiJS's default
+ * `eventMode` ('passive') on non-interactive unit sprites lets clicks pass
+ * straight through to the terrain tile beneath -- callers (packages/ui's
+ * `GameSession`) look up "is there a unit at this hex" themselves via the
+ * live `GameBoard`, rather than this renderer needing to know about game
+ * rules. `updateUnits`/`setHighlights` let a caller re-render after a real
+ * move/attack (via `packages/engine`'s actions) without rebuilding the
+ * whole board or losing the terrain layer's click handlers.
  */
 
 import * as PIXI from 'pixi.js';
@@ -63,6 +78,12 @@ export interface ScenarioSnapshot {
   units: SnapshotUnit[];
 }
 
+/** An engine-convention (0-based) hex coordinate, as used by `setHighlights`/`onHexClick`. */
+export interface HexPoint {
+  x: number;
+  y: number;
+}
+
 /** 0-based engine (x,y) -> 1-based renderer HexCoord -- see module doc comment. */
 function toHexCoord(x: number, y: number): HexCoord {
   return { x: x + 1, y: y + 1 };
@@ -101,16 +122,38 @@ function colorForTerrain(code: string): number {
 export interface SnapshotBoardOptions {
   /** Base URL images are served from (see ImageCache.setImageBaseUrl). */
   imageBaseUrl?: string;
+  /** Called with a hex's engine-convention (0-based) (x,y) when a terrain tile is clicked -- see module doc comment. */
+  onHexClick?: (x: number, y: number) => void;
+}
+
+/** What `setHighlights` should currently draw, replacing whatever it drew last call. */
+export interface HighlightState {
+  /** The selected unit's own hex, outlined. */
+  selected?: HexPoint | null;
+  /** Hexes the selected unit could move to this turn. */
+  reachable?: readonly HexPoint[];
+  /** Adjacent enemy hexes the selected unit could attack. */
+  attackTargets?: readonly HexPoint[];
 }
 
 export class SnapshotBoard {
   readonly stage = new PIXI.Container();
   private readonly terrainLayer = new PIXI.Container();
+  private readonly highlightLayer = new PIXI.Container();
   private readonly unitLayer = new PIXI.Container();
+  private units: SnapshotUnit[];
+  private readonly teamColor: Map<number, string>;
+  private readonly onHexClick?: (x: number, y: number) => void;
 
-  constructor(private readonly snapshot: ScenarioSnapshot, options: SnapshotBoardOptions = {}) {
+  constructor(
+    private readonly snapshot: ScenarioSnapshot,
+    options: SnapshotBoardOptions = {},
+  ) {
     if (options.imageBaseUrl) setImageBaseUrl(options.imageBaseUrl);
-    this.stage.addChild(this.terrainLayer, this.unitLayer);
+    this.onHexClick = options.onHexClick;
+    this.units = snapshot.units;
+    this.teamColor = new Map(snapshot.teams.map((t) => [t.side, t.color]));
+    this.stage.addChild(this.terrainLayer, this.highlightLayer, this.unitLayer);
   }
 
   async render(): Promise<void> {
@@ -128,14 +171,21 @@ export class SnapshotBoard {
       g.poly(corners.flatMap((p) => [p.x, p.y]));
       g.fill({ color: colorForTerrain(hex.code) });
       g.stroke({ width: 1, color: 0x000000, alpha: 0.15 });
+      if (this.onHexClick) {
+        const hx = hex.x;
+        const hy = hex.y;
+        g.eventMode = 'static';
+        g.cursor = 'pointer';
+        g.on('pointertap', () => this.onHexClick?.(hx, hy));
+      }
       this.terrainLayer.addChild(g);
     }
   }
 
   private async renderUnits(): Promise<void> {
-    const teamColor = new Map(this.snapshot.teams.map((t) => [t.side, t.color]));
+    this.unitLayer.removeChildren();
 
-    for (const unit of this.snapshot.units) {
+    for (const unit of this.units) {
       const coord = toHexCoord(unit.x, unit.y);
       const { x: cx, y: cy } = hexToPixel(coord);
 
@@ -151,15 +201,54 @@ export class SnapshotBoard {
         // draw a small side-colour marker underneath instead so sides are
         // visually distinguishable without it.
         const marker = new PIXI.Graphics();
-        marker.circle(0, 28, 6).fill({ color: sideMarkerColor(teamColor.get(unit.side)) });
+        marker.circle(0, 28, 6).fill({ color: sideMarkerColor(this.teamColor.get(unit.side)) });
         marker.x = cx;
         marker.y = cy;
         this.unitLayer.addChild(marker, sprite);
       } else {
         const fallback = new PIXI.Graphics();
-        fallback.circle(cx, cy, 16).fill({ color: sideMarkerColor(teamColor.get(unit.side)) });
+        fallback.circle(cx, cy, 16).fill({ color: sideMarkerColor(this.teamColor.get(unit.side)) });
         this.unitLayer.addChild(fallback);
       }
+    }
+  }
+
+  /**
+   * Re-renders the unit layer from an updated live unit list (positions,
+   * hitpoints, deaths after a real move/attack) without touching the
+   * terrain layer (and its click handlers) or re-fetching already-cached
+   * textures unnecessarily (`ImageCache.resolve` is memoized).
+   */
+  async updateUnits(units: SnapshotUnit[]): Promise<void> {
+    this.units = units;
+    await this.renderUnits();
+  }
+
+  /** Draws (replacing any previous) selection/move-range/attack-target highlights. Pass `{}` to clear. */
+  setHighlights(state: HighlightState): void {
+    this.highlightLayer.removeChildren();
+
+    const drawFill = (hex: HexPoint, color: number, alpha: number): void => {
+      const coord = toHexCoord(hex.x, hex.y);
+      const { x: cx, y: cy } = hexToPixel(coord);
+      const corners = hexCorners(cx, cy);
+      const g = new PIXI.Graphics();
+      g.poly(corners.flatMap((p) => [p.x, p.y]));
+      g.fill({ color, alpha });
+      this.highlightLayer.addChild(g);
+    };
+
+    for (const hex of state.reachable ?? []) drawFill(hex, 0x3fa9f5, 0.35);
+    for (const hex of state.attackTargets ?? []) drawFill(hex, 0xe23b3b, 0.4);
+
+    if (state.selected) {
+      const coord = toHexCoord(state.selected.x, state.selected.y);
+      const { x: cx, y: cy } = hexToPixel(coord);
+      const corners = hexCorners(cx, cy);
+      const g = new PIXI.Graphics();
+      g.poly(corners.flatMap((p) => [p.x, p.y]));
+      g.stroke({ width: 3, color: 0xffd54a, alpha: 0.9 });
+      this.highlightLayer.addChild(g);
     }
   }
 

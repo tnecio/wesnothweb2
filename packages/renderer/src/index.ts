@@ -124,4 +124,6 @@ export {
   type SnapshotUnit,
   type SnapshotTeam,
   type SnapshotBoardOptions,
+  type HexPoint,
+  type HighlightState,
 } from './SnapshotBoard'
