@@ -13,36 +13,43 @@
  * fetch() is a real piece of work (a prefetch-everything-then-run-sync
  * approach, or reworking the pipeline to be async throughout) that hasn't
  * been done yet -- this script is the deliberate, documented bridge so the
- * *rendering* pipeline (packages/renderer, real image assets) and, since
- * Phase 5, real client-side gameplay (packages/ui, via
- * packages/engine/src/snapshot/gameBoardSnapshot.ts's `gameBoardFromSnapshot`)
- * can be proven end-to-end in a browser today without waiting on that.
- * Revisit once a real in-browser scenario loader is built.
+ * *rendering* pipeline (packages/renderer, real image assets) and real
+ * client-side gameplay (packages/ui, via packages/engine/src/snapshot/
+ * gameBoardSnapshot.ts) can be proven end-to-end in a browser today without
+ * waiting on that. Revisit once a real in-browser scenario loader is built.
+ * The user has explicitly signed off on this as an acceptable interim
+ * approach (build-time WML parsing, live client-side gameplay).
  *
- * Phase 5 additions to the snapshot format (see gameBoardSnapshot.ts's own
- * doc comment for the client-side reconstruction half of this):
- *  - `map.data`: the raw map text, so the browser can rebuild a real
- *    `GameMap` via `GameMap.fromMapString` without a WML config tree.
- *  - `unitTypes`: every unit type referenced by `units`, with its full stat
- *    set (hp/movement/attacks/etc.), so the browser can rebuild real
- *    `UnitType`/`Unit` instances instead of just drawing static sprites.
- *  - The stub `resolveType`'s move type now gets a real, flat per-terrain
- *    movement-cost (and defense) table via `buildFlatMoveType`, instead of
- *    an empty `[movement_costs]` config -- an empty table makes
- *    `MoveType.movementCost()` resolve to `UNREACHABLE` for every terrain
- *    (this project's own tests have hit that exact bug three times
- *    already, see docs/PROGRESS.md), which would make pathfinding/movement
- *    completely non-functional against these units. See
- *    gameBoardSnapshot.ts's doc comment for why a flat cost (not real
- *    per-terrain data) is the honest simplification here, and why the
- *    defense table also needs a non-degenerate flat value for combat
- *    prediction to look like combat prediction rather than a broken 99%
- *    hit-chance artifact.
- *  - The stub attack's damage/number-of-attacks are now non-zero (was
- *    `AttackType.fromConfig(new WmlConfig())`, i.e. 0 damage / 0 attacks --
- *    real but functionally inert combat). Still a stub (every unit type
- *    gets the identical generic weapon), but a non-zero one so
- *    `executeAttack` actually does something in the browser demo.
+ * ## Post-Phase-5 revision (playability feedback)
+ *
+ * The `units` list is now ONLY the two inline `[side]` leaders (Kai
+ * Krellis, Mal-Kevek) -- every other unit in this scenario (six citizens,
+ * Cylanna, Gwabbo, the enemy Skeleton/Walking Corpses) is spawned by the
+ * scenario's own `prestart`/`start` `[event]`s, which the browser now runs
+ * for REAL (`runScenarioStartupEvents`, see gameBoardSnapshot.ts) using
+ * `scenarioConfigJson` below, instead of this script statically walking the
+ * WML tree for `[unit]` tags regardless of which event places them (the
+ * prior, Phase-1-era approach, documented there as a known simplification).
+ * This is what actually fixes "no support for message/story tags": the
+ * browser now genuinely executes the scenario's WML event logic once at
+ * load, recording real `[message]` dialogue as it fires, rather than
+ * pre-baking an end-state snapshot with no record of how it got there.
+ *
+ * New/changed fields (see gameBoardSnapshot.ts's own doc comments):
+ *  - `scenarioConfigJson`: the scenario's full config (post-macro-expansion,
+ *    at this build), via `WmlConfig.toJSON()`.
+ *  - `story`: the scenario's `[story][part]` blocks (text + background
+ *    image, if any), extracted directly since displaying them needs no
+ *    event-pump execution -- just real, unmodified `story=` text.
+ *  - `unitTypes` now covers EVERY unit type this build discovered a real
+ *    image path for (currently ~330, from `data/core/units.cfg` plus this
+ *    campaign's own `_main.cfg`), not just types already present in
+ *    `units` -- necessary because `resolveType` in the browser now has to
+ *    resolve whatever id an `[event]`'s `[unit]` tag or a side's real
+ *    `recruit=` list names, not just a small fixed set known ahead of time.
+ *  - `teams[].recruit`: each side's real `recruit=` list (unit type ids),
+ *    straight from `[side] recruit=`, so the browser can offer a real
+ *    (if stub-statted) recruit menu instead of none at all.
  *
  * Run with: npx tsx apps/web/scripts/build-scenario-snapshot.mjs
  * (imports packages/engine's .ts sources directly; needs tsx, not plain node)
@@ -95,6 +102,19 @@ function collectUnitTypeImages(cfg, out) {
   }
 }
 
+/** Extracts [story][part] blocks into {text, image} -- see this file's module doc comment. No event pump needed, just real static text. */
+function extractStory(scenarioCfg) {
+  const storyCfg = scenarioCfg.child('story');
+  if (!storyCfg) return [];
+  return storyCfg.children('part').map((part) => {
+    const bg = part.child('background_layer');
+    return {
+      text: part.getString('story', ''),
+      image: bg ? bg.getString('image', '') || null : null,
+    };
+  });
+}
+
 const defines = loadDefines();
 
 const terrainCfg = parseWmlFile(path.join(dataRoot, 'core/terrain.cfg'), { dataRoot, defines: new Map(defines) });
@@ -114,11 +134,13 @@ const scenario = scenarioCfg.child('scenario');
 const mapText = fs.readFileSync(path.join(campaignDir, 'maps', scenario.getString('map_file')), 'utf8');
 scenario.setAttribute('map_data', mapText);
 
+const story = extractStory(scenario);
+
 // Build the stub move type's per-terrain movement-cost/defense tables (see
-// this file's own module doc comment, and gameBoardSnapshot.ts's, for why a
-// flat value is the honest simplification here) from the terrain codes this
-// specific map actually uses, using the real TerrainTypeData already loaded
-// above for other reasons.
+// gameBoardSnapshot.ts's doc comment for why a flat value is the honest
+// simplification here) from the terrain codes this specific map actually
+// uses, using the real TerrainTypeData already loaded above for other
+// reasons.
 const mapForCosts = GameMap.fromMapString(mapText, terrainData);
 const codesInUse = [];
 {
@@ -137,11 +159,9 @@ const moveType = buildFlatMoveType(codesInUse, terrainData);
 
 // Stub UnitType resolver -- see GameBoard's own test for why full unit-type
 // database loading (base_unit/gender-variation inheritance flattening) is
-// out of scope for now. GameBoard wiring itself (map + sides + units) is
-// real; only the per-type combat stats are placeholders here. The weapon
-// numbers are chosen to be plausible-looking, not real per-unit-type data,
-// but non-zero so combat in the browser demo actually does something (see
-// this file's module doc comment).
+// out of scope for now. GameBoard wiring itself (map + sides) is real; only
+// the per-type combat stats are placeholders. Non-zero damage/attacks so
+// combat in the browser demo actually does something.
 const stubAttackCfg = new WmlConfig();
 stubAttackCfg.setAttribute('name', 'attack');
 stubAttackCfg.setAttribute('description', 'Attack');
@@ -163,7 +183,15 @@ function resolveType(id) {
   return t;
 }
 
-const board = GameBoard.fromConfig(scenario, terrainData, resolveType);
+// spawnUnitsFromTree: false -- every unit besides the two inline leaders
+// comes from the scenario's real events, run live in the browser (see this
+// file's module doc comment). Pre-populate typeCache for every id we have a
+// real image for, so the snapshot's unitTypes covers whatever an event's
+// [unit] tag or a side's recruit= list might reference, not just what's
+// already on the board at build time.
+for (const id of unitImages.keys()) resolveType(id);
+
+const board = GameBoard.fromConfig(scenario, terrainData, resolveType, { spawnUnitsFromTree: false });
 
 const terrain = [];
 for (let x = 0; x < board.map.w(); x++) {
@@ -192,6 +220,7 @@ const teams = board.teams().map((t) => ({
   gold: t.gold,
   teamName: t.teamName,
   color: t.color,
+  recruit: [...t.canRecruit],
 }));
 
 /** Serializes a real (though stubbed, see above) `AttackType` instance to `AttackTypeSnapshot` shape. */
@@ -235,6 +264,7 @@ function unitTypeToSnapshot(t) {
     hideHelp: t.hideHelp,
     doNotList: t.doNotList,
     attacks: t.attacks.map(attackTypeToSnapshot),
+    image: unitImages.get(t.id) ?? null,
   };
 }
 
@@ -255,10 +285,13 @@ const snapshot = {
   teams,
   units,
   unitTypes,
+  story,
+  scenarioConfigJson: scenario.toJSON(),
 };
 
 fs.mkdirSync(path.dirname(outFile), { recursive: true });
 fs.writeFileSync(outFile, JSON.stringify(snapshot));
 console.log(
-  `Wrote ${outFile} (${units.length} units, ${terrain.length} hexes, ${teams.length} sides, ${Object.keys(unitTypes).length} unit types).`,
+  `Wrote ${outFile} (${units.length} pre-placed units, ${terrain.length} hexes, ${teams.length} sides, ` +
+    `${Object.keys(unitTypes).length} unit types, ${story.length} story parts).`,
 );

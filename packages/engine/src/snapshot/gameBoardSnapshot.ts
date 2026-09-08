@@ -104,6 +104,8 @@ export interface UnitTypeSnapshot {
   hideHelp: boolean;
   doNotList: boolean;
   attacks: AttackTypeSnapshot[];
+  /** Real image path collected from `data/core/units.cfg`/the campaign's `_main.cfg`, or `null` if none was found. */
+  image?: string | null;
 }
 
 export interface SnapshotTerrainHex {
@@ -131,6 +133,15 @@ export interface SnapshotTeam {
   gold: number;
   teamName: string;
   color: string;
+  /** Unit type ids this side may recruit, straight from `[side] recruit=` -- see `Team.canRecruit`. */
+  recruit?: string[];
+}
+
+/** One `[story][part]` -- see `apps/web/scripts/build-scenario-snapshot.mjs`'s `extractStory`. */
+export interface StoryPart {
+  text: string;
+  /** The part's `[background_layer] image=`, if any. */
+  image: string | null;
 }
 
 /**
@@ -182,6 +193,8 @@ export interface GameBoardSnapshot {
    * rather than working around it.
    */
   scenarioConfigJson: WmlConfigJson;
+  /** The scenario's `[story][part]` blocks (real narrative text + background art, if any), meant to be shown as a click-through sequence before interactive play begins. Empty if the scenario has no `[story]`. */
+  story?: StoryPart[];
 }
 
 export interface FlatMoveTypeOptions {
@@ -326,6 +339,7 @@ export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBo
         gold: t.gold,
         teamName: t.teamName,
         color: t.color,
+        canRecruit: new Set(t.recruit ?? []),
       }),
     );
   }
