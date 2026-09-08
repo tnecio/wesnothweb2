@@ -93,6 +93,21 @@ would likely reject new agent spawns too.
   milestone (load real Dead_Water scenario 1 into a queryable in-memory
   model, headless).
 
+## 2026-09-08: recovered a lost local commit in the wesnoth submodule
+
+While doing final checks, found the local-only oracle-wiring commit
+recorded earlier in this log (2026-09-07, "renderer + oracle tooling
+landed") was gone from the `wesnoth` submodule checkout -- not even in
+`git reflog`, meaning the submodule's `.git` metadata got reset to a
+fresh clone at some point during later work in this session (likely one
+of the Phase 3/4/5 subagents touching it despite being told not to,
+though it's not worth forensically tracking down which). The actual
+working-tree files survived intact and matched exactly (verified line
+counts and the `build-oracle/` `.gitignore` entry before trusting it), so
+nothing was actually lost -- just re-committed locally. **Still not
+pushed to `github.com/tnecio/wesnoth`** -- publishing it remains the
+user's call, same as when this was first flagged.
+
 ## 2026-09-08: Phase 5 done -- the browser demo is genuinely playable
 
 All originally-requested phases (0-5) are now done. Landed as a large
