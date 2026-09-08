@@ -1,5 +1,5 @@
 [submodule "wesnoth"]
 	path = wesnoth
 	url = https://github.com/tnecio/wesnoth.git
-	branch = wesnothlite
+	branch = wesnothweb2-oracle
 	shallow = true
