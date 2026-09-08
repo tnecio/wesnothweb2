@@ -5,6 +5,7 @@ import {
   unitKeyFor,
   type GameBoardSnapshot,
 } from '../../src/snapshot/gameBoardSnapshot.js';
+import { WmlConfig } from '../../src/wml/config.js';
 import { Location } from '../../src/model/Location.js';
 import { UNREACHABLE } from '../../src/model/MoveType.js';
 import { TerrainTypeData, parseTerrainCode } from '../../src/model/Terrain.js';
@@ -95,6 +96,7 @@ function tinySnapshot(): GameBoardSnapshot {
         ],
       },
     },
+    scenarioConfigJson: new WmlConfig().toJSON(),
   };
 }
 

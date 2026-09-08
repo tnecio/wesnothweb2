@@ -93,4 +93,38 @@ export class WmlConfig {
       ? this.childEntries.length
       : this.childEntries.filter((e) => e.tag === tag).length;
   }
+
+  // --- JSON (de)serialization ---
+  //
+  // Lets a WmlConfig subtree (e.g. a scenario's [event] blocks) travel from
+  // the build-time snapshot script (Node, full WML pipeline) to the browser
+  // (no WML pipeline -- see docs/ARCHITECTURE.md's "content pipeline"
+  // section) as plain JSON, then be reconstructed as a real WmlConfig there
+  // so the real, tested event pump (packages/engine/src/events/) can run
+  // against it unmodified. Deliberately a plain recursive object/array
+  // shape (not relying on WmlConfig's own class identity) so it round-trips
+  // through JSON.stringify/parse with no custom reviver.
+
+  toJSON(): WmlConfigJson {
+    return {
+      attrs: Object.fromEntries(this.attrs),
+      children: this.childEntries.map((e) => ({ tag: e.tag, config: e.config.toJSON() })),
+    };
+  }
+
+  static fromJSON(json: WmlConfigJson): WmlConfig {
+    const cfg = new WmlConfig();
+    for (const [key, value] of Object.entries(json.attrs)) {
+      cfg.setAttribute(key, value);
+    }
+    for (const child of json.children) {
+      cfg.addChild(child.tag, WmlConfig.fromJSON(child.config));
+    }
+    return cfg;
+  }
+}
+
+export interface WmlConfigJson {
+  attrs: Record<string, WmlAttributeValue>;
+  children: Array<{ tag: string; config: WmlConfigJson }>;
 }

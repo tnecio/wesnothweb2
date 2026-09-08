@@ -119,11 +119,23 @@ export class GameBoard {
    * `resolveType` looks up a `UnitType` by id -- building that registry
    * from `data/core/units/` (with the multi-file inheritance flattening
    * real unit definitions use) is out of scope here; see IMPLEMENTATION_PLAN.md.
+   *
+   * `options.spawnUnitsFromTree` (default `true`, preserving every
+   * existing caller's behavior) controls the tree-walk described above.
+   * A caller that's about to run the scenario's real `[event]`s through
+   * the real event pump (`events/pump.ts`) -- which spawns these same
+   * `[unit]` tags itself, correctly, only when/if the owning event
+   * actually fires -- should pass `false` here to avoid double-spawning
+   * (once statically by this naive walk, once for real by the event that
+   * actually places them). Inline `[side]` leaders are unaffected by this
+   * flag: they're placed unconditionally, matching upstream (a side's
+   * leader exists from scenario start, never gated behind an event).
    */
   static fromConfig(
     scenarioCfg: WmlConfig,
     terrainData: TerrainTypeData,
     resolveType: (id: string) => UnitType,
+    options: { spawnUnitsFromTree?: boolean } = {},
   ): GameBoard {
     const map = GameMap.fromConfig(scenarioCfg, terrainData);
     const board = new GameBoard(map);
@@ -162,20 +174,24 @@ export class GameBoard {
     }
 
     // Scenario-level [unit] tags, commonly nested inside [event] (see
-    // GameBoard's module doc comment) -- walk the whole tree once.
-    const visit = (node: WmlConfig): void => {
-      for (const { tag, config } of node.allChildren()) {
-        if (tag === 'unit') {
-          const loc = Location.fromConfig(config);
-          if (loc.valid()) board.addUnit(Unit.fromConfig(config, resolveType));
-        } else if (tag !== 'side') {
-          // [side]'s own [unit]/[recall] children are already handled above;
-          // don't double-add them via the generic walk.
-          visit(config);
+    // GameBoard's module doc comment) -- walk the whole tree once. Skipped
+    // when the caller is about to run real events instead (see this
+    // function's doc comment on `options.spawnUnitsFromTree`).
+    if (options.spawnUnitsFromTree ?? true) {
+      const visit = (node: WmlConfig): void => {
+        for (const { tag, config } of node.allChildren()) {
+          if (tag === 'unit') {
+            const loc = Location.fromConfig(config);
+            if (loc.valid()) board.addUnit(Unit.fromConfig(config, resolveType));
+          } else if (tag !== 'side') {
+            // [side]'s own [unit]/[recall] children are already handled above;
+            // don't double-add them via the generic walk.
+            visit(config);
+          }
         }
-      }
-    };
-    visit(scenarioCfg);
+      };
+      visit(scenarioCfg);
+    }
 
     return board;
   }

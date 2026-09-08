@@ -50,7 +50,15 @@
  * either way.
  */
 
-import { WmlConfig } from '../wml/config.js';
+import { WmlConfig, type WmlConfigJson } from '../wml/config.js';
+import {
+  EventManager,
+  EventPump,
+  VariableStore,
+  ActionRegistry,
+  createDefaultActionRegistry,
+  type RecordedMessage,
+} from '../events/index.js';
 import { Location } from '../model/Location.js';
 import { GameMap } from '../model/Map.js';
 import { Team, type SideController } from '../model/Team.js';
@@ -156,8 +164,24 @@ export interface GameBoardSnapshot {
   terrain: SnapshotTerrainHex[];
   teams: SnapshotTeam[];
   units: SnapshotUnit[];
-  /** Every unit type referenced by `units`, keyed by `typeId`. */
+  /** Every unit type referenced by `units` OR spawned by `scenarioConfigJson`'s events OR recruitable via a side's `recruit=` list, keyed by `typeId`. */
   unitTypes: Record<string, UnitTypeSnapshot>;
+  /**
+   * The scenario's full `[scenario]` config (after real macro/preprocessor
+   * expansion at build time -- see `apps/web/scripts/build-scenario-
+   * snapshot.mjs`), serialized via `WmlConfig.toJSON()`. Lets the browser
+   * run the scenario's real `[event]` handlers (prestart/start, etc.)
+   * through the real event pump (`runScenarioStartupEvents` below),
+   * recovering real `[message]`/`[story]`-driven behavior and the
+   * `[event]`-spawned units this snapshot's own `units` list deliberately
+   * does NOT pre-bake (see `spawnUnitsFromTree: false` at the call site
+   * that produces this snapshot) -- running the events for real, once,
+   * client-side is more correct than statically walking the WML tree for
+   * every `[unit]` tag regardless of which event (if any) actually places
+   * it, and it's what actually fixes "no support for message/story tags"
+   * rather than working around it.
+   */
+  scenarioConfigJson: WmlConfigJson;
 }
 
 export interface FlatMoveTypeOptions {
@@ -324,4 +348,58 @@ export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBo
   }
 
   return { board, unitsByKey };
+}
+
+export interface RunScenarioEventsOptions {
+  /** Looks up a `UnitType` by id for any `[unit]` tag an event spawns -- see `GameBoardSnapshot.unitTypes`' doc comment on why it needs to cover more than just the units present at t=0. */
+  resolveType: (id: string) => UnitType;
+  /** Shared across calls if you plan to `runScenarioStartupEvents` more than once (e.g. prestart now, a later turn-based event later) so state (disabled non-repeatable handlers) persists. Defaults to a fresh registry via `createDefaultActionRegistry()`. */
+  registry?: ActionRegistry;
+  /** Reuses an existing `VariableStore` (e.g. to preserve variables across multiple event-firing calls) instead of starting fresh. */
+  variables?: VariableStore;
+  log?: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
+}
+
+export interface ScenarioEventsResult {
+  /** `[message]` output recorded while running the requested events, in firing order -- see `RecordedMessage`. */
+  messages: RecordedMessage[];
+  /** The live variable store used, in case the caller wants to inspect/reuse it (e.g. for a later `runScenarioStartupEvents` call in the same session). */
+  variables: VariableStore;
+}
+
+/**
+ * Runs a scenario's real `[event]` handlers (by name, e.g. `'prestart'`
+ * then `'start'`, matching upstream's real startup sequence) against a live
+ * `board` through the real event pump (`events/pump.ts`), mutating the
+ * board exactly as the scenario's own WML says to (spawning `[unit]`s,
+ * `[message]` dialogue recorded rather than displayed as a blocking dialog
+ * -- see `RecordedMessage`). This is the client-side counterpart to
+ * `gameBoardFromSnapshot`: call that first to get a bare board (map/teams/
+ * any pre-baked units), then this to bring it to life the way the real
+ * scenario intends.
+ */
+export function runScenarioStartupEvents(
+  board: GameBoard,
+  scenarioConfigJson: WmlConfigJson,
+  eventNames: readonly string[],
+  options: RunScenarioEventsOptions,
+): ScenarioEventsResult {
+  const scenarioCfg = WmlConfig.fromJSON(scenarioConfigJson);
+  const manager = new EventManager();
+  manager.loadScenarioEvents(scenarioCfg);
+
+  const variables = options.variables ?? new VariableStore();
+  const pump = new EventPump(manager, {
+    board,
+    variables,
+    resolveType: options.resolveType,
+    registry: options.registry ?? createDefaultActionRegistry(),
+    log: options.log,
+  });
+
+  for (const name of eventNames) {
+    pump.fire(name);
+  }
+
+  return { messages: pump.ctx.messages, variables };
 }
