@@ -336,3 +336,85 @@ pixels -- worth an actual look next time a browser is available.
   (fast-forward, no force needed, no binaries in the diff — I checked).
   The outer repo's submodule pointer hasn't been bumped to this commit
   either, for the same reason (would reference an unpublished commit).
+
+## 2026-09-08: playability-feedback pass -- selection, story/message, pan/
+zoom, recruit, end-turn
+
+Direct response to real user playability feedback on the Phase 5 demo
+("no indicator of unit selection, no scenario info, no ability to scroll
+or zoom map, no support for 'story' or 'message' tags", "can't recruit or
+end turn"). All seven requested items landed; terrain image rendering
+stays deferred (user explicitly signed off on that) and build-time WML
+snapshots stay the accepted approach (also explicitly signed off).
+
+- **Selection indicator fixed**: `SnapshotBoard`'s selection ring was
+  drawn into `highlightLayer`, added to the stage BEFORE `unitLayer` --
+  it rendered under unit sprites, the likely root cause of "no indicator".
+  Added a dedicated `selectionLayer` added AFTER `unitLayer`, and thickened
+  the ring into a dark-outer/bright-inner double stroke for contrast
+  against any sprite/terrain.
+- **Story + message viewers**: new `StoryViewer.svelte`/`MessageViewer.svelte`
+  full-screen click-through overlays. `GameSession.runStartupEvents()` now
+  actually calls `runScenarioStartupEvents(['prestart','start'])`, which
+  Phase 5's `GameSession` never did -- the real event-spawned units
+  (citizens, Cylanna, Gwabbo, the enemy undead) and real `[message]`
+  dialogue are now genuinely reachable in the browser, not just supported
+  in the engine. `GameShell` sequences story -> messages -> playing.
+- **Camera pan/zoom**: `GameBoardView.svelte` now drags `board.stage.x/y`
+  and wheel-zooms `board.stage.scale`, implemented as plain DOM listeners
+  (not PixiJS's own event system) with a drag-distance-based click
+  suppression (a capture-phase `pointerup` listener on the canvas's parent,
+  which reliably runs before PixiJS's own canvas listener computes its
+  click) so panning doesn't also fire a hex click at release.
+- **Recruit wired up for real**, and along the way found and fixed a
+  latent gap that would have made it silently impossible: `gameBoardFromSnapshot`
+  built its client-side `GameMap` against a genuinely EMPTY `TerrainTypeData`
+  (deliberate, documented, but only for movement/defense purposes) -- which
+  also meant `map.isKeep()`/`isCastle()` always returned `false` client-side,
+  so no leader could ever be recognized as standing on a keep. Fixed by
+  shipping real castle/keep/village flags per terrain-code-in-use in a new
+  `GameBoardSnapshot.terrainFlags` field (populated in `build-scenario-
+  snapshot.mjs` from the real `terrainData` it already loads), and
+  synthesizing minimal `[terrain_type]`-equivalent configs from them
+  client-side. `scenario-snapshot.json` regenerated. Recruiting itself uses
+  the real `connectedCastleTiles`/`recruitUnit`; deliberately does NOT use
+  `checkRecruitLocation`'s "alternate location" fallback (see `gameSession.ts`'s
+  `tryRecruitAt` doc comment) since silently placing a recruit on a
+  different tile than the one clicked would be a bad surprise for a
+  precise click-driven UI.
+- **End turn**: real hotseat cycling (`GameSession.endTurn`) -- refreshes
+  the incoming side's moves/attacks, advances `activeSide`, increments
+  `turnNumber` on wraparound. Judgment call: with no AI (Phase 7, not
+  built), a human-controls-whichever-side-is-active hotseat model was
+  chosen over "only playerSide is ever controllable", specifically because
+  the user's stated goal (testing scenario progression and combat) needs
+  the OTHER side to actually do something across turns.
+- **Scenario info**: `TurnBanner`/`SidePanel` now show live turn number,
+  active side, and that side's real gold.
+- Added `packages/engine/src/snapshot/gameBoardSnapshot.ts`'s
+  `createTypeResolver` (shared unit-type-resolution logic factored out of
+  `gameBoardFromSnapshot`, reused by `GameSession` for startup-event/recruit
+  type lookups) and a real-content `packages/ui/src/gameSession.test.ts`
+  (new: `packages/ui` had no test infra before this) covering startup
+  events, hotseat end-turn, and recruiting against the real committed
+  snapshot -- 6 new tests, all passing.
+- 194 engine + 106 renderer + 6 ui = 306 tests passing, clean `tsc --noEmit`
+  across engine/renderer/ui, clean `svelte-check` (0 errors; 4 pre-existing-
+  pattern "state referenced locally" warnings on one-time prop reads at
+  component init, harmless) in both `packages/ui` and `apps/web`. No real
+  browser available (Node 18.20.4, Playwright needs 20+) -- verified via
+  curl that every new/changed file transforms cleanly through the live dev
+  server, and via careful reading of the pan/zoom click-suppression and
+  overlay-blocking logic, but pixel-level rendering (does the selection
+  ring actually look right, does drag-to-pan feel right) is NOT visually
+  confirmed.
+
+`packages/ui`'s new `vitest` devDependency triggered a fresh `npm audit`
+finding: a moderate `@vitest/mocker` path-traversal/arbitrary-file-read
+advisory (GHSA-82fw-gwwq-j7x9) affecting vitest 2.1.0-4.1.10, published
+after Phase 0's original CVE check passed clean on this same 3.2.7 pin.
+No patched 3.x release exists yet -- only vitest 5 (a breaking major
+bump). Left it as-is rather than force an unreviewed major upgrade across
+every package's test suite: this is dev-tooling-only risk (the mocker's
+exposure requires reaching Vitest's own UI/dev server, which nothing here
+does), the same category of finding as Phase 0's, just newer.

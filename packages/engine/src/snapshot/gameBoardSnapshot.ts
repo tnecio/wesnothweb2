@@ -195,6 +195,27 @@ export interface GameBoardSnapshot {
   scenarioConfigJson: WmlConfigJson;
   /** The scenario's `[story][part]` blocks (real narrative text + background art, if any), meant to be shown as a click-through sequence before interactive play begins. Empty if the scenario has no `[story]`. */
   story?: StoryPart[];
+  /**
+   * Real castle/keep/village flags (from `data/core/terrain.cfg`'s
+   * `recruit_onto`/`recruit_from`/`gives_income`) for every terrain code
+   * the map actually uses, keyed by the code string (`Terrain.ts`'s
+   * `writeTerrainCode`). Without this, `gameBoardFromSnapshot`'s
+   * client-side `GameMap` has no `[terrain_type]` data at all (see this
+   * module's doc comment on `buildFlatMoveType`'s "empty TerrainTypeData"
+   * simplification), so `map.isKeep()`/`isCastle()` would always return
+   * false and a leader could never be recognized as standing on a keep --
+   * this is what makes recruiting possible client-side. Optional so
+   * older/hand-built snapshots (e.g. this module's own tests) without it
+   * still work, just with no castle/keep recognition, as before.
+   */
+  terrainFlags?: Record<string, TerrainCodeFlags>;
+}
+
+/** Real castle/keep/village flags for one terrain code -- see `GameBoardSnapshot.terrainFlags`. */
+export interface TerrainCodeFlags {
+  castle: boolean;
+  keep: boolean;
+  village: boolean;
 }
 
 export interface FlatMoveTypeOptions {
@@ -302,6 +323,73 @@ export function unitKeyFor(u: Pick<SnapshotUnit, 'id' | 'x' | 'y'>): string {
   return u.id && u.id.length > 0 ? `id:${u.id}` : `pos:${u.x},${u.y}`;
 }
 
+/** Every distinct terrain code `snapshot.terrain` uses, in first-seen order -- shared by `createTypeResolver`/`gameBoardFromSnapshot`. */
+function terrainCodesInUse(snapshot: GameBoardSnapshot): TerrainCode[] {
+  const codesInUse: TerrainCode[] = [];
+  const seenCodes = new Set<string>();
+  for (const hex of snapshot.terrain) {
+    if (seenCodes.has(hex.code)) continue;
+    seenCodes.add(hex.code);
+    codesInUse.push(parseTerrainCode(hex.code));
+  }
+  return codesInUse;
+}
+
+/**
+ * Builds the `TerrainTypeData` `gameBoardFromSnapshot`/`createTypeResolver`
+ * use. If `snapshot.terrainFlags` is present (real snapshots always ship
+ * it -- see that field's own doc comment), synthesizes one minimal
+ * `[terrain_type]`-equivalent config per code carrying its real castle/
+ * keep/village flags, so `GameMap.isKeep()`/`isCastle()` work correctly
+ * client-side (needed for recruiting). Falls back to a genuinely empty
+ * `TerrainTypeData` for snapshots that don't have it (e.g. hand-built test
+ * fixtures) -- `buildFlatMoveType` already documents why that's still safe
+ * for movement/defense purposes; castle/keep just aren't recognized then.
+ */
+function buildTerrainTypeData(snapshot: GameBoardSnapshot): TerrainTypeData {
+  if (!snapshot.terrainFlags) return TerrainTypeData.fromConfigs([]);
+  const configs: WmlConfig[] = [];
+  for (const [codeStr, flags] of Object.entries(snapshot.terrainFlags)) {
+    const cfg = new WmlConfig();
+    cfg.setAttribute('id', codeStr);
+    cfg.setAttribute('string', codeStr);
+    cfg.setAttribute('gives_income', flags.village);
+    cfg.setAttribute('recruit_onto', flags.castle);
+    cfg.setAttribute('recruit_from', flags.keep);
+    configs.push(cfg);
+  }
+  return TerrainTypeData.fromConfigs(configs);
+}
+
+/**
+ * Builds a `(id: string) => UnitType` resolver covering every unit type in
+ * `snapshot.unitTypes` (~332 real types, see `GameBoardSnapshot.unitTypes`'
+ * doc comment -- not just types already present on the board), sharing the
+ * exact same `buildFlatMoveType`/`unitTypeFromSnapshot` construction
+ * `gameBoardFromSnapshot` uses internally. Callers that need to resolve a
+ * type *after* initial board construction -- `runScenarioStartupEvents`
+ * (an `[event]`'s `[unit]` tag can name any type) and a client-side recruit
+ * flow (a side's `recruit=` list can name any type) -- both need this,
+ * since `gameBoardFromSnapshot`'s own internal `typeCache` is not exposed.
+ */
+export function createTypeResolver(snapshot: GameBoardSnapshot): (id: string) => UnitType {
+  const terrainData = buildTerrainTypeData(snapshot);
+  const moveType = buildFlatMoveType(terrainCodesInUse(snapshot), terrainData);
+
+  const typeCache = new Map<string, UnitType>();
+  for (const [id, snap] of Object.entries(snapshot.unitTypes)) {
+    typeCache.set(id, unitTypeFromSnapshot(snap, moveType));
+  }
+
+  return (id: string) => {
+    const type = typeCache.get(id);
+    if (!type) {
+      throw new Error(`createTypeResolver: unknown typeId "${id}"`);
+    }
+    return type;
+  };
+}
+
 /**
  * Rebuilds a live, mutable `GameBoard` from a `GameBoardSnapshot` -- the
  * browser-side counterpart to `GameBoard.fromConfig` (which needs a parsed
@@ -311,18 +399,8 @@ export function unitKeyFor(u: Pick<SnapshotUnit, 'id' | 'x' | 'y'>): string {
  * "start of turn 1" moment.
  */
 export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBoard {
-  // Empty on purpose -- see module doc comment on why `buildFlatMoveType`
-  // works correctly against an empty TerrainTypeData.
-  const terrainData = TerrainTypeData.fromConfigs([]);
-
-  const codesInUse: TerrainCode[] = [];
-  const seenCodes = new Set<string>();
-  for (const hex of snapshot.terrain) {
-    if (seenCodes.has(hex.code)) continue;
-    seenCodes.add(hex.code);
-    codesInUse.push(parseTerrainCode(hex.code));
-  }
-  const moveType = buildFlatMoveType(codesInUse, terrainData);
+  const terrainData = buildTerrainTypeData(snapshot);
+  const moveType = buildFlatMoveType(terrainCodesInUse(snapshot), terrainData);
 
   const typeCache = new Map<string, UnitType>();
   for (const [id, snap] of Object.entries(snapshot.unitTypes)) {

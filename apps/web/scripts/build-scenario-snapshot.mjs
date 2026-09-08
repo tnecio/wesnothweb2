@@ -51,6 +51,18 @@
  *    straight from `[side] recruit=`, so the browser can offer a real
  *    (if stub-statted) recruit menu instead of none at all.
  *
+ * ## Post-Phase-5 revision #2 (recruiting needs real castle/keep flags)
+ *
+ *  - `terrainFlags`: real castle/keep/village flags (from this script's own
+ *    real `terrainData`, already loaded from `data/core/terrain.cfg`) for
+ *    every terrain code the map uses. Without this, `gameBoardFromSnapshot`'s
+ *    client-side `GameMap` has NO `[terrain_type]` data at all (its own
+ *    `TerrainTypeData` was an intentionally empty stand-in, see
+ *    gameBoardSnapshot.ts's doc comment on `buildFlatMoveType`), so
+ *    `map.isKeep()`/`isCastle()` always returned false -- discovered while
+ *    wiring up real recruiting, which needs to recognize a leader standing
+ *    on an actual keep tile.
+ *
  * Run with: npx tsx apps/web/scripts/build-scenario-snapshot.mjs
  * (imports packages/engine's .ts sources directly; needs tsx, not plain node)
  */
@@ -156,6 +168,18 @@ const codesInUse = [];
   }
 }
 const moveType = buildFlatMoveType(codesInUse, terrainData);
+
+// Real castle/keep/village flags per terrain code in use -- see this
+// file's "Post-Phase-5 revision #2" doc comment above.
+const terrainFlags = {};
+for (const code of codesInUse) {
+  const info = terrainData.getTerrainInfo(code);
+  terrainFlags[writeTerrainCode(code)] = {
+    castle: info.isCastle(),
+    keep: info.isKeep(),
+    village: info.isVillage(),
+  };
+}
 
 // Stub UnitType resolver -- see GameBoard's own test for why full unit-type
 // database loading (base_unit/gender-variation inheritance flattening) is
@@ -286,6 +310,7 @@ const snapshot = {
   units,
   unitTypes,
   story,
+  terrainFlags,
   scenarioConfigJson: scenario.toJSON(),
 };
 

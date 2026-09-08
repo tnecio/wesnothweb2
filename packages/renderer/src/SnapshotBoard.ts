@@ -134,6 +134,8 @@ export interface HighlightState {
   reachable?: readonly HexPoint[];
   /** Adjacent enemy hexes the selected unit could attack. */
   attackTargets?: readonly HexPoint[];
+  /** Vacant castle tiles the selected leader could recruit onto. */
+  recruitTiles?: readonly HexPoint[];
 }
 
 export class SnapshotBoard {
@@ -141,6 +143,13 @@ export class SnapshotBoard {
   private readonly terrainLayer = new PIXI.Container();
   private readonly highlightLayer = new PIXI.Container();
   private readonly unitLayer = new PIXI.Container();
+  /**
+   * Holds ONLY the selected-unit ring, added to the stage AFTER
+   * `unitLayer` -- see `setHighlights`' doc comment on why this is a
+   * separate layer from `highlightLayer` (which stays under `unitLayer`,
+   * correctly, for the reachable/attack-target hex fills).
+   */
+  private readonly selectionLayer = new PIXI.Container();
   private units: SnapshotUnit[];
   private readonly teamColor: Map<number, string>;
   private readonly onHexClick?: (x: number, y: number) => void;
@@ -153,7 +162,7 @@ export class SnapshotBoard {
     this.onHexClick = options.onHexClick;
     this.units = snapshot.units;
     this.teamColor = new Map(snapshot.teams.map((t) => [t.side, t.color]));
-    this.stage.addChild(this.terrainLayer, this.highlightLayer, this.unitLayer);
+    this.stage.addChild(this.terrainLayer, this.highlightLayer, this.unitLayer, this.selectionLayer);
   }
 
   async render(): Promise<void> {
@@ -224,9 +233,22 @@ export class SnapshotBoard {
     await this.renderUnits();
   }
 
-  /** Draws (replacing any previous) selection/move-range/attack-target highlights. Pass `{}` to clear. */
+  /**
+   * Draws (replacing any previous) selection/move-range/attack-target
+   * highlights. Pass `{}` to clear.
+   *
+   * The `selected` ring is drawn into `selectionLayer`, which sits ABOVE
+   * `unitLayer` in the stage (see constructor) -- previously it was drawn
+   * into `highlightLayer`, which sits BELOW `unitLayer`, so a selected
+   * unit's own sprite (added after, in `renderUnits`) fully or partially
+   * covered its own selection ring. Real user-reported symptom: "no
+   * indicator of unit selection". The `reachable`/`attackTargets` fills
+   * correctly stay in `highlightLayer` (under units) -- those are meant to
+   * tint the empty hexes around a unit, not obscure sprites.
+   */
   setHighlights(state: HighlightState): void {
     this.highlightLayer.removeChildren();
+    this.selectionLayer.removeChildren();
 
     const drawFill = (hex: HexPoint, color: number, alpha: number): void => {
       const coord = toHexCoord(hex.x, hex.y);
@@ -240,15 +262,26 @@ export class SnapshotBoard {
 
     for (const hex of state.reachable ?? []) drawFill(hex, 0x3fa9f5, 0.35);
     for (const hex of state.attackTargets ?? []) drawFill(hex, 0xe23b3b, 0.4);
+    for (const hex of state.recruitTiles ?? []) drawFill(hex, 0x3fdf6a, 0.35);
 
     if (state.selected) {
       const coord = toHexCoord(state.selected.x, state.selected.y);
       const { x: cx, y: cy } = hexToPixel(coord);
       const corners = hexCorners(cx, cy);
-      const g = new PIXI.Graphics();
-      g.poly(corners.flatMap((p) => [p.x, p.y]));
-      g.stroke({ width: 3, color: 0xffd54a, alpha: 0.9 });
-      this.highlightLayer.addChild(g);
+      const points = corners.flatMap((p) => [p.x, p.y]);
+
+      // A dark outer stroke behind a bright inner one, both wider than
+      // before (3px -> 5px/2px) -- unmistakable against any terrain
+      // colour or unit sprite now that this layer draws on top of units.
+      const outer = new PIXI.Graphics();
+      outer.poly(points);
+      outer.stroke({ width: 5, color: 0x000000, alpha: 0.6 });
+      this.selectionLayer.addChild(outer);
+
+      const inner = new PIXI.Graphics();
+      inner.poly(points);
+      inner.stroke({ width: 2, color: 0xffd54a, alpha: 1 });
+      this.selectionLayer.addChild(inner);
     }
   }
 

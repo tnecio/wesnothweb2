@@ -1,9 +1,9 @@
 /**
  * Plain (rune-free) TypeScript domain layer wrapping a live `GameBoard` for
  * one browser play session: select a unit, see where it can move/attack,
- * commit a move, preview then commit an attack. Deliberately NOT a
- * `.svelte.ts` runes file -- see this package's Svelte components
- * (`GameShell.svelte` etc.) for the reactive wrapper around it.
+ * commit a move, preview then commit an attack, recruit, end the turn.
+ * Deliberately NOT a `.svelte.ts` runes file -- see this package's Svelte
+ * components (`GameShell.svelte` etc.) for the reactive wrapper around it.
  *
  * Why not runes here: `$state`/`$derived` are Svelte-compiler magic, only
  * understood by the Svelte compiler/svelte-check's language tools, not by
@@ -17,12 +17,17 @@
  * that trap entirely while keeping this file's logic independently
  * testable without a Svelte runtime.
  *
- * Scope: this deliberately implements only what Phase 5's brief asks for
- * (docs/IMPLEMENTATION_PLAN.md) -- select/move/attack against the current
- * player's own side. Recruit/recall and end-turn/AI-turn are out of scope
- * (see the brief); there is no "end turn" here, so `playerSide`'s units
- * simply keep whatever moves/attacks they have left for the (single,
- * implicit) turn this demo covers.
+ * ## Post-Phase-5 revision (playability feedback)
+ *
+ * This now goes beyond the original Phase 5 brief's select/move/attack
+ * scope: `runStartupEvents` runs the scenario's real `prestart`/`start`
+ * `[event]`s (see `runScenarioStartupEvents`), and there is a real,
+ * hotseat-style turn cycle (`endTurn`) plus recruiting (`selectRecruitType`/
+ * the recruit branch of `handleHexClick`). See `endTurn`'s own doc comment
+ * for the hotseat-vs-single-side judgment call: with no AI (Phase 7, not
+ * built), the alternative to hotseat would be a side that can never be
+ * played once it's not `playerSide`'s turn, which defeats the user's
+ * stated goal of testing scenario progression across turns.
  */
 
 import {
@@ -40,8 +45,14 @@ import {
   RngDeterministic,
   MtRng,
   gameBoardFromSnapshot,
+  createTypeResolver,
+  runScenarioStartupEvents,
+  connectedCastleTiles,
+  recruitUnit,
   type GameBoardSnapshot,
   type SnapshotUnit,
+  type RecordedMessage,
+  type UnitType,
 } from '@wesnothweb2/engine';
 
 export interface HexPoint {
@@ -89,6 +100,16 @@ export interface PendingAttack {
   preview: CombatPreview;
 }
 
+/** One recruitable unit type, ready for the side panel's recruit list. */
+export interface RecruitOption {
+  typeId: string;
+  name: string;
+  cost: number;
+  image: string | null;
+  /** Whether the recruiting side currently has enough gold -- the UI should grey this option out, not hide it. */
+  affordable: boolean;
+}
+
 export interface GameSessionOptions {
   /** Which side the human player controls. Default 1 (Dead_Water scenario 1's Kai Krellis side). */
   playerSide?: number;
@@ -106,37 +127,71 @@ export interface GameSessionOptions {
 export class GameSession {
   readonly board: GameBoard;
   readonly snapshot: GameBoardSnapshot;
+  /** Initial active side (Dead_Water scenario 1's Kai Krellis side by default) -- see `activeSide` for who can actually act now. */
   readonly playerSide: number;
+
+  /** The side currently allowed to act -- see `endTurn`'s doc comment on the hotseat model this demo uses in place of an AI. */
+  activeSide: number;
+  /** 1-based turn counter, incremented by `endTurn` whenever it wraps back past the highest side number. */
+  turnNumber = 1;
 
   selectedUnit: Unit | null = null;
   /** Hexes `selectedUnit` can move to this turn (excludes its own hex). */
   reachable: HexPoint[] = [];
   /** Adjacent enemy units `selectedUnit` could attack (empty if it has no attacks left). */
   attackCandidates: Unit[] = [];
+  /** Vacant castle tiles `selectedUnit` (a leader on its keep) could recruit onto -- empty otherwise. */
+  recruitTiles: HexPoint[] = [];
   pendingAttack: PendingAttack | null = null;
-  /** Most-recent-first log of human-readable move/attack outcomes. */
+  /** Unit type id the player has picked from the recruit list, awaiting a click on one of `recruitTiles`. */
+  pendingRecruitTypeId: string | null = null;
+  /** Most-recent-first log of human-readable move/attack/recruit/turn outcomes. */
   log: string[] = [];
 
-  private readonly imageByTypeId = new Map<string, string | null>();
+  /** Resolves any of the ~332 real unit types the snapshot ships (board units, event-spawned units, recruit lists) -- see `createTypeResolver`. */
+  private readonly resolveType: (id: string) => UnitType;
   private readonly rng: RngDeterministic;
+  private startupEventsRun = false;
 
   constructor(snapshot: GameBoardSnapshot, options: GameSessionOptions = {}) {
     this.snapshot = snapshot;
     this.playerSide = options.playerSide ?? 1;
+    this.activeSide = this.playerSide;
     this.board = gameBoardFromSnapshot(snapshot).board;
-    for (const u of snapshot.units) {
-      if (!this.imageByTypeId.has(u.typeId)) this.imageByTypeId.set(u.typeId, u.image);
-    }
+    this.resolveType = createTypeResolver(snapshot);
     this.rng = new RngDeterministic(new MtRng(options.seed ?? 0xc0ffee));
   }
 
-  /** The live board's units, in `SnapshotUnit` shape, for re-rendering via `SnapshotBoard.updateUnits`. */
+  /**
+   * Runs the scenario's real `prestart`/`start` events once (spawning the
+   * event-placed units, recording `[message]` dialogue -- see
+   * `runScenarioStartupEvents`). Safe to call more than once; only the
+   * first call has any effect. Returns the recorded messages (empty on a
+   * repeat call).
+   */
+  runStartupEvents(): RecordedMessage[] {
+    if (this.startupEventsRun) return [];
+    this.startupEventsRun = true;
+    const { messages } = runScenarioStartupEvents(this.board, this.snapshot.scenarioConfigJson, ['prestart', 'start'], {
+      resolveType: this.resolveType,
+    });
+    return messages;
+  }
+
+  /**
+   * The live board's units, in `SnapshotUnit` shape, for re-rendering via
+   * `SnapshotBoard.updateUnits`. Looks the sprite path up straight from
+   * `snapshot.unitTypes` (covers every real type the snapshot ships, not
+   * just the ones pre-placed at t=0) rather than a t=0-only cache, since
+   * `runStartupEvents` can put units of types never listed in the
+   * snapshot's original `units` array onto the board.
+   */
   get renderUnits(): SnapshotUnit[] {
     return this.board.allUnits().map((u) => ({
       id: u.id || null,
       name: u.name || null,
       typeId: u.type.id,
-      image: this.imageByTypeId.get(u.type.id) ?? null,
+      image: this.snapshot.unitTypes[u.type.id]?.image ?? null,
       side: u.side,
       x: u.location.x,
       y: u.location.y,
@@ -164,9 +219,10 @@ export class GameSession {
     return targets;
   }
 
-  /** Selects `unit` and (re)computes its move/attack options. Clears any pending attack. */
+  /** Selects `unit` and (re)computes its move/attack/recruit options. Clears any pending attack/recruit. */
   selectUnit(unit: Unit): void {
     this.pendingAttack = null;
+    this.pendingRecruitTypeId = null;
     this.selectedUnit = unit;
     if (unit.movesLeft > 0) {
       const { destinations } = reachableHexes(this.board, unit, { seeAll: true });
@@ -179,13 +235,133 @@ export class GameSession {
       this.reachable = [];
     }
     this.attackCandidates = this.computeAttackCandidates(unit);
+    this.recruitTiles = this.computeRecruitTiles(unit);
   }
 
   clearSelection(): void {
     this.selectedUnit = null;
     this.reachable = [];
     this.attackCandidates = [];
+    this.recruitTiles = [];
     this.pendingAttack = null;
+    this.pendingRecruitTypeId = null;
+  }
+
+  /** Mirrors `game_state::can_recruit_on`-adjacent logic: vacant castle tiles connected to `unit`'s keep, if it's a leader standing on one. See `recruit.ts`'s `connectedCastleTiles`/`findVacantCastleTile`. */
+  private computeRecruitTiles(unit: Unit): HexPoint[] {
+    if (!unit.canRecruit || !this.board.map.isKeep(unit.location)) return [];
+    return connectedCastleTiles(this.board, unit.location)
+      .filter((loc) => !this.board.hasUnitAt(loc))
+      .map((loc) => ({ x: loc.x, y: loc.y }));
+  }
+
+  /** The selected leader's side's real recruitable types (cost/name/image from `snapshot.unitTypes`), if it's currently able to recruit. Empty otherwise. */
+  get recruitOptions(): RecruitOption[] {
+    const leader = this.selectedUnit;
+    if (!leader || this.recruitTiles.length === 0) return [];
+    const team = this.board.getTeam(leader.side);
+    if (!team) return [];
+    return [...team.canRecruit].map((typeId) => {
+      const snap = this.snapshot.unitTypes[typeId];
+      const cost = snap?.cost ?? 0;
+      return {
+        typeId,
+        name: snap?.name ?? typeId,
+        cost,
+        image: snap?.image ?? null,
+        affordable: team.gold >= cost,
+      };
+    });
+  }
+
+  /** Arms (or, called again with the same id, disarms) a pending recruit -- the next click on one of `recruitTiles` places it. */
+  selectRecruitType(typeId: string | null): void {
+    this.pendingRecruitTypeId = this.pendingRecruitTypeId === typeId ? null : typeId;
+  }
+
+  /**
+   * Places `typeId` at `loc` for the selected leader's side, mirroring
+   * `actions::recruit_unit` (`recruitUnit`) after validating the click.
+   *
+   * Deliberately does NOT use `checkRecruitLocation` here, despite it
+   * being the closer upstream analogue (`check_recruit_location`) --
+   * that function's `'alternate_location'` result *silently substitutes a
+   * different vacant castle tile* when the requested one isn't valid
+   * (upstream uses it for recruit flows with no specific target, e.g. an
+   * AI or a keyboard-shortcut "recruit" command with no clicked hex). This
+   * UI's recruit flow always has a specific, player-clicked hex -- the one
+   * they clicked, highlighted because it was already a real member of
+   * `recruitTiles` (built from the real `connectedCastleTiles`) -- so
+   * silently teleporting the new unit to some OTHER tile if the click
+   * misses would be a surprising, un-asked-for placement. Validating
+   * against `recruitTiles` directly instead means the placement always
+   * matches exactly what the player clicked, or is rejected outright.
+   */
+  private tryRecruitAt(typeId: string, loc: Location): string | null {
+    const leader = this.selectedUnit;
+    if (!leader) return null;
+    const team = this.board.getTeam(leader.side);
+    if (!team) return null;
+    const typeSnap = this.snapshot.unitTypes[typeId];
+    const name = typeSnap?.name ?? typeId;
+    const cost = typeSnap?.cost ?? 0;
+
+    if (!this.recruitTiles.some((t) => t.x === loc.x && t.y === loc.y)) {
+      return `Cannot recruit ${name} there.`;
+    }
+    if (team.gold < cost) {
+      return `Not enough gold to recruit ${name} (needs ${cost}, have ${team.gold}).`;
+    }
+    const type = this.resolveType(typeId);
+    const result = recruitUnit(this.board, team, type, loc, leader.location);
+    const message = `Recruited ${name} for ${result.cost} gold.`;
+    this.log.unshift(message);
+    // Re-select the leader so recruitTiles/attackCandidates refresh (the
+    // just-filled tile is no longer vacant) -- the leader's own moves/
+    // attacks are untouched by recruiting.
+    this.selectUnit(leader);
+    return message;
+  }
+
+  /**
+   * Cycles to the next side in ascending side-number order (wrapping past
+   * the highest side back to the lowest, which is also when `turnNumber`
+   * increments), refreshing that side's units' moves/attacks to full --
+   * mirroring a real "start of turn" refresh (see this project's own
+   * `Unit.create`/`Unit.fromConfig` defaults for what "full" means).
+   *
+   * ## Hotseat, not single-side-forever (judgment call)
+   *
+   * There is no AI in this project yet (Phase 7). The two readings of
+   * "end turn" without one are: (a) only `playerSide` is ever actually
+   * playable, and every other side's turn is skipped/no-op'd, or (b) any
+   * side can be controlled once it's their turn (hotseat). This picks (b):
+   * the user's explicit goal was "test scenario progression and combat",
+   * which needs the OTHER side (Mal-Kevek's undead) to actually do
+   * something across turns -- with no AI, hotseat is the only way that
+   * happens at all. `activeSide` (not `playerSide`) now gates who can be
+   * selected/moved/attacked/recruited with in `handleHexClick`.
+   */
+  endTurn(): string {
+    this.clearSelection();
+    const sides = this.board
+      .teams()
+      .map((t) => t.side)
+      .sort((a, b) => a - b);
+    const idx = sides.indexOf(this.activeSide);
+    const wrapped = idx === -1 || idx === sides.length - 1;
+    const nextSide = wrapped ? sides[0] : sides[idx + 1];
+    if (nextSide === undefined) return '';
+    if (wrapped) this.turnNumber += 1;
+    this.activeSide = nextSide;
+    for (const unit of this.board.unitsForSide(nextSide)) {
+      unit.movesLeft = unit.maxMoves;
+      unit.attacksLeft = unit.maxAttacksPerTurn;
+    }
+    const teamName = this.board.getTeam(nextSide)?.teamName ?? String(nextSide);
+    const message = `Turn ${this.turnNumber} -- side ${nextSide} (${teamName})'s turn.`;
+    this.log.unshift(message);
+    return message;
   }
 
   private buildPreview(attacker: Unit, defender: Unit): PendingAttack {
@@ -283,6 +459,12 @@ export class GameSession {
       return null;
     }
 
+    if (this.pendingRecruitTypeId) {
+      const typeId = this.pendingRecruitTypeId;
+      this.pendingRecruitTypeId = null;
+      return this.tryRecruitAt(typeId, loc);
+    }
+
     const sel = this.selectedUnit;
     if (sel) {
       if (clickedUnit) {
@@ -294,7 +476,7 @@ export class GameSession {
           this.pendingAttack = this.buildPreview(sel, clickedUnit);
           return `${this.unitDisplayName(sel)} could attack ${this.unitDisplayName(clickedUnit)} -- review the prediction and confirm.`;
         }
-        if (clickedUnit.side === this.playerSide) {
+        if (clickedUnit.side === this.activeSide) {
           this.selectUnit(clickedUnit);
           return null;
         }
@@ -309,7 +491,7 @@ export class GameSession {
       return null;
     }
 
-    if (clickedUnit && clickedUnit.side === this.playerSide) {
+    if (clickedUnit && clickedUnit.side === this.activeSide) {
       this.selectUnit(clickedUnit);
     }
     return null;
@@ -337,9 +519,10 @@ export class GameSession {
     if (result.attackerDied) message += ` ${attackerName} was slain!`;
 
     this.log.unshift(message);
-    // A unit that has fought is done for this demo's (single, implicit)
-    // turn -- see module doc comment on why there is no move-after-attack
-    // or end-turn flow here.
+    // A unit that has fought is done acting for this turn (real Wesnoth:
+    // attacking always consumes the unit's remaining attacks/moves) --
+    // deselect so its highlight doesn't linger; `endTurn` will refresh it
+    // for its side's next turn.
     this.clearSelection();
     return message;
   }

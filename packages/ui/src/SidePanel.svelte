@@ -1,20 +1,40 @@
 <script lang="ts">
-  import type { CombatPreview, SelectedUnitInfo } from './gameSession.js';
+  import type { CombatPreview, RecruitOption, SelectedUnitInfo } from './gameSession.js';
 
   let {
     selected,
     pendingPreview,
     statusMessage,
     log,
+    recruitOptions,
+    pendingRecruitTypeId,
+    turnNumber,
+    scenarioTurnsLimit,
+    activeSide,
+    gold,
     onConfirmAttack,
     onCancelAttack,
+    onSelectRecruitType,
+    onEndTurn,
   }: {
     selected: SelectedUnitInfo | null;
     pendingPreview: CombatPreview | null;
     statusMessage: string;
     log: string[];
+    /** Real recruitable types for the selected leader's side, if it's currently able to recruit -- see `GameSession.recruitOptions`. */
+    recruitOptions: RecruitOption[];
+    /** Which recruit type (if any) is armed, awaiting a click on a highlighted castle tile. */
+    pendingRecruitTypeId: string | null;
+    turnNumber: number;
+    /** The scenario's `turns=` limit, if it has one (null means unlimited). */
+    scenarioTurnsLimit: number | null;
+    activeSide: number;
+    /** The active side's current gold. */
+    gold: number;
     onConfirmAttack: () => void;
     onCancelAttack: () => void;
+    onSelectRecruitType: (typeId: string) => void;
+    onEndTurn: () => void;
   } = $props();
 
   function pct(fraction: number): string {
@@ -23,6 +43,12 @@
 </script>
 
 <aside class="side-panel">
+  <section class="scenario-info">
+    <div>Turn {turnNumber}{#if scenarioTurnsLimit !== null} / {scenarioTurnsLimit}{/if}</div>
+    <div>Active side: {activeSide}</div>
+    <div>Gold: {gold}</div>
+  </section>
+
   <p class="status">{statusMessage}</p>
 
   {#if pendingPreview}
@@ -52,20 +78,59 @@
         <button onclick={onCancelAttack}>Cancel</button>
       </div>
     </section>
-  {:else if selected}
-    <section class="unit-info">
-      <h3>{selected.name}</h3>
-      <div>Type: {selected.typeId}</div>
-      <div>Side: {selected.side}</div>
-      <div>HP: {selected.hp}/{selected.maxHp}</div>
-      <div>Moves left: {selected.movesLeft}/{selected.maxMoves}</div>
-      <div>Attacks left: {selected.attacksLeft}</div>
-    </section>
   {:else}
-    <p class="hint">
-      Click one of your units to select it. Blue hexes are where it can move;
-      red hexes are adjacent enemies it can attack.
-    </p>
+    {#if selected}
+      <section class="unit-info">
+        <h3>{selected.name}</h3>
+        <div>Type: {selected.typeId}</div>
+        <div>Side: {selected.side}</div>
+        <div>HP: {selected.hp}/{selected.maxHp}</div>
+        <div>Moves left: {selected.movesLeft}/{selected.maxMoves}</div>
+        <div>Attacks left: {selected.attacksLeft}</div>
+      </section>
+    {/if}
+
+    {#if recruitOptions.length > 0}
+      <!--
+        Real recruit list (packages/engine's actions/recruit.ts) -- cost/
+        name/image come straight from snapshot.unitTypes, cross-referenced
+        with the selected leader's team's real `recruit=`/canRecruit set.
+        Shown whenever the selected unit is a leader standing on its keep
+        with at least one vacant, keep-connected castle tile (see
+        GameSession.computeRecruitTiles) -- addresses "can't recruit".
+      -->
+      <section class="recruit">
+        <h3>Recruit</h3>
+        <ul class="recruit-list">
+          {#each recruitOptions as opt (opt.typeId)}
+            <li>
+              <button
+                class="recruit-option"
+                class:selected={pendingRecruitTypeId === opt.typeId}
+                disabled={!opt.affordable}
+                title={opt.affordable ? `Recruit ${opt.name}` : `Not enough gold (needs ${opt.cost}, have ${gold})`}
+                onclick={() => onSelectRecruitType(opt.typeId)}
+              >
+                <span class="name">{opt.name}</span>
+                <span class="cost">{opt.cost}g</span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+        {#if pendingRecruitTypeId}
+          <p class="hint">Click a green-highlighted castle tile to place your recruit.</p>
+        {:else}
+          <p class="hint">Pick a unit type, then click a highlighted castle tile.</p>
+        {/if}
+      </section>
+    {/if}
+
+    {#if !selected && recruitOptions.length === 0}
+      <p class="hint">
+        Click one of your units to select it. Blue hexes are where it can move;
+        red hexes are adjacent enemies it can attack.
+      </p>
+    {/if}
   {/if}
 
   <section class="log">
@@ -81,19 +146,8 @@
     {/if}
   </section>
 
-  <section class="out-of-scope">
-    <!--
-      Recruit/recall and end-turn/AI-turn are explicitly out of scope for
-      this phase (see docs/IMPLEMENTATION_PLAN.md's Phase 5/7 notes) --
-      shown disabled with an explanation rather than omitted silently or
-      faked as working.
-    -->
-    <button disabled title="Not available in this preview build -- recruiting needs a real, costed unit roster this project doesn't have yet.">
-      Recruit
-    </button>
-    <button disabled title="Not available in this preview build -- ending the turn needs an AI opponent (Phase 7), not built yet.">
-      End Turn
-    </button>
+  <section class="turn-actions">
+    <button class="primary" onclick={onEndTurn}>End Turn</button>
   </section>
 </aside>
 
@@ -111,6 +165,15 @@
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
+  }
+  .scenario-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #3a3628;
+    font-size: 0.8rem;
+    color: #cbbf9a;
   }
   .status {
     margin: 0;
@@ -151,6 +214,39 @@
     gap: 0.5rem;
     margin-top: 0.5rem;
   }
+  .recruit {
+    border: 1px solid #4a4432;
+    border-radius: 4px;
+    padding: 0.5rem 0.6rem;
+    background: #23201a;
+  }
+  .recruit-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .recruit-option {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    font: inherit;
+    padding: 0.35rem 0.6rem;
+    border-radius: 4px;
+    border: 1px solid #4a4432;
+    background: #2c2820;
+    color: #eee;
+    cursor: pointer;
+  }
+  .recruit-option.selected {
+    border-color: #ffd54a;
+    background: #4a3d1e;
+  }
+  .recruit-option .cost {
+    opacity: 0.8;
+  }
   button {
     font: inherit;
     padding: 0.35rem 0.75rem;
@@ -181,11 +277,14 @@
     opacity: 0.75;
     margin: 0;
   }
-  .out-of-scope {
+  .turn-actions {
     display: flex;
     gap: 0.5rem;
     margin-top: auto;
     padding-top: 0.5rem;
     border-top: 1px solid #3a3628;
+  }
+  .turn-actions button {
+    flex: 1 1 auto;
   }
 </style>

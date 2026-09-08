@@ -1,20 +1,34 @@
 <script lang="ts">
   /**
-   * A static "Turn N -- Scenario Name" banner. Deliberately NOT driven by
-   * real WML `[objectives]` parsing (that needs the WML event pump wired
-   * into a turn-tracking play_controller equivalent, out of scope for this
-   * phase per docs/IMPLEMENTATION_PLAN.md) -- this reads the scenario name
-   * straight from the snapshot and always shows "Turn 1", matching the
-   * single-implicit-turn scope `GameSession` itself implements (no
-   * end-turn/AI-turn flow yet).
+   * "Turn N -- Scenario Name -- Side X's turn" banner. `turnNumber` and
+   * `activeSide` are now driven live by `GameSession.turnNumber`/
+   * `activeSide` (see `endTurn`) via `GameShell` -- this used to be
+   * hardcoded to turn 1 with no side indicator before real end-turn
+   * cycling existed.
    */
-  let { scenarioName, turnNumber = 1 }: { scenarioName: string; turnNumber?: number } = $props();
+  let {
+    scenarioName,
+    turnNumber = 1,
+    activeSide,
+    scenarioTurnsLimit = null,
+  }: {
+    scenarioName: string;
+    turnNumber?: number;
+    /** Which side currently has the move -- omit to hide the "Side X's turn" segment. */
+    activeSide?: number;
+    /** The scenario's `turns=` limit, if it has one. */
+    scenarioTurnsLimit?: number | null;
+  } = $props();
 </script>
 
 <header class="turn-banner">
-  <span class="turn">Turn {turnNumber}</span>
+  <span class="turn">Turn {turnNumber}{#if scenarioTurnsLimit !== null}/{scenarioTurnsLimit}{/if}</span>
   <span class="sep">--</span>
   <span class="scenario">{scenarioName}</span>
+  {#if activeSide !== undefined}
+    <span class="sep">--</span>
+    <span class="active-side">Side {activeSide}'s turn</span>
+  {/if}
 </header>
 
 <style>
@@ -36,5 +50,8 @@
   }
   .scenario {
     font-style: italic;
+  }
+  .active-side {
+    opacity: 0.85;
   }
 </style>
