@@ -93,6 +93,42 @@ would likely reject new agent spawns too.
   milestone (load real Dead_Water scenario 1 into a queryable in-memory
   model, headless).
 
+## 2026-09-08: Phase 5 done -- the browser demo is genuinely playable
+
+All originally-requested phases (0-5) are now done. Landed as a large
+subagent run cut off mid-task by a third account-wide rate limit (reset
+3am UTC) -- same recovery pattern as before: picked up directly rather
+than re-spawning. What was on disk was excellent (see the commit for
+detail: a deliberately rune-free `GameSession` domain class specifically
+to keep this project's plain-`tsc` verification meaningful, real combat-
+prediction numbers in the side panel, recruit/end-turn shown disabled
+with real explanations rather than faked), but **entirely disconnected**:
+`packages/ui/src/index.ts` was still the Phase-0 placeholder, never
+updated to export `GameShell`, and `apps/web/src/App.svelte` still had
+the old static-render-only wiring from the vertical slice -- so none of
+it was reachable. Finished the wiring myself: fixed `packages/ui`'s own
+`tsc --noEmit` pass (needed a `svelte.config.js` + ambient `*.svelte`
+module declaration that `apps/web` gets for free from its Vite dependency
+but a plain library package like `packages/ui` does not), rewired
+`App.svelte` to actually render `<GameShell>`, and regenerated the
+committed `scenario-snapshot.json` (stale against the new format the
+agent's snapshot-loader work needed). Verified the whole live request
+chain through the already-running dev server one more time (every file
+in the new App.svelte -> GameShell -> GameBoardView/SidePanel/TurnBanner
+-> engine-barrel -> snapshot-JSON chain resolves with real content).
+
+You can now actually click around Dead_Water scenario 1 in the browser:
+select a unit, see its real pathfound reachable hexes and adjacent attack
+targets highlighted, move it, preview a real hit-chance/damage/death-
+probability combat prediction before attacking, confirm to resolve it
+with real (seeded, reproducible) RNG, and watch HP/board state update.
+Recruit and end-turn are visibly present but disabled with honest
+tooltips, not faked.
+
+331 passing tests across all four packages, clean typecheck and
+svelte-check everywhere. `npm run dev` (still the same dev server that's
+been running since Phase 0) serves it live.
+
 ## 2026-09-07: Phase 4 (unit animation slice) done -- terrain layering still deferred
 
 Landed cleanly (~34 min, ~330K tokens), independently re-verified
