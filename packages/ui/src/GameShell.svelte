@@ -33,6 +33,7 @@
   import SidePanel from './SidePanel.svelte';
   import StoryViewer from './StoryViewer.svelte';
   import MessageViewer from './MessageViewer.svelte';
+  import ScenarioEndOverlay from './ScenarioEndOverlay.svelte';
 
   let { snapshot }: { snapshot: GameBoardSnapshot } = $props();
 
@@ -47,7 +48,7 @@
   }
   const scenarioTurnsLimit = parseTurnsLimit(snapshot.scenarioConfigJson.attrs['turns']);
 
-  let phase = $state<'story' | 'messages' | 'playing'>(storyParts.length > 0 ? 'story' : 'messages');
+  let phase = $state<'story' | 'messages' | 'playing' | 'ended'>(storyParts.length > 0 ? 'story' : 'messages');
   let storyIndex = $state(0);
   let startupMessages = $state<RecordedMessage[]>([]);
   let messageIndex = $state(0);
@@ -98,7 +99,9 @@
     activeSide = session.activeSide;
     gold = session.board.getTeam(session.activeSide)?.gold ?? 0;
 
-    if (message) {
+    if (session.scenarioResult) {
+      statusMessage = session.scenarioResult === 'victory' ? 'Victory!' : 'Defeat.';
+    } else if (message) {
       statusMessage = message;
     } else if (pendingPreview) {
       statusMessage = 'Review the attack prediction, then confirm or cancel.';
@@ -109,6 +112,12 @@
     } else {
       statusMessage = 'Click one of your units to select it.';
     }
+
+    // Latches once `session.checkForGameEnd()` (run after any kill --
+    // see `confirmAttack`) sets a result; `phase` only ever moves forward
+    // to 'ended' from here, never back (scenarioResult itself never
+    // un-latches either -- see GameSession's own doc comment).
+    if (session.scenarioResult && phase !== 'ended') phase = 'ended';
   }
 
   // No story: run the startup events immediately so the board/side panel
@@ -201,6 +210,8 @@
     <StoryViewer parts={storyParts} index={storyIndex} onNext={advanceStory} />
   {:else if phase === 'messages'}
     <MessageViewer messages={startupMessages} index={messageIndex} onNext={advanceMessage} />
+  {:else if phase === 'ended' && session.scenarioResult}
+    <ScenarioEndOverlay result={session.scenarioResult} {turnNumber} {gold} />
   {/if}
 </div>
 

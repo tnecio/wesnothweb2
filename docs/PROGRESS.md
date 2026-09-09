@@ -544,3 +544,47 @@ Next up (in priority order, per the updated `IMPLEMENTATION_PLAN.md`):
 real per-unit-type combat/movement stats (currently every one of the 332
 types shares identical placeholder stats), victory/defeat conditions
 (scenarios never currently end), then save/load.
+
+## 2026-09-09 (cont'd): victory/defeat conditions
+
+Added `packages/engine/src/actions/victory.ts`'s `checkVictory` -- a TS
+port of the default (`no_leader_left`-only) case of upstream's
+`game_board::check_victory` (`src/game_board.cpp`): a side is not-defeated
+while it has a unit with `canRecruit=true`; the scenario ends once every
+remaining not-defeated side is mutually allied with every other one. Read
+the real `wesnoth/src/game_board.cpp`/`play_controller.cpp` source
+directly to get this right rather than guessing. NOT ported (documented in
+that file's own doc comment, not silently dropped):
+`defeat_condition=no_units_left`/`=never` (`Team` doesn't parse
+`defeat_condition=` yet -- every side defaults to `no_leader_left`, which
+is Dead Water scenario 1's real setting for both sides), and the real
+`enemies_defeated`/`die` WML event firing that would let a scenario script
+its own victory message and extra non-leader defeat conditions (Dead
+Water's `{HERO_DEATHS}` macro adds "Cylanna dies" as an extra lose
+condition via `[event] name=die` + `[endlevel]` -- not currently wired,
+since firing `die` correctly needs the event to fire *before* the dead
+unit is removed from the board so `[filter] id=...` can still match it,
+and `combat.ts`'s headless combat resolver doesn't carry an `EventPump`
+reference. This generic leader-death check already covers the scenario's
+*primary* objective ("Defeat enemy leader"/"Death of Kai Krellis" -- Kai
+Krellis is side 1's only recruiting leader) -- the Cylanna-specific bonus
+condition is a documented gap, not a silent one, and a natural target for
+when real `die`/`enemies_defeated` event wiring gets built (valuable
+infrastructure for Phase 6's other scenarios too, not just this one).
+
+Wired into `GameSession`: `checkForGameEnd()` runs after any
+`confirmAttack()` that killed a unit, latches `scenarioResult: 'victory' |
+'defeat' | null`, and every mutating method (`handleHexClick`,
+`confirmAttack`, `endTurn`) now no-ops once it's set. `GameShell.svelte`
+gained an `'ended'` phase and a new `ScenarioEndOverlay.svelte` (same
+full-screen-overlay style as `StoryViewer`/`MessageViewer`, but terminal --
+nothing to click through, just "reload to play again"). Visually confirmed
+via a temporary `window.__debugSession` hook + Playwright screenshot
+(removed before commit) that the overlay renders correctly and blocks
+further board interaction.
+
+10 new tests (4 hand-built `checkVictory` unit tests -- same "no real WML
+needed, it's a self-contained algorithm" reasoning as
+`attackPrediction.test.ts`'s binomial ground truth -- plus 3 real-content
+`GameSession` integration tests using the committed snapshot, alongside
+gameSession.test.ts's existing 6). All passing, clean `tsc`/`svelte-check`.

@@ -7,3 +7,4 @@ export * from './recruit.js';
 export * from './heal.js';
 export * from './advancement.js';
 export * from './undo.js';
+export * from './victory.js';

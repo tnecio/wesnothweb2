@@ -159,3 +159,54 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
     expect(session.board.allUnits()).toHaveLength(unitCountBefore);
   });
 });
+
+describe('GameSession victory/defeat (real leader-death check, see checkVictory)', () => {
+  it('sets scenarioResult to "defeat" when the player-side leader dies, and blocks further input', () => {
+    const session = new GameSession(loadSnapshot());
+    const kaiKrellis = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
+    expect(session.scenarioResult).toBeNull();
+
+    // Kill the player's leader directly (bypassing combat RNG, which isn't
+    // what's under test here) and run the same check confirmAttack() would.
+    session.board.removeUnitAt(kaiKrellis.location);
+    // @ts-expect-error -- calling the private checkForGameEnd directly is the simplest way to exercise it without fighting real combat RNG for a guaranteed kill.
+    session.checkForGameEnd();
+
+    expect(session.scenarioResult).toBe('defeat');
+    expect(session.log[0]).toMatch(/defeat/i);
+
+    // The scenario is over -- every mutating entry point should now no-op.
+    const unitCountBefore = session.board.allUnits().length;
+    expect(session.handleHexClick(0, 0)).toBeNull();
+    expect(session.endTurn()).toBe('');
+    expect(session.board.allUnits()).toHaveLength(unitCountBefore);
+    expect(session.activeSide).toBe(1); // endTurn() no-opped, so this never advanced.
+  });
+
+  it('sets scenarioResult to "victory" when the enemy leader dies', () => {
+    const session = new GameSession(loadSnapshot());
+    const enemyLeader = session.board.unitsForSide(2).find((u) => u.canRecruit)!;
+
+    session.board.removeUnitAt(enemyLeader.location);
+    // @ts-expect-error -- see the defeat test above for why this is called directly.
+    session.checkForGameEnd();
+
+    expect(session.scenarioResult).toBe('victory');
+    expect(session.log[0]).toMatch(/victory/i);
+  });
+
+  it('checkForGameEnd is idempotent -- does not overwrite an already-latched result', () => {
+    const session = new GameSession(loadSnapshot());
+    const kaiKrellis = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
+    session.board.removeUnitAt(kaiKrellis.location);
+    // @ts-expect-error -- see above.
+    session.checkForGameEnd();
+    expect(session.scenarioResult).toBe('defeat');
+    const logLengthAfterFirst = session.log.length;
+
+    // @ts-expect-error -- see above.
+    session.checkForGameEnd();
+    expect(session.scenarioResult).toBe('defeat');
+    expect(session.log).toHaveLength(logLengthAfterFirst); // no duplicate log entry.
+  });
+});

@@ -49,6 +49,7 @@ import {
   runScenarioStartupEvents,
   connectedCastleTiles,
   recruitUnit,
+  checkVictory,
   type GameBoardSnapshot,
   type SnapshotUnit,
   type RecordedMessage,
@@ -147,6 +148,13 @@ export class GameSession {
   pendingRecruitTypeId: string | null = null;
   /** Most-recent-first log of human-readable move/attack/recruit/turn outcomes. */
   log: string[] = [];
+  /**
+   * Set once the scenario has ended (`checkVictory`, run after every
+   * combat) -- `'victory'` if `playerSide` is among the survivors,
+   * `'defeat'` otherwise. `null` while play continues. Every mutating
+   * method below early-returns once this is set; the scenario is over.
+   */
+  scenarioResult: 'victory' | 'defeat' | null = null;
 
   /** Resolves any of the ~332 real unit types the snapshot ships (board units, event-spawned units, recruit lists) -- see `createTypeResolver`. */
   private readonly resolveType: (id: string) => UnitType;
@@ -343,6 +351,7 @@ export class GameSession {
    * selected/moved/attacked/recruited with in `handleHexClick`.
    */
   endTurn(): string {
+    if (this.scenarioResult) return '';
     this.clearSelection();
     const sides = this.board
       .teams()
@@ -448,6 +457,7 @@ export class GameSession {
    * toast/log), or `null` if the click had no visible effect.
    */
   handleHexClick(x: number, y: number): string | null {
+    if (this.scenarioResult) return null;
     const loc = new Location(x, y);
     const clickedUnit = this.board.unitAt(loc);
 
@@ -499,6 +509,7 @@ export class GameSession {
 
   /** Commits the currently-pending attack via the real `executeAttack`, updating the board. */
   confirmAttack(): string | null {
+    if (this.scenarioResult) return null;
     const pending = this.pendingAttack;
     if (!pending) return null;
 
@@ -524,10 +535,33 @@ export class GameSession {
     // deselect so its highlight doesn't linger; `endTurn` will refresh it
     // for its side's next turn.
     this.clearSelection();
-    return message;
+    // Only combat can kill a unit in this project today (recruiting/moving
+    // cannot), so this is the one place a victory/defeat check is needed --
+    // checkForGameEnd() overwrites the log's top entry with the outcome
+    // message if the scenario just ended, on top of the combat message
+    // above (both stay in `log`, most-recent-first).
+    if (result.defenderDied || result.attackerDied) this.checkForGameEnd();
+    return this.scenarioResult ? this.log[0]! : message;
   }
 
   cancelAttack(): void {
     this.pendingAttack = null;
+  }
+
+  /**
+   * Runs the real (leader-death-based) victory check after anything that
+   * could have killed a unit, and latches `scenarioResult` the first time
+   * the scenario is actually over -- see `checkVictory`'s own doc comment
+   * for exactly what this does and doesn't model.
+   */
+  private checkForGameEnd(): void {
+    if (this.scenarioResult) return;
+    const { continueLevel, notDefeated } = checkVictory(this.board);
+    if (continueLevel) return;
+    this.scenarioResult = notDefeated.includes(this.playerSide) ? 'victory' : 'defeat';
+    this.clearSelection();
+    this.log.unshift(
+      this.scenarioResult === 'victory' ? 'Victory! The enemy has been defeated.' : 'Defeat... your side has fallen.',
+    );
   }
 }
