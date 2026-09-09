@@ -18,11 +18,22 @@ import { GameSession } from './gameSession.js';
  * rootDir/include trap this avoids.
  */
 
+// Snapshot paths moved from the old fixed `apps/web/public/scenario-
+// snapshot.json` to `apps/web/public/scenarios/<scenario-id>.json` when
+// `build-scenario-snapshot.mjs` became generic over which scenario it
+// builds (needed for real scenario-to-scenario chaining, see
+// `GameSession.startNextScenario`) -- both scenario 1 and 2's real,
+// committed snapshots are used below.
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const snapshotPath = path.join(repoRoot, 'apps/web/public/scenario-snapshot.json');
+const snapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/01_Invasion.json');
+const nextSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/02_Flight.json');
 
 function loadSnapshot(): GameBoardSnapshot {
   return JSON.parse(fs.readFileSync(snapshotPath, 'utf8')) as GameBoardSnapshot;
+}
+
+function loadNextSnapshot(): GameBoardSnapshot {
+  return JSON.parse(fs.readFileSync(nextSnapshotPath, 'utf8')) as GameBoardSnapshot;
 }
 
 describe('GameSession.runStartupEvents (real Dead_Water scenario 1)', () => {
@@ -257,5 +268,96 @@ describe('GameSession victory/defeat (real leader-death check, see checkVictory)
     session.checkForGameEnd();
     expect(session.scenarioResult).toBe('defeat');
     expect(session.log).toHaveLength(logLengthAfterFirst); // no duplicate log entry.
+  });
+});
+
+describe('GameSession.nextScenarioId (real next_scenario= chaining)', () => {
+  it('reads the real 01_Invasion -> 02_Flight chain, and null for a scenario with none', () => {
+    const session = new GameSession(loadSnapshot());
+    expect(session.nextScenarioId).toBe('02_Flight');
+
+    const noNext = loadSnapshot();
+    delete (noNext.scenarioConfigJson.attrs as Record<string, unknown>)['next_scenario'];
+    expect(new GameSession(noNext).nextScenarioId).toBeNull();
+  });
+});
+
+describe('GameSession.startNextScenario (real 01_Invasion -> 02_Flight gold + recall carryover)', () => {
+  it('throws if the finished session did not end in victory', () => {
+    const finished = new GameSession(loadSnapshot());
+    expect(() => GameSession.startNextScenario(finished, loadNextSnapshot())).toThrow();
+  });
+
+  it('carries real gold and real surviving non-leader units into a fresh session on the next scenario', () => {
+    const finished = new GameSession(loadSnapshot());
+    finished.runStartupEvents(); // spawns Cylanna/Gwabbo/citizens, matching a real playthrough.
+    const team1 = finished.board.getTeam(1)!;
+    team1.gold = 150; // pin to the same hand-verified number as carryover.test.ts.
+    finished.turnNumber = 5;
+
+    // Force a win the same way the victory/defeat describe block above does
+    // (bypassing combat RNG, which isn't what's under test here).
+    const enemyLeader = finished.board.unitsForSide(2).find((u) => u.canRecruit)!;
+    finished.board.removeUnitAt(enemyLeader.location);
+    // @ts-expect-error -- calling the private checkForGameEnd directly, same pattern as the victory/defeat tests above.
+    finished.checkForGameEnd();
+    expect(finished.scenarioResult).toBe('victory');
+
+    const survivingNonLeaders = finished.board.unitsForSide(1).filter((u) => !u.canRecruit);
+    expect(survivingNonLeaders.length).toBeGreaterThan(0); // Cylanna, Gwabbo, citizens -- sanity check the fixture actually has some.
+
+    const next = GameSession.startNextScenario(finished, loadNextSnapshot());
+
+    // Same hand-verified gold-carryover result as carryover.test.ts's
+    // "matches a hand computation" case (teamGold=150, turn 5): 530 gold.
+    expect(next.goldCarryover).not.toBeNull();
+    expect(next.goldCarryover!.nextScenarioGold).toBe(530);
+    expect(next.board.getTeam(1)!.gold).toBe(530);
+
+    // Every surviving non-leader (Cylanna, Gwabbo, citizens) is now on
+    // scenario 2's recall list; Kai Krellis (the leader, inline-re-declared
+    // by scenario 2's own {SIDE_1}) is not -- he's freshly placed on the
+    // board instead (2's own snapshot.units includes him).
+    const recallIds = next.board.recallList(1).map((u) => u.id);
+    for (const survivor of survivingNonLeaders) {
+      expect(recallIds).toContain(survivor.id);
+    }
+    expect(recallIds).not.toContain('Kai Krellis');
+    expect(next.board.allUnits().some((u) => u.id === 'Kai Krellis')).toBe(true);
+  });
+});
+
+describe('GameSession recall UI (selectRecallUnit / recallOptions / handleHexClick recall branch)', () => {
+  it('offers the real recall list once carried over, and places a recalled unit with its saved hp on click', () => {
+    const finished = new GameSession(loadSnapshot());
+    finished.runStartupEvents();
+    const someSurvivor = finished.board.unitsForSide(1).find((u) => !u.canRecruit)!;
+    someSurvivor.hitpoints = 3; // distinct from max, so recall (not recruit) is what's under test -- recall keeps saved hp.
+    finished.board.getTeam(1)!.gold = 150;
+    finished.turnNumber = 5;
+    const enemyLeader = finished.board.unitsForSide(2).find((u) => u.canRecruit)!;
+    finished.board.removeUnitAt(enemyLeader.location);
+    // @ts-expect-error -- see above.
+    finished.checkForGameEnd();
+
+    const next = GameSession.startNextScenario(finished, loadNextSnapshot());
+    const leader = next.board.unitsForSide(1).find((u) => u.canRecruit)!;
+    next.selectUnit(leader);
+    expect(next.recruitTiles.length).toBeGreaterThan(0);
+
+    const options = next.recallOptions;
+    const recalled = options.find((o) => o.typeId === someSurvivor.type.id && o.hp === 3);
+    expect(recalled).toBeDefined();
+
+    const target = next.recruitTiles[0]!;
+    const goldBefore = next.board.getTeam(1)!.gold;
+    next.selectRecallUnit(recalled!.index);
+    const message = next.handleHexClick(target.x, target.y);
+
+    expect(message).toContain('Recalled');
+    const placedUnit = next.board.allUnits().find((u) => u.location.x === target.x && u.location.y === target.y && u.hitpoints === 3);
+    expect(placedUnit).toBeDefined();
+    expect(next.board.recallList(1)).toHaveLength(options.length - 1);
+    expect(next.board.getTeam(1)!.gold).toBe(goldBefore - recalled!.cost);
   });
 });

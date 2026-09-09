@@ -3,21 +3,39 @@
    * Full-screen, non-dismissable banner shown once `GameSession.
    * scenarioResult` latches (see `checkVictory`/`GameSession.
    * checkForGameEnd`) -- the scenario is over, win or lose. Unlike
-   * `StoryViewer`/`MessageViewer` this has nothing to click through to:
-   * `GameShell`'s `phase` only ever moves forward into `'ended'`, and
-   * every `GameSession` mutator already no-ops once `scenarioResult` is
-   * set, so this overlay is here purely to make that state visible rather
-   * than leaving the player clicking a board that's silently stopped
-   * responding.
+   * `StoryViewer`/`MessageViewer` this has nothing to click through to on
+   * defeat (or a victory with no next scenario): `GameShell`'s `phase` only
+   * ever moves forward into `'ended'`, and every `GameSession` mutator
+   * already no-ops once `scenarioResult` is set, so the overlay is here
+   * purely to make that state visible rather than leaving the player
+   * clicking a board that's silently stopped responding.
+   *
+   * On a victory WITH a real next scenario (`nextScenarioAvailable`, from
+   * `GameSession.nextScenarioId` -- the scenario's own real
+   * `[scenario] next_scenario=`), a "Continue" button is shown instead of
+   * the terminal "reload to play again" hint -- see `GameShell.svelte`'s
+   * `continueToNextScenario`, which owns the actual fetch/transition this
+   * button triggers via `onContinue`.
    */
   let {
     result,
     turnNumber,
     gold,
+    nextScenarioAvailable,
+    continuing,
+    continueError,
+    onContinue,
   }: {
     result: 'victory' | 'defeat';
     turnNumber: number;
     gold: number;
+    /** Whether this victory has a real `next_scenario=` to continue into. Always `false` on defeat. */
+    nextScenarioAvailable: boolean;
+    /** True while `onContinue`'s fetch/transition is in flight -- disables the button and shows a loading hint. */
+    continuing: boolean;
+    /** Set if the last `onContinue` attempt failed (e.g. the next snapshot's fetch failed) -- shown so the player can retry rather than being stuck silently. */
+    continueError: string | null;
+    onContinue: () => void;
   } = $props();
 </script>
 
@@ -28,7 +46,16 @@
       {result === 'victory' ? 'The enemy has been vanquished.' : 'Your forces have fallen.'}
     </p>
     <p class="stats">Turn {turnNumber} &middot; {gold} gold</p>
-    <p class="hint">Reload the page to play again.</p>
+    {#if nextScenarioAvailable}
+      <button class="continue" onclick={onContinue} disabled={continuing}>
+        {continuing ? 'Loading next scenario...' : 'Continue to next scenario'}
+      </button>
+      {#if continueError}
+        <p class="error">Failed to continue: {continueError}</p>
+      {/if}
+    {:else}
+      <p class="hint">Reload the page to play again.</p>
+    {/if}
   </div>
 </div>
 
@@ -74,5 +101,25 @@
     margin: 0;
     color: #888;
     font-size: 0.85rem;
+  }
+  .continue {
+    font: inherit;
+    font-size: 1rem;
+    padding: 0.5rem 1.25rem;
+    border-radius: 4px;
+    border: 1px solid #8a6a2e;
+    background: #6a4a1e;
+    color: #f1e6c8;
+    cursor: pointer;
+  }
+  .continue:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  .error {
+    margin: 0.75rem 0 0;
+    color: #e23b3b;
+    font-size: 0.85rem;
+    max-width: 24rem;
   }
 </style>

@@ -681,3 +681,98 @@ under plain Node/vitest; and a real-browser Playwright check exercising
 the actual Save/Load buttons end-to-end (end turn twice, Save, reload the
 page fresh, Load, confirm turn/gold match what was saved) -- both passed.
 11 ui tests total, all passing.
+
+## 2026-09-09 (cont'd): scenario 1 -> scenario 2 continuation (real gold + recall carryover)
+
+Made the "win scenario 1, dead end" gap real: a generic `next_scenario=`-
+driven continuation, not a scenario-1-specific hack.
+
+- **`build-scenario-snapshot.mjs` generalized**: takes the scenario `.cfg`
+  filename as `argv[2]`, writes `apps/web/public/scenarios/<real-id>.json`
+  instead of the old fixed `scenario-snapshot.json`. Regenerated both
+  `01_Invasion.json` and `02_Flight.json` from real content. `App.svelte`
+  now fetches `scenarios/01_Invasion.json` as the hardcoded entry point
+  (a real picker is future Phase 6 work). Old fixed snapshot path deleted;
+  `gameSession.test.ts` updated to the new paths (and now loads both
+  scenarios' real snapshots).
+- **`packages/engine/src/actions/carryover.ts`** (new): `computeGoldCarryover`
+  (exact port of `carryover_gold.lua`'s formula), `findVictoryEndlevelGoldConfig`
+  (statically walks a scenario's own `[event] name="enemies defeated"]
+  [endlevel]` for bonus=/carryover_add=/carryover_percentage=, WITHOUT a real
+  event pump -- same documented simplification as `victory.ts`'s missing
+  `enemies_defeated` firing), and `computeCarryoverRecruits` (every surviving
+  player-side unit not inline-re-declared by id in the next scenario's own
+  `[side]` -- excludes Kai Krellis, whose level/XP is flagged, not silently
+  dropped, as not persisting under this simplification). Hand-verified
+  against Dead Water's real numbers: Home_1.map has 31 real village hexes
+  (`GameMap.villages`, unfiltered by ownership), side 1's real `turns=30`
+  (NORMAL), 02_Flight's real declared gold 140 (NORMAL) -- a real victory at
+  turn 5 with 150 gold hand-computes to 530 next-scenario gold, matched
+  exactly by both a pure-math test and one built entirely from real,
+  unmodified WML content. 10 new engine tests, all passing.
+- **`GameSession.startNextScenario(finished, nextSnapshot, options?)`**
+  (static factory, mirrors `fromSaveData`'s pattern): computes gold +
+  recall carryover from `finished`, builds a fresh session on `nextSnapshot`,
+  sets the player team's gold, and populates the recall list with the
+  carried-over live `Unit` objects. Exposes `goldCarryover` (the computed
+  result) and `nextScenarioId` (from the real `next_scenario=` attribute).
+  `GameSession` never does its own `fetch()` -- `GameShell.svelte` owns
+  that, matching how `App.svelte` already fetches the first scenario.
+- **Recall UI**: `GameSession.recallOptions`/`selectRecallUnit`/
+  `pendingRecallIndex` mirror the existing recruit flow, but keyed by
+  recall-list *array index* rather than `Unit.underlyingId` -- this project
+  doesn't auto-assign unique underlying ids (`Unit.ts`), so several
+  recall-list units (e.g. six carried-over citizens) commonly all share
+  `underlyingId=0`, which would make that an unsafe selection/removal key;
+  confirmed this would have been a real bug, not a hypothetical one, once
+  real carryover started producing exactly that shape of recall list.
+  `SidePanel.svelte` gained a "Recall" section (name, level, hp, cost, and
+  a real unit-type icon via `imageUrl`) alongside Recruit, using the same
+  castle-tile-click placement flow. `ScenarioEndOverlay.svelte` gained a
+  "Continue to next scenario" button (victory + a real next scenario only;
+  defeat and dead-end victories keep the old terminal message unchanged).
+- Also added, since the Recall UI otherwise would have silently broken it:
+  `GameBoard.clearRecallList` and `SaveGameData.recall` (optional-on-read,
+  so pre-existing saves still load) so Save/Load round-trips a side's
+  recall list instead of quietly dropping it.
+- **Real-browser Playwright verification** (Node 20 via nvm, live dev
+  server): played scenario 1 up to the interactive phase, forced a win via
+  a temporary debug hook (same "bypass combat RNG" pattern as this
+  project's own victory tests), screenshotted the real "Continue to next
+  scenario" button, clicked it, and confirmed scenario 2 ("Flight") loaded
+  with turn 1/22 (real `TURNS4` NORMAL value), **571 gold** -- hand-checked
+  against the real formula for THIS run's actual numbers (120 starting
+  gold, turn 1, 29 turns left, bonus 957, carryover 431, 140 + 431 = 571,
+  matching the screen exactly) -- and a recall list of exactly the real
+  survivors (six Merman Citizens, Cylanna at 35/35, Gwabbo at his real
+  scripted 4/40 hp), with Kai Krellis correctly absent from recall (he's
+  freshly placed on the board instead, per scenario 2's own `{SIDE_1}`).
+  No console errors. Debug hooks removed from `GameShell.svelte` afterward;
+  screenshots/script left under `.playwright-check/` (not committed).
+- Verification: 380 tests passing (224 engine + 32 lua-bridge + 3
+  oracle-tools + 106 renderer + 15 ui -- 10 new engine carryover tests, 5
+  new ui integration tests), clean `tsc --noEmit` on engine/renderer, clean
+  `svelte-check` (0 errors, same pre-existing "state referenced locally"
+  warning pattern, now also covering the new `activeSnapshot`/`session`
+  reassignment points) on both `packages/ui` and `apps/web`.
+
+**Found and fixed one more real bug on review**: `GameBoardView.svelte`'s
+own doc comment says its `snapshot` prop is "read once at mount, never
+re-applied after" (its mount `$effect` only tracks `canvasHost`, never
+`snapshot`, by original design -- rebuilding the whole PixiJS app on every
+incidental prop change would be wasteful). `continueToNextScenario`
+reassigns `activeSnapshot` to a genuinely different scenario, which that
+effect has no way to notice -- so the PixiJS board (terrain/map/teams)
+would silently stay built from scenario 1 forever, with only units/
+highlights (which DO have their own tracked effects) updating underneath.
+This was invisible in the subagent's own Playwright check because Dead
+Water scenarios 1 and 2 happen to share the same map file (`Home_1.map`),
+so a stale scenario-1 board looks pixel-identical to a fresh scenario-2
+one -- confirmed by reading the code, not by a screenshot that would have
+looked the same either way. Fixed by wrapping `<GameBoardView>` in
+`{#key activeSnapshot.scenario.id}` so Svelte fully destroys and recreates
+it on a real scenario change; verified with a temporary console.log
+(removed after) showing the mount effect firing exactly twice -- once for
+`01_Invasion`, once for `02_Flight` -- where it previously would have
+fired once. Re-ran the full suite afterward: still 380 passing, clean
+typecheck.

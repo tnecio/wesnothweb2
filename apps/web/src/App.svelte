@@ -9,8 +9,13 @@
   $effect(() => {
     let cancelled = false;
     (async () => {
-      const res = await fetch('/scenario-snapshot.json');
-      if (!res.ok) throw new Error(`fetch scenario-snapshot.json: ${res.status}`);
+      // The initial, entry-point scenario -- hardcoded since there's no real
+      // campaign/scenario picker yet (future Phase 6 work, out of scope for
+      // scenario chaining). Once loaded, GameShell's own "Continue to next
+      // scenario" flow fetches whichever scenario a finished one's real
+      // `next_scenario=` names, generically (see GameShell.svelte).
+      const res = await fetch('/scenarios/01_Invasion.json');
+      if (!res.ok) throw new Error(`fetch scenarios/01_Invasion.json: ${res.status}`);
       const data: GameBoardSnapshot = await res.json();
       if (cancelled) return;
       snapshot = data;

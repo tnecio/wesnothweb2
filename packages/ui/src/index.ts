@@ -1,5 +1,5 @@
 // Public API barrel for @wesnothweb2/ui, consumed by apps/web.
-export { GameSession } from './gameSession.js';
+export { GameSession, parseScenarioTurnsLimit } from './gameSession.js';
 export type {
   HexPoint,
   CombatantPreview,
@@ -7,6 +7,7 @@ export type {
   SelectedUnitInfo,
   PendingAttack,
   RecruitOption,
+  RecallOption,
   GameSessionOptions,
   SaveGameData,
 } from './gameSession.js';

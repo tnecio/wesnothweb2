@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { CombatPreview, RecruitOption, SelectedUnitInfo } from './gameSession.js';
+  import { imageUrl } from '@wesnothweb2/renderer';
+  import type { CombatPreview, RecruitOption, RecallOption, SelectedUnitInfo } from './gameSession.js';
 
   let {
     selected,
@@ -8,6 +9,8 @@
     log,
     recruitOptions,
     pendingRecruitTypeId,
+    recallOptions,
+    pendingRecallIndex,
     turnNumber,
     scenarioTurnsLimit,
     activeSide,
@@ -15,6 +18,7 @@
     onConfirmAttack,
     onCancelAttack,
     onSelectRecruitType,
+    onSelectRecallUnit,
     onEndTurn,
     onSave,
     onLoad,
@@ -27,6 +31,10 @@
     recruitOptions: RecruitOption[];
     /** Which recruit type (if any) is armed, awaiting a click on a highlighted castle tile. */
     pendingRecruitTypeId: string | null;
+    /** The selected leader's side's real recall list, if it's currently able to recruit/recall -- see `GameSession.recallOptions`. */
+    recallOptions: RecallOption[];
+    /** Which recall-list entry (if any, by `RecallOption.index`) is armed, awaiting a click on a highlighted castle tile. */
+    pendingRecallIndex: number | null;
     turnNumber: number;
     /** The scenario's `turns=` limit, if it has one (null means unlimited). */
     scenarioTurnsLimit: number | null;
@@ -36,6 +44,7 @@
     onConfirmAttack: () => void;
     onCancelAttack: () => void;
     onSelectRecruitType: (typeId: string) => void;
+    onSelectRecallUnit: (index: number) => void;
     onEndTurn: () => void;
     onSave: () => void;
     onLoad: () => void;
@@ -129,7 +138,46 @@
       </section>
     {/if}
 
-    {#if !selected && recruitOptions.length === 0}
+    {#if recallOptions.length > 0}
+      <!--
+        Real recall list (packages/engine's actions/recruit.ts's
+        recallUnit, driven by carryover -- see GameSession.startNextScenario/
+        computeCarryoverRecruits): every surviving unit carried over from a
+        finished scenario, off-board until the player recalls it here. Same
+        castle-tile-click placement flow as Recruit above, distinguished by
+        GameSession.pendingRecallIndex being keyed by list position rather
+        than unit type id (see RecallOption's own doc comment).
+      -->
+      <section class="recall">
+        <h3>Recall</h3>
+        <ul class="recruit-list">
+          {#each recallOptions as opt, i (i)}
+            <li>
+              <button
+                class="recruit-option"
+                class:selected={pendingRecallIndex === opt.index}
+                disabled={!opt.affordable}
+                title={opt.affordable ? `Recall ${opt.name}` : `Not enough gold (needs ${opt.cost}, have ${gold})`}
+                onclick={() => onSelectRecallUnit(opt.index)}
+              >
+                {#if opt.image}
+                  <img class="unit-icon" src={imageUrl(opt.image)} alt="" />
+                {/if}
+                <span class="name">{opt.name} <span class="level">(lvl {opt.level}, {opt.hp}/{opt.maxHp} hp)</span></span>
+                <span class="cost">{opt.cost}g</span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+        {#if pendingRecallIndex !== null}
+          <p class="hint">Click a green-highlighted castle tile to place your recalled unit.</p>
+        {:else}
+          <p class="hint">Pick a unit to recall, then click a highlighted castle tile.</p>
+        {/if}
+      </section>
+    {/if}
+
+    {#if !selected && recruitOptions.length === 0 && recallOptions.length === 0}
       <p class="hint">
         Click one of your units to select it. Blue hexes are where it can move;
         red hexes are adjacent enemies it can attack.
@@ -252,6 +300,31 @@
   }
   .recruit-option .cost {
     opacity: 0.8;
+  }
+  .recall {
+    border: 1px solid #4a4432;
+    border-radius: 4px;
+    padding: 0.5rem 0.6rem;
+    background: #23201a;
+  }
+  .unit-icon {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+    flex: 0 0 auto;
+  }
+  .recall .recruit-option {
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .recall .name {
+    flex: 1 1 auto;
+    text-align: left;
+  }
+  .level {
+    font-weight: 400;
+    opacity: 0.7;
+    font-size: 0.8em;
   }
   button {
     font: inherit;

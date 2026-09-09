@@ -49,12 +49,32 @@ import {
   runScenarioStartupEvents,
   connectedCastleTiles,
   recruitUnit,
+  recallUnit,
   checkVictory,
+  computeGoldCarryover,
+  findVictoryEndlevelGoldConfig,
+  computeCarryoverRecruits,
   type GameBoardSnapshot,
   type SnapshotUnit,
   type RecordedMessage,
   type UnitType,
+  type GoldCarryoverResult,
+  type WmlAttributeValue,
 } from '@wesnothweb2/engine';
+
+/**
+ * The scenario's real `turns=` attribute (from `scenarioConfigJson`), if it
+ * set one. `WmlConfig` stores WML attribute values as string|number|boolean
+ * depending on how the parser read them, so this normalizes either
+ * representation. Exported so `GameShell.svelte` (the turn-banner display)
+ * and `GameSession` (the gold-carryover computation, which needs the
+ * *finishing* scenario's turn limit) share one implementation.
+ */
+export function parseScenarioTurnsLimit(raw: WmlAttributeValue | undefined): number | null {
+  if (raw === undefined) return null;
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 export interface HexPoint {
   x: number;
@@ -111,11 +131,46 @@ export interface RecruitOption {
   affordable: boolean;
 }
 
+/**
+ * One recall-list entry, ready for the side panel's Recall section --
+ * mirrors `RecruitOption` but for an already-existing `Unit` (with its own
+ * saved hp/level) rather than a fresh type.
+ */
+export interface RecallOption {
+  /**
+   * This unit's position in `board.recallList(side)` at the moment this
+   * list was computed -- used (not `Unit.underlyingId`) as the selection
+   * key passed to `selectRecallUnit`/`handleHexClick`'s recall branch,
+   * since this project doesn't auto-assign a unique `underlying_id` to
+   * every unit (see `Unit.ts`) -- several recall-list units (e.g. several
+   * carried-over citizens) commonly all share the default `underlyingId=0`,
+   * which would make that an unsafe selection key.
+   */
+  index: number;
+  name: string;
+  typeId: string;
+  image: string | null;
+  hp: number;
+  maxHp: number;
+  level: number;
+  cost: number;
+  /** Whether the recalling side currently has enough gold -- the UI should grey this option out, not hide it. */
+  affordable: boolean;
+}
+
 export interface GameSessionOptions {
   /** Which side the human player controls. Default 1 (Dead_Water scenario 1's Kai Krellis side). */
   playerSide?: number;
   /** Seed for the session's `RngDeterministic` -- see `RngDeterministic`'s own doc comment; no need for cryptographic randomness here. */
   seed?: number;
+  /**
+   * Set by `GameSession.startNextScenario` -- the real gold-carryover
+   * computation that produced this session's starting gold, exposed via
+   * `GameSession.goldCarryover` for the UI (e.g. a "carried over 390 gold"
+   * message). `null`/omitted for a scenario started fresh, not continued
+   * from a previous one.
+   */
+  goldCarryover?: GoldCarryoverResult | null;
 }
 
 /**
@@ -147,6 +202,21 @@ export interface SaveGameData {
     attacksLeft: number;
     maxAttacksPerTurn: number;
   }[];
+  /**
+   * Every side's recall-list units (off-board, so no x/y) -- added
+   * alongside the Recall UI/carryover work; optional on read so a save
+   * written before this field existed still loads (as an empty recall
+   * list for every side, via `loadSaveData`'s `data.recall ?? []`).
+   */
+  recall?: readonly {
+    side: number;
+    id: string | null;
+    name: string | null;
+    typeId: string;
+    hitpoints: number;
+    maxHitpoints: number;
+    level: number;
+  }[];
 }
 
 /**
@@ -177,6 +247,8 @@ export class GameSession {
   pendingAttack: PendingAttack | null = null;
   /** Unit type id the player has picked from the recruit list, awaiting a click on one of `recruitTiles`. */
   pendingRecruitTypeId: string | null = null;
+  /** Recall-list index (see `RecallOption.index`) the player has picked from the recall list, awaiting a click on one of `recruitTiles`. Mutually exclusive with `pendingRecruitTypeId` -- see `selectRecruitType`/`selectRecallUnit`. */
+  pendingRecallIndex: number | null = null;
   /** Most-recent-first log of human-readable move/attack/recruit/turn outcomes. */
   log: string[] = [];
   /**
@@ -186,6 +258,15 @@ export class GameSession {
    * method below early-returns once this is set; the scenario is over.
    */
   scenarioResult: 'victory' | 'defeat' | null = null;
+
+  /**
+   * The real gold-carryover computation that produced this session's
+   * starting gold, if it was built via `startNextScenario` -- `null` for a
+   * scenario started fresh. See `computeGoldCarryover`'s own doc comment
+   * for what each field means; the UI can show `goldCarryover.carryoverGoldValue`
+   * as a "Carried over N gold" message.
+   */
+  readonly goldCarryover: GoldCarryoverResult | null;
 
   /** Resolves any of the ~332 real unit types the snapshot ships (board units, event-spawned units, recruit lists) -- see `createTypeResolver`. */
   private readonly resolveType: (id: string) => UnitType;
@@ -199,6 +280,20 @@ export class GameSession {
     this.board = gameBoardFromSnapshot(snapshot).board;
     this.resolveType = createTypeResolver(snapshot);
     this.rng = new RngDeterministic(new MtRng(options.seed ?? 0xc0ffee));
+    this.goldCarryover = options.goldCarryover ?? null;
+  }
+
+  /**
+   * The real `[scenario] next_scenario=` this scenario declares, or `null`
+   * if it has none (the scenario chain ends here). Drives whether
+   * `ScenarioEndOverlay` offers a "Continue" button on victory -- see
+   * `startNextScenario`.
+   */
+  get nextScenarioId(): string | null {
+    const raw = this.snapshot.scenarioConfigJson.attrs['next_scenario'];
+    if (raw === undefined || raw === null) return null;
+    const id = String(raw).trim();
+    return id.length > 0 ? id : null;
   }
 
   /**
@@ -262,6 +357,7 @@ export class GameSession {
   selectUnit(unit: Unit): void {
     this.pendingAttack = null;
     this.pendingRecruitTypeId = null;
+    this.pendingRecallIndex = null;
     this.selectedUnit = unit;
     if (unit.movesLeft > 0) {
       const { destinations } = reachableHexes(this.board, unit, { seeAll: true });
@@ -284,6 +380,7 @@ export class GameSession {
     this.recruitTiles = [];
     this.pendingAttack = null;
     this.pendingRecruitTypeId = null;
+    this.pendingRecallIndex = null;
   }
 
   /** Mirrors `game_state::can_recruit_on`-adjacent logic: vacant castle tiles connected to `unit`'s keep, if it's a leader standing on one. See `recruit.ts`'s `connectedCastleTiles`/`findVacantCastleTile`. */
@@ -313,9 +410,45 @@ export class GameSession {
     });
   }
 
-  /** Arms (or, called again with the same id, disarms) a pending recruit -- the next click on one of `recruitTiles` places it. */
+  /** Arms (or, called again with the same id, disarms) a pending recruit -- the next click on one of `recruitTiles` places it. Clears any pending recall (mutually exclusive, see `pendingRecallIndex`). */
   selectRecruitType(typeId: string | null): void {
     this.pendingRecruitTypeId = this.pendingRecruitTypeId === typeId ? null : typeId;
+    this.pendingRecallIndex = null;
+  }
+
+  /**
+   * The selected leader's side's current recall list, if it's currently
+   * able to recruit/recall (same gating as `recruitOptions` -- a leader on
+   * its keep with at least one vacant, keep-connected castle tile). See
+   * `RecallOption`'s own doc comment for why `index` (not `underlyingId`)
+   * is the selection key.
+   */
+  get recallOptions(): RecallOption[] {
+    const leader = this.selectedUnit;
+    if (!leader || this.recruitTiles.length === 0) return [];
+    const team = this.board.getTeam(leader.side);
+    if (!team) return [];
+    return this.board.recallList(leader.side).map((u, index) => {
+      const cost = u.type.recallCost >= 0 ? u.type.recallCost : team.recallCost;
+      const snap = this.snapshot.unitTypes[u.type.id];
+      return {
+        index,
+        name: this.unitDisplayName(u),
+        typeId: u.type.id,
+        image: snap?.image ?? null,
+        hp: u.hitpoints,
+        maxHp: u.maxHitpoints,
+        level: u.level,
+        cost,
+        affordable: team.gold >= cost,
+      };
+    });
+  }
+
+  /** Arms (or, called again with the same index, disarms) a pending recall -- the next click on one of `recruitTiles` places it. Clears any pending recruit (mutually exclusive, see `pendingRecruitTypeId`). */
+  selectRecallUnit(index: number | null): void {
+    this.pendingRecallIndex = this.pendingRecallIndex === index ? null : index;
+    this.pendingRecruitTypeId = null;
   }
 
   /**
@@ -358,6 +491,45 @@ export class GameSession {
     // Re-select the leader so recruitTiles/attackCandidates refresh (the
     // just-filled tile is no longer vacant) -- the leader's own moves/
     // attacks are untouched by recruiting.
+    this.selectUnit(leader);
+    return message;
+  }
+
+  /**
+   * Places recall-list entry `index` (see `RecallOption.index`) at `loc`
+   * for the selected leader's side, mirroring `tryRecruitAt` but for an
+   * already-existing `Unit` pulled off `board.recallList` (via the real
+   * `recallUnit`, which keeps its saved hp/level rather than healing it to
+   * full -- see `recruit.ts`'s `placeRecruit`'s own doc comment). Same
+   * deliberate "no `checkRecruitLocation` alternate-location fallback" call
+   * as `tryRecruitAt` -- see that method's own doc comment.
+   */
+  private tryRecallAt(index: number, loc: Location): string | null {
+    const leader = this.selectedUnit;
+    if (!leader) return null;
+    const team = this.board.getTeam(leader.side);
+    if (!team) return null;
+    const list = this.board.recallList(leader.side);
+    const unit = list[index];
+    if (!unit) return null;
+    const name = this.unitDisplayName(unit);
+    const cost = unit.type.recallCost >= 0 ? unit.type.recallCost : team.recallCost;
+
+    if (!this.recruitTiles.some((t) => t.x === loc.x && t.y === loc.y)) {
+      return `Cannot recall ${name} there.`;
+    }
+    if (team.gold < cost) {
+      return `Not enough gold to recall ${name} (needs ${cost}, have ${team.gold}).`;
+    }
+    // `list` is the board's own live recall-list array (see `GameBoard.recallList`'s
+    // doc comment), so splicing it directly removes exactly the entry the
+    // player selected -- deliberately not `removeFromRecallList`'s
+    // `underlyingId` lookup, which is unsafe here (see `RecallOption.index`'s
+    // own doc comment on why: most recall-list units share `underlyingId=0`).
+    list.splice(index, 1);
+    const result = recallUnit(this.board, team, unit, loc, leader.location);
+    const message = `Recalled ${name} for ${result.cost} gold.`;
+    this.log.unshift(message);
     this.selectUnit(leader);
     return message;
   }
@@ -506,6 +678,12 @@ export class GameSession {
       return this.tryRecruitAt(typeId, loc);
     }
 
+    if (this.pendingRecallIndex !== null) {
+      const index = this.pendingRecallIndex;
+      this.pendingRecallIndex = null;
+      return this.tryRecallAt(index, loc);
+    }
+
     const sel = this.selectedUnit;
     if (sel) {
       if (clickedUnit) {
@@ -603,6 +781,17 @@ export class GameSession {
         attacksLeft: u.attacksLeft,
         maxAttacksPerTurn: u.maxAttacksPerTurn,
       })),
+      recall: this.board.teams().flatMap((t) =>
+        this.board.recallList(t.side).map((u) => ({
+          side: t.side,
+          id: u.id || null,
+          name: u.name || null,
+          typeId: u.type.id,
+          hitpoints: u.hitpoints,
+          maxHitpoints: u.maxHitpoints,
+          level: u.level,
+        })),
+      ),
     };
   }
 
@@ -616,6 +805,9 @@ export class GameSession {
   loadSaveData(data: SaveGameData): void {
     for (const unit of [...this.board.allUnits()]) {
       this.board.removeUnitAt(unit.location);
+    }
+    for (const t of this.board.teams()) {
+      this.board.clearRecallList(t.side);
     }
     for (const u of data.units) {
       const type = this.resolveType(u.typeId);
@@ -636,6 +828,20 @@ export class GameSession {
       const team = this.board.getTeam(t.side);
       if (team) team.gold = t.gold;
     }
+    // Optional-on-read (see `SaveGameData.recall`'s own doc comment): a save
+    // written before this field existed simply had no recall-list units.
+    for (const r of data.recall ?? []) {
+      const type = this.resolveType(r.typeId);
+      const unit = Unit.create(type, r.side, Location.NULL, {
+        id: r.id ?? undefined,
+        name: r.name ?? undefined,
+        canRecruit: false,
+      });
+      unit.hitpoints = r.hitpoints;
+      unit.maxHitpoints = r.maxHitpoints;
+      unit.level = r.level;
+      this.board.addToRecallList(r.side, unit);
+    }
     this.turnNumber = data.turnNumber;
     this.activeSide = data.activeSide;
     this.scenarioResult = data.scenarioResult;
@@ -647,6 +853,69 @@ export class GameSession {
   static fromSaveData(snapshot: GameBoardSnapshot, data: SaveGameData, options: GameSessionOptions = {}): GameSession {
     const session = new GameSession(snapshot, options);
     session.loadSaveData(data);
+    return session;
+  }
+
+  /**
+   * Computes this (finished, winning) session's real gold-carryover result
+   * for continuing into `nextSnapshot` -- see `computeGoldCarryover`'s own
+   * doc comment for the formula and `findVictoryEndlevelGoldConfig`'s for
+   * how its bonus=/carryover_add=/carryover_percentage= inputs are located
+   * (a static config walk over THIS session's own finished scenario config,
+   * not a real fired `enemies_defeated` event -- see this project's
+   * documented simplification, `victory.ts`'s own doc comment on the same
+   * gap). `totalVillages`/`teamIncome`/`incomePerVillage` are read from this
+   * (finishing) session's own board/team, matching upstream (the bonus is
+   * computed from the scenario just won, not the one being entered).
+   */
+  private computeGoldCarryoverResult(nextSnapshot: GameBoardSnapshot): GoldCarryoverResult {
+    const team = this.board.getTeam(this.playerSide);
+    const endlevel = findVictoryEndlevelGoldConfig(this.snapshot.scenarioConfigJson);
+    const nextTeamCfg = nextSnapshot.teams.find((t) => t.side === this.playerSide);
+    return computeGoldCarryover({
+      teamGold: team?.gold ?? 0,
+      teamIncome: team?.income ?? 0,
+      incomePerVillage: team?.incomePerVillage ?? 1,
+      totalVillages: this.board.map.villages.length,
+      scenarioTurnsLimit: parseScenarioTurnsLimit(this.snapshot.scenarioConfigJson.attrs['turns']),
+      turnNumberAtVictory: this.turnNumber,
+      endlevel,
+      nextScenarioDeclaredGold: nextTeamCfg?.gold ?? 100,
+    });
+  }
+
+  /**
+   * Builds the next scenario's session, continuing from `finished` (a
+   * session that just ended in victory) -- the generic `next_scenario=`
+   * mechanism this class's own module doc comment describes. Computes real
+   * gold carryover (`computeGoldCarryover`, exposed afterward via
+   * `goldCarryover`) and populates the new session's recall list with every
+   * surviving player-side unit not inline-re-declared in `nextSnapshot`'s
+   * own `[side]` (`computeCarryoverRecruits`) -- see both functions' own
+   * doc comments for the exact, documented simplifications (locating the
+   * `[endlevel]` via a static config walk rather than a real fired event;
+   * a persistent hero like Kai Krellis excluded by id, so his level/XP does
+   * not persist across the transition).
+   *
+   * `finished`'s board is left untouched (nothing here mutates it) -- the
+   * carried-over `Unit` instances are the same live objects, simply added
+   * to the new board's recall list, mirroring `fromSaveData`'s "build a
+   * fresh session rather than mutate one in place" pattern. Callers should
+   * just stop using `finished` once this returns.
+   */
+  static startNextScenario(finished: GameSession, nextSnapshot: GameBoardSnapshot, options: GameSessionOptions = {}): GameSession {
+    if (finished.scenarioResult !== 'victory') {
+      throw new Error('GameSession.startNextScenario: can only continue from a session that ended in victory.');
+    }
+    const goldCarryover = finished.computeGoldCarryoverResult(nextSnapshot);
+    const carriedOverUnits = computeCarryoverRecruits(finished.board, finished.playerSide, nextSnapshot.scenarioConfigJson);
+
+    const session = new GameSession(nextSnapshot, { ...options, goldCarryover });
+    const team = session.board.getTeam(session.playerSide);
+    if (team) team.gold = goldCarryover.nextScenarioGold;
+    for (const unit of carriedOverUnits) {
+      session.board.addToRecallList(session.playerSide, unit);
+    }
     return session;
   }
 

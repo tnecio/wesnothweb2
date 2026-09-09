@@ -81,7 +81,20 @@
  * (`gameBoardSnapshot.ts`'s `buildFlatMoveType`, now only a fallback for
  * snapshots that don't carry these new fields).
  *
- * Run with: npx tsx apps/web/scripts/build-scenario-snapshot.mjs
+ * ## Generic scenario parameter (scenario chaining)
+ *
+ * Originally hardcoded to `01_Invasion.cfg`, writing one fixed
+ * `scenario-snapshot.json`. Now accepts the scenario's `.cfg` filename (bare,
+ * resolved against this campaign's `scenarios/` dir) as `argv[2]`, and writes
+ * to `apps/web/public/scenarios/<scenario-id>.json` (the id is the real,
+ * parsed `[scenario] id=`, not the filename) -- so `apps/web/src/App.svelte`
+ * and `GameSession.startNextScenario` can fetch whichever scenario a
+ * previous one's real `next_scenario=` names, generically, not just scenario
+ * 1. `apps/web/src/App.svelte` still hardcodes `scenarios/01_Invasion.json`
+ * as the single entry point for a fresh page load -- a real campaign/
+ * scenario picker is future Phase 6 work, out of this task's scope.
+ *
+ * Run with: npx tsx apps/web/scripts/build-scenario-snapshot.mjs 01_Invasion.cfg
  * (imports packages/engine's .ts sources directly; needs tsx, not plain node)
  */
 
@@ -92,7 +105,14 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const dataRoot = path.join(repoRoot, 'wesnoth/data');
 const campaignDir = path.join(dataRoot, 'campaigns/Dead_Water');
-const outFile = path.join(repoRoot, 'apps/web/public/scenario-snapshot.json');
+
+const scenarioFileArg = process.argv[2];
+if (!scenarioFileArg) {
+  console.error('Usage: npx tsx apps/web/scripts/build-scenario-snapshot.mjs <scenario-file.cfg>');
+  console.error('  (resolved against wesnoth/data/campaigns/Dead_Water/scenarios/)');
+  process.exit(1);
+}
+const scenarioFile = path.join(campaignDir, 'scenarios', scenarioFileArg);
 
 const { parseWmlFile, preloadDefines, preloadDefinesFromDir } = await import(
   path.join(repoRoot, 'packages/engine/src/wml/index.ts')
@@ -181,7 +201,7 @@ const campaignMainCfg = parseWmlFile(path.join(campaignDir, '_main.cfg'), { data
 collectUnitTypeImages(campaignMainCfg, unitImages);
 console.log(`Collected ${unitImages.size} unit-type image paths from real WML.`);
 
-const scenarioCfg = parseWmlFile(path.join(campaignDir, 'scenarios/01_Invasion.cfg'), { dataRoot, defines: new Map(defines) });
+const scenarioCfg = parseWmlFile(scenarioFile, { dataRoot, defines: new Map(defines) });
 const scenario = scenarioCfg.child('scenario');
 const mapText = fs.readFileSync(path.join(campaignDir, 'maps', scenario.getString('map_file')), 'utf8');
 scenario.setAttribute('map_data', mapText);
@@ -364,6 +384,7 @@ const snapshot = {
   scenarioConfigJson: scenario.toJSON(),
 };
 
+const outFile = path.join(repoRoot, 'apps/web/public/scenarios', `${snapshot.scenario.id}.json`);
 fs.mkdirSync(path.dirname(outFile), { recursive: true });
 fs.writeFileSync(outFile, JSON.stringify(snapshot));
 console.log(

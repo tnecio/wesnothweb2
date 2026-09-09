@@ -110,6 +110,18 @@ export class GameBoard {
   }
 
   /**
+   * Empties `side`'s recall list entirely -- used by callers rebuilding a
+   * board's full state from scratch (e.g. `GameSession.loadSaveData`),
+   * which need a clean slate rather than `removeFromRecallList`'s one-at-a-
+   * time, `underlyingId`-keyed removal (unsafe as a bulk-clear mechanism
+   * here since this project doesn't auto-assign unique `underlying_id`s --
+   * see `Unit.ts` -- so several entries commonly share `underlyingId=0`).
+   */
+  clearRecallList(side: number): void {
+    this.recallLists.delete(side);
+  }
+
+  /**
    * Builds a full GameBoard from a `[scenario]` config: the map (from
    * `map_data=`; resolving `map_file=` to text is the caller's job, see
    * Map.ts's module doc comment), each `[side]` as a Team, and every

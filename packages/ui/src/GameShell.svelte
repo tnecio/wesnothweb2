@@ -25,9 +25,17 @@
    * before entering 'messages', so the board already reflects every real
    * event-spawned unit by the time the player gets control.
    */
-  import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage, WmlAttributeValue } from '@wesnothweb2/engine';
+  import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage } from '@wesnothweb2/engine';
   import type { HexPoint } from '@wesnothweb2/renderer';
-  import { GameSession, type CombatPreview, type SelectedUnitInfo, type RecruitOption, type SaveGameData } from './gameSession.js';
+  import {
+    GameSession,
+    parseScenarioTurnsLimit,
+    type CombatPreview,
+    type SelectedUnitInfo,
+    type RecruitOption,
+    type RecallOption,
+    type SaveGameData,
+  } from './gameSession.js';
   import { saveGame, loadGame } from './persistence.js';
   import TurnBanner from './TurnBanner.svelte';
   import GameBoardView from './GameBoardView.svelte';
@@ -38,18 +46,32 @@
 
   let { snapshot }: { snapshot: GameBoardSnapshot } = $props();
 
-  const session = new GameSession(snapshot);
-  const storyParts = snapshot.story ?? [];
+  /** The scenario currently being played -- reassigned by `continueToNextScenario`. Everything below that used to read the `snapshot` prop directly now reads this instead. */
+  let activeSnapshot = $state(snapshot);
+  /**
+   * `$state.raw`, not plain `$state`/a bare `let`: `GameSession` is a
+   * deliberately rune-free plain-TS class (see `gameSession.ts`'s own doc
+   * comment), so Svelte can't/shouldn't deep-proxy its internals -- every
+   * in-place mutation is already mirrored into the `$state` vars below via
+   * `sync()`, which is what the template actually reads. `$state.raw`
+   * tracks exactly the one thing that DOES need to be reactive:
+   * *reassignment* of `session` itself, which `continueToNextScenario` does
+   * wholesale on a scenario transition. A plain (non-reactive) `let` here
+   * was tried first and flagged by `svelte-check` (`non_reactive_update`)
+   * -- worth heeding given this project's own prior history of a real,
+   * intermittent reactivity bug from exactly this pattern (an unmarked
+   * `let` reassigned after the fact, read directly in template/effect code
+   * -- see docs/PROGRESS.md's "real, intermittent reactivity race" entry
+   * about `GameBoardView.svelte`'s `board` variable).
+   */
+  let session = $state.raw(new GameSession(activeSnapshot));
+  let storyParts = $derived(activeSnapshot.story ?? []);
   /** Single fixed slot for MVP simplicity -- see persistence.ts's doc comment; keyed by scenario so a future multi-scenario build doesn't collide saves across scenarios. */
-  const saveSlot = `quicksave:${snapshot.scenario.id}`;
+  let saveSlot = $derived(`quicksave:${activeSnapshot.scenario.id}`);
+  let scenarioTurnsLimit = $derived(parseScenarioTurnsLimit(activeSnapshot.scenarioConfigJson.attrs['turns']));
 
-  /** The scenario's real `turns=` attribute (from `scenarioConfigJson`), if it set one. `WmlConfig` stores WML attribute values as string|number|boolean depending on how the parser read them, so this normalizes either representation. */
-  function parseTurnsLimit(raw: WmlAttributeValue | undefined): number | null {
-    if (raw === undefined) return null;
-    const n = typeof raw === 'number' ? raw : Number(raw);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  }
-  const scenarioTurnsLimit = parseTurnsLimit(snapshot.scenarioConfigJson.attrs['turns']);
+  let continuing = $state(false);
+  let continueError = $state<string | null>(null);
 
   let phase = $state<'story' | 'messages' | 'playing' | 'ended'>(storyParts.length > 0 ? 'story' : 'messages');
   let storyIndex = $state(0);
@@ -64,6 +86,8 @@
   let recruitTiles = $state<HexPoint[]>([]);
   let recruitOptions = $state<RecruitOption[]>([]);
   let pendingRecruitTypeId = $state<string | null>(null);
+  let recallOptions = $state<RecallOption[]>([]);
+  let pendingRecallIndex = $state<number | null>(null);
   let pendingPreview = $state<CombatPreview | null>(null);
   let log = $state<string[]>([]);
   let turnNumber = $state(session.turnNumber);
@@ -96,6 +120,8 @@
     recruitTiles = session.recruitTiles;
     recruitOptions = session.recruitOptions;
     pendingRecruitTypeId = session.pendingRecruitTypeId;
+    recallOptions = session.recallOptions;
+    pendingRecallIndex = session.pendingRecallIndex;
     pendingPreview = session.pendingAttack?.preview ?? null;
     log = session.log;
     turnNumber = session.turnNumber;
@@ -110,6 +136,8 @@
       statusMessage = 'Review the attack prediction, then confirm or cancel.';
     } else if (pendingRecruitTypeId) {
       statusMessage = 'Click a green-highlighted castle tile to place your recruit.';
+    } else if (pendingRecallIndex !== null) {
+      statusMessage = 'Click a green-highlighted castle tile to place your recalled unit.';
     } else if (selected) {
       statusMessage = `${selected.name} selected.`;
     } else {
@@ -163,6 +191,12 @@
     sync();
   }
 
+  function handleSelectRecallUnit(index: number): void {
+    if (phase !== 'playing') return;
+    session.selectRecallUnit(index);
+    sync();
+  }
+
   function handleEndTurn(): void {
     if (phase !== 'playing') return;
     const message = session.endTurn();
@@ -172,7 +206,7 @@
   async function handleSave(): Promise<void> {
     if (phase !== 'playing') return;
     try {
-      await saveGame(saveSlot, snapshot.scenario.id, session.toSaveData());
+      await saveGame(saveSlot, activeSnapshot.scenario.id, session.toSaveData());
       sync(`Saved (turn ${session.turnNumber}).`);
     } catch (err) {
       sync(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -183,7 +217,7 @@
     if (phase !== 'playing') return;
     try {
       const found = await loadGame<import('./gameSession.js').SaveGameData>(saveSlot);
-      if (!found || found.scenarioId !== snapshot.scenario.id) {
+      if (!found || found.scenarioId !== activeSnapshot.scenario.id) {
         sync('No save found.');
         return;
       }
@@ -211,12 +245,71 @@
       phase = 'playing';
     }
   }
+
+  /**
+   * Fetches the real next scenario (`session.nextScenarioId`, from the just-
+   * finished scenario's own `[scenario] next_scenario=`) and transitions
+   * this same `GameShell` instance into it via the real
+   * `GameSession.startNextScenario` (real gold + recall-list carryover) --
+   * see this file's module doc comment. Only callable from
+   * `ScenarioEndOverlay`'s Continue button, which is itself only shown when
+   * `session.scenarioResult === 'victory'` and a next scenario exists.
+   */
+  async function continueToNextScenario(): Promise<void> {
+    if (session.scenarioResult !== 'victory') return;
+    const nextId = session.nextScenarioId;
+    if (!nextId) return;
+    continuing = true;
+    continueError = null;
+    try {
+      const res = await fetch(`/scenarios/${nextId}.json`);
+      if (!res.ok) throw new Error(`fetch scenarios/${nextId}.json: ${res.status}`);
+      const nextSnapshot: GameBoardSnapshot = await res.json();
+      const nextSession = GameSession.startNextScenario(session, nextSnapshot);
+
+      activeSnapshot = nextSnapshot;
+      session = nextSession;
+
+      const nextStoryParts = nextSnapshot.story ?? [];
+      storyIndex = 0;
+      messageIndex = 0;
+      startupMessages = [];
+      if (nextStoryParts.length === 0) {
+        startupMessages = session.runStartupEvents();
+        phase = startupMessages.length > 0 ? 'messages' : 'playing';
+      } else {
+        phase = 'story';
+      }
+      sync();
+    } catch (err) {
+      continueError = err instanceof Error ? err.message : String(err);
+    } finally {
+      continuing = false;
+    }
+  }
 </script>
 
 <div class="game-shell">
-  <TurnBanner scenarioName={snapshot.scenario.name} {turnNumber} {activeSide} {scenarioTurnsLimit} />
+  <TurnBanner scenarioName={activeSnapshot.scenario.name} {turnNumber} {activeSide} {scenarioTurnsLimit} />
   <div class="main">
-    <GameBoardView {snapshot} {units} {selectedHex} {reachable} {attackTargets} {recruitTiles} onHexClick={handleHexClick} />
+    <!--
+      Keyed on scenario id: GameBoardView's own doc comment says its
+      `snapshot` prop is "read once at mount, never re-applied after" --
+      true by design for ordinary play, but `continueToNextScenario`
+      reassigns `activeSnapshot` to a genuinely different scenario (own
+      map/terrain/teams), which that mount effect has no way to notice
+      (it only tracks `canvasHost`, not `snapshot`). `{#key}` forces Svelte
+      to destroy and recreate the whole component -- and so its PixiJS
+      app/SnapshotBoard -- on a real scenario change, giving a clean fresh
+      mount against the RIGHT map instead of silently reusing the previous
+      scenario's stale terrain underneath the new scenario's units. (Scenario
+      1 and 2 happen to share the same map file, so this bug was invisible
+      in a 1->2 Playwright check specifically -- confirmed by inspection,
+      not by a screenshot that would've looked identical either way.)
+    -->
+    {#key activeSnapshot.scenario.id}
+      <GameBoardView snapshot={activeSnapshot} {units} {selectedHex} {reachable} {attackTargets} {recruitTiles} onHexClick={handleHexClick} />
+    {/key}
     <SidePanel
       {selected}
       {pendingPreview}
@@ -224,6 +317,8 @@
       {log}
       {recruitOptions}
       {pendingRecruitTypeId}
+      {recallOptions}
+      {pendingRecallIndex}
       {turnNumber}
       {scenarioTurnsLimit}
       {activeSide}
@@ -231,6 +326,7 @@
       onConfirmAttack={handleConfirmAttack}
       onCancelAttack={handleCancelAttack}
       onSelectRecruitType={handleSelectRecruitType}
+      onSelectRecallUnit={handleSelectRecallUnit}
       onEndTurn={handleEndTurn}
       onSave={handleSave}
       onLoad={handleLoad}
@@ -242,7 +338,15 @@
   {:else if phase === 'messages'}
     <MessageViewer messages={startupMessages} index={messageIndex} onNext={advanceMessage} />
   {:else if phase === 'ended' && session.scenarioResult}
-    <ScenarioEndOverlay result={session.scenarioResult} {turnNumber} {gold} />
+    <ScenarioEndOverlay
+      result={session.scenarioResult}
+      {turnNumber}
+      {gold}
+      nextScenarioAvailable={session.scenarioResult === 'victory' && session.nextScenarioId !== null}
+      {continuing}
+      {continueError}
+      onContinue={continueToNextScenario}
+    />
   {/if}
 </div>
 
