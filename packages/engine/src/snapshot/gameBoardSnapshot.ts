@@ -140,6 +140,20 @@ export interface SnapshotTeam {
   color: string;
   /** Unit type ids this side may recruit, straight from `[side] recruit=` -- see `Team.canRecruit`. */
   recruit?: string[];
+  /**
+   * `[side] income=`/`village_gold=` -- optional (older snapshots don't
+   * carry these), defaulting to `Team`'s own real WML defaults (0/1) on
+   * read, same backward-compat pattern as `terrainFlags`. Without these, a
+   * side's gold-carryover finishing bonus (`computeGoldCarryover`, which
+   * needs the real income figures) silently computed as if the side had
+   * `income=0` regardless of what the scenario's own WML actually set --
+   * a real bug invisible against Dead Water (whose side 1 happens to also
+   * default to `income=0`) but caught immediately by a synthetic debug
+   * campaign that deliberately set a non-zero `income=` to exercise this
+   * exact path (see docs/PROGRESS.md).
+   */
+  income?: number;
+  incomePerVillage?: number;
 }
 
 /** One `[story][part]` -- see `apps/web/scripts/build-scenario-snapshot.mjs`'s `extractStory`. */
@@ -477,6 +491,8 @@ export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBo
         teamName: t.teamName,
         color: t.color,
         canRecruit: new Set(t.recruit ?? []),
+        income: t.income ?? 0,
+        incomePerVillage: t.incomePerVillage ?? 1,
       }),
     );
   }

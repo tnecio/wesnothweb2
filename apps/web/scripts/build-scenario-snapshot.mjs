@@ -96,6 +96,28 @@
  *
  * Run with: npx tsx apps/web/scripts/build-scenario-snapshot.mjs 01_Invasion.cfg
  * (imports packages/engine's .ts sources directly; needs tsx, not plain node)
+ *
+ * ## Synthetic debug campaigns (small, hand-authored, no macros)
+ *
+ * `argv[2]` can also be a real path (contains a `/`, or absolute) to a
+ * scenario file OUTSIDE the Dead_Water submodule content -- e.g. this
+ * repo's own `synthetic-campaigns/<name>/scenarios/*.cfg`, small
+ * hand-authored WML for fast combat/economy/progression debugging (see
+ * docs/PROGRESS.md) without playing through a real campaign's length. A
+ * bare filename (no `/`) keeps the original, unchanged behavior: resolved
+ * against Dead_Water's own `scenarios/` dir. For a path-style arg, the
+ * "campaign dir" (for `maps/`/`images/`/`_main.cfg`) is that file's own
+ * grandparent directory, mirroring Dead_Water's `scenarios/` + `maps/`
+ * sibling-directory layout. Synthetic campaigns skip campaign-specific
+ * macro flags/`_main.cfg` defines entirely (deliberately macro-free WML)
+ * and are built with `spawnUnitsFromTree: true` (every unit placed inline
+ * in `[side]`, not via `prestart`/`start` events) so they're playable the
+ * instant they load -- no story/message click-through needed for a
+ * debugging tool whose whole point is getting to the interesting state
+ * fast. Real campaign content keeps `spawnUnitsFromTree: false` exactly as
+ * before (unchanged).
+ *
+ * Run with: npx tsx apps/web/scripts/build-scenario-snapshot.mjs synthetic-campaigns/combat/scenarios/01_combat.cfg
  */
 
 import * as fs from 'node:fs';
@@ -104,15 +126,20 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const dataRoot = path.join(repoRoot, 'wesnoth/data');
-const campaignDir = path.join(dataRoot, 'campaigns/Dead_Water');
+const deadWaterDir = path.join(dataRoot, 'campaigns/Dead_Water');
 
 const scenarioFileArg = process.argv[2];
 if (!scenarioFileArg) {
   console.error('Usage: npx tsx apps/web/scripts/build-scenario-snapshot.mjs <scenario-file.cfg>');
-  console.error('  (resolved against wesnoth/data/campaigns/Dead_Water/scenarios/)');
+  console.error('  (a bare filename resolves against wesnoth/data/campaigns/Dead_Water/scenarios/;');
+  console.error('   a path (containing "/") is used directly -- e.g. a synthetic-campaigns/ scenario)');
   process.exit(1);
 }
-const scenarioFile = path.join(campaignDir, 'scenarios', scenarioFileArg);
+const isSyntheticPath = scenarioFileArg.includes('/') || path.isAbsolute(scenarioFileArg);
+const scenarioFile = isSyntheticPath ? path.resolve(repoRoot, scenarioFileArg) : path.join(deadWaterDir, 'scenarios', scenarioFileArg);
+// Parent of scenarios/ -- the campaign root, whichever campaign this is.
+const campaignDir = isSyntheticPath ? path.dirname(path.dirname(scenarioFile)) : deadWaterDir;
+const isDeadWater = !isSyntheticPath;
 
 const { parseWmlFile, preloadDefines, preloadDefinesFromDir } = await import(
   path.join(repoRoot, 'packages/engine/src/wml/index.ts')
@@ -122,6 +149,7 @@ const { GameBoard } = await import(path.join(repoRoot, 'packages/engine/src/mode
 const { GameMap } = await import(path.join(repoRoot, 'packages/engine/src/model/Map.ts'));
 const { UnitType } = await import(path.join(repoRoot, 'packages/engine/src/model/UnitType.ts'));
 const { Location } = await import(path.join(repoRoot, 'packages/engine/src/model/Location.ts'));
+const { WmlConfig } = await import(path.join(repoRoot, 'packages/engine/src/wml/config.ts'));
 const { collectUnitTypeConfigs, collectMovementTypeConfigs, flattenAllUnitTypes } = await import(
   path.join(repoRoot, 'packages/engine/src/model/UnitTypeDatabase.ts')
 );
@@ -130,10 +158,20 @@ function loadDefines() {
   const defines = new Map();
   const flag = (name) =>
     defines.set(name, { name, params: [], optionalParams: new Map(), body: '', dir: dataRoot, location: '<snapshot-script>' });
-  flag('CAMPAIGN_DEAD_WATER');
-  flag('NORMAL');
+  // Flags must be set BEFORE preloadDefinesFromDir(core): several core
+  // files gate which macros they even declare behind #ifdef NORMAL/etc,
+  // so scanning with the flag already set is required, not just cosmetic
+  // (confirmed the hard way -- reordering this once produced a real
+  // "Macro/file 'ON_DIFFICULTY4' is missing" crash on the unchanged
+  // Dead_Water path).
+  if (isDeadWater) {
+    flag('CAMPAIGN_DEAD_WATER');
+    flag('NORMAL');
+  }
   preloadDefinesFromDir(path.join(dataRoot, 'core'), defines, { dataRoot });
-  preloadDefines(path.join(campaignDir, '_main.cfg'), defines, { dataRoot });
+  if (isDeadWater) {
+    preloadDefines(path.join(campaignDir, '_main.cfg'), defines, { dataRoot });
+  }
   return defines;
 }
 
@@ -154,8 +192,13 @@ function loadDefines() {
 function rootImagePath(raw) {
   if (!raw) return raw;
   if (raw.startsWith('core/') || raw.startsWith('campaigns/')) return raw;
-  const campaignRelative = path.join('campaigns/Dead_Water/images', raw);
-  if (fs.existsSync(path.join(dataRoot, campaignRelative))) return campaignRelative;
+  // Synthetic campaigns have no custom art (deliberately -- they only use
+  // real core unit types) and live outside wesnoth/data entirely, so
+  // there's no campaign-relative image root to even check.
+  if (isDeadWater) {
+    const campaignRelative = path.join('campaigns/Dead_Water/images', raw);
+    if (fs.existsSync(path.join(dataRoot, campaignRelative))) return campaignRelative;
+  }
   return `core/images/${raw}`;
 }
 
@@ -197,7 +240,14 @@ const coreUnitsCfg = parseWmlFile(path.join(dataRoot, 'core/units.cfg'), { dataR
 const unitImages = new Map();
 collectUnitTypeImages(coreUnitsCfg, unitImages);
 
-const campaignMainCfg = parseWmlFile(path.join(campaignDir, '_main.cfg'), { dataRoot, defines: new Map(defines) });
+// Synthetic campaigns have no _main.cfg (no custom unit types either --
+// deliberately, see this file's module doc comment) -- an empty stand-in
+// config keeps every downstream use (collectUnitTypeImages/
+// collectUnitTypeConfigs/collectMovementTypeConfigs) a no-op for them
+// without needing separate isDeadWater branches at each call site.
+const campaignMainCfg = isDeadWater
+  ? parseWmlFile(path.join(campaignDir, '_main.cfg'), { dataRoot, defines: new Map(defines) })
+  : new WmlConfig();
 collectUnitTypeImages(campaignMainCfg, unitImages);
 console.log(`Collected ${unitImages.size} unit-type image paths from real WML.`);
 
@@ -264,15 +314,19 @@ function resolveType(id) {
   return t;
 }
 
-// spawnUnitsFromTree: false -- every unit besides the two inline leaders
-// comes from the scenario's real events, run live in the browser (see this
-// file's module doc comment). Pre-populate typeCache for every id we have a
-// real image for, so the snapshot's unitTypes covers whatever an event's
-// [unit] tag or a side's recruit= list might reference, not just what's
-// already on the board at build time.
+// Dead Water: spawnUnitsFromTree false -- every unit besides the two
+// inline leaders comes from the scenario's real events, run live in the
+// browser (see this file's module doc comment). Synthetic campaigns:
+// true -- every unit is placed inline in [side], no events needed, so the
+// board is immediately, fully populated (see this file's "Synthetic debug
+// campaigns" doc comment for why that's the right default for a fast
+// debugging tool). Pre-populate typeCache for every id we have a real
+// image for either way, so the snapshot's unitTypes covers whatever an
+// event's [unit] tag or a side's recruit= list might reference, not just
+// what's already on the board at build time.
 for (const id of unitImages.keys()) resolveType(id);
 
-const board = GameBoard.fromConfig(scenario, terrainData, resolveType, { spawnUnitsFromTree: false });
+const board = GameBoard.fromConfig(scenario, terrainData, resolveType, { spawnUnitsFromTree: !isDeadWater });
 
 const terrain = [];
 for (let x = 0; x < board.map.w(); x++) {
@@ -302,6 +356,11 @@ const teams = board.teams().map((t) => ({
   teamName: t.teamName,
   color: t.color,
   recruit: [...t.canRecruit],
+  // Real [side] income=/village_gold= -- see GameBoardSnapshot.SnapshotTeam's
+  // own doc comment for the real bug this fixes (gold-carryover finishing
+  // bonus silently computed as income=0 regardless of the real WML value).
+  income: t.income,
+  incomePerVillage: t.incomePerVillage,
 }));
 
 /** Serializes a real `AttackType` instance to `AttackTypeSnapshot` shape. */

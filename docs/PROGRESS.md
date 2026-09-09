@@ -776,3 +776,71 @@ it on a real scenario change; verified with a temporary console.log
 `01_Invasion`, once for `02_Flight` -- where it previously would have
 fired once. Re-ran the full suite afterward: still 380 passing, clean
 typecheck.
+
+## 2026-09-09 (cont'd): campaign picker + synthetic debug campaigns
+
+User request: a campaign-picker menu, on its own URL/page separate from
+gameplay (real `history.pushState`/`popstate` routing, so Back/Forward
+work and each page is independently bookmarkable), plus a few tiny
+hand-authored campaigns for fast debugging of combat/economy/scenario
+progression without playing through Dead Water's real length every time.
+
+**Router**: `apps/web/src/router.svelte.ts`, a minimal hand-rolled
+`$state`-backed router (no library -- two pages doesn't justify one).
+`App.svelte` is now a two-way switch between `MenuPage.svelte` (`/`,
+fetches only `campaigns.json`) and `PlayPage.svelte` (`/play/<campaignId>`,
+resolves the campaign to its first scenario and fetches only that
+snapshot -- nothing is preloaded before a campaign is actually picked).
+Verified in a real browser: menu -> pick -> `/play/dead_water`, Back ->
+`/`, Forward -> back to play, a direct navigation to `/play/dead_water`
+(simulating a refresh/shared link) works via Vite's SPA fallback, and an
+unknown campaign id shows a real error with a way back to the menu.
+
+**Build script generalized** (`build-scenario-snapshot.mjs`): a path-style
+argument (contains `/`) is now used directly instead of being resolved
+against Dead Water's `scenarios/` dir, with campaign-specific bits
+(macro flags, `_main.cfg` defines, campaign-art image search path) skipped
+entirely for a non-Dead-Water path. Verified byte-identical snapshot output
+for the unchanged Dead Water invocation before/after this change -- caught
+one real regression while doing that (reordering `preloadDefinesFromDir`
+before the `NORMAL`/`CAMPAIGN_DEAD_WATER` flags broke a core macro that
+gates on those flags via `#ifdef`; fixed by preserving the original order,
+confirmed with the same byte-identical diff).
+
+**Three synthetic campaigns**, real WML (no macros), under this repo's own
+`synthetic-campaigns/` (not the Dead Water submodule): `combat` (two
+adjacent leaders, tiny grassland map), `economy` (a leader on a real
+keep with a full six-tile castle ring, gold, a short recruit list, and a
+harmless distant enemy), `progression` (two tiny scenarios chained by a
+real `next_scenario=`, with a real `[event] name="enemies defeated"]
+[endlevel] bonus=yes carryover_add=yes carryover_percentage=50` --
+deliberately different from Dead Water's 40, so it's obviously this
+campaign's own value when debugging -- and a second unit that survives
+uncounted-for in scenario 2's `[side]`, to exercise real recall-list
+carryover). All built with `spawnUnitsFromTree: true` (everyone placed
+inline, no events needed for placement) and no `[story]`, so they land
+straight in the interactive board with zero click-through.
+
+**Found and fixed a real, previously-invisible bug while verifying the
+progression campaign's carryover math by hand**: `SnapshotTeam` never
+carried `income=`/`village_gold=` at all -- `gameBoardFromSnapshot`
+always rebuilt every team with `income: 0` (`Team`'s own class default),
+regardless of what the scenario's real WML declared. Invisible against
+Dead Water (whose real side 1 also happens to declare no `income=`, i.e.
+0 either way) but caught immediately once a synthetic campaign
+deliberately set `income=1` specifically to exercise this part of the
+formula and the resulting next-scenario gold (89) didn't match the hand
+computation (94). Fixed by adding `income`/`incomePerVillage` to
+`SnapshotTeam` (optional, defaulting to the real WML defaults 0/1 for
+backward compat with snapshots built before this fix) and threading them
+through in both the build script and `gameBoardFromSnapshot`. Added a
+regression test (`gameBoardSnapshot.test.ts`) asserting a non-zero
+snapshot value survives the round-trip. This is exactly the kind of gap
+these synthetic campaigns were built to catch -- Dead Water's specific
+numbers had been silently masking it.
+
+Verified end-to-end in a real browser for all three synthetic campaigns
+(including forcing the progression campaign's scenario 1 -> 2 transition
+and hand-checking the resulting gold, 94, against the real formula).
+381 tests passing (one new regression test), clean typecheck across every
+package.

@@ -1,0 +1,28 @@
+{
+  "campaigns": [
+    {
+      "id": "dead_water",
+      "name": "Dead Water",
+      "description": "Mainline campaign: the merfolk of Jotha defend their home against an undead invasion.",
+      "firstScenario": "01_Invasion"
+    },
+    {
+      "id": "synthetic_combat",
+      "name": "[Debug] Combat",
+      "description": "Two adjacent leaders on a tiny grassland map -- for fast combat-math debugging, no setup turns needed.",
+      "firstScenario": "synth_combat_01"
+    },
+    {
+      "id": "synthetic_economy",
+      "name": "[Debug] Economy & Recruit",
+      "description": "A leader on a keep with a full castle ring, gold, and a short recruit list -- for fast economy/recruit debugging.",
+      "firstScenario": "synth_economy_01"
+    },
+    {
+      "id": "synthetic_progression",
+      "name": "[Debug] Scenario Progression",
+      "description": "Two tiny scenarios chained by next_scenario=, with a real gold/recall carryover setup -- for fast progression debugging.",
+      "firstScenario": "synth_progression_01"
+    }
+  ]
+}

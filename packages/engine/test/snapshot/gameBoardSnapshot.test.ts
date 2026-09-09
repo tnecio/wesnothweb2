@@ -167,4 +167,24 @@ describe('gameBoardFromSnapshot', () => {
     expect(board.unitAt(new Location(0, 0))?.side).toBe(1);
     expect(board.unitAt(new Location(1, 0))?.side).toBe(2);
   });
+
+  it('threads a team\'s real income=/village_gold= through, not silently defaulting to 0/1 regardless of the snapshot', () => {
+    // Regression test: SnapshotTeam.income/incomePerVillage didn't exist at
+    // all until a synthetic debug campaign's non-zero income= exposed that
+    // gold-carryover's finishing bonus was silently computed as income=0
+    // for every scenario (invisible against Dead Water, whose real side 1
+    // also happens to declare income=0) -- see docs/PROGRESS.md and
+    // carryover.ts's own doc comment.
+    const snapshot = tinySnapshot();
+    snapshot.teams[0]!.income = 3;
+    snapshot.teams[0]!.incomePerVillage = 2;
+    const { board } = gameBoardFromSnapshot(snapshot);
+    expect(board.getTeam(1)!.income).toBe(3);
+    expect(board.getTeam(1)!.incomePerVillage).toBe(2);
+
+    // And the real WML defaults (0/1) still apply when a snapshot doesn't carry these at all.
+    const { board: boardWithoutIncome } = gameBoardFromSnapshot(tinySnapshot());
+    expect(boardWithoutIncome.getTeam(1)!.income).toBe(0);
+    expect(boardWithoutIncome.getTeam(1)!.incomePerVillage).toBe(1);
+  });
 });
