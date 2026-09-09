@@ -1,10 +1,11 @@
 <script lang="ts">
   import { imageUrl } from '@wesnothweb2/renderer';
-  import type { CombatPreview, RecruitOption, RecallOption, SelectedUnitInfo } from './gameSession.js';
+  import type { CombatPreview, RecruitOption, RecallOption, AttackerWeaponOption, SelectedUnitInfo } from './gameSession.js';
 
   let {
     selected,
     pendingPreview,
+    attackerWeaponOptions,
     statusMessage,
     log,
     recruitOptions,
@@ -17,6 +18,7 @@
     gold,
     onConfirmAttack,
     onCancelAttack,
+    onSelectAttackerWeapon,
     onSelectRecruitType,
     onSelectRecallUnit,
     onEndTurn,
@@ -25,6 +27,8 @@
   }: {
     selected: SelectedUnitInfo | null;
     pendingPreview: CombatPreview | null;
+    /** The attacker's usable weapons against the current target -- see `GameSession.attackerWeaponOptions`. Empty unless `pendingPreview` is set. */
+    attackerWeaponOptions: AttackerWeaponOption[];
     statusMessage: string;
     log: string[];
     /** Real recruitable types for the selected leader's side, if it's currently able to recruit -- see `GameSession.recruitOptions`. */
@@ -43,6 +47,7 @@
     gold: number;
     onConfirmAttack: () => void;
     onCancelAttack: () => void;
+    onSelectAttackerWeapon: (index: number) => void;
     onSelectRecruitType: (typeId: string) => void;
     onSelectRecallUnit: (index: number) => void;
     onEndTurn: () => void;
@@ -72,6 +77,27 @@
     -->
     <section class="prediction">
       <h3>Combat Prediction</h3>
+      {#if attackerWeaponOptions.length > 1}
+        <!--
+          Real Wesnoth offers a weapon choice whenever the attacker has more
+          than one usable weapon against this target (e.g. a Spearman's
+          spear vs. javelin) -- previously this project always used weapon
+          index 0 silently. See GameSession.attackerWeaponOptions/
+          selectAttackerWeapon.
+        -->
+        <div class="weapon-choice">
+          {#each attackerWeaponOptions as opt (opt.index)}
+            <button
+              class="weapon-option"
+              class:selected={opt.selected}
+              onclick={() => onSelectAttackerWeapon(opt.index)}
+            >
+              <span class="name">{opt.name}</span>
+              <span class="stats">{opt.damage}&times;{opt.numAttacks}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
       <div class="combatant attacker">
         <div class="name">{pendingPreview.attacker.name} <span class="role">(attacker)</span></div>
         <div>HP {pendingPreview.attacker.hp}/{pendingPreview.attacker.maxHp}</div>
@@ -299,6 +325,36 @@
     background: #4a3d1e;
   }
   .recruit-option .cost {
+    opacity: 0.8;
+  }
+  .weapon-choice {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 0.5rem;
+  }
+  .weapon-option {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1rem;
+    font: inherit;
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid #4a4432;
+    background: #2c2820;
+    color: #eee;
+    cursor: pointer;
+  }
+  .weapon-option.selected {
+    border-color: #ffd54a;
+    background: #4a3d1e;
+  }
+  .weapon-option .name {
+    font-weight: 700;
+  }
+  .weapon-option .stats {
+    font-size: 0.8rem;
     opacity: 0.8;
   }
   .recall {

@@ -34,6 +34,7 @@
     type SelectedUnitInfo,
     type RecruitOption,
     type RecallOption,
+    type AttackerWeaponOption,
     type SaveGameData,
   } from './gameSession.js';
   import { saveGame, loadGame } from './persistence.js';
@@ -89,6 +90,7 @@
   let recallOptions = $state<RecallOption[]>([]);
   let pendingRecallIndex = $state<number | null>(null);
   let pendingPreview = $state<CombatPreview | null>(null);
+  let attackerWeaponOptions = $state<AttackerWeaponOption[]>([]);
   let log = $state<string[]>([]);
   let turnNumber = $state(session.turnNumber);
   let activeSide = $state(session.activeSide);
@@ -123,6 +125,7 @@
     recallOptions = session.recallOptions;
     pendingRecallIndex = session.pendingRecallIndex;
     pendingPreview = session.pendingAttack?.preview ?? null;
+    attackerWeaponOptions = session.attackerWeaponOptions;
     log = session.log;
     turnNumber = session.turnNumber;
     activeSide = session.activeSide;
@@ -182,6 +185,12 @@
   function handleCancelAttack(): void {
     if (phase !== 'playing') return;
     session.cancelAttack();
+    sync();
+  }
+
+  function handleSelectAttackerWeapon(index: number): void {
+    if (phase !== 'playing') return;
+    session.selectAttackerWeapon(index);
     sync();
   }
 
@@ -313,6 +322,7 @@
     <SidePanel
       {selected}
       {pendingPreview}
+      {attackerWeaponOptions}
       {statusMessage}
       {log}
       {recruitOptions}
@@ -325,6 +335,7 @@
       {gold}
       onConfirmAttack={handleConfirmAttack}
       onCancelAttack={handleCancelAttack}
+      onSelectAttackerWeapon={handleSelectAttackerWeapon}
       onSelectRecruitType={handleSelectRecruitType}
       onSelectRecallUnit={handleSelectRecallUnit}
       onEndTurn={handleEndTurn}

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { GameBoardSnapshot } from '@wesnothweb2/engine';
+import { Location, type GameBoardSnapshot } from '@wesnothweb2/engine';
 import { GameSession } from './gameSession.js';
 
 /**
@@ -359,5 +359,75 @@ describe('GameSession recall UI (selectRecallUnit / recallOptions / handleHexCli
     expect(placedUnit).toBeDefined();
     expect(next.board.recallList(1)).toHaveLength(options.length - 1);
     expect(next.board.getTeam(1)!.gold).toBe(goldBefore - recalled!.cost);
+  });
+});
+
+describe('GameSession weapon selection (attackerWeaponOptions / selectAttackerWeapon)', () => {
+  /**
+   * Kai Krellis and Mal-Kevek are real Dead_Water scenario 1 leaders (real
+   * stats, real multi-weapon Dark Sorcerer), but aren't adjacent at t=0
+   * (opposite corners of the real map) -- repositioned adjacent here so
+   * `attackCandidates`/`handleHexClick`'s attack branch has a real target,
+   * same "hand-position real units, real stats otherwise" pattern used
+   * elsewhere in this session's own ZoC investigation.
+   */
+  function withAdjacentLeaders(): { session: GameSession; malKevek: import('@wesnothweb2/engine').Unit; kaiKrellis: import('@wesnothweb2/engine').Unit } {
+    const session = new GameSession(loadSnapshot());
+    const malKevek = session.board.allUnits().find((u) => u.type.id === 'Dark Sorcerer')!;
+    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    session.board.removeUnitAt(malKevek.location);
+    malKevek.location = new Location(kaiKrellis.location.x + 1, kaiKrellis.location.y);
+    session.board.addUnit(malKevek);
+    return { session, malKevek, kaiKrellis };
+  }
+
+  it('offers every usable weapon for a real multi-weapon attacker (Dark Sorcerer: staff/chill wave/shadow wave), defaulting to the first', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    expect(malKevek.attacks.length).toBeGreaterThan(1); // real content: 3 real weapons.
+
+    session.selectUnit(malKevek);
+    expect(session.attackCandidates).toContain(kaiKrellis);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+
+    const options = session.attackerWeaponOptions;
+    expect(options.length).toBe(malKevek.attacks.length);
+    expect(options.map((o) => o.name)).toEqual(malKevek.attacks.map((a) => a.name));
+    expect(options[0]!.selected).toBe(true);
+    expect(options.filter((o) => o.selected)).toHaveLength(1);
+    expect(session.pendingAttack!.attackerWeaponIndex).toBe(0);
+  });
+
+  it('selectAttackerWeapon switches the pending preview to a real, different weapon\'s real stats', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    session.selectUnit(malKevek);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+
+    const secondWeapon = malKevek.attacks[1]!;
+    session.selectAttackerWeapon(1);
+
+    expect(session.pendingAttack!.attackerWeaponIndex).toBe(1);
+    // numAttacks (strike count) isn't modified by combat conditions, unlike
+    // damagePerBlow (real resistance/time-of-day adjustments -- see
+    // combatStats.ts -- can legitimately differ from the weapon's own raw
+    // `damage`, so that's not asserted exactly here).
+    expect(session.pendingAttack!.preview.attacker.numBlows).toBe(secondWeapon.numAttacks);
+    expect(session.pendingAttack!.preview.attacker.damagePerBlow).toBeGreaterThan(0);
+    expect(session.attackerWeaponOptions.find((o) => o.index === 1)!.selected).toBe(true);
+    expect(session.attackerWeaponOptions.find((o) => o.index === 0)!.selected).toBe(false);
+  });
+
+  it('ignores an out-of-range weapon index (no crash, no change)', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    session.selectUnit(malKevek);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+
+    const before = session.pendingAttack!.attackerWeaponIndex;
+    session.selectAttackerWeapon(99);
+    expect(session.pendingAttack!.attackerWeaponIndex).toBe(before);
+  });
+
+  it('returns an empty list when there is no pending attack', () => {
+    const session = new GameSession(loadSnapshot());
+    expect(session.attackerWeaponOptions).toEqual([]);
   });
 });

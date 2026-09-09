@@ -844,3 +844,57 @@ Verified end-to-end in a real browser for all three synthetic campaigns
 and hand-checking the resulting gold, 94, against the real formula).
 381 tests passing (one new regression test), clean typecheck across every
 package.
+
+## 2026-09-09 (cont'd): weapon selection, and a ZoC bug investigation that found no bug
+
+User feedback from trying the synthetic combat campaign: (1) a unit with
+multiple weapons (the campaign's own Spearman: spear melee + javelin) had
+no way to choose which one to attack with -- combat always silently used
+weapon index 0. (2) Suspected bug: "passing through a hex adjacent to an
+enemy should block further movement" (zone of control) for non-skirmisher
+units.
+
+**Weapon selection**: real gap, fixed. `GameSession` gained
+`viableAttackerWeaponIndices` (a weapon is usable against an adjacent
+target if `minRange <= 1 <= maxRange` and `numAttacks > 0` -- mirrors
+upstream's own attack-weapon-choice dialog), `attackerWeaponOptions`
+(the current pending attack's usable weapons, each flagged `selected`),
+and `selectAttackerWeapon(index)` (rebuilds the pending preview --
+including the defender's own real counter-weapon choice -- for a
+different attacker weapon, same target). `buildPreview` no longer
+hardcodes weapon index 0. `SidePanel` gained a weapon-choice button row
+inside the existing Combat Prediction panel, shown only when there's
+more than one usable weapon (the common single-weapon case is
+unchanged). Real-content tests using Dead Water's Dark Sorcerer (3 real
+weapons: staff/chill wave/shadow wave) repositioned next to Kai Krellis
+(not adjacent at t=0 in the real scenario -- corrected an assumption from
+earlier in this session that they were). Visually confirmed in the
+browser: clicking "javelin" after "spear" live-updates the full
+prediction (damage 7×3 -> 6×1), not just a label.
+
+**Zone of control**: extensively investigated, found no bug. Read
+`pathfind.ts`'s two independent cost-calculators (`findRoutes`'s Dijkstra
+flood fill behind `reachableHexes`, and `ShortestPathCalculator`/A* behind
+`findPath`) -- both correctly zero a mover's remaining movement on
+entering a ZoC hex, matching upstream. Verified empirically at every
+layer this session already has infrastructure for, specifically to rule
+out "reads correct, behaves wrong" the way the earlier per-unit-stats and
+income bugs did: (1) a new isolated single-file-corridor unit test (no
+way to route around) confirms a hex two steps past a ZoC-emitting enemy
+is excluded from `reachableHexes`; (2) the real, shipped Orcish Grunt
+unit data in the synthetic combat campaign has `zoc: true` as expected
+(level 1, no explicit override); (3) direct calls to the live
+`GameSession.handleHexClick` in the real browser session (not just a
+screenshot) confirm moving onto a hex adjacent to the enemy succeeds and
+consumes all movement, while a hex two steps past is rejected outright
+(`null`, unit stays put) -- the actual code path a real mouse click goes
+through. An earlier "open field" version of this same test looked like a
+pass-through at first glance, but the far hex was reached by a longer
+route around the enemy from a different direction, entering ZoC only at
+the very last step (both legitimate and required by upstream's own
+model) -- not a violation. Could not reproduce anything resembling the
+reported bug. Left as an open question for the user to provide more
+specific repro steps (exact units/positions/click sequence) rather than
+"fixing" something not shown to be broken.
+
+385 tests passing (4 new), clean typecheck.

@@ -121,6 +121,16 @@ export interface PendingAttack {
   preview: CombatPreview;
 }
 
+/** One of the attacker's usable weapons against the current target -- see `GameSession.attackerWeaponOptions`. */
+export interface AttackerWeaponOption {
+  index: number;
+  name: string;
+  damage: number;
+  numAttacks: number;
+  /** Whether this is the weapon `pendingAttack.preview` currently reflects. */
+  selected: boolean;
+}
+
 /** One recruitable unit type, ready for the side panel's recruit list. */
 export interface RecruitOption {
   typeId: string;
@@ -245,6 +255,29 @@ export class GameSession {
   /** Vacant castle tiles `selectedUnit` (a leader on its keep) could recruit onto -- empty otherwise. */
   recruitTiles: HexPoint[] = [];
   pendingAttack: PendingAttack | null = null;
+
+  /** The attacker's usable weapons against the current `pendingAttack.defender`, for a weapon-choice UI. Empty when there's no pending attack, or a single entry for the common one-usable-weapon case. */
+  get attackerWeaponOptions(): AttackerWeaponOption[] {
+    const pending = this.pendingAttack;
+    if (!pending) return [];
+    return this.viableAttackerWeaponIndices(pending.attacker).map((index) => {
+      const weapon = pending.attacker.attacks[index]!;
+      return {
+        index,
+        name: weapon.name,
+        damage: weapon.damage,
+        numAttacks: weapon.numAttacks,
+        selected: index === pending.attackerWeaponIndex,
+      };
+    });
+  }
+
+  /** Rebuilds `pendingAttack` (preview + defender's real counter-weapon choice) for a different attacker weapon, keeping the same target. No-op if there's no pending attack or `index` isn't one of the attacker's own weapons. */
+  selectAttackerWeapon(index: number): void {
+    const pending = this.pendingAttack;
+    if (!pending || !pending.attacker.attacks[index]) return;
+    this.pendingAttack = this.buildPreview(pending.attacker, pending.defender, index);
+  }
   /** Unit type id the player has picked from the recruit list, awaiting a click on one of `recruitTiles`. */
   pendingRecruitTypeId: string | null = null;
   /** Recall-list index (see `RecallOption.index`) the player has picked from the recall list, awaiting a click on one of `recruitTiles`. Mutually exclusive with `pendingRecruitTypeId` -- see `selectRecruitType`/`selectRecallUnit`. */
@@ -576,11 +609,28 @@ export class GameSession {
     return message;
   }
 
-  private buildPreview(attacker: Unit, defender: Unit): PendingAttack {
-    const attackerWeaponIndex = 0;
+  /**
+   * Every weapon index `attacker` could actually use against a target 1 hex
+   * away -- mirrors upstream's own attack-weapon-choice dialog, which only
+   * offers weapons whose `range=`/min_range=/max_range= cover the real
+   * distance to the target (this project's combat is adjacency-only, so
+   * distance is always 1 -- see `buildPreview`'s own comment). A unit with
+   * only one usable weapon (the common case) gets a list of exactly one,
+   * so callers don't need a separate "does this unit even have a choice"
+   * branch.
+   */
+  private viableAttackerWeaponIndices(attacker: Unit): number[] {
+    const distance = 1;
+    return attacker.attacks
+      .map((weapon, index) => ({ weapon, index }))
+      .filter(({ weapon }) => weapon.numAttacks > 0 && weapon.minRange <= distance && distance <= weapon.maxRange)
+      .map(({ index }) => index);
+  }
+
+  private buildPreview(attacker: Unit, defender: Unit, attackerWeaponIndex: number): PendingAttack {
     const attackerWeapon = attacker.attacks[attackerWeaponIndex];
     if (!attackerWeapon) {
-      throw new Error('buildPreview: attacker has no weapon at index 0');
+      throw new Error(`buildPreview: attacker has no weapon at index ${attackerWeaponIndex}`);
     }
     const distance = 1; // caller guarantees adjacency (attackCandidates is adjacency-filtered).
     const attackerTerrainDefense = attacker.defenseModifier(this.board.map.getTerrain(attacker.location));
@@ -692,7 +742,9 @@ export class GameSession {
           return null;
         }
         if (this.attackCandidates.includes(clickedUnit)) {
-          this.pendingAttack = this.buildPreview(sel, clickedUnit);
+          const firstWeapon = this.viableAttackerWeaponIndices(sel)[0];
+          if (firstWeapon === undefined) return null; // no usable weapon at this range -- shouldn't happen (computeAttackCandidates implies at least one), but don't throw on it.
+          this.pendingAttack = this.buildPreview(sel, clickedUnit, firstWeapon);
           return `${this.unitDisplayName(sel)} could attack ${this.unitDisplayName(clickedUnit)} -- review the prediction and confirm.`;
         }
         if (clickedUnit.side === this.activeSide) {

@@ -8,6 +8,7 @@ export type {
   PendingAttack,
   RecruitOption,
   RecallOption,
+  AttackerWeaponOption,
   GameSessionOptions,
   SaveGameData,
 } from './gameSession.js';
