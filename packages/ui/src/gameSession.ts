@@ -793,10 +793,19 @@ export class GameSession {
     if (result.attackerDied) message += ` ${attackerName} was slain!`;
 
     this.log.unshift(message);
-    // A unit that has fought is done acting for this turn (real Wesnoth:
-    // attacking always consumes the unit's remaining attacks/moves) --
-    // deselect so its highlight doesn't linger; `endTurn` will refresh it
-    // for its side's next turn.
+    // A unit that has fought is done acting for this turn: real Wesnoth
+    // zeroes an attacker's remaining movement after any attack (`attack.
+    // cpp`'s `attack::execute` calls `set_movement(movement_left() -
+    // movement_used())`, and `[attack] movement_used=` defaults to 100000
+    // -- effectively "all of it," clamped to 0 by `unit::set_movement` --
+    // for every weapon that doesn't explicitly override it, which none of
+    // this project's real content does). This was previously only
+    // *simulated* by deselecting the unit (see the comment that used to be
+    // here, which claimed this without actually doing it) -- the unit's
+    // own `movesLeft` was untouched, so re-selecting it after an attack
+    // still showed (and allowed using) its real leftover movement. Real,
+    // reported bug.
+    if (!result.attackerDied) pending.attacker.movesLeft = 0;
     this.clearSelection();
     // Only combat can kill a unit in this project today (recruiting/moving
     // cannot), so this is the one place a victory/defeat check is needed --

@@ -955,3 +955,27 @@ binding). Used this new hover readout itself, scripted, to precisely
 locate a target hex's on-screen pixel for the ZoC repro test above,
 rather than eyeballing screenshot coordinates -- a good sign it's
 actually useful for exactly what it was asked for.
+
+## 2026-09-09 (cont'd): attacking didn't cancel remaining movement
+
+User report: "I can attack the enemy and then still move afterwards."
+Real bug, confirmed against `wesnoth/src/actions/attack.cpp`: real
+Wesnoth zeroes an attacker's remaining movement after any attack
+(`attack::execute` calls `set_movement(movement_left() -
+movement_used())`, and `[attack] movement_used=` defaults to 100000 --
+effectively all of it, clamped to 0 by `unit::set_movement` -- for every
+weapon that doesn't explicitly override it, which none of this project's
+real content does). `GameSession.confirmAttack()` had a comment claiming
+this ("attacking always consumes the unit's remaining attacks/moves")
+but never actually implemented it -- it only called `clearSelection()`
+(a UI-only deselect), leaving the attacker's real `movesLeft` untouched,
+so re-selecting the same unit after attacking still showed (and allowed
+using) its real leftover movement.
+
+Fixed: `confirmAttack()` now sets `pending.attacker.movesLeft = 0` after
+a successful attack (skipped if the attacker itself died -- nothing to
+zero). 3 new regression tests (real Dead Water Dark Sorcerer/Kai Krellis
+content, same `withAdjacentLeaders` helper as the weapon-selection tests
+-- moved to module scope so both blocks share it). Verified through the
+real UI in a browser: attack, re-select the same unit, confirm "Moves
+left: 0/5" and no reachable hexes highlighted. 391 tests passing.

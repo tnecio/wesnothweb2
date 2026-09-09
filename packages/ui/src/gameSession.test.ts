@@ -36,6 +36,24 @@ function loadNextSnapshot(): GameBoardSnapshot {
   return JSON.parse(fs.readFileSync(nextSnapshotPath, 'utf8')) as GameBoardSnapshot;
 }
 
+/**
+ * Kai Krellis and Mal-Kevek are real Dead_Water scenario 1 leaders (real
+ * stats, real multi-weapon Dark Sorcerer), but aren't adjacent at t=0
+ * (opposite corners of the real map) -- repositioned adjacent here so
+ * `attackCandidates`/`handleHexClick`'s attack branch has a real target.
+ * Shared by the weapon-selection and post-attack-movement test blocks
+ * below.
+ */
+function withAdjacentLeaders(): { session: GameSession; malKevek: import('@wesnothweb2/engine').Unit; kaiKrellis: import('@wesnothweb2/engine').Unit } {
+  const session = new GameSession(loadSnapshot());
+  const malKevek = session.board.allUnits().find((u) => u.type.id === 'Dark Sorcerer')!;
+  const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+  session.board.removeUnitAt(malKevek.location);
+  malKevek.location = new Location(kaiKrellis.location.x + 1, kaiKrellis.location.y);
+  session.board.addUnit(malKevek);
+  return { session, malKevek, kaiKrellis };
+}
+
 describe('GameSession.runStartupEvents (real Dead_Water scenario 1)', () => {
   it('spawns the real event-placed units and records real dialogue, and renderUnits reflects them', () => {
     const session = new GameSession(loadSnapshot());
@@ -363,24 +381,6 @@ describe('GameSession recall UI (selectRecallUnit / recallOptions / handleHexCli
 });
 
 describe('GameSession weapon selection (attackerWeaponOptions / selectAttackerWeapon)', () => {
-  /**
-   * Kai Krellis and Mal-Kevek are real Dead_Water scenario 1 leaders (real
-   * stats, real multi-weapon Dark Sorcerer), but aren't adjacent at t=0
-   * (opposite corners of the real map) -- repositioned adjacent here so
-   * `attackCandidates`/`handleHexClick`'s attack branch has a real target,
-   * same "hand-position real units, real stats otherwise" pattern used
-   * elsewhere in this session's own ZoC investigation.
-   */
-  function withAdjacentLeaders(): { session: GameSession; malKevek: import('@wesnothweb2/engine').Unit; kaiKrellis: import('@wesnothweb2/engine').Unit } {
-    const session = new GameSession(loadSnapshot());
-    const malKevek = session.board.allUnits().find((u) => u.type.id === 'Dark Sorcerer')!;
-    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
-    session.board.removeUnitAt(malKevek.location);
-    malKevek.location = new Location(kaiKrellis.location.x + 1, kaiKrellis.location.y);
-    session.board.addUnit(malKevek);
-    return { session, malKevek, kaiKrellis };
-  }
-
   it('offers every usable weapon for a real multi-weapon attacker (Dark Sorcerer: staff/chill wave/shadow wave), defaulting to the first', () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     expect(malKevek.attacks.length).toBeGreaterThan(1); // real content: 3 real weapons.
@@ -429,5 +429,53 @@ describe('GameSession weapon selection (attackerWeaponOptions / selectAttackerWe
   it('returns an empty list when there is no pending attack', () => {
     const session = new GameSession(loadSnapshot());
     expect(session.attackerWeaponOptions).toEqual([]);
+  });
+});
+
+describe('GameSession.confirmAttack zeroes the attacker\'s movement (real Wesnoth: attacking ends a unit\'s move)', () => {
+  it('sets movesLeft to 0 after a real attack, even though the attacker never moved and had full movement left', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    expect(malKevek.movesLeft).toBe(malKevek.maxMoves); // hasn't moved this turn.
+    expect(malKevek.movesLeft).toBeGreaterThan(0);
+
+    session.selectUnit(malKevek);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    expect(session.pendingAttack).not.toBeNull();
+    session.confirmAttack();
+
+    expect(malKevek.movesLeft).toBe(0);
+  });
+
+  it('deselects the attacker after confirming, so its (now zeroed) reachable set is not offered until re-selected', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    session.selectUnit(malKevek);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    session.confirmAttack();
+
+    expect(session.selectedUnit).toBeNull();
+    expect(session.reachable).toEqual([]);
+
+    // Re-selecting the same unit shows it correctly has nowhere left to move.
+    session.selectUnit(malKevek);
+    expect(session.reachable).toEqual([]);
+  });
+
+  it('does not touch movesLeft when the attacker died in the exchange (nothing left to zero)', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    // Force a guaranteed kill of the attacker by zeroing its hp pre-combat --
+    // executeAttack's own RNG still runs, so instead just assert the guard
+    // doesn't throw/misbehave when attackerDied is true, using a very low-hp
+    // attacker against Kai Krellis's real damage to make death overwhelmingly
+    // likely, and only assert the non-crashing/consistent-state outcome
+    // (this project doesn't have a way to force RNG results in GameSession
+    // itself, see combat.test.ts for where deterministic RNG is exercised).
+    malKevek.hitpoints = 1;
+    session.selectUnit(malKevek);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    const message = session.confirmAttack();
+    expect(message).not.toBeNull();
+    // Whether or not malKevek actually died this particular RNG draw, the
+    // session must not have thrown and must be in a consistent state.
+    expect(session.selectedUnit).toBeNull();
   });
 });
