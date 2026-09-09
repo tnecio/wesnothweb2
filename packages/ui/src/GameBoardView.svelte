@@ -62,6 +62,8 @@
   let canvasHost: HTMLDivElement | undefined = $state();
   /** Transient loading/error text only -- the ready-state label is `readyLabel` below, kept live via `$derived` rather than a one-time snapshot of `units.length` at mount (that used to freeze at the pre-events count, e.g. "2 units" even once the scenario's startup events had spawned nine more). */
   let status = $state<string | null>('loading scenario...');
+  /** The hex the pointer is currently over, engine-convention (0-based) -- shown in the status line so positions are easy to read off and report precisely (e.g. describing a bug). `null` when the pointer isn't over the board at all. */
+  let hoveredHex = $state<HexPoint | null>(null);
   /**
    * `$state`, not a plain `let` -- this used to be a plain variable, which
    * created a real race: the two small reactive effects below read `board`
@@ -157,6 +159,10 @@
     // see module doc comment on why this ordering matters.
     host.addEventListener('pointerup', onPointerUpCapture, true);
     host.addEventListener('wheel', onWheel, { passive: false });
+    function onPointerLeave(): void {
+      hoveredHex = null;
+    }
+    host.addEventListener('pointerleave', onPointerLeave);
 
     (async () => {
       app = new PIXI.Application();
@@ -171,7 +177,13 @@
       }
       host.appendChild(app.canvas);
 
-      const newBoard = new SnapshotBoard(snapshot, { imageBaseUrl: '/game-images', onHexClick: wrappedOnHexClick });
+      const newBoard = new SnapshotBoard(snapshot, {
+        imageBaseUrl: '/game-images',
+        onHexClick: wrappedOnHexClick,
+        onHexHover: (x, y) => {
+          hoveredHex = { x, y };
+        },
+      });
       await newBoard.render();
       if (cancelled) {
         app.destroy(true);
@@ -203,6 +215,7 @@
       window.removeEventListener('pointerup', onWindowPointerUp);
       host.removeEventListener('pointerup', onPointerUpCapture, true);
       host.removeEventListener('wheel', onWheel);
+      host.removeEventListener('pointerleave', onPointerLeave);
       app?.destroy(true);
     };
   });
@@ -218,7 +231,12 @@
 </script>
 
 <div class="board-view">
-  <p class="status">{status ?? readyLabel} (drag to pan, scroll to zoom)</p>
+  <p class="status">
+    {status ?? readyLabel} (drag to pan, scroll to zoom)
+    {#if hoveredHex}
+      &middot; Hex: ({hoveredHex.x}, {hoveredHex.y})
+    {/if}
+  </p>
   <div class="canvas-host" bind:this={canvasHost}></div>
 </div>
 

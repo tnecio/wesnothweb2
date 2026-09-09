@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseWmlFile, preloadDefinesFromDir, type DefineMap } from '../../src/wml/index.js';
 import { WmlConfig } from '../../src/wml/config.js';
-import { Location } from '../../src/model/Location.js';
+import { Location, getAdjacentTiles } from '../../src/model/Location.js';
 import { GameMap } from '../../src/model/Map.js';
 import { TerrainTypeData } from '../../src/model/Terrain.js';
 import { GameBoard } from '../../src/model/GameBoard.js';
@@ -109,5 +109,107 @@ describe('executeMove (real Home_1.map content)', () => {
     const unit = Unit.create(landType, 1, Location.fromWml(6, 1));
     board.addUnit(unit);
     expect(() => executeMove(board, unit, [Location.fromWml(5, 5), Location.fromWml(6, 5)])).toThrow();
+  });
+});
+
+describe('executeMove / planTurnMovement zone-of-control regression (real, reported bug)', () => {
+  /**
+   * Regression tests for a real bug: `planTurnMovement` only checked
+   * whether the *previously entered* hex was a ZoC hex before refusing a
+   * *further* hop (and even then only from the second hop onward, via a
+   * stray `i > 1` guard) -- it never inflated the *cost* of entering a
+   * ZoC hex itself to "all remaining movement" the way `findPath`'s
+   * `ShortestPathCalculator` already correctly does. In practice this let
+   * a player hop from one hex adjacent to a non-skirmisher enemy directly
+   * to an *adjacent* hex that's also adjacent to that same enemy (two
+   * "ring" hexes around it, which are themselves neighbors) paying only
+   * the raw terrain cost each time -- repeatable all the way around,
+   * fully circling a stationary enemy while barely spending any movement.
+   * User-reported; see docs/PROGRESS.md. `reachableHexesSynthetic.test.ts`
+   * already covers `reachableHexes`' (correct) ZoC math -- this covers
+   * `executeMove`'s separate, previously-buggy accounting.
+   */
+  const terrainData = new TerrainTypeData();
+  const flatMoveType = (() => {
+    const cfg = new WmlConfig();
+    const costs = new WmlConfig();
+    costs.setAttribute('Gg', 1);
+    cfg.addChild('movement_costs', costs);
+    return MoveType.fromConfig(cfg, terrainData);
+  })();
+  const moverType = makeUnitType('mover', flatMoveType, 5);
+  const zocEnemyType = new UnitType('zoc-enemy', 'zoc-enemy', '', 'neutral', 1, 30, 5, 5, 0, 1, 0, -1, 500, [], '', true, false, false, flatMoveType, [AttackType.fromConfig(new WmlConfig())], []); // zoc=true
+
+  function makeRingBoard(): { board: GameBoard; enemyLoc: Location } {
+    const row = Array.from({ length: 9 }, () => 'Gg').join(',');
+    const mapText = Array.from({ length: 9 }, () => row).join('\n');
+    const board = new GameBoard(GameMap.fromMapString(mapText, terrainData, 1));
+    board.addTeam(new Team(1));
+    board.addTeam(new Team(2));
+    const enemyLoc = new Location(4, 4);
+    board.addUnit(Unit.create(zocEnemyType, 2, enemyLoc));
+    return { board, enemyLoc };
+  }
+
+  it('a single hop directly into a ZoC hex consumes ALL remaining movement, not just its terrain cost', () => {
+    const { board } = makeRingBoard();
+    const start = Location.fromWml(1, 4); // west edge, not adjacent to the enemy.
+    const mover = Unit.create(moverType, 1, start);
+    mover.movesLeft = 5;
+    mover.maxMoves = 5;
+    board.addUnit(mover);
+
+    const zocHex = new Location(3, 4); // adjacent to enemy at (4,4).
+    const route = findPath(board, mover, zocHex, { seeAll: true });
+    executeMove(board, mover, route.steps, { seeAll: true });
+
+    expect(mover.location.equals(zocHex)).toBe(true);
+    expect(mover.movesLeft).toBe(0); // NOT "5 - 1 real terrain cost" -- all of it.
+  });
+
+  it("hopping between two ring hexes that are BOTH adjacent to the same enemy (and to each other) costs everything on the first hop, blocking the 'circle around' exploit", () => {
+    const { board, enemyLoc } = makeRingBoard();
+    const ring = getAdjacentTiles(enemyLoc);
+    const start = ring[0]!;
+    const nextRingHex = ring[1]!; // adjacent to `start` AND to the enemy -- the exact reported repro shape.
+    expect(getAdjacentTiles(start).some((h) => h.equals(nextRingHex))).toBe(true); // sanity: really are neighbors.
+
+    const mover = Unit.create(moverType, 1, start);
+    mover.movesLeft = 5;
+    mover.maxMoves = 5;
+    board.addUnit(mover);
+
+    const route = findPath(board, mover, nextRingHex, { seeAll: true });
+    executeMove(board, mover, route.steps, { seeAll: true });
+    expect(mover.location.equals(nextRingHex)).toBe(true);
+    expect(mover.movesLeft).toBe(0);
+
+    // The actual reported symptom: attempting a THIRD ring hex (continuing
+    // to "circle") must not move the unit at all -- it has 0 movement left.
+    const thirdRingHex = ring[2]!;
+    const route2 = findPath(board, mover, thirdRingHex, { seeAll: true });
+    const result2 = executeMove(board, mover, route2.steps, { seeAll: true });
+    expect(mover.location.equals(nextRingHex)).toBe(true); // unchanged
+    expect(result2.stoppedEarly).toBe(true);
+  });
+
+  it('a skirmisher ignores zones of control entirely and can freely hop around the ring', () => {
+    const { board, enemyLoc } = makeRingBoard();
+    const skirmisherAbility = new WmlConfig();
+    skirmisherAbility.setAttribute('id', 'skirmisher');
+    const skirmisherType = new UnitType('skirmisher', 'skirmisher', '', 'neutral', 1, 30, 5, 5, 0, 1, 0, -1, 500, [], '', false, false, false, flatMoveType, [AttackType.fromConfig(new WmlConfig())], [skirmisherAbility]);
+
+    const ring = getAdjacentTiles(enemyLoc);
+    const start = ring[0]!;
+    const nextRingHex = ring[1]!;
+    const mover = Unit.create(skirmisherType, 1, start);
+    mover.movesLeft = 5;
+    mover.maxMoves = 5;
+    board.addUnit(mover);
+
+    const route = findPath(board, mover, nextRingHex, { seeAll: true });
+    executeMove(board, mover, route.steps, { seeAll: true });
+    expect(mover.location.equals(nextRingHex)).toBe(true);
+    expect(mover.movesLeft).toBe(4); // real terrain cost only (5 - 1), no ZoC penalty.
   });
 });

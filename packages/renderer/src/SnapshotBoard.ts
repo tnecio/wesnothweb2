@@ -124,6 +124,8 @@ export interface SnapshotBoardOptions {
   imageBaseUrl?: string;
   /** Called with a hex's engine-convention (0-based) (x,y) when a terrain tile is clicked -- see module doc comment. */
   onHexClick?: (x: number, y: number) => void;
+  /** Called with a hex's engine-convention (0-based) (x,y) when the pointer moves over a terrain tile -- lets a caller show a live coordinate readout, useful for describing positions precisely (e.g. reporting a bug). */
+  onHexHover?: (x: number, y: number) => void;
 }
 
 /** What `setHighlights` should currently draw, replacing whatever it drew last call. */
@@ -153,6 +155,7 @@ export class SnapshotBoard {
   private units: SnapshotUnit[];
   private readonly teamColor: Map<number, string>;
   private readonly onHexClick?: (x: number, y: number) => void;
+  private readonly onHexHover?: (x: number, y: number) => void;
 
   constructor(
     private readonly snapshot: ScenarioSnapshot,
@@ -160,6 +163,7 @@ export class SnapshotBoard {
   ) {
     if (options.imageBaseUrl) setImageBaseUrl(options.imageBaseUrl);
     this.onHexClick = options.onHexClick;
+    this.onHexHover = options.onHexHover;
     this.units = snapshot.units;
     this.teamColor = new Map(snapshot.teams.map((t) => [t.side, t.color]));
     this.stage.addChild(this.terrainLayer, this.highlightLayer, this.unitLayer, this.selectionLayer);
@@ -180,12 +184,17 @@ export class SnapshotBoard {
       g.poly(corners.flatMap((p) => [p.x, p.y]));
       g.fill({ color: colorForTerrain(hex.code) });
       g.stroke({ width: 1, color: 0x000000, alpha: 0.15 });
-      if (this.onHexClick) {
+      if (this.onHexClick || this.onHexHover) {
         const hx = hex.x;
         const hy = hex.y;
         g.eventMode = 'static';
-        g.cursor = 'pointer';
-        g.on('pointertap', () => this.onHexClick?.(hx, hy));
+        if (this.onHexClick) {
+          g.cursor = 'pointer';
+          g.on('pointertap', () => this.onHexClick?.(hx, hy));
+        }
+        if (this.onHexHover) {
+          g.on('pointerover', () => this.onHexHover?.(hx, hy));
+        }
       }
       this.terrainLayer.addChild(g);
     }

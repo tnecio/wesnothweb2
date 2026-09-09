@@ -898,3 +898,60 @@ specific repro steps (exact units/positions/click sequence) rather than
 "fixing" something not shown to be broken.
 
 385 tests passing (4 new), clean typecheck.
+
+## 2026-09-09 (cont'd): the ZoC bug WAS real -- found with a precise repro
+
+User gave the exact repro that the previous investigation's tests missed:
+"Debug Hero starts SW of the enemy. Move it SE to the hex directly S of
+the enemy -- still adjacent, still plenty of moves left. Can circle
+around the enemy." That's hopping between two "ring" hexes that are both
+adjacent to the SAME enemy *and* adjacent to each other -- a shape none of
+the previous session's tests happened to construct (they either moved
+into ZoC from far away, or used a 1-hex-wide corridor where the two ZoC
+hexes aren't adjacent to each other at all).
+
+Reproduced directly: `findPath` correctly computed the hop's cost as 5
+(all remaining movement, matching real ZoC rules), but `executeMove` left
+the unit with `movesLeft=4` afterward -- `planTurnMovement`
+(`packages/engine/src/actions/move.ts`) was a **separate, buggy**
+cost-accounting path from the one `findPath`'s `ShortestPathCalculator`
+correctly uses. It only checked whether the *previously entered* hex was
+a ZoC hex before refusing a *further* hop (and even then only from the
+second hop onward, via a stray `i > 1` guard) -- it never inflated the
+cost of the ZoC hex being entered to "all remaining movement" at all, so
+a single hop directly into a ZoC hex (or between two mutually-adjacent
+ZoC hexes) always charged only the raw terrain cost. Fixed to mirror
+`ShortestPathCalculator.cost()`'s real logic exactly: entering a hex
+adjacent to a non-skirmisher enemy consumes all remaining movement, full
+stop. Also fixed a related edge case my first pass introduced: a unit
+with `movesLeft` already at 0 must not be able to enter any further hex
+at all (the naive "cost = remaining" for a ZoC hex would otherwise
+compute a free 0-cost entry).
+
+Added 3 regression tests (`move.test.ts`) covering the exact reported
+shape, the "can't keep circling" follow-up, and confirming a skirmisher
+is correctly unaffected. Verified in the real browser through the actual
+UI click flow (not direct API calls): repositioned into the reported
+shape, selected the unit, clicked the ring-hop destination, confirmed
+`Moves left: 0/5` and the log/side panel match. 388 tests passing.
+
+**Lesson**: `reachableHexes` (used for the move-range highlight) was
+already correct and had test coverage; the actual move-*execution* path
+had none, and diverged from it silently. Two independent implementations
+of "the same rule" is a real risk in this codebase (`findPath`'s
+`ShortestPathCalculator` vs. `findRoutes`'s Dijkstra flood-fill vs.
+`planTurnMovement`'s separate turn-boundary accounting) -- worth keeping
+in mind for future engine work: matching test coverage on the *highlight*
+math doesn't imply the *execution* math was ever exercised.
+
+## 2026-09-09 (cont'd): coordinate display
+
+Per the user's request ("add x, y coords somewhere in the UI -- easier
+to communicate"): `SidePanel`'s selected-unit info now shows `Position:
+(x, y)`, and `GameBoardView`'s status line shows `Hex: (x, y)` for
+whatever hex the pointer is currently over (via a new `SnapshotBoard`
+`onHexHover` option, mirroring the existing per-hex `onHexClick`
+binding). Used this new hover readout itself, scripted, to precisely
+locate a target hex's on-screen pixel for the ZoC repro test above,
+rather than eyeballing screenshot coordinates -- a good sign it's
+actually useful for exactly what it was asked for.

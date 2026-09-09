@@ -104,6 +104,8 @@
       name: session.unitDisplayName(u),
       typeId: u.type.id,
       side: u.side,
+      x: u.location.x,
+      y: u.location.y,
       hp: u.hitpoints,
       maxHp: u.maxHitpoints,
       movesLeft: u.movesLeft,

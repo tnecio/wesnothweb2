@@ -99,18 +99,44 @@ export function planTurnMovement(
   let zocStopped = false;
 
   for (let i = 1; i < path.length; i++) {
-    const prevHex = path[i - 1]!;
-    if (i > 1 && inEnemyZoc(prevHex)) {
-      zocStopped = true;
-      break;
-    }
+    // A unit with no movement left at all (typically: already stopped by
+    // ZoC on a prior hex, or this whole call is a no-op re-attempt) cannot
+    // enter ANY further hex -- without this guard, the ZoC branch below
+    // would compute `cost = remaining = 0` for a ZoC hex and let the unit
+    // "enter for free," since 0 remaining minus 0 cost still isn't < 0.
+    if (remaining <= 0) break;
+
     const hex = path[i]!;
     const terrain = board.map.getTerrain(hex);
-    const cost = unit.movementCost(terrain);
+    const terrainCost = unit.movementCost(terrain);
+
+    // Entering a hex adjacent to an enemy (and not ourselves a skirmisher)
+    // consumes ALL remaining movement, not just this hex's terrain cost --
+    // mirrors `ShortestPathCalculator.cost()` (pathfind.ts), which already
+    // gets this right. This function previously did NOT: it only checked
+    // whether the *previously entered* hex was a ZoC hex before allowing a
+    // *further* hop (and even then via `i > 1`, silently skipping the
+    // check on the very first hop entirely), but never inflated the cost
+    // of the ZoC entry itself -- so a single-hop move directly into a ZoC
+    // hex, or a hop from one ZoC hex to an adjacent one around an enemy's
+    // ring (both single hops), silently charged only the raw terrain cost
+    // and left real movement to keep going. Real, reported bug -- a
+    // player could circle all the way around a non-skirmisher enemy one
+    // ring-hex at a time. See docs/PROGRESS.md.
+    const enteringZoc = inEnemyZoc(hex);
+    const cost = enteringZoc ? remaining : terrainCost;
     remaining -= cost;
     if (remaining < 0) break;
     steps.push(hex);
     movesLeftAfter.push(remaining);
+    if (enteringZoc) {
+      // Cannot continue past a ZoC hex this turn, regardless of whether
+      // `remaining` happens to still allow further terrain costs -- only
+      // "stopped short" (of the caller's requested path) if there was
+      // more path left to take.
+      zocStopped = i < path.length - 1;
+      break;
+    }
   }
 
   return { steps, movesLeftAfter, zocStopped };

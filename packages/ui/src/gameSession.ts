@@ -105,6 +105,8 @@ export interface SelectedUnitInfo {
   name: string;
   typeId: string;
   side: number;
+  x: number;
+  y: number;
   hp: number;
   maxHp: number;
   movesLeft: number;
