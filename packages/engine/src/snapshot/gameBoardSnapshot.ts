@@ -10,44 +10,49 @@
  * leans heavily on its public API to build real `Unit`/`UnitType`/`Team`/
  * `GameBoard` instances from plain data.
  *
- * ## Why a flat per-terrain movement cost, not real per-terrain costs
+ * ## Real per-unit-type stats (current state)
  *
- * The snapshot's units are built from a STUB `UnitType` (see the build
- * script's own doc comment: real `data/core/units/` loading needs
- * `base_unit`/gender-variation inheritance flattening that's a separate,
- * documented, deferred gap -- `IMPLEMENTATION_PLAN.md`). A stub `MoveType`
- * with an EMPTY `[movement_costs]` table makes `MoveType.movementCost()`
- * return `UNREACHABLE` (99) for every terrain, because `resolveValue` has no
- * per-terrain-id entry to match and falls back to its "unreachable" default
- * -- this project's own tests have hit exactly this failure mode three
- * times already (see `docs/PROGRESS.md`). `buildFlatMoveType` below is the
- * honest, documented simplification: every terrain costs exactly
- * `movementCost` (default 1) movement point to enter, regardless of type --
- * enough to make pathfinding/movement genuinely functional against the stub
- * unit types, without pretending to have real per-terrain-type data this
- * project doesn't have yet.
+ * `build-scenario-snapshot.mjs` now ships, alongside the scalar
+ * `unitTypes` summary below, everything needed to reconstruct REAL per-type
+ * `UnitType`s client-side through the actual, tested `UnitType.fromConfig`/
+ * `MoveType.fromConfig`/`overlay` engine code -- not a re-invented
+ * simplified client-side table:
  *
- * The same reasoning applies to `[defense]` (terrain-dependent "chance to
- * be hit"): leaving it empty would make `MoveType.defenseModifier()` return
- * `UNREACHABLE` (99) for every hex too (same `resolveValue` default-value
- * fallback), which would make every attack's chance-to-hit degenerate to
- * ~99% -- technically a "real" computation over fake data, but one that
- * makes the combat-prediction UI (this phase's whole point) look broken
- * rather than like a documented simplification. `buildFlatMoveType` also
- * fills `[defense]` with a flat, admittedly made-up, mid-range value
- * (default 40) for the same reason.
+ *  - `unitTypeConfigs`: each unit type's fully-flattened (`base_unit=`/
+ *    `[male]`/`[female]` resolved -- see `model/UnitTypeDatabase.ts`)
+ *    `[unit_type]` config, as `WmlConfig.toJSON()`.
+ *  - `movementTypeConfigs`: the real `[movetype]` registry (`name=` ->
+ *    config) `movement_type=` refers to.
+ *  - `terrainTypeConfigs`: every real `[terrain_type]` from `data/core/
+ *    terrain.cfg`, needed so `MoveType`'s alias-chasing (`mvt_alias=`/
+ *    `def_alias=`) resolves exactly as it does server-side.
+ *
+ * `buildSnapshotContext` below builds a real `TerrainTypeData` and a real
+ * per-id `UnitType` cache from these when present, calling the exact same
+ * `UnitType.fromConfig` the build script and every engine test use.
+ *
+ * ## Fallback: flat per-terrain movement cost (older/hand-built snapshots)
+ *
+ * Snapshots that DON'T carry `unitTypeConfigs` (e.g. hand-built test
+ * fixtures elsewhere in this repo, or a stale snapshot generated before this
+ * field existed) fall back to the earlier, honestly-documented
+ * simplification: every unit type shares ONE flat `MoveType` built by
+ * `buildFlatMoveType`, whose `[movement_costs]` table gives every terrain
+ * code in use a flat cost (default 1) and whose `[defense]` table gives a
+ * flat mid-range value (default 40). Without this fallback, an EMPTY
+ * `[movement_costs]` table makes `MoveType.movementCost()` return
+ * `UNREACHABLE` (99) for every terrain (`resolveValue` has no per-terrain-id
+ * entry to match) -- this project's own tests hit exactly this failure mode
+ * three times before it was documented (see `docs/PROGRESS.md`); leaving
+ * `[defense]` empty has the same problem, degenerating every attack's
+ * chance-to-hit to ~99%.
  *
  * `buildFlatMoveType` is deliberately keyed off
  * `terrainData.getTerrainInfo(code).id`, not the raw terrain code string,
  * so the exact same function works whether called with a real
- * `TerrainTypeData` (server-side, `build-scenario-snapshot.mjs`, which
- * already has real `terrain.cfg` data loaded for other reasons) or an empty
- * one (client-side, `gameBoardFromSnapshot` below, which has no
- * `terrain.cfg` WML pipeline available in the browser) -- an empty
- * `TerrainTypeData`'s `getTerrainInfo` synthesizes a default `TerrainType`
- * whose `id` is just the terrain code's own string (`TerrainType.
- * fromDefault`), so keying off `.id` "just works" as a same-code lookup
- * either way.
+ * `TerrainTypeData` or an empty one (`TerrainType.fromDefault`'s `id` is
+ * just the terrain code's own string, so keying off `.id` "just works" as a
+ * same-code lookup either way).
  */
 
 import { WmlConfig, type WmlConfigJson } from '../wml/config.js';
@@ -209,6 +214,28 @@ export interface GameBoardSnapshot {
    * still work, just with no castle/keep recognition, as before.
    */
   terrainFlags?: Record<string, TerrainCodeFlags>;
+  /**
+   * Every real `[terrain_type]` from `data/core/terrain.cfg` (all ~285 of
+   * them, not just codes this map uses -- alias chains like `mvt_alias=`
+   * can reference terrain ids that never appear on THIS particular map),
+   * as `WmlConfig.toJSON()`. Lets `buildSnapshotContext` build a real,
+   * full-fidelity `TerrainTypeData` client-side (superseding `terrainFlags`,
+   * which only carried three booleans per code) so real per-unit-type
+   * `MoveType` alias resolution matches the server exactly. Optional for
+   * the same backward-compatibility reason as `terrainFlags`.
+   */
+  terrainTypeConfigs?: WmlConfigJson[];
+  /** The real `[movetype]` registry (`name=` -> config) -- see this module's doc comment. Optional, same reason. */
+  movementTypeConfigs?: Record<string, WmlConfigJson>;
+  /**
+   * Every unit type's fully-flattened `[unit_type]` config (see
+   * `model/UnitTypeDatabase.ts`), keyed by id, as `WmlConfig.toJSON()`.
+   * When present, `buildSnapshotContext` builds each `UnitType` via the
+   * real `UnitType.fromConfig(cfg, movementTypeConfigs, terrainTypeConfigs)`
+   * instead of the flat-shared-MoveType fallback -- see this module's doc
+   * comment. Optional, same backward-compatibility reason as `terrainFlags`.
+   */
+  unitTypeConfigs?: Record<string, WmlConfigJson>;
 }
 
 /** Real castle/keep/village flags for one terrain code -- see `GameBoardSnapshot.terrainFlags`. */
@@ -336,17 +363,22 @@ function terrainCodesInUse(snapshot: GameBoardSnapshot): TerrainCode[] {
 }
 
 /**
- * Builds the `TerrainTypeData` `gameBoardFromSnapshot`/`createTypeResolver`
- * use. If `snapshot.terrainFlags` is present (real snapshots always ship
- * it -- see that field's own doc comment), synthesizes one minimal
- * `[terrain_type]`-equivalent config per code carrying its real castle/
- * keep/village flags, so `GameMap.isKeep()`/`isCastle()` work correctly
- * client-side (needed for recruiting). Falls back to a genuinely empty
- * `TerrainTypeData` for snapshots that don't have it (e.g. hand-built test
- * fixtures) -- `buildFlatMoveType` already documents why that's still safe
- * for movement/defense purposes; castle/keep just aren't recognized then.
+ * Builds the `TerrainTypeData` `buildSnapshotContext` uses. Prefers
+ * `snapshot.terrainTypeConfigs` (the real, full `data/core/terrain.cfg`
+ * `[terrain_type]` set -- see that field's doc comment) when present, for
+ * full-fidelity alias resolution. Falls back to `snapshot.terrainFlags`
+ * (synthesizing one minimal `[terrain_type]`-equivalent config per code
+ * carrying just its real castle/keep/village flags -- enough for
+ * `GameMap.isKeep()`/`isCastle()`, not for real movement/defense alias
+ * chasing) for older snapshots, then to a genuinely empty `TerrainTypeData`
+ * for snapshots with neither (e.g. hand-built test fixtures) --
+ * `buildFlatMoveType` documents why that's still safe for movement/defense
+ * purposes in that case; castle/keep just aren't recognized then.
  */
 function buildTerrainTypeData(snapshot: GameBoardSnapshot): TerrainTypeData {
+  if (snapshot.terrainTypeConfigs) {
+    return TerrainTypeData.fromConfigs(snapshot.terrainTypeConfigs.map((json) => WmlConfig.fromJSON(json)));
+  }
   if (!snapshot.terrainFlags) return TerrainTypeData.fromConfigs([]);
   const configs: WmlConfig[] = [];
   for (const [codeStr, flags] of Object.entries(snapshot.terrainFlags)) {
@@ -361,25 +393,58 @@ function buildTerrainTypeData(snapshot: GameBoardSnapshot): TerrainTypeData {
   return TerrainTypeData.fromConfigs(configs);
 }
 
+/** The `TerrainTypeData` and per-id `UnitType` cache shared by `createTypeResolver`/`gameBoardFromSnapshot` -- see `buildSnapshotContext`. */
+interface SnapshotContext {
+  readonly terrainData: TerrainTypeData;
+  readonly typeCache: ReadonlyMap<string, UnitType>;
+}
+
+/**
+ * Builds the real `TerrainTypeData` and a per-id `UnitType` cache for
+ * `snapshot`. When `snapshot.unitTypeConfigs` is present, each `UnitType` is
+ * built via the real `UnitType.fromConfig(cfg, movementTypes, terrainData)`
+ * -- real per-type movement/defense/resistance tables, real alias chasing,
+ * exactly as `build-scenario-snapshot.mjs` computed them server-side.
+ * Otherwise falls back to the flat-shared-`MoveType` construction from
+ * `snapshot.unitTypes`' scalar fields -- see this module's doc comment.
+ */
+function buildSnapshotContext(snapshot: GameBoardSnapshot): SnapshotContext {
+  const terrainData = buildTerrainTypeData(snapshot);
+  const typeCache = new Map<string, UnitType>();
+
+  if (snapshot.unitTypeConfigs) {
+    const movementTypes = new Map<string, WmlConfig>();
+    if (snapshot.movementTypeConfigs) {
+      for (const [name, json] of Object.entries(snapshot.movementTypeConfigs)) {
+        movementTypes.set(name, WmlConfig.fromJSON(json));
+      }
+    }
+    for (const [id, json] of Object.entries(snapshot.unitTypeConfigs)) {
+      typeCache.set(id, UnitType.fromConfig(WmlConfig.fromJSON(json), movementTypes, terrainData));
+    }
+  } else {
+    const moveType = buildFlatMoveType(terrainCodesInUse(snapshot), terrainData);
+    for (const [id, snap] of Object.entries(snapshot.unitTypes)) {
+      typeCache.set(id, unitTypeFromSnapshot(snap, moveType));
+    }
+  }
+
+  return { terrainData, typeCache };
+}
+
 /**
  * Builds a `(id: string) => UnitType` resolver covering every unit type in
- * `snapshot.unitTypes` (~332 real types, see `GameBoardSnapshot.unitTypes`'
- * doc comment -- not just types already present on the board), sharing the
- * exact same `buildFlatMoveType`/`unitTypeFromSnapshot` construction
- * `gameBoardFromSnapshot` uses internally. Callers that need to resolve a
- * type *after* initial board construction -- `runScenarioStartupEvents`
- * (an `[event]`'s `[unit]` tag can name any type) and a client-side recruit
- * flow (a side's `recruit=` list can name any type) -- both need this,
- * since `gameBoardFromSnapshot`'s own internal `typeCache` is not exposed.
+ * `snapshot.unitTypes`/`snapshot.unitTypeConfigs` (~332 real types, see
+ * `GameBoardSnapshot.unitTypes`'s doc comment -- not just types already
+ * present on the board), sharing `buildSnapshotContext` with
+ * `gameBoardFromSnapshot`. Callers that need to resolve a type *after*
+ * initial board construction -- `runScenarioStartupEvents` (an `[event]`'s
+ * `[unit]` tag can name any type) and a client-side recruit flow (a side's
+ * `recruit=` list can name any type) -- both need this, since
+ * `gameBoardFromSnapshot`'s own internal type cache is not exposed.
  */
 export function createTypeResolver(snapshot: GameBoardSnapshot): (id: string) => UnitType {
-  const terrainData = buildTerrainTypeData(snapshot);
-  const moveType = buildFlatMoveType(terrainCodesInUse(snapshot), terrainData);
-
-  const typeCache = new Map<string, UnitType>();
-  for (const [id, snap] of Object.entries(snapshot.unitTypes)) {
-    typeCache.set(id, unitTypeFromSnapshot(snap, moveType));
-  }
+  const { typeCache } = buildSnapshotContext(snapshot);
 
   return (id: string) => {
     const type = typeCache.get(id);
@@ -399,13 +464,7 @@ export function createTypeResolver(snapshot: GameBoardSnapshot): (id: string) =>
  * "start of turn 1" moment.
  */
 export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBoard {
-  const terrainData = buildTerrainTypeData(snapshot);
-  const moveType = buildFlatMoveType(terrainCodesInUse(snapshot), terrainData);
-
-  const typeCache = new Map<string, UnitType>();
-  for (const [id, snap] of Object.entries(snapshot.unitTypes)) {
-    typeCache.set(id, unitTypeFromSnapshot(snap, moveType));
-  }
+  const { terrainData, typeCache } = buildSnapshotContext(snapshot);
 
   const map = GameMap.fromMapString(snapshot.map.data, terrainData, snapshot.map.border);
   const board = new GameBoard(map);

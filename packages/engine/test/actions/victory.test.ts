@@ -70,7 +70,7 @@ describe('checkVictory (hand-built, leader-death / no_leader_left default)', () 
     // there's no enemy pair among the not-defeated sides either way.
     const result = checkVictory(board);
     expect(result.continueLevel).toBe(false); // no enemy pair among not-defeated sides -> level ends (mirrors upstream exactly).
-    expect(result.notDefeated.sort()).toEqual([1, 2]);
+    expect([...result.notDefeated].sort()).toEqual([1, 2]);
   });
 
   it('ends with an empty notDefeated list if every side has lost its leader', () => {

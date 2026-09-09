@@ -15,6 +15,7 @@ export * from './model/Map.js';
 export * from './model/Terrain.js';
 export * from './model/MoveType.js';
 export * from './model/UnitType.js';
+export * from './model/UnitTypeDatabase.js';
 export * from './model/Unit.js';
 export * from './model/Team.js';
 export * from './model/GameBoard.js';

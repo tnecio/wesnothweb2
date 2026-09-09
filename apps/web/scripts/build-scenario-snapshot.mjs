@@ -42,14 +42,14 @@
  *    image, if any), extracted directly since displaying them needs no
  *    event-pump execution -- just real, unmodified `story=` text.
  *  - `unitTypes` now covers EVERY unit type this build discovered a real
- *    image path for (currently ~330, from `data/core/units.cfg` plus this
+ *    image path for (currently ~332, from `data/core/units.cfg` plus this
  *    campaign's own `_main.cfg`), not just types already present in
  *    `units` -- necessary because `resolveType` in the browser now has to
  *    resolve whatever id an `[event]`'s `[unit]` tag or a side's real
  *    `recruit=` list names, not just a small fixed set known ahead of time.
  *  - `teams[].recruit`: each side's real `recruit=` list (unit type ids),
  *    straight from `[side] recruit=`, so the browser can offer a real
- *    (if stub-statted) recruit menu instead of none at all.
+ *    recruit menu instead of none at all.
  *
  * ## Post-Phase-5 revision #2 (recruiting needs real castle/keep flags)
  *
@@ -62,6 +62,24 @@
  *    `map.isKeep()`/`isCastle()` always returned false -- discovered while
  *    wiring up real recruiting, which needs to recognize a leader standing
  *    on an actual keep tile.
+ *
+ * ## Real per-unit-type combat/movement stats (this revision)
+ *
+ * Every one of the ~332 unit types this build discovers used to get
+ * IDENTICAL placeholder stats (30 HP, 5 movement, one 3x6 blade attack --
+ * `stubAttackCfg`/`resolveType`'s old body). That's gone: `resolveType` now
+ * builds a REAL `UnitType` per id via `UnitType.fromConfig(flattenedCfg,
+ * movementTypeConfigs, terrainData)`, where `flattenedCfg` comes from
+ * `flattenAllUnitTypes` (`packages/engine/src/model/UnitTypeDatabase.ts`) --
+ * the real `base_unit=`/`[male]`/`[female]`-aware flattening loader, see
+ * that module's own doc comment for the exact (deliberately simplified)
+ * semantics and why they're safe for every real type this project ships.
+ * The snapshot now also carries `unitTypeConfigs`/`movementTypeConfigs`/
+ * `terrainTypeConfigs` (real, parsed WML, JSON-round-tripped) so the browser
+ * can rebuild the exact same real `UnitType`s client-side through the exact
+ * same engine code, instead of the old flat-shared-MoveType simplification
+ * (`gameBoardSnapshot.ts`'s `buildFlatMoveType`, now only a fallback for
+ * snapshots that don't carry these new fields).
  *
  * Run with: npx tsx apps/web/scripts/build-scenario-snapshot.mjs
  * (imports packages/engine's .ts sources directly; needs tsx, not plain node)
@@ -79,14 +97,13 @@ const outFile = path.join(repoRoot, 'apps/web/public/scenario-snapshot.json');
 const { parseWmlFile, preloadDefines, preloadDefinesFromDir } = await import(
   path.join(repoRoot, 'packages/engine/src/wml/index.ts')
 );
-const { WmlConfig } = await import(path.join(repoRoot, 'packages/engine/src/wml/config.ts'));
 const { TerrainTypeData, writeTerrainCode } = await import(path.join(repoRoot, 'packages/engine/src/model/Terrain.ts'));
 const { GameBoard } = await import(path.join(repoRoot, 'packages/engine/src/model/GameBoard.ts'));
 const { GameMap } = await import(path.join(repoRoot, 'packages/engine/src/model/Map.ts'));
-const { UnitType, AttackType } = await import(path.join(repoRoot, 'packages/engine/src/model/UnitType.ts'));
+const { UnitType } = await import(path.join(repoRoot, 'packages/engine/src/model/UnitType.ts'));
 const { Location } = await import(path.join(repoRoot, 'packages/engine/src/model/Location.ts'));
-const { buildFlatMoveType } = await import(
-  path.join(repoRoot, 'packages/engine/src/snapshot/gameBoardSnapshot.ts')
+const { collectUnitTypeConfigs, collectMovementTypeConfigs, flattenAllUnitTypes } = await import(
+  path.join(repoRoot, 'packages/engine/src/model/UnitTypeDatabase.ts')
 );
 
 function loadDefines() {
@@ -171,11 +188,10 @@ scenario.setAttribute('map_data', mapText);
 
 const story = extractStory(scenario);
 
-// Build the stub move type's per-terrain movement-cost/defense tables (see
-// gameBoardSnapshot.ts's doc comment for why a flat value is the honest
-// simplification here) from the terrain codes this specific map actually
-// uses, using the real TerrainTypeData already loaded above for other
-// reasons.
+// Real castle/keep/village flags per terrain code in use -- see this
+// file's "Post-Phase-5 revision #2" doc comment above. Still shipped
+// (cheap, backward-compat) even though terrainTypeConfigs below now carries
+// the FULL real terrain.cfg too.
 const mapForCosts = GameMap.fromMapString(mapText, terrainData);
 const codesInUse = [];
 {
@@ -190,10 +206,6 @@ const codesInUse = [];
     }
   }
 }
-const moveType = buildFlatMoveType(codesInUse, terrainData);
-
-// Real castle/keep/village flags per terrain code in use -- see this
-// file's "Post-Phase-5 revision #2" doc comment above.
 const terrainFlags = {};
 for (const code of codesInUse) {
   const info = terrainData.getTerrainInfo(code);
@@ -204,27 +216,29 @@ for (const code of codesInUse) {
   };
 }
 
-// Stub UnitType resolver -- see GameBoard's own test for why full unit-type
-// database loading (base_unit/gender-variation inheritance flattening) is
-// out of scope for now. GameBoard wiring itself (map + sides) is real; only
-// the per-type combat stats are placeholders. Non-zero damage/attacks so
-// combat in the browser demo actually does something.
-const stubAttackCfg = new WmlConfig();
-stubAttackCfg.setAttribute('name', 'attack');
-stubAttackCfg.setAttribute('description', 'Attack');
-stubAttackCfg.setAttribute('type', 'blade');
-stubAttackCfg.setAttribute('range', 'melee');
-stubAttackCfg.setAttribute('min_range', 1);
-stubAttackCfg.setAttribute('max_range', 1);
-stubAttackCfg.setAttribute('damage', 6);
-stubAttackCfg.setAttribute('number', 3);
-const stubAttack = AttackType.fromConfig(stubAttackCfg);
+// Real UnitType resolver -- see this file's "Real per-unit-type combat/
+// movement stats" doc comment above. `rawUnitTypeConfigs` collects every
+// [unit_type]'s own (unflattened) config from the same two real trees
+// `collectUnitTypeImages` already walked for image paths; `flattenAllUnitTypes`
+// resolves base_unit= inheritance (see UnitTypeDatabase.ts for the exact,
+// deliberately-simplified semantics); `movementTypeConfigs` is the real
+// [movetype] registry (all 38 of them live inside data/core/units.cfg's
+// own [units] block, alongside the [unit_type]s and [race]s).
+const rawUnitTypeConfigs = collectUnitTypeConfigs(coreUnitsCfg);
+collectUnitTypeConfigs(campaignMainCfg, rawUnitTypeConfigs);
+const movementTypeConfigs = collectMovementTypeConfigs(coreUnitsCfg);
+collectMovementTypeConfigs(campaignMainCfg, movementTypeConfigs);
+const flattenedUnitTypes = flattenAllUnitTypes(rawUnitTypeConfigs);
 
 const typeCache = new Map();
 function resolveType(id) {
   let t = typeCache.get(id);
   if (!t) {
-    t = new UnitType(id, id, '', 'neutral', 1, 30, 5, 5, 0, 1, 0, -1, 500, [], '', true, false, false, moveType, [stubAttack], []);
+    const flatCfg = flattenedUnitTypes.get(id);
+    if (!flatCfg) {
+      throw new Error(`resolveType: no [unit_type] found for id "${id}" (checked data/core/units.cfg and the campaign's own unit files)`);
+    }
+    t = UnitType.fromConfig(flatCfg, movementTypeConfigs, terrainData);
     typeCache.set(id, t);
   }
   return t;
@@ -270,7 +284,7 @@ const teams = board.teams().map((t) => ({
   recruit: [...t.canRecruit],
 }));
 
-/** Serializes a real (though stubbed, see above) `AttackType` instance to `AttackTypeSnapshot` shape. */
+/** Serializes a real `AttackType` instance to `AttackTypeSnapshot` shape. */
 function attackTypeToSnapshot(a) {
   return {
     id: a.id,
@@ -289,7 +303,7 @@ function attackTypeToSnapshot(a) {
   };
 }
 
-/** Serializes a real (though stubbed) `UnitType` instance to `UnitTypeSnapshot` shape (see gameBoardSnapshot.ts). */
+/** Serializes a real `UnitType` instance to the scalar `UnitTypeSnapshot` shape (see gameBoardSnapshot.ts) -- a display-friendly summary; the full real per-type movement/defense data travels separately via `unitTypeConfigs`/`movementTypeConfigs`/`terrainTypeConfigs` below. */
 function unitTypeToSnapshot(t) {
   return {
     id: t.id,
@@ -317,6 +331,16 @@ function unitTypeToSnapshot(t) {
 
 const unitTypes = Object.fromEntries([...typeCache].map(([id, t]) => [id, unitTypeToSnapshot(t)]));
 
+// Real WML, JSON-round-tripped, so the browser can rebuild the exact same
+// real UnitTypes client-side via UnitType.fromConfig/MoveType.fromConfig --
+// see this file's and gameBoardSnapshot.ts's "Real per-unit-type stats" doc
+// comments. Only the ids actually resolved above (== unitImages' ~332,
+// plus anything GameBoard.fromConfig additionally needed) are shipped, not
+// every id flattenAllUnitTypes happened to touch.
+const unitTypeConfigs = Object.fromEntries([...typeCache.keys()].map((id) => [id, flattenedUnitTypes.get(id).toJSON()]));
+const movementTypeConfigsJson = Object.fromEntries([...movementTypeConfigs].map(([name, cfg]) => [name, cfg.toJSON()]));
+const terrainTypeConfigsJson = terrainCfg.children('terrain_type').map((cfg) => cfg.toJSON());
+
 const snapshot = {
   generatedBy: 'apps/web/scripts/build-scenario-snapshot.mjs (see file header)',
   scenario: { id: scenario.getString('id'), name: scenario.getString('name') },
@@ -334,6 +358,9 @@ const snapshot = {
   unitTypes,
   story,
   terrainFlags,
+  terrainTypeConfigs: terrainTypeConfigsJson,
+  movementTypeConfigs: movementTypeConfigsJson,
+  unitTypeConfigs,
   scenarioConfigJson: scenario.toJSON(),
 };
 

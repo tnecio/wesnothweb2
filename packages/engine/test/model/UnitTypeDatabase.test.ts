@@ -1,0 +1,265 @@
+import { describe, expect, it } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parseWmlFile, preloadDefines, preloadDefinesFromDir, type DefineMap } from '../../src/wml/index.js';
+import { WmlConfig } from '../../src/wml/config.js';
+import { TerrainTypeData, parseTerrainCode } from '../../src/model/Terrain.js';
+import { UnitType } from '../../src/model/UnitType.js';
+import {
+  collectUnitTypeConfigs,
+  collectMovementTypeConfigs,
+  flattenUnitTypeConfig,
+  flattenAllUnitTypes,
+} from '../../src/model/UnitTypeDatabase.js';
+
+/**
+ * Real-content tests for the `base_unit=`/`[male]`/`[female]`-aware
+ * `[unit_type]` flattening loader (`model/UnitTypeDatabase.ts`), the piece
+ * `packages/engine/src/model/UnitType.ts`'s own module doc comment
+ * explicitly deferred ("a loader building `UnitType`s from parsed WML
+ * should do the equivalent flattening before calling `UnitType.
+ * fromConfig`"). Parses the actual `wesnoth/data/core/units.cfg` and
+ * Dead_Water's own unit files -- not synthetic fixtures -- and spot-checks
+ * hand-read real stats, matching this project's established verification
+ * discipline (see docs/PROGRESS.md).
+ *
+ * The `base_unit=`-inheritance and `[male]`/`[female]`-wholesale-ignore
+ * paths are each ALSO covered by a synthetic test below: `base_unit=` is
+ * verified (via `grep -rl "base_unit=" wesnoth/data/`) to be used NOWHERE
+ * in the entire `wesnoth` submodule, so no real content exercises that
+ * code path -- it would be dishonest to claim it's "real-content tested"
+ * without flagging that explicitly, per this project's testing discipline.
+ */
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+const dataRoot = path.join(repoRoot, 'wesnoth/data');
+const campaignDir = path.join(dataRoot, 'campaigns/Dead_Water');
+
+function loadDefines(): DefineMap {
+  const defines: DefineMap = new Map();
+  const flag = (name: string) =>
+    defines.set(name, { name, params: [], optionalParams: new Map(), body: '', dir: dataRoot, location: '<test>' });
+  flag('CAMPAIGN_DEAD_WATER');
+  flag('NORMAL');
+  preloadDefinesFromDir(path.join(dataRoot, 'core'), defines, { dataRoot });
+  preloadDefines(path.join(campaignDir, '_main.cfg'), defines, { dataRoot });
+  return defines;
+}
+
+describe('collectUnitTypeConfigs / collectMovementTypeConfigs (real data/core/units.cfg + Dead_Water)', () => {
+  const defines = loadDefines();
+  const terrainCfg = parseWmlFile(path.join(dataRoot, 'core/terrain.cfg'), { dataRoot, defines: new Map(defines) });
+  const terrainData = TerrainTypeData.fromConfigs(terrainCfg.children('terrain_type'));
+
+  const coreUnitsCfg = parseWmlFile(path.join(dataRoot, 'core/units.cfg'), { dataRoot, defines: new Map(defines) });
+  const campaignMainCfg = parseWmlFile(path.join(campaignDir, '_main.cfg'), { dataRoot, defines: new Map(defines) });
+
+  const rawUnitTypes = collectUnitTypeConfigs(coreUnitsCfg);
+  collectUnitTypeConfigs(campaignMainCfg, rawUnitTypes);
+
+  const movementTypes = collectMovementTypeConfigs(coreUnitsCfg);
+  collectMovementTypeConfigs(campaignMainCfg, movementTypes);
+
+  it('finds hundreds of real unit types, including Dead_Water-specific ones not in core', () => {
+    expect(rawUnitTypes.size).toBeGreaterThan(300);
+    expect(rawUnitTypes.has('Merman Fighter')).toBe(true);
+    expect(rawUnitTypes.has('Merman Child King')).toBe(true); // campaigns/Dead_Water/units/Child_King.cfg, not core
+  });
+
+  it('finds all 38 real [movetype] blocks (they live inside units.cfg\'s own [units] block, not a separate file)', () => {
+    expect(movementTypes.size).toBe(38);
+    expect(movementTypes.has('swimmer')).toBe(true);
+    expect(movementTypes.has('undeadfoot')).toBe(true);
+  });
+
+  it('swimmer movetype matches the real WML exactly (hand-read from units.cfg lines 966-1008)', () => {
+    const swimmer = movementTypes.get('swimmer')!;
+    const costs = swimmer.child('movement_costs')!;
+    expect(costs.getNumber('deep_water')).toBe(1);
+    expect(costs.getNumber('flat')).toBe(2);
+    expect(costs.getNumber('reef')).toBe(2);
+    const defense = swimmer.child('defense')!;
+    expect(defense.getNumber('deep_water')).toBe(50);
+    expect(defense.getNumber('flat')).toBe(70);
+    const resistance = swimmer.child('resistance')!;
+    expect(resistance.getNumber('cold')).toBe(80);
+  });
+
+  it('undeadfoot movetype matches the real WML exactly (hand-read from units.cfg lines 1155-1199)', () => {
+    const undeadfoot = movementTypes.get('undeadfoot')!;
+    const costs = undeadfoot.child('movement_costs')!;
+    expect(costs.getNumber('deep_water')).toBe(3);
+    expect(costs.getNumber('flat')).toBe(1);
+  });
+
+  describe('flattening + UnitType.fromConfig against hand-read real stats', () => {
+    function flatUnitType(id: string): UnitType {
+      const flatCfg = flattenUnitTypeConfig(id, rawUnitTypes);
+      return UnitType.fromConfig(flatCfg, movementTypes, terrainData);
+    }
+
+    it('Merman Fighter (core/units/merfolk/Fighter.cfg): hp 36, movement 6, one trident pierce 6x3, cost 14', () => {
+      const t = flatUnitType('Merman Fighter');
+      expect(t.hitpoints).toBe(36);
+      expect(t.movement).toBe(6);
+      expect(t.level).toBe(1);
+      expect(t.cost).toBe(14);
+      expect(t.advancesTo).toEqual(['Merman Warrior']);
+      expect(t.attacks).toHaveLength(1);
+      expect(t.attacks[0]!.id).toBe('trident');
+      expect(t.attacks[0]!.type).toBe('pierce');
+      expect(t.attacks[0]!.damage).toBe(6);
+      expect(t.attacks[0]!.numAttacks).toBe(3);
+    });
+
+    it('Merman Child King (campaigns/Dead_Water/units/Child_King.cfg, NOT core): hp 22, movement 6, one scepter impact 4x3, cost 8, level 0', () => {
+      const t = flatUnitType('Merman Child King');
+      expect(t.hitpoints).toBe(22);
+      expect(t.movement).toBe(6);
+      expect(t.level).toBe(0);
+      expect(t.cost).toBe(8);
+      expect(t.attacks).toHaveLength(1);
+      expect(t.attacks[0]!.id).toBe('scepter');
+      expect(t.attacks[0]!.type).toBe('impact');
+      expect(t.attacks[0]!.damage).toBe(4);
+      expect(t.attacks[0]!.numAttacks).toBe(3);
+    });
+
+    it('Skeleton (core/units/undead/Skeleton.cfg): hp 34, movement_type undeadfoot, movement 5, one axe blade 7x3, advances_to Revenant/Deathblade', () => {
+      const t = flatUnitType('Skeleton');
+      expect(t.hitpoints).toBe(34);
+      expect(t.movement).toBe(5);
+      expect(t.level).toBe(1);
+      expect(t.cost).toBe(15);
+      expect(t.advancesTo).toEqual(['Revenant', 'Deathblade']);
+      expect(t.attacks).toHaveLength(1);
+      expect(t.attacks[0]!.type).toBe('blade');
+      expect(t.attacks[0]!.damage).toBe(7);
+      // Real per-type movement/defense resolution -- undeadfoot's own table
+      // (deep_water=3, flat=1, hand-read from units.cfg), not a shared flat stub.
+      expect(t.moveType.movementCost(parseTerrainCode('Wo'))).toBe(3);
+      expect(t.moveType.movementCost(parseTerrainCode('Gg'))).toBe(1);
+    });
+
+    it('Dark Sorcerer (core/units/undead/Necro_Dark_Sorcerer.cfg): hp 48, level 2, cost 34, THREE real attacks (staff/chill wave/shadow wave)', () => {
+      const t = flatUnitType('Dark Sorcerer');
+      expect(t.hitpoints).toBe(48);
+      expect(t.level).toBe(2);
+      expect(t.cost).toBe(34);
+      expect(t.advancesTo).toEqual(['Lich', 'Necromancer']);
+      expect(t.attacks).toHaveLength(3);
+      expect(t.attacks.map((a) => a.id)).toEqual(['staff', 'chill wave', 'shadow wave']);
+      expect(t.attacks[1]!.type).toBe('cold');
+      expect(t.attacks[1]!.damage).toBe(13);
+      expect(t.attacks[1]!.numAttacks).toBe(2);
+    });
+
+    it('[male]/[female]-bearing real types (Black Horse, Dark Horse -- the only two under data/core/units/ that use these tags at all) get their stats from the TOP-LEVEL config, unaffected by ignoring [male]/[female]', () => {
+      const blackHorse = flatUnitType('Black Horse');
+      expect(blackHorse.hitpoints).toBe(48);
+      expect(blackHorse.attacks).toHaveLength(2);
+      expect(blackHorse.attacks[0]!.id).toBe('hooves');
+      expect(blackHorse.attacks[0]!.damage).toBe(12);
+
+      const darkHorse = flatUnitType('Dark Horse');
+      expect(darkHorse.hitpoints).toBe(30);
+      expect(darkHorse.attacks[0]!.damage).toBe(9);
+    });
+  });
+
+  it('no real [unit_type] anywhere in the wesnoth submodule uses base_unit= (confirmed by this loader finding zero derived types among the real registry)', () => {
+    for (const [id, cfg] of rawUnitTypes) {
+      expect(cfg.hasAttribute('base_unit'), `unexpected base_unit= on real type "${id}"`).toBe(false);
+    }
+  });
+});
+
+describe('flattenUnitTypeConfig / flattenAllUnitTypes: base_unit= inheritance (synthetic -- see this file\'s doc comment on why)', () => {
+  function unitTypeCfg(attrs: Record<string, string | number | boolean>, children: Record<string, WmlConfig> = {}): WmlConfig {
+    const cfg = new WmlConfig();
+    for (const [k, v] of Object.entries(attrs)) cfg.setAttribute(k, v);
+    for (const [tag, child] of Object.entries(children)) cfg.addChild(tag, child);
+    return cfg;
+  }
+  function attackCfg(name: string, damage: number, number: number): WmlConfig {
+    const cfg = new WmlConfig();
+    cfg.setAttribute('name', name);
+    cfg.setAttribute('damage', damage);
+    cfg.setAttribute('number', number);
+    return cfg;
+  }
+
+  it('attribute-level: derived wins wherever it sets an attribute directly, base fills in the rest', () => {
+    const raw = new Map<string, WmlConfig>();
+    raw.set('Base Fighter', unitTypeCfg({ id: 'Base Fighter', hitpoints: 30, movement: 5, cost: 10, level: 1 }));
+    raw.set(
+      'Elite Fighter',
+      unitTypeCfg({ id: 'Elite Fighter', base_unit: 'Base Fighter', hitpoints: 45 /* overrides */ }),
+    );
+
+    const flat = flattenUnitTypeConfig('Elite Fighter', raw);
+    expect(flat.getNumber('hitpoints')).toBe(45); // derived's own value wins
+    expect(flat.getNumber('movement')).toBe(5); // inherited from base, unset on derived
+    expect(flat.getNumber('cost')).toBe(10); // inherited
+    expect(flat.getNumber('level')).toBe(1); // inherited
+  });
+
+  it('child tags: derived REPLACES base wholesale for a tag name if it has ANY children with that tag, else inherits base\'s wholesale', () => {
+    const raw = new Map<string, WmlConfig>();
+    raw.set(
+      'Base Fighter',
+      unitTypeCfg({ id: 'Base Fighter', hitpoints: 30 }, {}),
+    );
+    const base = raw.get('Base Fighter')!;
+    base.addChild('attack', attackCfg('sword', 5, 3));
+    base.addChild('attack', attackCfg('bow', 3, 2));
+    const defenseBase = base.addChild('defense');
+    defenseBase.setAttribute('forest', 40);
+
+    const derived = unitTypeCfg({ id: 'Elite Fighter', base_unit: 'Base Fighter' });
+    derived.addChild('attack', attackCfg('greatsword', 9, 2)); // derived has ITS OWN [attack] -- replaces base's TWO attacks wholesale
+    raw.set('Elite Fighter', derived);
+
+    const flat = flattenUnitTypeConfig('Elite Fighter', raw);
+    // attack: derived has its own -> replaces base's wholesale (not merged/appended)
+    expect(flat.children('attack')).toHaveLength(1);
+    expect(flat.children('attack')[0]!.getString('name')).toBe('greatsword');
+    // defense: derived has none -> inherits base's wholesale
+    expect(flat.hasChild('defense')).toBe(true);
+    expect(flat.child('defense')!.getNumber('forest')).toBe(40);
+  });
+
+  it('recursive base_unit chains flatten correctly (grandparent -> parent -> child)', () => {
+    const raw = new Map<string, WmlConfig>();
+    raw.set('Grandparent', unitTypeCfg({ id: 'Grandparent', hitpoints: 20, movement: 4, cost: 5 }));
+    raw.set('Parent', unitTypeCfg({ id: 'Parent', base_unit: 'Grandparent', hitpoints: 30 }));
+    raw.set('Child', unitTypeCfg({ id: 'Child', base_unit: 'Parent', movement: 6 }));
+
+    const flat = flattenUnitTypeConfig('Child', raw);
+    expect(flat.getNumber('hitpoints')).toBe(30); // from Parent
+    expect(flat.getNumber('movement')).toBe(6); // Child's own
+    expect(flat.getNumber('cost')).toBe(5); // from Grandparent, through Parent
+  });
+
+  it('throws on a circular base_unit chain rather than infinite-looping', () => {
+    const raw = new Map<string, WmlConfig>();
+    raw.set('A', unitTypeCfg({ id: 'A', base_unit: 'B' }));
+    raw.set('B', unitTypeCfg({ id: 'B', base_unit: 'A' }));
+    expect(() => flattenUnitTypeConfig('A', raw)).toThrow(/circular/i);
+  });
+
+  it('throws on an unknown id', () => {
+    const raw = new Map<string, WmlConfig>();
+    expect(() => flattenUnitTypeConfig('Nonexistent', raw)).toThrow(/no \[unit_type\]/i);
+  });
+
+  it('flattenAllUnitTypes flattens every id in the registry', () => {
+    const raw = new Map<string, WmlConfig>();
+    raw.set('Base Fighter', unitTypeCfg({ id: 'Base Fighter', hitpoints: 30 }));
+    raw.set('Elite Fighter', unitTypeCfg({ id: 'Elite Fighter', base_unit: 'Base Fighter', hitpoints: 45 }));
+    const all = flattenAllUnitTypes(raw);
+    expect(all.get('Base Fighter')!.getNumber('hitpoints')).toBe(30);
+    expect(all.get('Elite Fighter')!.getNumber('hitpoints')).toBe(45);
+  });
+});

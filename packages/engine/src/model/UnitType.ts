@@ -5,6 +5,11 @@
  * `unit`/`Unit.ts` which is "this particular Merman Fighter on the board,
  * with 14 of its 36 HP left".
  *
+ * The flattening loader this module's doc comment used to defer (see below)
+ * is now implemented: `model/UnitTypeDatabase.ts`'s `flattenUnitTypeConfig`/
+ * `flattenAllUnitTypes` resolve `base_unit=` inheritance before handing a
+ * config to `UnitType.fromConfig` below.
+ *
  * Deliberately NOT ported here (display/animation-coupled, or requiring the
  * WFL/Lua effects system that's out of scope until later phases):
  *  - `[attack_anim]`, `[defend]`/animation config, `halo()`, `ellipse()`,

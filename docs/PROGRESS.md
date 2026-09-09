@@ -545,6 +545,67 @@ real per-unit-type combat/movement stats (currently every one of the 332
 types shares identical placeholder stats), victory/defeat conditions
 (scenarios never currently end), then save/load.
 
+## 2026-09-09: real per-unit-type combat/movement stats
+
+Replaced the identical-for-every-type placeholder (30 HP, 5 movement, one
+3x6 blade attack, one shared flat per-terrain movement/defense table) with
+real, per-type stats sourced from `wesnoth/data/core/units.cfg` and
+Dead_Water's own unit files.
+
+- New `packages/engine/src/model/UnitTypeDatabase.ts`: the `base_unit=`
+  flattening loader `UnitType.ts`'s own module doc comment had deferred.
+  Attribute-level inheritance (derived wins wherever it sets an attribute,
+  base fills the rest) matches upstream's `config::inherit_from` exactly;
+  child-tag inheritance (`[attack]`, `[movement_costs]`, `[defense]`, etc.)
+  uses a deliberate simplification -- "derived replaces base wholesale for
+  a tag name if it has ANY children with that tag, else inherits base's
+  wholesale" -- instead of upstream's real position-indexed pairwise
+  `merge_with`. Verified this changes no real stat this project ships:
+  `base_unit=` is used NOWHERE in the entire `wesnoth` submodule (checked
+  directly), so the simplification's code path is only exercised by this
+  module's own synthetic tests. `[male]`/`[female]` sub-tags are simply
+  never read (this project has no gendered recruiting UI) -- confirmed
+  safe by checking the only two files under `data/core/units/` that use
+  them at all (`monsters/Horse_Black.cfg`/`Horse_Dark.cfg`): both declare
+  full stats at the top `[unit_type]` level already.
+- `apps/web/scripts/build-scenario-snapshot.mjs`'s `resolveType` now builds
+  real `UnitType`s via `UnitType.fromConfig(flattenedCfg, movementTypeConfigs,
+  terrainData)` for all ~332 discovered ids, instead of one shared stub.
+  The snapshot now also ships `unitTypeConfigs`/`movementTypeConfigs`/
+  `terrainTypeConfigs` (real WML, JSON-round-tripped, same mechanism as
+  `scenarioConfigJson`) so the browser rebuilds the exact same real
+  `UnitType`s client-side through the real `UnitType.fromConfig`/
+  `MoveType.fromConfig`/`overlay` engine code -- not a re-invented
+  client-side table.
+- `gameBoardSnapshot.ts`'s `createTypeResolver`/`gameBoardFromSnapshot`
+  factored into a shared `buildSnapshotContext`, which uses the new real
+  fields when present and falls back to the old flat-shared-`MoveType`
+  simplification (`buildFlatMoveType`) when they're absent, so hand-built
+  test fixtures without the new fields keep working unchanged.
+- Verified directly (not just "tests pass"): spot-checked Merman Fighter
+  (hp 36, movement 6, trident pierce 6x3, cost 14), Merman Child King (hp
+  22, movement 6, scepter impact 4x3, cost 8 -- a Dead_Water-specific type
+  from `campaigns/Dead_Water/units/Child_King.cfg`, not core), Skeleton (hp
+  34, undeadfoot movetype, axe blade 7x3), and Dark Sorcerer (hp 48, THREE
+  real attacks: staff/chill wave/shadow wave) against the real regenerated
+  JSON by hand-reading the real `.cfg` source -- exact matches. Confirmed
+  real per-terrain-type resolution actually differs by unit type now (the
+  whole point): Merman Fighter (swimmer) costs 1 to enter deep water and 2
+  for flat ground; Skeleton (undeadfoot) costs 3 for deep water and 1 for
+  flat ground -- previously both were indistinguishable.
+- 332 tests across the monorepo pass (214 engine incl. 16 new
+  `UnitTypeDatabase.test.ts` tests, 32 lua-bridge, 3 oracle-tools, 106
+  renderer, 9 ui -- the last of these also covers a concurrently-landed,
+  unrelated victory/defeat-conditions commit). Clean typecheck on
+  renderer/ui; engine typecheck has one pre-existing, unrelated failure
+  (`test/actions/victory.test.ts`, a `readonly number[].sort()` type error)
+  from that same concurrent commit -- not touched, out of scope for this
+  task, flagged rather than silently left unmentioned.
+
+  The flagged `readonly number[].sort()` error is fixed (spread into a
+  mutable array first: `[...result.notDefeated].sort()`) -- confirmed
+  clean `tsc --noEmit` afterward.
+
 ## 2026-09-09 (cont'd): victory/defeat conditions
 
 Added `packages/engine/src/actions/victory.ts`'s `checkVictory` -- a TS
@@ -588,3 +649,35 @@ needed, it's a self-contained algorithm" reasoning as
 `attackPrediction.test.ts`'s binomial ground truth -- plus 3 real-content
 `GameSession` integration tests using the committed snapshot, alongside
 gameSession.test.ts's existing 6). All passing, clean `tsc`/`svelte-check`.
+
+## 2026-09-09 (cont'd): save/load
+
+Per the original Phase 5 scope ("save/load ... gzipped, in IndexedDB").
+New `packages/ui/src/persistence.ts`: gzip via the native `CompressionStream`/
+`DecompressionStream` APIs (no library needed for a few hundred bytes of
+JSON) into an IndexedDB object store, keyed by a save name. This is NOT a
+Wesnoth-compatible save file -- no `[replay]`, no WML variable store, no
+undo history -- just `GameSession`'s own live-state shape (`SaveGameData`:
+turn/side/result, every unit's position/hp/moves, every team's gold),
+versioned so a future shape change can reject an old save cleanly.
+
+`GameSession` gained `toSaveData()`/`loadSaveData()` (and a
+`fromSaveData` static factory for "build a session already loaded").
+`loadSaveData` clears the board's current units and rebuilds them from the
+save via the existing `resolveType`, then overwrites team gold/turn/side/
+`scenarioResult` -- reuses the same real `Unit.create`/`resolveType`
+machinery as everything else, no parallel unit-construction path.
+
+UI: `SidePanel` gained Save/Load buttons next to End Turn; `GameShell`
+wires them to a single fixed slot keyed by scenario id (`quicksave:<id>`,
+matching this project's one-scenario-today scope -- multiple named slots
+would be a small extension, not a redesign, whenever Phase 6 needs it).
+
+Verified two ways: a Node-side round-trip test (`gameSession.test.ts`,
+change turn/gold/hp/moves, save, load into a *fresh* `GameSession`, assert
+exact match -- also covers a save/load of a latched `scenarioResult`) since
+`persistence.ts`'s IndexedDB/`CompressionStream` calls aren't available
+under plain Node/vitest; and a real-browser Playwright check exercising
+the actual Save/Load buttons end-to-end (end turn twice, Save, reload the
+page fresh, Load, confirm turn/gold match what was saved) -- both passed.
+11 ui tests total, all passing.

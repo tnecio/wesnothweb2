@@ -22,13 +22,14 @@ import { MoveType } from '../../src/model/MoveType.js';
  * for the macro-flag setup, since both need the same preprocessed content.
  *
  * Deliberately out of scope here: loading the REAL unit-type database.
- * data/core/units/ definitions use [base_unit]/gender-variation inheritance
- * that UnitType.fromConfig's module doc explicitly says needs flattening
- * first (not yet implemented -- a Phase 2 task). So `resolveType` below is a
- * permissive stub returning a minimal-but-real-shaped UnitType for any id,
- * which is enough to prove GameBoard's own wiring (map + sides + every
- * [unit] in the tree, including ones nested in [event] blocks) is correct,
- * without needing the unit-type database to exist yet.
+ * (This IS now implemented -- see `model/UnitTypeDatabase.ts` and its own
+ * real-content tests in `test/model/UnitTypeDatabase.test.ts` -- but this
+ * test's own scope is narrower: proving `GameBoard`'s wiring, not unit-type
+ * stats.) So `resolveType` below is a permissive stub returning a
+ * minimal-but-real-shaped UnitType for any id, which is enough to prove
+ * GameBoard's own wiring (map + sides + every [unit] in the tree, including
+ * ones nested in [event] blocks) is correct, independent of what stats any
+ * particular type has.
  */
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
