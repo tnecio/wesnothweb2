@@ -100,13 +100,35 @@ function loadDefines() {
   return defines;
 }
 
-/** Walks a parsed tree collecting every [unit_type] (including [male]/[female] variant children) id -> top-level image path. */
+/**
+ * Roots a raw WML image path (e.g. "units/merfolk/child_king.png", as
+ * authored) against the real on-disk search order the C++ engine's image
+ * VFS uses: the campaign's own `images/` dir first, then `core/images/`.
+ * `game-images` (apps/web/public/game-images) is a symlink to the whole
+ * `wesnoth/data` dir, so the rooted path this returns is exactly the
+ * `/game-images/`-relative URL path the browser will fetch -- and matches
+ * what packages/renderer's `imageUrl()` expects (it leaves `core/`- or
+ * `campaigns/`-prefixed paths untouched rather than re-rooting them).
+ *
+ * Without this, raw unrooted paths reaching the browser get auto-rooted by
+ * `imageUrl()` as `core/images/<raw>` unconditionally -- wrong for the
+ * campaign's own art (404s, since it isn't under core/images at all).
+ */
+function rootImagePath(raw) {
+  if (!raw) return raw;
+  if (raw.startsWith('core/') || raw.startsWith('campaigns/')) return raw;
+  const campaignRelative = path.join('campaigns/Dead_Water/images', raw);
+  if (fs.existsSync(path.join(dataRoot, campaignRelative))) return campaignRelative;
+  return `core/images/${raw}`;
+}
+
+/** Walks a parsed tree collecting every [unit_type] (including [male]/[female] variant children) id -> top-level image path (rooted, see rootImagePath). */
 function collectUnitTypeImages(cfg, out) {
   for (const { tag, config } of cfg.allChildren()) {
     if (tag === 'unit_type') {
       const id = config.getString('id');
       const image = config.getString('image');
-      if (id && image && !out.has(id)) out.set(id, image);
+      if (id && image && !out.has(id)) out.set(id, rootImagePath(image));
       collectUnitTypeImages(config, out); // [male]/[female] sub-variants
     } else {
       collectUnitTypeImages(config, out);
@@ -120,9 +142,10 @@ function extractStory(scenarioCfg) {
   if (!storyCfg) return [];
   return storyCfg.children('part').map((part) => {
     const bg = part.child('background_layer');
+    const rawImage = bg ? bg.getString('image', '') || null : null;
     return {
       text: part.getString('story', ''),
-      image: bg ? bg.getString('image', '') || null : null,
+      image: rawImage ? rootImagePath(rawImage) : null,
     };
   });
 }

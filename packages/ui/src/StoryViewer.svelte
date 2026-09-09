@@ -9,6 +9,7 @@
    * Addresses the playability feedback "no support for 'story' ... tags".
    */
   import type { StoryPart } from '@wesnothweb2/engine';
+  import { imageUrl } from '@wesnothweb2/renderer';
 
   let {
     parts,
@@ -28,7 +29,7 @@
 {#if part}
   <div
     class="story-overlay"
-    style:background-image={part.image ? `url('/game-images/${part.image}')` : 'none'}
+    style:background-image={part.image ? `url('${imageUrl(part.image)}')` : 'none'}
     onclick={onNext}
     onkeydown={(e) => {
       if (e.key === 'Enter' || e.key === ' ') onNext();

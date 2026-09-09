@@ -60,8 +60,10 @@
   const DRAG_THRESHOLD_PX = 6;
 
   let canvasHost: HTMLDivElement | undefined = $state();
-  let status = $state('loading scenario...');
+  /** Transient loading/error text only -- the ready-state label is `readyLabel` below, kept live via `$derived` rather than a one-time snapshot of `units.length` at mount (that used to freeze at the pre-events count, e.g. "2 units" even once the scenario's startup events had spawned nine more). */
+  let status = $state<string | null>('loading scenario...');
   let board: SnapshotBoard | undefined;
+  const readyLabel = $derived(`${snapshot.scenario.name} -- ${units.length} units, ${snapshot.map.width}x${snapshot.map.height} hexes`);
 
   $effect(() => {
     if (!canvasHost) return;
@@ -166,7 +168,7 @@
       newBoard.stage.x = (app.screen.width - bounds.width) / 2 - bounds.x;
       newBoard.stage.y = (app.screen.height - bounds.height) / 2 - bounds.y;
 
-      status = `${snapshot.scenario.name} -- ${units.length} units, ${snapshot.map.width}x${snapshot.map.height} hexes`;
+      status = null;
       // Apply whatever the current live state already is (props may have
       // settled before this async init finished) -- the effects below only
       // fire again on a *subsequent* change.
@@ -199,7 +201,7 @@
 </script>
 
 <div class="board-view">
-  <p class="status">{status} (drag to pan, scroll to zoom)</p>
+  <p class="status">{status ?? readyLabel} (drag to pan, scroll to zoom)</p>
   <div class="canvas-host" bind:this={canvasHost}></div>
 </div>
 

@@ -418,3 +418,74 @@ bump). Left it as-is rather than force an unreviewed major upgrade across
 every package's test suite: this is dev-tooling-only risk (the mocker's
 exposure requires reaching Vitest's own UI/dev server, which nothing here
 does), the same category of finding as Phase 0's, just newer.
+
+## Post-Phase-5 revision #3: real-browser visual verification, and the bug it found
+
+The user asked directly why Node couldn't just be upgraded on this VM
+rather than continuing to ship blind. Nothing actually blocked it: installed
+`nvm` + Node 20.20.2 side-by-side with the VM's system Node 18.20.4 (via
+`~/.bashrc`-sourced `nvm.sh`), leaving the system Node -- and everything
+already built/verified against it (npm workspaces, the running Vite dev
+server, `tsx`) -- untouched. Installed Playwright + Chromium under the
+new Node 20 and drove the live dev server (`http://localhost:5173/`,
+already running under system Node the whole time -- a Playwright-driven
+browser is just an ordinary HTTP client to it, no restart needed) with
+real screenshots for the first time this session.
+
+**Real bug found and fixed**: every unit sprite silently failed to
+decode (`InvalidStateError` in the console) -- the board rendered with
+real terrain colors and turn UI, but zero unit art, just the side-color
+fallback dot described in "Post-Phase-5 revision" above. Root cause:
+`apps/web/public/game-images` was a symlink to `wesnoth/data/core/images`
+directly, but `packages/renderer/src/images/ImageCache.ts`'s `imageUrl()`
+(ported forward from attempt #1, where the base URL really was the whole
+data root) unconditionally prepends `core/images/` to any path that
+doesn't already start with `core/` or `campaigns/` -- so a raw unit-type
+image path like `units/undead-skeletal/skeleton/skeleton.png` resolved to
+`/game-images/core/images/units/.../skeleton.png`, double-prefixed and
+404ing (Vite's SPA fallback served `index.html` in its place, which the
+browser then failed to decode as a PNG). `StoryViewer.svelte`/
+`MessageViewer.svelte` had separately hand-rolled `/game-images/${path}`
+string interpolation that happened to work only because the symlink's
+scope matched their un-rooted paths -- a second, inconsistent convention
+for the same problem.
+
+Fixed at the root: `game-images` now symlinks the whole `wesnoth/data`
+directory (matching what `imageUrl()` always expected), and
+`build-scenario-snapshot.mjs` gained `rootImagePath()`, which resolves
+each raw WML image path against the same search order the real C++ engine
+uses -- the campaign's own `images/` dir first (`fs.existsSync` against
+the actual submodule content, e.g. this correctly routes Kai Krellis's
+campaign-exclusive `child_king.png` to `campaigns/Dead_Water/images/...`
+rather than a 404 under `core/`), falling back to `core/images/`.
+Applied to both `unitImages` (unit-type sprites) and `extractStory`'s
+background image. `StoryViewer`/`MessageViewer` now import and use the
+same `imageUrl()` from `@wesnothweb2/renderer` instead of duplicating the
+rooting logic, so there is one convention, not two. Regenerated
+`scenario-snapshot.json`; spot-verified with `curl` that the rooted core
+and campaign paths both resolve (200, real PNG bytes) through the live
+dev server.
+
+Also fixed, found via the same visual pass: `GameBoardView.svelte`'s
+status line froze at `"<scenario> -- 2 units, ..."` forever (a one-time
+string built from `units.length` inside the mount effect's async IIFE,
+before the scenario's startup events had spawned the other nine units,
+and never recomputed after). Replaced with a `$derived` `readyLabel` that
+stays live; `status` now holds only transient loading/error text.
+
+Confirmed visually (real Chromium screenshots, not just code reading) that
+every item from the user's playability feedback actually works: real unit
+sprites (merfolk citizens/priestess/netcaster/child-king, undead
+skeleton/dark-sorcerer, all visually distinct), the gold selection ring
+and blue movement-range highlight around a clicked unit, camera pan
+(drag) and zoom (wheel) across the full 43x27 map, the story/message
+overlay sequence advancing on click, recruiting (picked "Merman Fighter",
+clicked a highlighted castle tile, watched the log entry and the new
+sprite appear, unit count 11 -> 12), and end turn (side 1 -> side 2, gold
+120 -> 150, log entry). No console errors during any of this. Full test
+suite re-run after all fixes: 341 tests passing (194 engine + 32
+lua-bridge + 3 oracle-tools + 106 renderer + 6 ui), clean `tsc --noEmit`
+on renderer/ui.
+
+This closes out the "no real browser available" caveat that had shadowed
+every prior playability claim in this doc.

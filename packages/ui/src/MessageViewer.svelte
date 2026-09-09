@@ -12,6 +12,7 @@
    * Addresses the playability feedback "no support for ... 'message' tags".
    */
   import type { RecordedMessage } from '@wesnothweb2/engine';
+  import { imageUrl } from '@wesnothweb2/renderer';
 
   let {
     messages,
@@ -45,7 +46,7 @@
   >
     <div class="dialogue-box">
       {#if msg.image}
-        <img class="portrait" src={`/game-images/${msg.image}`} alt="" />
+        <img class="portrait" src={imageUrl(msg.image)} alt="" />
       {/if}
       <div class="dialogue-text">
         <div class="speaker">{msg.caption || speakerLabel(msg.speaker)}</div>
