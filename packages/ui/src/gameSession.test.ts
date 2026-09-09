@@ -27,6 +27,7 @@ import { GameSession } from './gameSession.js';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const snapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/01_Invasion.json');
 const nextSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/02_Flight.json');
+const economySnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/synth_economy_01.json');
 
 function loadSnapshot(): GameBoardSnapshot {
   return JSON.parse(fs.readFileSync(snapshotPath, 'utf8')) as GameBoardSnapshot;
@@ -34,6 +35,11 @@ function loadSnapshot(): GameBoardSnapshot {
 
 function loadNextSnapshot(): GameBoardSnapshot {
   return JSON.parse(fs.readFileSync(nextSnapshotPath, 'utf8')) as GameBoardSnapshot;
+}
+
+/** Real "Economy Debug" synthetic scenario -- gold=40/income=2 (side 1), gold=50/income=1 (side 2), both village_gold=1, one real village at (5,5) -- see synthetic-campaigns/economy/. */
+function loadEconomySnapshot(): GameBoardSnapshot {
+  return JSON.parse(fs.readFileSync(economySnapshotPath, 'utf8')) as GameBoardSnapshot;
 }
 
 /**
@@ -477,5 +483,95 @@ describe('GameSession.confirmAttack zeroes the attacker\'s movement (real Wesnot
     // Whether or not malKevek actually died this particular RNG draw, the
     // session must not have thrown and must be in a consistent state.
     expect(session.selectedUnit).toBeNull();
+  });
+});
+
+describe('GameSession income/upkeep/village economy (real synth_economy_01: gold=40/income=2/village_gold=1)', () => {
+  /**
+   * Real Wesnoth's `play_controller.cpp`: `if (turn() > 1) { current_team()
+   * .new_turn(); ... }` -- the whole game's first turn (every side's very
+   * first go) grants no income and charges no upkeep; from turn 2 onward, a
+   * side's gold changes the moment ITS turn begins (not at the end of the
+   * turn before it). `team::new_turn` is `gold += total_income()` where
+   * `total_income() = base_income() + villages*village_gold`, and
+   * `base_income() = income= (raw WML, 2 here) + game_config::base_income`
+   * (a hardcoded 2). See `GameSession.endTurn`'s own doc comment for the
+   * full derivation, cited directly against `wesnoth/src/game_config.cpp`/
+   * `play_controller.cpp`/`team.cpp`.
+   */
+  it('grants no income/upkeep on turn 1, but applies real total_income the moment turn 2 begins', () => {
+    const session = new GameSession(loadEconomySnapshot());
+    expect(session.activeSide).toBe(1);
+    expect(session.turnNumber).toBe(1);
+    expect(session.board.getTeam(1)!.gold).toBe(40);
+    expect(session.economyInfo.netIncome).toBe(0); // turn 1: no preview yet, matching "no income applied yet".
+
+    session.endTurn(); // -> side 2, still turn 1.
+    expect(session.turnNumber).toBe(1);
+    expect(session.board.getTeam(2)!.gold).toBe(50); // untouched -- still turn 1.
+
+    session.endTurn(); // wraps -> side 1, turn 2 begins: side 1's income now applies.
+    expect(session.turnNumber).toBe(2);
+    expect(session.activeSide).toBe(1);
+    // total_income = income(2) + base_income(2) + 0 villages*1 = 4. No units
+    // beyond the (upkeep-free) leader, so no upkeep expense.
+    expect(session.board.getTeam(1)!.gold).toBe(40 + 4);
+
+    session.endTurn(); // -> side 2, still turn 2: side 2's income now applies too.
+    expect(session.activeSide).toBe(2);
+    expect(session.turnNumber).toBe(2);
+    // total_income = income(1) + base_income(2) + 0 villages*1 = 3.
+    expect(session.board.getTeam(2)!.gold).toBe(50 + 3);
+  });
+
+  it('economyInfo previews startGold/incomePerVillage always, and netIncome only once turnNumber > 1', () => {
+    const session = new GameSession(loadEconomySnapshot());
+    expect(session.economyInfo).toEqual({ startGold: 40, incomePerVillage: 1, villagesOwned: 0, netIncome: 0 });
+
+    session.endTurn();
+    session.endTurn(); // now turn 2, side 1 active -- income already applied by endTurn itself.
+    expect(session.economyInfo.startGold).toBe(40); // startGold never changes, unlike current gold.
+    expect(session.economyInfo.netIncome).toBe(4); // matches what just got applied (previewing the NEXT turn's income, which happens to equal this turn's since nothing changed).
+  });
+
+  it('walking a unit onto a real village (real executeMove -> GameBoard.captureVillage) captures it, and the next turn\'s income reflects the extra village_gold', () => {
+    const session = new GameSession(loadEconomySnapshot());
+    const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
+    const villageLoc = session.board.map.villages[0]!;
+    expect(session.board.villageOwner(villageLoc)).toBeUndefined();
+
+    // Real click-driven move (handleHexClick's select-then-move branch),
+    // not a direct board mutation -- proves the actual UI glue path
+    // (GameSession -> executeMove -> GameBoard.captureVillage) captures
+    // the village, not just the isolated engine action in move.test.ts.
+    session.selectUnit(leader);
+    expect(session.reachable.some((h) => h.x === villageLoc.x && h.y === villageLoc.y)).toBe(true);
+    session.handleHexClick(villageLoc.x, villageLoc.y);
+
+    expect(leader.location.equals(villageLoc)).toBe(true);
+    expect(session.board.villageOwner(villageLoc)).toBe(1);
+    expect(session.economyInfo.villagesOwned).toBe(1);
+
+    session.endTurn();
+    session.endTurn(); // turn 2, side 1's income now includes the captured village.
+    // total_income = income(2) + base_income(2) + 1 village*1 = 5.
+    expect(session.board.getTeam(1)!.gold).toBe(40 + 5);
+  });
+
+  it('upkeep charges gold for unit levels beyond what owned villages support, mirroring play_controller\'s expense = side_upkeep - support', () => {
+    const session = new GameSession(loadEconomySnapshot());
+    const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
+    // Recruit a real level-1 Spearman (cost 14g, matching synthetic-
+    // campaigns/economy's own recruit= list) -- its upkeep (its level, 1,
+    // since it's not a leader) isn't covered by any owned village (0 owned).
+    session.selectUnit(leader);
+    session.selectRecruitType('Spearman');
+    const recruitTile = session.recruitTiles[0]!;
+    session.handleHexClick(recruitTile.x, recruitTile.y);
+    expect(session.board.getTeam(1)!.gold).toBe(40 - 14);
+
+    session.endTurn();
+    session.endTurn(); // turn 2, side 1's turn: income(2)+base(2)+0 villages = 4, upkeep = 1 level - 0 support = 1 expense.
+    expect(session.board.getTeam(1)!.gold).toBe(40 - 14 + 4 - 1);
   });
 });

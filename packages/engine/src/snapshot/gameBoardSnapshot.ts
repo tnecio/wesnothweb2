@@ -154,6 +154,8 @@ export interface SnapshotTeam {
    */
   income?: number;
   incomePerVillage?: number;
+  /** `[side] village_support=` -- how many unit levels' upkeep each owned village covers for free (`Team.supportPerVillage`); same optional/defaulting rationale as `incomePerVillage` above. */
+  supportPerVillage?: number;
 }
 
 /** One `[story][part]` -- see `apps/web/scripts/build-scenario-snapshot.mjs`'s `extractStory`. */
@@ -493,6 +495,7 @@ export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBo
         canRecruit: new Set(t.recruit ?? []),
         income: t.income ?? 0,
         incomePerVillage: t.incomePerVillage ?? 1,
+        supportPerVillage: t.supportPerVillage ?? 1,
       }),
     );
   }
@@ -511,6 +514,12 @@ export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBo
     unit.hitpoints = u.hitpoints;
     unit.maxHitpoints = u.maxHitpoints;
     board.addUnit(unit);
+    // Mirrors `GameBoard.fromConfig`'s own initial-placement capture (real
+    // `unit_creator`'s default `allow_get_village=true`) -- this snapshot's
+    // `units` list doesn't separately carry village-ownership state, so
+    // re-deriving it here from each unit's real starting position gives
+    // the same result without needing a new snapshot field.
+    board.captureVillage(unit.location, unit.side);
     unitsByKey.set(unitKeyFor(u), unit);
   }
 

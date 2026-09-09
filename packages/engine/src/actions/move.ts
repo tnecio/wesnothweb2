@@ -30,13 +30,14 @@
  *    anything they could do to abort the move or move a different unit):
  *    out of scope for this actions-only task, see `IMPLEMENTATION_PLAN.md`.
  *  - **Village capture** on arrival (`unit_mover::post_move`'s village
- *    handling / `actions::get_village`): needs a "who owns this village"
- *    concept the current data model (`Team.ts`/`GameBoard.ts`) doesn't
- *    track yet -- flagged there as out of scope for Phase 1, not
- *    something this module can add on its own since `model/` is out of
- *    bounds for this task. `MoveResult.enteredVillage` reports whether the
- *    final hex is a village, so a caller with a village-ownership layer
- *    can act on it.
+ *    handling / `actions::get_village`) IS handled here now that
+ *    `GameBoard` tracks village ownership (`captureVillage`/`villageOwner`)
+ *    -- `executeMove` reassigns the final hex's owner to `unit.side`
+ *    whenever it's a village, mirroring upstream's unconditional
+ *    reassignment (a captured village is simply reassigned, no "already
+ *    owned" special case). `MoveResult.enteredVillage` still reports
+ *    whether the final hex is a village, for callers that want to react to
+ *    the capture (e.g. a UI toast) without re-deriving it themselves.
  *  - **Teleportation** (`try_teleport`/`pathfind::teleport_map`): no
  *    teleport-map support exists yet (`pathfind.ts`'s own module doc
  *    comment excludes it for the same "no ability-evaluation model yet"
@@ -245,6 +246,9 @@ export function executeMove(board: GameBoard, unit: Unit, path: readonly Locatio
   }
   unit.movesLeft = actualMovesLeft;
 
+  const enteredVillage = board.map.isVillage(finalHex);
+  if (enteredVillage) board.captureVillage(finalHex, unit.side);
+
   return {
     path: actualSteps,
     movesLeft: actualMovesLeft,
@@ -252,7 +256,7 @@ export function executeMove(board: GameBoard, unit: Unit, path: readonly Locatio
     zocStopped: planned.zocStopped,
     ambushed,
     ambusherLocations,
-    enteredVillage: board.map.isVillage(finalHex),
+    enteredVillage,
     facing: unit.facing,
   };
 }

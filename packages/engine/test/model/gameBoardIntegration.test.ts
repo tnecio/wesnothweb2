@@ -165,5 +165,21 @@ describe('GameBoard (real Dead_Water scenario 1 content)', () => {
     for (const unit of board.allUnits()) {
       expect(unit.location.valid(board.map.w(), board.map.h(), GameMap.DEFAULT_BORDER)).toBe(true);
     }
+
+    // Real village count on Home_1.map -- matches
+    // `carryover.test.ts`'s independently-confirmed "31 real villages".
+    expect(board.map.villages.length).toBe(31);
+    // Some of side 1's real starting [unit]s happen to be placed on
+    // villages in this scenario (merfolk scattered near their home reef);
+    // `GameBoard.fromConfig` captures those on initial placement, mirroring
+    // real `unit_creator`'s default `allow_get_village=true` -- so this
+    // should be some, but not all, of the 31 real villages, and none for
+    // side 2 (Mal-Kevek's undead start away from any village here).
+    const capturedByOne = board.villageCount(1);
+    expect(capturedByOne).toBeGreaterThan(0);
+    expect(capturedByOne).toBeLessThan(board.map.villages.length);
+    expect(board.villageCount(2)).toBe(0);
+    const unownedVillages = board.map.villages.filter((v) => board.villageOwner(v) === undefined);
+    expect(unownedVillages.length).toBe(board.map.villages.length - capturedByOne);
   });
 });

@@ -361,6 +361,7 @@ const teams = board.teams().map((t) => ({
   // bonus silently computed as income=0 regardless of the real WML value).
   income: t.income,
   incomePerVillage: t.incomePerVillage,
+  supportPerVillage: t.supportPerVillage,
 }));
 
 /** Serializes a real `AttackType` instance to `AttackTypeSnapshot` shape. */

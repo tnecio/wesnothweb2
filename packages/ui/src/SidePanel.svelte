@@ -1,6 +1,6 @@
 <script lang="ts">
   import { imageUrl } from '@wesnothweb2/renderer';
-  import type { CombatPreview, RecruitOption, RecallOption, AttackerWeaponOption, SelectedUnitInfo } from './gameSession.js';
+  import type { CombatPreview, RecruitOption, RecallOption, AttackerWeaponOption, SelectedUnitInfo, EconomyInfo } from './gameSession.js';
 
   let {
     selected,
@@ -16,6 +16,7 @@
     scenarioTurnsLimit,
     activeSide,
     gold,
+    economyInfo,
     onConfirmAttack,
     onCancelAttack,
     onSelectAttackerWeapon,
@@ -45,6 +46,8 @@
     activeSide: number;
     /** The active side's current gold. */
     gold: number;
+    /** The active side's income/upkeep figures -- see `GameSession.economyInfo`. */
+    economyInfo: EconomyInfo;
     onConfirmAttack: () => void;
     onCancelAttack: () => void;
     onSelectAttackerWeapon: (index: number) => void;
@@ -64,7 +67,13 @@
   <section class="scenario-info">
     <div>Turn {turnNumber}{#if scenarioTurnsLimit !== null} / {scenarioTurnsLimit}{/if}</div>
     <div>Active side: {activeSide}</div>
-    <div>Gold: {gold}</div>
+    <div>Gold: {gold} <span class="hint-inline">(started with {economyInfo.startGold})</span></div>
+    <div>
+      Income next turn: {economyInfo.netIncome >= 0 ? '+' : ''}{economyInfo.netIncome}
+      <span class="hint-inline">
+        ({economyInfo.villagesOwned} village{economyInfo.villagesOwned === 1 ? '' : 's'} &times; {economyInfo.incomePerVillage}g)
+      </span>
+    </div>
   </section>
 
   <p class="status">{statusMessage}</p>
@@ -260,6 +269,10 @@
     margin: 0;
     color: #f1e6c8;
     font-style: italic;
+  }
+  .hint-inline {
+    opacity: 0.7;
+    font-size: 0.9em;
   }
   h3 {
     margin: 0 0 0.4rem;

@@ -23,6 +23,8 @@ export class GameBoard {
   private readonly unitsByLocation = new Map<string, Unit>();
   /** Units off the board (a side's recall list), keyed by side. */
   private readonly recallLists = new Map<number, Unit[]>();
+  /** Which side (if any) currently owns each village, keyed by `Location.key()`. Mirrors `team::villages_`/`village_owner`. */
+  private readonly villageOwners = new Map<string, number>();
 
   constructor(map: GameMap) {
     this.map = map;
@@ -87,6 +89,33 @@ export class GameBoard {
 
   unitsForSide(side: number): Unit[] {
     return this.allUnits().filter((u) => u.side === side);
+  }
+
+  // --- villages ---
+
+  /** The owning side of `loc`, or `undefined` if it's not a village or is unowned. Mirrors `team::owns_village`/the reverse lookup over `team::villages_`. */
+  villageOwner(loc: Location): number | undefined {
+    return this.villageOwners.get(loc.key());
+  }
+
+  /**
+   * Mirrors `team::get_village`: assigns `loc` to `side`, replacing any
+   * previous owner (a captured village is simply reassigned, matching
+   * `actions::get_village`'s "was already owned by someone else" branch).
+   * No-ops if `loc` isn't actually a village.
+   */
+  captureVillage(loc: Location, side: number): void {
+    if (!this.map.isVillage(loc)) return;
+    this.villageOwners.set(loc.key(), side);
+  }
+
+  /** Mirrors `team::villages().size()`: how many villages `side` currently owns. */
+  villageCount(side: number): number {
+    let count = 0;
+    for (const owner of this.villageOwners.values()) {
+      if (owner === side) count++;
+    }
+    return count;
   }
 
   // --- recall lists ---
@@ -174,11 +203,14 @@ export class GameBoard {
         }
         if (leader.location.valid()) {
           board.addUnit(leader);
+          board.captureVillage(leader.location, leader.side);
         }
         if (leader.id) team.canRecruit.add(leader.type.id);
       }
       for (const unitCfg of sideCfg.children('unit')) {
-        board.addUnit(Unit.fromConfig(unitCfg, resolveType));
+        const unit = Unit.fromConfig(unitCfg, resolveType);
+        board.addUnit(unit);
+        board.captureVillage(unit.location, unit.side);
       }
       for (const recallCfg of sideCfg.children('recall')) {
         board.addToRecallList(team.side, Unit.fromConfig(recallCfg, resolveType));
@@ -194,7 +226,11 @@ export class GameBoard {
         for (const { tag, config } of node.allChildren()) {
           if (tag === 'unit') {
             const loc = Location.fromConfig(config);
-            if (loc.valid()) board.addUnit(Unit.fromConfig(config, resolveType));
+            if (loc.valid()) {
+              const unit = Unit.fromConfig(config, resolveType);
+              board.addUnit(unit);
+              board.captureVillage(unit.location, unit.side);
+            }
           } else if (tag !== 'side') {
             // [side]'s own [unit]/[recall] children are already handled above;
             // don't double-add them via the generic walk.

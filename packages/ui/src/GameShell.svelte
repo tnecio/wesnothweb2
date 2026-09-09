@@ -36,6 +36,7 @@
     type RecallOption,
     type AttackerWeaponOption,
     type SaveGameData,
+    type EconomyInfo,
   } from './gameSession.js';
   import { saveGame, loadGame } from './persistence.js';
   import TurnBanner from './TurnBanner.svelte';
@@ -95,6 +96,7 @@
   let turnNumber = $state(session.turnNumber);
   let activeSide = $state(session.activeSide);
   let gold = $state(session.board.getTeam(session.activeSide)?.gold ?? 0);
+  let economyInfo = $state<EconomyInfo>(session.economyInfo);
   let statusMessage = $state('Click one of your units to select it.');
 
   function selectedInfo(): SelectedUnitInfo | null {
@@ -132,6 +134,7 @@
     turnNumber = session.turnNumber;
     activeSide = session.activeSide;
     gold = session.board.getTeam(session.activeSide)?.gold ?? 0;
+    economyInfo = session.economyInfo;
 
     if (session.scenarioResult) {
       statusMessage = session.scenarioResult === 'victory' ? 'Victory!' : 'Defeat.';
@@ -335,6 +338,7 @@
       {scenarioTurnsLimit}
       {activeSide}
       {gold}
+      {economyInfo}
       onConfirmAttack={handleConfirmAttack}
       onCancelAttack={handleCancelAttack}
       onSelectAttackerWeapon={handleSelectAttackerWeapon}

@@ -133,6 +133,18 @@ export interface AttackerWeaponOption {
   selected: boolean;
 }
 
+/** The active side's economy figures, for a "how is my gold changing" side-panel display -- see `GameSession.economyInfo`. */
+export interface EconomyInfo {
+  /** The side's `gold=` at scenario start (`Team.startGold`), before any spending/income. */
+  startGold: number;
+  /** Gold granted per turn for each village this side owns (`village_gold=`, `Team.incomePerVillage`). */
+  incomePerVillage: number;
+  /** Villages this side currently owns (`GameBoard.villageCount`). */
+  villagesOwned: number;
+  /** What this side's gold will change by at the start of its *next* turn: total income (base + per-village) minus any unsupported unit upkeep. Zero on turn 1, when no side has had income/upkeep applied yet -- see `endTurn`'s doc comment. */
+  netIncome: number;
+}
+
 /** One recruitable unit type, ready for the side panel's recruit list. */
 export interface RecruitOption {
   typeId: string;
@@ -239,6 +251,9 @@ export interface SaveGameData {
  * combat math itself.
  */
 export class GameSession {
+  /** `game_config::base_income` upstream (wesnoth/src/game_config.cpp) -- a hardcoded constant added to every side's `income=` WML attribute, NOT itself WML-configurable. */
+  private static readonly BASE_INCOME = 2;
+
   readonly board: GameBoard;
   readonly snapshot: GameBoardSnapshot;
   /** Initial active side (Dead_Water scenario 1's Kai Krellis side by default) -- see `activeSide` for who can actually act now. */
@@ -605,10 +620,60 @@ export class GameSession {
       unit.movesLeft = unit.maxMoves;
       unit.attacksLeft = unit.maxAttacksPerTurn;
     }
+    // Income/upkeep: mirrors `play_controller::play_side`'s
+    // `if (turn() > 1) { current_team().new_turn(); ... }` -- the very
+    // first turn of the whole game (turn 1, every side's first go) grants
+    // no income and charges no upkeep; from turn 2 onward, a side's gold
+    // is adjusted the moment its turn begins. `team::new_turn` itself is
+    // `gold += total_income()` where `total_income() = base_income() +
+    // villages*village_gold`, and `base_income() = income= (raw WML,
+    // default 0) + game_config::base_income` (a hardcoded 2, NOT
+    // WML-configurable upstream -- see wesnoth/src/game_config.cpp).
+    // Upkeep separately mirrors `play_controller.cpp`'s
+    // `expense = side_upkeep - support(); if (expense > 0) spend_gold(expense)`:
+    // `side_upkeep` sums `unit::upkeep()` (a unit's level, or 0 for a
+    // leader -- `can_recruit()` -- per `unit.cpp`), and `support()` is
+    // `villages * village_support`.
+    if (this.turnNumber > 1) {
+      const team = this.board.getTeam(nextSide);
+      if (team) {
+        team.applyIncome(this.totalIncomeFor(nextSide));
+        const expense = this.upkeepExpenseFor(nextSide);
+        if (expense > 0) team.spendGold(expense);
+      }
+    }
     const teamName = this.board.getTeam(nextSide)?.teamName ?? String(nextSide);
     const message = `Turn ${this.turnNumber} -- side ${nextSide} (${teamName})'s turn.`;
     this.log.unshift(message);
     return message;
+  }
+
+  /** `team::total_income()`: `income=` (raw WML) + the hardcoded base + villages*village_gold. Shared by `endTurn` (which applies it) and `economyInfo` (which previews it). */
+  private totalIncomeFor(side: number): number {
+    const team = this.board.getTeam(side);
+    if (!team) return 0;
+    return team.income + GameSession.BASE_INCOME + this.board.villageCount(side) * team.incomePerVillage;
+  }
+
+  /** `side_upkeep - team::support()`, mirroring `play_controller.cpp`'s expense calculation -- NOT clamped to zero here, since `endTurn` needs to know whether it's actually positive before spending. */
+  private upkeepExpenseFor(side: number): number {
+    const team = this.board.getTeam(side);
+    if (!team) return 0;
+    const upkeep = this.board.unitsForSide(side).reduce((sum, unit) => sum + (unit.canRecruit ? 0 : unit.level), 0);
+    const support = this.board.villageCount(side) * team.supportPerVillage;
+    return upkeep - support;
+  }
+
+  /** The active side's economy figures for the side panel -- see `EconomyInfo`'s own doc comment on each field. */
+  get economyInfo(): EconomyInfo {
+    const team = this.board.getTeam(this.activeSide);
+    const expense = this.upkeepExpenseFor(this.activeSide);
+    return {
+      startGold: team?.startGold ?? 0,
+      incomePerVillage: team?.incomePerVillage ?? 0,
+      villagesOwned: this.board.villageCount(this.activeSide),
+      netIncome: this.turnNumber > 1 ? this.totalIncomeFor(this.activeSide) - Math.max(0, expense) : 0,
+    };
   }
 
   /**

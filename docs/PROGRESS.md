@@ -979,3 +979,94 @@ content, same `withAdjacentLeaders` helper as the weapon-selection tests
 -- moved to module scope so both blocks share it). Verified through the
 real UI in a browser: attack, re-select the same unit, confirm "Moves
 left: 0/5" and no reachable hexes highlighted. 391 tests passing.
+
+## 2026-09-09 (cont'd): village capture + real per-turn income/upkeep (Economy & Recruit)
+
+User request: "In Economy & Recruit, can you add a village and some
+information about initial gold, gold per village, income (+ make
+starting gold smaller)?" Investigating what "income" should even mean
+surfaced a much bigger real gap than the display-only ask implied:
+**village ownership/capture and per-turn income/upkeep were both
+entirely unimplemented in the live gameplay loop.** `move.ts`'s own
+module doc comment already flagged village capture as deliberately out
+of scope ("needs a 'who owns this village' concept the current data
+model doesn't track yet"), and `GameSession.endTurn()` never called
+`Team.applyIncome` (which existed but was dead code) or charged any
+upkeep at all -- gold was static from scenario start except for
+recruit/recall spending, on every scenario in the project, real Dead
+Water included. Showing an "income" number against a gold total that
+never actually changes would have been actively misleading, so this
+became a real feature build rather than a UI tweak.
+
+**Real Wesnoth's formula**, verified directly against source (not
+guessed): `play_controller.cpp`'s per-side turn-start block --
+```
+if (turn() > 1) {
+    current_team().new_turn();  // gold += total_income()
+    int expense = side_upkeep(current_side()) - current_team().support();
+    if (expense > 0) current_team().spend_gold(expense);
+}
+```
+where `team::total_income() = base_income() + villages*village_gold`,
+`base_income() = income= (raw WML) + game_config::base_income` (a
+hardcoded `2`, NOT WML-configurable -- `game_config.cpp`), `side_upkeep`
+sums `unit::upkeep()` (a unit's level, or 0 for a leader --
+`can_recruit()` -- per `unit.cpp`'s default "full" upkeep), and
+`team::support() = villages * village_support`. Critically, income/
+upkeep apply once per side **the moment that side's turn begins**, not
+at the end of the turn before -- and the whole game's first turn grants
+nothing at all to anyone.
+
+**Engine changes** (`packages/engine`):
+- `GameBoard` gained real village-ownership tracking: `villageOwners: Map<locationKey, side>`, with `villageOwner(loc)`, `captureVillage(loc, side)` (unconditional reassignment, matching `actions::get_village`'s "no special case for already-owned" behavior), and `villageCount(side)`.
+- `GameBoard.fromConfig` now captures a village under any unit present at scenario start standing on one (mirrors real `unit_creator`'s default `allow_get_village=true`) -- confirmed via the real Dead_Water Home_1.map integration test that some of side 1's real starting merfolk units do start on villages (6 of the map's real 31), which a naive "villages start unowned" assumption would have missed.
+- `executeMove` (`actions/move.ts`) now calls `board.captureVillage(finalHex, unit.side)` whenever the unit's final resting hex is a village -- resolving the gap `move.ts`'s own doc comment had flagged. Only the *final* hex captures; passing through mid-route does not.
+- `actionWml.ts`'s `[unit]` event-tag handler (event-spawned units) got the same capture call, for parity with scenario-start placement.
+- `gameBoardFromSnapshot` (the browser's own board-rebuild path, used by `GameSession` -- separate code path from `GameBoard.fromConfig`, which only engine-level WML tests exercise directly) re-derives the same initial-placement captures from each unit's real snapshot position, since the snapshot JSON doesn't separately carry village-ownership state.
+- `SnapshotTeam` gained `supportPerVillage?` (threaded through the build script and `gameBoardFromSnapshot`), completing the `village_support=` field alongside the pre-existing `income`/`incomePerVillage`.
+
+**UI changes** (`packages/ui`): `GameSession.endTurn()` now applies the
+real formula above (gated on `turnNumber > 1`, matching `turn() > 1`
+exactly) via two new private helpers (`totalIncomeFor`/`upkeepExpenseFor`,
+shared with a new `economyInfo` getter so the preview and the real
+application can't drift apart). `economyInfo` exposes `startGold`,
+`incomePerVillage`, `villagesOwned`, and `netIncome` (0 on turn 1,
+matching "nothing's been applied yet") for the side panel. `SidePanel`
+now shows "Gold: N (started with M)" and "Income next turn: +N (V
+villages x Gg)" under the existing turn/side line.
+
+**Renderer**: villages were invisible on the board -- `SnapshotBoard`'s
+placeholder flat-color terrain renderer (real per-terrain imagery is
+Phase 9, not built) keys color purely off the base code's first letter,
+so `Gg^Vh` rendered identically to plain grass. Added a narrow,
+overlay-code-aware special case (any `^V...` overlay, matching every
+real village terrain's code convention) so villages are visibly distinct
+without attempting full Phase 9 terrain graphics.
+
+**Synthetic economy scenario**: added a real village (`Gg^Vh`) to
+`synthetic-campaigns/economy/maps/economy.map`, reachable by the leader
+in a couple of turns' walk from the keep (not adjacent -- the point is
+to demonstrate walking there mattering); reduced side 1's starting gold
+from 200 to 40 (200 let the whole recruit list be bought instantly,
+trivializing the economy loop the campaign exists to demonstrate).
+
+**A real off-by-one caught during testing**: my first attempt placed the
+village on the map's outermost ring of raw text hexes, which
+`GameMap`'s emulated 1-tile border consumes entirely -- `board.map.
+villages` came back empty, and the "village" was permanently
+unreachable/invisible despite parsing without error. Caught by writing
+an engine-level test first and getting a real, unexplained failure
+before ever touching the UI; fixed by placing it one ring further in.
+
+12 new/expanded regression tests across `move.test.ts` (village capture:
+unowned, enemy-owned reassignment, and "passing through doesn't count"),
+`gameBoardIntegration.test.ts` (real Home_1.map's 31 villages, 6
+captured by side 1's real starting placement), and `gameSession.test.ts`
+(real synth_economy_01: no income/upkeep on turn 1, real total_income
+applied exactly on turn 2, a real click-driven move onto a village
+capturing it and changing the next turn's income, and upkeep charging
+gold for an unsupported recruited unit's level). Verified end-to-end in
+a real browser: moved the leader onto the village via the real click
+path, ended two turns, and confirmed gold/income/village-count in the
+side panel matched the hand-computed real formula exactly (40 -> 45,
+"+5 (1 village x 1g)").

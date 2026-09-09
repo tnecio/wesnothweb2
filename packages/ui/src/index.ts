@@ -9,6 +9,7 @@ export type {
   RecruitOption,
   RecallOption,
   AttackerWeaponOption,
+  EconomyInfo,
   GameSessionOptions,
   SaveGameData,
 } from './gameSession.js';

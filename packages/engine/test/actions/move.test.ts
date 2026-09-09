@@ -213,3 +213,113 @@ describe('executeMove / planTurnMovement zone-of-control regression (real, repor
     expect(mover.movesLeft).toBe(4); // real terrain cost only (5 - 1), no ZoC penalty.
   });
 });
+
+describe('executeMove village capture', () => {
+  /**
+   * Real Wesnoth's `unit_mover::post_move` reassigns a village's owner to
+   * the moving unit's side the moment it stops there (`actions::get_village`,
+   * unconditionally -- no "already owned by an ally" special case). Real
+   * village terrain (`Gg^Vh`, "human_village") uses `gives_income=yes` to
+   * mark `village=true` -- see `wesnoth/data/core/terrain.cfg`'s
+   * `human_village` entry -- reproduced directly here rather than loading
+   * the whole real terrain.cfg, matching this describe block's sibling ZoC
+   * tests' minimal-terrain-data style.
+   */
+  const terrainData = TerrainTypeData.fromConfigs([
+    (() => {
+      const cfg = new WmlConfig();
+      cfg.setAttribute('id', 'test_village');
+      cfg.setAttribute('string', 'Gg^Vh');
+      cfg.setAttribute('gives_income', true);
+      return cfg;
+    })(),
+  ]);
+  const flatMoveType = (() => {
+    const cfg = new WmlConfig();
+    const costs = new WmlConfig();
+    costs.setAttribute('Gg', 1);
+    // Movement-cost lookup keys off a terrain_type's own `id=` (here
+    // "test_village", since this terrain_type declares no `aliasof=` group
+    // to key through instead) -- not its raw code string. Real content
+    // keys these by GROUP alias ids (e.g. "flat", "village") instead;
+    // reproduced narrowly here since only this exact code needs a cost.
+    costs.setAttribute('test_village', 1);
+    cfg.addChild('movement_costs', costs);
+    return MoveType.fromConfig(cfg, terrainData);
+  })();
+  const moverType = makeUnitType('mover', flatMoveType, 5);
+
+  function makeVillageBoard(): { board: GameBoard; villageLoc: Location } {
+    // 9x9 raw grid with `borderSize=1` (matching the ZoC describe block
+    // above's `makeRingBoard`) -- the outermost ring is consumed as the
+    // map's emulated border, leaving a 7x7 playable area (engine coords
+    // 0..6), comfortably fitting the village/start/beyond hexes below.
+    const row = Array.from({ length: 9 }, () => 'Gg').join(',');
+    const rows = Array.from({ length: 9 }, () => row);
+    const villageLoc = new Location(4, 3);
+    const cols = rows[4]!.split(',');
+    cols[5] = 'Gg^Vh';
+    rows[4] = cols.join(',');
+    const mapText = rows.join('\n');
+    const board = new GameBoard(GameMap.fromMapString(mapText, terrainData, 1));
+    board.addTeam(new Team(1));
+    board.addTeam(new Team(2));
+    expect(board.map.isVillage(villageLoc)).toBe(true);
+    return { board, villageLoc };
+  }
+
+  it('capturing an unowned village on arrival assigns it to the mover\'s side', () => {
+    const { board, villageLoc } = makeVillageBoard();
+    const mover = Unit.create(moverType, 1, new Location(0, 3));
+    mover.movesLeft = 5;
+    mover.maxMoves = 5;
+    board.addUnit(mover);
+
+    expect(board.villageOwner(villageLoc)).toBeUndefined();
+    const route = findPath(board, mover, villageLoc, { seeAll: true });
+    const result = executeMove(board, mover, route.steps, { seeAll: true });
+
+    expect(result.enteredVillage).toBe(true);
+    expect(board.villageOwner(villageLoc)).toBe(1);
+    expect(board.villageCount(1)).toBe(1);
+  });
+
+  it('walking onto an enemy-owned village reassigns (captures) it', () => {
+    const { board, villageLoc } = makeVillageBoard();
+    board.captureVillage(villageLoc, 2);
+    expect(board.villageCount(2)).toBe(1);
+
+    const mover = Unit.create(moverType, 1, new Location(0, 3));
+    mover.movesLeft = 5;
+    mover.maxMoves = 5;
+    board.addUnit(mover);
+
+    const route = findPath(board, mover, villageLoc, { seeAll: true });
+    executeMove(board, mover, route.steps, { seeAll: true });
+
+    expect(board.villageOwner(villageLoc)).toBe(1);
+    expect(board.villageCount(2)).toBe(0);
+    expect(board.villageCount(1)).toBe(1);
+  });
+
+  it('passing through (not stopping on) a village does not capture it', () => {
+    const { board, villageLoc } = makeVillageBoard();
+    const mover = Unit.create(moverType, 1, new Location(0, 3));
+    mover.movesLeft = 5;
+    mover.maxMoves = 5;
+    board.addUnit(mover);
+
+    // Route through the village to a hex beyond it, using up all movement
+    // so the unit stops mid-route -- short of the village itself.
+    const beyond = new Location(6, 3);
+    const route = findPath(board, mover, beyond, { seeAll: true });
+    const villageIndexInRoute = route.steps.findIndex((h) => h.equals(villageLoc));
+    expect(villageIndexInRoute).toBeGreaterThan(0);
+    mover.movesLeft = villageIndexInRoute - 1; // enough to reach the hex just short of the village, but not the village itself (1 move point per hex on this flat map).
+    const result = executeMove(board, mover, route.steps, { seeAll: true });
+
+    expect(result.enteredVillage).toBe(false);
+    expect(mover.location.equals(villageLoc)).toBe(false);
+    expect(board.villageOwner(villageLoc)).toBeUndefined();
+  });
+});

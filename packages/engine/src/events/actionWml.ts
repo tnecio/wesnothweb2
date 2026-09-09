@@ -491,6 +491,11 @@ function actionUnit(cfg: WmlConfig, ctx: EventContext): void {
   }
   if (unit.location.valid()) {
     ctx.board.addUnit(unit);
+    // Mirrors real `unit_creator`'s default `allow_get_village=true` --
+    // an event-spawned unit placed directly onto a village captures it,
+    // same as a `[side]`/scenario-level `[unit]` present at scenario
+    // start (see `GameBoard.fromConfig`'s own capture calls).
+    ctx.board.captureVillage(unit.location, side);
   } else {
     ctx.log('error', '[unit] has no valid location and no starting position to fall back to');
   }

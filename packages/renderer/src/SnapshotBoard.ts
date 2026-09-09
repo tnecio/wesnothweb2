@@ -113,8 +113,12 @@ const TERRAIN_COLORS: Record<string, number> = {
   _: 0x2a2a2a,
 };
 
+/** Every real village overlay code starts with `V` (`^Vh`, `^Vhh`, `^Vc`, `^Ve`, `^Vm`, `^Vu`, ...) -- see `wesnoth/data/core/terrain.cfg`'s village terrain_types. Colored distinctly from its base terrain so a village is visible at all under this placeholder flat-color renderer (full per-terrain imagery is Phase 9, not built yet) -- otherwise e.g. `Gg^Vh` renders identically to plain `Gg` grass. */
+const VILLAGE_COLOR = 0xc9963c;
+
 function colorForTerrain(code: string): number {
-  const base = code.split('^')[0] ?? code;
+  const [base = code, overlay] = code.split('^');
+  if (overlay && overlay.toUpperCase().startsWith('V')) return VILLAGE_COLOR;
   const letter = base.replace(/^_/, '_').charAt(0).toUpperCase();
   return TERRAIN_COLORS[letter] ?? 0x555555;
 }
