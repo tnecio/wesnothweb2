@@ -250,19 +250,32 @@ export class SnapshotBoard {
     this.highlightLayer.removeChildren();
     this.selectionLayer.removeChildren();
 
+    // A colour-coded fill alone isn't reliably visible: Dead Water's map is
+    // almost entirely water and sand/keep hexes, so the original flat blue
+    // reachable-fill on blue ocean (and the gold selection ring on a tan
+    // keep hex, below) were both real, close-to-invisible contrast
+    // failures, not just "could be nicer" -- confirmed by screenshot, not
+    // guessed. Every highlighted hex now also gets a solid white outline
+    // (full alpha, on TOP of the low-alpha colour fill) so it reads
+    // against any terrain hue/brightness; the fill colour still carries
+    // the semantic meaning (blue=move, red=attack, green=recruit) for
+    // anyone who can see it, but the white border is what actually
+    // guarantees visibility.
     const drawFill = (hex: HexPoint, color: number, alpha: number): void => {
       const coord = toHexCoord(hex.x, hex.y);
       const { x: cx, y: cy } = hexToPixel(coord);
       const corners = hexCorners(cx, cy);
+      const points = corners.flatMap((p) => [p.x, p.y]);
       const g = new PIXI.Graphics();
-      g.poly(corners.flatMap((p) => [p.x, p.y]));
+      g.poly(points);
       g.fill({ color, alpha });
+      g.stroke({ width: 2, color: 0xffffff, alpha: 0.85 });
       this.highlightLayer.addChild(g);
     };
 
-    for (const hex of state.reachable ?? []) drawFill(hex, 0x3fa9f5, 0.35);
-    for (const hex of state.attackTargets ?? []) drawFill(hex, 0xe23b3b, 0.4);
-    for (const hex of state.recruitTiles ?? []) drawFill(hex, 0x3fdf6a, 0.35);
+    for (const hex of state.reachable ?? []) drawFill(hex, 0x3fa9f5, 0.45);
+    for (const hex of state.attackTargets ?? []) drawFill(hex, 0xe23b3b, 0.5);
+    for (const hex of state.recruitTiles ?? []) drawFill(hex, 0x3fdf6a, 0.45);
 
     if (state.selected) {
       const coord = toHexCoord(state.selected.x, state.selected.y);
@@ -270,17 +283,21 @@ export class SnapshotBoard {
       const corners = hexCorners(cx, cy);
       const points = corners.flatMap((p) => [p.x, p.y]);
 
-      // A dark outer stroke behind a bright inner one, both wider than
-      // before (3px -> 5px/2px) -- unmistakable against any terrain
-      // colour or unit sprite now that this layer draws on top of units.
+      // A dark outer stroke behind a bright inner one. The inner colour
+      // was gold (0xffd54a) -- confirmed by screenshot to nearly disappear
+      // against Dead Water's tan keep/sand hexes, which are a close match
+      // for that hue. White has no such blind spot: paired with the black
+      // outer stroke it stays legible against every terrain colour and
+      // every unit sprite, at the cost of the "selection = gold" colour
+      // association (not worth keeping over actual visibility).
       const outer = new PIXI.Graphics();
       outer.poly(points);
-      outer.stroke({ width: 5, color: 0x000000, alpha: 0.6 });
+      outer.stroke({ width: 6, color: 0x000000, alpha: 0.75 });
       this.selectionLayer.addChild(outer);
 
       const inner = new PIXI.Graphics();
       inner.poly(points);
-      inner.stroke({ width: 2, color: 0xffd54a, alpha: 1 });
+      inner.stroke({ width: 3, color: 0xffffff, alpha: 1 });
       this.selectionLayer.addChild(inner);
     }
   }

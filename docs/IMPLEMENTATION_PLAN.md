@@ -162,13 +162,33 @@ starting with just its first scenario.
 - Later: port the candidate-action framework and relevant Lua micro-AIs
   using the Phase 3 Lua VM, for closer-to-original behavior.
 
-## Phase 8 — Multiplayer (future work, not currently in scope)
+## Phase 8 — Multiplayer (struck out — not needed for MVP)
 
-- Not a priority now, but expected eventually — keep Phase 2's RNG/combat
-  determinism work compatible with it (exact MT19937 reproducibility,
-  command-based rather than ad hoc action resolution) so this doesn't
-  require revisiting settled design later.
-- When picked up: a Node/WS relay service (not necessarily wire-compatible
-  with `wesnothd`) implementing the lockstep-replay model described in
-  `ARCHITECTURE.md`. Large and orthogonal to the core single-player
-  experience — do not start before Phases 0–6 are solid.
+**2026-09-09 decision**: multiplayer is out of scope entirely, not just
+deferred. The user's call: this is a single-player MVP project and there's
+still substantial single-player polish work ahead (Phase 5/6) that's a
+better use of effort. `ARCHITECTURE.md`'s multiplayer-relay section is now
+historical context, not a live design target. Phase 2's RNG/command-based
+action resolution stays as it is regardless (it's the right design for
+single-player determinism/testing on its own merits), but no relay service
+will be built on top of it.
+
+## Priority as of 2026-09-09
+
+Explicit user direction: focus on **Phase 5 (UI polish) and Phase 6
+(content breadth)** now. Phase 7 (real AI) is deferred until Phase 5 is
+solid — hotseat cycling stays as the stand-in until then. Phase 8 is
+struck out (see above). Known Phase 5 gaps, roughly in priority order:
+
+1. **Unit selection visuals** — flagged directly as still lacking despite
+   the selection-ring fix; needs a fresh look (see PROGRESS.md for
+   findings once investigated).
+2. **Real per-unit-type stats** — every unit type currently shares
+   identical placeholder combat/movement stats (see PROGRESS.md, Post-
+   Phase-5 revision #3's "next steps" discussion); a Merman Fighter and a
+   Merman Citizen are numerically identical right now. Needs real
+   `data/core/units.cfg` stat loading (base_unit/gender-variant
+   inheritance flattening), not just image paths.
+3. **Victory/defeat conditions** — scenarios currently never end.
+4. **Save/load** — planned since the original Phase 5 scope, not started.
+5. Terrain image rendering stays deferred (user's call, unchanged).

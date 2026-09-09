@@ -489,3 +489,58 @@ on renderer/ui.
 
 This closes out the "no real browser available" caveat that had shadowed
 every prior playability claim in this doc.
+
+## 2026-09-09: priority reset, and two real bugs behind "selection visuals still lacking"
+
+User direction: focus on Phase 5 (UI polish) + Phase 6 (content breadth).
+Phase 7 (real AI) deferred until Phase 5 is solid. Phase 8 (multiplayer)
+struck out entirely -- not needed for MVP, and there's still plenty of
+single-player polish work ahead. Recorded in `IMPLEMENTATION_PLAN.md`.
+
+User specifically flagged unit selection visuals as still lacking despite
+the earlier z-order fix. Investigated with fresh Playwright screenshots
+and found two distinct, real bugs, not one:
+
+1. **Contrast**: the reachable-tile fill (`0x3fa9f5`, light blue, alpha
+   0.35) is nearly invisible on Dead Water's ocean terrain (also blue),
+   and the selection ring's inner stroke (`0xffd54a`, gold) is nearly
+   invisible on keep/sand hexes (also tan/gold) -- confirmed directly by
+   screenshot, hexes Kai Krellis's own starting keep included. Since Dead
+   Water is an all-water merfolk campaign, this hit almost every hex.
+   Fixed by adding a solid white 2-3px outline to every highlighted hex
+   (fill colour still carries blue/red/green semantic meaning where
+   contrast allows, but the white border is what actually guarantees
+   visibility against any terrain hue) and swapping the selection ring's
+   inner stroke from gold to white (paired with the existing black outer
+   stroke, white has no terrain-colour blind spot).
+
+2. **A real, intermittent reactivity race** (the more serious of the two):
+   `GameBoardView.svelte`'s `board` variable was a plain (non-`$state`)
+   `let`, assigned inside the mount effect's async IIFE after `await
+   app.init(...)`. The two small reactive effects that call
+   `board?.updateUnits(...)`/`board?.setHighlights(...)` only re-run when
+   their TRACKED dependencies (`units`, `selectedHex`, etc) change --
+   never merely because the untracked `board` variable was later assigned
+   a value. If a prop happened to change before `app.init()` resolved
+   (routine -- it's not instant), that effect's run saw `board` still
+   `undefined`, no-opped, and then genuinely never ran again once `board`
+   became available, since nothing it tracks changed afterwards. Confirmed
+   empirically by instrumenting both the effect and `setHighlights` itself:
+   the *exact same* click sequence rendered the ring/highlights correctly
+   on some runs and silently not at all on others -- the signature of a
+   timing race, not a one-off mistake, and exactly consistent with a user
+   report of something being unreliably visible rather than reliably
+   broken or reliably fine. Fixed by making `board` a `$state` variable,
+   so its own assignment is a tracked write both effects correctly
+   subscribe to. Re-verified with a 6-run stress test (faster, 150ms
+   clicks, deliberately trying to provoke the old race) -- the ring and
+   move-range fan rendered correctly on every single run afterward.
+
+Both fixes are in `packages/renderer/src/SnapshotBoard.ts` and
+`packages/ui/src/GameBoardView.svelte`. 341 tests still passing, clean
+`tsc`/`svelte-check`.
+
+Next up (in priority order, per the updated `IMPLEMENTATION_PLAN.md`):
+real per-unit-type combat/movement stats (currently every one of the 332
+types shares identical placeholder stats), victory/defeat conditions
+(scenarios never currently end), then save/load.

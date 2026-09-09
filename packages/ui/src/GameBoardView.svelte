@@ -62,7 +62,24 @@
   let canvasHost: HTMLDivElement | undefined = $state();
   /** Transient loading/error text only -- the ready-state label is `readyLabel` below, kept live via `$derived` rather than a one-time snapshot of `units.length` at mount (that used to freeze at the pre-events count, e.g. "2 units" even once the scenario's startup events had spawned nine more). */
   let status = $state<string | null>('loading scenario...');
-  let board: SnapshotBoard | undefined;
+  /**
+   * `$state`, not a plain `let` -- this used to be a plain variable, which
+   * created a real race: the two small reactive effects below read `board`
+   * but only *re-run* when `selectedHex`/`units`/etc change, not when
+   * `board` itself transitions from undefined to assigned (a plain
+   * variable write isn't a tracked dependency). If a prop changed at some
+   * point before the async PixiJS init below finished (entirely possible
+   * -- app.init() is not instant), that effect run saw `board` still
+   * undefined, no-opped, and then never reran again since nothing it
+   * tracks changed afterwards -- silently dropping the selection ring/
+   * highlights with no error. Confirmed by instrumenting both effects:
+   * the exact same click sequence rendered highlights correctly on some
+   * runs and not at all on others, which is the signature of a timing
+   * race, not a one-off mistake. Making `board` reactive means its own
+   * assignment is a tracked write, so both effects correctly rerun the
+   * moment it becomes available, regardless of what else changed when.
+   */
+  let board: SnapshotBoard | undefined = $state();
   const readyLabel = $derived(`${snapshot.scenario.name} -- ${units.length} units, ${snapshot.map.width}x${snapshot.map.height} hexes`);
 
   $effect(() => {
