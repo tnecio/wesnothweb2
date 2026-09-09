@@ -117,22 +117,24 @@ design (multiplayer relay).
 First playable-scenario milestone targets `Dead_Water` (mainline campaign),
 starting with just its first scenario.
 
-
-
-- Board renderer consuming the Phase 2 event stream: terrain layer (reusing
-  Phase 0's `ImageCache`/`ipf` work), unit sprites, `cycle_id`-grouped
-  animation, fog/shroud.
-- Context-aware unit animation selection, ported properly from
-  `units/animation.cpp`/`frame.cpp` matching logic (facing/terrain/weapon/
-  damage-state) — attempt #1's biggest unfinished item.
-- Time-of-day tinting, frame position/halo/blend fields (attack-lunge
-  positioning), sound-in-frame playback, per-blow HP sync points,
-  scenario-local `[terrain_graphics]` — all explicitly left undone by
-  attempt #1, all in scope here.
-- Verify visually via a generalized `compare-images.js`: render fixed
-  scenes and diff against `wl-image-oracle` screenshots.
-- **Milestone**: the Phase 2 golden scenario visibly plays in a browser tab
-  with correct terrain/unit rendering and animation.
+- Board renderer consuming the Phase 2 event stream: hex geometry, layered
+  `PIXI.Container`s (terrain/highlight/unit/selection), unit sprites with
+  real per-side colour markers, click handling, pan/zoom.
+- **Delivered, but narrower than originally scoped** — the two biggest
+  original line items were split out into their own phases (2026-09-09,
+  user's call: both are large enough, and both are exactly what stalled
+  attempt #1, to deserve explicit scoping rather than living inside
+  "Phase 4 rendering" as an implicit, easy-to-forget gap):
+  - **Phase 9 — Terrain visuals**: real `[terrain_graphics]` image
+    compositing (currently flat-coloured hexes, a deliberate, user-approved
+    interim simplification).
+  - **Phase 10 — Unit animation**: context-aware animation selection/
+    playback (currently static sprites, no movement/attack/death animation
+    at all).
+- **Milestone** (as delivered): a real scenario renders and is clickable in
+  a browser tab, with real unit art and terrain colour, but no terrain
+  compositing or unit animation — see Phases 9/10 (end of this document)
+  for those.
 
 ## Phase 5 — UI shell (Svelte), target: Dead Water's first scenario
 
@@ -178,17 +180,62 @@ will be built on top of it.
 Explicit user direction: focus on **Phase 5 (UI polish) and Phase 6
 (content breadth)** now. Phase 7 (real AI) is deferred until Phase 5 is
 solid — hotseat cycling stays as the stand-in until then. Phase 8 is
-struck out (see above). Known Phase 5 gaps, roughly in priority order:
+struck out (see above); Phases 9/10 (terrain visuals, unit animation —
+see end of this document) are scoped out but not started, also deferred
+until Phase 5/6 are solid.
 
-1. **Unit selection visuals** — flagged directly as still lacking despite
-   the selection-ring fix; needs a fresh look (see PROGRESS.md for
-   findings once investigated).
-2. **Real per-unit-type stats** — every unit type currently shares
-   identical placeholder combat/movement stats (see PROGRESS.md, Post-
-   Phase-5 revision #3's "next steps" discussion); a Merman Fighter and a
-   Merman Citizen are numerically identical right now. Needs real
-   `data/core/units.cfg` stat loading (base_unit/gender-variant
-   inheritance flattening), not just image paths.
-3. **Victory/defeat conditions** — scenarios currently never end.
-4. **Save/load** — planned since the original Phase 5 scope, not started.
-5. Terrain image rendering stays deferred (user's call, unchanged).
+Phase 5 gap list, all now done:
+
+1. ~~Unit selection visuals~~ — done: both a real contrast bug (highlight
+   colours blending into Dead Water's terrain) and a real intermittent
+   reactivity race were found and fixed, not just a cosmetic pass.
+2. ~~Real per-unit-type stats~~ — done: real `base_unit=`-aware loading
+   from `data/core/units.cfg`, spot-checked against real WML by hand.
+3. ~~Victory/defeat conditions~~ — done (the default `no_leader_left` case;
+   see `packages/engine/src/actions/victory.ts`'s doc comment for what's
+   deliberately not modeled yet).
+4. ~~Save/load~~ — done (gzipped IndexedDB).
+5. Terrain image rendering stays deferred — now formally Phase 9.
+
+**Current focus**: Phase 6 content breadth, starting with scenario
+progression (Dead Water scenario 1 → 2, gold/recall carryover) — the
+prerequisite for "finish Dead Water" to mean anything, since today only
+scenario 1 is playable at all.
+
+## Phase 9 — Terrain visuals (scoped out, not started)
+
+Split out of Phase 4 (2026-09-09, user's call): real per-hex
+`[terrain_graphics]` image compositing is large enough on its own, and is
+exactly one of the two things that stalled attempt #1, to deserve its own
+explicit scope rather than living inside "Phase 4 rendering" as an
+implicit, easy-to-forget gap.
+
+- Real per-hex `[terrain_graphics]` image compositing: base + overlay
+  layers, edge-blending between adjacent terrain types, time-of-day
+  tinting — replaces the current flat-coloured-hex rendering (a
+  deliberate, user-approved interim simplification since the playability
+  pass).
+  `packages/renderer/src/images/ImageCache.ts`'s MASK/CROP/BLIT
+  compositing (ported forward from attempt #1) is real and already used
+  for unit sprites; this phase is about driving it from real per-hex
+  terrain layer data the way `display.cpp`'s terrain drawing does, which
+  nothing currently does.
+- Worth a fresh, dedicated scoping pass before starting rather than
+  assuming attempt #1's approach is still right — revisit what actually
+  went wrong there first.
+
+## Phase 10 — Unit animation (scoped out, not started)
+
+Split out of Phase 4 (2026-09-09, user's call) for the same reason as
+Phase 9 — attempt #1's other stalling point.
+
+- Context-aware unit animation selection/playback, ported from
+  `units/animation.cpp`/`frame.cpp`'s matching logic (facing/terrain/
+  weapon/damage-state), frame position/halo/blend fields (attack-lunge
+  positioning), sound-in-frame playback, per-blow HP sync points,
+  `cycle_id`-grouped idle/defend animation.
+  `packages/renderer/src/animation/` already has real, tested logic for
+  animation *selection* (context schema, filter matching, frame parsing —
+  see `docs/PROGRESS.md`'s animation-context work from early in this
+  project); what's missing is actually *playing* the selected animation
+  against the live board instead of drawing a static sprite.
