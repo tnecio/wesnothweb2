@@ -27,7 +27,8 @@
    */
   import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage, WmlAttributeValue } from '@wesnothweb2/engine';
   import type { HexPoint } from '@wesnothweb2/renderer';
-  import { GameSession, type CombatPreview, type SelectedUnitInfo, type RecruitOption } from './gameSession.js';
+  import { GameSession, type CombatPreview, type SelectedUnitInfo, type RecruitOption, type SaveGameData } from './gameSession.js';
+  import { saveGame, loadGame } from './persistence.js';
   import TurnBanner from './TurnBanner.svelte';
   import GameBoardView from './GameBoardView.svelte';
   import SidePanel from './SidePanel.svelte';
@@ -39,6 +40,8 @@
 
   const session = new GameSession(snapshot);
   const storyParts = snapshot.story ?? [];
+  /** Single fixed slot for MVP simplicity -- see persistence.ts's doc comment; keyed by scenario so a future multi-scenario build doesn't collide saves across scenarios. */
+  const saveSlot = `quicksave:${snapshot.scenario.id}`;
 
   /** The scenario's real `turns=` attribute (from `scenarioConfigJson`), if it set one. `WmlConfig` stores WML attribute values as string|number|boolean depending on how the parser read them, so this normalizes either representation. */
   function parseTurnsLimit(raw: WmlAttributeValue | undefined): number | null {
@@ -166,6 +169,32 @@
     sync(message);
   }
 
+  async function handleSave(): Promise<void> {
+    if (phase !== 'playing') return;
+    try {
+      await saveGame(saveSlot, snapshot.scenario.id, session.toSaveData());
+      sync(`Saved (turn ${session.turnNumber}).`);
+    } catch (err) {
+      sync(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  async function handleLoad(): Promise<void> {
+    if (phase !== 'playing') return;
+    try {
+      const found = await loadGame<import('./gameSession.js').SaveGameData>(saveSlot);
+      if (!found || found.scenarioId !== snapshot.scenario.id) {
+        sync('No save found.');
+        return;
+      }
+      session.loadSaveData(found.data);
+      if (session.scenarioResult) phase = 'ended';
+      sync(`Loaded save from turn ${found.data.turnNumber}.`);
+    } catch (err) {
+      sync(`Load failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   function advanceStory(): void {
     storyIndex += 1;
     if (storyIndex >= storyParts.length) {
@@ -203,6 +232,8 @@
       onCancelAttack={handleCancelAttack}
       onSelectRecruitType={handleSelectRecruitType}
       onEndTurn={handleEndTurn}
+      onSave={handleSave}
+      onLoad={handleLoad}
     />
   </div>
 

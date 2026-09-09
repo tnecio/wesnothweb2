@@ -119,6 +119,37 @@ export interface GameSessionOptions {
 }
 
 /**
+ * `GameSession`'s own live-state save shape -- NOT a Wesnoth-compatible
+ * save file (see `persistence.ts`'s doc comment for what's deliberately
+ * left out: WML variables, replay/undo history). Plain JSON, versioned so
+ * a future shape change can detect and reject an old save cleanly instead
+ * of silently misreading it.
+ */
+export interface SaveGameData {
+  version: 1;
+  turnNumber: number;
+  activeSide: number;
+  scenarioResult: 'victory' | 'defeat' | null;
+  startupEventsRun: boolean;
+  teams: readonly { side: number; gold: number }[];
+  units: readonly {
+    id: string | null;
+    name: string | null;
+    typeId: string;
+    side: number;
+    x: number;
+    y: number;
+    canRecruit: boolean;
+    hitpoints: number;
+    maxHitpoints: number;
+    movesLeft: number;
+    maxMoves: number;
+    attacksLeft: number;
+    maxAttacksPerTurn: number;
+  }[];
+}
+
+/**
  * Owns one live `GameBoard` (reconstructed from a `GameBoardSnapshot`) plus
  * the UI-facing selection/targeting state a board view and side panel need.
  * All mutation goes through real `packages/engine` actions
@@ -546,6 +577,77 @@ export class GameSession {
 
   cancelAttack(): void {
     this.pendingAttack = null;
+  }
+
+  /** Captures every mutable bit of live state -- see `SaveGameData`'s own doc comment. */
+  toSaveData(): SaveGameData {
+    return {
+      version: 1,
+      turnNumber: this.turnNumber,
+      activeSide: this.activeSide,
+      scenarioResult: this.scenarioResult,
+      startupEventsRun: this.startupEventsRun,
+      teams: this.board.teams().map((t) => ({ side: t.side, gold: t.gold })),
+      units: this.board.allUnits().map((u) => ({
+        id: u.id || null,
+        name: u.name || null,
+        typeId: u.type.id,
+        side: u.side,
+        x: u.location.x,
+        y: u.location.y,
+        canRecruit: u.canRecruit,
+        hitpoints: u.hitpoints,
+        maxHitpoints: u.maxHitpoints,
+        movesLeft: u.movesLeft,
+        maxMoves: u.maxMoves,
+        attacksLeft: u.attacksLeft,
+        maxAttacksPerTurn: u.maxAttacksPerTurn,
+      })),
+    };
+  }
+
+  /**
+   * Replaces the board's current units/team gold and this session's turn/
+   * side/result state with `data`'s -- everything `toSaveData()` captured.
+   * Public: a UI can call this directly on an existing, already-playing
+   * `GameSession` (a "Load" button) as well as via the `fromSaveData`
+   * static factory below (a fresh session, pre-loaded).
+   */
+  loadSaveData(data: SaveGameData): void {
+    for (const unit of [...this.board.allUnits()]) {
+      this.board.removeUnitAt(unit.location);
+    }
+    for (const u of data.units) {
+      const type = this.resolveType(u.typeId);
+      const unit = Unit.create(type, u.side, new Location(u.x, u.y), {
+        id: u.id ?? undefined,
+        name: u.name ?? undefined,
+        canRecruit: u.canRecruit,
+      });
+      unit.hitpoints = u.hitpoints;
+      unit.maxHitpoints = u.maxHitpoints;
+      unit.movesLeft = u.movesLeft;
+      unit.maxMoves = u.maxMoves;
+      unit.attacksLeft = u.attacksLeft;
+      unit.maxAttacksPerTurn = u.maxAttacksPerTurn;
+      this.board.addUnit(unit);
+    }
+    for (const t of data.teams) {
+      const team = this.board.getTeam(t.side);
+      if (team) team.gold = t.gold;
+    }
+    this.turnNumber = data.turnNumber;
+    this.activeSide = data.activeSide;
+    this.scenarioResult = data.scenarioResult;
+    this.startupEventsRun = data.startupEventsRun;
+    this.clearSelection();
+  }
+
+  /** Builds a fresh session from `snapshot`, then overwrites its live state from a save. */
+  static fromSaveData(snapshot: GameBoardSnapshot, data: SaveGameData, options: GameSessionOptions = {}): GameSession {
+    const session = new GameSession(snapshot, options);
+    session.loadSaveData(data);
+    return session;
   }
 
   /**

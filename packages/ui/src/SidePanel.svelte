@@ -16,6 +16,8 @@
     onCancelAttack,
     onSelectRecruitType,
     onEndTurn,
+    onSave,
+    onLoad,
   }: {
     selected: SelectedUnitInfo | null;
     pendingPreview: CombatPreview | null;
@@ -35,6 +37,8 @@
     onCancelAttack: () => void;
     onSelectRecruitType: (typeId: string) => void;
     onEndTurn: () => void;
+    onSave: () => void;
+    onLoad: () => void;
   } = $props();
 
   function pct(fraction: number): string {
@@ -147,6 +151,8 @@
   </section>
 
   <section class="turn-actions">
+    <button onclick={onSave} title="Save to browser storage">Save</button>
+    <button onclick={onLoad} title="Load from browser storage">Load</button>
     <button class="primary" onclick={onEndTurn}>End Turn</button>
   </section>
 </aside>

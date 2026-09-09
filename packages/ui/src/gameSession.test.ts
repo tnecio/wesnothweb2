@@ -160,6 +160,55 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
   });
 });
 
+describe('GameSession.toSaveData / loadSaveData (round-trip, see persistence.ts for the IndexedDB/gzip layer this feeds)', () => {
+  it('round-trips turn/side/gold/unit-position/hp/moves state exactly', () => {
+    const session = new GameSession(loadSnapshot());
+    session.runStartupEvents();
+
+    // Change enough real state that a naive "just rebuild from snapshot" reload would visibly differ.
+    session.endTurn(); // side 1 -> side 2
+    const team1 = session.board.getTeam(1)!;
+    team1.gold = 77;
+    const someUnit = session.board.allUnits()[0]!;
+    someUnit.hitpoints = Math.max(1, someUnit.hitpoints - 5);
+    someUnit.movesLeft = 0;
+
+    const saved = session.toSaveData();
+    expect(saved.version).toBe(1);
+    expect(saved.units.length).toBe(session.board.allUnits().length);
+
+    // A fresh session (as if the page were reloaded), then load the save into it.
+    const reloaded = new GameSession(loadSnapshot());
+    reloaded.loadSaveData(saved);
+
+    expect(reloaded.turnNumber).toBe(session.turnNumber);
+    expect(reloaded.activeSide).toBe(session.activeSide);
+    expect(reloaded.board.getTeam(1)!.gold).toBe(77);
+    expect(reloaded.board.allUnits()).toHaveLength(session.board.allUnits().length);
+    const reloadedUnit = reloaded.board.unitAt(someUnit.location);
+    expect(reloadedUnit?.hitpoints).toBe(someUnit.hitpoints);
+    expect(reloadedUnit?.movesLeft).toBe(0);
+    expect(reloadedUnit?.type.id).toBe(someUnit.type.id);
+  });
+
+  it('round-trips a latched scenarioResult and keeps the loaded session blocked from further input', () => {
+    const session = new GameSession(loadSnapshot());
+    const kaiKrellis = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
+    session.board.removeUnitAt(kaiKrellis.location);
+    // @ts-expect-error -- see the victory/defeat describe block above for why this is called directly.
+    session.checkForGameEnd();
+    expect(session.scenarioResult).toBe('defeat');
+
+    const saved = session.toSaveData();
+    const reloaded = new GameSession(loadSnapshot());
+    reloaded.loadSaveData(saved);
+
+    expect(reloaded.scenarioResult).toBe('defeat');
+    expect(reloaded.handleHexClick(0, 0)).toBeNull();
+    expect(reloaded.endTurn()).toBe('');
+  });
+});
+
 describe('GameSession victory/defeat (real leader-death check, see checkVictory)', () => {
   it('sets scenarioResult to "defeat" when the player-side leader dies, and blocks further input', () => {
     const session = new GameSession(loadSnapshot());

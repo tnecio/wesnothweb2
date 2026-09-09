@@ -8,6 +8,9 @@ export type {
   PendingAttack,
   RecruitOption,
   GameSessionOptions,
+  SaveGameData,
 } from './gameSession.js';
+
+export { saveGame, loadGame, listSaves, deleteSave, type SaveMeta } from './persistence.js';
 
 export { default as GameShell } from './GameShell.svelte';
