@@ -394,6 +394,42 @@ export function parseUnitAnimations(unitTypeCfg: WmlConfig): UnitAnimationDef[] 
     out.push(buildAnimationDef({ attrs: new Map(), children: image ? [{ tag: 'frame', config: new WmlConfig().setAttribute('image', image) }] : [] }, ['default'], DEFAULT_ANIM));
   }
 
+  // The generic engine-injected "defend" hit-flash (fill_initial_
+  // animations, animation.cpp ~L570-579): every unit type gets this as a
+  // LOW-PRIORITY fallback candidate, reusing its own "default" (standing,
+  // or the trivial 1-frame fallback just above) frame/image data with a
+  // red blend pulse -- NOT a unit-specific asset. `matchAnimation`
+  // itself adds the real +1 for a matching `hits=` filter, so any real
+  // authored `[defend]` block (baseScore >= -1 after `buildDefendAnimations`'
+  // own -1 penalty, or higher) still outscores and replaces this for a
+  // unit that has one -- see this function's own module doc comment on
+  // why most real mainline units (which DO author `[defend]`, e.g. via
+  // the `DEFENSE_ANIM*` macros) won't actually show this fallback; it's
+  // for the units that don't. Only "defend" is ported from the larger
+  // `fill_initial_animations` synthesis (movement/attack/death/healing/
+  // poisoned/levelin/etc mirrors are NOT -- out of scope, see module doc
+  // comment).
+  const defaultAnim = out.find((a) => a.events.includes('default'));
+  if (defaultAnim) {
+    const baseDurationMs = Math.max(1, defaultAnim.frames.reduce((sum, f) => sum + f.durationMs, 0));
+    const flashCfg = new WmlConfig();
+    flashCfg.setAttribute('blend_ratio', '0.0,0.5:75,0.0:75,0.5:75,0.0');
+    flashCfg.setAttribute('blend_color', '255,0,0');
+    out.push({
+      ...defaultAnim,
+      events: ['defend'],
+      baseScore: DEFAULT_ANIM,
+      hits: ['hit', 'kill'],
+      animationParams: buildFrameFields(flashCfg, baseDurationMs),
+    });
+    out.push({
+      ...defaultAnim,
+      events: ['defend'],
+      baseScore: DEFAULT_ANIM,
+      hits: [],
+    });
+  }
+
   return out;
 }
 

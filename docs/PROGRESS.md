@@ -1671,3 +1671,58 @@ one sprite, ending at the correct hex with no ghost left behind; a
 5-blow exchange visibly shows the correct unit lunging on each blow
 (confirmed via before/after screenshots of an attacker-turn blow vs. a
 retaliation blow).
+
+## 2026-09-11 (cont'd): the real generic "hit flash", and a 2x movement speed-up
+
+User follow-up on bug #4 above: real Wesnoth also flashes a unit red for
+a moment on a landed hit, as a GENERIC effect layered on top of
+whatever `[defend]` animation played -- suspected of living somewhere
+other than the per-unit WML animation blocks. Investigated directly
+rather than guessed (`animation.cpp`'s `fill_initial_animations`,
+~L508-624): confirmed this is a real, LOW-PRIORITY fallback `unit_
+animation` the C++ engine registers for `defend` on every unit type,
+reusing that type's own "default"/standing frame data with a red
+`blend_ratio`/`blend_color` pulse, filtered to `hits=[hit,kill]` --
+built via the exact same scoring/matching system as WML-authored
+animations, so any real `[defend]` block (which Spearman/Orcish Grunt,
+this session's own test units, both have) still outscores and replaces
+it. Ported as `unitAnimation.ts`'s two new synthetic fallback entries
+(hit/kill-flash + a plain miss-passthrough), verified with real tests:
+fires (with real blend data) for a unit type with no authored `[defend]`
+at all, and is present-but-never-selected for one that has its own.
+
+This ALSO exposed that the underlying `blend_with=`/`blend_ratio=` real
+WML fields, while already extracted as data since early in the project,
+were never actually *rendered* anywhere (`frame.ts`'s `applyFrameEffects`
+was a pure stub). Implemented for real: `playback.ts`'s `sampleAnimation`
+now samples blend the same frame-wins-else-animation-wide way `offset=`
+already was, and `SnapshotBoard` composites it as a same-texture tinted
+overlay sprite (`applyBlend`) drawn on top at `alpha = ratio` -- a
+practical approximation of upstream's true solid-colour recolour, using
+PixiJS `tint` rather than a custom shader.
+
+**Caveat flagged to the user, not silently smoothed over**: per real
+Wesnoth's own scoring, this fallback will NOT visibly change the
+Combat Debug scenario (Spearman/Orcish Grunt) the user tested with --
+both units author their own real `[defend]` content, which correctly
+wins. It WILL show for any unit type with no custom defend art. Whether
+the user actually wants strict fidelity here (as implemented) or a
+simplified "always flash on any hit" UX improvement regardless of
+real per-unit content is an open question for them to weigh in on.
+
+Also: sped up movement animation 2x, per direct request (real authored
+`movement_anim` timing, e.g. Elvish Fighter's ~600ms-per-hex walk cycle,
+reads as sluggish for a UI where routine multi-hex moves are common,
+unlike an attack blow which has real per-frame content worth seeing at
+full speed). `SnapshotBoard.playAnimations` gained a `speedMultiplier`
+parameter (default 1, real authored speed) that compresses wall-clock
+playback time while still sampling a real `anim` across its FULL
+internal timeline (not truncating it) -- `GameShell.svelte` requests 2x
+for movement specifically, attack blows stay at 1x.
+
+New tests: 2 in `unitAnimation.test.ts` for the generic defend fallback
+(fires when absent, loses when a real one exists). All 268 engine + 33
+UI + 121 renderer tests pass; typecheck clean. Verified live: a 2-hex
+move now takes ~470ms wall-clock (previously ~940ms-equivalent at 1x);
+a full attack exchange still resolves correctly with the new blend code
+path active and no console errors.

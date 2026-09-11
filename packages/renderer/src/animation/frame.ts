@@ -7,12 +7,15 @@
  * renderer pass can actually draw it.
  *
  * Deliberately NOT ported (real *rendering* effects, not data — see the
- * Phase 4 task's scope note): halo compositing (`halo::manager`), blend-with
- * colour blitting, submerge/highlight alpha blending. `applyFrameEffects()`
- * below is a stub that logs what it would do; the *data* those effects need
- * (halo image/x/y/mod, blend colour/ratio, highlight ratio, submerge) is
- * still extracted faithfully in `UnitFrameDef` so a real compositor can be
- * dropped in later without re-deriving the WML-parsing part.
+ * Phase 4 task's scope note): halo compositing (`halo::manager`),
+ * submerge/highlight alpha blending. `applyFrameEffects()` below is
+ * still a stub for those. `blend_with`/`blend_ratio` (the hit-flash
+ * colour blitting) is the one exception, now real (2026-09-11) — see
+ * `playback.ts`'s `sampleAnimation` (which samples it the same
+ * frame-wins-else-animation-wide way as `offset=`) and `SnapshotBoard`'s
+ * `applyBlend` (the actual PixiJS-side tinted-overlay compositing). Halo/
+ * submerge data is still extracted faithfully in `UnitFrameDef` so a
+ * real compositor for THOSE can be dropped in later the same way.
  *
  * What IS ported for real, because the Phase 4 plan calls it out
  * explicitly (attack-lunge positioning, direction-aware image selection):
@@ -425,18 +428,19 @@ export function frameCenterPosition(src: HexPixelPos, dst: HexPixelPos, offset: 
 
 /**
  * Stub for the not-yet-visually-implemented parts of a frame (halo
- * compositing, blend-with colour, submerge/highlight alpha). The *data* is
- * already extracted faithfully in `UnitFrameDef` above; wiring it into an
- * actual PixiJS-side effect is deferred (see module doc comment) — this
- * exists so call sites have somewhere to hang that work later without
- * pretending it's implemented now.
+ * compositing, submerge/highlight alpha). `blend_with`/`blend_ratio` is
+ * now real -- see module doc comment -- so this no longer covers that
+ * one. The *data* for what's left is already extracted faithfully in
+ * `UnitFrameDef` above; wiring it into an actual PixiJS-side effect is
+ * deferred (see module doc comment) — this exists so call sites have
+ * somewhere to hang that work later without pretending it's implemented
+ * now.
  */
 export function applyFrameEffects(frame: UnitFrameDef): void {
-  if (frame.halo.length > 0 || frame.blendRatio.length > 0 || frame.submerge.length > 0) {
+  if (frame.halo.length > 0 || frame.submerge.length > 0) {
     // eslint-disable-next-line no-console
-    console.debug('[frame] halo/blend/submerge effects not yet visually implemented', {
+    console.debug('[frame] halo/submerge effects not yet visually implemented', {
       halo: frame.halo.map((h) => h.value),
-      blendColor: frame.blendColor,
     });
   }
 }

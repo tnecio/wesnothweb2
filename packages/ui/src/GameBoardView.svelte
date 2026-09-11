@@ -251,12 +251,15 @@
    * mid-flight would cut the animation short). A no-op (resolves
    * immediately) if the board isn't mounted yet, which shouldn't happen
    * in practice (an action can't resolve before the board renders) but
-   * is handled rather than assumed.
+   * is handled rather than assumed. `speedMultiplier` passes straight
+   * through to `SnapshotBoard.playAnimations` (see its own doc comment) --
+   * default 1 (real authored speed); `GameShell.svelte` requests a
+   * faster one for movement specifically.
    */
-  export async function playAnimationSequence(beats: readonly UnitAnimationCue[][]): Promise<void> {
+  export async function playAnimationSequence(beats: readonly UnitAnimationCue[][], speedMultiplier = 1): Promise<void> {
     if (!board) return;
     for (const cues of beats) {
-      await board.playAnimations(cues);
+      await board.playAnimations(cues, undefined, speedMultiplier);
     }
   }
 </script>

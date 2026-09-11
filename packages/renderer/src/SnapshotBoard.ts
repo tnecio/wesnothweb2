@@ -138,6 +138,19 @@ interface UnitVisual {
   readonly container: PIXI.Container;
   sprite: PIXI.Sprite | null;
   marker: PIXI.Graphics;
+  /**
+   * A same-texture, tinted, alpha-modulated copy of `sprite`, drawn on
+   * top -- the real `blend_with`/`blend_ratio` hit-flash mechanism
+   * (e.g. `[defend]`'s red pulse), approximated with PixiJS `tint`
+   * rather than a true solid-colour recolour (real Wesnoth draws a
+   * pure-white-recoloured copy tinted to `blend_with`; a multiply-tint
+   * overlay reads as a believable flash without needing a custom
+   * shader). Created lazily the first time `playAnimations` samples a
+   * non-zero `blendRatio` for this unit; hidden (`alpha = 0`) the rest
+   * of the time, including whenever `renderUnits` settles a unit (a
+   * flash should never persist past the animation that caused it).
+   */
+  overlay: PIXI.Sprite | null;
   /** The `SnapshotUnit.image`/`.side` this visual was last built from, to detect when a rebuild (not just a reposition) is needed. */
   lastImage: string | null;
   lastSide: number;
@@ -364,7 +377,37 @@ export class SnapshotBoard {
       container.addChild(marker);
     }
 
-    return { container, sprite, marker, lastImage: unit.image, lastSide: unit.side };
+    return { container, sprite, marker, overlay: null, lastImage: unit.image, lastSide: unit.side };
+  }
+
+  /**
+   * Approximates the real `blend_with`/`blend_ratio` hit-flash (e.g.
+   * `[defend]`'s red pulse on a landed blow, real or the generic
+   * engine-injected fallback -- see `unitAnimation.ts`'s own doc comment)
+   * by drawing a same-texture, tinted copy of `visual.sprite` on top of
+   * it at `alpha = ratio`. Lazily creates the overlay sprite the first
+   * time it's actually needed (most cues never blend at all) and hides
+   * it (`alpha = 0`) rather than destroying it once no longer needed, so
+   * repeated blends within one animation don't keep allocating sprites.
+   * A no-op if there's no base `sprite` to overlay (the image-missing
+   * fallback-circle case) or no `ratio`/`color` to show.
+   */
+  private applyBlend(visual: UnitVisual, ratio: number, color: number | null): void {
+    if (!visual.sprite) return;
+    if (ratio <= 0 || color === null) {
+      if (visual.overlay) visual.overlay.alpha = 0;
+      return;
+    }
+    if (!visual.overlay) {
+      const overlay = new PIXI.Sprite(visual.sprite.texture);
+      overlay.anchor.set(0.5, 0.5);
+      visual.container.addChild(overlay);
+      visual.overlay = overlay;
+    }
+    visual.overlay.texture = visual.sprite.texture;
+    visual.overlay.scale.x = visual.sprite.scale.x;
+    visual.overlay.tint = color;
+    visual.overlay.alpha = Math.min(1, ratio);
   }
 
   /**
@@ -396,9 +439,11 @@ export class SnapshotBoard {
         visual.container.addChild(...rebuilt.container.removeChildren());
         visual.sprite = rebuilt.sprite;
         visual.marker = rebuilt.marker;
+        visual.overlay = null; // the old overlay sprite (if any) was just destroyed along with its old container children.
         visual.lastImage = unit.image;
         visual.lastSide = unit.side;
       }
+      if (visual.overlay) visual.overlay.alpha = 0; // a hit-flash should never outlive the animation that caused it.
       visual.container.x = cx;
       visual.container.y = cy;
       if (visual.sprite) {
@@ -432,15 +477,22 @@ export class SnapshotBoard {
    * `dstHex` (e.g. a defender with no `[defend]`) just holds in place for
    * the same duration, so a blow/step without real per-unit art still
    * reads as "something happened here" rather than nothing at all.
+   *
+   * `speedMultiplier` compresses real WALL-CLOCK playback time (2 = plays
+   * in half the time) while still sampling a real `anim` across its full
+   * authored internal timeline (so frame/offset progression looks like a
+   * faster version of the same animation, not a truncated one) -- see the
+   * `animT` scaling below. Default 1 (real authored speed); `GameShell.
+   * svelte` requests a faster one for movement specifically.
    */
-  async playAnimations(cues: readonly UnitAnimationCue[], defaultDurationMs = 400): Promise<void> {
+  async playAnimations(cues: readonly UnitAnimationCue[], defaultDurationMs = 400, speedMultiplier = 1): Promise<void> {
     const active = cues
       .map((cue) => {
         const visual = this.unitVisuals.get(cue.key);
         if (!visual) return null;
         const src = hexToPixel(toHexCoord(cue.srcHex.x, cue.srcHex.y));
         const dst = hexToPixel(toHexCoord(cue.dstHex.x, cue.dstHex.y));
-        const duration = cue.anim ? animationDurationMs(cue.anim) : defaultDurationMs;
+        const duration = (cue.anim ? animationDurationMs(cue.anim) : defaultDurationMs) / speedMultiplier;
         return { cue, visual, src, dst, duration: Math.max(1, duration) };
       })
       .filter((a): a is NonNullable<typeof a> => a !== null);
@@ -472,7 +524,12 @@ export class SnapshotBoard {
         for (const { cue, visual, src, dst, duration } of active) {
           const t = Math.min(elapsed, duration);
           if (cue.anim) {
-            const sample = sampleAnimation(cue.anim, cue.direction, t, src, dst);
+            // `t` is wall-clock time (already compressed by speedMultiplier);
+            // scale it back up to the animation's own real internal
+            // timeline so a real anim's frame/offset progression plays
+            // faster, not truncated -- see this method's own doc comment.
+            const animT = t * speedMultiplier;
+            const sample = sampleAnimation(cue.anim, cue.direction, animT, src, dst);
             if (sample.imagePath) {
               const texture = await ImageCache.resolve(sample.imagePath);
               if (texture && visual.sprite && visual.sprite.texture !== texture) visual.sprite.texture = texture;
@@ -480,6 +537,7 @@ export class SnapshotBoard {
             if (visual.sprite) visual.sprite.scale.x = sample.hflip ? -Math.abs(visual.sprite.scale.x) : Math.abs(visual.sprite.scale.x);
             visual.container.x = sample.x;
             visual.container.y = sample.y;
+            this.applyBlend(visual, sample.blendRatio, sample.blendColor);
           } else if (cue.srcHex.x !== cue.dstHex.x || cue.srcHex.y !== cue.dstHex.y) {
             // No real anim: a synthetic beat appropriate to what this cue
             // means. `restAt: 'dst'` (movement) glides straight there,
@@ -506,6 +564,7 @@ export class SnapshotBoard {
             const rest = cue.restAt === 'dst' ? dst : src;
             visual.container.x = rest.x;
             visual.container.y = rest.y;
+            if (visual.overlay) visual.overlay.alpha = 0;
           }
           resolve();
           return;

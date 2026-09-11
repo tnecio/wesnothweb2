@@ -17,13 +17,17 @@
  * `playMovement`/`playAttackBlow` methods.
  *
  * Mirrors `unit_frame::redraw`'s frame/sub-image selection (frame.cpp
- * ~L600-696) and the `offset=` "frame value wins, else the
+ * ~L600-696) and the `offset=`/`blend_ratio=` "frame value wins, else the
  * animation-wide `particle::parameters_` value" merge rule (frame.cpp's
  * `unit_frame::merge_parameters`) -- previously extracted as data
  * (`UnitAnimationDef.animationParams`) but never actually applied
- * anywhere; this is where that merge finally happens. Halo/blend/submerge
- * stay unimplemented (see `frame.ts`'s `applyFrameEffects` stub) -- only
- * the image and position are resolved here.
+ * anywhere; this is where that merge finally happens (2026-09-11: now
+ * covers `blend_ratio=`/`blend_color=` too, not just `offset=` -- see
+ * `SnapshotBoard`'s own doc comment on why: the real per-unit-type
+ * `[defend]` hit-flash and the generic engine-injected fallback both
+ * ride on this same blend mechanism). Halo/submerge stay unimplemented
+ * (see `frame.ts`'s `applyFrameEffects` stub) -- only image, position,
+ * and blend are resolved here.
  */
 
 import { Direction } from '@wesnothweb2/engine/src/model/Location.js';
@@ -72,6 +76,18 @@ export interface AnimationSample {
   readonly hflip: boolean;
   readonly x: number;
   readonly y: number;
+  /** 0 (no tint) to ~1 (fully the tint colour) -- `blend_ratio=`, sampled the same "frame wins, else animation-wide" way as `offset=`. A real `[defend]` hit-flash's curve peaks around 0.5, matching upstream's own `color_t` alpha-blend convention. */
+  readonly blendRatio: number;
+  /** Parsed from `blend_color=`'s real `"r,g,b"` WML format into a `0xRRGGBB` value a renderer can hand straight to e.g. PixiJS `tint` -- `null` if unparseable or absent. */
+  readonly blendColor: number | null;
+}
+
+/** Parses the real `blend_color=` WML format (`"r,g,b"`, each 0-255 -- mirrors `color_t::from_rgb_string`) into a `0xRRGGBB` number. */
+export function parseBlendColor(raw: string): number | null {
+  const parts = raw.split(',').map((s) => Number(s.trim()));
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return null;
+  const clamp = (n: number): number => Math.max(0, Math.min(255, Math.round(n)));
+  return (clamp(parts[0]!) << 16) | (clamp(parts[1]!) << 8) | clamp(parts[2]!);
 }
 
 /**
@@ -88,7 +104,7 @@ export function sampleAnimation(
   dst: HexPixelPos,
 ): AnimationSample {
   const picked = frameAt(anim.frames, elapsedMs);
-  if (!picked) return { imagePath: null, hflip: false, x: src.x, y: src.y };
+  if (!picked) return { imagePath: null, hflip: false, x: src.x, y: src.y, blendRatio: 0, blendColor: null };
   const { frame, tInFrame } = picked;
 
   const resolvedImage = resolveFrameImage(frame, direction);
@@ -103,5 +119,15 @@ export function sampleAnimation(
   const offset = sampleProgressivePair(offsetSegments, offsetTimeMs);
   const pos = frameCenterPosition(src, dst, offset);
 
-  return { imagePath, hflip: resolvedImage.hflip, x: pos.x, y: pos.y };
+  // Same merge rule for blend_ratio=/blend_color= (e.g. the real
+  // [defend] hit-flash's red pulse, or the generic engine-injected
+  // fallback -- see SnapshotBoard's own doc comment).
+  const usingFrameBlend = frame.blendRatio.length > 0;
+  const blendSegments = usingFrameBlend ? frame.blendRatio : anim.animationParams.blendRatio;
+  const blendTimeMs = usingFrameBlend ? tInFrame : elapsedMs;
+  const blendRatio = Math.max(0, sampleProgressivePair(blendSegments, blendTimeMs));
+  const blendColorRaw = frame.blendColor || anim.animationParams.blendColor;
+  const blendColor = blendColorRaw ? parseBlendColor(blendColorRaw) : null;
+
+  return { imagePath, hflip: resolvedImage.hflip, x: pos.x, y: pos.y, blendRatio, blendColor };
 }

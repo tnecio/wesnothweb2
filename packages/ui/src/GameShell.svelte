@@ -196,7 +196,12 @@
     const move = session.lastMoveAnimation;
     session.lastMoveAnimation = null;
     if (move && boardView) {
-      await boardView.playAnimationSequence(buildMoveAnimationCues(move));
+      // 2x speed: real authored movement_anim timing (e.g. a 600ms walk
+      // cycle per hex) reads as sluggish for a UI where the player is
+      // routinely moving units several hexes at once -- unlike an
+      // attack blow, there's no real per-frame content (damage numbers,
+      // hit/miss) worth lingering on here.
+      await boardView.playAnimationSequence(buildMoveAnimationCues(move), 2);
     }
     sync(message);
   }

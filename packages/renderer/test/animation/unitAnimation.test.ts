@@ -233,3 +233,45 @@ describe('parseUnitAnimations: real add_anims offset= defaulting for movement_an
     expect(anim!.animationParams.offset[0]!.to).toBe(0.3);
   });
 });
+
+describe('parseUnitAnimations: the generic engine-injected "defend" hit-flash fallback (fill_initial_animations, animation.cpp ~L570-579)', () => {
+  function defendCtx(hit: 'hit' | 'miss' | 'kill'): AnimationContext {
+    const unit = Unit.create(makeUnitType('X'), 1, new Location(0, 0));
+    return {
+      loc: unit.location,
+      secondLoc: unit.location,
+      myUnit: unit,
+      event: 'defend',
+      value: 0,
+      value2: 0,
+      hit,
+      terrainAtLoc: GRASS_LAND,
+    };
+  }
+
+  it('a unit type with NO authored [defend] at all gets the generic red-flash fallback on a hit, and a plain (no-blend) fallback on a miss', () => {
+    const cfg = wml({ image: 'plain.png' }, []); // no [defend], no [standing_anim].
+    const anims = parseUnitAnimations(cfg);
+
+    const hitTop = selectTopAnimations(anims, defendCtx('hit'));
+    expect(hitTop).toHaveLength(1);
+    expect(hitTop[0]!.animationParams.blendRatio.length).toBeGreaterThan(0);
+    expect(hitTop[0]!.animationParams.blendColor).toBe('255,0,0');
+
+    const missTop = selectTopAnimations(anims, defendCtx('miss'));
+    expect(missTop).toHaveLength(1);
+    expect(missTop[0]!.animationParams.blendRatio).toEqual([]);
+  });
+
+  it('a unit type that DOES author its own [defend] still has the fallback present but never WINS (real content, e.g. DEFENSE_ANIM_FILTERED-based, always outscores it)', () => {
+    const cfg = wml({}, [
+      ['defend', wml({ hits: 'hit', base_score: 1 }, [['frame', wml({ image: 'own-hit-pose.png' })]])],
+    ]);
+    const anims = parseUnitAnimations(cfg);
+    expect(anims.some((a) => a.events.includes('defend') && a.animationParams.blendRatio.length > 0)).toBe(true); // the fallback is still present...
+
+    const hitTop = selectTopAnimations(anims, defendCtx('hit'));
+    expect(hitTop).toHaveLength(1);
+    expect(hitTop[0]!.animationParams.blendRatio).toEqual([]); // ...but the author's own (higher-scored) hit variant wins, not the flash.
+  });
+});
