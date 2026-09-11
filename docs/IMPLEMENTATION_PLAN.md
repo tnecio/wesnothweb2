@@ -481,25 +481,46 @@ items) belong here too, once a real campaign that uses them is in scope.
 
 ## Phase 7 — AI opponent
 
-**Status: not started.**
+**Status: MVP delivered (2026-09-11).** `packages/engine/src/ai/
+simpleAi.ts`'s `playAiTurn` is a real, working (if deliberately simple)
+heuristic AI — not upstream's candidate-action framework (still a
+60-file, substantially-Lua-driven system not worth porting yet, see
+below), but every number it bases decisions on comes from the SAME real,
+tested engine code a human's own UI uses: attack scoring reuses
+`combatStats.ts`'s `buildBattleContext` + `attackPrediction.ts`'s
+`simulateCombat` (leadership/steadfast/backstab included), movement uses
+the real `reachableHexes`/`findPath` (ZoC-aware), recruiting uses the
+real `checkRecruitLocation`/`findVacantCastleTile`/`recruitUnit`. The
+decision policy itself (recruit greedily by hitpoints+damage-per-cost;
+per unit, take the best-scoring reachable attack if it clears a
+not-a-bad-trade threshold, else capture a reachable village, else close
+distance to the nearest enemy) is a simple, documented heuristic, not a
+port of anything upstream. Wired into `GameSession.endTurn`: ending a
+human side's turn now auto-plays through any number of consecutive
+`controller=ai`/`network_ai` sides and only returns once a human-
+controlled side is reached (or the scenario ends), verified live in a
+real browser against Dead Water scenario 1 (side 2, `controller=ai`) —
+one "End Turn" click recruited 3 Soulless, moved the Dark Sorcerer, and
+had a Skeleton attack a Merman Netcaster, landing back on side 1's turn
+2 with the whole AI turn logged. 6 new engine tests
+(`test/ai/simpleAi.test.ts`) plus a UI-level regression test cover
+recruiting-until-unaffordable, taking a clearly-good trade, declining a
+clearly-bad one, village capture, and closing distance.
 
-- MVP: a simple heuristic AI (greedy attack/move) as a placeholder, since
-  mainline AI is a 60-file candidate-action framework substantially driven
-  by Lua (`data/ai/`, 131 files using `[lua]`) — not worth porting before
-  the game is otherwise playable. This is a placeholder to unblock
-  single-player testing, **not** a decision to skip real AI — a
-  genuine opponent is a required deliverable, just a late-stage one.
 - Later: port the candidate-action framework and relevant Lua micro-AIs
-  using the Phase 3 Lua VM, for closer-to-original behavior.
+  using the Phase 3 Lua VM, for closer-to-original behavior — not
+  attempted here, deliberately (mainline AI is substantially Lua-driven,
+  `data/ai/`, 131 files using `[lua]`).
 
 ### Catalogue checklist (category 9's AI bullets)
 
-`[side]controller=ai` must act automatically and never hang (even the MVP
-heuristic satisfies this); `[modify_ai]`/`[aspect]`/`[facet]`/`[goal]`/
-`[stage]`, and AI recruitment budgeting (`[recruitment_instructions]`/
-`[recruit]`/`[limit]`) are real upstream surface that only matters once the
-candidate-action framework (the "later" bullet above) is underway — not
-needed for the MVP heuristic.
+`[side]controller=ai` must act automatically and never hang -- now real.
+`[modify_ai]`/`[aspect]`/`[facet]`/`[goal]`/`[stage]`, and AI recruitment
+budgeting (`[recruitment_instructions]`/`[recruit]`/`[limit]`) are real
+upstream surface that only matters once the candidate-action framework
+(the "later" bullet above) is underway — not needed for the MVP
+heuristic, which reads `recruit=`/gold directly rather than any AI
+configuration WML.
 
 ## Phase 8 — Multiplayer (struck out — not needed for MVP)
 

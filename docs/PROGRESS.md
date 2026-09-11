@@ -1415,3 +1415,80 @@ updated Phase 2 gap-list entry, not silently dropped): `illuminates`
 everything else here uses), `hides`-family stealth abilities (no
 fog/vision system yet to hide from -- Phase 11), and the fully generic
 filter/effect pipeline (arbitrary custom abilities beyond these two).
+
+## 2026-09-11 (cont'd): a real AI opponent (Phase 7 MVP) -- controller=ai sides now actually play themselves
+
+Second of the three phases the user asked to move to (generalized
+pipeline, AI, visuals/animation). Until now there was literally no AI
+code anywhere -- every `controller=ai` side was, as `GameSession.
+endTurn`'s own doc comment put it, "actually played by whichever human
+sat at the keyboard" (hotseat). Real Wesnoth's own AI is a 60-file,
+substantially Lua-driven candidate-action framework (`data/ai/`, 131
+files using `[lua]`) -- not something to port before the game is
+otherwise playable, and the plan already flagged an MVP heuristic as the
+right first step (Phase 7's own "not worth porting yet" note).
+
+Built `packages/engine/src/ai/simpleAi.ts`'s `playAiTurn`: a real,
+working heuristic AI, deliberately not a port of upstream's AI, but
+grounded entirely in this project's own already-real, already-tested
+engine code rather than invented shortcuts --
+- **Attack scoring** reuses `combatStats.ts`'s `buildBattleContext` and
+  `attackPrediction.ts`'s `simulateCombat`, the EXACT prediction math a
+  human's own attack preview shows, including this session's new
+  leadership/steadfast/backstab bonuses. For every (reachable hex,
+  adjacent enemy, own weapon) combination, scores expected-damage-dealt
+  minus expected-damage-taken (heavily weighted for a likely kill/likely
+  death), temporarily relocating the unit on the board for the duration
+  of each candidate's evaluation (so backstab/leadership adjacency scans
+  see the hypothetical position) and restoring it after.
+- **Movement** uses the real `reachableHexes`/`findPath` (ZoC-aware).
+- **Recruiting** uses the real `checkRecruitLocation`/
+  `findVacantCastleTile`/`recruitUnit`, picking the best hitpoints+
+  damage-per-cost recruit while gold and a vacant castle tile allow.
+- Falls back to capturing a reachable unowned/enemy village, else
+  closing distance to the nearest enemy (board-wide -- no fog/vision
+  system exists yet, Phase 11), when no attack clears a
+  not-a-bad-trade score threshold.
+
+Wired into `GameSession.endTurn`, refactored to pull the actual
+side-advance/income/healing logic into a new private `advanceOneTurn()`
+so `endTurn` can loop it: ending a human side's turn now auto-plays
+through any number of consecutive `ai`/`network_ai`-controlled sides,
+appending every AI action to the log, and only returns once a human-
+controlled side is reached (or the scenario ends, checked via the
+existing `checkForGameEnd` after any AI attack). This is a real,
+user-visible behavior change for every existing scenario with a
+`controller=ai` side (confirmed: real Dead Water scenario 1's side 2
+is one) -- 4 pre-existing `gameSession.test.ts` tests that assumed
+hotseat step-by-step control over "the enemy side" needed updating to
+either force that side back to `controller: 'human'` (tests specifically
+about ToD/healing/turn-cycling mechanics, not AI) or to expect a single
+`endTurn()` call to now resolve straight through to the next human turn.
+
+Verified live in a real browser: loaded Dead Water scenario 1, clicked
+"End Turn" once from side 1's turn 1 -- the AI (side 2, "bad guys")
+recruited 3 Soulless, moved the Dark Sorcerer toward the enemy, and had
+a Skeleton attack a Merman Netcaster (1/1 blows landed), all logged,
+landing back on side 1's turn 2 with income/gold correctly applied and
+no console errors -- confirming the whole pipeline (recruit -> move ->
+attack -> end-of-AI-turn -> hand back to human) works end-to-end, not
+just in isolated engine tests.
+
+New tests: `packages/engine/test/ai/simpleAi.test.ts` (6 tests --
+recruits-until-unaffordable/can't-afford-anything, takes a clearly-good
+trade, declines a clearly-bad one, captures a reachable village, closes
+distance to the nearest enemy) plus one new `gameSession.test.ts`
+integration test proving the `endTurn` wiring itself. Writing these
+tests surfaced a real, subtle pitfall worth flagging for future test
+authors: `[movement_costs]`/`[defense]` WML tables are keyed by the real
+terrain type's own `id=` (e.g. `flat`, `castle`), NOT the map's `Gg`-
+style terrain *code* -- confirmed directly against `data/core/
+terrain.cfg`'s alias chains (`Gg` -> aliasof `Gt` -> id `flat`; `Kh`/`Ch`
+-> aliasof `Ct` -> id `castle`). Tests using an EMPTY `TerrainTypeData`
+(this project's usual hand-built-fixture shortcut, e.g. `combat.test.
+ts`'s own `flatMoveType`) get away with keying by the raw code only
+because `TerrainType.fromDefault`'s fallback makes an unregistered code
+alias to itself; a test needing REAL keep/castle/village classification
+(this one did, for recruiting/village-capture) must load real terrain
+data and therefore hit the real alias chain. All 268 engine + 33 UI
+tests pass; typecheck clean.

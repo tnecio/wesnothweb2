@@ -1,0 +1,286 @@
+/**
+ * A real, working (if deliberately simple) AI for `controller=ai` sides --
+ * Phase 7, previously entirely unstarted (every `ai`-controlled side was,
+ * until now, actually played by whichever human sat at the keyboard in
+ * this project's hotseat model -- see `GameSession.endTurn`'s own doc
+ * comment).
+ *
+ * This is NOT a port of upstream's real AI (`data/ai/default/`,
+ * `src/ai/composite/`): that's a full candidate-action/aspect framework
+ * with its own Lua-configurable scoring, far beyond what a single-session
+ * addition should attempt, and this project's standing philosophy is to
+ * build the narrowest real thing that actually works rather than a
+ * speculative full port. What IS real here: every number this AI bases
+ * decisions on comes from the SAME tested engine code a human player's
+ * own UI uses --
+ *  - Attack scoring reuses `combatStats.ts`'s `buildBattleContext` and
+ *    `attackPrediction.ts`'s `simulateCombat` (the exact combat-prediction
+ *    math `GameSession.buildPreview` shows a human before they confirm an
+ *    attack), including leadership/steadfast/backstab
+ *    (`abilityEffects.ts`/`combat.ts`), not a hand-waved damage estimate.
+ *  - Movement uses the real `reachableHexes`/`findPath` (ZoC- and
+ *    terrain-cost-aware).
+ *  - Recruiting uses the real `checkRecruitLocation`/`findVacantCastleTile`/
+ *    `recruitUnit`.
+ *
+ * The DECISION policy itself is a simple, documented heuristic (not
+ * upstream's): recruit greedily by a rough hitpoints+damage-per-cost
+ * score while gold and a vacant castle tile allow; then, per unit still
+ * able to act, evaluate every (reachable hex, adjacent enemy, own
+ * weapon) combination's predicted expected-damage-dealt minus
+ * expected-damage-taken (with a heavy bonus for a likely kill and
+ * penalty for a likely death) and take the best one if it clears a
+ * "not a bad trade" threshold; otherwise move toward an unowned/enemy
+ * village if one is reachable, else toward the nearest enemy unit (no
+ * fog/vision system exists yet -- Phase 11 -- so "nearest enemy" is
+ * simply board-wide, matching every other board-wide-visibility
+ * shortcut already taken elsewhere in this project).
+ */
+
+import { Location, distanceBetween, getAdjacentTiles } from '../model/Location.js';
+import type { GameBoard } from '../model/GameBoard.js';
+import type { Unit } from '../model/Unit.js';
+import type { UnitType } from '../model/UnitType.js';
+import type { Rng } from '../rng/Rng.js';
+import { reachableHexes, findPath, type PathStep } from '../pathfind/pathfind.js';
+import { executeMove } from '../actions/move.js';
+import { findVacantCastleTile, recruitUnit } from '../actions/recruit.js';
+import { executeAttack, isBackstabActive } from '../actions/combat.js';
+import { buildBattleContext, chooseDefenderWeaponIndex, type UnitStatsOptions } from '../actions/combatStats.js';
+import { simulateCombat } from '../actions/attackPrediction.js';
+import { computeLeadershipBonus, computeResistanceModifier } from '../actions/abilityEffects.js';
+
+export interface AiTurnOptions {
+  /** Resolves a recruit-list/type id to its real `UnitType` (see `combat.ts`'s plague `resolveType` param for the same established pattern -- this module has no snapshot access of its own). */
+  readonly resolveType: (id: string) => UnitType;
+  readonly lawfulBonus?: number;
+  readonly maxLiminalBonus?: number;
+  /** A trade is taken only if its score clears this bar (net expected HP swing, kill/death-weighted -- see `evaluateAttack`). Default 0 (never take a clearly net-negative trade); lower it to make the AI more aggressive. */
+  readonly attackScoreThreshold?: number;
+}
+
+export type AiActionKind = 'recruit' | 'move' | 'attack';
+
+export interface AiAction {
+  readonly kind: AiActionKind;
+  /** Human-readable summary, ready to drop straight into a UI log (matches this project's other `string` log-line conventions). */
+  readonly message: string;
+}
+
+const DEFAULT_ATTACK_SCORE_THRESHOLD = 0;
+
+/** Rough, deliberately simple "how good is this unit type for its cost" score used to rank recruits -- not upstream's real recruitment aspect (which weighs terrain/matchups/ambush econ), just hitpoints plus best-attack damage output. */
+function recruitPowerScore(type: UnitType): number {
+  const bestAttackDamage = type.attacks.reduce((max, a) => Math.max(max, a.damage * a.numAttacks), 0);
+  return type.hitpoints + bestAttackDamage * 3;
+}
+
+function doRecruiting(board: GameBoard, side: number, options: AiTurnOptions, actions: AiAction[]): void {
+  const team = board.getTeam(side);
+  if (!team) return;
+
+  for (;;) {
+    const leader = board.unitsForSide(side).find((u) => u.canRecruit && board.map.isKeep(u.location));
+    if (!leader) return;
+    const vacant = findVacantCastleTile(board, leader);
+    if (!vacant) return;
+
+    const affordable = [...team.canRecruit]
+      .map((id) => options.resolveType(id))
+      .filter((t) => t.cost <= team.gold);
+    if (affordable.length === 0) return;
+
+    affordable.sort((a, b) => recruitPowerScore(b) / Math.max(1, b.cost) - recruitPowerScore(a) / Math.max(1, a.cost));
+    const chosen = affordable[0]!;
+    const result = recruitUnit(board, team, chosen, vacant, leader.location);
+    actions.push({ kind: 'recruit', message: `${team.teamName || `Side ${side}`} recruited a ${chosen.name} for ${result.cost}g.` });
+  }
+}
+
+/**
+ * Predicted expected value of `unit` (currently at `fromLoc`, hypothetically
+ * -- may differ from `unit.location` if this is evaluating a not-yet-taken
+ * move) attacking `target` with `unit.attacks[weaponIndex]`, reusing the
+ * exact same `buildBattleContext`/`simulateCombat` machinery a human's
+ * attack preview uses. Temporarily relocates `unit` on `board` for the
+ * duration of the call so leadership/backstab (which scan real board
+ * adjacency) see the hypothetical position, then restores it -- see
+ * module doc comment.
+ */
+function evaluateAttack(board: GameBoard, unit: Unit, fromLoc: Location, target: Unit, weaponIndex: number, options: AiTurnOptions): number {
+  const weapon = unit.attacks[weaponIndex];
+  if (!weapon) return -Infinity;
+  const distance = 1;
+  const attackerTerrainDefense = unit.defenseModifier(board.map.getTerrain(fromLoc));
+  const defenderTerrainDefense = target.defenseModifier(board.map.getTerrain(target.location));
+  const defenderWeaponIndex = chooseDefenderWeaponIndex(unit, weaponIndex, target, distance, attackerTerrainDefense, defenderTerrainDefense);
+  const defenderWeapon = defenderWeaponIndex >= 0 ? target.attacks[defenderWeaponIndex] : undefined;
+
+  const originalLoc = unit.location;
+  board.moveUnit(originalLoc, fromLoc);
+  try {
+    const abilityOptions: UnitStatsOptions = {
+      lawfulBonus: options.lawfulBonus ?? 0,
+      maxLiminalBonus: options.maxLiminalBonus ?? 0,
+      backstabActive: isBackstabActive(board, fromLoc, target.location),
+      attackerLeadershipBonus: computeLeadershipBonus(board, unit),
+      defenderLeadershipBonus: computeLeadershipBonus(board, target),
+      attackerResistanceModifier: computeResistanceModifier(board, target, weapon.type, false, target.location),
+      defenderResistanceModifier: defenderWeapon ? computeResistanceModifier(board, unit, defenderWeapon.type, true, fromLoc) : undefined,
+    };
+
+    const { attacker: aStats, defender: dStats } = buildBattleContext({
+      attacker: unit,
+      attackerWeapon: weapon,
+      defender: target,
+      defenderWeapon,
+      distance,
+      attackerTerrainDefense,
+      defenderTerrainDefense,
+      options: abilityOptions,
+    });
+    const { attacker: aCombatant, defender: dCombatant } = simulateCombat(aStats, dStats);
+
+    const damageDealt = target.hitpoints - dCombatant.averageHp();
+    const damageTaken = unit.hitpoints - aCombatant.averageHp();
+    const killBonus = dCombatant.hpDist[0]! * 60;
+    const deathPenalty = aCombatant.hpDist[0]! * 50;
+    return damageDealt - damageTaken + killBonus - deathPenalty;
+  } finally {
+    board.moveUnit(fromLoc, originalLoc);
+  }
+}
+
+interface AttackCandidate {
+  readonly destination: Location;
+  readonly target: Unit;
+  readonly weaponIndex: number;
+  readonly score: number;
+}
+
+function bestAttack(board: GameBoard, unit: Unit, destinations: readonly PathStep[], options: AiTurnOptions): AttackCandidate | undefined {
+  if (unit.attacksLeft <= 0) return undefined;
+  let best: AttackCandidate | undefined;
+  for (const step of destinations) {
+    for (const adj of getAdjacentTiles(step.curr)) {
+      const target = board.unitAt(adj);
+      if (!target || target.side === unit.side) continue;
+      const targetTeam = board.getTeam(target.side);
+      const ownTeam = board.getTeam(unit.side);
+      if (!targetTeam || !ownTeam || !ownTeam.isEnemy(targetTeam)) continue;
+      for (let weaponIndex = 0; weaponIndex < unit.attacks.length; weaponIndex++) {
+        const score = evaluateAttack(board, unit, step.curr, target, weaponIndex, options);
+        if (!best || score > best.score) {
+          best = { destination: step.curr, target, weaponIndex, score };
+        }
+      }
+    }
+  }
+  return best;
+}
+
+function nearestEnemyLocation(board: GameBoard, unit: Unit): Location | undefined {
+  const team = board.getTeam(unit.side);
+  let best: Location | undefined;
+  let bestDist = Infinity;
+  for (const other of board.allUnits()) {
+    if (other.side === unit.side) continue;
+    const otherTeam = board.getTeam(other.side);
+    if (!team || !otherTeam || !team.isEnemy(otherTeam)) continue;
+    const d = distanceBetween(unit.location, other.location);
+    if (d < bestDist) {
+      bestDist = d;
+      best = other.location;
+    }
+  }
+  return best;
+}
+
+function moveUnitTo(board: GameBoard, unit: Unit, dest: Location): boolean {
+  const route = findPath(board, unit, dest, { seeAll: true });
+  if (route.steps.length === 0) return false;
+  executeMove(board, unit, route.steps, { seeAll: true });
+  return true;
+}
+
+/** Movement-only fallback for a unit with no worthwhile attack: capture a reachable unowned/enemy village, else close distance to the nearest enemy. Returns a log message if it moved. */
+function decideMove(board: GameBoard, unit: Unit, destinations: readonly PathStep[]): string | undefined {
+  const candidates = destinations.filter((d) => !d.curr.equals(unit.location));
+  if (candidates.length === 0) return undefined;
+
+  const villageDest = candidates.find((d) => board.map.isVillage(d.curr) && board.villageOwner(d.curr) !== unit.side);
+  if (villageDest) {
+    if (moveUnitTo(board, unit, villageDest.curr)) {
+      return `${unit.type.name} advanced to capture a village.`;
+    }
+    return undefined;
+  }
+
+  const enemyLoc = nearestEnemyLocation(board, unit);
+  if (!enemyLoc) return undefined;
+  const currentDist = distanceBetween(unit.location, enemyLoc);
+  let bestDest: Location | undefined;
+  let bestDist = currentDist;
+  for (const d of candidates) {
+    const dist = distanceBetween(d.curr, enemyLoc);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestDest = d.curr;
+    }
+  }
+  if (bestDest && moveUnitTo(board, unit, bestDest)) {
+    return `${unit.type.name} advanced toward the enemy.`;
+  }
+  return undefined;
+}
+
+/**
+ * Plays one `ai`-controlled side's entire turn: recruits while it can
+ * afford to, then gives every unit still able to act a chance to attack
+ * (if a worthwhile trade exists) or otherwise move, and returns a log of
+ * what happened -- ready for a caller (`GameSession`, or a headless test)
+ * to append to its own turn log. Does not itself call `endTurn`; the
+ * caller decides when the side's turn is over (immediately after, for
+ * this AI, since it never intentionally holds units back).
+ */
+export function playAiTurn(board: GameBoard, side: number, rng: Rng, options: AiTurnOptions): AiAction[] {
+  const actions: AiAction[] = [];
+  doRecruiting(board, side, options, actions);
+
+  const threshold = options.attackScoreThreshold ?? DEFAULT_ATTACK_SCORE_THRESHOLD;
+  // Snapshot the unit list once: units recruited this turn have 0 moves/attacks
+  // (see `recruit.ts`'s `placeRecruit`) so they're naturally skipped below,
+  // and a unit that dies mid-turn is simply absent from `board` by the time
+  // its own iteration would have been reached.
+  for (const unit of board.unitsForSide(side)) {
+    if (unit.attacksLeft <= 0 && unit.movesLeft <= 0) continue;
+    if (!board.allUnits().includes(unit)) continue; // died earlier this loop (e.g. a prior unit's plague/kill somehow reached it)
+
+    const { destinations } = reachableHexes(board, unit, { seeAll: true });
+    const steps = destinations.values();
+
+    const attack = bestAttack(board, unit, steps, options);
+    if (attack && attack.score >= threshold) {
+      if (!attack.destination.equals(unit.location)) {
+        moveUnitTo(board, unit, attack.destination);
+      }
+      const attackerName = unit.type.name;
+      const defenderName = attack.target.type.name;
+      const result = executeAttack(board, rng, unit.location, attack.weaponIndex, attack.target.location, undefined, {
+        lawfulBonus: options.lawfulBonus,
+        maxLiminalBonus: options.maxLiminalBonus,
+      });
+      if (!result.attackerDied) unit.movesLeft = 0; // mirrors GameSession.confirmAttack's "attack cancels movement" rule.
+      actions.push({
+        kind: 'attack',
+        message: `${attackerName} attacked ${defenderName}: ${result.blows.filter((b) => b.hit).length}/${result.blows.length} blows landed.`,
+      });
+      continue;
+    }
+
+    const moveMessage = decideMove(board, unit, steps);
+    if (moveMessage) actions.push({ kind: 'move', message: moveMessage });
+  }
+
+  return actions;
+}

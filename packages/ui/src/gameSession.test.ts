@@ -95,6 +95,13 @@ describe('GameSession.runStartupEvents (real Dead_Water scenario 1)', () => {
 describe('GameSession.endTurn (hotseat cycling)', () => {
   it('cycles active side, increments turnNumber only on wraparound, and refreshes the incoming side\'s moves/attacks', () => {
     const session = new GameSession(loadSnapshot());
+    // Real Dead_Water scenario 1's side 2 is controller=ai, which -- since
+    // this session's AI now really plays automatically (endTurn's own doc
+    // comment) -- would otherwise skip straight past side 2 to turn 2 in
+    // one endTurn() call. This test is specifically about the underlying
+    // hotseat cycling/refresh mechanics (not the AI), so force side 2 back
+    // to human to keep testing them step by step in isolation.
+    session.board.getTeam(2)!.controller = 'human';
     expect(session.activeSide).toBe(1);
     expect(session.turnNumber).toBe(1);
 
@@ -128,6 +135,25 @@ describe('GameSession.endTurn (hotseat cycling)', () => {
     expect(session.selectedUnit).not.toBeNull();
     session.endTurn();
     expect(session.selectedUnit).toBeNull();
+  });
+});
+
+describe('GameSession auto-plays controller=ai sides (real Dead_Water scenario 1, side 2 is controller=ai)', () => {
+  it('a single endTurn() call from side 1 auto-plays the whole of side 2\'s AI turn and lands back on side 1, turn 2', () => {
+    const session = new GameSession(loadSnapshot());
+    expect(session.board.getTeam(2)!.controller).toBe('ai'); // sanity: this scenario really does mark side 2 as AI.
+
+    const message = session.endTurn();
+
+    // One endTurn() call skipped straight past side 2 (auto-played) to
+    // side 1's next turn, not just to side 2 as the old hotseat-only
+    // model would have.
+    expect(session.activeSide).toBe(1);
+    expect(session.turnNumber).toBe(2);
+    expect(message).toContain('Turn 2');
+    // The AI's own turn-2 banner line should still be in the log (unshifted
+    // before side 1's), proving side 2 actually got a turn in between.
+    expect(session.log.some((l) => l.includes('Turn 1') && l.includes('side 2'))).toBe(true);
   });
 });
 
@@ -606,6 +632,11 @@ describe('GameSession.confirmAttack logs one line per real blow, not just a summ
 describe('GameSession.currentTimeOfDay (real [time] schedule, threaded into real combat)', () => {
   it('reads the real Dead Water scenario 1 default schedule, advancing by real game turn as endTurn wraps', () => {
     const session = new GameSession(loadSnapshot());
+    // Side 2 is controller=ai; force it back to human here to test ToD's
+    // per-turn (not per-side) progression step by step, independent of
+    // the AI auto-play feature (covered separately -- see "GameSession
+    // auto-plays controller=ai sides" below).
+    session.board.getTeam(2)!.controller = 'human';
     expect(session.currentTimeOfDay.id).toBe('dawn'); // turn 1, current_time defaults to 0.
     expect(session.currentTimeOfDay.lawfulBonus).toBe(0);
 
@@ -628,6 +659,10 @@ describe('GameSession.currentTimeOfDay (real [time] schedule, threaded into real
     const dawnDamage = dawnSession.pendingAttack!.preview.attacker.damagePerBlow;
 
     const { session: morningSession, malKevek, kaiKrellis } = withAdjacentLeaders();
+    // Side 2 (Mal-Kevek's) is controller=ai -- force it to human so the AI
+    // doesn't itself attack with the now-adjacent Mal-Kevek before this
+    // test gets to manually preview Kai Krellis's attack on him.
+    morningSession.board.getTeam(2)!.controller = 'human';
     morningSession.endTurn();
     morningSession.endTurn(); // -> turn 2, morning, lawful_bonus=25.
     expect(morningSession.currentTimeOfDay.id).toBe('morning');
@@ -748,6 +783,10 @@ describe('GameSession.endTurn applies real healing (rest/heals-ability/poison) -
     kaiKrellis.hitpoints = kaiKrellis.maxHitpoints - 20;
     const hpBefore = kaiKrellis.hitpoints;
 
+    // Side 2 is controller=ai -- force it to human so this healing-focused
+    // test isn't coupled to whatever the AI decides to do with Mal-Kevek
+    // in between (e.g. moving him within reach of Kai Krellis).
+    session.board.getTeam(2)!.controller = 'human';
     // Cycle back around to side 1's turn -- endTurn's own doc comment on
     // why healing (unlike income) isn't gated on turnNumber > 1: real
     // Wesnoth's do_healing() flag exempts only the very first side-turn

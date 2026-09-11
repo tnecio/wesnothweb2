@@ -42,6 +42,7 @@ import {
   isBackstabActive,
   computeLeadershipBonus,
   computeResistanceModifier,
+  playAiTurn,
   type AttackBlowResult,
   buildBattleContext,
   chooseDefenderWeaponIndex,
@@ -642,20 +643,64 @@ export class GameSession {
    * mirroring a real "start of turn" refresh (see this project's own
    * `Unit.create`/`Unit.fromConfig` defaults for what "full" means).
    *
-   * ## Hotseat, not single-side-forever (judgment call)
+   * ## Hotseat, plus a real AI for `controller=ai` sides (2026-09-11)
    *
-   * There is no AI in this project yet (Phase 7). The two readings of
-   * "end turn" without one are: (a) only `playerSide` is ever actually
-   * playable, and every other side's turn is skipped/no-op'd, or (b) any
-   * side can be controlled once it's their turn (hotseat). This picks (b):
-   * the user's explicit goal was "test scenario progression and combat",
-   * which needs the OTHER side (Mal-Kevek's undead) to actually do
-   * something across turns -- with no AI, hotseat is the only way that
-   * happens at all. `activeSide` (not `playerSide`) now gates who can be
-   * selected/moved/attacked/recruited with in `handleHexClick`.
+   * Until this session, there was no AI (Phase 7), so EVERY side --
+   * including `controller=ai` ones -- was actually played by whichever
+   * human sat at the keyboard (hotseat). `packages/engine/src/ai/
+   * simpleAi.ts`'s `playAiTurn` now exists (a real, if deliberately
+   * simple, heuristic AI reusing this project's own real combat-
+   * prediction/pathfinding/recruit code), so `endTurn` now auto-plays any
+   * `ai`/`network_ai`-controlled side immediately upon reaching it,
+   * looping through any further consecutive AI sides, and only returns
+   * once a human-controlled side is reached (or the scenario ends).
+   * `activeSide` (not `playerSide`) still gates who can be selected/
+   * moved/attacked/recruited with in `handleHexClick`, for any side a
+   * human ends up controlling (including a `human`-controlled side that
+   * isn't `playerSide` -- true hotseat, unchanged from before).
    */
   endTurn(): string {
-    if (this.scenarioResult) return '';
+    let message = this.advanceOneTurn();
+    if (!message) return '';
+    // Auto-play consecutive AI-controlled sides. Bounded by `sides.length`
+    // guard-multiples rather than true unbounded recursion, so a
+    // fully-AI-vs-AI scenario can't blow the call stack turn-by-turn --
+    // capped generously (1000) since a real game is turns=<=100ish and
+    // this only loops once per side-turn, not per AI action.
+    for (let guard = 0; guard < 1000 && !this.scenarioResult; guard++) {
+      const team = this.board.getTeam(this.activeSide);
+      if (!team || (team.controller !== 'ai' && team.controller !== 'network_ai')) break;
+      this.playAiSide(this.activeSide);
+      if (this.scenarioResult) break;
+      const next = this.advanceOneTurn();
+      if (!next) break;
+      message = next;
+    }
+    return message;
+  }
+
+  /** Runs `playAiTurn` for `side` and logs what it did -- see `endTurn`'s own doc comment. */
+  private playAiSide(side: number): void {
+    const actions = playAiTurn(this.board, side, this.rng, {
+      resolveType: this.resolveType,
+      lawfulBonus: this.currentTimeOfDay.lawfulBonus,
+      maxLiminalBonus: this.schedule.maxLiminalBonus,
+    });
+    for (const action of actions) this.log.unshift(action.message);
+    if (actions.some((a) => a.kind === 'attack')) this.checkForGameEnd();
+  }
+
+  /**
+   * Advances `activeSide` to the next side in turn order (wrapping back to
+   * the lowest side, which is also when `turnNumber` increments),
+   * refreshing that side's units' moves/attacks to full, applying income/
+   * upkeep and the real healing pass, and logging/returning the new
+   * turn's banner message. Pulled out of `endTurn` so it can be called
+   * once per side-turn, including once per AI side `endTurn` auto-plays
+   * through -- see `endTurn`'s own doc comment.
+   */
+  private advanceOneTurn(): string | null {
+    if (this.scenarioResult) return null;
     this.clearSelection();
     const sides = this.board
       .teams()
@@ -664,7 +709,7 @@ export class GameSession {
     const idx = sides.indexOf(this.activeSide);
     const wrapped = idx === -1 || idx === sides.length - 1;
     const nextSide = wrapped ? sides[0] : sides[idx + 1];
-    if (nextSide === undefined) return '';
+    if (nextSide === undefined) return null;
     if (wrapped) this.turnNumber += 1;
     this.activeSide = nextSide;
     for (const unit of this.board.unitsForSide(nextSide)) {
