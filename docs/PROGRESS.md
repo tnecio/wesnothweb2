@@ -1070,3 +1070,35 @@ a real browser: moved the leader onto the village via the real click
 path, ended two turns, and confirmed gold/income/village-count in the
 side panel matched the hand-computed real formula exactly (40 -> 45,
 "+5 (1 village x 1g)").
+
+## 2026-09-10: implementation plan cross-checked against the full feature catalogue
+
+User provided `~/wesnoth-feature-catalogue.md` (20 categories, ~1,000
+testable features -- the test-surface map for the whole engine) and asked
+for the plan to be updated so every feature in it has a home in some
+phase. Read the whole catalogue, then spot-checked current engine
+coverage against it (grepping for leadership/berserk/drain/poison/slow/
+petrify/plague/swarm/firststrike/marksman/magical/backstab/charge/
+skirmisher/hides/regenerate/illuminates/teleport, and checking for fog/
+shroud, time-of-day, audio, i18n, undo/replay, achievements presence)
+rather than trusting the existing plan text at face value -- which turned
+up two real documentation gaps: Phase 3 (Lua) and most of Phase 2 (rules
+engine) were already substantially delivered (2026-09-07) but this
+document never said so, and eight whole catalogue categories (fog/shroud/
+vision, real time-of-day schedules, audio, localization, replay/
+statistics/achievements, minimap/labels/items, advanced UI chrome,
+CI/CD/performance) had no phase at all -- audio in particular wasn't
+mentioned anywhere in the prior plan.
+
+Rewrote `docs/IMPLEMENTATION_PLAN.md`: every existing phase (0-10) now
+carries a Status line and a catalogue-referenced checklist of what's
+concretely done vs. still gapped (most notably: Phase 2's abilities/
+specials are mostly hand-coded per-feature rather than through a single
+generic filter/effect pipeline -- `leadership`/`illuminates` are
+explicitly not implemented because of this, and it's flagged as the
+single largest remaining Phase 2 gap). Added Phases 11-18 for the eight
+uncovered categories, each with a status, a concrete checklist, and a
+milestone. Added a coverage-map appendix (catalogue category -> phase)
+mirroring the catalogue's own Appendix A, so a future phase reshuffle
+can't silently drop a category. Did not commit -- docs-only change,
+left for the user to review/commit.
