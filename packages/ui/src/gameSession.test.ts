@@ -28,6 +28,12 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const snapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/01_Invasion.json');
 const nextSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/02_Flight.json');
 const economySnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/synth_economy_01.json');
+const wolfCoastSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/03_Wolf_Coast.json');
+
+/** Real Dead Water scenario 3 -- chained here to exercise `{RECALL_LOYAL_UNITS}` (a real `prestart`-event macro expanding to several `[recall] id=X` calls) against a real recall list carried two scenarios deep. */
+function loadWolfCoastSnapshot(): GameBoardSnapshot {
+  return JSON.parse(fs.readFileSync(wolfCoastSnapshotPath, 'utf8')) as GameBoardSnapshot;
+}
 
 function loadSnapshot(): GameBoardSnapshot {
   return JSON.parse(fs.readFileSync(snapshotPath, 'utf8')) as GameBoardSnapshot;
@@ -348,6 +354,68 @@ describe('GameSession.startNextScenario (real 01_Invasion -> 02_Flight gold + re
     }
     expect(recallIds).not.toContain('Kai Krellis');
     expect(next.board.allUnits().some((u) => u.id === 'Kai Krellis')).toBe(true);
+  });
+
+  it('carries a recall-list survivor through a SECOND scenario transition even if never recalled in between, and a real prestart {RECALL_LOYAL_UNITS} macro places it on the board via the real [recall] action -- regression for a real dropped-hero bug', () => {
+    // Scenario 1 -> 2, exactly as the test above, forcing victory the same way.
+    const scenario1 = new GameSession(loadSnapshot());
+    scenario1.runStartupEvents();
+    scenario1.board.getTeam(1)!.gold = 150;
+    scenario1.turnNumber = 5;
+    const enemy1Leader = scenario1.board.unitsForSide(2).find((u) => u.canRecruit)!;
+    scenario1.board.removeUnitAt(enemy1Leader.location);
+    // @ts-expect-error -- calling the private checkForGameEnd directly, same pattern as the other victory-forcing tests in this file.
+    scenario1.checkForGameEnd();
+    expect(scenario1.scenarioResult).toBe('victory');
+
+    const scenario2 = GameSession.startNextScenario(scenario1, loadNextSnapshot());
+    const recallIdsIntoScenario2 = scenario2.board.recallList(1).map((u) => u.id);
+    expect(recallIdsIntoScenario2.length).toBeGreaterThan(0); // sanity: scenario 2 really does start with survivors on its recall list.
+
+    // Force scenario 2's own victory WITHOUT ever recalling anyone -- the
+    // whole point of this test is what happens to a recall-list survivor
+    // that sits untouched through an entire scenario. Real scenario 2 has
+    // THREE enemy sides (2/3/4, all "bad guys"), not just one -- every
+    // leader must fall for checkVictory to actually end the scenario.
+    for (const side of scenario2.board.teams().map((t) => t.side)) {
+      if (side === 1) continue;
+      for (const leader of scenario2.board.unitsForSide(side).filter((u) => u.canRecruit)) {
+        scenario2.board.removeUnitAt(leader.location);
+      }
+    }
+    // @ts-expect-error -- see above.
+    scenario2.checkForGameEnd();
+    expect(scenario2.scenarioResult).toBe('victory');
+
+    const scenario3 = GameSession.startNextScenario(scenario2, loadWolfCoastSnapshot());
+    const recallIdsIntoScenario3 = scenario3.board.recallList(1).map((u) => u.id);
+    // The real bug this regresses: before computeCarryoverRecruits also
+    // scanned board.recallList (not just board.unitsForSide), this list
+    // would have been empty here -- every one of scenario 2's un-recalled
+    // survivors would have silently vanished.
+    for (const id of recallIdsIntoScenario2) {
+      expect(recallIdsIntoScenario3).toContain(id);
+    }
+
+    // Real Dead Water scenario 3 fires `{RECALL_LOYAL_UNITS}` at prestart
+    // (see synthetic-campaigns-adjacent apps/web/scripts' real WML, or
+    // wesnoth/data/campaigns/Dead_Water/scenarios/03_Wolf_Coast.cfg
+    // directly) -- a real macro expanding to `[recall] id=Cylanna [/recall]`
+    // etc. This exercises that through the real event pump, the real
+    // [recall] action handler, and the real checkRecruitLocation/recallUnit
+    // placement logic, not a synthetic fixture.
+    scenario3.runStartupEvents();
+    const recallIdsAfterPrestart = scenario3.board.recallList(1).map((u) => u.id);
+    // Named heroes only (`id !== ''`) -- an empty id is ambiguous (several
+    // anonymous citizens share it), so it can't tell a real [recall]
+    // placement apart from an ordinary same-scenario board unit.
+    const placedFromRecall = scenario3.board.unitsForSide(1).filter((u) => u.id !== '' && recallIdsIntoScenario3.includes(u.id));
+    expect(placedFromRecall.length).toBeGreaterThan(0);
+    // Whichever named heroes {RECALL_LOYAL_UNITS} successfully placed are no
+    // longer on the recall list (removed by the real [recall] handler).
+    for (const placed of placedFromRecall) {
+      expect(recallIdsAfterPrestart).not.toContain(placed.id);
+    }
   });
 });
 

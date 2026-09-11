@@ -1101,4 +1101,101 @@ uncovered categories, each with a status, a concrete checklist, and a
 milestone. Added a coverage-map appendix (catalogue category -> phase)
 mirroring the catalogue's own Appendix A, so a future phase reshuffle
 can't silently drop a category. Did not commit -- docs-only change,
-left for the user to review/commit.
+left for the user to review/commit. (Later committed and pushed at the
+user's request: `63e0b2a`.)
+
+## 2026-09-11: Phase 6 content breadth -- all 13 Dead Water scenarios now load and chain correctly, real [recall]/[capture_village] actions
+
+User asked me to continue Phase 5 polish and Phase 6 content breadth
+independently while they test the synthetic debug campaigns themselves.
+Picked up "port Dead Water scenario 3" (the plan's stated Phase 6 next
+step -- only scenarios 1-2 were playable before this).
+
+**Investigation, not just porting**: before touching scenario 3's
+content, checked what the event pump actually fires during real play.
+Found `GameSession` only ever fires `prestart`/`start`, once, at scenario
+load -- confirmed this doesn't block basic playability (victory/gold-
+carryover already read the finishing `[endlevel]` config statically
+rather than needing a live-fired `enemies defeated` event, a documented
+existing simplification), but did mean `[recall]` and `[capture_village]`
+were still registered as no-op "extension point" placeholders in
+`actionWml.ts`, even though `GameBoard`'s village-ownership model (built
+last session for the economy feature) already had everything
+`[capture_village]` needs.
+
+**New action tags implemented for real** (`packages/engine/src/events/
+actionWml.ts`):
+- `[capture_village]` (mirrors `wml_actions.capture_village` in
+  `data/lua/wml-tags.lua`): assigns matching villages to `side=`
+  (`side=0` neutralises, via `GameBoard.captureVillage`'s own new `side <=
+  0` handling). `[filter_side]` not yet supported (logged, no-op) --
+  narrower than upstream but covers the common `side=N` case.
+- `[recall]` (mirrors the real C++ `WML_HANDLER_FUNCTION(recall, ...)`):
+  finds a recall-list unit by SUF across every side's list, places it via
+  the same `checkRecruitLocation` leader/vacancy search the player-facing
+  recall UI already uses, falling back to any vacant connected castle
+  tile when no `x=`/`y=` is given.
+
+**Two real bugs found while building this, both by testing against real
+chained campaign content rather than trusting the isolated unit tests**:
+
+1. **`[recall]` removed the WRONG unit from the recall list.** My first
+   pass called `GameBoard.removeFromRecallList(side, unit.underlyingId)`
+   -- exactly the trap `GameSession.tryRecallAt`'s own doc comment already
+   warns about (`underlyingId` defaults to 0 for every unit here, so
+   several recall-list entries commonly share it). A 3-scenario chained
+   integration test caught it immediately: Cylanna/Gwabbo were correctly
+   *found* and *placed* on scenario 3's board via `{RECALL_LOYAL_UNITS}`,
+   but their names never left scenario 3's recall list -- two unrelated
+   anonymous-id entries got spliced out instead. Fixed by removing by
+   array index (`list.splice(index, 1)`, same pattern `tryRecallAt`
+   already uses) instead of by `underlyingId`.
+2. **Recall-list survivors were silently dropped on a SECOND scenario
+   transition.** `computeCarryoverRecruits` (the function `startNextScenario`
+   calls to decide what carries into the next scenario) only ever scanned
+   `board.unitsForSide` -- units still on the map -- never
+   `board.recallList`. Invisible for the 1->2 transition (scenario 1 has
+   no pre-existing recall list to begin with, so the existing tests never
+   exercised this path), but real: any hero the player didn't get around
+   to recalling during scenario 2 would vanish forever the moment
+   scenario 2 finished, instead of carrying on into scenario 3 the way
+   real Wesnoth's unconditionally-persistent recall list does. Fixed by
+   having `computeCarryoverRecruits` also scan `board.recallList`,
+   applying the same next-scenario-inline-declaration exclusion to both
+   sources.
+
+**Verification**: 8 new engine tests for `[capture_village]`/`[recall]`
+in isolation (`test/events/captureVillageAndRecall.test.ts`), a new
+regression test for the dropped-recall-list-survivor bug
+(`carryover.test.ts`), and a new chained integration test in
+`gameSession.test.ts` that plays real scenario 1 -> 2 -> 3, forces
+victory without ever manually recalling anyone, and asserts the real
+`{RECALL_LOYAL_UNITS}` macro places named heroes on scenario 3's board
+via the real `[recall]` action pump -- exactly the shape that caught both
+bugs above. Beyond the automated suite, built and ran a real headless
+13-scenario chain script (01_Invasion through 13_Epilogue, forcing
+victory at each step): every scenario's snapshot builds from real WML,
+every scenario's `prestart`/`start` events fire without error, gold/
+recall carryover flows correctly turn over turn, and the `next_scenario`
+chain terminates correctly at the epilogue (`null`). All 13 scenario
+snapshots are now committed to `apps/web/public/scenarios/` -- the whole
+Dead Water campaign is reachable end-to-end through the real UI's victory
+-> Continue flow, not just scenario 1-2. 259 engine tests + 27 UI tests
+passing (up from 231/26 at the start of this entry).
+
+**Not yet verified in a real browser** for this specific batch of work
+(unlike the villages/income session, which added new rendering): no new
+UI surface was touched here, and the existing board-rendering/click-flow
+Playwright checks already cover "a unit appears on the board correctly."
+Judged the ROI of a full click-through lower than for a session that
+changed rendering -- flagged here rather than silently skipped.
+
+**Known remaining gaps in scenarios 3-13** (not blockers, matches this
+project's "let real content demand features" philosophy, see
+`IMPLEMENTATION_PLAN.md`'s Phase 2 gap list): `moveto`/`turn N`-numbered
+scripted events still never fire outside `prestart`/`start` (so e.g.
+scenario 3's storm-trident side-quest dialogue and its turn-3 wolf spawn
+don't happen -- cosmetic/reward content loss, not a blocker), `[item]`
+placement isn't rendered, and there is still no AI (Phase 7) so every
+`controller=ai` side is, as already documented, played by whichever human
+is at the keyboard during hotseat.

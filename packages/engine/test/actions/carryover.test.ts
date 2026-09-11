@@ -262,4 +262,25 @@ describe('computeCarryoverRecruits', () => {
     expect(survivors.some((u) => u.id === 'Kai Krellis')).toBe(false);
     expect(survivors).toHaveLength(2);
   });
+
+  it('also carries units already sitting in the recall list (not just ones still on the map) -- regression for a real dropped-hero bug', () => {
+    // Real bug: a survivor from an EARLIER scenario (e.g. Cylanna carried
+    // into scenario 2's recall list) that the player never got around to
+    // recalling onto scenario 2's own board used to vanish the moment
+    // scenario 2 finished, because this function only ever looked at
+    // `board.unitsForSide` -- never `board.recallList`. Real Wesnoth's
+    // recall list is unconditionally persistent; it should carry straight
+    // through into scenario 3 regardless of whether it was ever recalled.
+    const board = makeBoard();
+    const benched = Unit.create(citizenType, 1, new Location(-1000, -1000), { id: 'Gwabbo' });
+    board.addToRecallList(1, benched);
+
+    const nextScenario = new WmlConfig();
+    const side = nextScenario.addChild('side');
+    side.setAttribute('side', 1);
+    side.setAttribute('id', 'Kai Krellis');
+
+    const survivors = computeCarryoverRecruits(board, 1, nextScenario.toJSON());
+    expect(survivors.map((u) => u.id).sort()).toEqual(['', 'Cylanna', 'Gwabbo']);
+  });
 });

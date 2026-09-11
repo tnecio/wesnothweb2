@@ -20,7 +20,9 @@
  * `reverse`, `join`), `set_variables` (`replace`/`append`/`merge`≈append/
  * `insert` modes over `[value]` children), `clear_variable`, `store_unit`,
  * `kill`, `modify_unit` (simplified, see below), `unit` (spawn), `gold`,
- * `store_gold`, `allow_recruit`.
+ * `store_gold`, `allow_recruit`, `capture_village` (side= only, see its
+ * own doc comment), `recall` (see its own doc comment for what's
+ * deliberately not re-implemented from upstream's C++ `[recall]` handler).
  *
  * Presentation-only tags that have no headless effect are registered as
  * explicit no-ops (not silently dropped) so real content doesn't spam
@@ -29,17 +31,14 @@
  * `label`, `objectives`.
  *
  * ## Extension points (NOT implemented here, on purpose)
- * `[attack]`, `[recruit]`, `[recall]`, `[move_unit]`/`[move_unit_fake]`
- * (need `packages/engine/src/actions/`'s move/combat/recruit logic, being
- * built in parallel -- explicitly out of scope for this module per the
- * task brief) and `[lua]` (needs the Phase 3 Lua bridge). Each is
- * registered with a placeholder handler that logs a clear "extension
- * point" message and no-ops, rather than either crashing or silently
- * doing nothing -- `ActionRegistry.register(tag, handler)` is public
- * specifically so later work can override these without touching this
- * file. `capture_village` is similarly a placeholder: it needs
- * per-team village-ownership tracking that `model/Team.ts` doesn't carry
- * yet (see that file's module doc comment on scope).
+ * `[attack]`, `[recruit]`, `[move_unit]`/`[move_unit_fake]` (need
+ * `packages/engine/src/actions/`'s move/combat/recruit logic, being built
+ * in parallel -- explicitly out of scope for this module per the task
+ * brief) and `[lua]` (needs the Phase 3 Lua bridge). Each is registered
+ * with a placeholder handler that logs a clear "extension point" message
+ * and no-ops, rather than either crashing or silently doing nothing --
+ * `ActionRegistry.register(tag, handler)` is public specifically so later
+ * work can override these without touching this file.
  *
  * ## Known simplifications
  * `[modify_unit]` upstream (`data/lua/wml/modify_unit.lua`) is a fully
@@ -64,10 +63,11 @@
 import { Location, parseDirection } from '../model/Location.js';
 import { Unit } from '../model/Unit.js';
 import { WmlConfig } from '../wml/config.js';
+import { checkRecruitLocation, recallUnit } from '../actions/recruit.js';
 import type { ActionHandler, EventContext } from './context.js';
 import { ActionRegistry } from './context.js';
 import { conditionalPassed } from './conditionalWml.js';
-import { findUnits, unitMatchesFilter } from './filter.js';
+import { findUnits, locationMatchesFilter, unitMatchesFilter } from './filter.js';
 import { newVarNode, varNodeFromConfig, VariableStore, type VarNode } from './variables.js';
 
 // --- shared helpers ---
@@ -549,6 +549,100 @@ function actionAllowRecruit(cfg: WmlConfig, ctx: EventContext): void {
   }
 }
 
+/**
+ * Mirrors `wml_actions.capture_village` (`data/lua/wml-tags.lua`): assigns
+ * every village matching the location filter (`cfg` itself, same
+ * top-level x=/y= convention as `[filter_location]`) to `side=`. `side=0`
+ * (or omitted, which resolves to 0 below) neutralises rather than
+ * assigning to a nonexistent side, matching `GameBoard.captureVillage`'s
+ * own `side <= 0` handling.
+ *
+ * Deliberately NOT ported: `[filter_side]` (pick the side by SSF instead
+ * of a literal `side=` number) and `fire_event=` (upstream's own comment
+ * on this notes fire_event "doesn't currently exist but probably should
+ * someday" for `set_owner` itself -- the real `capture`/`village capture`
+ * WML event isn't fired by this action either way yet, see
+ * `move.ts`/`GameBoard.captureVillage`'s own doc comments on that gap).
+ */
+function actionCaptureVillage(cfg: WmlConfig, ctx: EventContext): void {
+  if (!cfg.hasAttribute('side')) {
+    ctx.log('warn', '[capture_village] without side= (or [filter_side], not yet supported) is a no-op');
+    return;
+  }
+  const side = cfg.getNumber('side', 0);
+  for (const loc of ctx.board.map.villages) {
+    if (locationMatchesFilter(loc, cfg)) {
+      ctx.board.captureVillage(loc, side);
+    }
+  }
+}
+
+/**
+ * Mirrors `WML_HANDLER_FUNCTION(recall, ...)` (`src/game_events/
+ * action_wml.cpp`): finds the first recall-list unit (searched across
+ * every side's list, in side order -- matching upstream's `for (team& t :
+ * resources::gameboard->teams())` outer loop) matching `cfg` as a SUF
+ * (including the already-ported `x,y=recall,recall` convention -- see
+ * `filter.ts`'s `unitMatchesFilter`), then places it via the same
+ * leader/vacancy search `checkRecruitLocation` already does for the
+ * player-facing recall UI, falling back to any vacant castle tile
+ * connected to any able leader's keep when `cfg` doesn't specify (or its
+ * requested) x=/y=.
+ *
+ * Deliberately NOT ported (matching `recruit.ts`'s own documented
+ * simplifications for the same reasons): `[secondary_unit]` (restricting
+ * *which* leader may recall the match), per-leader `recall_filter=`,
+ * `location_id=`, `check_passability=` (`canUse` is always permissive,
+ * `checkRecruitLocation` always passability-checks via
+ * `findVacantCastleTile`), and `show=`/`fire_event=` (headless; no
+ * display, and the `recall` WML event isn't fired by this port's event
+ * pump for any recall path yet, player-driven or scripted).
+ */
+function actionRecall(cfg: WmlConfig, ctx: EventContext): void {
+  const board = ctx.board;
+  // `x=`/`y=` on [recall] are the DESTINATION, not a unit-filter criterion
+  // -- mirrors upstream's own `temp_config["x"] = "recall"` trick (its
+  // comment: "Prevent the recall unit filter from using the location as a
+  // criterion"). Recall-list units have no board location, so leaving
+  // x=/y= in the filter would make `unitMatchesFilter`'s ordinary
+  // (non-"recall") x=/y= range check spuriously reject every candidate.
+  const unitFilterCfg = new WmlConfig();
+  for (const name of cfg.attributeNames()) {
+    if (name === 'x' || name === 'y') continue;
+    unitFilterCfg.setAttribute(name, cfg.getString(name));
+  }
+  for (const { tag, config } of cfg.allChildren()) unitFilterCfg.addChild(tag, config);
+
+  for (const team of board.teams()) {
+    const list = board.recallList(team.side);
+    const index = list.findIndex((u) => unitMatchesFilter(u, unitFilterCfg, board));
+    if (index === -1) continue;
+    const unit = list[index]!;
+
+    const preferredLoc = Location.fromConfig(cfg);
+    const { result, location, leader } = checkRecruitLocation(board, team.side, preferredLoc, preferredLoc, () => true);
+    if (result === 'no_leader' || result === 'no_able_leader' || result === 'no_keep_leader' || result === 'no_vacancy') {
+      ctx.log('warn', `[recall] found ${unit.id || unit.type.id} on side ${team.side}'s recall list but no legal leader/location (${result})`);
+      return;
+    }
+
+    // Splices `list` (the board's own live recall-list array) directly by
+    // the index just found, NOT `GameBoard.removeFromRecallList`'s
+    // `underlyingId`-keyed lookup -- this project doesn't auto-assign
+    // unique `underlying_id`s (see `Unit.ts`), so several recall-list
+    // entries commonly share `underlyingId=0`, and removing "whichever
+    // entry has underlyingId=0" would silently splice out the WRONG unit
+    // whenever one comes before the one this filter actually matched.
+    // Mirrors `GameSession.tryRecallAt`'s own doc comment on the same
+    // trap, in the player-facing recall UI.
+    list.splice(index, 1);
+    const facing = cfg.hasAttribute('facing') ? parseDirection(cfg.getString('facing')) : undefined;
+    recallUnit(board, team, unit, location, leader?.location ?? location, facing);
+    return;
+  }
+  ctx.log('warn', '[recall]: no recall-list unit on any side matched the filter');
+}
+
 // --- registry ---
 
 /**
@@ -572,6 +666,8 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('gold', actionGold);
   registry.register('store_gold', actionStoreGold);
   registry.register('allow_recruit', actionAllowRecruit);
+  registry.register('capture_village', actionCaptureVillage);
+  registry.register('recall', actionRecall);
 
   for (const tag of [
     'music',
@@ -593,11 +689,9 @@ export function createDefaultActionRegistry(): ActionRegistry {
 
   registry.register('attack', extensionPoint('attack', 'packages/engine/src/actions/'));
   registry.register('recruit', extensionPoint('recruit', 'packages/engine/src/actions/'));
-  registry.register('recall', extensionPoint('recall', 'packages/engine/src/actions/'));
   registry.register('move_unit', extensionPoint('move_unit', 'packages/engine/src/actions/ + pathfind/'));
   registry.register('move_unit_fake', extensionPoint('move_unit_fake', 'packages/engine/src/actions/ + pathfind/'));
   registry.register('lua', extensionPoint('lua', 'packages/lua-bridge/ (Phase 3)'));
-  registry.register('capture_village', extensionPoint('capture_village', 'model/Team.ts village ownership (not modeled yet)'));
 
   return registry;
 }

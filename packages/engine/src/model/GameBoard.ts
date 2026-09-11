@@ -102,11 +102,19 @@ export class GameBoard {
    * Mirrors `team::get_village`: assigns `loc` to `side`, replacing any
    * previous owner (a captured village is simply reassigned, matching
    * `actions::get_village`'s "was already owned by someone else" branch).
-   * No-ops if `loc` isn't actually a village.
+   * No-ops if `loc` isn't actually a village. `side <= 0` neutralises it
+   * instead (mirrors WML's `[capture_village]side=0` -- see
+   * `wesnoth.map.set_owner`'s falsy-side branch in `wml-tags.lua`), so
+   * `villageOwner`/`villageCount` treat it as unowned again rather than
+   * owned by a nonexistent "side 0".
    */
   captureVillage(loc: Location, side: number): void {
     if (!this.map.isVillage(loc)) return;
-    this.villageOwners.set(loc.key(), side);
+    if (side <= 0) {
+      this.villageOwners.delete(loc.key());
+    } else {
+      this.villageOwners.set(loc.key(), side);
+    }
   }
 
   /** Mirrors `team::villages().size()`: how many villages `side` currently owns. */

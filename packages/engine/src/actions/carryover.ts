@@ -45,12 +45,20 @@
  * "persistent hero unit XP/level carries over via a config overlay, not a
  * real recall" mechanism for a unit like Kai Krellis -- his level/XP is
  * simply not carried at all under this simplification (he's excluded by id,
- * matching how he's fresh in the next scenario's `[side]` anyway). It also
- * does NOT replicate a scenario's own `[prestart]`-time `{RECALL_LOYAL_UNITS}`
- * auto-placement-onto-the-board of specific named recall-list units --
- * carried-over survivors are simply left in the recall list for the player
- * to manually recall via the Recall UI, a simpler MVP scope that also
- * happens to be exactly what that UI needs to exist for anyway.
+ * matching how he's fresh in the next scenario's `[side]` anyway).
+ *
+ * A scenario's own `[prestart]`-time `{RECALL_LOYAL_UNITS}` macro (a series
+ * of `[recall] id=X [/recall]` calls) now DOES auto-place named recall-list
+ * units onto the board for real, the same as upstream -- see
+ * `events/actionWml.ts`'s `[recall]` handler. Earlier in this project that
+ * auto-placement wasn't implemented and carried-over survivors were simply
+ * left in the recall list for the player to manually recall instead; this
+ * function's own scope now also folds in units already sitting in
+ * `playerSide`'s recall list (not just ones still on the map) specifically
+ * because of that: a hero the player didn't get around to recalling during
+ * the just-finished scenario must still carry forward into the *next* one
+ * (real Wesnoth's recall list is unconditionally persistent), not be
+ * silently dropped for having sat on the list one scenario too long.
  */
 
 import { WmlConfig, type WmlConfigJson } from '../wml/config.js';
@@ -187,9 +195,24 @@ export function findSideConfig(scenarioConfigJson: WmlConfigJson, side: number):
  * scenario's `GameBoard.addToRecallList` reuse the same objects directly,
  * preserving hp/level/traits exactly, since a `Unit`/`UnitType` pair carries
  * no back-reference to the board it was built against.
+ *
+ * Includes BOTH units still on the map (`board.unitsForSide`) AND units
+ * already sitting in `playerSide`'s recall list (`board.recallList`) --
+ * real Wesnoth's recall list is unconditionally persistent (`[side]
+ * persistent=`/`save_id=`'s whole point): a hero the player never got
+ * around to recalling during the *previous* scenario does not vanish, it
+ * simply stays on the list. Missing this was a real bug found while
+ * extending Dead Water content past scenario 2: `startNextScenario` only
+ * ever passed `finished.board`'s on-map units through this function, so
+ * any survivor still sitting in the recall list from an *earlier* carry
+ * (e.g. Cylanna/Gwabbo arriving in scenario 2's recall list per this
+ * module's own test, then never recalled onto scenario 2's board) was
+ * silently dropped the moment scenario 2 finished, instead of carrying on
+ * into scenario 3 as real Wesnoth does.
  */
 export function computeCarryoverRecruits(board: GameBoard, playerSide: number, nextScenarioConfigJson: WmlConfigJson): Unit[] {
   const nextSideCfg = findSideConfig(nextScenarioConfigJson, playerSide);
   const declaredIds = nextSideCfg ? inlineDeclaredIds(nextSideCfg) : new Set<string>();
-  return board.unitsForSide(playerSide).filter((u) => !(u.id && declaredIds.has(u.id)));
+  const notReDeclared = (u: Unit): boolean => !(u.id && declaredIds.has(u.id));
+  return [...board.unitsForSide(playerSide).filter(notReDeclared), ...board.recallList(playerSide).filter(notReDeclared)];
 }

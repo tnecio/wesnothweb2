@@ -248,10 +248,22 @@ basics (id/type/side/race/gender/level/canrecruit/role, numeric ranges,
   doesn't touch game state), `goto_x=`/`goto_y=` queued multi-turn
   movement, move-interruption-on-event (`moveto` firing mid-path) — none
   built.
-- Village-capture doesn't yet fire the real `capture`/`village capture`
-  event, and there's no `[capture_village]` scripted action or
-  `[store_villages]`/`owner_side=` query — the ownership *model* exists
-  (this session), the WML-facing verbs around it don't yet.
+- ~~Village-capture doesn't yet fire the real `capture`/`village capture`
+  event, and there's no `[capture_village]` scripted action~~ — `[capture_village]`
+  is now real (2026-09-11, `side=`/`side=0` neutralise; `[filter_side]`
+  still unsupported). It still doesn't fire the real `capture`/`village
+  capture` WML event on either the scripted or move-triggered path, and
+  there's still no `[store_villages]`/`owner_side=` query.
+- `[recall]` (the scripted action, distinct from the player-facing Recall
+  UI) is now real too (2026-09-11) — finds a recall-list unit by SUF
+  across every side's list and places it via the same leader/vacancy
+  search (`checkRecruitLocation`) the UI uses. Verified end-to-end: all
+  13 Dead Water scenarios now chain and play through headlessly,
+  including scenario 3+'s real `{RECALL_LOYAL_UNITS}` macro correctly
+  placing named heroes each time. `[secondary_unit]`, per-leader
+  `recall_filter=`, `location_id=`, and `show=`/`fire_event=` (no `recall`
+  WML event fires yet, matching `capture_village`'s gap above) are not
+  ported — see `actionWml.ts`'s own doc comment on `actionRecall`.
 - `attacks_left`/max-attacks-per-turn interacts correctly with a *single*
   attack today; hasn't been exercised against units with `apply_to=
   max_attacks` > 1 or specials that add extra strikes mid-combat via
@@ -376,8 +388,20 @@ menu + `[set_menu_item]`.
 ## Phase 6 — Content breadth
 
 **Status: in progress** (current focus). Dead Water scenario 1→2
-continuation (real gold/recall carryover) landed 2026-09-09; scenarios
-3–13 and every other mainline campaign remain.
+continuation (real gold/recall carryover) landed 2026-09-09. As of
+2026-09-11, all 13 Dead Water scenarios build from real WML, run their
+`prestart`/`start` events without error, and chain correctly end-to-end
+(verified headlessly, forcing victory at each step) — the whole campaign
+is reachable through the real UI's victory → Continue flow, not just
+scenarios 1–2. This surfaced and fixed two real engine bugs (`[recall]`
+removing the wrong recall-list entry; recall-list survivors silently
+dropped on a second scenario transition — see Phase 2's gap list and
+`docs/PROGRESS.md`'s 2026-09-11 entry) and implemented `[capture_village]`/
+`[recall]` for real. Not yet done: a real (non-forced) human or AI
+playthrough of scenarios 4–13 to find whatever gameplay-shaped gaps
+(scripted `moveto`/`turn N` events, abilities, specials) only show up
+under real play rather than a scripted "load, force victory, load next"
+smoke chain — every other mainline campaign also remains.
 
 - Finish `Dead_Water` (remaining scenarios), then expand to other mainline
   campaigns one at a time; every failure is a missing WML tag, WFL feature,
