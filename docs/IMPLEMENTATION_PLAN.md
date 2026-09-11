@@ -227,32 +227,58 @@ basics (id/type/side/race/gender/level/canrecruit/role, numeric ranges,
 
 **Gap list**:
 - **Generalized ability/effect filter pipeline** (ties categories 6/7
-  together): `[heals]`/`[regenerate]`/skirmisher/hides are each
-  hand-coded narrowly (e.g. `heals`/`regenerate` apply unconditionally,
-  with no `[filter_self]`/`[filter_adjacent]`/`cumulative=`/`value|add|
-  sub|multiply|divide`/`max_value|min_value` evaluation at all). Real
-  content leans on that generic machinery constantly (custom abilities,
-  `[resistance]` ability, ability-scope flags `affect_self/allies/
-  enemies`, `affect_movement/vision`). **This is the single largest
-  remaining Phase 2 gap** — worth a dedicated sub-effort before Phase 6
-  goes much further into content that uses non-default abilities.
-  (2026-09-11: the *shorthand* half of this — `specials_list=`/
-  `abilities_list=`, the comma-separated id list real mainline unit files
-  almost universally use instead of inline `[specials]`/`[abilities]` —
-  is now resolved, via `UnitTypeDatabase.collectSpecialRegistry()` and
-  `UnitType`/`AttackType.fromConfig()`'s new `registries` param, keyed by
+  together): most of `[heals]`/`[regenerate]`/skirmisher/hides are still
+  hand-coded narrowly rather than going through generic filter/effect
+  evaluation. Real content leans on that generic machinery constantly
+  (custom abilities, ability-scope flags `affect_self/allies/enemies`,
+  `affect_movement/vision`). Some of this is now closed — see below —
+  but it's not fully generalized.
+  (2026-09-11: the *shorthand* half — `specials_list=`/`abilities_list=`,
+  the comma-separated id list real mainline unit files almost universally
+  use instead of inline `[specials]`/`[abilities]` — is now resolved, via
+  `UnitTypeDatabase.collectSpecialRegistry()` and `UnitType`/
+  `AttackType.fromConfig()`'s new `registries` param, keyed by
   `unique_id ?? id` and matched by real upstream's **tag name**, not
   `id=` — ability `id=` is a distinct display id in real content, e.g.
   every `heals`-tag entry sets `id=healing`/`id=curing`, never
   `id=heals`. Before this fix, most real specials/abilities were silently
-  inert, including Dead Water's own healer Cylanna. The deeper filter/
-  effect *evaluation* gap this bullet describes remains open.)
-- **`[leadership]`** — explicitly not applied yet (`combatStats.ts`'s own
-  doc comment: `leadershipBonus` is always 0). Blocked on the same generic
-  pipeline above (adjacency + level-difference scaling + `cumulative=`).
-- **`[illuminates]`** — not implemented at all; blocked on both the
-  generic ability pipeline and Phase 12 (needs a real ToD/schedule model
-  to shift).
+  inert, including Dead Water's own healer Cylanna.
+  2026-09-11 (cont'd): a real, tested-against-`data/core/macros/
+  abilities.cfg` **query+composition engine** now exists
+  (`packages/engine/src/actions/abilityEffects.ts`'s `getActiveAbilities`/
+  `computeAbilityEffect`, a port of `foreach_active_ability`/`get_abilities`/
+  `unit_abilities::effect`) — deliberately scoped to what
+  `leadership`/`resistance` (steadfast) actually need: self vs. adjacent
+  queries with `affects_side`/`affect_self`/`[affect_adjacent][filter]`
+  (including WFL `formula=` with real `self`/`other`/`base_value`
+  binding), and `value=`/`multiply=`/`max_value=`/`[filter_base_value]`/
+  `priority=` composition. `[filter_self]`, `[filter_adjacent]` inside
+  `[affect_adjacent][filter]`, non-adjacent `adjacent=` direction
+  matching, and the weapon-special-only `EFFECT_CUMULABLE` mode are all
+  still unported — none of the two abilities below need them. The
+  deeper, fully generic filter/effect pipeline this bullet originally
+  described (arbitrary custom abilities, `affect_movement`/`affect_vision`,
+  etc.) remains open; revisit when real content demands a specific piece
+  of it, per this project's standing philosophy.)
+- ~~**`[leadership]`**~~ — now real (2026-09-11): `abilityEffects.ts`'s
+  `computeLeadershipBonus`, evaluating the real
+  `value="(25 * (level - other.level))"` formula, `cumulative=no`
+  ("best bonus wins" with multiple adjacent leaders, not summed), and the
+  real same-side-only adjacency scope. Wired into `combatStats.ts` via
+  `UnitStatsOptions.attackerLeadershipBonus`/`defenderLeadershipBonus`,
+  computed by callers with board access (`combat.ts`'s `executeAttack`,
+  `GameSession.buildPreview`).
+- ~~**Resistance-granting abilities (steadfast)**~~ — now real
+  (2026-09-11): `abilityEffects.ts`'s `computeResistanceModifier`
+  (`multiply=`/`max_value=`/`[filter_base_value]`/`active_on=`), wired
+  into `combatStats.ts` via `UnitStatsOptions.attackerResistanceModifier`/
+  `defenderResistanceModifier`.
+- **`[illuminates]`** — still not implemented; upstream applies it via a
+  dedicated, side-independent `tod_manager::get_illuminated_time_of_day`
+  scan rather than the `affects_side` path the rest of the ability system
+  uses, so it needs its own small piece of work on top of both the
+  generic pipeline above and Phase 12's schedule model (which now
+  exists, 2026-09-11).
 - Teleport (`[teleport]` action *and* ability), `[tunnel]` routes,
   `[fake_unit]`/`[move_unit_fake]`/`[move_units_fake]` (cutscene-only,
   doesn't touch game state), `goto_x=`/`goto_y=` queued multi-turn

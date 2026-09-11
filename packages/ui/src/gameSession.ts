@@ -40,6 +40,8 @@ import {
   executeMove,
   executeAttack,
   isBackstabActive,
+  computeLeadershipBonus,
+  computeResistanceModifier,
   type AttackBlowResult,
   buildBattleContext,
   chooseDefenderWeaponIndex,
@@ -807,6 +809,12 @@ export class GameSession {
         lawfulBonus: this.currentTimeOfDay.lawfulBonus,
         maxLiminalBonus: this.schedule.maxLiminalBonus,
         backstabActive: isBackstabActive(this.board, attacker.location, defender.location),
+        attackerLeadershipBonus: computeLeadershipBonus(this.board, attacker),
+        defenderLeadershipBonus: computeLeadershipBonus(this.board, defender),
+        attackerResistanceModifier: computeResistanceModifier(this.board, defender, attackerWeapon.type, false, defender.location),
+        defenderResistanceModifier: defenderWeapon
+          ? computeResistanceModifier(this.board, attacker, defenderWeapon.type, true, attacker.location)
+          : undefined,
       },
     });
     const { attacker: aCombatant, defender: dCombatant } = simulateCombat(aStats, dStats);

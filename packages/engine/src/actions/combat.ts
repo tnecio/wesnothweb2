@@ -30,6 +30,7 @@ import type { Rng } from '../rng/Rng.js';
 import { buildBattleContext, chooseDefenderWeaponIndex, type UnitStatsOptions } from './combatStats.js';
 import type { BattleContextUnitStats } from './attackPrediction.js';
 import { combatXp, killXp } from './gameConfig.js';
+import { computeLeadershipBonus, computeResistanceModifier } from './abilityEffects.js';
 
 /** Outcome of a single blow (one strike within one round of combat). */
 export interface AttackBlowResult {
@@ -177,7 +178,16 @@ export function executeAttack(
     distance,
     attackerTerrainDefense,
     defenderTerrainDefense,
-    options: { ...options, backstabActive: isBackstabActive(board, attackerLoc, defenderLoc) },
+    options: {
+      ...options,
+      backstabActive: isBackstabActive(board, attackerLoc, defenderLoc),
+      attackerLeadershipBonus: computeLeadershipBonus(board, attacker),
+      defenderLeadershipBonus: computeLeadershipBonus(board, defender),
+      attackerResistanceModifier: computeResistanceModifier(board, defender, attackerWeapon.type, false, defenderLoc),
+      defenderResistanceModifier: defenderWeapon
+        ? computeResistanceModifier(board, attacker, defenderWeapon.type, true, attackerLoc)
+        : undefined,
+    },
   });
 
   // Consume exactly one of the attacker's per-turn attacks (see this function's doc comment).

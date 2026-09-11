@@ -53,14 +53,25 @@
  *    it themselves (they have board/location access this module
  *    deliberately doesn't) and pass it in via `UnitStatsOptions.
  *    backstabActive`.
- *  - **Leadership is NOT applied** (`under_leadership()` upstream): it's
- *    an *ability* granted by an adjacent higher-level unit, not a weapon
- *    special on the attacking unit's own weapon -- finding it needs a
- *    board-wide adjacency+ability scan this project's ability-evaluation
- *    layer doesn't have yet. `leadershipBonus` is always 0 here.
- *  - **Resistance-granting abilities are NOT applied**: only the
- *    attacked unit's own `moveType.resistanceAgainst()` (already a real,
- *    tested part of `Unit.ts`) is used, matching `Unit.ts`'s own stance.
+ *  - **Leadership IS applied** (2026-09-11, `under_leadership()` upstream):
+ *    a board-wide adjacency+ability scan (`abilityEffects.ts`'s
+ *    `getActiveAbilities`/`computeAbilityEffect`, the new "generalized
+ *    ability pipeline" module) finds any active `leadership` ability
+ *    reaching a unit (its own, or an adjacent higher-level ally's) and
+ *    evaluates its real `value="(25 * (level - other.level))"` WFL
+ *    formula. This module still doesn't compute it itself (no board
+ *    access, by design) -- callers with board access
+ *    (`combat.ts`'s `executeAttack`, `GameSession.buildPreview`) compute
+ *    it and pass it in via `UnitStatsOptions.attackerLeadershipBonus`/
+ *    `defenderLeadershipBonus`.
+ *  - **Resistance-granting abilities (steadfast) ARE applied** (2026-09-11):
+ *    same `abilityEffects.ts` module, `computeResistanceModifier` --
+ *    folds in any active `resistance`-tagged ability (`multiply=`/
+ *    `max_value=`/`[filter_base_value]`/`active_on=`) on top of the
+ *    attacked unit's own `moveType.resistanceAgainst()`. Callers pass the
+ *    real value via `UnitStatsOptions.attackerResistanceModifier`/
+ *    `defenderResistanceModifier`; omitting them falls back to the plain
+ *    move-type value, matching the old behaviour.
  *  - **`specials_list=`/`abilities_list=` (the modern shorthand most
  *    mainline `[attack]`/`[unit_type]` tags use instead of inline
  *    `[specials]`/`[abilities]` children, e.g. `specials_list=marksman,
@@ -149,6 +160,14 @@ export interface UnitStatsOptions {
   readonly opponentTerrainDefense?: number;
   /** The real geometric backstab condition for THIS attacker/defender pair, computed by the caller (see `combat.ts`'s `isBackstabActive`) -- only doubles damage when `isAttacker` is also true for this call. Default false. */
   readonly backstabActive?: boolean;
+  /** The attacker's own `leadership`-ability damage bonus percentage (`abilityEffects.ts`'s `computeLeadershipBonus`), used only when `isAttacker` is true for this call. Default 0. */
+  readonly attackerLeadershipBonus?: number;
+  /** Same, for the defender (used only when `isAttacker` is false for this call). */
+  readonly defenderLeadershipBonus?: number;
+  /** Overrides `opponent.resistanceAgainst(weapon.type)` with the real ability-aware value (`abilityEffects.ts`'s `computeResistanceModifier`, e.g. Dwarvish steadfast) for the attacker-computing call (`isAttacker` true -- i.e. the defender's resistance against the attacker's weapon). Falls back to the plain move-type resistance when omitted. */
+  readonly attackerResistanceModifier?: number;
+  /** Same, for the defender-computing call (`isAttacker` false -- the attacker's resistance against the defender's weapon, i.e. the counter-strike). */
+  readonly defenderResistanceModifier?: number;
 }
 
 /**
@@ -239,8 +258,9 @@ export function computeUnitStats(
   const baseDamage = weapon.damage;
   let damageMultiplier = 100;
   damageMultiplier += combatModifier(options.lawfulBonus ?? 0, weapon.alignment ?? unit.type.alignment, false, options.maxLiminalBonus ?? 0);
-  // Leadership: not applied, see module doc comment.
-  const resistanceModifier = opponent.resistanceAgainst(weapon.type);
+  const leadershipBonus = (isAttacker ? options.attackerLeadershipBonus : options.defenderLeadershipBonus) ?? 0;
+  if (leadershipBonus !== 0) damageMultiplier += leadershipBonus;
+  const resistanceModifier = (isAttacker ? options.attackerResistanceModifier : options.defenderResistanceModifier) ?? opponent.resistanceAgainst(weapon.type);
   damageMultiplier *= resistanceModifier;
 
   let damage = roundDamage(baseDamage, damageMultiplier, 10000);

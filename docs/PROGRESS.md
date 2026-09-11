@@ -1363,3 +1363,55 @@ villages; defense% shown both on hover and in the selected-unit panel;
 the new Abilities & Specials debug campaign loading and rendering all 28
 units with no console errors. All 253 engine + 32 UI + 106 renderer
 tests pass; typecheck clean across all packages.
+
+## 2026-09-11 (cont'd): a real, targeted generalized-ability-effect engine (leadership, steadfast)
+
+User asked to move on from content breadth (Phase 6, plenty of debugging
+material now exists there) toward three other phases: the generalized
+ability/effect pipeline, an AI opponent, and terrain visuals/animation.
+Starting with the pipeline, since AI and animation both benefit from
+combat numbers actually being correct.
+
+Read the real `units/abilities.cpp`/`abilities.hpp`/`units/unit.cpp`
+(`foreach_active_ability`, `get_abilities`, `unit_abilities::effect`,
+`resistance_against`, `under_leadership`) directly rather than guessing
+at the generic filter/effect model from memory -- it's a real, fairly
+intricate composition engine (priority-grouped, `value=`/`add=`/`sub=`/
+`multiply=`/`divide=`/`max_value=`/`min_value=`/`cumulative=`, WFL
+formula values with real `self`/`other`/`base_value` binding). Rather
+than porting the whole thing (which supports far more than any real
+mainline content in this project currently needs -- `[filter_self]`,
+non-adjacent `adjacent=` direction matching, the weapon-special-only
+`EFFECT_CUMULABLE` mode), cross-checked which parts real
+`data/core/macros/abilities.cfg` definitions actually exercise and built
+exactly that: a new `packages/engine/src/actions/abilityEffects.ts`
+implementing `getActiveAbilities` (the self/adjacent query, with real
+`affects_side`/`affect_self`/`[affect_adjacent][filter]` semantics) and
+`computeAbilityEffect` (the composition), then two high-level entry
+points, `computeLeadershipBonus` and `computeResistanceModifier`, wired
+into `combatStats.ts`'s `UnitStatsOptions` (`attackerLeadershipBonus`/
+`defenderLeadershipBonus`/`attackerResistanceModifier`/
+`defenderResistanceModifier`, computed by `combat.ts`'s `executeAttack`
+and `GameSession.buildPreview`, both of which already had board access
+for the same reason `isBackstabActive` does).
+
+Both of `combatStats.ts`'s own previously-flagged "NOT applied" gaps are
+now real: **leadership** (adjacent higher-level same-side ally boosts
+damage by the real `25 * (level - other.level))` WFL formula, "best
+bonus wins" with multiple simultaneous leaders rather than summing) and
+**steadfast/resistance-granting abilities** (`multiply=2 max_value=50
+[filter_base_value] greater_than=0 less_than=50`, correctly gated to
+`active_on=defense` and vulnerabilities/already-high resistances left
+alone). New tests (`test/actions/abilityEffects.test.ts`, 9 tests) build
+ability configs with the exact attributes the real macros set (not
+abbreviated stand-ins) and hand-verify the expected numbers, including a
+two-simultaneous-leaders "best wins, not summed" case and the
+`active_on=defense`-doesn't-apply-while-attacking case. All 262 engine +
+32 UI tests pass; typecheck clean.
+
+Deliberately not done here (documented in `IMPLEMENTATION_PLAN.md`'s
+updated Phase 2 gap-list entry, not silently dropped): `illuminates`
+(needs its own side-independent radius scan, not the `affects_side` path
+everything else here uses), `hides`-family stealth abilities (no
+fog/vision system yet to hide from -- Phase 11), and the fully generic
+filter/effect pipeline (arbitrary custom abilities beyond these two).
