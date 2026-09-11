@@ -1586,3 +1586,88 @@ Not done, and documented as an open gap rather than silently skipped
 existed since the selection-only phase but nothing calls it yet, so a
 move still snaps instantly. Sound-in-frame, halo/blend/submerge
 compositing, and screen-shake/floating-damage-text remain unbuilt too.
+
+## 2026-09-11 (cont'd): four real animation bugs, user-reported after trying the feature
+
+User tried the new per-blow attack playback and reported four problems:
+a moved unit left a duplicate "ghost" sprite at its origin hex; attack
+animations always showed the ORIGINAL attacker swinging even when the
+defender was the one dealing a retaliation blow; movement had no
+animation at all; and hit vs. miss looked indistinguishable. All four
+were real, and all four are now fixed.
+
+1. **Duplicate sprite on move** — a genuine race condition. `renderUnits()`
+   is async (`buildUnitVisual` awaits real texture loading via
+   `ImageCache.resolve`), and nothing serialized overlapping
+   `updateUnits`/`render` calls. Selecting a unit and immediately moving
+   it could fire two overlapping runs; both could fail to find an
+   existing `UnitVisual` for the same unit (neither had reached its own
+   `unitVisuals.set(...)` yet) and each build a fresh sprite -- one
+   orphaned in `unitLayer`, forever undetected by the cleanup loop since
+   the map only ever pointed to the other. Fixed with a `renderQueue`
+   promise chain in `SnapshotBoard` so every `renderUnits()` run is
+   strictly sequential.
+2. **Attack animation always shows the original attacker swinging** —
+   traced to real upstream C++ (`actions/attack.cpp`'s
+   `attack::perform_hit`: `unit_info& attacker = attacker_turn ? a_ : d_;`)
+   to confirm real Wesnoth swaps which unit is "attacker"/"defender" for
+   animation purposes PER BLOW, not fixed to the combat's overall roles
+   -- on a defender's retaliation blow, the DEFENDER plays "attack" with
+   its own weapon and the original attacker plays "defend". The
+   pre-existing (not written this session) `buildAttackBlowAnimationContexts`
+   never did this swap -- a real, previously-undiscovered bug in code
+   that predates this session, only surfaced once actually wired into
+   live playback. Fixed there (using `blow.attackerTurn` to pick the real
+   striker/receiver) and in `GameShell.svelte`'s cue-building (which was
+   ALSO unconditionally pairing "attacker" context data with the
+   combat's original attacker's animation set/sprite/hex, rather than
+   resolving each blow's real resources by `myUnit` object identity).
+   Verified visually: screenshots of the first blow (real attacker's
+   turn) show that unit lunged out of its hex; a later retaliation blow
+   shows the OTHER unit lunged instead.
+3. **No movement animation** — a real, previously-flagged gap, now
+   built. Required two supporting fixes to actually work, both confirmed
+   against real upstream `animation.cpp` source rather than guessed:
+   `add_anims`' own `offset=` DEFAULTING for `movement_anim`/`attack_anim`
+   (real mainline content, e.g. Elvish Fighter's walk cycle, very often
+   declares no `offset=` at all -- without the engine-injected default
+   (`0~1:200,...` repeating for movement; `0~0.6,0.6~0` for a melee
+   attack lunge with no missile frame), `sampleAnimation` would have
+   nothing to interpolate and a "moving" sprite would just cycle its
+   walk frames in place) -- ported into `unitAnimation.ts` as
+   `withDefaultOffset`. And `SnapshotBoard.playAnimations`' hardcoded
+   "always settle back at `src`" behavior (correct for an attack's
+   lunge-and-return, but exactly wrong for a move) needed generalizing
+   via a new `UnitAnimationCue.restAt: 'src' | 'dst'`. Per-step direction
+   also needed its own fix: `executeMove` only ever sets `unit.facing`
+   ONCE, from the last two hexes of a whole multi-hex move (a
+   pre-existing simplification never exercised until movement animation
+   needed a real per-LEG facing) -- worked around in `GameShell.svelte`
+   by computing each leg's direction directly from the path via a new
+   shared `Location.ts` export, `directionBetween` (pulled out of three
+   separate pre-existing private duplicates in `combat.ts`/`move.ts`/
+   `recruit.ts`, left as-is rather than refactored as a side effect).
+4. **Hit vs. miss look indistinguishable** — investigated directly rather
+   than guessed: real Spearman's own `[defend]` content (built from the
+   real `DEFENSE_ANIM_FILTERED` macro) turns out to use the IDENTICAL
+   image sequence for its `hit` and `miss` variants — the only real
+   difference is a sound (not yet played) — so some visual similarity
+   for this specific unit is genuinely faithful to upstream, not a bug.
+   A focused check (`selectTopAnimations` against real Spearman defend
+   data, hand-computed hit/miss/kill contexts) confirmed the SELECTION
+   logic itself correctly picks the distinct `hit`/`miss`/`kill`-scored
+   variant every time. The likely actual cause of what the user saw:
+   bug #2 above -- with roles never swapped, a retaliation blow fed the
+   ATTACKER's own animation set into a "defend" role it was never
+   really filling, which would read as "wrong reaction" far more often
+   than "correct." Not separately reproduced after fixing #2; flagged
+   here rather than silently assumed fixed, in case it resurfaces.
+
+All 268 engine + 33 UI + 119 renderer tests pass (12 new: 1 role-swap
+regression test in `animationContext.test.ts`, 5 default-offset tests in
+`unitAnimation.test.ts`, plus the pre-existing playback suite); typecheck
+clean. Verified live in the browser: a move glides smoothly with exactly
+one sprite, ending at the correct hex with no ghost left behind; a
+5-blow exchange visibly shows the correct unit lunging on each blow
+(confirmed via before/after screenshots of an attacker-turn blow vs. a
+retaliation blow).

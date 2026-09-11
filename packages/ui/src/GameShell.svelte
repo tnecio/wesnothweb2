@@ -25,14 +25,15 @@
    * before entering 'messages', so the board already reflects every real
    * event-spawned unit by the time the player gets control.
    */
-  import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage, TimeOfDayEntry } from '@wesnothweb2/engine';
-  import { WmlConfig } from '@wesnothweb2/engine';
+  import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage, TimeOfDayEntry, Unit } from '@wesnothweb2/engine';
+  import { WmlConfig, directionBetween } from '@wesnothweb2/engine';
   import {
     type HexPoint,
     type UnitAnimationCue,
     parseUnitAnimations,
     chooseAnimation,
     buildAttackAnimationContexts,
+    buildMovementAnimationContexts,
     terrainLookup,
     spriteKey,
   } from '@wesnothweb2/renderer';
@@ -48,6 +49,7 @@
     type EconomyInfo,
     type VillageOwnerInfo,
     type LastAttackAnimation,
+    type LastMoveAnimation,
   } from './gameSession.js';
   import { saveGame, loadGame } from './persistence.js';
   import TurnBanner from './TurnBanner.svelte';
@@ -61,7 +63,7 @@
 
   /** The scenario currently being played -- reassigned by `continueToNextScenario`. Everything below that used to read the `snapshot` prop directly now reads this instead. */
   let activeSnapshot = $state(snapshot);
-  /** Bound `GameBoardView` instance, so `handleConfirmAttack` can await its imperative `playAttackBlows` before applying the confirmed attack's final state -- see that method's own doc comment. Reassigned across a scenario transition (the `{#key}` block around `<GameBoardView>` remounts it), so `$state`, not a plain `let`, same reasoning as `board` in `GameBoardView.svelte` itself. */
+  /** Bound `GameBoardView` instance, so `handleConfirmAttack`/`handleHexClick` can await its imperative `playAnimationSequence` before applying a resolved attack's/move's final state -- see that method's own doc comment. Reassigned across a scenario transition (the `{#key}` block around `<GameBoardView>` remounts it), so `$state`, not a plain `let`, same reasoning as `board` in `GameBoardView.svelte` itself. */
   let boardView: GameBoardView | undefined = $state();
   /**
    * `$state.raw`, not plain `$state`/a bare `let`: `GameSession` is a
@@ -188,9 +190,14 @@
     sync();
   }
 
-  function handleHexClick(x: number, y: number): void {
+  async function handleHexClick(x: number, y: number): Promise<void> {
     if (phase !== 'playing') return;
     const message = session.handleHexClick(x, y);
+    const move = session.lastMoveAnimation;
+    session.lastMoveAnimation = null;
+    if (move && boardView) {
+      await boardView.playAnimationSequence(buildMoveAnimationCues(move));
+    }
     sync(message);
   }
 
@@ -218,7 +225,7 @@
 
   /**
    * Builds one `UnitAnimationCue` pair (attacker + defender) per real
-   * blow of `info`, for `GameBoardView.playAttackBlows` -- see
+   * blow of `info`, for `GameBoardView.playAnimationSequence` -- see
    * `LastAttackAnimation`'s own doc comment for why this glue lives here
    * (in the one place with both engine data and a `@wesnothweb2/renderer`
    * dependency) rather than in `gameSession.ts` or `SnapshotBoard.ts`
@@ -253,22 +260,82 @@
     const attackerHex = { x: info.attacker.location.x, y: info.attacker.location.y };
     const defenderHex = { x: info.defender.location.x, y: info.defender.location.y };
 
-    return contexts.map(({ attackerContext, defenderContext }) => [
-      {
-        key: attackerKey,
-        anim: chooseAnimation(attackerAnims, attackerContext),
-        direction: info.attacker.facing,
-        srcHex: attackerHex,
-        dstHex: defenderHex,
-      },
-      {
-        key: defenderKey,
-        anim: chooseAnimation(defenderAnims, defenderContext),
-        direction: info.defender.facing,
-        srcHex: defenderHex,
-        dstHex: attackerHex,
-      },
-    ]);
+    // Each blow's own `attackerContext`/`defenderContext` (the "attack"-
+    // event/"defend"-event pair) can belong to EITHER real combatant --
+    // `buildAttackBlowAnimationContexts` swaps `myUnit` to whichever unit
+    // is actually striking THIS blow (see its own doc comment: a
+    // defender's retaliation blow makes the DEFENDER the one playing
+    // "attack"). Resolve each context's own real resources (animation
+    // set/sprite key/hex) by `myUnit` OBJECT IDENTITY per blow, rather
+    // than assuming the combat's overall attacker always swings --
+    // getting this wrong was a real bug (every retaliation blow showed
+    // the original attacker's sprite/animation set instead of the
+    // defender's own).
+    const resourcesFor = (unit: Unit) =>
+      unit === info.attacker
+        ? { anims: attackerAnims, key: attackerKey, hex: attackerHex }
+        : { anims: defenderAnims, key: defenderKey, hex: defenderHex };
+
+    return contexts.map(({ attackerContext, defenderContext }) => {
+      const strikerRes = resourcesFor(attackerContext.myUnit);
+      const receiverRes = resourcesFor(defenderContext.myUnit);
+      return [
+        {
+          key: strikerRes.key,
+          anim: chooseAnimation(strikerRes.anims, attackerContext),
+          direction: attackerContext.myUnit.facing,
+          srcHex: strikerRes.hex,
+          dstHex: receiverRes.hex,
+        },
+        {
+          key: receiverRes.key,
+          anim: chooseAnimation(receiverRes.anims, defenderContext),
+          direction: defenderContext.myUnit.facing,
+          srcHex: receiverRes.hex,
+          dstHex: strikerRes.hex,
+        },
+      ];
+    });
+  }
+
+  /**
+   * Builds one cue per real step of `info.path` (each hex-to-hex leg its
+   * own "movement" `AnimationContext`, matching real per-step animation
+   * re-selection -- terrain/direction can differ leg to leg), for
+   * `GameBoardView.playAnimationSequence`. Each cue's `direction` is the
+   * REAL direction of travel for THAT specific leg, computed directly
+   * from the path -- not `unit.facing`, which `executeMove` only ever
+   * sets ONCE, from the last two hexes of the whole move (a documented
+   * simplification of this project's `move.ts`, never exercised until
+   * movement animation needed a real per-step facing). `restAt: 'dst'`
+   * on every cue: unlike an attack's lunge-and-return, each leg of a
+   * move actually relocates the unit.
+   */
+  function buildMoveAnimationCues(info: LastMoveAnimation): UnitAnimationCue[][] {
+    const contexts = buildMovementAnimationContexts(info.unit, info.path, terrainLookup(session.board));
+    const anims = animationsFor(info.unit.type.id);
+    const key = spriteKey({
+      underlyingId: session.renderKeyFor(info.unit),
+      typeId: info.unit.type.id,
+      x: info.unit.location.x,
+      y: info.unit.location.y,
+    });
+
+    return contexts.map((ctx, i) => {
+      const from = info.path[i]!;
+      const to = info.path[i + 1]!;
+      const direction = directionBetween(from, to) ?? info.unit.facing;
+      return [
+        {
+          key,
+          anim: chooseAnimation(anims, ctx),
+          direction,
+          srcHex: { x: from.x, y: from.y },
+          dstHex: { x: to.x, y: to.y },
+          restAt: 'dst' as const,
+        },
+      ];
+    });
   }
 
   async function handleConfirmAttack(): Promise<void> {
@@ -277,7 +344,7 @@
     const anim = session.lastAttackAnimation;
     session.lastAttackAnimation = null;
     if (anim && boardView) {
-      await boardView.playAttackBlows(buildBlowAnimationCues(anim));
+      await boardView.playAnimationSequence(buildBlowAnimationCues(anim));
     }
     sync(message);
   }

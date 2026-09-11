@@ -33,6 +33,18 @@
  *    type with, say, `[attack_anim]` but no `[movement_anim]`) will
  *    currently fail to match a movement animation rather than silently
  *    reusing standing — flagged rather than silently wrong.
+ *  - **`add_anims`' `offset=` defaulting for `movement`/`attack` IS
+ *    ported** (2026-09-11, `withDefaultOffset`/`MOVEMENT_DEFAULT_OFFSET`/
+ *    `ATTACK_DEFAULT_OFFSET`): most real `[movement_anim]` blocks declare
+ *    no `offset=` at all (e.g. Elvish Fighter's is a bare walk-cycle
+ *    `[frame]`), relying entirely on this engine-injected default to
+ *    actually slide the sprite toward its destination hex — without it,
+ *    `playback.ts`'s `sampleAnimation` would have nothing to interpolate
+ *    and a "moving" unit would just cycle its walk frames in place. Real
+ *    upstream default strings, copied verbatim (a repeating 0→1 ramp
+ *    every 200ms for movement; `0~0.6,0.6~0` for a melee attack lunge
+ *    with no `[missile_frame]`), applied only when the author's own
+ *    branch doesn't already set `offset=`.
  *  - Unit filters (`[filter]`/`[filter_second]`) are evaluated via the
  *    already-real, already-tested `unitMatchesFilter` from
  *    `packages/engine/src/events/filter.ts` (id/type/side/x/y/formula=,
@@ -263,6 +275,39 @@ function buildDefendAnimations(branch: AnimBranch): UnitAnimationDef[] {
   });
 }
 
+/**
+ * `add_anims`' own `offset=` defaulting for `[movement_anim]`
+ * (animation.cpp ~L765-766) when an author doesn't declare one --
+ * real mainline content very often doesn't (e.g. Elvish Fighter's
+ * `movement_anim` is just a bare walk-cycle `[frame]`, no `offset=` at
+ * all): without this, `sampleAnimation`'s offset-interpolation would
+ * have nothing to sample and the sprite would never actually slide
+ * toward its destination hex, no matter how real the frame/image data
+ * is. A repeating 0->1 ramp every 200ms (not a single smooth 0->1 over
+ * the whole animation) -- copied verbatim, not reinterpreted, since this
+ * is upstream's own literal default string.
+ */
+const MOVEMENT_DEFAULT_OFFSET = Array(34).fill('0~1:200').join(',');
+
+/**
+ * `add_anims`' own `offset=` default for `[attack_anim]` (animation.cpp
+ * ~L834-836) when an author declares neither `offset=` nor any
+ * `[missile_frame]` (a ranged attack's projectile carries its own
+ * `missile_offset=` instead, defaulted separately -- not ported here,
+ * see module doc comment on missile frames being out of scope) -- the
+ * lunge-toward-and-back-from-the-defender curve every real melee
+ * `[attack_anim]` gets even when the author didn't author one
+ * explicitly (many don't; the WEAPON_SPECIAL/DEFENSE_ANIM macros focus
+ * on frames/sound, not repeating this boilerplate).
+ */
+const ATTACK_DEFAULT_OFFSET = '0~0.6,0.6~0';
+
+/** Applies `defaultOffset` to `branch` only if it doesn't already declare its own `offset=`. */
+function withDefaultOffset(branch: AnimBranch, defaultOffset: string): AnimBranch {
+  if (bhas(branch, 'offset')) return branch;
+  return { attrs: new Map(branch.attrs).set('offset', defaultOffset), children: branch.children };
+}
+
 /** Tags handled like `add_simple_anim`: one fixed `apply_to`, no per-tag attribute rewriting. */
 const SIMPLE_ANIM_TAGS: Readonly<Record<string, string>> = {
   resistance_anim: 'resistance',
@@ -325,8 +370,10 @@ export function parseUnitAnimations(unitTypeCfg: WmlConfig): UnitAnimationDef[] 
     ['poisoned'],
   )]);
 
-  forTag('movement_anim', (branch) => [buildAnimationDef(branch, ['movement'])]);
-  forTag('attack_anim', (branch) => [buildAnimationDef(branch, ['attack'])]);
+  forTag('movement_anim', (branch) => [buildAnimationDef(withDefaultOffset(branch, MOVEMENT_DEFAULT_OFFSET), ['movement'])]);
+  forTag('attack_anim', (branch) => [
+    buildAnimationDef(bchildren(branch, 'missile_frame').length > 0 ? branch : withDefaultOffset(branch, ATTACK_DEFAULT_OFFSET), ['attack']),
+  ]);
   forTag('death', (branch) => [buildAnimationDef(branch, ['death'])]);
   forTag('defend', buildDefendAnimations);
 

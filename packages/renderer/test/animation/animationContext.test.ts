@@ -86,6 +86,30 @@ describe('buildAttackBlowAnimationContexts (mirrors units/udisplay.cpp unit_atta
     expect(defenderContext.attack).toBe(attackerWeapon); // not defenderWeapon -- see doc comment
     expect(defenderContext.secondAttack).toBe(defenderWeapon);
   });
+
+  it("a DEFENDER's retaliation blow (attackerTurn=false) swaps roles: the defender plays \"attack\" with ITS OWN weapon, the original attacker plays \"defend\" -- regression for a real bug (every retaliation blow showed the wrong unit swinging) caught by wiring this into live UI playback, 2026-09-11", () => {
+    const { attackerContext: strikeCtx, defenderContext: receiveCtx } = buildAttackBlowAnimationContexts(
+      attacker, attackerWeapon, defender, defenderWeapon, makeBlow({ attackerTurn: false, damage: 4, targetDied: false }), 0, terrainAt,
+    );
+
+    // The "attack" context (swing event) now belongs to the DEFENDER, using ITS OWN weapon.
+    expect(strikeCtx.myUnit).toBe(defender);
+    expect(strikeCtx.secondUnit).toBe(attacker);
+    expect(strikeCtx.loc.equals(defender.location)).toBe(true);
+    expect(strikeCtx.secondLoc.equals(attacker.location)).toBe(true);
+    expect(strikeCtx.event).toBe('attack');
+    expect(strikeCtx.attack).toBe(defenderWeapon);
+    expect(strikeCtx.secondAttack).toBe(attackerWeapon);
+
+    // The "defend" context now belongs to the original ATTACKER, receiving the blow.
+    expect(receiveCtx.myUnit).toBe(attacker);
+    expect(receiveCtx.secondUnit).toBe(defender);
+    expect(receiveCtx.loc.equals(attacker.location)).toBe(true);
+    expect(receiveCtx.secondLoc.equals(defender.location)).toBe(true);
+    expect(receiveCtx.event).toBe('defend');
+    expect(receiveCtx.attack).toBe(defenderWeapon); // the STRIKER's (defender's) weapon, not the receiver's own -- see doc comment
+    expect(receiveCtx.secondAttack).toBe(attackerWeapon);
+  });
 });
 
 describe('buildAttackAnimationContexts (per-blow, swing-ordered)', () => {

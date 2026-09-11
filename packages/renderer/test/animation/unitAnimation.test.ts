@@ -194,3 +194,42 @@ describe('matchAnimation (unit_animation::matches_headless port) -- edge cases',
     expect(top[0]!.baseScore).toBe(5);
   });
 });
+
+describe('parseUnitAnimations: real add_anims offset= defaulting for movement_anim/attack_anim (animation.cpp ~L765/~L834)', () => {
+  it('a [movement_anim] with no offset= gets the real repeating 0~1:200 default -- most real content (e.g. Elvish Fighter) relies on this to slide at all', () => {
+    const cfg = wml({}, [['movement_anim', wml({}, [['frame', wml({ image: 'walk.png' })]])]]);
+    const [anim] = parseUnitAnimations(cfg);
+    expect(anim!.events).toEqual(['movement']);
+    expect(anim!.animationParams.offset.length).toBe(34);
+    expect(anim!.animationParams.offset[0]).toEqual({ from: 0, to: 1, durationMs: 200 });
+  });
+
+  it('a [movement_anim] that DOES declare its own offset= is left alone', () => {
+    const cfg = wml({}, [['movement_anim', wml({ offset: '0~1' }, [['frame', wml({ image: 'walk.png' })]])]]);
+    const [anim] = parseUnitAnimations(cfg);
+    expect(anim!.animationParams.offset).toHaveLength(1);
+  });
+
+  it('an [attack_anim] with no offset= and no [missile_frame] gets the real 0~0.6,0.6~0 melee lunge default', () => {
+    const cfg = wml({}, [['attack_anim', wml({}, [['frame', wml({ image: 'swing.png:200' })]])]]);
+    const [anim] = parseUnitAnimations(cfg);
+    expect(anim!.events).toEqual(['attack']);
+    expect(anim!.animationParams.offset).toEqual([
+      { from: 0, to: 0.6, durationMs: 100 },
+      { from: 0.6, to: 0, durationMs: 100 },
+    ]);
+  });
+
+  it('an [attack_anim] with a [missile_frame] does NOT get the melee lunge default (a ranged weapon has its own missile_offset= handling instead, out of scope here)', () => {
+    const cfg = wml({}, [['attack_anim', wml({}, [['frame', wml({ image: 'bow.png' })], ['missile_frame', wml({ image: 'arrow.png' })]])]]);
+    const [anim] = parseUnitAnimations(cfg);
+    expect(anim!.animationParams.offset).toEqual([]);
+  });
+
+  it('an [attack_anim] that DOES declare its own offset= is left alone (real Merman Fighter case)', () => {
+    const cfg = wml({}, [['attack_anim', wml({ offset: '0~0.3,0.3~0' }, [['frame', wml({ image: 'trident.png' })]])]]);
+    const [anim] = parseUnitAnimations(cfg);
+    expect(anim!.animationParams.offset).toHaveLength(2);
+    expect(anim!.animationParams.offset[0]!.to).toBe(0.3);
+  });
+});

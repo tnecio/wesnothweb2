@@ -577,9 +577,9 @@ applied consistently to terrain/units/overlays (ties into Phase 12).
 
 ## Phase 10 — Unit animation
 
-**Status: attack-blow playback delivered (2026-09-11); movement
-playback not yet wired.** Split out of Phase 4 (2026-09-09) for the same
-reason as Phase 9 — attempt #1's other stalling point.
+**Status: attack-blow AND movement playback delivered (2026-09-11).**
+Split out of Phase 4 (2026-09-09) for the same reason as Phase 9 —
+attempt #1's other stalling point.
 
 `packages/renderer/src/animation/` already had real, tested logic for
 animation *selection* (context schema, filter matching, frame parsing);
@@ -615,14 +615,41 @@ now exists:
   (~4s for a 5-blow exchange). A unit type with no matching real
   animation still gets an honest synthetic lunge-and-return rather than
   silently doing nothing.
-- **Not done**: movement (glide-between-hexes) playback -- the
-  `buildMovementAnimationContexts` context-builder has existed since the
-  selection-only phase, but nothing calls it yet; a move still snaps
-  instantly. AI-played attacks (`GameSession.playAiSide`) are also still
-  instant, deliberately (see that field's own doc comment: animating
-  every blow of every automated AI turn would slow `endTurn` for no
-  benefit). Sound-in-frame playback, halo/blend/submerge compositing,
-  and `[delay]`/screen-shake/floating-damage-text remain unbuilt (see
+- **Movement (glide-between-hexes) playback is now also real**
+  (2026-09-11, same session as the four user-reported bug fixes below):
+  `buildMovementAnimationContexts` (context-builder, existed since the
+  selection-only phase) now actually gets called, one real glide per hex
+  entered. Needed two supporting real-upstream fixes, not guesses:
+  `add_anims`' own `offset=` DEFAULTING for `movement_anim`/`attack_anim`
+  (most real content, e.g. Elvish Fighter's walk cycle, declares no
+  `offset=` at all — ported as `unitAnimation.ts`'s `withDefaultOffset`),
+  and a generalized `UnitAnimationCue.restAt: 'src' | 'dst'` so a cue can
+  end relocated (movement) instead of bounced back (attack). Per-step
+  facing also needed its own fix (`executeMove` only sets `unit.facing`
+  once, from a move's LAST leg) — worked around by computing each leg's
+  direction directly via a new shared export, `Location.ts`'s
+  `directionBetween`.
+- **Four real bugs found by the user actually trying the feature, all
+  fixed** (2026-09-11, see `docs/PROGRESS.md`'s own entry for the full
+  writeup): a moved unit left a duplicate ghost sprite at its origin hex
+  (a real async race in `SnapshotBoard.renderUnits`, fixed with a
+  `renderQueue` promise chain); attack animations always showed the
+  original attacker swinging even on a defender's retaliation blow (a
+  real, previously-undiscovered bug in the pre-existing
+  `buildAttackBlowAnimationContexts` — confirmed against real
+  `actions/attack.cpp`'s `perform_hit`, which swaps attacker/defender
+  roles PER BLOW, not just once for the whole exchange); no movement
+  animation (see above); and hit vs. miss appearing indistinguishable
+  (investigated directly — real Spearman's own `[defend]` content
+  genuinely uses the same image for both, so this was likely just a
+  symptom of the retaliation-swap bug, not a separate defect — flagged
+  as not independently reproduced after the swap fix rather than
+  silently assumed resolved).
+- AI-played attacks (`GameSession.playAiSide`) are still instant,
+  deliberately (see that field's own doc comment: animating every blow
+  of every automated AI turn would slow `endTurn` for no benefit).
+  Sound-in-frame playback, halo/blend/submerge compositing, and
+  `[delay]`/screen-shake/floating-damage-text remain unbuilt (see
   `frame.ts`'s `applyFrameEffects` stub and the catalogue checklist
   below).
 

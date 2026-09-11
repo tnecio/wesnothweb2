@@ -164,6 +164,13 @@ export interface LastAttackAnimation {
   readonly result: AttackResult;
 }
 
+/** Everything a caller needs to animate the move `handleHexClick`'s move branch just resolved -- see `GameSession.lastMoveAnimation`. Same rationale as `LastAttackAnimation`: raw engine data only, no renderer dependency here. */
+export interface LastMoveAnimation {
+  readonly unit: Unit;
+  /** The hexes actually entered, in order (including the starting hex) -- `MoveResult.path`. */
+  readonly path: readonly Location[];
+}
+
 /** One of the attacker's usable weapons against the current target -- see `GameSession.attackerWeaponOptions`. */
 export interface AttackerWeaponOption {
   index: number;
@@ -326,6 +333,16 @@ export class GameSession {
    * their own confirmed attack).
    */
   lastAttackAnimation: LastAttackAnimation | null = null;
+  /**
+   * Set by `handleHexClick`'s move branch every time a HUMAN move
+   * actually enters at least one new hex -- see `LastMoveAnimation`'s own
+   * doc comment. Same read-once-then-clear contract as
+   * `lastAttackAnimation`. Not set for a move that resolves to zero
+   * actual steps (e.g. clicking a unit's own hex), and not set for
+   * AI-played moves (`playAiSide` calls `executeMove` directly) for the
+   * same reasoning as attacks.
+   */
+  lastMoveAnimation: LastMoveAnimation | null = null;
 
   /**
    * The real terrain defense `selectedUnit` would have at `(x, y)` (the
@@ -974,6 +991,7 @@ export class GameSession {
     const route = findPath(this.board, unit, dest, { seeAll: true });
     if (route.steps.length === 0) return null;
     const result = executeMove(this.board, unit, route.steps, { seeAll: true });
+    if (result.path.length > 1) this.lastMoveAnimation = { unit, path: result.path };
     const name = this.unitDisplayName(unit);
     let message = result.ambushed ? `${name} was ambushed!` : `${name} moved.`;
     // Re-select from the unit's new position so move/attack options refresh

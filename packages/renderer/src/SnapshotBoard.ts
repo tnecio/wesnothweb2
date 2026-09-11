@@ -228,8 +228,10 @@ export interface UnitAnimationCue {
   readonly direction: Direction;
   /** Where this unit visually starts, engine-convention (0-based). */
   readonly srcHex: HexPoint;
-  /** The "other" hex for `offset=` interpolation -- the lunge target for an attacker, the attacker's own hex for a defender's reaction, or equal to `srcHex` for a non-positional animation (standing/defend-in-place/etc). */
+  /** The "other" hex for `offset=` interpolation -- the lunge target for an attacker, the attacker's own hex for a defender's reaction, or the unit's own real next hex for a movement step. Equal to `srcHex` for a non-positional animation (standing/defend-in-place/etc). */
   readonly dstHex: HexPoint;
+  /** Where the sprite should rest once this cue finishes: `'src'` (default if omitted) for a lunge-and-return (attack/defend -- the unit ends up back where it started), `'dst'` for a real relocation (movement -- the unit ends up at its new hex). */
+  readonly restAt?: 'src' | 'dst';
 }
 
 /** A stable per-unit key for sprite identity -- see `SnapshotUnit.underlyingId`'s own doc comment. Exported so callers building `UnitAnimationCue`s key them identically to how `renderUnits` will look them up. */
@@ -257,6 +259,24 @@ export class SnapshotBoard {
   private readonly onHexHover?: (x: number, y: number) => void;
   /** Persistent per-unit sprite/marker, keyed by `spriteKey` -- see module doc comment on why (animation needs a stable object to animate, not a fresh one every `updateUnits`). */
   private readonly unitVisuals = new Map<string, UnitVisual>();
+  /**
+   * Serializes every `renderUnits()` run (see `render`/`updateUnits`,
+   * the only callers) so overlapping calls can't race. `renderUnits`
+   * itself is async (`buildUnitVisual` awaits real texture loading), and
+   * a caller (`GameBoardView.svelte`'s reactive `$effect`) can legitimately
+   * call `updateUnits` again before a previous call has finished (e.g.
+   * selecting a unit and immediately moving it). Without this queue, two
+   * overlapping runs could each fail to find an existing `UnitVisual` for
+   * the same unit (neither has reached its own `unitVisuals.set(...)`
+   * yet) and each build a fresh sprite -- one of the two ends up
+   * orphaned in `unitLayer` (added to the stage, but overwritten in the
+   * map by the other, so never cleaned up), producing a real, reported
+   * bug: a moved unit's sprite duplicated, with a stale copy left behind
+   * at its origin hex. Chaining every call through one `Promise` chain
+   * makes runs strictly sequential, each seeing whatever `this.units` is
+   * current when its turn comes.
+   */
+  private renderQueue: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly snapshot: ScenarioSnapshot,
@@ -270,9 +290,15 @@ export class SnapshotBoard {
     this.stage.addChild(this.terrainLayer, this.villageLayer, this.highlightLayer, this.unitLayer, this.selectionLayer);
   }
 
+  /** Queues a `renderUnits()` run behind any already in flight -- see `renderQueue`'s own doc comment. */
+  private queueRenderUnits(): Promise<void> {
+    this.renderQueue = this.renderQueue.then(() => this.renderUnits());
+    return this.renderQueue;
+  }
+
   async render(): Promise<void> {
     this.renderTerrain();
-    await this.renderUnits();
+    await this.queueRenderUnits();
   }
 
   private renderTerrain(): void {
@@ -390,19 +416,22 @@ export class SnapshotBoard {
 
   /**
    * Plays every cue in `cues` concurrently in real time (e.g. an
-   * attacker's lunge and a defender's reaction, for one blow), resolving
-   * once all of them have finished. See `UnitAnimationCue`'s own doc
-   * comment for what each cue needs, and the module doc comment for the
-   * "don't race `updateUnits`" contract.
+   * attacker's lunge and a defender's reaction, for one blow -- or just
+   * one cue, for one leg of a movement glide), resolving once all of
+   * them have finished. See `UnitAnimationCue`'s own doc comment for
+   * what each cue needs (including `restAt`, which decides whether the
+   * sprite ends the cue back at `srcHex` or relocated to `dstHex`), and
+   * the module doc comment for the "don't race `updateUnits`" contract.
    *
    * A cue with no real `anim` (the unit type declared no matching
-   * `[attack_anim]`/`[defend]`/etc) still gets a short, honest synthetic
-   * beat rather than silently doing nothing: if its `srcHex`/`dstHex`
-   * differ, its sprite lunges partway toward `dstHex` and back over
-   * `defaultDurationMs` (a plain, non-authored approximation of the real
-   * offset curve); if they're equal (e.g. a defender with no `[defend]`),
-   * it just holds in place for the same duration, so blows without real
-   * per-unit art still read as "something happened here" one at a time.
+   * `[attack_anim]`/`[defend]`/`[movement_anim]`/etc) still gets a short,
+   * honest synthetic beat rather than silently doing nothing, IF its
+   * `srcHex`/`dstHex` differ: `restAt: 'dst'` (movement) glides straight
+   * there over `defaultDurationMs`; the default (an attack lunge/
+   * reaction) bounces out partway and back. A cue with equal `srcHex`/
+   * `dstHex` (e.g. a defender with no `[defend]`) just holds in place for
+   * the same duration, so a blow/step without real per-unit art still
+   * reads as "something happened here" rather than nothing at all.
    */
   async playAnimations(cues: readonly UnitAnimationCue[], defaultDurationMs = 400): Promise<void> {
     const active = cues
@@ -452,26 +481,31 @@ export class SnapshotBoard {
             visual.container.x = sample.x;
             visual.container.y = sample.y;
           } else if (cue.srcHex.x !== cue.dstHex.x || cue.srcHex.y !== cue.dstHex.y) {
-            // Synthetic lunge: 0 -> 0.35 -> 0 over the full duration.
-            const half = duration / 2;
-            const offset = t <= half ? (t / half) * 0.35 : 0.35 * (1 - (t - half) / half);
+            // No real anim: a synthetic beat appropriate to what this cue
+            // means. `restAt: 'dst'` (movement) glides straight there,
+            // offset 0 -> 1 over the full duration; the default (`'src'`,
+            // an attack lunge/reaction) bounces out partway and back:
+            // 0 -> 0.35 -> 0.
+            const offset =
+              cue.restAt === 'dst'
+                ? t / duration
+                : t <= duration / 2
+                  ? (t / (duration / 2)) * 0.35
+                  : 0.35 * (1 - (t - duration / 2) / (duration / 2));
             visual.container.x = offset * dst.x + (1 - offset) * src.x;
             visual.container.y = offset * dst.y + (1 - offset) * src.y;
           }
         }
 
         if (elapsed >= totalMs) {
-          // Settle every sprite back at its OWN hex (`src`), not `dst`:
-          // correct for this method's only current caller (attack blows --
-          // both the attacker's lunge-and-return and the defender's
-          // in-place reaction end where they started) but would be wrong
-          // for a future movement-animation cue whose `dst` is the unit's
-          // real new resting hex, not a round-trip -- a future caller
-          // animating movement will need this generalized (e.g. an
-          // explicit `restAt` per cue) rather than assuming `src`.
-          for (const { visual, src } of active) {
-            visual.container.x = src.x;
-            visual.container.y = src.y;
+          // Settle each sprite at its own real resting hex -- `dst` for a
+          // `restAt: 'dst'` cue (movement: the unit's real new hex), `src`
+          // otherwise (attack: both the attacker's lunge-and-return and
+          // the defender's in-place reaction end where they started).
+          for (const { cue, visual, src, dst } of active) {
+            const rest = cue.restAt === 'dst' ? dst : src;
+            visual.container.x = rest.x;
+            visual.container.y = rest.y;
           }
           resolve();
           return;
@@ -490,7 +524,7 @@ export class SnapshotBoard {
    */
   async updateUnits(units: SnapshotUnit[]): Promise<void> {
     this.units = units;
-    await this.renderUnits();
+    await this.queueRenderUnits();
   }
 
   /**

@@ -71,24 +71,38 @@ export interface AttackBlowAnimationContexts {
 }
 
 /**
- * Builds the attacker's "attack" and defender's "defend" `AnimationContext`s
- * for one blow of an attack exchange, mirroring `unit_attack()`'s two
- * `animator.add_animation(...)` call sites (udisplay.cpp ~L653-661):
+ * Builds the striking unit's "attack" and receiving unit's "defend"
+ * `AnimationContext`s for one blow of an attack exchange, mirroring
+ * `unit_attack()`'s two `animator.add_animation(...)` call sites
+ * (udisplay.cpp ~L653-661) AND, critically, `attack::perform_hit`'s own
+ * role-swap (actions/attack.cpp ~L855-856: `unit_info& attacker =
+ * attacker_turn ? a_ : d_; unit_info& defender = attacker_turn ? d_ :
+ * a_;`) -- **real per-blow "attacker"/"defender" is NOT the same as the
+ * combat's overall attacker/defender**: on a defender's retaliation blow
+ * (`blow.attackerTurn === false`), it's the DEFENDER who plays the
+ * "attack" animation with ITS OWN weapon, and the original attacker who
+ * plays "defend". Getting this wrong means every retaliation blow shows
+ * the wrong unit swinging (a real bug caught by finally wiring this into
+ * live UI playback, 2026-09-11 -- see `docs/PROGRESS.md`).
  *
- *  - attacker: loc=attackerLoc, secondLoc=defenderLoc, event="attack",
- *    value=damage, value2=swing index, attack=attacker's weapon,
- *    secondAttack=defender's weapon.
- *  - defender: loc=defenderLoc, secondLoc=attackerLoc, event="defend",
- *    same value/value2/hit — **and `attack` is still the ATTACKER's
- *    weapon** (upstream's `choose_animation` call passes the same `weapon`
- *    it used for the attacker), not the defender's own; this lets a
- *    `[defend]` block's `[filter_attack]` react to what it's being hit
- *    *by* (e.g. "defend differently against ranged attacks").
+ *  - striker: loc=strikerLoc, secondLoc=receiverLoc, event="attack",
+ *    value=damage, value2=swing index, attack=striker's own weapon,
+ *    secondAttack=receiver's weapon.
+ *  - receiver: loc=receiverLoc, secondLoc=strikerLoc, event="defend",
+ *    same value/value2/hit — **and `attack` is still the STRIKER's
+ *    weapon** (upstream's `choose_animation` call passes the same
+ *    `weapon` it used for the striker), not the receiver's own; this
+ *    lets a `[defend]` block's `[filter_attack]` react to what it's
+ *    being hit *by* (e.g. "defend differently against ranged attacks").
  *
- * `attacker`/`defender` are passed explicitly (not looked up on `board`)
- * because a lethal blow removes the loser from the board before this would
- * be called — the caller (which already has both `Unit` references from
- * setting up the attack) should hold onto them rather than re-resolving.
+ * `attacker`/`defender` params are still named for the COMBAT's overall
+ * roles (matching every other caller in this codebase, e.g.
+ * `combat.ts`'s `AttackResult`) — this function itself resolves which of
+ * them is actually striking THIS blow via `blow.attackerTurn`. Passed
+ * explicitly (not looked up on `board`) because a lethal blow removes
+ * the loser from the board before this would be called — the caller
+ * (which already has both `Unit` references from setting up the attack)
+ * should hold onto them rather than re-resolving.
  */
 export function buildAttackBlowAnimationContexts(
   attacker: Unit,
@@ -102,32 +116,37 @@ export function buildAttackBlowAnimationContexts(
   const hit = strikeResultOf(blow);
   const damage = blow.damage;
 
+  const striker = blow.attackerTurn ? attacker : defender;
+  const strikerWeapon = blow.attackerTurn ? attackerWeapon : defenderWeapon;
+  const receiver = blow.attackerTurn ? defender : attacker;
+  const receiverWeapon = blow.attackerTurn ? defenderWeapon : attackerWeapon;
+
   const attackerContext: AnimationContext = {
-    loc: attacker.location,
-    secondLoc: defender.location,
-    myUnit: attacker,
+    loc: striker.location,
+    secondLoc: receiver.location,
+    myUnit: striker,
     event: 'attack',
     value: damage,
     value2: swingIndex,
     hit,
-    attack: attackerWeapon,
-    secondAttack: defenderWeapon,
-    terrainAtLoc: terrainAt(attacker.location),
-    secondUnit: defender,
+    attack: strikerWeapon,
+    secondAttack: receiverWeapon,
+    terrainAtLoc: terrainAt(striker.location),
+    secondUnit: receiver,
   };
 
   const defenderContext: AnimationContext = {
-    loc: defender.location,
-    secondLoc: attacker.location,
-    myUnit: defender,
+    loc: receiver.location,
+    secondLoc: striker.location,
+    myUnit: receiver,
     event: 'defend',
     value: damage,
     value2: swingIndex,
     hit,
-    attack: attackerWeapon, // see doc comment: intentionally the attacker's weapon, not the defender's
-    secondAttack: defenderWeapon,
-    terrainAtLoc: terrainAt(defender.location),
-    secondUnit: attacker,
+    attack: strikerWeapon, // see doc comment: intentionally the STRIKER's weapon, not the receiver's own
+    secondAttack: receiverWeapon,
+    terrainAtLoc: terrainAt(receiver.location),
+    secondUnit: striker,
   };
 
   return { attackerContext, defenderContext };

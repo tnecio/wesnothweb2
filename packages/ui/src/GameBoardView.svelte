@@ -241,19 +241,21 @@
   });
 
   /**
-   * Plays one attack's real per-blow animations in sequence (each blow's
-   * attacker+defender cues concurrently, then the next blow), exposed for
-   * `GameShell.svelte` to call (via `bind:this`) and await BEFORE it
-   * applies the confirmed attack's final state through the `units` prop
-   * -- see `SnapshotBoard`'s own module doc comment on why that ordering
-   * matters (an `updateUnits` mid-flight would cut the animation short).
-   * A no-op (resolves immediately) if the board isn't mounted yet, which
-   * shouldn't happen in practice (an attack can't be confirmed before the
-   * board renders) but is handled rather than assumed.
+   * Plays a sequence of animation "beats" one after another (each beat's
+   * own cues concurrently, then the next beat) -- an attack's real
+   * per-blow attacker+defender pairs, or a movement's real per-step glide
+   * (one cue per leg of a multi-hex path). Exposed for `GameShell.svelte`
+   * to call (via `bind:this`) and await BEFORE it applies the resolved
+   * action's final state through the `units` prop -- see `SnapshotBoard`'s
+   * own module doc comment on why that ordering matters (an `updateUnits`
+   * mid-flight would cut the animation short). A no-op (resolves
+   * immediately) if the board isn't mounted yet, which shouldn't happen
+   * in practice (an action can't resolve before the board renders) but
+   * is handled rather than assumed.
    */
-  export async function playAttackBlows(blowCueGroups: readonly UnitAnimationCue[][]): Promise<void> {
+  export async function playAnimationSequence(beats: readonly UnitAnimationCue[][]): Promise<void> {
     if (!board) return;
-    for (const cues of blowCueGroups) {
+    for (const cues of beats) {
       await board.playAnimations(cues);
     }
   }

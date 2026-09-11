@@ -313,6 +313,24 @@ export function getAdjacentTiles(center: Location): Location[] {
   ];
 }
 
+/**
+ * Which of `ALL_DIRECTIONS` points from `from` toward `to`, or
+ * `undefined` if they aren't adjacent. Small shared version of a helper
+ * (`directionTo`/`directionBetween`) that had been separately
+ * hand-duplicated as a private function in `combat.ts`, `move.ts`, and
+ * `recruit.ts` -- pulled out here so a caller outside the engine (e.g.
+ * `packages/ui`'s per-step movement-animation direction, which needs the
+ * real direction of travel for EACH leg of a multi-hex path, not just
+ * the final one `executeMove` itself records) doesn't need its own
+ * fourth copy. Those three internal duplicates are left as-is (not a
+ * regression, just unconsolidated) rather than refactored as a side
+ * effect of adding this.
+ */
+export function directionBetween(from: Location, to: Location): Direction | undefined {
+  const idx = getAdjacentTiles(from).findIndex((loc) => loc.equals(to));
+  return idx === -1 ? undefined : ALL_DIRECTIONS[idx];
+}
+
 /** Mirrors `tiles_adjacent`. */
 export function tilesAdjacent(a: Location, b: Location): boolean {
   const dy = a.y - b.y;
