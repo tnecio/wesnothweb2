@@ -119,6 +119,7 @@ export {
 // ── Vertical-slice scenario snapshot board (see module doc comment) ────────
 export {
   SnapshotBoard,
+  spriteKey,
   type ScenarioSnapshot,
   type SnapshotTerrainHex,
   type SnapshotUnit,
@@ -127,4 +128,5 @@ export {
   type HexPoint,
   type HighlightState,
   type VillageOwnerPoint,
+  type UnitAnimationCue,
 } from './SnapshotBoard'

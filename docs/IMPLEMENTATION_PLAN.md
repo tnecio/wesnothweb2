@@ -577,19 +577,54 @@ applied consistently to terrain/units/overlays (ties into Phase 12).
 
 ## Phase 10 — Unit animation
 
-**Status: not started.** Split out of Phase 4 (2026-09-09) for the same
+**Status: attack-blow playback delivered (2026-09-11); movement
+playback not yet wired.** Split out of Phase 4 (2026-09-09) for the same
 reason as Phase 9 — attempt #1's other stalling point.
 
-- Context-aware unit animation selection/playback, ported from
-  `units/animation.cpp`/`frame.cpp`'s matching logic (facing/terrain/
-  weapon/damage-state), frame position/halo/blend fields (attack-lunge
-  positioning), sound-in-frame playback, per-blow HP sync points,
-  `cycle_id`-grouped idle/defend animation.
-  `packages/renderer/src/animation/` already has real, tested logic for
-  animation *selection* (context schema, filter matching, frame parsing —
-  see `docs/PROGRESS.md`'s animation-context work from early in this
-  project); what's missing is actually *playing* the selected animation
-  against the live board instead of drawing a static sprite.
+`packages/renderer/src/animation/` already had real, tested logic for
+animation *selection* (context schema, filter matching, frame parsing);
+what was missing was actually *playing* the selected animation against
+the live board instead of drawing a static sprite. That playback half
+now exists:
+- `animation/playback.ts`'s `sampleAnimation` (new) is the pure "what
+  should this animation show at elapsed time T" function: walks the
+  `[frame]` sequence AND each frame's own bracket-range image
+  sub-sequence, and applies the real `offset=` "frame value wins, else
+  the animation-wide `particle::parameters_` value" merge rule (data
+  that existed since Phase 4 but was never actually applied anywhere
+  until now) to interpolate between the source/destination hex --
+  driving both the attack lunge and (once wired) a movement slide.
+- `SnapshotBoard.playAnimations` (new) is the PixiJS-side driver: plays
+  any number of cues (e.g. an attacker's lunge and a defender's
+  reaction) concurrently in real time via `requestAnimationFrame`,
+  resolving once all finish. Required changing unit sprites from
+  "destroy and rebuild every render" to persistent, reconciled
+  `PIXI.Sprite`/marker pairs keyed by a stable per-unit identity
+  (`GameSession.renderKeyFor`, a session-local `WeakMap<Unit, number>` --
+  NOT the real engine `Unit.underlyingId`, which defaults to 0 and isn't
+  reliably unique, see that method's own doc comment) -- a real, if
+  secondary, visual fix on its own (every prior unit-state update used
+  to flicker the whole unit layer).
+- Wired into `GameShell.svelte`: confirming a human attack now plays
+  each real blow's attacker+defender animation pair (lunge, frame/image
+  cycling, hit/miss/kill-appropriate `defend` variant via the real
+  `hits=` filter) before applying the attack's final state -- verified
+  live in a real browser against both the synthetic Combat Debug
+  scenario (real Spearman/Orcish Grunt art and `[attack_anim]`/`[defend]`
+  data) and real Dead Water content, no console errors, correct timing
+  (~4s for a 5-blow exchange). A unit type with no matching real
+  animation still gets an honest synthetic lunge-and-return rather than
+  silently doing nothing.
+- **Not done**: movement (glide-between-hexes) playback -- the
+  `buildMovementAnimationContexts` context-builder has existed since the
+  selection-only phase, but nothing calls it yet; a move still snaps
+  instantly. AI-played attacks (`GameSession.playAiSide`) are also still
+  instant, deliberately (see that field's own doc comment: animating
+  every blow of every automated AI turn would slow `endTurn` for no
+  benefit). Sound-in-frame playback, halo/blend/submerge compositing,
+  and `[delay]`/screen-shake/floating-damage-text remain unbuilt (see
+  `frame.ts`'s `applyFrameEffects` stub and the catalogue checklist
+  below).
 
 ### Catalogue checklist (category 18 in full)
 

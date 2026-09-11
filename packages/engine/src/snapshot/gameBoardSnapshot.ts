@@ -130,6 +130,8 @@ export interface SnapshotUnit {
   canRecruit: boolean;
   hitpoints: number;
   maxHitpoints: number;
+  /** A stable per-instance render/sprite-identity key -- NOT the real `Unit.underlyingId` (which defaults to 0 and isn't reliably unique). Never set by anything in this module (only `GameSession.renderUnits`, in `packages/ui`, the LIVE re-render path, populates it, from a session-local `WeakMap<Unit, number>`); see `@wesnothweb2/renderer`'s `SnapshotUnit` (structurally the same interface, independently declared) for the full explanation. */
+  underlyingId?: number;
 }
 
 export interface SnapshotTeam {

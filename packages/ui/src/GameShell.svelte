@@ -26,7 +26,16 @@
    * event-spawned unit by the time the player gets control.
    */
   import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage, TimeOfDayEntry } from '@wesnothweb2/engine';
-  import type { HexPoint } from '@wesnothweb2/renderer';
+  import { WmlConfig } from '@wesnothweb2/engine';
+  import {
+    type HexPoint,
+    type UnitAnimationCue,
+    parseUnitAnimations,
+    chooseAnimation,
+    buildAttackAnimationContexts,
+    terrainLookup,
+    spriteKey,
+  } from '@wesnothweb2/renderer';
   import {
     GameSession,
     parseScenarioTurnsLimit,
@@ -38,6 +47,7 @@
     type SaveGameData,
     type EconomyInfo,
     type VillageOwnerInfo,
+    type LastAttackAnimation,
   } from './gameSession.js';
   import { saveGame, loadGame } from './persistence.js';
   import TurnBanner from './TurnBanner.svelte';
@@ -51,6 +61,8 @@
 
   /** The scenario currently being played -- reassigned by `continueToNextScenario`. Everything below that used to read the `snapshot` prop directly now reads this instead. */
   let activeSnapshot = $state(snapshot);
+  /** Bound `GameBoardView` instance, so `handleConfirmAttack` can await its imperative `playAttackBlows` before applying the confirmed attack's final state -- see that method's own doc comment. Reassigned across a scenario transition (the `{#key}` block around `<GameBoardView>` remounts it), so `$state`, not a plain `let`, same reasoning as `board` in `GameBoardView.svelte` itself. */
+  let boardView: GameBoardView | undefined = $state();
   /**
    * `$state.raw`, not plain `$state`/a bare `let`: `GameSession` is a
    * deliberately rune-free plain-TS class (see `gameSession.ts`'s own doc
@@ -189,9 +201,84 @@
   // this environment (see top-level report) -- these guards make sure a
   // stray click/keyboard-focus during 'story'/'messages' can't end a turn
   // or place a recruit before the player has actually taken control.
-  function handleConfirmAttack(): void {
+  /**
+   * A unit type's real `[*_anim]`/`[defend]`/`[death]` blocks, parsed
+   * fresh each call -- `UnitType.ts` deliberately doesn't parse or cache
+   * these (see its own doc comment), so there's no cheaper source than
+   * `session.rawUnitTypeConfig` + `parseUnitAnimations` to reach for.
+   * Real content's animation block count per type is small (single
+   * digits to a few dozen), so re-parsing per attack (not per blow) is
+   * cheap enough not to need a cache -- revisit if profiling ever says
+   * otherwise.
+   */
+  function animationsFor(typeId: string): ReturnType<typeof parseUnitAnimations> {
+    const cfg = session.rawUnitTypeConfig(typeId);
+    return cfg ? parseUnitAnimations(WmlConfig.fromJSON(cfg)) : [];
+  }
+
+  /**
+   * Builds one `UnitAnimationCue` pair (attacker + defender) per real
+   * blow of `info`, for `GameBoardView.playAttackBlows` -- see
+   * `LastAttackAnimation`'s own doc comment for why this glue lives here
+   * (in the one place with both engine data and a `@wesnothweb2/renderer`
+   * dependency) rather than in `gameSession.ts` or `SnapshotBoard.ts`
+   * themselves.
+   */
+  function buildBlowAnimationCues(info: LastAttackAnimation): UnitAnimationCue[][] {
+    const attackerWeapon = info.attacker.attacks[info.attackerWeaponIndex];
+    const defenderWeapon = info.defenderWeaponIndex >= 0 ? info.defender.attacks[info.defenderWeaponIndex] : undefined;
+    const contexts = buildAttackAnimationContexts(
+      info.attacker,
+      attackerWeapon,
+      info.defender,
+      defenderWeapon,
+      info.result,
+      terrainLookup(session.board),
+    );
+
+    const attackerAnims = animationsFor(info.attacker.type.id);
+    const defenderAnims = animationsFor(info.defender.type.id);
+    const attackerKey = spriteKey({
+      underlyingId: session.renderKeyFor(info.attacker),
+      typeId: info.attacker.type.id,
+      x: info.attacker.location.x,
+      y: info.attacker.location.y,
+    });
+    const defenderKey = spriteKey({
+      underlyingId: session.renderKeyFor(info.defender),
+      typeId: info.defender.type.id,
+      x: info.defender.location.x,
+      y: info.defender.location.y,
+    });
+    const attackerHex = { x: info.attacker.location.x, y: info.attacker.location.y };
+    const defenderHex = { x: info.defender.location.x, y: info.defender.location.y };
+
+    return contexts.map(({ attackerContext, defenderContext }) => [
+      {
+        key: attackerKey,
+        anim: chooseAnimation(attackerAnims, attackerContext),
+        direction: info.attacker.facing,
+        srcHex: attackerHex,
+        dstHex: defenderHex,
+      },
+      {
+        key: defenderKey,
+        anim: chooseAnimation(defenderAnims, defenderContext),
+        direction: info.defender.facing,
+        srcHex: defenderHex,
+        dstHex: attackerHex,
+      },
+    ]);
+  }
+
+  async function handleConfirmAttack(): Promise<void> {
     if (phase !== 'playing') return;
     const message = session.confirmAttack();
+    const anim = session.lastAttackAnimation;
+    session.lastAttackAnimation = null;
+    if (anim && boardView) {
+      await boardView.playAttackBlows(buildBlowAnimationCues(anim));
+    }
     sync(message);
   }
 
@@ -331,6 +418,7 @@
     -->
     {#key activeSnapshot.scenario.id}
       <GameBoardView
+        bind:this={boardView}
         snapshot={activeSnapshot}
         {units}
         {selectedHex}

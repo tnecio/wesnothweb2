@@ -1492,3 +1492,97 @@ alias to itself; a test needing REAL keep/castle/village classification
 (this one did, for recruiting/village-capture) must load real terrain
 data and therefore hit the real alias chain. All 268 engine + 33 UI
 tests pass; typecheck clean.
+
+## 2026-09-11 (cont'd): real per-blow attack animation playback (Phase 10)
+
+Third and last of the three phases the user asked to move to. This is
+the piece the very first message in this session's request chain
+specifically called out: "this will also be important later when we add
+animations -- the game will play one animation per blow." The selection
+half already existed from early in the project
+(`packages/renderer/src/animation/`: real WML `[attack_anim]`/`[defend]`
+parsing, `[if]`/`[else]` branch expansion, filter matching, frame
+extraction, all real and tested); nothing actually played a chosen
+animation against the live board.
+
+Built the missing playback half. `animation/playback.ts`'s
+`sampleAnimation` is the new pure core: given a chosen `UnitAnimationDef`
+and elapsed time, walks the real `[frame]` sequence and each frame's own
+bracket-range image sub-sequence, and -- for the first time -- actually
+applies the `offset=` "frame value wins, else fall back to the
+animation-wide value, sampled over the WHOLE animation's elapsed time"
+merge rule that `frame.ts`'s own doc comment had documented but nothing
+evaluated. Verified against real Merman Fighter `[attack_anim]` content
+(`offset=0~0.3,0.3~0`, direction=se filtered) as well as hand-built exact
+timing/merge-rule fixtures (7 new tests).
+
+`SnapshotBoard.playAnimations` drives this in real time via
+`requestAnimationFrame`, playing any number of cues (an attacker's lunge
++ a defender's reaction) concurrently and resolving once all finish.
+This required a real structural change: unit sprites used to be
+destroyed and rebuilt from scratch on every board update (`renderUnits`
+called `unitLayer.removeChildren()` unconditionally) -- fine for a
+static snapshot, but animation needs the SAME PixiJS sprite object to
+still exist and be mid-flight the next tick. Rewrote it to reconcile a
+persistent `unitVisuals` map instead (create/reposition/rebuild-on-
+image-change/destroy-when-gone), a real secondary fix too: every unit
+update used to flicker the whole board for one frame.
+
+That persistence needs a stable per-unit key, which surfaced a real
+landmine: the obvious choice, `Unit.underlyingId`, defaults to 0 and is
+NOT reliably unique -- most units loaded from a scenario never get an
+explicit one (already-known territory: `RecallOption.index`'s own doc
+comment flags the same issue for recall-list units specifically). Using
+it as a sprite key would have collapsed every unit onto one shared
+sprite. Fixed by NOT using it: `GameSession.renderKeyFor` assigns each
+live `Unit` OBJECT a fresh session-local key the first time it's seen,
+via a `WeakMap<Unit, number>` -- correct because a `Unit` object
+reference persists for its whole board lifetime, including through
+`advanceUnitTo` (mutates in place, doesn't replace the object).
+
+Wired into `GameShell.svelte`'s `handleConfirmAttack` (now async): after
+a human confirms an attack, real per-blow `AnimationContext`s are built
+(reusing the already-existing, already-tested
+`buildAttackAnimationContexts`) from `GameSession.lastAttackAnimation`
+(new -- the raw `Unit`/`AttackResult` a confirmed attack just produced),
+matched against each unit type's real `[attack_anim]`/`[defend]` blocks
+(parsed fresh via `GameSession.rawUnitTypeConfig` + `parseUnitAnimations`
+-- animation data UnitType.ts deliberately never parses), and played
+through `GameBoardView`'s new exposed `playAttackBlows` method BEFORE
+the confirmed attack's final state is applied to the board -- so the
+side panel doesn't jump straight to "4/5 blows landed" while the board
+still shows the pre-attack position. AI-played attacks stay instant,
+deliberately (animating every blow of an automated AI turn would slow
+`endTurn` for no one watching).
+
+**Real debugging note, in case this pattern recurs**: verifying this in
+a real browser was genuinely difficult -- a sequence of ordinary
+screenshots looked completely unchanged even though the animation was
+provably running (confirmed via `page.evaluate` reading the live PixiJS
+container's `x`/`y` directly, which DID show real movement). The actual
+cause was mundane: a ~20px sprite shift is easy to miss by eye in a full
+board screenshot, especially mid-cycle before the lunge reaches its
+peak offset. What finally confirmed it, after chasing several wrong
+theories (a suspected `updateUnits` race, a suspected sprite-identity
+mismatch) first: a client-side canvas pixel diff between a
+before/during screenshot (2100+ differing pixels in exactly the sprite's
+bounding box), then a temporarily-15x-slowed build's side-by-side crop,
+which made the lunge and the real mid-swing pose change unmistakable.
+Both confirmed the system was correct; the earlier "nothing's moving"
+read was an observation error, not a bug -- worth remembering before
+concluding a visual feature is broken from screenshots alone.
+
+Verified live in a real browser: the synthetic Combat Debug scenario's
+5-blow exchange (real Spearman/Orcish Grunt art and `[attack_anim]`/
+`[defend]` data, confirmed via the pixel-diff above) played correctly
+end-to-end in ~4 seconds with no console errors; Dead Water (real
+mainline content) also loads and plays through with no errors. All 268
+engine + 33 UI + 113 renderer tests pass; typecheck clean across all
+packages.
+
+Not done, and documented as an open gap rather than silently skipped
+(see `IMPLEMENTATION_PLAN.md`'s updated Phase 10 status): movement
+(glide-between-hexes) playback -- `buildMovementAnimationContexts` has
+existed since the selection-only phase but nothing calls it yet, so a
+move still snaps instantly. Sound-in-frame, halo/blend/submerge
+compositing, and screen-shake/floating-damage-text remain unbuilt too.

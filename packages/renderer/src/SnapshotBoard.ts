@@ -6,7 +6,7 @@
  * Deliberately NOT what Phase 4 (docs/IMPLEMENTATION_PLAN.md) means by
  * "rendering" -- there is no terrain image compositing/layering here (that
  * needs the terrain_graphics rule-matching system, out of scope until
- * Phase 4), no animation, no fog of war. This exists to prove two things
+ * Phase 4), no fog of war. This exists to prove two things
  * end-to-end in a real browser: (1) real WML-derived scenario data
  * (packages/engine) can drive (2) the fidelity-tested image pipeline
  * ported forward in Phase 0 (ipf.ts/ImageCache.ts) -- see the "vertical
@@ -37,11 +37,41 @@
  * rules. `updateUnits`/`setHighlights` let a caller re-render after a real
  * move/attack (via `packages/engine`'s actions) without rebuilding the
  * whole board or losing the terrain layer's click handlers.
+ *
+ * ## Animation playback (Phase 10, 2026-09-11)
+ *
+ * `playAnimations` is the actually-plays-it half of Phase 10 -- see
+ * `animation/unitAnimation.ts`'s and `animation/playback.ts`'s own module
+ * doc comments for the selection/sampling logic this drives. It needs
+ * unit sprites to be stable, addressable objects across calls (so a
+ * sprite mid-lunge is the SAME PixiJS object the next animation frame
+ * updates, not a freshly-built one), which is why `renderUnits` was
+ * changed from "destroy and rebuild every sprite on every update" to a
+ * reconciling `unitSprites`/`unitMarkers` map keyed by `SnapshotUnit.
+ * underlyingId` (falling back to a position-based synthetic key for a
+ * unit with none, e.g. the very first paint from the static pre-game
+ * snapshot -- see `SnapshotUnit.underlyingId`'s own doc comment). This
+ * was also a real, if secondary, visual fix on its own: every prior
+ * `updateUnits` call flickered the whole unit layer (every sprite gone
+ * for one frame, then redrawn), not just the units that actually moved.
+ *
+ * `playAnimations` and `updateUnits` must not race: a caller that wants
+ * an animated transition should `await playAnimations(...)` BEFORE
+ * calling `updateUnits` with the final settled state -- `updateUnits`
+ * unconditionally snaps every sprite straight to its target's `(x, y)`,
+ * which would cut an in-flight animation short if it ran concurrently.
+ * `GameShell.svelte` is the one caller that does this today (for a
+ * human-confirmed attack's blows, via `GameSession.lastAttackAnimation`);
+ * AI-played attacks and plain movement are still instant, see that
+ * component's own comment on why.
  */
 
 import * as PIXI from 'pixi.js';
+import { Direction } from '@wesnothweb2/engine/src/model/Location.js';
 import { hexCorners, hexToPixel, HEX_SIZE, type HexCoord } from './hexGeometry.js';
 import { ImageCache, setImageBaseUrl } from './images/ImageCache.js';
+import { sampleAnimation, animationDurationMs } from './animation/playback.js';
+import type { UnitAnimationDef } from './animation/unitAnimation.js';
 
 export interface SnapshotTerrainHex {
   x: number; // engine-convention 0-based
@@ -60,6 +90,24 @@ export interface SnapshotUnit {
   canRecruit: boolean;
   hitpoints: number;
   maxHitpoints: number;
+  /**
+   * A stable per-instance key for sprite identity across `updateUnits`
+   * calls (see that method's own doc comment on why this replaced full
+   * sprite teardown/rebuild). NOT the real engine `Unit.underlyingId`
+   * field -- that defaults to 0 and isn't reliably unique (most units
+   * loaded from a scenario never get an explicit one; see
+   * `RecallOption.index`'s own doc comment in `gameSession.ts` for the
+   * same underlying issue elsewhere). `GameSession.renderUnits` instead
+   * assigns each live `Unit` OBJECT a fresh session-local key the first
+   * time it's seen (`renderKeyFor`, keyed by object identity via a
+   * `WeakMap`), which stays stable for exactly as long as that unit's
+   * sprite should. Optional so a caller that only has the static,
+   * pre-game snapshot shape (no live `Unit` to key by) still satisfies
+   * this interface; such a unit just gets a synthetic per-render key
+   * (see `spriteKey`), which is harmless since animation only ever runs
+   * against live, GameSession-sourced units.
+   */
+  underlyingId?: number;
 }
 
 export interface SnapshotTeam {
@@ -82,6 +130,17 @@ export interface ScenarioSnapshot {
 export interface HexPoint {
   x: number;
   y: number;
+}
+
+/** One unit's persistent PixiJS presence -- see `SnapshotBoard`'s own module doc comment on why sprites are kept stable across `renderUnits`/`updateUnits` calls instead of rebuilt each time. */
+interface UnitVisual {
+  /** Holds `marker` (+ `sprite`, if any) -- repositioned/moved as one unit so the marker stays glued to the sprite during animation. */
+  readonly container: PIXI.Container;
+  sprite: PIXI.Sprite | null;
+  marker: PIXI.Graphics;
+  /** The `SnapshotUnit.image`/`.side` this visual was last built from, to detect when a rebuild (not just a reposition) is needed. */
+  lastImage: string | null;
+  lastSide: number;
 }
 
 /** 0-based engine (x,y) -> 1-based renderer HexCoord -- see module doc comment. */
@@ -149,6 +208,35 @@ export interface VillageOwnerPoint extends HexPoint {
   readonly side: number;
 }
 
+/**
+ * One unit's part of a `playAnimations` call -- see `SnapshotBoard`'s own
+ * module doc comment. `key` must match the `spriteKey` of a unit
+ * currently on the board (see `SnapshotUnit.underlyingId`) or this cue is
+ * silently skipped (nothing to animate). `anim` is the real,
+ * already-selected `UnitAnimationDef` (via `unitAnimation.ts`'s
+ * `chooseAnimation`) if the unit type declared a matching one, or
+ * `undefined` if not -- real mainline unit types very often DON'T
+ * declare an explicit `[movement_anim]`/`[defend]` for every case (see
+ * that module's own doc comment on the fallback chain this project
+ * doesn't synthesize), so `playAnimations` still gives `undefined` cues a
+ * short, real (if synthetic) visual beat rather than silently doing
+ * nothing -- see its own doc comment.
+ */
+export interface UnitAnimationCue {
+  readonly key: string;
+  readonly anim: UnitAnimationDef | undefined;
+  readonly direction: Direction;
+  /** Where this unit visually starts, engine-convention (0-based). */
+  readonly srcHex: HexPoint;
+  /** The "other" hex for `offset=` interpolation -- the lunge target for an attacker, the attacker's own hex for a defender's reaction, or equal to `srcHex` for a non-positional animation (standing/defend-in-place/etc). */
+  readonly dstHex: HexPoint;
+}
+
+/** A stable per-unit key for sprite identity -- see `SnapshotUnit.underlyingId`'s own doc comment. Exported so callers building `UnitAnimationCue`s key them identically to how `renderUnits` will look them up. */
+export function spriteKey(unit: Pick<SnapshotUnit, 'underlyingId' | 'typeId' | 'x' | 'y'>): string {
+  return unit.underlyingId !== undefined ? `u:${unit.underlyingId}` : `p:${unit.typeId}:${unit.x},${unit.y}`;
+}
+
 export class SnapshotBoard {
   readonly stage = new PIXI.Container();
   private readonly terrainLayer = new PIXI.Container();
@@ -167,6 +255,8 @@ export class SnapshotBoard {
   private readonly teamColor: Map<number, string>;
   private readonly onHexClick?: (x: number, y: number) => void;
   private readonly onHexHover?: (x: number, y: number) => void;
+  /** Persistent per-unit sprite/marker, keyed by `spriteKey` -- see module doc comment on why (animation needs a stable object to animate, not a fresh one every `updateUnits`). */
+  private readonly unitVisuals = new Map<string, UnitVisual>();
 
   constructor(
     private readonly snapshot: ScenarioSnapshot,
@@ -211,35 +301,185 @@ export class SnapshotBoard {
     }
   }
 
+  /**
+   * Builds a fresh `sprite`+`marker` pair for `unit` (a real sprite plus a
+   * small side-colour marker dot beneath it, matching upstream's own
+   * "team recolor via magenta palette swap" placeholder -- see the marker
+   * comment below for why it's a plain dot rather than a real recolor).
+   * Does NOT touch the layer/position; callers add `visual.container` to
+   * `unitLayer` and set its `x`/`y` themselves.
+   */
+  private async buildUnitVisual(unit: SnapshotUnit): Promise<UnitVisual> {
+    const container = new PIXI.Container();
+    const marker = new PIXI.Graphics();
+    let sprite: PIXI.Sprite | null = null;
+
+    if (unit.image) {
+      const texture = await ImageCache.resolve(unit.image);
+      if (texture) {
+        sprite = new PIXI.Sprite(texture);
+        sprite.anchor.set(0.5, 0.5);
+      }
+    }
+
+    // Team recolor (magenta palette swap) needs the unit's *_ColorMap
+    // team-color reference resolved via ImageCache's TC modifier, which
+    // requires knowing the recolor target up front -- deferred for this
+    // slice (real content still renders, just not recoloured per side);
+    // draw a small side-colour marker underneath instead so sides are
+    // visually distinguishable without it. No sprite at all (image
+    // missing/unresolvable) -- fall back to a bigger, undecorated dot so
+    // the unit is still visible and clickable-by-proxy.
+    if (sprite) {
+      marker.circle(0, 28, 6).fill({ color: sideMarkerColor(this.teamColor.get(unit.side)) });
+      container.addChild(marker, sprite);
+    } else {
+      marker.circle(0, 0, 16).fill({ color: sideMarkerColor(this.teamColor.get(unit.side)) });
+      container.addChild(marker);
+    }
+
+    return { container, sprite, marker, lastImage: unit.image, lastSide: unit.side };
+  }
+
+  /**
+   * Reconciles `unitLayer` against `this.units`: reuses each unit's
+   * existing `UnitVisual` (by `spriteKey`) where one already exists
+   * (rebuilding only if its image/side actually changed -- e.g. an
+   * advancement), creates one for a newly-appeared unit, and removes/
+   * destroys any whose unit is no longer present (dead, or off this
+   * board). See module doc comment for why this replaced the previous
+   * "destroy and rebuild everything" approach.
+   */
   private async renderUnits(): Promise<void> {
-    this.unitLayer.removeChildren();
+    const seen = new Set<string>();
 
     for (const unit of this.units) {
+      const key = spriteKey(unit);
+      seen.add(key);
       const coord = toHexCoord(unit.x, unit.y);
       const { x: cx, y: cy } = hexToPixel(coord);
 
-      const sprite = unit.image ? await this.spriteFor(unit.image) : null;
-      if (sprite) {
-        sprite.anchor.set(0.5, 0.5);
-        sprite.x = cx;
-        sprite.y = cy;
-        // Team recolor (magenta palette swap) needs the unit's *_ColorMap
-        // team-color reference resolved via ImageCache's TC modifier, which
-        // requires knowing the recolor target up front -- deferred for this
-        // slice (real content still renders, just not recoloured per side);
-        // draw a small side-colour marker underneath instead so sides are
-        // visually distinguishable without it.
-        const marker = new PIXI.Graphics();
-        marker.circle(0, 28, 6).fill({ color: sideMarkerColor(this.teamColor.get(unit.side)) });
-        marker.x = cx;
-        marker.y = cy;
-        this.unitLayer.addChild(marker, sprite);
-      } else {
-        const fallback = new PIXI.Graphics();
-        fallback.circle(cx, cy, 16).fill({ color: sideMarkerColor(this.teamColor.get(unit.side)) });
-        this.unitLayer.addChild(fallback);
+      let visual = this.unitVisuals.get(key);
+      if (!visual) {
+        visual = await this.buildUnitVisual(unit);
+        this.unitVisuals.set(key, visual);
+        this.unitLayer.addChild(visual.container);
+      } else if (visual.lastImage !== unit.image || visual.lastSide !== unit.side) {
+        visual.container.removeChildren();
+        const rebuilt = await this.buildUnitVisual(unit);
+        visual.container.addChild(...rebuilt.container.removeChildren());
+        visual.sprite = rebuilt.sprite;
+        visual.marker = rebuilt.marker;
+        visual.lastImage = unit.image;
+        visual.lastSide = unit.side;
+      }
+      visual.container.x = cx;
+      visual.container.y = cy;
+      if (visual.sprite) {
+        visual.sprite.scale.x = Math.abs(visual.sprite.scale.x); // undo any hflip a prior animation left behind.
       }
     }
+
+    for (const [key, visual] of this.unitVisuals) {
+      if (seen.has(key)) continue;
+      this.unitLayer.removeChild(visual.container);
+      visual.container.destroy({ children: true });
+      this.unitVisuals.delete(key);
+    }
+  }
+
+  /**
+   * Plays every cue in `cues` concurrently in real time (e.g. an
+   * attacker's lunge and a defender's reaction, for one blow), resolving
+   * once all of them have finished. See `UnitAnimationCue`'s own doc
+   * comment for what each cue needs, and the module doc comment for the
+   * "don't race `updateUnits`" contract.
+   *
+   * A cue with no real `anim` (the unit type declared no matching
+   * `[attack_anim]`/`[defend]`/etc) still gets a short, honest synthetic
+   * beat rather than silently doing nothing: if its `srcHex`/`dstHex`
+   * differ, its sprite lunges partway toward `dstHex` and back over
+   * `defaultDurationMs` (a plain, non-authored approximation of the real
+   * offset curve); if they're equal (e.g. a defender with no `[defend]`),
+   * it just holds in place for the same duration, so blows without real
+   * per-unit art still read as "something happened here" one at a time.
+   */
+  async playAnimations(cues: readonly UnitAnimationCue[], defaultDurationMs = 400): Promise<void> {
+    const active = cues
+      .map((cue) => {
+        const visual = this.unitVisuals.get(cue.key);
+        if (!visual) return null;
+        const src = hexToPixel(toHexCoord(cue.srcHex.x, cue.srcHex.y));
+        const dst = hexToPixel(toHexCoord(cue.dstHex.x, cue.dstHex.y));
+        const duration = cue.anim ? animationDurationMs(cue.anim) : defaultDurationMs;
+        return { cue, visual, src, dst, duration: Math.max(1, duration) };
+      })
+      .filter((a): a is NonNullable<typeof a> => a !== null);
+
+    if (active.length === 0) return;
+
+    // Pre-resolve every real texture this playback will need up front, so
+    // no frame swap stalls on a still-loading image mid-animation.
+    for (const { cue } of active) {
+      if (!cue.anim) continue;
+      const paths = new Set<string>();
+      for (const frame of cue.anim.frames) {
+        const seq = cue.direction === Direction.NorthEast || cue.direction === Direction.SouthEast
+          || cue.direction === Direction.NorthWest || cue.direction === Direction.SouthWest
+          ? (frame.imageDiagonal.length > 0 ? frame.imageDiagonal : frame.image)
+          : frame.image;
+        for (const step of seq) paths.add(step.value);
+      }
+      await Promise.all([...paths].map((p) => ImageCache.resolve(p)));
+    }
+
+    const totalMs = Math.max(...active.map((a) => a.duration));
+    const start = performance.now();
+
+    await new Promise<void>((resolve) => {
+      const tick = async (): Promise<void> => {
+        const elapsed = performance.now() - start;
+
+        for (const { cue, visual, src, dst, duration } of active) {
+          const t = Math.min(elapsed, duration);
+          if (cue.anim) {
+            const sample = sampleAnimation(cue.anim, cue.direction, t, src, dst);
+            if (sample.imagePath) {
+              const texture = await ImageCache.resolve(sample.imagePath);
+              if (texture && visual.sprite && visual.sprite.texture !== texture) visual.sprite.texture = texture;
+            }
+            if (visual.sprite) visual.sprite.scale.x = sample.hflip ? -Math.abs(visual.sprite.scale.x) : Math.abs(visual.sprite.scale.x);
+            visual.container.x = sample.x;
+            visual.container.y = sample.y;
+          } else if (cue.srcHex.x !== cue.dstHex.x || cue.srcHex.y !== cue.dstHex.y) {
+            // Synthetic lunge: 0 -> 0.35 -> 0 over the full duration.
+            const half = duration / 2;
+            const offset = t <= half ? (t / half) * 0.35 : 0.35 * (1 - (t - half) / half);
+            visual.container.x = offset * dst.x + (1 - offset) * src.x;
+            visual.container.y = offset * dst.y + (1 - offset) * src.y;
+          }
+        }
+
+        if (elapsed >= totalMs) {
+          // Settle every sprite back at its OWN hex (`src`), not `dst`:
+          // correct for this method's only current caller (attack blows --
+          // both the attacker's lunge-and-return and the defender's
+          // in-place reaction end where they started) but would be wrong
+          // for a future movement-animation cue whose `dst` is the unit's
+          // real new resting hex, not a round-trip -- a future caller
+          // animating movement will need this generalized (e.g. an
+          // explicit `restAt` per cue) rather than assuming `src`.
+          for (const { visual, src } of active) {
+            visual.container.x = src.x;
+            visual.container.y = src.y;
+          }
+          resolve();
+          return;
+        }
+        requestAnimationFrame(() => void tick());
+      };
+      requestAnimationFrame(() => void tick());
+    });
   }
 
   /**
@@ -352,10 +592,6 @@ export class SnapshotBoard {
     }
   }
 
-  private async spriteFor(imagePath: string): Promise<PIXI.Sprite | null> {
-    const texture = await ImageCache.resolve(imagePath);
-    return texture ? new PIXI.Sprite(texture) : null;
-  }
 }
 
 function sideMarkerColor(colorName: string | undefined): number {

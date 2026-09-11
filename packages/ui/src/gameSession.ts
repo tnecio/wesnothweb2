@@ -44,6 +44,7 @@ import {
   computeResistanceModifier,
   playAiTurn,
   type AttackBlowResult,
+  type AttackResult,
   buildBattleContext,
   chooseDefenderWeaponIndex,
   simulateCombat,
@@ -69,6 +70,7 @@ import {
   type UnitType,
   type GoldCarryoverResult,
   type WmlAttributeValue,
+  type WmlConfigJson,
 } from '@wesnothweb2/engine';
 
 /**
@@ -139,6 +141,27 @@ export interface PendingAttack {
   attackerWeaponIndex: number;
   defenderWeaponIndex: number;
   preview: CombatPreview;
+}
+
+/**
+ * Everything a caller needs to animate the attack `confirmAttack` just
+ * resolved (see `GameSession.lastAttackAnimation`), one real blow at a
+ * time -- deliberately just the raw engine data (`Unit`/`AttackResult`),
+ * not `UnitAnimationDef`s or pixel positions: this module has no
+ * `@wesnothweb2/renderer` dependency, so a caller with one (`GameShell.
+ * svelte`) builds `AnimationContext`s from this via that package's own
+ * `buildAttackAnimationContexts` and drives `SnapshotBoard` itself.
+ * `attacker`/`defender` remain valid `Unit` object references even if one
+ * died (`executeAttack` only removes a dead unit from the BOARD's index,
+ * never clears the `Unit` instance's own fields) -- their `.location` is
+ * exactly where the blow happened.
+ */
+export interface LastAttackAnimation {
+  readonly attacker: Unit;
+  readonly attackerWeaponIndex: number;
+  readonly defender: Unit;
+  readonly defenderWeaponIndex: number;
+  readonly result: AttackResult;
 }
 
 /** One of the attacker's usable weapons against the current target -- see `GameSession.attackerWeaponOptions`. */
@@ -290,6 +313,19 @@ export class GameSession {
   /** Vacant castle tiles `selectedUnit` (a leader on its keep) could recruit onto -- empty otherwise. */
   recruitTiles: HexPoint[] = [];
   pendingAttack: PendingAttack | null = null;
+  /**
+   * Set by `confirmAttack` every time a HUMAN-confirmed attack resolves --
+   * see `LastAttackAnimation`'s own doc comment. A caller that wants to
+   * animate it should read this right after calling `confirmAttack` and
+   * reset it to `null` once done (not cleared automatically, unlike
+   * `pendingAttack`). Deliberately NOT set for AI-played attacks
+   * (`playAiSide` calls `executeAttack` directly, bypassing this) --
+   * animating every blow of every AI unit's attack would make `endTurn`'s
+   * auto-play noticeably slower for no real benefit (nothing's watching a
+   * fully-automated AI turn play out blow by blow the way a human watches
+   * their own confirmed attack).
+   */
+  lastAttackAnimation: LastAttackAnimation | null = null;
 
   /**
    * The real terrain defense `selectedUnit` would have at `(x, y)` (the
@@ -358,6 +394,33 @@ export class GameSession {
   /** Resolves any of the ~332 real unit types the snapshot ships (board units, event-spawned units, recruit lists) -- see `createTypeResolver`. */
   private readonly resolveType: (id: string) => UnitType;
   private readonly rng: RngDeterministic;
+  /**
+   * Assigns each live `Unit` object a stable, session-local render key
+   * (`renderUnits`' `SnapshotUnit.underlyingId`) the first time it's seen,
+   * keyed by object identity rather than `Unit.underlyingId` itself --
+   * that engine field defaults to 0 and is NOT reliably unique (see
+   * `RecallOption.index`'s own doc comment on the same issue for
+   * recall-list units), so it can't be used to give a `SnapshotBoard`
+   * sprite a stable identity across `renderUnits` snapshots. A `Unit`
+   * object reference persists for its whole lifetime on the board
+   * (including through `advanceUnitTo`, which mutates in place rather
+   * than replacing the object), so this key stays correctly stable for
+   * exactly as long as the sprite it identifies should. Public (not just
+   * used internally by `renderUnits`) so a caller building animation cues
+   * from `lastAttackAnimation`'s raw `Unit` objects (`GameShell.svelte`)
+   * can compute the SAME key `SnapshotBoard`'s sprite map already has
+   * them stored under.
+   */
+  private readonly renderKeys = new WeakMap<Unit, number>();
+  private nextRenderKey = 1;
+  renderKeyFor(unit: Unit): number {
+    let key = this.renderKeys.get(unit);
+    if (key === undefined) {
+      key = this.nextRenderKey++;
+      this.renderKeys.set(unit, key);
+    }
+    return key;
+  }
   private startupEventsRun = false;
   /** The real `[time]` schedule this scenario's own (already macro-expanded) `scenarioConfigJson` declares -- see `Schedule`'s own doc comment. Built once at construction since the schedule itself never changes mid-scenario (no `[replace_schedule]` support yet). */
   private readonly schedule: Schedule;
@@ -434,7 +497,22 @@ export class GameSession {
       canRecruit: u.canRecruit,
       hitpoints: u.hitpoints,
       maxHitpoints: u.maxHitpoints,
+      underlyingId: this.renderKeyFor(u),
     }));
+  }
+
+  /**
+   * The raw (fully-flattened, real) `[unit_type]` config for `typeId`, as
+   * JSON -- for callers that need something `UnitType.ts` deliberately
+   * doesn't parse (currently just animation: `UnitType.ts`'s own module
+   * doc comment excludes `[*_anim]`/`[defend]`/`[death]` blocks from what
+   * it extracts). Renderer-agnostic on purpose (this module has no
+   * `@wesnothweb2/renderer` dependency) -- callers reconstruct a
+   * `WmlConfig` via `WmlConfig.fromJSON` and feed it to that package's
+   * `parseUnitAnimations` themselves (see `GameShell.svelte`).
+   */
+  rawUnitTypeConfig(typeId: string): WmlConfigJson | undefined {
+    return this.snapshot.unitTypeConfigs?.[typeId];
   }
 
   unitDisplayName(u: Unit): string {
@@ -1016,6 +1094,14 @@ export class GameSession {
       pending.defenderWeaponIndex,
       { lawfulBonus: this.currentTimeOfDay.lawfulBonus, maxLiminalBonus: this.schedule.maxLiminalBonus },
     );
+
+    this.lastAttackAnimation = {
+      attacker: pending.attacker,
+      attackerWeaponIndex: pending.attackerWeaponIndex,
+      defender: pending.defender,
+      defenderWeaponIndex: pending.defenderWeaponIndex,
+      result,
+    };
 
     const attackerName = pending.preview.attacker.name;
     const defenderName = pending.preview.defender.name;
