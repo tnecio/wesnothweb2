@@ -7,6 +7,12 @@
       "firstScenario": "01_Invasion"
     },
     {
+      "id": "two_brothers",
+      "name": "A Tale of Two Brothers",
+      "description": "Mainline campaign: a warrior is summoned home by his mage brother to drive off a dark mage's minions.",
+      "firstScenario": "01_Rooting_Out_a_Mage"
+    },
+    {
       "id": "synthetic_combat",
       "name": "[Debug] Combat",
       "description": "Two adjacent leaders on a tiny grassland map -- for fast combat-math debugging, no setup turns needed.",

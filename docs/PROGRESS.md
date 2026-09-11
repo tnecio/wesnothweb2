@@ -1199,3 +1199,71 @@ don't happen -- cosmetic/reward content loss, not a blocker), `[item]`
 placement isn't rendered, and there is still no AI (Phase 7) so every
 `controller=ai` side is, as already documented, played by whichever human
 is at the keyboard during hotseat.
+
+## 2026-09-11 (cont'd): a SECOND real mainline campaign -- A Tale of Two Brothers, and a real gap this exposed
+
+Still working autonomously per the user's earlier direction. Dead Water
+was now fully chained, so tried the next natural Phase 6 step: a
+different real campaign, to prove the build pipeline generalizes rather
+than being quietly Dead-Water-specific.
+
+**`apps/web/scripts/build-scenario-snapshot.mjs` was hardcoded to
+Dead_Water** (`CAMPAIGN_DEAD_WATER` flag, `deadWaterDir` literal,
+Dead_Water-only image rooting) despite its own doc comments describing a
+generic "real campaign vs synthetic" split. Generalized it: a new
+`<CampaignName>/scenarios/<file>.cfg` path form resolves against any real
+`wesnoth/data/campaigns/<CampaignName>/`, reading that campaign's own
+`_main.cfg` for its real `[campaign] define=` symbol (a targeted regex
+over the raw file text, not a full parse -- safe since that attribute is
+never itself behind an `#ifdef`, and avoids a chicken-and-egg "need
+defines to parse the file that sets the define" problem). Difficulty
+defaults to NORMAL for any real campaign (no difficulty-picker UI to ask,
+matching Dead Water's own prior hardcoded choice). Verified the refactor
+is behavior-preserving: rebuilt `01_Invasion.json` and
+`synth_economy_01.json` and diffed byte-for-byte identical against the
+pre-refactor output.
+
+Picked **A Tale of Two Brothers** (5 scenarios, famously the shortest
+mainline campaign) to try it on. Built and smoke-tested all 5
+scenarios:
+- Scenario 1 (`01_Rooting_Out_a_Mage`) and 2 (`02_The_Chase`) chain
+  cleanly (real recruit lists, gold, dialogue, `next_scenario=`).
+- **Real bug found**: scenario 5 (`05_Epilogue`) crashed the build
+  (`EISDIR` on an empty `map_file=`) -- it's a genuine, if rare, real-WML
+  shape: a map-less, pure-`[story]` epilogue scenario (unlike Dead
+  Water's own `13_Epilogue`, which reuses a real map for a final
+  cutscene). Fixed by falling back to a trivial 1-hex placeholder map
+  with a logged warning instead of crashing the whole build -- this
+  project's board-centric UI has no real support for a truly mapless
+  scenario yet (a real, if narrow, future gap), but this at least lets
+  the build succeed and the real story/dialogue content load.
+- **Confirmed, not newly discovered**: scenario 3 (`03_Guarded_Castle`)
+  depends on a real `[message] variable=... [option]...[/option]` player
+  password-choice puzzle. With no `[option]` selection support at all
+  (already flagged in `IMPLEMENTATION_PLAN.md`'s Phase 17 as deferred UI
+  chrome), the WML variable it should be set to never gets set, so the
+  scenario's own "wrong password" branch always fires -- which, in *this*
+  scenario, kills off/reassigns the player's entire side. A forced-victory
+  headless chain script (the same technique used to validate all 13 Dead
+  Water scenarios) correctly caught this as a real "defeat" rather than
+  silently mis-reporting success. This is exactly the already-documented
+  gap doing what it's supposed to: block realistic automated play of a
+  scenario that genuinely needs the missing feature, without crashing or
+  producing a wrong-but-plausible-looking result. Not fixed here --
+  implementing real interactive `[option]` support is a proper Phase 17
+  feature (needs a pause-mid-event, present-choices, resume-with-variable-
+  set UI flow), not something to bolt on as a side effect of testing a
+  second campaign. Flagged in the plan as higher-priority than its
+  original "narrative flavor" framing suggested, since it can gate whether
+  a scenario's core WML logic behaves sensibly at all, not just whether a
+  dialogue choice shows up.
+
+Added `two_brothers` to `campaigns.json` and verified scenario 1 in a
+real browser end-to-end: campaign picker -> real story screens (with real
+campaign-specific background art, confirming per-campaign image rooting
+works, not just Dead Water's) -> real `[message]` dialogue -> a fully
+rendered, clickable board (real gold/income display, real terrain
+including a village) with no console errors. Scenario 4
+(`04_Return_to_the_Village`) also verified standalone (doesn't depend on
+scenario 3's password puzzle). All 240 engine + 27 UI tests still pass
+(the build-script refactor touched no test-covered engine/UI code).

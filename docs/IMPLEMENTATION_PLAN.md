@@ -385,6 +385,18 @@ dialog, unit-list dialog, in-game help/encyclopedia, preferences dialog,
 keyboard shortcuts/rebinding, mobile/touch layout, right-click context
 menu + `[set_menu_item]`.
 
+**`[option]`/`[text_input]` priority note (2026-09-11)**: confirmed via a
+real second campaign (A Tale of Two Brothers, see Phase 6/`docs/
+PROGRESS.md`) that missing `[option]` support isn't just a narrative-
+flavor gap -- a scenario can use a `[message] variable=... [option]`
+player choice to drive its own core WML logic (there: a password puzzle
+whose "wrong answer" branch reassigns/kills the player's units), and with
+no selection ever made, that variable-comparison silently and
+deterministically takes whichever branch an empty/unset value happens to
+satisfy. Worth prioritizing above the rest of Phase 17's UI chrome once
+Phase 6 needs it again, since it can block a scenario's core logic from
+behaving sensibly at all, not just whether a choice dialog shows up.
+
 ## Phase 6 — Content breadth
 
 **Status: in progress** (current focus). Dead Water scenario 1→2
@@ -402,6 +414,19 @@ playthrough of scenarios 4–13 to find whatever gameplay-shaped gaps
 (scripted `moveto`/`turn N` events, abilities, specials) only show up
 under real play rather than a scripted "load, force victory, load next"
 smoke chain — every other mainline campaign also remains.
+
+**A second real campaign (2026-09-11)**: `apps/web/scripts/
+build-scenario-snapshot.mjs` was generalized to build ANY real mainline
+campaign (previously hardcoded to Dead_Water specifically — see its own
+module doc comment), and A Tale of Two Brothers (5 scenarios, the
+shortest mainline campaign) is now built, added to `campaigns.json`, and
+verified in a real browser (scenario 1: real story art, dialogue, board,
+gold/income). This found one real, narrow build-pipeline bug (a map-less
+`[story]`-only epilogue scenario crashed the build; fixed with a
+placeholder-map fallback) and confirmed — via a forced-victory chain
+script correctly reporting "defeat" rather than a false "victory" — that
+scenario 3's core WML logic genuinely depends on the still-missing
+`[option]` player-choice support (see Phase 5's priority note above).
 
 - Finish `Dead_Water` (remaining scenarios), then expand to other mainline
   campaigns one at a time; every failure is a missing WML tag, WFL feature,

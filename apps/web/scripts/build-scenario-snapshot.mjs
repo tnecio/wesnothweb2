@@ -100,24 +100,47 @@
  * ## Synthetic debug campaigns (small, hand-authored, no macros)
  *
  * `argv[2]` can also be a real path (contains a `/`, or absolute) to a
- * scenario file OUTSIDE the Dead_Water submodule content -- e.g. this
- * repo's own `synthetic-campaigns/<name>/scenarios/*.cfg`, small
- * hand-authored WML for fast combat/economy/progression debugging (see
- * docs/PROGRESS.md) without playing through a real campaign's length. A
- * bare filename (no `/`) keeps the original, unchanged behavior: resolved
- * against Dead_Water's own `scenarios/` dir. For a path-style arg, the
- * "campaign dir" (for `maps/`/`images/`/`_main.cfg`) is that file's own
- * grandparent directory, mirroring Dead_Water's `scenarios/` + `maps/`
- * sibling-directory layout. Synthetic campaigns skip campaign-specific
- * macro flags/`_main.cfg` defines entirely (deliberately macro-free WML)
- * and are built with `spawnUnitsFromTree: true` (every unit placed inline
- * in `[side]`, not via `prestart`/`start` events) so they're playable the
- * instant they load -- no story/message click-through needed for a
- * debugging tool whose whole point is getting to the interesting state
- * fast. Real campaign content keeps `spawnUnitsFromTree: false` exactly as
- * before (unchanged).
+ * scenario file OUTSIDE the wesnoth submodule content -- e.g. this repo's
+ * own `synthetic-campaigns/<name>/scenarios/*.cfg`, small hand-authored
+ * WML for fast combat/economy/progression debugging (see docs/PROGRESS.md)
+ * without playing through a real campaign's length. A bare filename (no
+ * `/`) keeps the original, unchanged behavior: resolved against
+ * Dead_Water's own `scenarios/` dir. For a path-style arg under
+ * `synthetic-campaigns/`, the "campaign dir" (for `maps/`/`images/`/
+ * `_main.cfg`) is that file's own grandparent directory, mirroring
+ * Dead_Water's `scenarios/` + `maps/` sibling-directory layout. Synthetic
+ * campaigns skip campaign-specific macro flags/`_main.cfg` defines
+ * entirely (deliberately macro-free WML) and are built with
+ * `spawnUnitsFromTree: true` (every unit placed inline in `[side]`, not
+ * via `prestart`/`start` events) so they're playable the instant they
+ * load -- no story/message click-through needed for a debugging tool
+ * whose whole point is getting to the interesting state fast. Real
+ * campaign content keeps `spawnUnitsFromTree: false` exactly as before
+ * (unchanged).
  *
  * Run with: npx tsx apps/web/scripts/build-scenario-snapshot.mjs synthetic-campaigns/combat/scenarios/01_combat.cfg
+ *
+ * ## Any real mainline campaign (2026-09-11, Phase 6 breadth beyond Dead Water)
+ *
+ * `argv[2]` can also be a path rooted at `wesnoth/data/campaigns/<Name>/`
+ * (relative to the repo root, or absolute) for a real mainline campaign
+ * OTHER than Dead_Water -- e.g.
+ * `Two_Brothers/scenarios/01_Rooting_Out_a_Mage.cfg`. `<Name>` (the first
+ * path segment after `campaigns/`) is resolved generically: its own
+ * `_main.cfg` is read for `[campaign] define=` (a lightweight regex
+ * extraction over the raw file text, not a full parse -- that attribute
+ * is never itself behind an `#ifdef`, so this is safe and avoids a
+ * chicken-and-egg "need defines to parse the file that sets the define"
+ * problem) and that symbol is set before anything else is preprocessed,
+ * exactly like the previously-hardcoded `CAMPAIGN_DEAD_WATER`. Difficulty
+ * defaults to `NORMAL` for every real campaign (matching Dead_Water's own
+ * prior hardcoded choice) since this script has no difficulty-picker UI
+ * to ask. Everything else (image rooting, unit-type/movement-type
+ * collection, `spawnUnitsFromTree: false`) is identical to the
+ * Dead_Water path -- Dead_Water is no longer special-cased, just the
+ * default when `argv[2]` is a bare filename.
+ *
+ * Run with: npx tsx apps/web/scripts/build-scenario-snapshot.mjs Two_Brothers/scenarios/01_Rooting_Out_a_Mage.cfg
  */
 
 import * as fs from 'node:fs';
@@ -126,20 +149,58 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const dataRoot = path.join(repoRoot, 'wesnoth/data');
-const deadWaterDir = path.join(dataRoot, 'campaigns/Dead_Water');
+const campaignsRoot = path.join(dataRoot, 'campaigns');
 
 const scenarioFileArg = process.argv[2];
 if (!scenarioFileArg) {
   console.error('Usage: npx tsx apps/web/scripts/build-scenario-snapshot.mjs <scenario-file.cfg>');
   console.error('  (a bare filename resolves against wesnoth/data/campaigns/Dead_Water/scenarios/;');
-  console.error('   a path (containing "/") is used directly -- e.g. a synthetic-campaigns/ scenario)');
+  console.error('   "<CampaignName>/scenarios/<file>.cfg" resolves against any real wesnoth/data/campaigns/<CampaignName>/;');
+  console.error('   a synthetic-campaigns/ path is used directly -- e.g. a hand-authored debug scenario)');
   process.exit(1);
 }
-const isSyntheticPath = scenarioFileArg.includes('/') || path.isAbsolute(scenarioFileArg);
-const scenarioFile = isSyntheticPath ? path.resolve(repoRoot, scenarioFileArg) : path.join(deadWaterDir, 'scenarios', scenarioFileArg);
-// Parent of scenarios/ -- the campaign root, whichever campaign this is.
-const campaignDir = isSyntheticPath ? path.dirname(path.dirname(scenarioFile)) : deadWaterDir;
-const isDeadWater = !isSyntheticPath;
+
+const isBareFilename = !scenarioFileArg.includes('/') && !path.isAbsolute(scenarioFileArg);
+const isSyntheticPath = !isBareFilename && scenarioFileArg.includes('synthetic-campaigns');
+
+let scenarioFile;
+let campaignDir; // the campaign root -- parent of scenarios/, maps/, images/, _main.cfg.
+if (isBareFilename) {
+  campaignDir = path.join(campaignsRoot, 'Dead_Water');
+  scenarioFile = path.join(campaignDir, 'scenarios', scenarioFileArg);
+} else if (isSyntheticPath) {
+  scenarioFile = path.resolve(repoRoot, scenarioFileArg);
+  campaignDir = path.dirname(path.dirname(scenarioFile)); // grandparent of the scenario file -- see module doc comment.
+} else {
+  // Any other real mainline campaign: "<CampaignName>/..." rooted at wesnoth/data/campaigns/.
+  scenarioFile = path.isAbsolute(scenarioFileArg) ? scenarioFileArg : path.join(campaignsRoot, scenarioFileArg);
+  const relativeToCampaigns = path.relative(campaignsRoot, scenarioFile);
+  const campaignName = relativeToCampaigns.split(path.sep)[0];
+  if (!campaignName || relativeToCampaigns.startsWith('..')) {
+    console.error(`Could not resolve a campaign name from "${scenarioFileArg}" -- expected it to live under wesnoth/data/campaigns/<CampaignName>/.`);
+    process.exit(1);
+  }
+  campaignDir = path.join(campaignsRoot, campaignName);
+}
+const isRealCampaign = !isSyntheticPath;
+
+/**
+ * The `[campaign] define=` symbol for the real campaign at `dir`, read via
+ * a lightweight regex over `_main.cfg`'s raw text rather than a full parse
+ * -- see this file's module doc comment on why that's safe (the attribute
+ * is never itself behind an `#ifdef`). Returns `null` if `_main.cfg` is
+ * missing or doesn't declare one (shouldn't happen for a real campaign,
+ * but fails soft rather than crashing the whole build over it).
+ */
+function readCampaignDefine(dir) {
+  const mainCfgPath = path.join(dir, '_main.cfg');
+  if (!fs.existsSync(mainCfgPath)) return null;
+  const text = fs.readFileSync(mainCfgPath, 'utf8');
+  const match = text.match(/define\s*=\s*"?([A-Za-z0-9_]+)"?/);
+  return match ? match[1] : null;
+}
+const campaignDefine = isRealCampaign ? readCampaignDefine(campaignDir) : null;
+const campaignName = isRealCampaign ? path.basename(campaignDir) : null;
 
 const { parseWmlFile, preloadDefines, preloadDefinesFromDir } = await import(
   path.join(repoRoot, 'packages/engine/src/wml/index.ts')
@@ -163,13 +224,15 @@ function loadDefines() {
   // so scanning with the flag already set is required, not just cosmetic
   // (confirmed the hard way -- reordering this once produced a real
   // "Macro/file 'ON_DIFFICULTY4' is missing" crash on the unchanged
-  // Dead_Water path).
-  if (isDeadWater) {
-    flag('CAMPAIGN_DEAD_WATER');
+  // Dead_Water path). `campaignDefine` is read generically per real
+  // campaign (see `readCampaignDefine`); difficulty always defaults to
+  // NORMAL (no difficulty-picker UI here to ask, see module doc comment).
+  if (isRealCampaign) {
+    if (campaignDefine) flag(campaignDefine);
     flag('NORMAL');
   }
   preloadDefinesFromDir(path.join(dataRoot, 'core'), defines, { dataRoot });
-  if (isDeadWater) {
+  if (isRealCampaign) {
     preloadDefines(path.join(campaignDir, '_main.cfg'), defines, { dataRoot });
   }
   return defines;
@@ -195,8 +258,8 @@ function rootImagePath(raw) {
   // Synthetic campaigns have no custom art (deliberately -- they only use
   // real core unit types) and live outside wesnoth/data entirely, so
   // there's no campaign-relative image root to even check.
-  if (isDeadWater) {
-    const campaignRelative = path.join('campaigns/Dead_Water/images', raw);
+  if (isRealCampaign) {
+    const campaignRelative = path.join(`campaigns/${campaignName}/images`, raw);
     if (fs.existsSync(path.join(dataRoot, campaignRelative))) return campaignRelative;
   }
   return `core/images/${raw}`;
@@ -244,8 +307,8 @@ collectUnitTypeImages(coreUnitsCfg, unitImages);
 // deliberately, see this file's module doc comment) -- an empty stand-in
 // config keeps every downstream use (collectUnitTypeImages/
 // collectUnitTypeConfigs/collectMovementTypeConfigs) a no-op for them
-// without needing separate isDeadWater branches at each call site.
-const campaignMainCfg = isDeadWater
+// without needing separate isRealCampaign branches at each call site.
+const campaignMainCfg = isRealCampaign
   ? parseWmlFile(path.join(campaignDir, '_main.cfg'), { dataRoot, defines: new Map(defines) })
   : new WmlConfig();
 collectUnitTypeImages(campaignMainCfg, unitImages);
@@ -253,8 +316,24 @@ console.log(`Collected ${unitImages.size} unit-type image paths from real WML.`)
 
 const scenarioCfg = parseWmlFile(scenarioFile, { dataRoot, defines: new Map(defines) });
 const scenario = scenarioCfg.child('scenario');
-const mapText = fs.readFileSync(path.join(campaignDir, 'maps', scenario.getString('map_file')), 'utf8');
-scenario.setAttribute('map_data', mapText);
+// A real, if rare, shape: a map-less "epilogue" scenario that's pure
+// [story] with no [side]/gameplay at all (e.g. Two_Brothers' own
+// 05_Epilogue.cfg -- unlike Dead_Water's 13_Epilogue, which reuses a real
+// map for a final cutscene). Neither map_file= nor inline map_data= is
+// set in that case; fall back to a trivial single-hex map rather than
+// crashing (fs.readFileSync on an empty map_file= resolves to the maps/
+// directory itself, an EISDIR) -- this project's board-centric UI has no
+// real mapless-scenario support yet (a future Phase 6/11 concern), but a
+// trivial placeholder board at least lets the real [story]/dialogue
+// content load instead of failing the whole build.
+const mapFileName = scenario.getString('map_file', '');
+if (mapFileName) {
+  scenario.setAttribute('map_data', fs.readFileSync(path.join(campaignDir, 'maps', mapFileName), 'utf8'));
+} else if (!scenario.hasAttribute('map_data')) {
+  console.warn(`Warning: "${scenario.getString('id')}" has no map_file=/map_data= -- using a trivial 1-hex placeholder map.`);
+  scenario.setAttribute('map_data', 'Gg');
+}
+const mapText = scenario.getString('map_data');
 
 const story = extractStory(scenario);
 
@@ -326,7 +405,7 @@ function resolveType(id) {
 // what's already on the board at build time.
 for (const id of unitImages.keys()) resolveType(id);
 
-const board = GameBoard.fromConfig(scenario, terrainData, resolveType, { spawnUnitsFromTree: !isDeadWater });
+const board = GameBoard.fromConfig(scenario, terrainData, resolveType, { spawnUnitsFromTree: !isRealCampaign });
 
 const terrain = [];
 for (let x = 0; x < board.map.w(); x++) {
