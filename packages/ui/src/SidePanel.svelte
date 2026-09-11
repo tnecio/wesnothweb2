@@ -133,6 +133,7 @@
         <div>Type: {selected.typeId}</div>
         <div>Side: {selected.side}</div>
         <div>Position: ({selected.x}, {selected.y})</div>
+        <div>Terrain: {selected.terrainName} (Defense: {selected.defensePercent}%)</div>
         <div>HP: {selected.hp}/{selected.maxHp}</div>
         <div>Moves left: {selected.movesLeft}/{selected.maxMoves}</div>
         <div>Attacks left: {selected.attacksLeft}</div>

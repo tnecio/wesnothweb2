@@ -42,6 +42,24 @@ function parseAlignment(str: string, fallback: Alignment = 'neutral'): Alignment
   return str === 'lawful' || str === 'neutral' || str === 'chaotic' || str === 'liminal' ? str : fallback;
 }
 
+/** One entry from a `[units][weapon_specials]`/`[units][abilities]` registry -- see `UnitTypeDatabase.ts`'s `collectSpecialRegistry` for why the tag name travels alongside the config. */
+export interface RegistryEntry {
+  readonly tag: string;
+  readonly config: WmlConfig;
+}
+
+const EMPTY_REGISTRY: ReadonlyMap<string, RegistryEntry> = new Map();
+
+/** Resolves a comma-separated `*_list=` attribute value against a registry, mirroring `unit_type_data::add_registry_entries`'s id-resolution loop -- unknown ids are silently skipped (matches upstream's WRN-log-and-continue, not an error). */
+function resolveIdList(listValue: string, registry: ReadonlyMap<string, RegistryEntry>): RegistryEntry[] {
+  return listValue
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map((id) => registry.get(id))
+    .filter((c): c is RegistryEntry => c !== undefined);
+}
+
 /**
  * A single weapon. Mirrors the non-display, non-ability-evaluating fields of
  * `attack_type`. Note the WML-key/accessor mismatch ported verbatim from
@@ -69,12 +87,26 @@ export class AttackType {
     public readonly specials: readonly WmlConfig[],
   ) {}
 
-  static fromConfig(cfg: WmlConfig): AttackType {
+  /**
+   * `specialsRegistry` resolves `specials_list=` (a comma-separated list of
+   * ids, e.g. `specials_list=marksman,poison` -- common in real
+   * `data/core/units/` content) against the real `[units][weapon_specials]`
+   * registry (see `UnitTypeDatabase.ts`'s `collectSpecialRegistry`),
+   * appended after any literal inline `[specials]` children -- mirrors
+   * `attack_type`'s own construction (`unit_type_data::add_registry_entries`:
+   * starts from the inline `[specials]` block, then appends each resolved
+   * registry id). Omitted/empty registry means `specials_list=` silently
+   * resolves to nothing (matches every existing call site that doesn't
+   * pass one, e.g. hand-built test fixtures with no registry at all).
+   */
+  static fromConfig(cfg: WmlConfig, specialsRegistry: ReadonlyMap<string, RegistryEntry> = EMPTY_REGISTRY): AttackType {
     const id = cfg.getString('name');
     const name = cfg.hasAttribute('description') ? cfg.getString('description') : id;
     const alignmentStr = cfg.getString('alignment', '');
     const specialsCfg = cfg.child('specials');
-    const specials = specialsCfg ? specialsCfg.allChildren().map((c) => c.config) : [];
+    const inlineSpecials = specialsCfg ? specialsCfg.allChildren().map((c) => c.config) : [];
+    const listedSpecials = resolveIdList(cfg.getString('specials_list', ''), specialsRegistry).map((e) => e.config);
+    const specials = [...inlineSpecials, ...listedSpecials];
 
     return new AttackType(
       id,
@@ -123,8 +155,17 @@ export class UnitType {
     public readonly doNotList: boolean,
     public readonly moveType: MoveType,
     public readonly attacks: readonly AttackType[],
-    /** Raw `[abilities]` child tags (e.g. `[heals]`, `[hides]`), unevaluated -- see module doc comment. */
-    public readonly abilities: readonly WmlConfig[],
+    /**
+     * This type's `[abilities]` children (each e.g. `[heals]`, `[hides]`),
+     * unevaluated, WITH their tag name preserved -- unlike
+     * `AttackType.specials`, a bare `WmlConfig` isn't enough here: real
+     * content's ability `id=` is a *display* id (e.g. the real `heals`-tag
+     * registry entries set `id=healing`/`id=curing`, never literally
+     * `id=heals`), not a type discriminator -- matching by tag name is
+     * what upstream itself does (`tag_name == "heals"`,
+     * `src/units/abilities.cpp`). See `RegistryEntry`'s own doc comment.
+     */
+    public readonly abilities: readonly RegistryEntry[],
   ) {}
 
   /** Mirrors `unit_type::experience_needed`: the modifier is the game-wide `[game_config] experience_modifier` (default 100 = unchanged). */
@@ -138,8 +179,19 @@ export class UnitType {
    * `[unit_type]` config. `movementTypes` is the registry of top-level
    * `[movetype]` blocks (keyed by `name=`) that `movement_type=` refers to;
    * `terrainData` resolves terrain aliasing for movement/defense lookups.
+   * `registries` (see `AttackType.fromConfig`'s own doc comment on the
+   * `weaponSpecials` half) resolves this type's own `abilities_list=`
+   * (e.g. `abilities_list=skirmisher`, `abilities_list=heals_4,cures` --
+   * both real, common patterns) the same way, appended after any literal
+   * inline `[abilities]` children, and is threaded down to every
+   * `[attack]`'s own `specials_list=` resolution too.
    */
-  static fromConfig(cfg: WmlConfig, movementTypes: ReadonlyMap<string, WmlConfig>, terrainData: TerrainTypeData): UnitType {
+  static fromConfig(
+    cfg: WmlConfig,
+    movementTypes: ReadonlyMap<string, WmlConfig>,
+    terrainData: TerrainTypeData,
+    registries: { weaponSpecials?: ReadonlyMap<string, RegistryEntry>; abilities?: ReadonlyMap<string, RegistryEntry> } = {},
+  ): UnitType {
     const id = cfg.getString('id');
     const name = cfg.getString('name', id);
     const level = cfg.getNumber('level', 0);
@@ -149,8 +201,10 @@ export class UnitType {
     const baseMoveType = MoveType.fromConfig(baseMoveTypeCfg ?? new WmlConfig(), terrainData);
     const moveType = MoveType.overlay(baseMoveType, cfg);
 
-    const attacks = cfg.children('attack').map((a) => AttackType.fromConfig(a));
-    const abilities = cfg.hasChild('abilities') ? cfg.child('abilities')!.allChildren().map((c) => c.config) : [];
+    const attacks = cfg.children('attack').map((a) => AttackType.fromConfig(a, registries.weaponSpecials));
+    const inlineAbilities: RegistryEntry[] = cfg.hasChild('abilities') ? cfg.child('abilities')!.allChildren().map((c) => ({ tag: c.tag, config: c.config })) : [];
+    const listedAbilities = resolveIdList(cfg.getString('abilities_list', ''), registries.abilities ?? EMPTY_REGISTRY);
+    const abilities = [...inlineAbilities, ...listedAbilities];
 
     return new UnitType(
       id,

@@ -94,6 +94,72 @@ export function collectMovementTypeConfigs(cfg: WmlConfig, out: Map<string, WmlC
 }
 
 /**
+ * Walks a parsed WML tree collecting every child of a top-level
+ * `[units][weapon_specials]` or `[units][abilities]` block, keyed by
+ * `unique_id=` (falling back to `id=`) -- mirrors
+ * `unit_type_data::set_config`'s own registry-building loop
+ * (`cfg.child_range("weapon_specials")`/`cfg.child_range("abilities")`,
+ * where `cfg` is `[units]`'s own merged content) and
+ * `add_registry_entries`'s id-resolution rule. Deliberately only looks at
+ * DIRECT children of `[units]` for `containerTag` -- a `[unit_type]`'s
+ * OWN `[abilities]` block (its instance abilities, not the registry) must
+ * NOT be picked up here, so this does not recurse into `[unit_type]`
+ * (unlike `collectUnitTypeConfigs`, which needs to find `[unit_type]`s
+ * wherever they're nested).
+ *
+ * This is what makes real content's `specials_list=`/`abilities_list=`
+ * shorthand (e.g. `[attack] specials_list=marksman,poison`, `[unit_type]
+ * abilities_list=skirmisher` -- both common in real `data/core/units/`
+ * content) resolve to the same real special/ability configs a unit using
+ * the equivalent inline `[specials][poison]...` / `[abilities][skirmisher]
+ * ...` would get. Without this registry, any real unit relying on the
+ * shorthand (rather than inline tags) would silently have NONE of its
+ * specials/abilities recognized by this engine at all.
+ *
+ * Registry entries carry their own tag name alongside the config (not
+ * just the bare attributes) because for abilities specifically, real
+ * content's `id=` does NOT double as a type discriminator the way it
+ * does for weapon specials: e.g. the real `heals`-tagged registry entries
+ * `heals_4`/`heals_8`/`cures` all set `id=healing` or `id=curing` (a
+ * *display* id, distinct per healing strength/purpose), never literally
+ * `id=heals` -- upstream itself matches "does this unit have a heals
+ * ability" by TAG NAME (`tag_name == "heals"`, `src/units/abilities.cpp`),
+ * not by `id=`. `UnitType.abilities` preserves this; weapon specials
+ * happen to have `id=` == tag name for every real special this project
+ * evaluates today (spot-checked: poison/drains/plague/marksman/etc.), so
+ * `AttackType.specials` stays a flat config list and callers keep
+ * matching by `id=` there -- flagged here rather than assumed safe for
+ * every possible custom special.
+ */
+export function collectSpecialRegistry(
+  cfg: WmlConfig,
+  containerTag: 'weapon_specials' | 'abilities',
+  out: Map<string, { tag: string; config: WmlConfig }> = new Map(),
+): Map<string, { tag: string; config: WmlConfig }> {
+  for (const { tag, config } of cfg.allChildren()) {
+    if (tag === 'units') {
+      for (const container of config.children(containerTag)) {
+        for (const entry of container.allChildren()) {
+          const id = entry.config.getString('unique_id', '') || entry.config.getString('id', '');
+          if (id && !out.has(id)) out.set(id, { tag: entry.tag, config: entry.config });
+        }
+      }
+      // A [units] block can itself be nested inside other wrapper tags in
+      // principle (matches collectUnitTypeConfigs' own traversal, which
+      // doesn't assume a fixed nesting depth either) -- keep walking its
+      // children too, just not back into [weapon_specials]/[abilities]
+      // themselves (already fully consumed above).
+      for (const { tag: childTag, config: childConfig } of config.allChildren()) {
+        if (childTag !== containerTag) collectSpecialRegistry(childConfig, containerTag, out);
+      }
+    } else {
+      collectSpecialRegistry(config, containerTag, out);
+    }
+  }
+  return out;
+}
+
+/**
  * Merges `derived` over `base` per this module's doc comment: attribute-
  * level (derived wins wherever set), child-tag-wholesale (derived's own
  * children for a tag name win outright if it has any, else base's).

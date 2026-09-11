@@ -126,4 +126,5 @@ export {
   type SnapshotBoardOptions,
   type HexPoint,
   type HighlightState,
+  type VillageOwnerPoint,
 } from './SnapshotBoard'

@@ -10,6 +10,7 @@ export type {
   RecallOption,
   AttackerWeaponOption,
   EconomyInfo,
+  VillageOwnerInfo,
   GameSessionOptions,
   SaveGameData,
 } from './gameSession.js';

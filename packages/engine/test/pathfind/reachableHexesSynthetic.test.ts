@@ -39,11 +39,11 @@ function makeUnitType(
   moveType: MoveType,
   options: { movement?: number; zoc?: boolean; skirmisher?: boolean } = {},
 ): UnitType {
-  const abilities: WmlConfig[] = [];
+  const abilities: { tag: string; config: WmlConfig }[] = [];
   if (options.skirmisher) {
     const a = new WmlConfig();
     a.setAttribute('id', 'skirmisher');
-    abilities.push(a);
+    abilities.push({ tag: 'skirmisher', config: a });
   }
   return new UnitType(
     id,

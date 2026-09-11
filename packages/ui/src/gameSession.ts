@@ -39,6 +39,8 @@ import {
   findPath,
   executeMove,
   executeAttack,
+  isBackstabActive,
+  type AttackBlowResult,
   buildBattleContext,
   chooseDefenderWeaponIndex,
   simulateCombat,
@@ -51,9 +53,13 @@ import {
   recruitUnit,
   recallUnit,
   checkVictory,
+  applySideHealing,
   computeGoldCarryover,
   findVictoryEndlevelGoldConfig,
   computeCarryoverRecruits,
+  scheduleFromScenarioConfigJson,
+  type Schedule,
+  type TimeOfDayEntry,
   type GameBoardSnapshot,
   type SnapshotUnit,
   type RecordedMessage,
@@ -79,6 +85,11 @@ export function parseScenarioTurnsLimit(raw: WmlAttributeValue | undefined): num
 export interface HexPoint {
   x: number;
   y: number;
+}
+
+/** One currently-owned village, for the board's live ownership-flag rendering -- see `GameSession.villageOwnership`. */
+export interface VillageOwnerInfo extends HexPoint {
+  side: number;
 }
 
 /** One combatant's side of a `CombatPreview` -- feeds the side panel's combat-prediction display. */
@@ -112,6 +123,10 @@ export interface SelectedUnitInfo {
   movesLeft: number;
   maxMoves: number;
   attacksLeft: number;
+  /** Real `[terrain_type] name=` at the unit's own hex (e.g. "Castle", "Village"). */
+  terrainName: string;
+  /** Real terrain defense on the unit's own hex, as the player-facing percentage (`100 - defenseModifier`, since `defenseModifier` is upstream's "chance to be hit" convention -- lower is better). */
+  defensePercent: number;
 }
 
 /** An attack the player has targeted but not yet committed -- shown in the side panel with Confirm/Cancel. */
@@ -273,6 +288,25 @@ export class GameSession {
   recruitTiles: HexPoint[] = [];
   pendingAttack: PendingAttack | null = null;
 
+  /**
+   * The real terrain defense `selectedUnit` would have at `(x, y)` (the
+   * player-facing "Defense: N%" percentage -- see `SelectedUnitInfo.
+   * defensePercent`'s own doc comment on the `100 - defenseModifier` flip),
+   * or `null` if there's no selected unit or the hex is off-board. Used for
+   * a hover preview (catalogue: "Hovering a reachable hex shows the
+   * defense percentage the unit would have there") -- deliberately not
+   * restricted to `reachable` hexes specifically, since the underlying
+   * defense value is well-defined for any on-board hex regardless of
+   * whether this turn's movement can actually reach it.
+   */
+  defensePercentAt(x: number, y: number): number | null {
+    const unit = this.selectedUnit;
+    if (!unit) return null;
+    const loc = new Location(x, y);
+    if (!this.board.map.onBoard(loc)) return null;
+    return 100 - unit.defenseModifier(this.board.map.getTerrain(loc));
+  }
+
   /** The attacker's usable weapons against the current `pendingAttack.defender`, for a weapon-choice UI. Empty when there's no pending attack, or a single entry for the common one-usable-weapon case. */
   get attackerWeaponOptions(): AttackerWeaponOption[] {
     const pending = this.pendingAttack;
@@ -322,6 +356,8 @@ export class GameSession {
   private readonly resolveType: (id: string) => UnitType;
   private readonly rng: RngDeterministic;
   private startupEventsRun = false;
+  /** The real `[time]` schedule this scenario's own (already macro-expanded) `scenarioConfigJson` declares -- see `Schedule`'s own doc comment. Built once at construction since the schedule itself never changes mid-scenario (no `[replace_schedule]` support yet). */
+  private readonly schedule: Schedule;
 
   constructor(snapshot: GameBoardSnapshot, options: GameSessionOptions = {}) {
     this.snapshot = snapshot;
@@ -331,6 +367,19 @@ export class GameSession {
     this.resolveType = createTypeResolver(snapshot);
     this.rng = new RngDeterministic(new MtRng(options.seed ?? 0xc0ffee));
     this.goldCarryover = options.goldCarryover ?? null;
+    this.schedule = scheduleFromScenarioConfigJson(snapshot.scenarioConfigJson);
+  }
+
+  /**
+   * The real `[time]` entry active on the current game turn (`turnNumber`)
+   * -- mirrors `tod_manager::get_time_of_day()`. Advances by real turn
+   * number, not side turn (matches upstream: the whole schedule steps once
+   * per game turn, not once per side). See `Schedule`'s own doc comment
+   * for what's deliberately simplified (no `[time_area]`/
+   * `[replace_schedule]`/`random_start_time=`).
+   */
+  get currentTimeOfDay(): TimeOfDayEntry {
+    return this.schedule.timeOfDayForTurn(this.turnNumber);
   }
 
   /**
@@ -642,6 +691,29 @@ export class GameSession {
         if (expense > 0) team.spendGold(expense);
       }
     }
+    // Rest/village healing, poison damage, and real heals=/regenerate=
+    // ability healing: mirrors `play_controller.cpp`'s
+    // `if (do_healing()) { calculate_healing(current_side(), ...); }`.
+    // Unlike income above, this is NOT gated on `turnNumber > 1` --
+    // upstream's own `do_healing()` flag starts false and is set true
+    // right after the very first check, so only the whole game's very
+    // first side-turn (side 1, turn 1 -- the state this session starts in
+    // BEFORE any endTurn() call) is exempt; every side reached via an
+    // actual endTurn() call, including side 2's own first turn, gets a
+    // real healing pass. `applySideHealing` (`actions/heal.ts`) covers
+    // rest heal, village heal, poison damage/curing, and real `[heals]`/
+    // `[regenerate]` ability healing in one real-content-driven pass.
+    const healOutcomes = applySideHealing(this.board, nextSide).filter((o) => o.amount !== 0 || o.curePoison);
+    for (const outcome of healOutcomes) {
+      const name = this.unitDisplayName(outcome.unit);
+      if (outcome.amount > 0) {
+        const healerNote = outcome.healers.length > 0 ? ` (${outcome.healers.map((h) => this.unitDisplayName(h)).join(', ')})` : '';
+        this.log.unshift(`${name} heals ${outcome.amount} HP${healerNote}.`);
+      } else if (outcome.amount < 0) {
+        this.log.unshift(`${name} takes ${-outcome.amount} poison damage.`);
+      }
+      if (outcome.curePoison) this.log.unshift(`${name}'s poison is cured.`);
+    }
     const teamName = this.board.getTeam(nextSide)?.teamName ?? String(nextSide);
     const message = `Turn ${this.turnNumber} -- side ${nextSide} (${teamName})'s turn.`;
     this.log.unshift(message);
@@ -674,6 +746,16 @@ export class GameSession {
       villagesOwned: this.board.villageCount(this.activeSide),
       netIncome: this.turnNumber > 1 ? this.totalIncomeFor(this.activeSide) - Math.max(0, expense) : 0,
     };
+  }
+
+  /** Every real village currently owned by a side, for the board's live ownership-flag markers -- unowned villages are omitted (nothing to mark; the terrain colour alone already shows "this is a village," see `SnapshotBoard`'s own doc comment). */
+  get villageOwnership(): VillageOwnerInfo[] {
+    const result: VillageOwnerInfo[] = [];
+    for (const loc of this.board.map.villages) {
+      const side = this.board.villageOwner(loc);
+      if (side !== undefined) result.push({ x: loc.x, y: loc.y, side });
+    }
+    return result;
   }
 
   /**
@@ -721,6 +803,11 @@ export class GameSession {
       distance,
       attackerTerrainDefense,
       defenderTerrainDefense,
+      options: {
+        lawfulBonus: this.currentTimeOfDay.lawfulBonus,
+        maxLiminalBonus: this.schedule.maxLiminalBonus,
+        backstabActive: isBackstabActive(this.board, attacker.location, defender.location),
+      },
     });
     const { attacker: aCombatant, defender: dCombatant } = simulateCombat(aStats, dStats);
 
@@ -835,6 +922,32 @@ export class GameSession {
     return null;
   }
 
+  /**
+   * One human-readable line per real `AttackBlowResult` -- mirrors what
+   * real Wesnoth's floating combat text conveys per strike (damage number,
+   * miss, poison/slow/petrify icons, a death), condensed into text since
+   * this project has no animation yet (see `confirmAttack`'s own comment
+   * on why this is also groundwork for Phase 10's future per-blow
+   * animation playback).
+   */
+  private formatBlowMessage(blow: AttackBlowResult, attackerName: string, defenderName: string): string {
+    const strikerName = blow.attackerTurn ? attackerName : defenderName;
+    const targetName = blow.attackerTurn ? defenderName : attackerName;
+    let msg = blow.hit
+      ? `${strikerName} hits ${targetName} for ${blow.damage} damage (${blow.chanceToHit}% chance to hit).`
+      : `${strikerName} misses ${targetName} (${blow.chanceToHit}% chance to hit).`;
+    if (blow.drainAmount > 0) {
+      msg += ` ${strikerName} drains ${blow.drainAmount} HP.`;
+    } else if (blow.drainAmount < 0) {
+      msg += blow.strikerDiedFromDrain ? ` ${strikerName} is destroyed by the drain!` : ` ${strikerName} loses ${-blow.drainAmount} HP to drain.`;
+    }
+    if (blow.poisoned) msg += ` ${targetName} is poisoned.`;
+    if (blow.slowed) msg += ` ${targetName} is slowed.`;
+    if (blow.petrified) msg += ` ${targetName} is petrified!`;
+    if (blow.targetDied) msg += ` ${targetName} dies!`;
+    return msg;
+  }
+
   /** Commits the currently-pending attack via the real `executeAttack`, updating the board. */
   confirmAttack(): string | null {
     if (this.scenarioResult) return null;
@@ -848,6 +961,7 @@ export class GameSession {
       pending.attackerWeaponIndex,
       pending.defender.location,
       pending.defenderWeaponIndex,
+      { lawfulBonus: this.currentTimeOfDay.lawfulBonus, maxLiminalBonus: this.schedule.maxLiminalBonus },
     );
 
     const attackerName = pending.preview.attacker.name;
@@ -857,6 +971,18 @@ export class GameSession {
     if (result.defenderDied) message += ` ${defenderName} was slain!`;
     if (result.attackerDied) message += ` ${attackerName} was slain!`;
 
+    // One log line per blow, in the order they actually happened -- not
+    // just a "N/M landed" summary. `log` is most-recent-first (see its own
+    // doc comment), so blows are unshifted in chronological order: the
+    // LAST blow to happen ends up closest to the top, the FIRST blow ends
+    // up at the bottom of this group, and the overall summary (unshifted
+    // last, below) sits above all of them as the most-recent entry. This
+    // is also groundwork for animation (Phase 10): once real per-blow
+    // animation playback exists, this is the same ordered sequence it'll
+    // need to step through.
+    for (const blow of result.blows) {
+      this.log.unshift(this.formatBlowMessage(blow, attackerName, defenderName));
+    }
     this.log.unshift(message);
     // A unit that has fought is done acting for this turn: real Wesnoth
     // zeroes an attacker's remaining movement after any attack (`attack.

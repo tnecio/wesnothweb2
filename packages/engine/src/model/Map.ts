@@ -286,6 +286,10 @@ export class GameMap {
   givesHealing(loc: Location): number {
     return this.onBoard(loc) ? this.terrainData.getTerrainInfo(this.getTerrain(loc)).givesHealing() : 0;
   }
+  /** The real `[terrain_type] name=` for the terrain at `loc` (e.g. "Grassland", "Castle") -- empty string off-board or for an unregistered code. */
+  terrainName(loc: Location): string {
+    return this.onBoard(loc) ? this.terrainData.getTerrainInfo(this.getTerrain(loc)).name : '';
+  }
 
   // --- special locations / starting positions ---
 

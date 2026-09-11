@@ -40,7 +40,7 @@
  */
 
 import * as PIXI from 'pixi.js';
-import { hexCorners, hexToPixel, type HexCoord } from './hexGeometry.js';
+import { hexCorners, hexToPixel, HEX_SIZE, type HexCoord } from './hexGeometry.js';
 import { ImageCache, setImageBaseUrl } from './images/ImageCache.js';
 
 export interface SnapshotTerrainHex {
@@ -144,9 +144,16 @@ export interface HighlightState {
   recruitTiles?: readonly HexPoint[];
 }
 
+/** One currently-OWNED village -- unowned villages need no marker (the terrain colour alone already marks them as villages, see `colorForTerrain`). */
+export interface VillageOwnerPoint extends HexPoint {
+  readonly side: number;
+}
+
 export class SnapshotBoard {
   readonly stage = new PIXI.Container();
   private readonly terrainLayer = new PIXI.Container();
+  /** Owned-village flag markers -- sits above terrain, below highlight/unit layers (a unit standing on a village shouldn't have its sprite obscured by the flag, but the flag should still read clearly against bare terrain). */
+  private readonly villageLayer = new PIXI.Container();
   private readonly highlightLayer = new PIXI.Container();
   private readonly unitLayer = new PIXI.Container();
   /**
@@ -170,7 +177,7 @@ export class SnapshotBoard {
     this.onHexHover = options.onHexHover;
     this.units = snapshot.units;
     this.teamColor = new Map(snapshot.teams.map((t) => [t.side, t.color]));
-    this.stage.addChild(this.terrainLayer, this.highlightLayer, this.unitLayer, this.selectionLayer);
+    this.stage.addChild(this.terrainLayer, this.villageLayer, this.highlightLayer, this.unitLayer, this.selectionLayer);
   }
 
   async render(): Promise<void> {
@@ -244,6 +251,36 @@ export class SnapshotBoard {
   async updateUnits(units: SnapshotUnit[]): Promise<void> {
     this.units = units;
     await this.renderUnits();
+  }
+
+  /**
+   * Draws (replacing any previous) a small owning-side flag marker on
+   * every currently-owned village -- live game state (changes as villages
+   * get captured), so this is a separate, re-callable update like
+   * `updateUnits`/`setHighlights`, not baked into the one-time
+   * `renderTerrain()`. An unowned village needs no marker here (the
+   * terrain layer's own placeholder village colour already marks it as a
+   * village at all -- see `colorForTerrain`); this only shows WHO owns it.
+   */
+  updateVillageOwnership(owners: readonly VillageOwnerPoint[]): void {
+    this.villageLayer.removeChildren();
+    for (const v of owners) {
+      const coord = toHexCoord(v.x, v.y);
+      const { x: cx, y: cy } = hexToPixel(coord);
+      const flag = new PIXI.Graphics();
+      // A small flag: a pole plus a triangular pennant, near the top of
+      // the hex (matches real Wesnoth's village-flag placement) -- offsets
+      // relative to HEX_SIZE so it scales with the same tile size
+      // everything else on this board uses.
+      const poleTop = cy - HEX_SIZE * 0.85;
+      const poleBottom = cy - HEX_SIZE * 0.15;
+      const poleX = cx - HEX_SIZE * 0.15;
+      flag.moveTo(poleX, poleTop).lineTo(poleX, poleBottom).stroke({ width: 2, color: 0x000000, alpha: 0.8 });
+      flag.poly([poleX, poleTop, poleX + HEX_SIZE * 0.4, poleTop + HEX_SIZE * 0.18, poleX, poleTop + HEX_SIZE * 0.36]);
+      flag.fill({ color: sideMarkerColor(this.teamColor.get(v.side)) });
+      flag.stroke({ width: 1, color: 0x000000, alpha: 0.7 });
+      this.villageLayer.addChild(flag);
+    }
   }
 
   /**

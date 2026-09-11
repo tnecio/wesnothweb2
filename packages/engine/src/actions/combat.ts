@@ -92,6 +92,31 @@ function directionTo(from: Location, to: Location): Direction {
   return idx === -1 ? ALL_DIRECTIONS[0]! : ALL_DIRECTIONS[idx]!;
 }
 
+/**
+ * The real `[damage] id=backstab` condition, evaluated as a narrow
+ * geometric proxy rather than the full WFL `[filter_opponent]` formula --
+ * see `combatStats.ts`'s own module doc comment for why. Matches the
+ * special's own plain-language `description=`: true when the hex
+ * continuing in a straight line PAST the defender (attacker -> defender
+ * -> flanker) holds a unit hostile to the defender (i.e. allied with the
+ * attacker) and not incapacitated (petrified/stone). Exported so both
+ * real combat resolution (`executeAttack` below) and the UI's attack
+ * preview (`GameSession.buildPreview`, which has the same board/location
+ * access but lives in a different package) compute it identically.
+ */
+export function isBackstabActive(board: GameBoard, attackerLoc: Location, defenderLoc: Location): boolean {
+  const dirIndex = ALL_DIRECTIONS.indexOf(directionTo(attackerLoc, defenderLoc));
+  const flankerLoc = getAdjacentTiles(defenderLoc)[dirIndex];
+  if (!flankerLoc) return false;
+  const flanker = board.unitAt(flankerLoc);
+  if (!flanker || flanker.incapacitated) return false;
+  const defender = board.unitAt(defenderLoc);
+  if (!defender) return false;
+  const defenderTeam = board.getTeam(defender.side);
+  const flankerTeam = board.getTeam(flanker.side);
+  return !!defenderTeam && !!flankerTeam && defenderTeam.isEnemy(flankerTeam);
+}
+
 function healBy(unit: Unit, amount: number): void {
   unit.hitpoints = Math.min(unit.maxHitpoints, unit.hitpoints + amount);
 }
@@ -152,7 +177,7 @@ export function executeAttack(
     distance,
     attackerTerrainDefense,
     defenderTerrainDefense,
-    options,
+    options: { ...options, backstabActive: isBackstabActive(board, attackerLoc, defenderLoc) },
   });
 
   // Consume exactly one of the attacker's per-turn attacks (see this function's doc comment).

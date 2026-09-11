@@ -33,7 +33,7 @@
    * top-level report.
    */
   import * as PIXI from 'pixi.js';
-  import { SnapshotBoard, type ScenarioSnapshot, type HexPoint, type SnapshotUnit } from '@wesnothweb2/renderer';
+  import { SnapshotBoard, type ScenarioSnapshot, type HexPoint, type SnapshotUnit, type VillageOwnerPoint } from '@wesnothweb2/renderer';
 
   let {
     snapshot,
@@ -42,7 +42,9 @@
     reachable = [],
     attackTargets = [],
     recruitTiles = [],
+    villageOwners = [],
     onHexClick,
+    hoverDefensePercent,
   }: {
     /** Static parts (terrain/teams/scenario/map) -- read once at mount, never re-applied after. */
     snapshot: ScenarioSnapshot;
@@ -52,7 +54,11 @@
     reachable?: readonly HexPoint[];
     attackTargets?: readonly HexPoint[];
     recruitTiles?: readonly HexPoint[];
+    /** Live village ownership (village hex -> owning side, or unowned if absent) -- re-applied whenever it changes, same as `units`. */
+    villageOwners?: readonly VillageOwnerPoint[];
     onHexClick: (x: number, y: number) => void;
+    /** Real terrain-defense percentage the currently selected unit would have at (x, y), for the hover status line -- `undefined`/`null` when nothing is selected or the hex is off-board. */
+    hoverDefensePercent?: (x: number, y: number) => number | null;
   } = $props();
 
   const MIN_ZOOM = 0.3;
@@ -203,6 +209,7 @@
       // fire again on a *subsequent* change.
       await newBoard.updateUnits(units);
       newBoard.setHighlights({ selected: selectedHex, reachable, attackTargets, recruitTiles });
+      newBoard.updateVillageOwnership(villageOwners);
     })().catch((err) => {
       console.error(err);
       status = `failed to load: ${err instanceof Error ? err.message : String(err)}`;
@@ -228,6 +235,10 @@
   $effect(() => {
     board?.setHighlights({ selected: selectedHex, reachable, attackTargets, recruitTiles });
   });
+
+  $effect(() => {
+    board?.updateVillageOwnership(villageOwners);
+  });
 </script>
 
 <div class="board-view">
@@ -235,6 +246,12 @@
     {status ?? readyLabel} (drag to pan, scroll to zoom)
     {#if hoveredHex}
       &middot; Hex: ({hoveredHex.x}, {hoveredHex.y})
+      {#if hoverDefensePercent}
+        {@const def = hoverDefensePercent(hoveredHex.x, hoveredHex.y)}
+        {#if def !== null && def !== undefined}
+          &middot; Defense: {def}%
+        {/if}
+      {/if}
     {/if}
   </p>
   <div class="canvas-host" bind:this={canvasHost}></div>

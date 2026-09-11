@@ -5,10 +5,11 @@ import { fileURLToPath } from 'node:url';
 import { parseWmlFile, preloadDefines, preloadDefinesFromDir, type DefineMap } from '../../src/wml/index.js';
 import { WmlConfig } from '../../src/wml/config.js';
 import { TerrainTypeData, parseTerrainCode } from '../../src/model/Terrain.js';
-import { UnitType } from '../../src/model/UnitType.js';
+import { UnitType, AttackType } from '../../src/model/UnitType.js';
 import {
   collectUnitTypeConfigs,
   collectMovementTypeConfigs,
+  collectSpecialRegistry,
   flattenUnitTypeConfig,
   flattenAllUnitTypes,
 } from '../../src/model/UnitTypeDatabase.js';
@@ -261,5 +262,86 @@ describe('flattenUnitTypeConfig / flattenAllUnitTypes: base_unit= inheritance (s
     const all = flattenAllUnitTypes(raw);
     expect(all.get('Base Fighter')!.getNumber('hitpoints')).toBe(30);
     expect(all.get('Elite Fighter')!.getNumber('hitpoints')).toBe(45);
+  });
+});
+
+describe('collectSpecialRegistry + specials_list=/abilities_list= resolution (real data/core/units.cfg content)', () => {
+  const defines = loadDefines();
+  const coreUnitsCfg = parseWmlFile(path.join(dataRoot, 'core/units.cfg'), { dataRoot, defines: new Map(defines) });
+  const weaponSpecialRegistry = collectSpecialRegistry(coreUnitsCfg, 'weapon_specials');
+  const abilityRegistry = collectSpecialRegistry(coreUnitsCfg, 'abilities');
+
+  it('finds the real [units][weapon_specials]/[abilities] registries, keyed by unique_id (falling back to id)', () => {
+    // Real ids confirmed by reading wesnoth/data/core/macros/weapon_specials.cfg/abilities.cfg directly.
+    expect(weaponSpecialRegistry.get('poison')).toMatchObject({ tag: 'poison' });
+    expect(weaponSpecialRegistry.get('poison')!.config.getString('id')).toBe('poison');
+    // marksman's real TAG is [chance_to_hit] (id=marksman distinguishes it
+    // from e.g. "magical", also a [chance_to_hit]) -- weapon-special
+    // matching in this engine is by id=, not tag (confirmed safe for
+    // every real special `combatStats.ts` evaluates; see this module's
+    // own doc comment), so this is fine downstream even though it looks
+    // asymmetric next to the tag-based ability checks below.
+    expect(weaponSpecialRegistry.get('marksman')).toMatchObject({ tag: 'chance_to_hit' });
+    expect(weaponSpecialRegistry.get('marksman')!.config.getString('id')).toBe('marksman');
+    // heals_4/heals_8/cures are all TAG "heals" but keyed by their real unique_id, with a DISPLAY id ("healing"/"curing") that does NOT match the tag -- the whole reason RegistryEntry carries tag separately.
+    expect(abilityRegistry.get('heals_8')).toMatchObject({ tag: 'heals' });
+    expect(abilityRegistry.get('heals_8')!.config.getString('id')).toBe('healing');
+    expect(abilityRegistry.get('cures')).toMatchObject({ tag: 'heals' });
+    expect(abilityRegistry.get('cures')!.config.getString('id')).toBe('curing');
+    expect(abilityRegistry.get('regenerates_8')).toMatchObject({ tag: 'regenerate' });
+    expect(abilityRegistry.get('skirmisher')).toMatchObject({ tag: 'skirmisher', config: expect.anything() });
+  });
+
+  it('resolves a real unit\'s specials_list= (Orcish Assassin: "specials_list=marksman,poison" on its throwing knives)', () => {
+    const rawConfigs = collectUnitTypeConfigs(coreUnitsCfg);
+    const flattened = flattenAllUnitTypes(rawConfigs);
+    const assassinCfg = flattened.get('Orcish Assassin')!;
+    const moveTypes = collectMovementTypeConfigs(coreUnitsCfg);
+    const terrainData = new TerrainTypeData();
+    const type = UnitType.fromConfig(assassinCfg, moveTypes, terrainData, { weaponSpecials: weaponSpecialRegistry, abilities: abilityRegistry });
+
+    const dagger = type.attacks.find((a) => a.id === 'dagger')!;
+    expect(dagger.specials).toHaveLength(0); // no specials_list= on this weapon.
+    const knives = type.attacks.find((a) => a.id === 'throwing knives')!;
+    expect(knives.specials.map((s) => s.getString('id')).sort()).toEqual(['marksman', 'poison']);
+  });
+
+  it('resolves a real unit\'s abilities_list= (Mermaid Priestess: "abilities_list=heals_8,cures" -- the real Cylanna in Dead Water) by TAG, not by the (non-matching) display id', () => {
+    const rawConfigs = collectUnitTypeConfigs(coreUnitsCfg);
+    const flattened = flattenAllUnitTypes(rawConfigs);
+    const priestessCfg = flattened.get('Mermaid Priestess')!;
+    const moveTypes = collectMovementTypeConfigs(coreUnitsCfg);
+    const terrainData = new TerrainTypeData();
+    const type = UnitType.fromConfig(priestessCfg, moveTypes, terrainData, { weaponSpecials: weaponSpecialRegistry, abilities: abilityRegistry });
+
+    // Real bug this regresses: before RegistryEntry/tag-based matching, this
+    // was empty in practice for anything consuming it by id==='heals' (see
+    // heal.ts's hasAbility), because the real registry's display id is
+    // "healing"/"curing", never literally "heals".
+    const healsAbilities = type.abilities.filter((a) => a.tag === 'heals');
+    expect(healsAbilities).toHaveLength(2);
+    // "healing" (heals_8) sets value=8; "curing" (cures) sets no value= at
+    // all (poison-cure only, no heal amount) -- real Wesnoth's heal_amount
+    // treats an absent value as 0, matching getNumber's own fallback.
+    expect(healsAbilities.map((a) => a.config.getNumber('value', 0)).sort((x, y) => x - y)).toEqual([0, 8]);
+    expect(healsAbilities.find((a) => a.config.getString('id') === 'curing')!.config.hasAttribute('value')).toBe(false);
+  });
+
+  it('resolves a real skirmisher unit\'s abilities_list=skirmisher (Assassin) so hasSkirmisher recognizes it', () => {
+    const rawConfigs = collectUnitTypeConfigs(coreUnitsCfg);
+    const flattened = flattenAllUnitTypes(rawConfigs);
+    const assassinCfg = flattened.get('Assassin')!;
+    const moveTypes = collectMovementTypeConfigs(coreUnitsCfg);
+    const terrainData = new TerrainTypeData();
+    const type = UnitType.fromConfig(assassinCfg, moveTypes, terrainData, { weaponSpecials: weaponSpecialRegistry, abilities: abilityRegistry });
+    expect(type.abilities.some((a) => a.tag === 'skirmisher')).toBe(true);
+  });
+
+  it('an unknown id in specials_list= is silently skipped, not an error', () => {
+    const cfg = new WmlConfig();
+    cfg.setAttribute('name', 'test');
+    cfg.setAttribute('specials_list', 'poison,not_a_real_special');
+    const attack = AttackType.fromConfig(cfg, weaponSpecialRegistry);
+    expect(attack.specials.map((s) => s.getString('id'))).toEqual(['poison']);
   });
 });

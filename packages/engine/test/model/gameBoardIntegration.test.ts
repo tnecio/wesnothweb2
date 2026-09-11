@@ -181,5 +181,13 @@ describe('GameBoard (real Dead_Water scenario 1 content)', () => {
     expect(board.villageCount(2)).toBe(0);
     const unownedVillages = board.map.villages.filter((v) => board.villageOwner(v) === undefined);
     expect(unownedVillages.length).toBe(board.map.villages.length - capturedByOne);
+
+    // `terrainName` (for the UI's "current terrain" display, see
+    // packages/ui) resolves real `[terrain_type] name=` text, and is
+    // village-aware (a village hex's overlay name wins over the base
+    // grassland/sand it sits on) -- both spot-checked against real
+    // Home_1.map content.
+    expect(board.map.terrainName(leader!.location).length).toBeGreaterThan(0);
+    expect(board.map.terrainName(board.map.villages[0]!)).toMatch(/[Vv]illage/);
   });
 });

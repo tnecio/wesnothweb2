@@ -59,8 +59,22 @@ export interface HealOutcome {
   readonly healers: readonly Unit[];
 }
 
-function hasAbility(unit: Unit, id: string): WmlConfig[] {
-  return unit.type.abilities.filter((a) => a.getString('id', '') === id);
+/**
+ * Every `[tag]` ability this unit's type has, by TAG NAME (`heals`,
+ * `regenerate`) -- not by the ability's own `id=` attribute. Real content's
+ * `id=` is a *display* id, not a type discriminator: the real `heals`-tag
+ * registry entries (`heals_4`/`heals_8`/`cures`) all set `id=healing` or
+ * `id=curing`, never literally `id=heals` -- matching by tag is what
+ * upstream itself does (`tag_name == "heals"`, `src/units/abilities.cpp`).
+ * Real bug this fixes: every real healer using the common `abilities_list=`
+ * shorthand (e.g. Dead Water's Cylanna, a real Mermaid Priestess --
+ * `abilities_list=heals_8,cures`) was previously invisible to this
+ * function's old `id === 'heals'` check even after `specials_list=`/
+ * `abilities_list=` resolution was added, because the resolved ability's
+ * `id=` is "healing"/"curing", not "heals".
+ */
+function hasAbility(unit: Unit, tag: string): WmlConfig[] {
+  return unit.type.abilities.filter((a) => a.tag === tag).map((a) => a.config);
 }
 
 /** Mirrors `poison_progress`: how far (if at all) `patient`'s poison is being treated this side's turn. */

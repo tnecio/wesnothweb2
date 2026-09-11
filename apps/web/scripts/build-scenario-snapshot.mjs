@@ -211,7 +211,7 @@ const { GameMap } = await import(path.join(repoRoot, 'packages/engine/src/model/
 const { UnitType } = await import(path.join(repoRoot, 'packages/engine/src/model/UnitType.ts'));
 const { Location } = await import(path.join(repoRoot, 'packages/engine/src/model/Location.ts'));
 const { WmlConfig } = await import(path.join(repoRoot, 'packages/engine/src/wml/config.ts'));
-const { collectUnitTypeConfigs, collectMovementTypeConfigs, flattenAllUnitTypes } = await import(
+const { collectUnitTypeConfigs, collectMovementTypeConfigs, collectSpecialRegistry, flattenAllUnitTypes } = await import(
   path.join(repoRoot, 'packages/engine/src/model/UnitTypeDatabase.ts')
 );
 
@@ -379,6 +379,19 @@ const movementTypeConfigs = collectMovementTypeConfigs(coreUnitsCfg);
 collectMovementTypeConfigs(campaignMainCfg, movementTypeConfigs);
 const flattenedUnitTypes = flattenAllUnitTypes(rawUnitTypeConfigs);
 
+// Real `[units][weapon_specials]`/`[units][abilities]` registries --
+// resolves real content's `specials_list=`/`abilities_list=` shorthand
+// (e.g. Assassin.cfg's `specials_list=marksman,poison`) the same way
+// `unit_type_data::add_registry_entries` does upstream. See
+// `UnitTypeDatabase.ts`'s `collectSpecialRegistry` for what this fixes:
+// without it, any real unit relying on the shorthand (rather than inline
+// [specials]/[abilities] tags) would have NONE of its specials/abilities
+// recognized by this engine at all.
+const weaponSpecialRegistry = collectSpecialRegistry(coreUnitsCfg, 'weapon_specials');
+collectSpecialRegistry(campaignMainCfg, 'weapon_specials', weaponSpecialRegistry);
+const abilityRegistry = collectSpecialRegistry(coreUnitsCfg, 'abilities');
+collectSpecialRegistry(campaignMainCfg, 'abilities', abilityRegistry);
+
 const typeCache = new Map();
 function resolveType(id) {
   let t = typeCache.get(id);
@@ -387,7 +400,7 @@ function resolveType(id) {
     if (!flatCfg) {
       throw new Error(`resolveType: no [unit_type] found for id "${id}" (checked data/core/units.cfg and the campaign's own unit files)`);
     }
-    t = UnitType.fromConfig(flatCfg, movementTypeConfigs, terrainData);
+    t = UnitType.fromConfig(flatCfg, movementTypeConfigs, terrainData, { weaponSpecials: weaponSpecialRegistry, abilities: abilityRegistry });
     typeCache.set(id, t);
   }
   return t;
@@ -499,6 +512,11 @@ const unitTypes = Object.fromEntries([...typeCache].map(([id, t]) => [id, unitTy
 const unitTypeConfigs = Object.fromEntries([...typeCache.keys()].map((id) => [id, flattenedUnitTypes.get(id).toJSON()]));
 const movementTypeConfigsJson = Object.fromEntries([...movementTypeConfigs].map(([name, cfg]) => [name, cfg.toJSON()]));
 const terrainTypeConfigsJson = terrainCfg.children('terrain_type').map((cfg) => cfg.toJSON());
+// Shipped in full (a few dozen entries, negligible size next to the ~332
+// unit types above) so the browser can resolve specials_list=/
+// abilities_list= for real content the same way this build script just did.
+const weaponSpecialConfigsJson = Object.fromEntries([...weaponSpecialRegistry].map(([id, entry]) => [id, { tag: entry.tag, config: entry.config.toJSON() }]));
+const abilityConfigsJson = Object.fromEntries([...abilityRegistry].map(([id, entry]) => [id, { tag: entry.tag, config: entry.config.toJSON() }]));
 
 const snapshot = {
   generatedBy: 'apps/web/scripts/build-scenario-snapshot.mjs (see file header)',
@@ -520,6 +538,8 @@ const snapshot = {
   terrainTypeConfigs: terrainTypeConfigsJson,
   movementTypeConfigs: movementTypeConfigsJson,
   unitTypeConfigs,
+  weaponSpecialConfigs: weaponSpecialConfigsJson,
+  abilityConfigs: abilityConfigsJson,
   scenarioConfigJson: scenario.toJSON(),
 };
 

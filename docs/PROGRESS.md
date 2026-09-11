@@ -1267,3 +1267,99 @@ including a village) with no console errors. Scenario 4
 (`04_Return_to_the_Village`) also verified standalone (doesn't depend on
 scenario 3's password puzzle). All 240 engine + 27 UI tests still pass
 (the build-script refactor touched no test-covered engine/UI code).
+
+## 2026-09-11 (cont'd): combat blow-by-blow log, terrain defense/village/time-of-day visuals, and three real bugs this exposed
+
+User request: see individual combat blows in the log (groundwork for
+future per-blow animation), see terrain defense% and village
+ownership on the board, see current time-of-day, and add a synthetic
+debug campaign for other implemented features (abilities/specials).
+Worked autonomously per this session's standing instruction.
+
+**Combat log**: `executeAttack` already computed a full
+`AttackBlowResult[]` per fight (hit/miss/damage/drain/poison/slow/
+petrify/kill per blow) but `GameSession` only ever logged the one-line
+summary. Added `formatBlowMessage()` and unshift each blow onto the log
+above the summary -- e.g. "Debug Hero hits Debug Villain for 7 damage
+(60% chance to hit)." Verified live in-browser (see below).
+
+**Time-of-day**: new `packages/engine/src/model/Schedule.ts` ports real
+`tod_manager` -- parses a scenario's `[time]` entries (`lawful_bonus=`,
+`current_time=`), advances once per game turn (not per side-turn), with
+`DEFAULT_MAX_LIMINAL_BONUS = 25` matching
+`tod_manager::get_max_liminal_bonus()`'s simplified floor. Wired into
+`GameSession.currentTimeOfDay`, `TurnBanner.svelte` (icon + name, e.g.
+"Dawn"), and into `lawfulBonus`/`maxLiminalBonus` combat options so
+alignment-based damage bonuses are now schedule-aware for the first
+time.
+
+**Terrain defense% + villages**: `Map.terrainName()` (real
+`[terrain_type] name=`) and `GameSession.defensePercentAt()` feed a new
+status-line "· Defense: NN%" on hex hover and a `SidePanel` "Terrain:
+Grassland (Defense: 40%)" line for the selected unit.
+`GameSession.villageOwnership` + `SnapshotBoard.updateVillageOwnership()`
+draw a pole+pennant flag (team-colored) on every currently-owned
+village, in a new `villageLayer` between terrain and highlights.
+
+**Three real bugs found and fixed while building this** (none were
+display-only gaps -- each traces to real engine logic that was silently
+wrong or missing):
+1. **`specials_list=`/`abilities_list=` (the comma-separated shorthand
+   real mainline unit files almost universally use instead of inline
+   `[specials]`/`[abilities]` -- confirmed via Orcish Assassin, Mermaid
+   Priestess, Giant Spider, Vampire Bat, etc.) was never resolved by this
+   engine at all.** Added `collectSpecialRegistry()`
+   (`UnitTypeDatabase.ts`) to build `id -> {tag, config}` registries from
+   real `[units][weapon_specials]`/`[abilities]` content, resolved by
+   `UnitType`/`AttackType.fromConfig()`, threaded through the snapshot
+   build script and client-side reconstruction. Most real specials/
+   abilities in this project were silently inert before this.
+2. **Ability matching by `id=` was itself wrong for the `heals`/
+   `regenerate` family.** Weapon-special `id=` happens to equal its tag
+   name for every special this engine evaluates, but real content's
+   ability `id=` is a *display* id distinct from the tag (every `heals`-
+   tag registry entry sets `id=healing` or `id=curing`, never
+   `id=heals`) -- real upstream matches by tag name
+   (`units/abilities.cpp:1754`). `UnitType.abilities` is now
+   `RegistryEntry[]` (`{tag, config}`) instead of bare `WmlConfig[]`, and
+   `hasAbility()`/`hasSkirmisher()` match by `.tag`. Dead Water's own
+   healer, Cylanna, had never actually healed anyone in this project
+   before this fix.
+3. **`GameSession.endTurn()` never called the engine's own already-
+   correct `applySideHealing()`.** Even after fixing (2), a correctly-
+   detected healer's healing was never applied during live play. Now
+   called every side-turn (narrower first-turn exemption than income's,
+   matching `play_controller.cpp`'s `do_healing()`), with log lines for
+   heal/poison-damage/poison-cure.
+4. **Backstab (`[damage] id=backstab multiply=2`) was parsed but its
+   `[filter_opponent]` condition was never evaluated** -- damage always
+   applied as if backstab were inactive. Added
+   `combat.ts`'s `isBackstabActive()`, a narrow geometric proxy (attacker
+   -> defender -> flanker in a straight line, flanker hostile to
+   defender, not incapacitated) matching the special's real plain-
+   language description rather than the general WFL formula, consistent
+   with this project's established narrow-hand-coded-checks pattern.
+   **Hex-geometry pitfall hit while testing this**: on this engine's
+   odd-column-offset grid, "same y, x+1 each step" is *not* a straight
+   hex line -- continuing a SE step from an odd column crosses into the
+   next row (verified via `Location.toCubic()` diffs). Two new tests
+   initially failed for this reason; fixed by placing the flanker at the
+   cubic-verified continuation hex, not a same-y guess.
+
+Added a new synthetic debug campaign, `synthetic_abilities`
+(`synth_abilities_01.json`, 28 units on a 6x28 grid), with one real-unit
+"station" per feature: Giant Spider (poison+slow), Vampire Bat (drains),
+Dwarvish Berserker (berserk), Drake Arbiter (firststrike), Elvish
+Marksman (marksman), Dwarvish Arcanister (magical), Thief+ally
+(backstab), Horseman (charge), Cuttle Fish (swarm+poison), Walking
+Corpse vs Bandit (plague), Mermaid Priestess+damaged Peasant (heals),
+damaged Troll (regenerate), Assassin vs Orcish Grunt (skirmisher).
+
+Verified all of this live in a real browser (Playwright, Node 20):
+per-blow combat log lines rendering correctly after a real attack in the
+`[Debug] Combat` scenario; "Dawn" time-of-day icon+label in Dead Water's
+turn banner; village flags (team-colored) rendered on Dead Water's owned
+villages; defense% shown both on hover and in the selected-unit panel;
+the new Abilities & Specials debug campaign loading and rendering all 28
+units with no console errors. All 253 engine + 32 UI + 106 renderer
+tests pass; typecheck clean across all packages.

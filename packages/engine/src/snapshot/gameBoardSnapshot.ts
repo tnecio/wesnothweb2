@@ -68,7 +68,7 @@ import { Location } from '../model/Location.js';
 import { GameMap } from '../model/Map.js';
 import { Team, type SideController } from '../model/Team.js';
 import { Unit } from '../model/Unit.js';
-import { AttackType, UnitType, type Alignment } from '../model/UnitType.js';
+import { AttackType, UnitType, type Alignment, type RegistryEntry } from '../model/UnitType.js';
 import { MoveType } from '../model/MoveType.js';
 import { TerrainTypeData, type TerrainCode, parseTerrainCode } from '../model/Terrain.js';
 import { GameBoard } from '../model/GameBoard.js';
@@ -252,6 +252,21 @@ export interface GameBoardSnapshot {
    * comment. Optional, same backward-compatibility reason as `terrainFlags`.
    */
   unitTypeConfigs?: Record<string, WmlConfigJson>;
+  /**
+   * The real `[units][weapon_specials]` registry (id -> that special's own
+   * tag name + config, e.g. `poison` -> `{tag: "poison", config: [poison]
+   * id=poison ... [/poison]'s config}`), as `WmlConfig.toJSON()` -- see
+   * `UnitTypeDatabase.ts`'s `collectSpecialRegistry` (including why the
+   * tag name travels alongside the config, not just the bare attributes).
+   * Lets `buildSnapshotContext` resolve real content's `[attack]
+   * specials_list=marksman,poison` shorthand (common in `data/core/
+   * units/`) client-side the same way the build script does, instead of
+   * those units silently having no specials recognized at all. Optional,
+   * same backward-compatibility reason as `terrainFlags`.
+   */
+  weaponSpecialConfigs?: Record<string, { tag: string; config: WmlConfigJson }>;
+  /** The real `[units][abilities]` registry, resolving `[unit_type] abilities_list=skirmisher` shorthand -- see `weaponSpecialConfigs`'s own doc comment, same rationale for abilities instead of weapon specials. */
+  abilityConfigs?: Record<string, { tag: string; config: WmlConfigJson }>;
 }
 
 /** Real castle/keep/village flags for one terrain code -- see `GameBoardSnapshot.terrainFlags`. */
@@ -435,8 +450,20 @@ function buildSnapshotContext(snapshot: GameBoardSnapshot): SnapshotContext {
         movementTypes.set(name, WmlConfig.fromJSON(json));
       }
     }
+    const weaponSpecials = new Map<string, RegistryEntry>();
+    if (snapshot.weaponSpecialConfigs) {
+      for (const [id, entry] of Object.entries(snapshot.weaponSpecialConfigs)) {
+        weaponSpecials.set(id, { tag: entry.tag, config: WmlConfig.fromJSON(entry.config) });
+      }
+    }
+    const abilities = new Map<string, RegistryEntry>();
+    if (snapshot.abilityConfigs) {
+      for (const [id, entry] of Object.entries(snapshot.abilityConfigs)) {
+        abilities.set(id, { tag: entry.tag, config: WmlConfig.fromJSON(entry.config) });
+      }
+    }
     for (const [id, json] of Object.entries(snapshot.unitTypeConfigs)) {
-      typeCache.set(id, UnitType.fromConfig(WmlConfig.fromJSON(json), movementTypes, terrainData));
+      typeCache.set(id, UnitType.fromConfig(WmlConfig.fromJSON(json), movementTypes, terrainData, { weaponSpecials, abilities }));
     }
   } else {
     const moveType = buildFlatMoveType(terrainCodesInUse(snapshot), terrainData);

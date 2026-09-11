@@ -232,11 +232,21 @@ basics (id/type/side/race/gender/level/canrecruit/role, numeric ranges,
   with no `[filter_self]`/`[filter_adjacent]`/`cumulative=`/`value|add|
   sub|multiply|divide`/`max_value|min_value` evaluation at all). Real
   content leans on that generic machinery constantly (custom abilities,
-  `[resistance]` ability, `abilities_list=` shorthand, ability-scope flags
-  `affect_self/allies/enemies`, `affect_movement/vision`). **This is the
-  single largest remaining Phase 2 gap** — worth a dedicated sub-effort
-  before Phase 6 goes much further into content that uses non-default
-  abilities.
+  `[resistance]` ability, ability-scope flags `affect_self/allies/
+  enemies`, `affect_movement/vision`). **This is the single largest
+  remaining Phase 2 gap** — worth a dedicated sub-effort before Phase 6
+  goes much further into content that uses non-default abilities.
+  (2026-09-11: the *shorthand* half of this — `specials_list=`/
+  `abilities_list=`, the comma-separated id list real mainline unit files
+  almost universally use instead of inline `[specials]`/`[abilities]` —
+  is now resolved, via `UnitTypeDatabase.collectSpecialRegistry()` and
+  `UnitType`/`AttackType.fromConfig()`'s new `registries` param, keyed by
+  `unique_id ?? id` and matched by real upstream's **tag name**, not
+  `id=` — ability `id=` is a distinct display id in real content, e.g.
+  every `heals`-tag entry sets `id=healing`/`id=curing`, never
+  `id=heals`. Before this fix, most real specials/abilities were silently
+  inert, including Dead Water's own healer Cylanna. The deeper filter/
+  effect *evaluation* gap this bullet describes remains open.)
 - **`[leadership]`** — explicitly not applied yet (`combatStats.ts`'s own
   doc comment: `leadershipBonus` is always 0). Blocked on the same generic
   pipeline above (adjacency + level-difference scaling + `cumulative=`).
@@ -590,12 +600,20 @@ filters) rather than adding new ones.
 
 ## Phase 12 — Time of Day & Schedules (new)
 
-**Status: partially started** — `combatStats.ts`'s `combatModifier()`
-implements the real alignment × `lawful_bonus` damage-multiplier formula
-(lawful/chaotic/liminal/neutral, fearless negation), but it's a pure
-function the caller must feed a `lawfulBonus` number into; there is no
-`[time]`/schedule model, no per-turn ToD progression, no time areas, and
-no illumination anywhere in the codebase.
+**Status: partially started (2026-09-11: schedule model + status-bar
+indicator built)** — `combatStats.ts`'s `combatModifier()` implements the
+real alignment × `lawful_bonus` damage-multiplier formula (lawful/
+chaotic/liminal/neutral, fearless negation). `packages/engine/src/model/
+Schedule.ts` now ports `tod_manager`: parses a scenario's `[time]`
+entries (`lawful_bonus=`, `current_time=`), advances once per game turn,
+and `DEFAULT_MAX_LIMINAL_BONUS = 25` matches
+`tod_manager::get_max_liminal_bonus()`'s simplified floor. Wired end to
+end: `GameSession.currentTimeOfDay` feeds combat's `lawfulBonus`/
+`maxLiminalBonus` options (so alignment damage bonuses are schedule-aware
+for the first time) and `TurnBanner.svelte` shows a ToD icon + name.
+Still missing: time areas, illumination, `random_start_time=`,
+`[replace_schedule]`/`[store_time_of_day]`, ToD colour tinting on the
+board, and a schedule preview.
 
 - `[time]` definition (id/name/image/`lawful_bonus=`/colour shift) and the
   default six-phase day cycle used when a scenario specifies none.

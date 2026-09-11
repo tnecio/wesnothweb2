@@ -25,7 +25,7 @@
    * before entering 'messages', so the board already reflects every real
    * event-spawned unit by the time the player gets control.
    */
-  import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage } from '@wesnothweb2/engine';
+  import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage, TimeOfDayEntry } from '@wesnothweb2/engine';
   import type { HexPoint } from '@wesnothweb2/renderer';
   import {
     GameSession,
@@ -37,6 +37,7 @@
     type AttackerWeaponOption,
     type SaveGameData,
     type EconomyInfo,
+    type VillageOwnerInfo,
   } from './gameSession.js';
   import { saveGame, loadGame } from './persistence.js';
   import TurnBanner from './TurnBanner.svelte';
@@ -97,6 +98,8 @@
   let activeSide = $state(session.activeSide);
   let gold = $state(session.board.getTeam(session.activeSide)?.gold ?? 0);
   let economyInfo = $state<EconomyInfo>(session.economyInfo);
+  let villageOwners = $state<VillageOwnerInfo[]>(session.villageOwnership);
+  let timeOfDay = $state<TimeOfDayEntry>(session.currentTimeOfDay);
   let statusMessage = $state('Click one of your units to select it.');
 
   function selectedInfo(): SelectedUnitInfo | null {
@@ -113,6 +116,9 @@
       movesLeft: u.movesLeft,
       maxMoves: u.maxMoves,
       attacksLeft: u.attacksLeft,
+      terrainName: session.board.map.terrainName(u.location),
+      // `defenseModifier` is upstream's "chance to be hit" convention (lower is better) -- flip to the player-facing "Defense: N%" real Wesnoth shows.
+      defensePercent: 100 - u.defenseModifier(session.board.map.getTerrain(u.location)),
     };
   }
 
@@ -135,6 +141,8 @@
     activeSide = session.activeSide;
     gold = session.board.getTeam(session.activeSide)?.gold ?? 0;
     economyInfo = session.economyInfo;
+    villageOwners = session.villageOwnership;
+    timeOfDay = session.currentTimeOfDay;
 
     if (session.scenarioResult) {
       statusMessage = session.scenarioResult === 'victory' ? 'Victory!' : 'Defeat.';
@@ -304,7 +312,7 @@
 </script>
 
 <div class="game-shell">
-  <TurnBanner scenarioName={activeSnapshot.scenario.name} {turnNumber} {activeSide} {scenarioTurnsLimit} />
+  <TurnBanner scenarioName={activeSnapshot.scenario.name} {turnNumber} {activeSide} {scenarioTurnsLimit} {timeOfDay} />
   <div class="main">
     <!--
       Keyed on scenario id: GameBoardView's own doc comment says its
@@ -322,7 +330,17 @@
       not by a screenshot that would've looked identical either way.)
     -->
     {#key activeSnapshot.scenario.id}
-      <GameBoardView snapshot={activeSnapshot} {units} {selectedHex} {reachable} {attackTargets} {recruitTiles} onHexClick={handleHexClick} />
+      <GameBoardView
+        snapshot={activeSnapshot}
+        {units}
+        {selectedHex}
+        {reachable}
+        {attackTargets}
+        {recruitTiles}
+        {villageOwners}
+        onHexClick={handleHexClick}
+        hoverDefensePercent={(x, y) => session.defensePercentAt(x, y)}
+      />
     {/key}
     <SidePanel
       {selected}

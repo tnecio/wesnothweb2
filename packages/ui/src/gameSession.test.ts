@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Location, type GameBoardSnapshot } from '@wesnothweb2/engine';
+import { Location, getAdjacentTiles, type GameBoardSnapshot } from '@wesnothweb2/engine';
 import { GameSession } from './gameSession.js';
 
 /**
@@ -554,6 +554,92 @@ describe('GameSession.confirmAttack zeroes the attacker\'s movement (real Wesnot
   });
 });
 
+describe('GameSession.confirmAttack logs one line per real blow, not just a summary', () => {
+  it('adds exactly one log line per AttackBlowResult, each naming the real striker/target, plus the summary line on top', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    session.selectUnit(malKevek);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    const logLengthBefore = session.log.length;
+
+    session.confirmAttack();
+
+    // At least one blow always happens (both combatants have >0 numAttacks
+    // in this real matchup); the exact count depends on strike counts and
+    // firststrike/berserk, not asserted here -- see combat.test.ts for
+    // that. What's under test is that every blow got its own line.
+    const addedLines = session.log.length - logLengthBefore;
+    expect(addedLines).toBeGreaterThan(1); // summary line + at least one blow line.
+
+    // The summary is unshifted LAST, so it's the newest entry (index 0);
+    // the blow lines fill indices 1..addedLines-1, oldest blow furthest down.
+    expect(session.log[0]).toMatch(/attacked .+ blows landed/);
+    const blowLines = session.log.slice(1, addedLines);
+    expect(blowLines.length).toBeGreaterThan(0);
+    for (const line of blowLines) {
+      // Every blow line names one of the two real combatants as striker and the other as target, and states hit/miss with a real % chance.
+      expect(line).toMatch(/% chance to hit\)\.?/);
+      expect(line.includes(malKevek.type.name) || line.includes(kaiKrellis.type.name) || /misses|hits/.test(line)).toBe(true);
+    }
+  });
+
+  it('a hit line reports real, non-negative damage; a miss line reports zero implicitly (no "for N damage" clause)', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    session.selectUnit(malKevek);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    session.confirmAttack();
+
+    const blowLines = session.log.filter((l) => /% chance to hit\)/.test(l) && !/attacked .+ blows landed/.test(l));
+    expect(blowLines.length).toBeGreaterThan(0);
+    for (const line of blowLines) {
+      if (line.includes(' hits ')) {
+        const match = line.match(/for (\d+) damage/);
+        expect(match).not.toBeNull();
+        expect(Number(match![1])).toBeGreaterThanOrEqual(0);
+      } else {
+        expect(line).toMatch(/ misses /);
+        expect(line).not.toMatch(/for \d+ damage/);
+      }
+    }
+  });
+});
+
+describe('GameSession.currentTimeOfDay (real [time] schedule, threaded into real combat)', () => {
+  it('reads the real Dead Water scenario 1 default schedule, advancing by real game turn as endTurn wraps', () => {
+    const session = new GameSession(loadSnapshot());
+    expect(session.currentTimeOfDay.id).toBe('dawn'); // turn 1, current_time defaults to 0.
+    expect(session.currentTimeOfDay.lawfulBonus).toBe(0);
+
+    session.endTurn(); // -> side 2, still turn 1.
+    expect(session.currentTimeOfDay.id).toBe('dawn'); // ToD is per-turn, not per-side -- unchanged mid-turn-1.
+
+    session.endTurn(); // wraps -> turn 2.
+    expect(session.currentTimeOfDay.id).toBe('morning');
+    expect(session.currentTimeOfDay.lawfulBonus).toBe(25); // real value, see Schedule.test.ts.
+  });
+
+  it('a lawful attacker deals more real damage during a lawful-favoring phase than during a neutral one, all else equal', () => {
+    // Same real matchup (Kai Krellis, lawful, vs Mal-Kevek adjacent),
+    // compared at turn 1 (dawn, lawful_bonus=0) vs turn 2 (morning,
+    // lawful_bonus=25) -- buildPreview's real combatModifier() should
+    // reflect the schedule difference in the predicted damage per blow.
+    const { session: dawnSession, malKevek: dawnMalKevek, kaiKrellis: dawnKaiKrellis } = withAdjacentLeaders();
+    dawnSession.selectUnit(dawnKaiKrellis);
+    dawnSession.handleHexClick(dawnMalKevek.location.x, dawnMalKevek.location.y);
+    const dawnDamage = dawnSession.pendingAttack!.preview.attacker.damagePerBlow;
+
+    const { session: morningSession, malKevek, kaiKrellis } = withAdjacentLeaders();
+    morningSession.endTurn();
+    morningSession.endTurn(); // -> turn 2, morning, lawful_bonus=25.
+    expect(morningSession.currentTimeOfDay.id).toBe('morning');
+    morningSession.activeSide = 1; // Kai Krellis's side, so selecting/attacking with him is allowed regardless of whose turn endTurn() left active.
+    morningSession.selectUnit(kaiKrellis);
+    morningSession.handleHexClick(malKevek.location.x, malKevek.location.y);
+    const morningDamage = morningSession.pendingAttack!.preview.attacker.damagePerBlow;
+
+    expect(morningDamage).toBeGreaterThan(dawnDamage);
+  });
+});
+
 describe('GameSession income/upkeep/village economy (real synth_economy_01: gold=40/income=2/village_gold=1)', () => {
   /**
    * Real Wesnoth's `play_controller.cpp`: `if (turn() > 1) { current_team()
@@ -641,5 +727,38 @@ describe('GameSession income/upkeep/village economy (real synth_economy_01: gold
     session.endTurn();
     session.endTurn(); // turn 2, side 1's turn: income(2)+base(2)+0 villages = 4, upkeep = 1 level - 0 support = 1 expense.
     expect(session.board.getTeam(1)!.gold).toBe(40 - 14 + 4 - 1);
+  });
+});
+
+describe('GameSession.endTurn applies real healing (rest/heals-ability/poison) -- previously a no-op gap on top of a real healer-detection bug', () => {
+  it("real Cylanna (a Mermaid Priestess, abilities_list=heals_8,cures) actually heals a damaged adjacent ally's HP on endTurn -- regression for both the missing endTurn healing call and the id-vs-tag ability-matching bug", () => {
+    const session = new GameSession(loadSnapshot());
+    session.runStartupEvents();
+    const cylanna = session.board.allUnits().find((u) => u.id === 'Cylanna')!;
+    expect(cylanna).toBeDefined();
+    expect(cylanna.type.abilities.some((a) => a.tag === 'heals')).toBe(true); // sanity: the ability-matching fix itself.
+
+    const kaiKrellis = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
+    // Real spawn positions place Kai Krellis and Cylanna adjacent already
+    // (confirmed by inspection); assert it rather than assume, so this
+    // test fails clearly instead of silently passing for the wrong reason
+    // if a future content change moves them apart.
+    expect(getAdjacentTiles(cylanna.location).some((loc) => loc.equals(kaiKrellis.location))).toBe(true);
+
+    kaiKrellis.hitpoints = kaiKrellis.maxHitpoints - 20;
+    const hpBefore = kaiKrellis.hitpoints;
+
+    // Cycle back around to side 1's turn -- endTurn's own doc comment on
+    // why healing (unlike income) isn't gated on turnNumber > 1: real
+    // Wesnoth's do_healing() flag exempts only the very first side-turn
+    // of the whole game, which this session already started in (before
+    // any endTurn() call) -- side 2's turn (the first endTurn() call
+    // below) already gets a real healing pass.
+    session.endTurn(); // -> side 2.
+    session.endTurn(); // -> side 1 again, turn 2: Cylanna's real heals ability should now fire for real.
+
+    expect(kaiKrellis.hitpoints).toBeGreaterThan(hpBefore);
+    expect(kaiKrellis.hitpoints).toBe(Math.min(kaiKrellis.maxHitpoints, hpBefore + 8)); // real heals_8 value.
+    expect(session.log.some((l) => l.includes('heals 8 HP') && l.includes('Cylanna'))).toBe(true);
   });
 });

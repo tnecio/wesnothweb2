@@ -19,6 +19,7 @@ export * from './model/UnitTypeDatabase.js';
 export * from './model/Unit.js';
 export * from './model/Team.js';
 export * from './model/GameBoard.js';
+export * from './model/Schedule.js';
 
 export * from './pathfind/pathfind.js';
 export * from './actions/index.js';

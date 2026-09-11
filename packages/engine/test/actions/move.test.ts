@@ -197,7 +197,7 @@ describe('executeMove / planTurnMovement zone-of-control regression (real, repor
     const { board, enemyLoc } = makeRingBoard();
     const skirmisherAbility = new WmlConfig();
     skirmisherAbility.setAttribute('id', 'skirmisher');
-    const skirmisherType = new UnitType('skirmisher', 'skirmisher', '', 'neutral', 1, 30, 5, 5, 0, 1, 0, -1, 500, [], '', false, false, false, flatMoveType, [AttackType.fromConfig(new WmlConfig())], [skirmisherAbility]);
+    const skirmisherType = new UnitType('skirmisher', 'skirmisher', '', 'neutral', 1, 30, 5, 5, 0, 1, 0, -1, 500, [], '', false, false, false, flatMoveType, [AttackType.fromConfig(new WmlConfig())], [{ tag: 'skirmisher', config: skirmisherAbility }]);
 
     const ring = getAdjacentTiles(enemyLoc);
     const start = ring[0]!;

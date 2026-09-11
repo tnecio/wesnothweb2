@@ -10,7 +10,7 @@ import { MoveType } from '../../src/model/MoveType.js';
 import { WmlConfig } from '../../src/wml/config.js';
 import { RngDeterministic } from '../../src/rng/RngDeterministic.js';
 import { MtRng } from '../../src/rng/MtRng.js';
-import { executeAttack } from '../../src/actions/combat.js';
+import { executeAttack, isBackstabActive } from '../../src/actions/combat.js';
 
 /**
  * Combat resolution tests. Full real-unit-type loading (base_unit/gender
@@ -172,5 +172,87 @@ describe('executeAttack (hand-built units, hand-verifiable outcomes)', () => {
     // 50%) produce a different hit/miss sequence -- guards against the RNG
     // wiring being a no-op that always takes the same branch.
     expect(runA.result.blows.map((b) => b.hit)).not.toEqual(runC.result.blows.map((b) => b.hit));
+  });
+});
+
+/** A weapon with one real `[specials][backstab]` child, matching the real `[damage] id=backstab multiply=2` macro shape (see `wesnoth/data/core/macros/weapon_specials.cfg`). */
+function makeBackstabWeapon(damage: number): AttackType {
+  const cfg = new WmlConfig();
+  cfg.setAttribute('name', 'backstab-weapon');
+  cfg.setAttribute('type', 'blade');
+  cfg.setAttribute('range', 'melee');
+  cfg.setAttribute('damage', damage);
+  cfg.setAttribute('number', 1);
+  const specials = cfg.addChild('specials');
+  const backstab = new WmlConfig();
+  backstab.setAttribute('id', 'backstab');
+  backstab.setAttribute('multiply', 2);
+  specials.addChild('damage', backstab);
+  return AttackType.fromConfig(cfg);
+}
+
+describe('isBackstabActive / real combat backstab damage (2026-09-11: geometric proxy for the real [filter_opponent] condition)', () => {
+  // Wider board than makeBoard() -- needs 4 in a row (attacker, defender,
+  // flanker, plus border headroom), not just 2.
+  function makeRowBoard(): { board: GameBoard; terrainData: TerrainTypeData } {
+    const terrainData = flatTerrainData();
+    const mapText = Array.from({ length: 6 }, () => 'Gg, Gg, Gg, Gg, Gg, Gg').join('\n');
+    const map = GameMap.fromMapString(mapText, terrainData);
+    const board = new GameBoard(map);
+    board.addTeam(new Team(1));
+    board.addTeam(new Team(2));
+    return { board, terrainData };
+  }
+
+  it('is true when an ally of the attacker flanks the defender in a straight line, false without one', () => {
+    const { board } = makeRowBoard();
+    const t = makeUnitType('u', 20, flatMoveType(flatTerrainData(), 100), makeWeapon(1, 1));
+    const attacker = Unit.create(t, 1, new Location(0, 2));
+    const defender = Unit.create(t, 2, new Location(1, 2));
+    board.addUnit(attacker);
+    board.addUnit(defender);
+    expect(isBackstabActive(board, attacker.location, defender.location)).toBe(false); // no flanker yet.
+
+    // (0,2) -> (1,2) is a SE step; on this odd-column-offset grid the SE
+    // direction continued one more step from (1,2) lands on (2,3), not
+    // (2,2) -- verified via Location.toCubic() diffs, not assumed.
+    const enemyFlanker = Unit.create(t, 2, new Location(2, 3)); // same side as defender -- not a flank.
+    board.addUnit(enemyFlanker);
+    expect(isBackstabActive(board, attacker.location, defender.location)).toBe(false);
+
+    board.removeUnitAt(enemyFlanker.location);
+    const allyFlanker = Unit.create(t, 1, new Location(2, 3)); // same side as attacker -- real flank.
+    board.addUnit(allyFlanker);
+    expect(isBackstabActive(board, attacker.location, defender.location)).toBe(true);
+
+    allyFlanker.setStatus('petrified', true);
+    expect(isBackstabActive(board, attacker.location, defender.location)).toBe(false); // incapacitated flanker doesn't count.
+  });
+
+  it('real combat: a backstab-wielding attacker deals double damage with a flanking ally present, single damage without one', () => {
+    const { board } = makeRowBoard();
+    const moveType = flatMoveType(flatTerrainData(), 100); // always-hit, for a deterministic damage-only comparison.
+    const attackerType = makeUnitType('backstabber', 30, moveType, makeBackstabWeapon(6));
+    const defenderType = makeUnitType('target', 99, moveType, makeWeapon(0, 0));
+    const allyType = makeUnitType('ally', 20, moveType, makeWeapon(0, 0));
+
+    const attacker = Unit.create(attackerType, 1, new Location(0, 3));
+    const defender = Unit.create(defenderType, 2, new Location(1, 3));
+    board.addUnit(attacker);
+    board.addUnit(defender);
+
+    const rng = new RngDeterministic(new MtRng(7));
+    const noFlankResult = executeAttack(board, rng, new Location(0, 3), 0, new Location(1, 3));
+    expect(noFlankResult.blows[0]!.damage).toBe(6); // no flanker: real weapon damage, unmultiplied.
+
+    defender.hitpoints = 99;
+    attacker.attacksLeft = 1;
+    // Straight-line continuation of the (0,3)->(1,3) SE step is (2,4), not
+    // (2,3) -- same odd-column-offset geometry as the test above.
+    const ally = Unit.create(allyType, 1, new Location(2, 4));
+    board.addUnit(ally);
+    const rng2 = new RngDeterministic(new MtRng(7));
+    const flankResult = executeAttack(board, rng2, new Location(0, 3), 0, new Location(1, 3));
+    expect(flankResult.blows[0]!.damage).toBe(12); // flanking ally present: real backstab doubling.
   });
 });

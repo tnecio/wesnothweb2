@@ -29,6 +29,12 @@
       "name": "[Debug] Scenario Progression",
       "description": "Two tiny scenarios chained by next_scenario=, with a real gold/recall carryover setup -- for fast progression debugging.",
       "firstScenario": "synth_progression_01"
+    },
+    {
+      "id": "synthetic_abilities",
+      "name": "[Debug] Abilities & Specials",
+      "description": "13 real mainline units, each demonstrating one weapon special or ability (poison, drains, berserk, firststrike, marksman, magical, backstab, charge, swarm, plague, heals, regenerate, skirmisher) -- for fast specials/abilities debugging.",
+      "firstScenario": "synth_abilities_01"
     }
   ]
 }

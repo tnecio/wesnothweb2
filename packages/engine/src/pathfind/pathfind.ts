@@ -38,9 +38,12 @@
  *    `[filter_location]`, etc.). Ability evaluation isn't ported (abilities
  *    are inert raw WML per `UnitType`'s module doc comment), so
  *    `hasSkirmisher()` below is a raw-data proxy: true if any of the unit's
- *    type-level `[abilities]` children has `id=skirmisher` (the id every
- *    mainline skirmisher-granting ability uses, per
- *    `data/core/macros/abilities.cfg`). This is right for a unit that
+ *    type-level `[abilities]` children is TAG `skirmisher` (matching
+ *    upstream's own `tag_name == "..."` ability-type matching, not the
+ *    ability's `id=` -- see `UnitType.abilities`'s own doc comment on why
+ *    `id=` isn't a safe discriminator in general, even though it happens
+ *    to equal the tag name for every real mainline skirmisher-granting
+ *    ability too). This is right for a unit that
  *    unconditionally has the ability and wrong for a hypothetical
  *    conditionally-active one -- there are no mainline abilities like that
  *    for skirmisher specifically, so this is a safe approximation today.
@@ -95,7 +98,7 @@ export function emitsZoc(unit: Unit): boolean {
 
 /** Approximates `unit.get_ability_bool("skirmisher", loc)` -- see module doc comment. */
 export function hasSkirmisher(unit: Unit): boolean {
-  return unit.type.abilities.some((a) => a.getString('id', '') === 'skirmisher');
+  return unit.type.abilities.some((a) => a.tag === 'skirmisher');
 }
 
 /** Mirrors `pathfind::enemy_zoc`. */

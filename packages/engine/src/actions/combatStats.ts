@@ -41,11 +41,18 @@
  *    weapon specials (poison/slow/drains/petrifies/firststrike/berserk/
  *    swarm/marksman/magical carry no such filters in `data/core/macros/
  *    weapon_specials.cfg`) and wrong only for conditional ones.
- *  - **Backstab is NOT evaluated** (`[damage] id=backstab`): its condition
- *    is a WFL `[filter_opponent]` formula needing position/facing context
- *    (an ally on the opposite hex) that has no evaluator yet. Left as
- *    inert data -- `hasSpecialId(weapon, 'backstab')` would find it, but
- *    nothing calls that.
+ *  - **Backstab IS evaluated** (2026-09-11), as a narrow, hand-coded
+ *    geometric proxy rather than a general WFL `[filter_opponent]`
+ *    evaluator: `isBackstabActive` below checks whether the hex
+ *    continuing in a straight line past the defender (attacker ->
+ *    defender -> flanker) holds a unit hostile to the defender and not
+ *    incapacitated -- matching the special's own real, plain-language
+ *    `description=` ("double damage if there is an enemy of the target on
+ *    the opposite side of the target"), not the full WFL formula. Callers
+ *    (`GameSession.buildPreview`, `combat.ts`'s `executeAttack`) compute
+ *    it themselves (they have board/location access this module
+ *    deliberately doesn't) and pass it in via `UnitStatsOptions.
+ *    backstabActive`.
  *  - **Leadership is NOT applied** (`under_leadership()` upstream): it's
  *    an *ability* granted by an adjacent higher-level unit, not a weapon
  *    special on the attacking unit's own weapon -- finding it needs a
@@ -54,22 +61,19 @@
  *  - **Resistance-granting abilities are NOT applied**: only the
  *    attacked unit's own `moveType.resistanceAgainst()` (already a real,
  *    tested part of `Unit.ts`) is used, matching `Unit.ts`'s own stance.
- *  - **`specials_list=` (the modern shorthand many mainline `[attack]`
- *    tags use to reference a shared `[units][weapon_specials]` registry
- *    entry, e.g. `specials_list=marksman`) is NOT resolved by
- *    `UnitType.ts`'s `AttackType.fromConfig`** -- that only reads an
- *    inline `[specials]` child. Since `UnitType.ts` is out of bounds for
- *    this task (model/ is owned by other work), a weapon parsed straight
- *    from a modern mainline file via `AttackType.fromConfig` will have an
- *    empty `.specials` even when `specials_list=` names real specials.
- *    Callers that need this resolved (this module's own tests do, to
- *    verify against real mainline units) must pre-splice the registry
- *    entries into a synthesized `[specials]` child themselves before
- *    calling `AttackType.fromConfig` -- see `test/actions/combat.realUnits.test.ts`
- *    for the helper that does this from `data/core/units.cfg`'s
- *    `[units][weapon_specials]` block. This is a real, flagged gap in the
- *    upstream data model port, not something this module can fix on its
- *    own.
+ *  - **`specials_list=`/`abilities_list=` (the modern shorthand most
+ *    mainline `[attack]`/`[unit_type]` tags use instead of inline
+ *    `[specials]`/`[abilities]` children, e.g. `specials_list=marksman,
+ *    poison`) IS resolved** (2026-09-11) against the real `[units]
+ *    [weapon_specials]`/`[abilities]` registry -- see `UnitType.ts`'s
+ *    `AttackType.fromConfig`/`UnitType.fromConfig` and
+ *    `UnitTypeDatabase.ts`'s `collectSpecialRegistry`. A weapon/type built
+ *    without passing a registry (e.g. a hand-built test fixture) simply
+ *    resolves `specials_list=`/`abilities_list=` to nothing, same as
+ *    before -- this module's own `id=`-based special matching (see above)
+ *    needed no change, since real content's weapon-special `id=` already
+ *    equals its canonical tag name whether declared inline or via the
+ *    registry.
  *  - **Plague** creates a replacement unit only if the caller supplies a
  *    `resolveType` callback (see `combat.ts`); otherwise it's flagged in
  *    the result but no unit is created.
@@ -143,6 +147,8 @@ export interface UnitStatsOptions {
   readonly maxLiminalBonus?: number;
   /** Overrides the terrain-defense-derived base hit chance (mirrors the `opp_terrain_defense` optional param). */
   readonly opponentTerrainDefense?: number;
+  /** The real geometric backstab condition for THIS attacker/defender pair, computed by the caller (see `combat.ts`'s `isBackstabActive`) -- only doubles damage when `isAttacker` is also true for this call. Default false. */
+  readonly backstabActive?: boolean;
 }
 
 /**
@@ -240,6 +246,17 @@ export function computeUnitStats(
   let damage = roundDamage(baseDamage, damageMultiplier, 10000);
   let slowDamage = roundDamage(baseDamage, damageMultiplier, 20000);
   if (isSlowed) damage = slowDamage;
+
+  // Backstab: `[damage] id=backstab` (default apply_to=self, active_on=offense)
+  // doubles ONLY the wielder's own damage, and only when it's the one doing
+  // the attacking in this exchange -- unlike charge below, never the
+  // defender's retaliation. `options.backstabActive` is the caller-computed
+  // geometric condition (see `isBackstabActive` in `combat.ts`); this
+  // module has no board/location access to compute it itself.
+  if (isAttacker && (options.backstabActive ?? false) && hasSpecialId(weapon, 'backstab')) {
+    damage *= 2;
+    slowDamage *= 2;
+  }
 
   // Charge: `[damage] id=charge` with `apply_to=both` doubles both combatants'
   // damage for this exchange, but only "when used offensively" (active_on=offense).
