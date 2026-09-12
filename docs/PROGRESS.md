@@ -1777,3 +1777,84 @@ to go back and read MORE of the surrounding real source (here: the
 sibling function actually responsible, not just the one already found),
 not to assume the fidelity claim was directionally right and just
 narrower than tested.
+
+## 2026-09-12: Phase 9 (terrain visuals) started -- real `[terrain_graphics]` rule parsing + matching, verified end-to-end
+
+User asked to tackle terrain visuals next, having just confirmed (this
+session) that the real desktop Wesnoth binary can be installed and run
+headlessly (Xvfb + apt package) for reference screenshots, and separately
+that `wesnoth --screenshot <map> <output>` renders a `.map` file's terrain
+compositing with no GUI at all -- a fast, deterministic ground-truth
+generator kept in mind for future visual comparison work.
+
+Re-scoped against real source before writing any code (per the plan doc's
+own standing note to revisit attempt #1's approach rather than assume it):
+read `terrain/builder.hpp`/`.cpp` in full (1280+842 lines) directly, not
+just attempt #1's own retrospective. Key finding: attempt #1 got terrain
+imagery right by compiling the real C++ engine to WASM and querying it
+per-hex -- a different architecture from this project (which reimplements
+engine logic in TS). Re-derived the two-phase split this project needs:
+static WML-rule parsing (build time, Node) + dynamic per-hex matching
+(client-side, reacts to ToD/mid-scenario terrain changes).
+
+**A real gotcha along the way**: the `wesnoth/` submodule checked out here
+is a dev/master-branch checkout, whose `data/core/terrain-graphics/`
+directory has been substantially refactored since 1.16.9 (the version
+`apt` installed for the screenshot work) -- `deprecated-*`/`enduring-*`/
+`new-*` files, `#arg`/`[+tag]` merge syntax, `x,y=0,0` multi-assign. Also
+non-obvious: the actual per-terrain rule *invocations* live in a sibling
+FILE `core/terrain-graphics.cfg` (singular), included separately from
+`data/_main.cfg` -- not the `terrain-graphics/` directory, which turned out
+to be almost entirely macro *definitions*. First attempt at loading real
+content only processed the directory and got 13 rules back; fixed by
+also preprocessing `core/terrain-graphics.cfg` against the same macro
+table, in the right order.
+
+Built (new `packages/renderer/src/terrain/`):
+- `legacyHex.ts`: the non-standard hex-offset arithmetic (`legacy_sum`)
+  `terrain_builder` requires for rotation/constraint-offset correctness --
+  deliberately kept separate from `Location.ts`'s "correct" hex math.
+- `terrainGraphicsRules.ts`: real WML parsing -- `[tile]` constraints,
+  `[image]`/`[variant]` (with the "declared variants first, [image]'s own
+  name= last as unconditional fallback" ordering), `map=` ASCII-art anchor
+  parsing, rotation-template expansion (`rotations=`, `@Rn`/`@V` token
+  substitution, the real rotation matrices), and existence-based rule
+  validity filtering (`loadRuleImages`, including its easy-to-miss
+  "stop at the first fully-missing `@V` variation" short-circuit -- not
+  "skip that one variation", stop entirely).
+- `terrainBuilder.ts`: the dynamic half -- `build_terrains`/`rule_matches`/
+  `apply_rule`/`tile::rebuild_cache` -- run client-side against a live map
+  + current ToD. `get_noise()`'s 32-bit wraparound hash ported bit-exact
+  via `Math.imul`/`>>> 0`. Deliberately skips upstream's "cheapest
+  constraint" candidate-prefiltering optimization (brute-forces every
+  rule against every padded hex instead) -- same result, simpler, slower;
+  flagged for revisit.
+
+**Verification, strongest yet for a from-scratch port in this project**:
+parsing the real (dev-branch) `data/core/terrain-graphics/` content
+produces **exactly 10,063 rules** -- the identical number attempt #1's
+own C++-oracle-verified measurement reported for the same real content
+(`~/wesnothweb/doc/Refactor_display_layer.md` section 3). Independent
+confirmation the parser/rotation/filtering port is correct, not just
+plausible. End-to-end run against the real Dead_Water scenario-1 map:
+all 1161 real hexes resolve at least one background image layer (no
+gaps); build phase ~7s, per-hex resolve ~20ms for the whole map (flagged
+as a real, known perf cost of the brute-force matching choice above --
+acceptable for a one-time per-scenario-load cost for now, revisit if it
+proves too slow once actually wired into the UI's load path).
+
+New tests: 10 synthetic + 5 real-content in `terrainGraphicsRules.test.ts`/
+`.real.test.ts`, 7 synthetic in `terrainBuilder.test.ts`, 1 real
+end-to-end perf/sanity test in `terrainBuilder.deadwater.test.ts`. All
+268 engine + 32 lua-bridge + 3 oracle-tools + 144 renderer + 33 UI tests
+pass; typecheck clean across every package.
+
+**Not done yet** (explicitly deferred, not silently skipped): wiring this
+into `SnapshotBoard`/PixiJS to actually replace the flat-coloured-hex
+rendering (needs a build-time snapshot loader in
+`build-scenario-snapshot.mjs` shipping the parsed rule list as JSON, plus
+`SnapshotBoard` calling `buildTerrainTiles`/`getTerrainFramesAt` and using
+the already-existing `makeLayerSprite`/`ImageCache` to actually draw);
+`center=` multi-hex image slicing; animation start-time jitter; ToD colour
+tinting (Phase 12); the "cheapest constraint" perf optimization if ~7s
+per scenario load turns out to matter in practice.

@@ -543,11 +543,21 @@ are tracked as real, in-scope work under the new **Phase 15**.
 
 ## Phase 9 — Terrain visuals
 
-**Status: not started.** Split out of Phase 4 (2026-09-09, user's call):
-real per-hex `[terrain_graphics]` image compositing is large enough on its
-own, and is exactly one of the two things that stalled attempt #1, to
-deserve its own explicit scope rather than living inside "Phase 4
-rendering" as an implicit, easy-to-forget gap.
+**Status: in progress (2026-09-12) -- rule parsing + client-side matching
+delivered and verified against real content (10,063 rules, matching
+attempt #1's own oracle-verified count exactly; full Dead_Water scenario-1
+map resolves with no gaps). Not yet wired into actual rendering** -- see
+`docs/PROGRESS.md`'s 2026-09-12 entry for the full account. Remaining:
+build-time snapshot loader, `SnapshotBoard` wiring to replace flat-coloured
+hexes, ToD tinting, animation start-time jitter, `center=` multi-hex
+image slicing, and revisiting the brute-force matching's ~7s/scenario
+build cost if it proves too slow once wired into the real load path.
+
+Split out of Phase 4
+(2026-09-09, user's call): real per-hex `[terrain_graphics]` image
+compositing is large enough on its own, and is exactly one of the two
+things that stalled attempt #1, to deserve its own explicit scope rather
+than living inside "Phase 4 rendering" as an implicit, easy-to-forget gap.
 
 - Real per-hex `[terrain_graphics]` image compositing: base + overlay
   layers, edge-blending between adjacent terrain types, time-of-day
@@ -561,9 +571,60 @@ rendering" as an implicit, easy-to-forget gap.
   for unit sprites; this phase is about driving it from real per-hex
   terrain layer data the way `display.cpp`'s terrain drawing does, which
   nothing currently does.
-- Worth a fresh, dedicated scoping pass before starting rather than
-  assuming attempt #1's approach is still right — revisit what actually
-  went wrong there first.
+
+### Re-scoping (2026-09-12), against real source
+
+Attempt #1's approach (compile the real C++ engine to WASM, call
+`terrain_builder::get_terrain_frames_at()` per hex through embind — see
+`~/wesnothweb/doc/Refactor_display_layer.md`) got the imagery *right*
+(measured to 1/255 against the engine's own oracle) but is a different
+architecture from this project, which reimplements engine logic directly
+in TypeScript (see `packages/engine/src/model/Terrain.ts`'s own doc
+comment: "Deliberately NOT ported: `terrain/builder.cpp`... a rendering
+concern for a later phase" — this phase). Re-reading
+`wesnoth/src/terrain/builder.hpp`/`.cpp` (1280+842 lines) directly rather
+than assuming attempt #1's shape still applies:
+
+- `terrain_builder` has two phases upstream, and the port mirrors them:
+  (1) **parse + build** `[terrain_graphics]` WML into a rule list, each
+  rule a set of `[tile]` *constraints* (relative hex offsets + terrain-type
+  match + flag conditions) each carrying `[image]`s (with `[variant]`
+  sub-images filtered by `has_flag`/`tod`); rotation templates
+  (`rotations=`) expand one rule into up to 6 concrete rules via a real
+  hex-geometry rotation matrix (`rotate`/`rotate_rule`) plus `@Rn`/`@V`
+  token substitution. This is static (independent of any specific map), so
+  it belongs at **build time** in `apps/web/scripts/build-scenario-snapshot.mjs`
+  (same place `core/terrain.cfg`/`core/units.cfg` already get preprocessed
+  and parsed, per that script's own doc comment), *not* re-parsed in the
+  browser — mirrors how `UnitTypeDatabase` ships already-flattened JSON,
+  not raw WML, to the client.
+  - `#meta-macro` (seen throughout `data/core/terrain-graphics/*.cfg`) is
+    **not a real preprocessor directive** — confirmed against
+    `preprocessor.cpp`'s directive dispatch (`"define"`/`"ifdef"`/
+    `"textdomain"`/... /else `comment = true`): unrecognized `#word` lines
+    are silently treated as comments. No support needed for it.
+  - Dead_Water has no scenario-local `[terrain_graphics]` rules (checked),
+    so the first milestone only needs `data/core/terrain-graphics/`.
+  - `packages/engine/src/model/Terrain.ts` already ports
+    `t_translation`'s `TerrainCode`/`terrainMatches`/`parseTerrainList`
+    exactly (including the `*`/`!`/per-layer-wildcard semantics
+    `ter_match` needs) — reused as-is, not reimplemented.
+- (2) **match + apply rules against the live map, per hex**, is dynamic
+  (terrain can change mid-scenario via `[terrain]`; ToD changes every
+  turn) so it runs **client-side**, mirroring `build_terrains`/
+  `rule_matches`/`apply_rule` (which rule) and `tile::rebuild_cache`/
+  `get_terrain_frames_at` (which *variant*/frame, filtered by the tile's
+  accumulated flags and current ToD, seeded by `get_noise()` — a 32-bit
+  wraparound hash that must be replicated bit-exact via `Math.imul`/
+  `>>> 0`, since it drives both `probability=` rejection and `@V`/variant
+  random selection deterministically). Output feeds directly into the
+  existing `TerrainFrame`/`TerrainLayer`/`makeLayerSprite` types in
+  `packages/renderer/src/terrainPositioning.ts`, which already do the
+  hex-cropping/positioning half of this and are otherwise unused today.
+- Living in `packages/renderer/src/terrain/` (new), alongside
+  `src/animation/` — WML-driven *imagery selection* lives in the renderer
+  package by this project's existing convention, even though it has no
+  direct PixiJS calls itself (`unitAnimation.ts` is the precedent).
 
 ### Catalogue checklist (category 2's terrain-graphics bullets, category 16's compositing bullets)
 
