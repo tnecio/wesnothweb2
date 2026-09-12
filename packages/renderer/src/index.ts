@@ -168,3 +168,5 @@ export {
   type VillageOwnerPoint,
   type UnitAnimationCue,
 } from './SnapshotBoard'
+
+export { type HexVisibility, type FogShroudHex } from './fogShroud'

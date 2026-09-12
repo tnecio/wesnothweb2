@@ -49,6 +49,7 @@
     type SaveGameData,
     type EconomyInfo,
     type VillageOwnerInfo,
+    type HexVisibilityPoint,
     type ReachableHexPoint,
     type LastAttackAnimation,
     type LastMoveAnimation,
@@ -122,6 +123,7 @@
   let gold = $state(session.board.getTeam(session.activeSide)?.gold ?? 0);
   let economyInfo = $state<EconomyInfo>(session.economyInfo);
   let villageOwners = $state<VillageOwnerInfo[]>(session.villageOwnership);
+  let hexVisibility = $state<HexVisibilityPoint[]>(session.hexVisibility);
   let timeOfDay = $state<TimeOfDayEntry>(session.currentTimeOfDay);
   let statusMessage = $state('Click one of your units to select it.');
 
@@ -159,6 +161,7 @@
     gold = session.board.getTeam(session.activeSide)?.gold ?? 0;
     economyInfo = session.economyInfo;
     villageOwners = session.villageOwnership;
+    hexVisibility = session.hexVisibility;
     timeOfDay = session.currentTimeOfDay;
 
     if (session.scenarioResult) {
@@ -734,6 +737,7 @@
         {attackTargets}
         {recruitTiles}
         {villageOwners}
+        {hexVisibility}
         onHexClick={handleHexClick}
         hoverDefensePercent={(x, y) => session.defensePercentAt(x, y)}
       />

@@ -62,6 +62,7 @@ import {
   clearShroud,
   recalculateFog,
   getVisibleUnit,
+  isUnitVisibleToTeam,
   type RaiseEvent,
   connectedCastleTiles,
   recruitUnit,
@@ -108,6 +109,13 @@ export interface HexPoint {
 /** One currently-owned village, for the board's live ownership-flag rendering -- see `GameSession.villageOwnership`. */
 export interface VillageOwnerInfo extends HexPoint {
   side: number;
+}
+
+/** Mirrors `Team.shrouded`/`fogged`'s three-state result for one hex, from `playerSide`'s perspective -- see `GameSession.hexVisibility`. */
+export type HexVisibility = 'shrouded' | 'fogged' | 'clear';
+
+export interface HexVisibilityPoint extends HexPoint {
+  visibility: HexVisibility;
 }
 
 /** One hex the selected unit could move to this turn, with the real terrain defense (`100 - defenseModifier`, see `SelectedUnitInfo.defensePercent`'s own doc comment) it would have there -- real, reported bug (bugs3.md #2): the map only ever showed a hex's defense on hover, never all of a selected unit's real options at a glance. */
@@ -733,6 +741,7 @@ export class GameSession {
   private pumpEvents(): void {
     if (!this.scenarioResult) this.eventPump.pump();
     this.checkForGameEnd();
+    this.syncVillageMemory();
   }
 
   /** `play_controller::do_init_side`'s events that come before income and healing. */
@@ -784,7 +793,11 @@ export class GameSession {
    * snapshot's original `units` array onto the board.
    */
   get renderUnits(): SnapshotUnit[] {
-    return this.board.allUnits().map((u) => this.toSnapshotUnit(u, u.location.x, u.location.y, u.hitpoints));
+    const playerTeam = this.board.getTeam(this.playerSide);
+    return this.board
+      .allUnits()
+      .filter((u) => !playerTeam || isUnitVisibleToTeam(this.board, u, playerTeam, false))
+      .map((u) => this.toSnapshotUnit(u, u.location.x, u.location.y, u.hitpoints));
   }
 
   /** Shared by `renderUnits` (live position/hp) and `messageUnitSnapshot` (a checkpoint's captured position/hp) -- every OTHER field (type, side, abilities, etc.) is read straight off `unit` since none of them change mid-startup-event. */
@@ -1244,12 +1257,51 @@ export class GameSession {
     };
   }
 
-  /** Every real village currently owned by a side, for the board's live ownership-flag markers -- unowned villages are omitted (nothing to mark; the terrain colour alone already shows "this is a village," see `SnapshotBoard`'s own doc comment). */
+  /**
+   * Remembers, per village, the last owner seen while that hex was NOT
+   * fogged for `playerSide` -- mirrors upstream's own "under fog you see
+   * the last-known owner, not the current one" rule (`display.cpp`'s
+   * `draw_villages`/`draw_flag`, both gated on `!fogged(loc) ||
+   * !viewing_team().is_enemy(...)`). Updated by `syncVillageMemory`,
+   * called after every action that can move the game forward.
+   */
+  private readonly lastKnownVillageOwner = new Map<string, number>();
+
+  private syncVillageMemory(): void {
+    for (const loc of this.board.map.villages) {
+      if (this.board.isFogged(this.playerSide, loc)) continue;
+      const side = this.board.villageOwner(loc);
+      if (side !== undefined) this.lastKnownVillageOwner.set(loc.key(), side);
+      else this.lastKnownVillageOwner.delete(loc.key());
+    }
+  }
+
+  /** Every village whose owner is known to `playerSide` (current if visible, else last-known under fog), for the board's live ownership-flag markers -- unowned villages are omitted (nothing to mark; the terrain colour alone already shows "this is a village," see `SnapshotBoard`'s own doc comment). */
   get villageOwnership(): VillageOwnerInfo[] {
     const result: VillageOwnerInfo[] = [];
     for (const loc of this.board.map.villages) {
-      const side = this.board.villageOwner(loc);
+      const side = this.board.isFogged(this.playerSide, loc) ? this.lastKnownVillageOwner.get(loc.key()) : this.board.villageOwner(loc);
       if (side !== undefined) result.push({ x: loc.x, y: loc.y, side });
+    }
+    return result;
+  }
+
+  /**
+   * Per-hex shroud/fog state for `playerSide`, feeding the board's fog
+   * overlay (`SnapshotBoard.updateFogShroud`). Empty when the player's
+   * side uses neither -- the overwhelmingly common case -- so a scenario
+   * without `shroud=`/`fog=` pays nothing extra to render.
+   */
+  get hexVisibility(): HexVisibilityPoint[] {
+    const team = this.board.getTeam(this.playerSide);
+    if (!team || !team.fogOrShroud()) return [];
+    const result: HexVisibilityPoint[] = [];
+    for (let x = 0; x < this.board.map.w(); x++) {
+      for (let y = 0; y < this.board.map.h(); y++) {
+        const loc = new Location(x, y);
+        const visibility: HexVisibility = this.board.isShrouded(this.playerSide, loc) ? 'shrouded' : this.board.isFogged(this.playerSide, loc) ? 'fogged' : 'clear';
+        result.push({ x, y, visibility });
+      }
     }
     return result;
   }
@@ -1729,6 +1781,8 @@ export class GameSession {
     this.scenarioResult = data.scenarioResult;
     this.startupEventsRun = data.startupEventsRun;
     this.clearSelection();
+    this.lastKnownVillageOwner.clear();
+    this.syncVillageMemory();
   }
 
   /** Builds a fresh session from `snapshot`, then overwrites its live state from a save. */

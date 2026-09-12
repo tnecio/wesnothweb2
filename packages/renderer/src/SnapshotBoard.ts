@@ -67,7 +67,8 @@
  */
 
 import * as PIXI from 'pixi.js';
-import { Direction } from '@wesnothweb2/engine/src/model/Location.js';
+import { Direction, Location, getAdjacentTiles } from '@wesnothweb2/engine/src/model/Location.js';
+import { hexOverlayImages, defaultAssetExists, type FogShroudHex } from './fogShroud.js';
 import { parseTerrainCode, NONE_TERRAIN, type TerrainCode } from '@wesnothweb2/engine/src/model/Terrain.js';
 import {
   hexCorners,
@@ -395,6 +396,20 @@ export class SnapshotBoard {
    * correctly, for the reachable/attack-target hex fills).
    */
   private readonly selectionLayer = new PIXI.Container();
+  /**
+   * Fog/shroud hex overlays -- mirrors upstream's `drawing_layer::
+   * fog_shroud`, which sits ABOVE every unit layer (so a fogged hex's
+   * darkening genuinely covers anything drawn under it) but below
+   * `selected_hex`/`attack_indicator` (kept as `selectionLayer` here).
+   */
+  private readonly fogShroudLayer = new PIXI.Container();
+  /**
+   * Per-hex terrain containers built once by `renderTerrain`, keyed by
+   * `"x,y"` (logical coordinates) -- lets `updateFogShroud` hide a
+   * shrouded hex's terrain entirely (mirrors upstream's `draw_hex`: "if
+   * is_shrouded, terrain is not drawn at all") without rebuilding it.
+   */
+  private readonly terrainHexContainers = new Map<string, { bg?: PIXI.Container; fg?: PIXI.Container }>();
   private units: SnapshotUnit[];
   private readonly teamColor: Map<number, string>;
   private readonly onHexClick?: (x: number, y: number) => void;
@@ -439,6 +454,7 @@ export class SnapshotBoard {
       this.highlightLayer,
       this.unitLayer,
       this.terrainForegroundLayer,
+      this.fogShroudLayer,
       this.selectionLayer,
     );
   }
@@ -591,6 +607,8 @@ export class SnapshotBoard {
     // ~8,700 sprites unculled costs ~2ms of CPU (see GameBoardView).
     const hexContainer = (): PIXI.Container => new PIXI.Container();
     for (const hex of perHex) {
+      const key = `${hex.x},${hex.y}`;
+      const entry: { bg?: PIXI.Container; fg?: PIXI.Container } = {};
       if (hex.bg.length > 0) {
         const c = hexContainer();
         for (const layer of hex.bg) {
@@ -598,6 +616,7 @@ export class SnapshotBoard {
           if (sprite) c.addChild(sprite);
         }
         this.terrainLayer.addChild(c);
+        entry.bg = c;
       }
       if (hex.fg.length > 0) {
         const c = hexContainer();
@@ -606,6 +625,69 @@ export class SnapshotBoard {
           if (sprite) c.addChild(sprite);
         }
         this.terrainForegroundLayer.addChild(c);
+        entry.fg = c;
+      }
+      if (entry.bg || entry.fg) this.terrainHexContainers.set(key, entry);
+    }
+  }
+
+  /**
+   * Draws (replacing any previous) the fog/shroud overlay from `hexes`
+   * (typically `GameSession.hexVisibility`) -- hides a shrouded hex's
+   * terrain entirely and covers shrouded/fogged hexes with the real
+   * void/fog art, plus the directional transition sprites that fade a
+   * clear/fogged hex into a more-hidden neighbour (`fogShroud.ts`'s port
+   * of `display::get_fog_shroud_images`). Pass `[]` (the common case for
+   * a scenario using neither `shroud=` nor `fog=`) to clear any prior
+   * overlay and restore full terrain visibility.
+   */
+  updateFogShroud(hexes: readonly FogShroudHex[]): void {
+    if (hexes.length === 0) {
+      this.fogShroudLayer.removeChildren();
+      for (const c of this.terrainHexContainers.values()) {
+        if (c.bg) c.bg.visible = true;
+        if (c.fg) c.fg.visible = true;
+      }
+      return;
+    }
+    void this.drawFogShroud(hexes);
+  }
+
+  /** Async half of `updateFogShroud` -- loads whatever fog/void/transition images this call needs, then swaps the layer in one go. */
+  private async drawFogShroud(hexes: readonly FogShroudHex[]): Promise<void> {
+    const visAt = new Map<string, FogShroudHex['visibility']>();
+    for (const h of hexes) visAt.set(`${h.x},${h.y}`, h.visibility);
+    const neighborsOf = (loc: Location): FogShroudHex['visibility'][] =>
+      getAdjacentTiles(loc).map((adj) => visAt.get(`${adj.x},${adj.y}`) ?? 'shrouded');
+
+    const perHex: Array<{ cx: number; cy: number; images: string[] }> = [];
+    const refs = new Set<string>();
+    for (const h of hexes) {
+      const key = `${h.x},${h.y}`;
+      const containers = this.terrainHexContainers.get(key);
+      const shrouded = h.visibility === 'shrouded';
+      if (containers?.bg) containers.bg.visible = !shrouded;
+      if (containers?.fg) containers.fg.visible = !shrouded;
+
+      const images = hexOverlayImages(h.x, h.y, h.visibility, neighborsOf(new Location(h.x, h.y)), defaultAssetExists);
+      if (images.length === 0) continue;
+      const { x: cx, y: cy } = hexToPixel(toHexCoord(h.x, h.y));
+      perHex.push({ cx, cy, images });
+      for (const img of images) refs.add(`engine/${img}`);
+    }
+
+    await ImageCache.preload(refs);
+
+    this.fogShroudLayer.removeChildren();
+    for (const hex of perHex) {
+      for (const img of hex.images) {
+        const texture = await ImageCache.resolve(`engine/${img}`);
+        if (!texture) continue;
+        const sprite = new PIXI.Sprite(texture);
+        sprite.anchor.set(0.5);
+        sprite.x = hex.cx;
+        sprite.y = hex.cy;
+        this.fogShroudLayer.addChild(sprite);
       }
     }
   }

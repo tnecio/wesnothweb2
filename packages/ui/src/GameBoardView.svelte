@@ -41,6 +41,7 @@
     type SnapshotUnit,
     type VillageOwnerPoint,
     type UnitAnimationCue,
+    type FogShroudHex,
   } from '@wesnothweb2/renderer';
   import { fetchTerrainGraphicsRules } from './terrainGraphicsRulesCache.js';
   import { fetchTeamColors } from './teamColorsCache.js';
@@ -53,6 +54,7 @@
     attackTargets = [],
     recruitTiles = [],
     villageOwners = [],
+    hexVisibility = [],
     onHexClick,
     hoverDefensePercent,
   }: {
@@ -66,6 +68,8 @@
     recruitTiles?: readonly HexPoint[];
     /** Live village ownership (village hex -> owning side, or unowned if absent) -- re-applied whenever it changes, same as `units`. */
     villageOwners?: readonly VillageOwnerPoint[];
+    /** Per-hex shroud/fog state for the board's fog overlay -- see `GameSession.hexVisibility`. Empty when the scenario uses neither. */
+    hexVisibility?: readonly FogShroudHex[];
     onHexClick: (x: number, y: number) => void;
     /** Real terrain-defense percentage the currently selected unit would have at (x, y), for the hover status line -- `undefined`/`null` when nothing is selected or the hex is off-board. */
     hoverDefensePercent?: (x: number, y: number) => number | null;
@@ -241,6 +245,7 @@
       await newBoard.updateUnits(units);
       newBoard.setHighlights({ selected: selectedHex, reachable, attackTargets, recruitTiles });
       newBoard.updateVillageOwnership(villageOwners);
+      newBoard.updateFogShroud(hexVisibility);
     })().catch((err) => {
       console.error(err);
       status = `failed to load: ${err instanceof Error ? err.message : String(err)}`;
@@ -269,6 +274,10 @@
 
   $effect(() => {
     board?.updateVillageOwnership(villageOwners);
+  });
+
+  $effect(() => {
+    board?.updateFogShroud(hexVisibility);
   });
 
   /**
