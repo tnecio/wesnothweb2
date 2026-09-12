@@ -15,14 +15,14 @@
  *
  * NOT ported (noted rather than silently ignored -- see `filterHasUnknownCriteria`):
  * `name=`, `type_adv_tree=`, `ability=`/`ability_type=`, `role=`,
- * `race=`/`gender=`/`trait=`, `has_weapon=`, `find_in=`, terrain-based
- * criteria (`terrain=`, adjacency filters), `[filter_location]`,
- * `[filter_side]`, `[filter_vision]`, `[filter_wml]` (arbitrary WML-subtree
- * matching against a unit's stored variables), and `formula=`'s full
- * `unit_callable` surface (only a handful of scalar fields are exposed, see
- * `unitFormulaContext`). Real content leaning on these needs a follow-up
- * pass; `x=`/`y=`/`id=`/`type=`/`side=` cover the common cases (including
- * everything Dead_Water scenario 1's own event bodies use).
+ * `race=`/`gender=`/`trait=`, `has_weapon=`, `find_in=`, `[filter_side]`,
+ * `[filter_wml]` (arbitrary WML-subtree matching against a unit's stored
+ * variables), and `formula=`'s full `unit_callable` surface (only a
+ * handful of scalar fields are exposed, see `unitFormulaContext`). Real
+ * content leaning on these needs a follow-up pass; `x=`/`y=`/`id=`/
+ * `type=`/`side=`/`[filter_location]`/`[filter_vision]` cover the common
+ * cases (including everything Dead_Water scenario 1's own event bodies
+ * use).
  */
 
 import type { GameBoard } from '../model/GameBoard.js';
@@ -31,6 +31,7 @@ import { parseTerrainList, terrainMatches } from '../model/Terrain.js';
 import type { Unit } from '../model/Unit.js';
 import type { WmlConfig } from '../wml/config.js';
 import { MapFormulaCallable, parseFormula, Variant } from '../formula/index.js';
+import { isUnitVisibleToTeam } from '../pathfind/visibility.js';
 
 /** Parses WML's range-list syntax ("3", "3-7", "3,5,9-11") into inclusive [lo, hi] pairs. */
 function parseRanges(text: string): Array<[number, number]> {
@@ -125,8 +126,29 @@ export function unitMatchesFilter(unit: Unit, filterCfg: WmlConfig, board?: Game
     if (tag === 'and') matches = matches && unitMatchesFilter(unit, config, board);
     else if (tag === 'or') matches = matches || unitMatchesFilter(unit, config, board);
     else if (tag === 'not') matches = matches && !unitMatchesFilter(unit, config, board);
+    else if (tag === 'filter_location') matches = matches && !!board && findLocations(board, config).some((l) => l.equals(unit.location));
+    else if (tag === 'filter_vision') matches = matches && filterVisionMatches(board, unit, config);
   }
   return matches;
+}
+
+/**
+ * Mirrors `unit_filter`'s `[filter_vision]`: matches if, for at least one
+ * of `side=`'s sides (all sides if omitted), the unit's visibility to that
+ * side (fogged, or hidden from an enemy via a `hides` ability/`hidden=`)
+ * equals the requested `visible=` (default `yes`).
+ */
+function filterVisionMatches(board: GameBoard | undefined, unit: Unit, cfg: WmlConfig): boolean {
+  if (!board) return false;
+  const sideStr = cfg.getString('side', '');
+  const sides = sideStr === '' ? board.teams().map((t) => t.side) : sideStr.split(',').map((s) => Number(s.trim())).filter((n) => !Number.isNaN(n));
+  const wantVisible = cfg.getBoolean('visible', true);
+  for (const side of sides) {
+    const viewerTeam = board.getTeam(side);
+    if (!viewerTeam) continue;
+    if (wantVisible === isUnitVisibleToTeam(board, unit, viewerTeam, false)) return true;
+  }
+  return false;
 }
 
 /** Finds all board units (and, optionally, recall-list units) matching `filterCfg`. */
