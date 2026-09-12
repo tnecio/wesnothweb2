@@ -30,6 +30,7 @@
   import {
     type HexPoint,
     type UnitAnimationCue,
+    type AnimationContext,
     parseUnitAnimations,
     chooseAnimation,
     buildAttackAnimationContexts,
@@ -302,7 +303,7 @@
         ? { anims: attackerAnims, key: attackerKey, hex: attackerHex }
         : { anims: defenderAnims, key: defenderKey, hex: defenderHex };
 
-    return contexts.map(({ attackerContext, defenderContext }) => {
+    const cues = contexts.map(({ attackerContext, defenderContext }) => {
       const strikerRes = resourcesFor(attackerContext.myUnit);
       const receiverRes = resourcesFor(defenderContext.myUnit);
       return [
@@ -322,6 +323,42 @@
         },
       ];
     });
+
+    // Real, reported bug: death animations never played -- `unit_die`
+    // (udisplay.cpp ~L572-590) fires a SEPARATE "death" animation for the
+    // loser (loc=loser's own hex, secondLoc=winner's hex, hit=kill) after
+    // all of a fight's strike/defend animations finish, which this project
+    // never triggered at all: a dead unit's sprite just vanished the
+    // instant `sync()` next reconciled with the board (which had already
+    // removed it -- `executeAttack`'s `handleDeath` runs synchronously
+    // inside `confirmAttack`, well before this animation sequence plays).
+    const deathBeat: UnitAnimationCue[] = [];
+    const addDeathCue = (loser: Unit, winner: Unit): void => {
+      const loserRes = resourcesFor(loser);
+      const winnerRes = resourcesFor(winner);
+      const deathContext: AnimationContext = {
+        loc: loser.location,
+        secondLoc: winner.location,
+        myUnit: loser,
+        event: 'death',
+        value: 0,
+        value2: 0,
+        hit: 'kill',
+        terrainAtLoc: terrainLookup(session.board)(loser.location),
+      };
+      deathBeat.push({
+        key: loserRes.key,
+        anim: chooseAnimation(loserRes.anims, deathContext),
+        direction: loser.facing,
+        srcHex: loserRes.hex,
+        dstHex: winnerRes.hex,
+      });
+    };
+    if (info.result.attackerDied) addDeathCue(info.attacker, info.defender);
+    if (info.result.defenderDied) addDeathCue(info.defender, info.attacker);
+    if (deathBeat.length > 0) cues.push(deathBeat);
+
+    return cues;
   }
 
   /**
