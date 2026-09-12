@@ -1296,8 +1296,17 @@ export class GameSession {
     const team = this.board.getTeam(this.playerSide);
     if (!team || !team.fogOrShroud()) return [];
     const result: HexVisibilityPoint[] = [];
-    for (let x = 0; x < this.board.map.w(); x++) {
-      for (let y = 0; y < this.board.map.h(); y++) {
+    // Includes the one-hex border ring beyond the playable area (same
+    // -1..w()/-1..h() range `SnapshotBoard.renderTerrain` builds terrain
+    // containers for) -- real, reported bug: without this, a border hex
+    // just past a shrouded map edge always rendered fully revealed (no
+    // overlay computed for it at all), breaking the illusion right at the
+    // map's own boundary. `ShroudClearer.clearLoc` already extends real
+    // vision-clearing into this same ring (`map.onBoardWithBorder`), so
+    // `isShrouded`/`isFogged` already track it correctly -- this was a
+    // pure rendering gap, not a missing engine feature.
+    for (let x = -1; x <= this.board.map.w(); x++) {
+      for (let y = -1; y <= this.board.map.h(); y++) {
         const loc = new Location(x, y);
         const visibility: HexVisibility = this.board.isShrouded(this.playerSide, loc) ? 'shrouded' : this.board.isFogged(this.playerSide, loc) ? 'fogged' : 'clear';
         result.push({ x, y, visibility });

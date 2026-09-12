@@ -87,6 +87,36 @@ describe('fogShroudTransitionImages', () => {
   });
 });
 
+describe('fog/void image paths use the content-art convention, not the engine-chrome one', () => {
+  // Real, reported bug: SnapshotBoard.drawFogShroud used to pass these
+  // paths to ImageCache with an `engine/` prefix, which routes to the
+  // separate top-level `wesnoth/images/` (engine chrome: orbs, cursors,
+  // panels -- see ImageCache.imageUrl's own doc comment) instead of
+  // `data/core/images/`, where the real terrain/fog/* and terrain/void/*
+  // assets actually live. Every fog/shroud overlay image 404ed silently
+  // as a result, so only the flat black "hide the terrain" effect ever
+  // showed, with no soft transition sprites -- hard shroud edges instead
+  // of the real game's soft fade. `ImageCache.imageUrl` auto-prepends
+  // `core/images/` to any reference that does NOT start with `engine/`,
+  // `core/`, or `campaigns/` -- so these bare `terrain/...` paths (not
+  // reimported here to avoid pulling PIXI, which needs a DOM, into this
+  // plain-Node test file) are exactly the form that resolves correctly.
+  it('every path this module can emit is a bare terrain/... reference, never engine/-prefixed', () => {
+    const visAll: HexVisibility[] = ['fogged', 'shrouded', 'clear', 'fogged', 'shrouded', 'clear'];
+    const samples = [
+      ...baseOverlayImages('shrouded', 0, 0),
+      ...baseOverlayImages('fogged', 1, 2),
+      ...fogShroudTransitionImages(visAll, defaultAssetExists),
+      ...hexOverlayImages(3, 4, 'fogged', visAll, defaultAssetExists),
+    ];
+    expect(samples.length).toBeGreaterThan(0);
+    for (const img of samples) {
+      expect(img.startsWith('engine/')).toBe(false);
+      expect(img).toMatch(/^terrain\/(fog|void)\//);
+    }
+  });
+});
+
 describe('hexOverlayImages', () => {
   it('for a shrouded hex, returns only the base cover (no transitions -- nothing to fade into)', () => {
     const neighbors: HexVisibility[] = ['clear', 'clear', 'clear', 'clear', 'clear', 'clear'];

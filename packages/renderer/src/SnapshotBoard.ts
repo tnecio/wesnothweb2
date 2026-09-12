@@ -673,7 +673,13 @@ export class SnapshotBoard {
       if (images.length === 0) continue;
       const { x: cx, y: cy } = hexToPixel(toHexCoord(h.x, h.y));
       perHex.push({ cx, cy, images });
-      for (const img of images) refs.add(`engine/${img}`);
+      // These live under `data/core/images/terrain/{fog,void}/`, NOT the
+      // separate engine-chrome `images/` root -- no `engine/` prefix (that
+      // would route to the wrong physical directory, see `ImageCache.
+      // imageUrl`'s own doc comment). `hexedRef`/`~HEXED()` isn't needed
+      // either: these are already hex-shaped assets, not larger terrain
+      // tiles that need clipping to a hex mask.
+      for (const img of images) refs.add(img);
     }
 
     await ImageCache.preload(refs);
@@ -681,7 +687,7 @@ export class SnapshotBoard {
     this.fogShroudLayer.removeChildren();
     for (const hex of perHex) {
       for (const img of hex.images) {
-        const texture = await ImageCache.resolve(`engine/${img}`);
+        const texture = await ImageCache.resolve(img);
         if (!texture) continue;
         const sprite = new PIXI.Sprite(texture);
         sprite.anchor.set(0.5);

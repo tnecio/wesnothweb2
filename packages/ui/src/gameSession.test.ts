@@ -1012,6 +1012,47 @@ describe('GameSession.reachable defensePercent (real, reported bug: the map only
   });
 });
 
+describe('GameSession.hexVisibility (real, reported bugs: hard shroud edges + border hexes wrongly revealed)', () => {
+  it('is empty when playerSide uses neither fog nor shroud (the common case -- no overlay work at all)', () => {
+    const session = new GameSession(loadSnapshot());
+    expect(session.hexVisibility).toEqual([]);
+  });
+
+  it('covers the one-hex border ring beyond the playable map, not just on-board hexes', () => {
+    // Real, reported bug: SnapshotBoard.renderTerrain builds terrain
+    // containers for -1..w()/-1..h() (the same border ring
+    // ShroudClearer.clearLoc already extends real vision-clearing into),
+    // but hexVisibility only ever covered 0..w()-1/0..h()-1 -- so a
+    // border hex just past a shrouded map edge always rendered fully
+    // revealed (no overlay computed for it at all).
+    const session = new GameSession(loadSnapshot());
+    const team = session.board.getTeam(session.playerSide)!;
+    team.shroud.enabled = true;
+
+    const hv = session.hexVisibility;
+    const xs = hv.map((h) => h.x);
+    const ys = hv.map((h) => h.y);
+    expect(Math.min(...xs)).toBe(-1);
+    expect(Math.max(...xs)).toBe(session.board.map.w());
+    expect(Math.min(...ys)).toBe(-1);
+    expect(Math.max(...ys)).toBe(session.board.map.h());
+    expect(hv.length).toBe((session.board.map.w() + 2) * (session.board.map.h() + 2));
+  });
+
+  it('a border hex reads shrouded/clear consistent with the real Team.shrouded query at that same location (border hexes are not special-cased to always show revealed)', () => {
+    const session = new GameSession(loadSnapshot());
+    const team = session.board.getTeam(session.playerSide)!;
+    team.shroud.enabled = true;
+    // Untouched shroud: every hex, including the border ring, starts fully covered.
+    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    session.selectUnit(kaiKrellis); // no-op for shroud, just gives a real board reference point
+
+    const borderHex = session.hexVisibility.find((h) => h.x === -1 && h.y === -1)!;
+    expect(borderHex.visibility).toBe('shrouded');
+    expect(session.board.isShrouded(session.playerSide, new Location(-1, -1))).toBe(true);
+  });
+});
+
 describe('GameSession unit inspection (real, reported bug: no way to see information about enemy units)', () => {
   it('clicking an enemy that is NOT an attack target (nothing of mine selected) inspects it without selecting/acting on it', () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
