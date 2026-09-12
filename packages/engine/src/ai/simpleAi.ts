@@ -31,12 +31,12 @@
  * expected-damage-taken (with a heavy bonus for a likely kill and
  * penalty for a likely death) and take the best one if it clears a
  * "not a bad trade" threshold; otherwise move toward an unowned/enemy
- * village if one is reachable, else toward the nearest enemy unit (no
- * fog/vision system exists yet -- Phase 11 -- so "nearest enemy" is
- * simply board-wide, matching every other board-wide-visibility
- * shortcut already taken elsewhere in this project).
+ * village if one is reachable, else toward the nearest enemy unit it can
+ * see. Pathfinding, attack targets and "nearest enemy" all respect the
+ * AI side's own fog and `hides` visibility, like upstream's AI.
  */
 
+import { getVisibleUnit, isUnitVisibleToTeam } from '../pathfind/visibility.js';
 import { Location, distanceBetween, getAdjacentTiles } from '../model/Location.js';
 import type { GameBoard } from '../model/GameBoard.js';
 import type { Unit } from '../model/Unit.js';
@@ -204,7 +204,7 @@ function bestAttack(board: GameBoard, unit: Unit, destinations: readonly PathSte
   let best: AttackCandidate | undefined;
   for (const step of destinations) {
     for (const adj of getAdjacentTiles(step.curr)) {
-      const target = board.unitAt(adj);
+      const target = getVisibleUnit(board, adj, board.getTeam(unit.side), false);
       if (!target || target.side === unit.side) continue;
       const targetTeam = board.getTeam(target.side);
       const ownTeam = board.getTeam(unit.side);
@@ -228,6 +228,7 @@ function nearestEnemyLocation(board: GameBoard, unit: Unit): Location | undefine
     if (other.side === unit.side) continue;
     const otherTeam = board.getTeam(other.side);
     if (!team || !otherTeam || !team.isEnemy(otherTeam)) continue;
+    if (!isUnitVisibleToTeam(board, other, team, false)) continue;
     const d = distanceBetween(unit.location, other.location);
     if (d < bestDist) {
       bestDist = d;
@@ -238,9 +239,9 @@ function nearestEnemyLocation(board: GameBoard, unit: Unit): Location | undefine
 }
 
 function moveUnitTo(board: GameBoard, unit: Unit, dest: Location): MoveResult | undefined {
-  const route = findPath(board, unit, dest, { seeAll: true });
+  const route = findPath(board, unit, dest);
   if (route.steps.length === 0) return undefined;
-  return executeMove(board, unit, route.steps, { seeAll: true });
+  return executeMove(board, unit, route.steps);
 }
 
 /** Movement-only fallback for a unit with no worthwhile attack: capture a reachable unowned/enemy village, else close distance to the nearest enemy. Pushes a real `move` action (message + animation) if it moved. */
@@ -307,7 +308,7 @@ export function playAiTurn(board: GameBoard, side: number, rng: Rng, options: Ai
     if (unit.attacksLeft <= 0 && unit.movesLeft <= 0) continue;
     if (!board.allUnits().includes(unit)) continue; // died earlier this loop (e.g. a prior unit's plague/kill somehow reached it)
 
-    const { destinations } = reachableHexes(board, unit, { seeAll: true });
+    const { destinations } = reachableHexes(board, unit, { viewingTeam: board.getTeam(unit.side) });
     const steps = destinations.values();
 
     const attack = bestAttack(board, unit, steps, options);

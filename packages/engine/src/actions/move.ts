@@ -19,13 +19,9 @@
  *
  * Deliberately NOT ported (documented gaps, matching stances already
  * established elsewhere in this port):
- *  - **Fog/shroud "sighted" stopping** (`sighted_`/`pump_sighted`):
- *    `pathfind.ts`'s own module doc comment already excludes fog/shroud
- *    ("every hex is currently treated as visible... regardless of the
- *    seeAll flag"); this module inherits that gap rather than half-solving
- *    it here. A unit's move is never interrupted by "you can now see an
- *    enemy you couldn't before" -- only by ambush (see below) and ZoC/
- *    movement-point exhaustion, both of which don't need fog to detect.
+ *  - **Fog/shroud** IS handled: the unit steps hex by hex clearing fog
+ *    (`handle_fog`), stops when units come into view at a reasonable stop,
+ *    and hands `sighted` events to `options.raise` (no event pump here).
  *  - **WML event pump** (`enter_hex`/`exit_hex`/`sighted` events, and
  *    anything they could do to abort the move or move a different unit):
  *    out of scope for this actions-only task, see `IMPLEMENTATION_PLAN.md`.
@@ -50,6 +46,8 @@ import type { Team } from '../model/Team.js';
 import type { Unit } from '../model/Unit.js';
 import { UnitStatus } from '../model/Unit.js';
 import { enemyZoc, hasSkirmisher } from '../pathfind/pathfind.js';
+import { getVisibleUnit, unitInvisible } from '../pathfind/visibility.js';
+import { ShroudClearer, actorSighted, getSidesNotSeeing, type RaiseEvent } from './vision.js';
 
 export interface PlanTurnMovementOptions {
   /** Only this team's visible units are considered for ZoC; omit for "see all" (matches `pathfind.ts`'s convention). */
@@ -140,6 +138,13 @@ export function planTurnMovement(
     }
   }
 
+  // plot_turn: never plan to end on a hex holding a unit the mover's side can see.
+  const viewer = seeAll ? undefined : (viewingTeam ?? team);
+  while (steps.length > 1 && getVisibleUnit(board, steps[steps.length - 1]!, viewer, seeAll)) {
+    steps.pop();
+    movesLeftAfter.pop();
+  }
+
   return { steps, movesLeftAfter, zocStopped };
 }
 
@@ -156,19 +161,13 @@ export interface AmbushInfo {
 function checkForAmbushers(board: GameBoard, unit: Unit, hex: Location): AmbushInfo {
   const team = board.getTeam(unit.side);
   const ambushers: Location[] = [];
-  const isAlly = (a: number, b: number): boolean => {
-    const ta = board.getTeam(a);
-    const tb = board.getTeam(b);
-    return !!ta && !!tb && !ta.isEnemy(tb);
-  };
   for (const adj of getAdjacentTiles(hex)) {
     const other = board.unitAt(adj);
-    if (!other) continue;
+    if (!other || other === unit) continue;
     const otherTeam = board.getTeam(other.side);
     if (!team || !otherTeam || !team.isEnemy(otherTeam)) continue;
-    if (!other.isVisibleToTeam(unit.side, isAlly, false)) {
-      ambushers.push(adj);
-    }
+    // `hidden=yes` is this port's older stand-in for a hides ability; keep it ambushing too.
+    if (other.hidden || unitInvisible(board, other, adj)) ambushers.push(adj);
   }
   return { ambushed: ambushers.length > 0, ambusherLocations: ambushers };
 }
@@ -182,11 +181,24 @@ export interface MoveResult {
   readonly zocStopped: boolean;
   readonly ambushed: boolean;
   readonly ambusherLocations: readonly Location[];
+  /** An enemy the mover couldn't see occupied the next hex, so it stopped in front of it. */
+  readonly blocked: boolean;
+  /** Movement was interrupted because units came into view. */
+  readonly sightedStop: boolean;
+  readonly enemiesSighted: number;
+  readonly friendsSighted: number;
+  /** Fog or shroud was cleared along the way. */
+  readonly fogChanged: boolean;
+  /** Mirrors `unit_mover::undo_blocked`: the move revealed information and must not be undone. */
+  readonly undoBlocked: boolean;
   readonly enteredVillage: boolean;
   readonly facing: Direction;
 }
 
-export type ExecuteMoveOptions = PlanTurnMovementOptions;
+export interface ExecuteMoveOptions extends PlanTurnMovementOptions {
+  /** Receives `sighted` events for the caller to pump; omit to drop them. */
+  raise?: RaiseEvent;
+}
 
 function directionTo(from: Location, to: Location): Direction {
   const adj = getAdjacentTiles(from);
@@ -196,63 +208,96 @@ function directionTo(from: Location, to: Location): Direction {
 
 /**
  * Executes as much of `path` (a full route, e.g. from `pathfind.ts`'s
- * `findPath`) as `unit` can travel this turn, mutating the board: moves the
- * unit's board position, decrements `movesLeft`, updates facing, and clears
- * the `not_moved` status flag if it actually moved. Stops early on running
- * out of movement, entering an enemy zone of control, or ambush (an
- * adjacent hidden enemy discovered on entering a hex) -- see module doc
- * comment for what's deliberately not handled (fog "sighted" stops,
- * village capture, teleportation).
+ * `findPath`) as `unit` can travel this turn, mirroring `unit_mover`'s
+ * `try_actual_movement` + `post_move`: hidden units along the route are
+ * found up front (an unseen enemy on the route blocks, an unseen enemy
+ * adjacent to it ambushes), then the unit steps hex by hex, clearing fog
+ * and stopping early if units come into view. Ambushers/blockers are
+ * revealed (`uncovered`), village capture and `not_moved` are updated.
  */
 export function executeMove(board: GameBoard, unit: Unit, path: readonly Location[], options: ExecuteMoveOptions = {}): MoveResult {
   const planned = planTurnMovement(board, unit, path, options);
+  const team = board.getTeam(unit.side);
+  const raise = options.raise;
+  const start = planned.steps[0]!;
 
-  // Ambush detection: walk the planned steps, stopping (but still entering)
-  // at the first hex with a hidden adjacent enemy, mirroring
-  // `cache_hidden_units`/`check_for_ambushers`'s combined effect on the
-  // executed portion of the route.
-  const actualSteps: Location[] = [planned.steps[0]!];
-  let actualMovesLeft = planned.movesLeftAfter[0]!;
-  let ambushed = false;
+  // cache_hidden_units: where a hidden unit forces a stop, judged before moving.
+  let limit = planned.steps.length;
   let ambusherLocations: readonly Location[] = [];
-
+  let blockedLoc: Location | undefined;
   for (let i = 1; i < planned.steps.length; i++) {
     const hex = planned.steps[i]!;
     const occupant = board.unitAt(hex);
-    if (occupant) {
-      const occupantTeam = board.getTeam(occupant.side);
-      const unitTeam = board.getTeam(unit.side);
-      const isEnemy = !!unitTeam && !!occupantTeam && unitTeam.isEnemy(occupantTeam);
-      // Mirrors `unit_mover::check_for_obstructing_unit`: only an ENEMY
-      // occupant ever blocks movement (defensive here -- shouldn't happen
-      // given a path from `findPath`/`reachableHexes`, which already
-      // exclude enemy-occupied hexes). A FRIENDLY unit does NOT obstruct
-      // at all -- upstream's `cache_hidden_units` walks straight past
-      // allied-occupied hexes with no stop, since this port never mutates
-      // an intermediate hex's occupant (only origin/final are written),
-      // there is nothing further to do here beyond not blocking.
-      if (isEnemy) break;
+    const occupantTeam = occupant ? board.getTeam(occupant.side) : undefined;
+    if (occupant && team && occupantTeam && team.isEnemy(occupantTeam)) {
+      blockedLoc = hex;
+      limit = i;
+      break;
     }
-    actualSteps.push(hex);
-    actualMovesLeft = planned.movesLeftAfter[i]!;
-
     const ambush = checkForAmbushers(board, unit, hex);
     if (ambush.ambushed) {
-      ambushed = true;
       ambusherLocations = ambush.ambusherLocations;
+      limit = i + 1;
       break;
     }
   }
 
-  const finalHex = actualSteps[actualSteps.length - 1]!;
-  const moved = actualSteps.length > 1;
+  const usesFog = !!team && team.fogOrShroud() && team.autoShroudUpdates;
+  const notSeeing = getSidesNotSeeing(board, unit);
+  const clearer = new ShroudClearer(board);
+  const counts = { enemies: 0, friends: 0 };
+  const pumpSighted = (): void => {
+    if (raise) clearer.fireEvents(raise);
+    else clearer.dropEvents();
+  };
+  const isReasonableStop = (hex: Location): boolean =>
+    board.unitAt(hex) === unit && (!board.map.isVillage(hex) || board.villageOwner(hex) === unit.side);
 
-  if (moved) {
-    const prevHex = actualSteps[actualSteps.length - 2]!;
-    board.moveUnit(unit.location, finalHex);
-    unit.facing = directionTo(prevHex, finalHex);
-    unit.setStatus(UnitStatus.NotMoved, false);
+  let reached = 0;
+  let sighted = false;
+  let sightedStop = false;
+  let fogChanged = false;
+  for (let i = 1; i < limit; i++) {
+    const from = planned.steps[i - 1]!;
+    if (sighted && isReasonableStop(from)) {
+      sightedStop = true;
+      break;
+    }
+    const hex = planned.steps[i]!;
+    // units().move fails onto an occupied hex: passing through an ally leaves the mover where it was.
+    if (!board.hasUnitAt(hex)) {
+      board.moveUnit(unit.location, hex);
+      unit.facing = directionTo(from, hex);
+    }
+    reached = i;
+    if (usesFog && team) {
+      if (clearer.clearUnit(hex, unit, team, undefined, counts)) fogChanged = true;
+      sighted = counts.enemies !== 0 || counts.friends !== 0;
+    }
+    if (isReasonableStop(hex)) pumpSighted();
   }
+  pumpSighted();
+
+  const finalHex = unit.location;
+  const pathTaken = planned.steps.slice(0, reached + 1);
+  while (pathTaken.length > 1 && !pathTaken[pathTaken.length - 1]!.equals(finalHex)) pathTaken.pop();
+  const moved = !finalHex.equals(start);
+  if (moved) unit.setStatus(UnitStatus.NotMoved, false);
+  if (raise) actorSighted(board, unit, raise, notSeeing);
+
+  const ambushed = ambusherLocations.length > 0 && reached === limit - 1;
+  const blocked = !!blockedLoc && reached === limit - 1;
+  const revealed = [...(blocked ? [blockedLoc!] : []), ...(ambushed ? ambusherLocations : [])];
+  for (const loc of revealed) {
+    const other = board.unitAt(loc);
+    if (!other) continue;
+    const cache = getSidesNotSeeing(board, other);
+    other.setStatus(UnitStatus.Uncovered, true);
+    if (raise) actorSighted(board, other, raise, cache);
+  }
+
+  let movesLeft = planned.movesLeftAfter[reached]!;
+  if (ambushed) movesLeft = 0;
   const enteredVillage = board.map.isVillage(finalHex);
   if (enteredVillage) {
     // Mirrors `unit_mover::post_move`: capturing a village (i.e. its owner
@@ -261,17 +306,23 @@ export function executeMove(board: GameBoard, unit: Unit, path: readonly Locatio
     // in addition to reassigning ownership.
     const alreadyOwned = board.villageOwner(finalHex) === unit.side;
     board.captureVillage(finalHex, unit.side);
-    if (!alreadyOwned) actualMovesLeft = 0;
+    if (!alreadyOwned) movesLeft = 0;
   }
-  unit.movesLeft = actualMovesLeft;
+  unit.movesLeft = movesLeft;
 
   return {
-    path: actualSteps,
-    movesLeft: actualMovesLeft,
-    stoppedEarly: actualSteps.length < path.length,
+    path: pathTaken,
+    movesLeft,
+    stoppedEarly: pathTaken.length < path.length,
     zocStopped: planned.zocStopped,
     ambushed,
-    ambusherLocations,
+    ambusherLocations: ambushed ? ambusherLocations : [],
+    blocked,
+    sightedStop,
+    enemiesSighted: counts.enemies,
+    friendsSighted: counts.friends,
+    fogChanged,
+    undoBlocked: ambushed || blocked || fogChanged,
     enteredVillage,
     facing: unit.facing,
   };

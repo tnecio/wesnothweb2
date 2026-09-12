@@ -18,6 +18,7 @@
  * `movesLeft <= 0` counter, never real reachability.
  */
 
+import { isUnitVisibleToTeam } from '../pathfind/visibility.js';
 import { getAdjacentTiles, distanceBetween } from '../model/Location.js';
 import type { GameBoard } from '../model/GameBoard.js';
 import type { Unit } from '../model/Unit.js';
@@ -62,7 +63,7 @@ export function unitCanAct(board: GameBoard, unit: Unit): UnitCanAct {
         if (!attackableDistances.has(distanceBetween(unit.location, loc))) continue;
         if (!board.map.onBoard(loc)) continue;
         const other = board.unitAt(loc);
-        if (other && !other.incapacitated && isEnemyOf(other.side) && other.isVisibleToTeam(unit.side, isAlly, false)) {
+        if (other && !other.incapacitated && isEnemyOf(other.side) && isUnitVisibleToTeam(board, other, board.getTeam(unit.side)!, false)) {
           canAttackHere = true;
           break;
         }

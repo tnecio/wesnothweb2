@@ -22,6 +22,7 @@
  *  - Fog/shroud updates and animation.
  */
 
+import { recalculateFog, type RaiseEvent } from './vision.js';
 import { Location, getAdjacentTiles, ALL_DIRECTIONS, distanceBetween, type Direction } from '../model/Location.js';
 import type { GameBoard } from '../model/GameBoard.js';
 import { Unit, UnitStatus } from '../model/Unit.js';
@@ -140,7 +141,7 @@ export function executeAttack(
   attackerWeaponIndex: number,
   defenderLoc: Location,
   defenderWeaponIndex?: number,
-  options: AttackOptions = {},
+  options: AttackOptions & { raise?: RaiseEvent } = {},
 ): AttackResult {
   const attacker = board.unitAt(attackerLoc);
   const defender = board.unitAt(defenderLoc);
@@ -151,6 +152,8 @@ export function executeAttack(
   if (!attackerWeapon) {
     throw new Error(`executeAttack: attacker has no weapon at index ${attackerWeaponIndex}`);
   }
+  // attack::perform: an invisible attacker isn't anymore.
+  attacker.setStatus(UnitStatus.Uncovered, true);
 
   const distance = distanceBetween(attackerLoc, defenderLoc);
   const attackerTerrainDefense = attacker.defenseModifier(board.map.getTerrain(attackerLoc));
@@ -357,6 +360,9 @@ export function executeAttack(
 
   if (!defenderDied) defender.experience += defenderXp;
   if (!attackerDied) attacker.experience += attackerXp;
+
+  // attack::perform's update_def_fog_: the defending side's view may have lost a unit.
+  recalculateFog(board, defender.side, options.raise);
 
   return {
     attackerLoc,

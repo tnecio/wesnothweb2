@@ -32,6 +32,8 @@
  *    the same reason as `move.ts`'s (no village-ownership model yet).
  */
 
+import { isUnitVisibleToTeam } from '../pathfind/visibility.js';
+import { ShroudClearer, actorSighted, type RaiseEvent } from './vision.js';
 import { Location, getAdjacentTiles, oppositeDirection, Direction, ALL_DIRECTIONS, distanceBetween } from '../model/Location.js';
 import type { GameBoard } from '../model/GameBoard.js';
 import type { Team } from '../model/Team.js';
@@ -213,16 +215,11 @@ function directionBetween(from: Location, to: Location): Direction | undefined {
 function computeRecruitFacing(board: GameBoard, unit: Unit, recruitLoc: Location, leaderLoc: Location | undefined): Direction {
   let minDist = Infinity;
   let minLoc: Location | undefined;
-  const isAlly = (a: number, b: number): boolean => {
-    const ta = board.getTeam(a);
-    const tb = board.getTeam(b);
-    return !!ta && !!tb && !ta.isEnemy(tb);
-  };
   for (const other of board.allUnits()) {
     const otherTeam = board.getTeam(other.side);
     const unitTeam = board.getTeam(unit.side);
     if (!otherTeam || !unitTeam || !unitTeam.isEnemy(otherTeam)) continue;
-    if (!other.isVisibleToTeam(unit.side, isAlly, false)) continue;
+    if (!isUnitVisibleToTeam(board, other, unitTeam, false)) continue;
     const dist = distanceBetween(other.location, recruitLoc) - other.level;
     if (dist < minDist) {
       minDist = dist;
@@ -267,6 +264,7 @@ function placeRecruit(
   isRecall: boolean,
   fullMovement = false,
   facing?: Direction,
+  raise?: RaiseEvent,
 ): PlaceRecruitResult {
   if (fullMovement) {
     unit.movesLeft = unit.maxMoves;
@@ -282,6 +280,16 @@ function placeRecruit(
   board.addUnit(unit);
   unit.facing = facing ?? computeRecruitFacing(board, unit, location, leader?.location);
 
+  // place_recruit: clear fog around the new unit, then sighted events both ways.
+  const clearer = new ShroudClearer(board);
+  if (team.autoShroudUpdates) clearer.clearUnitIfNeeded(location, unit);
+  if (raise) {
+    clearer.fireEvents(raise);
+    actorSighted(board, unit, raise);
+  } else {
+    clearer.dropEvents();
+  }
+
   team.spendGold(cost);
   return { unit, location, cost };
 }
@@ -295,9 +303,9 @@ function placeRecruit(
  * random traits (`generateTraits`) -- real, reported bug: recruited units
  * never got any.
  */
-export function recruitUnit(board: GameBoard, team: Team, type: UnitType, loc: Location, from: Location, rng: Rng): PlaceRecruitResult {
+export function recruitUnit(board: GameBoard, team: Team, type: UnitType, loc: Location, from: Location, rng: Rng, raise?: RaiseEvent): PlaceRecruitResult {
   const unit = Unit.create(type, team.side, loc, { canRecruit: false, modifications: generateTraits(type, rng) });
-  return placeRecruit(board, team, unit, loc, from, type.cost, false, false);
+  return placeRecruit(board, team, unit, loc, from, type.cost, false, false, undefined, raise);
 }
 
 /**
@@ -306,9 +314,9 @@ export function recruitUnit(board: GameBoard, team: Team, type: UnitType, loc: L
  * recall_unit`. Cost is the unit's own `recallCost` if set (>= 0),
  * otherwise the team's default.
  */
-export function recallUnit(board: GameBoard, team: Team, unit: Unit, loc: Location, from: Location, facing?: Direction): PlaceRecruitResult {
+export function recallUnit(board: GameBoard, team: Team, unit: Unit, loc: Location, from: Location, facing?: Direction, raise?: RaiseEvent): PlaceRecruitResult {
   const cost = unit.type.recallCost >= 0 ? unit.type.recallCost : team.recallCost;
-  return placeRecruit(board, team, unit, loc, from, cost, true, false, facing);
+  return placeRecruit(board, team, unit, loc, from, cost, true, false, facing, raise);
 }
 
 /** Permanently removes `unit` (by `underlyingId`) from `side`'s recall list, mirroring the GUI's dismiss action. Returns the removed unit, if found. */

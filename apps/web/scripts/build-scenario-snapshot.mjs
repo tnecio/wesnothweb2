@@ -471,6 +471,9 @@ const teams = board.teams().map((t) => ({
   income: t.income,
   incomePerVillage: t.incomePerVillage,
   supportPerVillage: t.supportPerVillage,
+  fog: t.fog.enabled,
+  shroud: t.shroud.enabled,
+  shareVision: t.shareVision,
 }));
 
 /** Serializes a real `AttackType` instance to `AttackTypeSnapshot` shape. */

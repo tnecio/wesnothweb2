@@ -189,6 +189,13 @@ export interface SnapshotTeam {
   incomePerVillage?: number;
   /** `[side] village_support=` -- how many unit levels' upkeep each owned village covers for free (`Team.supportPerVillage`); same optional/defaulting rationale as `incomePerVillage` above. */
   supportPerVillage?: number;
+  /** `[side] fog=`/`shroud=`/`share_vision=` (optional: older snapshots have neither). */
+  fog?: boolean;
+  shroud?: boolean;
+  shareVision?: 'all' | 'shroud' | 'none';
+  /** `[side] shroud_data=`/`fog_data=`, in `ShroudMap.write()` format. */
+  shroudData?: string;
+  fogData?: string;
 }
 
 /** One `[story][part]` -- see `apps/web/scripts/build-scenario-snapshot.mjs`'s `extractStory`. */
@@ -556,8 +563,14 @@ export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBo
         income: t.income ?? 0,
         incomePerVillage: t.incomePerVillage ?? 1,
         supportPerVillage: t.supportPerVillage ?? 1,
+        shareVision: t.shareVision ?? 'all',
       }),
     );
+    const team = board.getTeam(t.side)!;
+    team.fog.enabled = t.fog ?? false;
+    team.fog.read(t.fogData ?? '');
+    team.shroud.enabled = t.shroud ?? false;
+    team.shroud.read(t.shroudData ?? '');
   }
 
   const unitsByKey = new Map<string, Unit>();
