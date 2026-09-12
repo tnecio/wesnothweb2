@@ -201,6 +201,11 @@
           backgroundColor: 0x111111,
           resizeTo: host,
           antialias: true,
+          // Required for the 'subtract' advanced blend mode used by
+          // SnapshotBoard's ToD tint layer -- without it, the blend
+          // filter has no valid backbuffer to read the composited scene
+          // from and renders solid black wherever it's applied.
+          useBackBuffer: true,
         }),
         fetchTerrainGraphicsRules(),
         fetchTeamColors(),
