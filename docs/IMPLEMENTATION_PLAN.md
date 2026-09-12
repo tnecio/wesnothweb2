@@ -45,6 +45,26 @@ specials) especially: several specific specials are implemented but as
 one-off, hand-checked logic per feature rather than through a single
 generic filter/effect pipeline — see Phase 2's gap list.
 
+## 2026-09-12 revision: UI split, gameplay-first ordering
+
+User-directed reshuffle. Phases 0–12 keep their numbers (code comments cite
+Phases 11/12); everything after is renumbered. Main changes:
+
+- Phases 11 (fog/vision) and 12 (time of day) are the next focus — the
+  last major gameplay systems — tested against Under the Burning Suns.
+- The old UI bundle (parts of 14, all of 16/17) is split into seven
+  areas: recruit/recall/combat modals (13), main game UI overhaul (14),
+  main menu (21), keyboard shortcuts (core brought forward to 15;
+  rebinding in 24), minimap/camera (22), mobile (23), advanced UI
+  features (24). Modals and the main UI come before audio.
+- New phases: narration overhaul (16), events incl. `[option]` and
+  cutscenes (17), labels/items (18), save game handling (26), feature
+  completeness assessment (27).
+- Replay/statistics/achievements deprioritised (now 25).
+
+See "Priority as of 2026-09-12" near the end for the full order and an
+old→new number table for reading older `docs/PROGRESS.md` entries.
+
 ## Phase 0 — Foundations
 
 **Status: delivered** (2026-09-06/07).
@@ -125,10 +145,10 @@ loyalty.
   exists yet at all; single-core-plus-one-campaign is the only path tested.
 - `[color_range]`/`[color_palette]`, `[fonts]`, `[advanced_preference]`
   declarations — parsed as generic WML if present, not specifically
-  consumed anywhere yet (feeds Phases 14/17).
+  consumed anywhere yet (feeds Phases 20/24).
 - Round-trip serialisation (parse → re-serialise → re-parse identical) —
   needed for save-file fidelity beyond the current gzipped-JSON snapshot
-  approach; revisit alongside Phase 15's replay work.
+  approach; revisit alongside Phase 25's replay work.
 - `[race]` random name generation (Markov generators), `[variation]`/
   `[male]`/`[female]` gendered variants, unit help-topic generation — data
   model has the hooks (`UnitType`) but generators/variation-switching
@@ -307,7 +327,7 @@ basics (id/type/side/race/gender/level/canrecruit/role, numeric ranges,
 - `[modify_side]` movement/economy restrictions beyond gold/income/
   village_gold (e.g. blanket "no moves this turn"), `[have_side]`/SSF
   (`[has_unit]`/`[allied_with]`/`[enemy_of]`/`[has_ally]`), achievements
-  (`[achievement]` family — tracked as Phase 15).
+  (`[achievement]` family — tracked as Phase 25).
 - Global persistent variables (`[set_global_variable]`/
   `[get_global_variable]`/`namespace=`), `[sync_variable]`, `[do_command]`,
   dynamic event registration/`[remove_event]`/`priority=`/multi-name
@@ -319,7 +339,7 @@ basics (id/type/side/race/gender/level/canrecruit/role, numeric ranges,
   modules — good candidates to drive from real Phase 6 content rather than
   speculatively building ahead of a scenario that needs them.
 - Statistics recording (`[statistics]`/`[team]`/`[attacks]`/`[defends]`/
-  `[killed]`/`[deaths]`) — tracked under Phase 15 alongside replay.
+  `[killed]`/`[deaths]`) — tracked under Phase 25 alongside replay.
 - `[test_do_attack_by_id]`, `[disable]` special, `[damage_type]` override,
   attack alignment override (`set_alignment=`) — small, not yet ported.
 
@@ -406,7 +426,7 @@ absorbed the most iteration so far and will likely keep doing so as Phase
 - **Milestone**: a full scenario is playable start-to-finish through the UI
   by a human, not just scripted commands.
 
-### Catalogue checklist (category 15 done; category 17's "core play loop" slice done; remainder deferred to Phase 17)
+### Catalogue checklist (category 15 done; category 17's "core play loop" slice done; remainder split across Phases 13–24)
 
 Done: `[story]`/`[part]` playback, `[message]`/`speaker=`/portrait/
 scroll-to-speaker, campaign picker, per-scenario routed pages, side panel
@@ -414,8 +434,8 @@ scroll-to-speaker, campaign picker, per-scenario routed pages, side panel
 recruit/recall lists with cost/affordability), objectives display (basic),
 turn banner, save/load, end-turn hotseat cycling.
 
-**Deferred to Phase 17** (not a Phase 5 gap so much as explicitly
-out-of-scope-for-now UI chrome): `[option]`/`[text_input]` player choices,
+**Deferred** (not a Phase 5 gap so much as explicitly out-of-scope-for-
+now UI chrome; now split — see the 2026-09-12 revision): `[option]`/`[text_input]` player choices,
 message `duration=`/`side_for=`, advancement-choice dialog, statistics
 dialog, unit-list dialog, in-game help/encyclopedia, preferences dialog,
 keyboard shortcuts/rebinding, mobile/touch layout, right-click context
@@ -429,13 +449,14 @@ player choice to drive its own core WML logic (there: a password puzzle
 whose "wrong answer" branch reassigns/kills the player's units), and with
 no selection ever made, that variable-comparison silently and
 deterministically takes whichever branch an empty/unset value happens to
-satisfy. Worth prioritizing above the rest of Phase 17's UI chrome once
-Phase 6 needs it again, since it can block a scenario's core logic from
-behaving sensibly at all, not just whether a choice dialog shows up.
+satisfy. Now scheduled as Phase 17 (events), since it can block a
+scenario's core logic from behaving sensibly at all, not just whether a
+choice dialog shows up.
 
 ## Phase 6 — Content breadth
 
-**Status: in progress** (current focus). Dead Water scenario 1→2
+**Status: ongoing, no longer the headline focus** (2026-09-12: continues
+as new phases pull in real content, e.g. UtBS for Phases 11/12). Dead Water scenario 1→2
 continuation (real gold/recall carryover) landed 2026-09-09. As of
 2026-09-11, all 13 Dead Water scenarios build from real WML, run their
 `prestart`/`start` events without error, and chain correctly end-to-end
@@ -571,7 +592,7 @@ strike-out covers *networked* multiplayer only (session/lobby/relay,
 recording/playback, out-of-sync detection, or RNG/choice synchronisation
 (catalogue category 20) — those matter for single-player determinism,
 testing, and "watch your last game back" even with zero network code, and
-are tracked as real, in-scope work under the new **Phase 15**.
+are tracked as real, in-scope work under **Phase 25**.
 
 ## Phase 9 — Terrain visuals
 
@@ -768,16 +789,36 @@ preference + skippability; animation-during-fog suppression (feeds Phase
 performance under mass combat; clean interruption (skip/dialogue/save
 mid-animation).
 
-## Phase 11 — Fog, Shroud & Vision (new)
+## Phases 11 + 12 shared testbed: Under the Burning Suns
 
-**Status: not started; a deliberate, documented gap up to now** — every
-hex is currently treated as visible to every side regardless of a
-`seeAll` flag threaded through `pathfind.ts` and friends for exactly this
-future phase to replace. This is a substantial, self-contained subsystem
-(closest analogue in scope to Phase 2's original pathfinding/actions
-work) and touches move interruption, undo eligibility, rendering, the
-minimap, and AI — sequence it after Phase 6 has exercised the
-non-fog-dependent engine surface thoroughly, since fog/shroud changes the
+**Chosen 2026-09-12 (user's call)**: port Under the Burning Suns (UtBS)
+alongside Phases 11/12 as their real-content fixture, the same way Dead
+Water anchored Phases 4–6. Surveyed against the real `.cfg` files before
+committing to it:
+
+| Scenario | Exercises |
+|---|---|
+| `01_The_Morning_After` (**primary**) | `shroud=yes`, scripted `[remove_shroud]` (radius and x/y-range forms) + `[place_shroud]` reveal-then-rehide cutscene, `{TWO_SUNS_DEFAULT_SCHEDULE}` (15-step, two uneven days — `core/macros/schedules.cfg`), 86 `[message]`s, `[foreach]`, `[store_locations]`, `{ON_DIFFICULTY}` |
+| `02_Across_the_Harsh_Sands` | `fog=yes`, `sighted` event, two-suns schedule |
+| `03_Stirring_in_the_Night` | `[time_area]` |
+| `04_Descending_into_Darkness` | `{UNDERGROUND}` + `[time_area]` + two-suns schedule |
+
+**Pushback recorded with the choice**: scenario 1 alone covers shroud and
+a non-default schedule well, but has *no* fog, `sighted`, `[time_area]`,
+or underground schedule — so scenarios 2–4 are pulled in as secondary
+fixtures for exactly those. Scenarios 2, 4 and 5 also use `[option]`,
+which won't work until Phase 17: verify the fog/ToD behaviour there, and
+treat any `[option]`-driven branch as a known Phase 17 gap (same
+treatment as Two Brothers scenario 3), not as a Phase 11/12 bug.
+
+## Phase 11 — Fog, Shroud & Vision
+
+**Status: not started** (next up, alongside Phase 12) — every hex is
+currently treated as visible to every side regardless of a `seeAll` flag
+threaded through `pathfind.ts` and friends for exactly this phase to
+replace. This is a substantial, self-contained subsystem (closest analogue
+in scope to Phase 2's original pathfinding/actions work) and touches move
+interruption, undo eligibility, rendering, and AI — fog/shroud changes the
 *meaning* of a lot of existing queries (`unitAt`, reachability, event
 filters) rather than adding new ones.
 
@@ -795,38 +836,42 @@ filters) rather than adding new ones.
   gain (any move that clears shroud/fog becomes non-undoable — a real
   interaction with Phase 2's existing undo stack).
 - Rendering: shrouded hexes render black, fogged hexes darkened, with
-  correct transition sprites (depends on Phase 9); hidden units not drawn/
-  selectable/targetable; last-known village ownership shown under fog, not
-  current; minimap reflects only the viewing side's knowledge.
+  correct transition sprites (Phase 9's compositing is in place); hidden
+  units not drawn/selectable/targetable; last-known village ownership
+  shown under fog, not current. (Minimap fog-awareness lands with the
+  minimap itself, Phase 22.)
 - `[filter_vision]` in SUF (`visible=`/`respect_fog=`/`side=`), and its
   interaction with `[hides]` (hidden units are invisible even *without*
   fog, revealed by adjacency — category 6's existing `hides` gap connects
   here).
+- AI respects fog (`simpleAi.ts`'s "nearest enemy" currently sees
+  everything — see its doc comment).
 - Shroud/fog state serialisation (save/load round-trip).
-- **Milestone**: a real mainline scenario with `shroud=yes` (several exist)
-  plays correctly — units/terrain hidden appropriately, `sighted` events
-  fire and interrupt movement, and a save/load round-trip preserves
-  exactly what's been explored.
+- **Milestone**: UtBS scenario 1 plays with correct shroud (starting
+  reveal, the scripted reveal-then-rehide of Xanthos's base), UtBS
+  scenario 2's fog hides units and its `sighted` event fires and
+  interrupts movement, and a save/load round-trip preserves exactly
+  what's been explored.
 
-## Phase 12 — Time of Day & Schedules (new)
+## Phase 12 — Time of Day & Schedules
 
 **Status: partially started (2026-09-11: schedule model + status-bar
 indicator built)** — `combatStats.ts`'s `combatModifier()` implements the
 real alignment × `lawful_bonus` damage-multiplier formula (lawful/
 chaotic/liminal/neutral, fearless negation). `packages/engine/src/model/
-Schedule.ts` now ports `tod_manager`: parses a scenario's `[time]`
-entries (`lawful_bonus=`, `current_time=`), advances once per game turn,
-and `DEFAULT_MAX_LIMINAL_BONUS = 25` matches
+Schedule.ts` ports `tod_manager`: parses a scenario's `[time]` entries
+(`lawful_bonus=`, `current_time=`), advances once per game turn, and
+`DEFAULT_MAX_LIMINAL_BONUS = 25` matches
 `tod_manager::get_max_liminal_bonus()`'s simplified floor. Wired end to
 end: `GameSession.currentTimeOfDay` feeds combat's `lawfulBonus`/
-`maxLiminalBonus` options (so alignment damage bonuses are schedule-aware
-for the first time) and `TurnBanner.svelte` shows a ToD icon + name.
-Still missing: time areas, illumination, `random_start_time=`,
+`maxLiminalBonus` options and `TurnBanner.svelte` shows a ToD icon +
+name. Still missing: time areas, illumination, `random_start_time=`,
 `[replace_schedule]`/`[store_time_of_day]`, ToD colour tinting on the
 board, and a schedule preview.
 
 - `[time]` definition (id/name/image/`lawful_bonus=`/colour shift) and the
-  default six-phase day cycle used when a scenario specifies none.
+  default six-phase day cycle used when a scenario specifies none; UtBS's
+  15-step two-suns schedule as the non-default fixture.
 - Real per-turn schedule progression (wraps around), `random_start_time=`,
   and scenario-level `[time]` overrides of the default schedule.
 - `[time_area]`/`[remove_time_area]`: named regions with their own
@@ -837,39 +882,194 @@ board, and a schedule preview.
   pipeline gap — see there).
 - `[replace_schedule]`, `[store_time_of_day]` (current or future, global or
   at a hex).
-- Rendering: ToD colour tinting on terrain/units/overlays (feeds Phase 9),
-  illumination rendering brighter than neighbours, a status-bar ToD
-  indicator with tooltip explaining the current bonus, and a schedule
-  preview (feeds Phase 17).
-- ToD-conditional events, ToD-driven music/ambient sound changes (feeds
-  Phase 13), underground/indoor fixed-darkness schedules
-  (`{UNDERGROUND}`/`{INDOORS}`).
+- Rendering: ToD colour tinting on terrain/units/overlays (Phase 9's
+  remaining item), illumination rendering brighter than neighbours, a
+  status-bar ToD indicator with tooltip explaining the current bonus.
+  (The schedule-preview dialog is Phase 14 status-bar work.)
+- ToD-conditional events, underground/indoor fixed-darkness schedules
+  (`{UNDERGROUND}`/`{INDOORS}`). ToD-driven music changes are Phase 19's.
 - ToD state serialisation (current phase + time areas round-trip through
   save/load).
-- **Milestone**: a real scenario with a non-default schedule (or a
-  `[time_area]`) plays with visibly correct combat bonuses matching a
-  hand-computed table for several turns/phases, and the status bar shows
-  the right ToD image/name throughout.
+- **Milestone**: UtBS scenario 1 plays several turns across the two-suns
+  schedule with combat bonuses matching a hand-computed table, UtBS
+  scenario 3's `[time_area]` applies its own ToD inside the area, the board
+  tint changes visibly with ToD, and the status bar shows the right ToD
+  image/name throughout.
 
-## Phase 13 — Audio & Music (new)
+## Phase 13 — Modal dialogs: recruit, recall, combat
 
-**Status: not started — not previously mentioned in this plan at all.**
-Nothing in `packages/renderer` or `packages/ui` touches audio; this is a
-whole missing subsystem, not a gap inside an existing one.
+**Status: not started.** Recruit/recall lists and the attack/weapon
+choice currently live inline in `SidePanel.svelte`; real Wesnoth uses
+modal dialogs for all three. First of the UI areas split out of the old
+Phase 14/16/17 bundle (2026-09-12, user's call), prioritised ahead of
+audio because it's what a player touches every single turn.
+
+Spec sources (data shape and behaviour, not ported code — GUI2 itself
+stays out of scope): `src/gui/dialogs/units_dialog.cpp`
+(`build_recruit_dialog`/`build_recall_dialog` — one dialog serves both),
+`unit_attack.cpp`, `attack_predictions.cpp`, and their layouts under
+`data/gui/themes/default/dialogs/`.
+
+- A shared modal framework (overlay, focus trap, Escape/Enter handling,
+  Wesnoth-GUI2-like visual style) that Phases 14/16/17/21/24/26 reuse
+  rather than each dialog rolling its own. Existing `AdvancementDialog`/
+  `ObjectivesDialog` migrate onto it.
+- Recruit dialog: unit-type list with portrait, cost, affordability
+  greying, and a detail pane (stats, attacks, resistances, traits) for
+  the highlighted type; opened from the keep, recruits onto the chosen
+  castle hex.
+- Recall dialog: recall list with name/type/level/XP/traits, sorting,
+  recall cost (incl. per-unit `recall_cost=`), and dismiss-unit with
+  confirmation.
+- Attack dialog: weapon list per attacker/defender pairing with
+  damage×strikes, specials, and chance-to-hit, best weapon preselected.
+- Combat simulation (damage calculations) view: per-side HP distribution
+  bars and expected-damage breakdown from the existing
+  `attackPrediction.ts`, matching `attack_predictions.cpp`'s layout.
+- **Milestone**: a Dead Water scenario 1 turn — recruit, recall,
+  inspect the damage calculation, attack — is completed entirely through
+  the modals with the side panel's inline versions removed, verified in a
+  Playwright run.
+
+## Phase 14 — Main game UI overhaul
+
+**Status: not started.** Goal: the in-game screen matches the real
+Wesnoth default theme closely. Spec source: `data/themes/default.cfg`
+(`[theme]`/`[resolution]`/`[panel]`/`[status]`/`[menu]`) and
+`src/hotkey/hotkey_command.cpp` for the menu command set.
+
+- Top menu bar (Menu, Actions, and the real theme's menu entries) and the
+  top status bar (turn/limit, gold, villages, units, upkeep, income, ToD
+  icon + tooltip, schedule preview) in the real layout.
+- Right-hand unit infobox matching the real theme: portrait/sprite,
+  name/type, level, alignment, traits, HP/XP/MP bars, resistances tooltip,
+  attacks list, status icons (poisoned/slowed/petrified), plus terrain
+  info for the hovered hex.
+- Right-click context menu (move/attack/recruit/recall/label/etc. per
+  hex, per the real hotkey handler's context-sensitive enablement) and
+  `[set_menu_item]`/`[clear_menu_item]` custom WML menu entries.
+- A single **command registry** (Wesnoth's `HOTKEY_COMMAND` model: id,
+  label, enabled-predicate, handler) that the menu bar, context menu, and
+  Phase 15's hotkeys all dispatch through — built once here so keyboard
+  support is wiring, not a retrofit.
+- Unmoved-units end-turn warning; `[change_theme]` honoured to the extent
+  real campaigns use it.
+- **Milestone**: side-by-side screenshots of Dead Water scenario 1 against
+  the real Wesnoth binary show matching chrome layout (menu bar, status
+  bar, infobox), and every core action is reachable from the menu bar or
+  the right-click menu.
+
+## Phase 15 — Keyboard shortcuts (core)
+
+**Status: not started.** Brought forward from the old Phase 17
+(2026-09-12). Two reasons: Phase 14's command registry makes this cheap
+immediately afterwards, and Playwright tests become shorter and less
+coordinate-fragile when actions like end turn, undo, recruit, next unit
+and zoom are one keypress instead of a pixel click on a menu. Rebinding
+UI stays in Phase 24 (it lives in the preferences dialog).
+
+- Default bindings matching upstream `data/core/hotkeys.cfg` (end turn,
+  undo/redo, next/previous unit, recruit, recall, show enemy moves, toggle
+  grid, zoom in/out/default, save/load, objectives, statistics, unit list,
+  labels, help, …) dispatched through Phase 14's registry.
+- Keyboard navigation inside every modal (arrows/Enter/Escape/Tab) and a
+  keyboard hex cursor (move selection, select, move/attack confirm) so the
+  play loop is completable without a mouse.
+- Hotkey hints shown in menu entries and tooltips.
+- **Milestone**: a scripted Playwright playthrough of the synthetic
+  economy campaign's recruit→move→attack→end turn loop drives every
+  non-hex-choice action via keyboard only.
+
+## Phase 16 — Narration & story-telling overhaul
+
+**Status: not started** (`StoryViewer.svelte`/`MessageViewer.svelte` work,
+but don't match upstream visually and load slowly). Spec sources:
+`src/gui/dialogs/story_viewer.cpp`, `storyscreen/`, `wml_message.cpp`,
+`outro.cpp`.
+
+- `[story]`/`[part]` backgrounds rendered as upstream does: `[background_
+  layer]` scaling/`keep_aspect_ratio=`/`tile_h`/`tile_v`/`base_layer=`,
+  `[image]` overlays with `x,y=`/`centered=`, text layout/`text_layout=`,
+  `title_alignment=`, and `[part]` delay/`show_title=`.
+- Journey tracks (`{..._JOURNEY}`/`[image]` dot-and-cross sequences) with
+  their timed reveal.
+- Fast loading: preload the next part's images while the current one is
+  shown, size images appropriately; where a load can't be made fast, a
+  clear loading indicator so the player knows the game hasn't hung.
+- `[message]` dialog visuals matching upstream (portrait placement left/
+  right by side, `mirror=`, speaker name, scroll-to-speaker, `image=`
+  overrides), and the campaign outro/end-credits screen.
+- **Milestone**: Dead Water's, Liberty's and UtBS's opening stories render
+  side by side against the real binary's screenshots with matching
+  backgrounds and layout, and no part takes more than a brief, visibly-
+  indicated load.
+
+## Phase 17 — Events: in-order dialogue, cutscenes, `[option]`
+
+**Status: not started; a known architecture gap.** The event pump
+(`packages/engine/src/events/pump.ts`, `actionWml.ts`) is fully
+synchronous: events run to completion and their `[message]`s are replayed
+to the player afterwards, so dialogue and unit movement don't interleave
+the way they do upstream, and `[option]`/`[text_input]` can't feed a
+choice back into the running event (Two Brothers scenario 3's password
+puzzle; UtBS 2/4/5).
+
+- Make the event pump suspendable (async actions or an explicit
+  continuation/replay-of-choices model — pick the one that keeps headless
+  tests deterministic), so a `[message]` blocks the event until
+  dismissed and later actions render in order.
+- `[option]` (with `[show_if]`, `[command]`, `variable=`/`value=`) and
+  `[text_input]`; choices recorded as synced choices so Phase 25's replay
+  reproduces them.
+- Cutscene actions rendered in sequence: `[move_unit_fake]`,
+  `[move_unit]`, `[animate_unit]`, `[delay]`, unit appear/disappear on
+  `[unit]`/`[kill]` `animate=`.
+- Camera scripting moved here from the old Phase 16 (it's event
+  sequencing, not map rendering): `[scroll_to]`/`[scroll_to_unit]`/
+  `[scroll]`, `[lock_view]`/`[unlock_view]`, `[zoom]`, `[screen_fade]`/
+  `[color_adjust]` (always cleaned up afterwards).
+- Message `duration=`/`side_for=`, skip-dialogue (Escape skips the rest of
+  an event's messages as upstream does).
+- **Milestone**: Two Brothers scenario 3's password puzzle takes the
+  branch the player actually chooses, and a UtBS scenario 1 cutscene
+  shows its messages, unit movements and scrolls interleaved in source
+  order.
+
+## Phase 18 — Map labels & items
+
+**Status: not started.** Split from the old Phase 16.
+
+- `[item]`/`[remove_item]`: decorative or functional images placed on
+  hexes, with optional halo and team colour, `visible_in_fog=`, queryable
+  via `[store_items]`.
+- Map labels: `[label]` (text/colour/`team_name=`/`visible_in_fog=`/
+  `immutable=`, cleared by an empty `[label]`), plus player-placed labels
+  via the Phase 14 context menu and a label-settings dialog
+  (`label_settings.cpp`).
+- `[store_map_dimensions]`/`[store_starting_location]`/`[store_villages]`
+  WML-facing verbs where not already present.
+- **Milestone**: a real scenario using `[label]` and at least one `[item]`
+  renders both correctly, including under Phase 11's fog.
+
+## Phase 19 — Audio & Music (was Phase 13)
+
+**Status: not started.** Nothing in `packages/renderer` or `packages/ui`
+touches audio; this is a whole missing subsystem.
 
 - `[music]` scenario playlists (`append=`/`immediate=`/`play_once=`/
   `ms_before=`/`ms_after=`), track transitions/crossfade, shuffle
   (never-repeat-adjacent), persistence across scenario boundaries unless
-  overridden, main-menu music, victory/defeat stingers.
+  overridden, main-menu music, victory/defeat stingers, ToD-driven changes.
 - `[sound]` one-off effects (`repeat=`, delayed), attack/movement/death/
   recruit/level-up sounds driven by animation frames (`[frame]sound=` —
-  ties directly into Phase 10, since these fire *from* animation frame
-  data, not standalone), UI sounds (clicks, dialog open/close, errors).
+  ties directly into Phase 10), UI sounds (clicks, dialog open/close,
+  errors).
 - `[sound_source]`/`[remove_sound_source]`: positional looping sounds with
   radius/delay/chance and distance-based attenuation (`full_range=`/
   `fade_range=`) from the viewport centre.
 - `[volume]` scripted changes (restored afterwards) and persistent
-  separate music/sound/UI/bell volume preferences, plus mute/unmute.
+  separate music/sound/UI/bell volume settings, plus mute/unmute (a
+  minimal toggle here; full controls in Phase 24's preferences).
 - **Web-specific**: browser autoplay policy (audio only starts after a
   user gesture, without losing the already-queued track), lazy asset
   loading with silent-but-logged failure for missing files, and a
@@ -877,10 +1077,10 @@ whole missing subsystem, not a gap inside an existing one.
   channels.
 - **Milestone**: a real scenario's `[music]` playlist audibly plays and
   transitions correctly across a turn boundary, at least one weapon's
-  attack sound fires on hit, and toggling the mute preference silences
-  everything immediately and restores it correctly on unmute.
+  attack sound fires on hit, and toggling mute silences everything
+  immediately and restores it correctly on unmute.
 
-## Phase 14 — Localization & Accessibility (new)
+## Phase 20 — Localization & Accessibility (was Phase 14)
 
 **Status: not started beyond WML-syntax recognition.** Phase 1 already
 parses `_ "…"` and `#textdomain`/`[textdomain]` as syntax; nothing
@@ -890,195 +1090,222 @@ addresses non-Latin text layout or accessibility.
 - Gettext `.po` catalogue loading per textdomain, resolving `_ "…"` values
   at *display* time (not parse time) so a locale switch updates everything
   live without a reload.
-- Runtime locale switching (`[language]`/`[locale]`), plural-form rules,
-  gendered strings (`female_name=` and friends — connects to Phase 1's
-  deferred `[variation]`/gender work).
+- Runtime locale switching, plural-form rules, gendered strings
+  (`female_name=` and friends — connects to Phase 1's deferred
+  `[variation]`/gender work).
 - RTL and CJK (wide-glyph) text layout/wrapping, missing-translation
-  fallback to English, locale-aware number/date formatting where the UI
-  needs it.
-- Accessibility: colourblind-safe team identity (not colour-only — ties
-  into the existing side-marker-circle approach from Phase 4, which
-  already does this partially by drawing a shape, not just a colour,
-  under every unit sprite), full keyboard-only play path (ties into Phase
-  17's hotkey work), font-size scaling preference that doesn't break
-  layout.
-- **Milestone**: switching the UI language at runtime (even with just one
-  additional language's `.po` file as a fixture) updates every visible
-  string — menu chrome, side panel, in-scenario dialogue — without a page
-  reload, and a scripted keyboard-only playthrough of a small scenario
-  succeeds without touching the mouse.
-
-## Phase 15 — Replay, Statistics & Achievements (new)
-
-**Status: partially started.** Undo (single action, real state
-restoration) is done (Phase 2). Save/load (Phase 5) captures enough state
-to resume a scenario, but not as a replayable *action log* — there's no
-dedicated replay recording/playback system, no out-of-sync detection
-(meaningless without networked play, but still valuable as a
-determinism self-check), no statistics tallying, and no achievements.
-
-- Replay recording: every synced action (move/attack/recruit/recall/
-  end_turn/choose) logged in order, independent of the snapshot-based
-  save system, so a finished scenario can be replayed from turn 1 and
-  reproduce identical state at every step — this is also the natural
-  place to finally close Phase 1's deferred "round-trip serialisation"
-  gap, since a replay log has the same fidelity requirement.
-- Redo stack (replays undone actions in order, invalidated by any new
-  action) — extends Phase 2's existing undo stack rather than replacing
+  fallback to English, locale-aware number formatting where the UI needs
   it.
-- Out-of-sync self-check: replaying a recorded scenario and diffing final
-  state against the live run it was recorded from is a strong regression
-  test in its own right, independent of ever needing it for real
-  multiplayer.
-- `[sync_variable]` correctness (already listed as a Phase 2 gap; belongs
-  here too since it's meaningless without a working replay log to check
-  it against).
-- Statistics (`[statistics]`/`[team]`/`[attacks]`/`[defends]`/`[killed]`/
-  `[deaths]`): damage dealt/taken (expected vs. actual), kills/losses,
-  recruits/recalls/advances tallied per side per scenario and rolled up
-  per campaign.
-- Achievements (`[achievement]`/`[achievement_group]`/`[sub_achievement]`/
-  `[set_achievement]`/`[progress_achievement]`/`[has_achievement]`):
-  definition, progress tracking, durable persistence across
-  reload/campaign restarts.
-- Persistent global variables (`[set_global_variable]`/
-  `[get_global_variable]`/`namespace=`) — listed under Phase 2's gap list
-  too; the durable-storage half of it belongs here alongside achievement
-  persistence, since both need the same "survives outside any one
-  scenario/save" storage layer.
-- **Milestone**: a scripted scenario's full action sequence replays from a
-  recorded log to bit-identical final state (units, gold, variables), the
-  statistics dialog (feeds Phase 17) shows correct expected-vs-actual
-  combat numbers for that same run, and defining one real achievement from
-  a real campaign and completing its condition marks it earned and
-  durable across a reload.
+- Accessibility: colourblind-safe team identity (not colour-only), full
+  keyboard-only play path (built on Phase 15), font-size scaling that
+  doesn't break layout, screen-reader labels on modal dialogs.
+- Ordering note: the language picker lands here as a minimal selector and
+  moves into the Phase 24 preferences dialog later; UI built in Phases
+  13–18 should already route user-visible strings through the translation
+  lookup so this phase isn't a rewrite of them.
+- **Milestone**: switching the UI language at runtime (with one additional
+  language's `.po` file as a fixture) updates every visible string — menu
+  chrome, dialogs, in-scenario dialogue — without a page reload, and a
+  scripted keyboard-only playthrough of a small scenario succeeds without
+  touching the mouse.
 
-## Phase 16 — Advanced Map Rendering: minimap, labels, items, camera scripting (new)
+## Phase 21 — Main menu
 
-**Status: not started.** Phase 4 delivered the core board (terrain/unit/
-highlight layers, click handling, pan/zoom); this phase covers everything
-catalogue category 2/16 lists that Phase 4/9 don't already own.
+**Status: not started** (the current campaign picker is a plain routed
+list). Spec sources: `title_screen.cpp`, `campaign_selection.cpp`,
+`campaign_difficulty.cpp`.
 
-- `[item]`/`[remove_item]`: decorative or functional images placed on
-  hexes, with optional halo and team colour, queryable via
-  `[store_items]`.
-- Map labels (`[label]`, text/colour/team-scoping/fog-visibility, cleared
-  by an empty `[label]`).
-- Minimap generation: downscaled terrain-colour map with unit dots and
-  village-flag markers, click/drag-to-navigate, and (once Phase 11 lands)
-  reflecting only the viewing side's known state.
-- Camera scripting: `[scroll_to]`/`[scroll_to_unit]`/`[scroll]`,
-  `[lock_view]`/`[unlock_view]` (cutscene input lock), `[zoom]` action,
-  edge-of-screen panning preference, camera-follow-on-move preference.
-- `[screen_fade]`/`[color_adjust]` cutscene effects (always clean up
-  afterwards).
-- Terrain help data (names/descriptions/help topics for the in-game
-  encyclopedia — feeds Phase 17) and `[store_map_dimensions]`/
-  `[store_starting_location]`/`[store_locations]`/`[store_villages]` (the
-  querying half of category 2's map-state actions; some of this may
-  already be trivially derivable from `GameMap`/`GameBoard` and just needs
-  WML-facing verbs).
-- **Milestone**: a real scenario using `[label]`, at least one `[item]`,
-  and a scripted `[scroll_to]` cutscene beat all render/behave correctly,
-  and the minimap accurately reflects the live board including village
-  ownership flags.
+- Title screen with the real background and button column: Campaigns,
+  Load Game, Preferences, Help, Credits (multiplayer/editor/add-ons
+  entries omitted — out of scope).
+- Campaign selection modal: campaign list with icon, description, image,
+  difficulty chooser (`[difficulty]`), and campaign completion markers
+  (persisted); debug campaigns kept but visually separated.
+- Load Game opens the existing load flow (fully reworked in Phase 26);
+  Preferences opens Phase 24's dialog; credits screen
+  (`[about]`/`[entry]`/`[credits_group]`).
+- **Milestone**: starting a campaign at a chosen difficulty, and loading a
+  save, are both reachable only via the main menu, matching the real
+  title screen's layout.
 
-## Phase 17 — Advanced UI Shell: hotkeys, mobile/touch, help, preferences (new)
+## Phase 22 — Advanced map rendering: minimap & camera
 
-**Status: not started beyond the core play loop (Phase 5).** This is the
-UI chrome catalogue category 17 lists beyond "select a unit, move it,
-attack, recruit, recall, save/load" — deliberately deferred out of Phase 5
-so that phase could ship a playable loop quickly.
+**Status: not started.** Remainder of the old Phase 16 after labels/
+items (Phase 18) and camera scripting (Phase 17) moved out.
 
-- Theme system (`[theme]`/`[resolution]`/`[panel]`/`[status]`/`[menu]`,
-  `[change_theme]` at runtime) — may end up thin (a CSS-driven layout
-  rather than a literal WML-theme interpreter), but should still honour
-  scenario/campaign-declared themes where they matter.
-- Keyboard shortcuts + rebinding (end turn, next unit, undo/redo, zoom,
-  toggle grid, cycle units), right-click context menu + `[set_menu_item]`/
-  `[clear_menu_item]`, unmoved-unit end-turn warning.
-- Dialogs deferred from Phase 5: `[option]`/`[text_input]` player choices,
-  advancement-choice dialog (preview the resulting unit), statistics
-  dialog (feeds off Phase 15), unit-list dialog (sortable, click-to-
-  centre), in-game help/encyclopedia (`[topic]`/`[section]`/`[toplevel]`/
-  `[open_help]`, unit/terrain/ability help topics), preferences dialog
-  (display/sound/hotkeys/advanced, persisted).
-- Mobile/touch: collapsing sidebar, larger tap targets, tap-select/tap-
-  move/long-press-context-menu/pinch-zoom, responsive layout on resize
-  without losing game state.
-- Campaign-list polish: difficulty chooser dialog, credits screen
-  (`[about]`/`[entry]`/`[credits_group]`), campaign completion/progress
-  persistence in the picker (deferred from Phase 1/6).
-- **Milestone**: a full scenario is playable start-to-finish on a touch-
-  sized viewport using only tap input, the help browser opens and shows a
-  real unit's stat/ability page, and every core hotkey is rebindable and
+- Minimap: downscaled terrain-colour map with unit dots and village-flag
+  markers, click/drag-to-navigate, viewport rectangle, reflecting only the
+  viewing side's knowledge under Phase 11's fog/shroud.
+- Camera: smooth scroll-to on selection/next-unit, follow-unit-on-move,
+  edge-of-screen panning, keyboard panning, zoom levels matching
+  upstream's, map-bounds clamping.
+- Grid overlay toggle, show-enemy-moves overlay, terrain-help data for
+  Phase 24's help browser.
+- **Milestone**: the minimap accurately reflects the live board including
+  village ownership and fog, and clicking it recentres the camera.
+
+## Phase 23 — Mobile UI
+
+**Status: not started.** Sequenced after the desktop layout (Phases
+13–15, 21, 22) has settled, so it adapts a stable design instead of
+chasing a moving one.
+
+- Responsive layout: collapsing infobox/status bar, full-screen modals on
+  narrow viewports, larger tap targets.
+- Touch input: tap-select/tap-move (with a confirm tap for moves/attacks),
+  long-press context menu, pinch-zoom, drag-pan, and resize/orientation
+  change without losing game state.
+- **Milestone**: a full scenario is playable start-to-finish on a phone-
+  sized viewport using only touch input.
+
+## Phase 24 — Advanced UI features
+
+**Status: not started.** The rest of the old Phase 17.
+
+- Preferences dialog (`preferences_dialog.cpp`): display (animation speed,
+  turbo/acceleration, grid, show-floating-numbers), sound volumes, hotkey
+  rebinding (on Phase 15's registry), language (hosting Phase 20's
+  selector), advanced — persisted.
+- Unit list dialog (sortable, click-to-centre), in-game help/encyclopedia
+  (`[topic]`/`[section]`/`[toplevel]`/`[open_help]`; unit/terrain/ability
+  pages), statistics dialog (feeds off Phase 25), advancement-choice
+  dialog polish (preview the resulting unit).
+- **Milestone**: the help browser opens a real unit's stat/ability page,
+  animation speed changes take effect immediately, and a rebound hotkey
   persists across reload.
 
-## Phase 18 — CI/CD, Performance & Platform (new)
+## Phase 25 — Replay, Statistics & Achievements (was Phase 15)
 
-**Status: partially started informally.** Every engine/UI change in this
-project already ships with real unit/integration tests and (per this
-session's own discipline) real-browser Playwright verification before a
-commit — but that's a per-session practice, not a CI pipeline, and none of
-the deployment/performance/cross-browser items below exist yet.
+**Status: partially started; deprioritised 2026-09-12 (user's call).**
+Undo (single action, real state restoration) is done (Phase 2). Save/load
+(Phase 5) captures enough state to resume a scenario, but not as a
+replayable *action log* — there's no replay recording/playback, no
+out-of-sync self-check, no statistics tallying, and no achievements.
+
+- Replay recording: every synced action (move/attack/recruit/recall/
+  end_turn/choose, incl. Phase 17's `[option]` choices) logged in order,
+  independent of the snapshot-based save system, so a finished scenario
+  replays from turn 1 to identical state — also the natural place to close
+  Phase 1's deferred "round-trip serialisation" gap.
+- Redo stack (extends Phase 2's undo stack; invalidated by any new
+  action).
+- Out-of-sync self-check: replay a recorded scenario and diff final state
+  against the live run — a strong regression test in its own right.
+- `[sync_variable]` correctness.
+- Statistics (`[statistics]`/`[team]`/`[attacks]`/`[defends]`/`[killed]`/
+  `[deaths]`): damage dealt/taken (expected vs. actual), kills/losses,
+  recruits/recalls/advances per side per scenario, rolled up per campaign.
+- Achievements (`[achievement]`/`[achievement_group]`/`[sub_achievement]`/
+  `[set_achievement]`/`[progress_achievement]`/`[has_achievement]`) —
+  UtBS ships a real `achievements.cfg` to test against.
+- Persistent global variables (`[set_global_variable]`/
+  `[get_global_variable]`/`namespace=`) — same durable storage layer as
+  achievements.
+- **Milestone**: a scripted scenario's full action sequence replays from a
+  recorded log to bit-identical final state, the statistics dialog shows
+  correct expected-vs-actual combat numbers for that run, and one real
+  UtBS achievement completes and stays earned across a reload.
+
+## Phase 26 — Save game handling
+
+**Status: basic save/load only** (Phase 5: gzipped config tree in
+IndexedDB, no management UI). Sequenced after Phase 25 because upstream
+save files embed the `[replay]` log, so format compatibility depends on it.
+
+- Save/load dialogs (`game_save.cpp`/`game_load.cpp`): list with
+  campaign/scenario/turn/date/thumbnail, rename, delete (with
+  confirmation), filter by campaign.
+- Download a save as a file and upload one back (standard file picker and
+  browser download).
+- Autosave: at turn start and scenario start, rotating a configurable
+  number of autosaves; start-of-scenario saves for campaign restart.
+  (Cheap enough to pull earlier on its own if losing progress during long
+  testing sessions becomes painful.)
+- Wesnoth save-format compatibility: read and write upstream `.gz` save
+  files (`[snapshot]`/`[replay_start]`/`[replay]`/`[carryover_sides_start]`)
+  so a save made in the real binary loads here and vice versa, for
+  mainline campaigns this project supports.
+- **Milestone**: a save made in the real Wesnoth binary mid-scenario
+  uploads and resumes here with matching state, and a save downloaded
+  from here loads in the real binary.
+
+## Phase 27 — Feature completeness assessment
+
+**Status: not started.** A deliberate audit pass, not new feature work.
+
+- Walk `~/wesnoth-feature-catalogue.md` category by category (all ~1,000
+  items) against the implementation: for each item record done / partial
+  / missing / out-of-scope, with the test or real-content scenario that
+  demonstrates it.
+- Re-check this plan's per-phase gap lists and the coverage map below
+  against that result; turn every "missing" into either a follow-up task
+  or an explicit out-of-scope decision.
+- **Milestone**: a completeness report committed under `docs/` with no
+  catalogue item left unclassified.
+
+## Phase 28 — CI/CD, Performance & Platform (was Phase 18)
+
+**Status: partially started informally.** Every engine/UI change already
+ships with real unit/integration tests and real-browser Playwright
+verification before a commit — but that's a per-session practice, not a
+CI pipeline, and none of the deployment/performance/cross-browser items
+below exist yet.
 
 - CI pipeline: lint + unit + integration + UI suites on every commit, with
-  clear failure reporting (formalizes the testing discipline already
-  practiced manually into an actual pipeline).
-- Staging deployment (auto-deploy from `main`, reachable for manual
-  testing) and tagged-release deployment with versioning/rollback.
+  clear failure reporting.
+- Staging deployment (auto-deploy from `main`) and tagged-release
+  deployment with versioning/rollback.
 - Performance regression tracking: load time, frame rate, memory measured
-  in CI, with regressions failing the build — needs real budgets set
-  first (none currently defined).
-- Cross-browser compatibility matrix, offline/service-worker behaviour
-  (cached-asset play without network), deep-linking/routing survives
-  refresh (the campaign-picker routing work from Phase 5 is a good
-  foundation here — verify it survives a hard refresh mid-scenario, not
-  just client-side navigation).
+  in CI against defined budgets (none defined yet).
+- Cross-browser compatibility matrix, offline/service-worker behaviour,
+  deep-linking/routing surviving a hard refresh mid-scenario.
 - Error reporting: runtime errors surface to the player with a recoverable
   path and are logged for diagnosis, rather than a blank screen.
 - Asset licence compliance (bundled art/music/data retain upstream
-  attribution/licence files) and upstream data compatibility (unmodified
-  upstream campaign `.cfg` files load without local patching — this is
-  already mostly true by construction, since the project loads real
-  `wesnoth/data/` content directly, but hasn't been asserted as an
-  explicit regression test against a *diff* of the submodule).
-- **Milestone**: pushing to `main` triggers a CI run covering all four
-  package test suites plus a browser smoke test, a staging build is
-  reachable at a stable URL, and a deliberately-broken build fails CI
-  before it can deploy.
+  attribution/licence files) and an explicit regression test that
+  unmodified upstream campaign `.cfg` files load without local patching.
+- **Milestone**: pushing to `main` triggers a CI run covering all package
+  test suites plus a browser smoke test, a staging build is reachable at a
+  stable URL, and a deliberately-broken build fails CI before it can
+  deploy.
 
 ---
 
-## Priority as of 2026-09-09 (superseded in sequencing detail by the 2026-09-10 catalogue pass above, but the near-term focus is unchanged)
+## Priority as of 2026-09-12
 
-Explicit user direction: focus on **Phase 5 (UI polish) and Phase 6
-(content breadth)** now. Phase 7 (real AI) is deferred until Phase 5 is
-solid — hotseat cycling stays as the stand-in until then. Phase 8 is
-struck out for networked play only (see its 2026-09-10 clarification
-above — replay/statistics is real, in-scope work, now Phase 15). Phases
-9/10 (terrain visuals, unit animation) and the new Phases 11–18 are all
-scoped but not started, queued behind Phase 5/6 unless redirected.
+Explicit user direction (2026-09-12), superseding the 2026-09-09 priority
+section. Phases 0–5, 7, 9, 10 are delivered (see each phase's status);
+Phase 6 content breadth continues opportunistically as each new phase
+pulls in real content, rather than as the headline focus.
 
-Phase 5 gap list, all now done:
+1. **Phases 11 + 12** (fog/shroud/vision, time of day) with the Under the
+   Burning Suns testbed. ← **current focus**
+2. **Phase 13** (recruit/recall/combat modals), **Phase 14** (main game UI
+   overhaul), **Phase 15** (core keyboard shortcuts).
+3. **Phase 16** (narration), **Phase 17** (events/`[option]`/cutscenes).
+4. **Phase 18** (labels/items), **Phase 19** (audio/music).
+5. **Phase 20** (localization/accessibility).
+6. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).
+7. **Phase 25** (replay/statistics/achievements).
+8. **Phase 26** (save game handling).
+9. **Phase 27** (feature completeness assessment).
+10. **Phase 28** (CI/CD/performance/platform).
 
-1. ~~Unit selection visuals~~ — done: both a real contrast bug (highlight
-   colours blending into Dead Water's terrain) and a real intermittent
-   reactivity race were found and fixed, not just a cosmetic pass.
-2. ~~Real per-unit-type stats~~ — done: real `base_unit=`-aware loading
-   from `data/core/units.cfg`, spot-checked against real WML by hand.
-3. ~~Victory/defeat conditions~~ — done (the default `no_leader_left` case;
-   see `packages/engine/src/actions/victory.ts`'s doc comment for what's
-   deliberately not modeled yet).
-4. ~~Save/load~~ — done (gzipped IndexedDB).
-5. Terrain image rendering stays deferred — now formally Phase 9.
+### Old → new phase numbers
 
-**Current focus**: Phase 6 content breadth, starting with scenario
-progression (Dead Water scenario 1 → 2, gold/recall carryover — done) and
-continuing with the remaining Dead Water scenarios and the village/income
-economy loop (done this session for the synthetic debug campaign; real
-Dead Water villages/income now also work correctly as a side effect, since
-the fix was made at the engine level).
+`docs/PROGRESS.md` entries dated before 2026-09-12 use the old numbers.
+
+| Old | New |
+|---|---|
+| 11 Fog, Shroud & Vision | 11 (unchanged) |
+| 12 Time of Day | 12 (unchanged) |
+| 13 Audio & Music | 19 |
+| 14 Localization & Accessibility | 20 |
+| 15 Replay, Statistics & Achievements | 25 |
+| 16 Advanced Map Rendering | 18 (labels/items), 17 (camera scripting, screen fade), 22 (minimap/camera) |
+| 17 Advanced UI Shell | 13 (recruit/recall/combat), 14 (theme/context menu/menu items), 15 (hotkeys), 17 (`[option]`/`[text_input]`, message options), 21 (campaign list/difficulty/credits), 23 (mobile), 24 (preferences/help/unit list/stats dialog) |
+| 18 CI/CD, Performance & Platform | 28 |
+| — | 16 Narration (new), 26 Save games (new), 27 Completeness assessment (new) |
 
 ---
 
@@ -1086,30 +1313,31 @@ the fix was made at the engine level).
 
 Every category from `~/wesnoth-feature-catalogue.md`, mapped to the
 phase(s) responsible. Use this to sanity-check that a future phase
-reshuffle hasn't silently dropped a category.
+reshuffle hasn't silently dropped a category; Phase 27 audits it item by
+item.
 
 | # | Category | Phase(s) |
 |---|----------|----------|
 | 1 | WML Parsing & Data Model | 1 (core), 6 (long-tail hardening) |
-| 2 | Map & Terrain | 1 (data model), 9 (terrain graphics), 16 (labels/items/minimap) |
+| 2 | Map & Terrain | 1 (data model), 9 (terrain graphics), 18 (labels/items), 22 (minimap) |
 | 3 | Units & Unit Types | 1 (core), 6 (variations/naming, long-tail) |
 | 4 | Movement & Pathfinding | 2 (core), 11 (vision-gated movement halts) |
-| 5 | Combat | 2 |
+| 5 | Combat | 2 (rules), 13 (attack/prediction dialogs) |
 | 6 | Abilities | 2 (partial — generic pipeline is the main gap), 12 (illuminates) |
 | 7 | Weapon Specials | 2 (partial — same generic-pipeline gap as 6) |
 | 8 | Unit Modifications & Progression | 2 (core), 9/10 (rendering-dependent `apply_to=` variants) |
-| 9 | Sides, Economy & Turn Flow | 2 (core, incl. this session's income/upkeep), 7 (AI), 15 (achievements) |
-| 10 | Recruitment & Recall | 2 |
-| 11 | Scenario & Campaign Flow | 2/5 (core), 6 (difficulty/options/branching) |
-| 12 | Events & WML Scripting | 2 (core + long-tail gap list), 3 (`[lua]`) |
+| 9 | Sides, Economy & Turn Flow | 2 (core), 7 (AI), 25 (achievements) |
+| 10 | Recruitment & Recall | 2 (rules), 13 (dialogs) |
+| 11 | Scenario & Campaign Flow | 2/5 (core), 6 (options/branching), 21 (difficulty selection) |
+| 12 | Events & WML Scripting | 2 (core + long-tail gap list), 3 (`[lua]`), 17 (suspendable events, `[option]`, cutscenes) |
 | 13 | Fog, Shroud & Vision | 11 |
 | 14 | Time of Day & Schedules | 12 |
-| 15 | Story, Dialogue & Narrative | 5 |
-| 16 | Game View & Map Rendering | 4 (core), 9 (terrain compositing), 16 (minimap/labels/camera) |
-| 17 | UI, Menus, Input & Localization | 5 (core play loop), 14 (localization/accessibility), 17 (chrome) |
+| 15 | Story, Dialogue & Narrative | 5 (core), 16 (story overhaul), 17 (in-order dialogue, choices) |
+| 16 | Game View & Map Rendering | 4 (core), 9 (terrain compositing), 17 (camera scripting), 22 (minimap/camera) |
+| 17 | UI, Menus, Input & Localization | 5 (core play loop), 13/14 (dialogs, main UI), 15 (hotkeys), 20 (localization/accessibility), 21 (main menu), 23 (mobile), 24 (preferences/help) |
 | 18 | Animation & Visual Effects | 10 |
-| 19 | Audio & Music | 13 |
-| 20 | Persistence, Undo, Replay & Platform | 2 (undo), 5 (save/load), 15 (replay/statistics/achievements), 18 (CI/CD/perf/platform) |
+| 19 | Audio & Music | 19 |
+| 20 | Persistence, Undo, Replay & Platform | 2 (undo), 5 (save/load), 25 (replay/statistics/achievements), 26 (save management/format), 28 (CI/CD/perf/platform) |
 
 Editor (`EditorWML`/`PblWML`) is explicitly out of scope per the
 catalogue's own Appendix A and this plan's opening paragraph — no phase
