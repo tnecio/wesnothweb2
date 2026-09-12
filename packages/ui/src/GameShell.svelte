@@ -178,6 +178,23 @@
     if (session.scenarioResult && phase !== 'ended') phase = 'ended';
   }
 
+  /**
+   * Real, reported bug (bugs2.md "Lua events/narration ... not synced
+   * with the narrative messages"): while `phase === 'messages'`, `units`
+   * should reflect `startupMessages[messageIndex]`'s own checkpoint (see
+   * `GameSession.messageUnitSnapshot`'s doc comment) -- e.g. Gwabbo only
+   * appears from the message where his `[unit]` spawn already precedes
+   * it, not from message 0. `sync()` itself always sets the board's
+   * fully-resolved final state (needed for every OTHER phase and for
+   * every non-`units` field `sync()` touches), so this runs right after
+   * it to override just `units`, specifically for this phase.
+   */
+  function applyMessagePhaseUnits(): void {
+    if (phase !== 'messages') return;
+    const message = startupMessages[messageIndex];
+    units = message ? session.messageUnitSnapshot(message) : session.renderUnits;
+  }
+
   // No story: run the startup events immediately so the board/side panel
   // reflect the real event-spawned units from the very first render, and
   // go straight to 'messages' (or 'playing' if the events recorded none).
@@ -185,6 +202,7 @@
     startupMessages = session.runStartupEvents();
     if (startupMessages.length === 0) phase = 'playing';
     sync();
+    applyMessagePhaseUnits();
   }
 
   async function handleHexClick(x: number, y: number): Promise<void> {
@@ -583,6 +601,7 @@
       messageIndex = 0;
       sync();
       phase = startupMessages.length > 0 ? 'messages' : 'playing';
+      applyMessagePhaseUnits();
     }
   }
 
@@ -590,6 +609,9 @@
     messageIndex += 1;
     if (messageIndex >= startupMessages.length) {
       phase = 'playing';
+      units = session.renderUnits;
+    } else {
+      units = session.messageUnitSnapshot(startupMessages[messageIndex]!);
     }
   }
 
@@ -628,6 +650,7 @@
         phase = 'story';
       }
       sync();
+      applyMessagePhaseUnits();
     } catch (err) {
       continueError = err instanceof Error ? err.message : String(err);
     } finally {

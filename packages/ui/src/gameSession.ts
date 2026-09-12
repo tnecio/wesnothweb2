@@ -648,29 +648,51 @@ export class GameSession {
    * snapshot's original `units` array onto the board.
    */
   get renderUnits(): SnapshotUnit[] {
-    return this.board.allUnits().map((u) => ({
-      id: u.id || null,
-      name: u.name || null,
-      typeId: u.type.id,
-      image: this.snapshot.unitTypes[u.type.id]?.image ?? null,
-      side: u.side,
-      x: u.location.x,
-      y: u.location.y,
-      canRecruit: u.canRecruit,
-      hitpoints: u.hitpoints,
-      maxHitpoints: u.maxHitpoints,
-      experience: u.experience,
-      maxExperience: u.maxExperience,
-      level: u.type.level,
-      canAdvance: u.type.advancesTo.length > 0,
-      movesLeft: u.movesLeft,
-      maxMoves: u.maxMoves,
-      attacksLeft: u.attacksLeft,
-      maxAttacksPerTurn: u.maxAttacksPerTurn,
-      statuses: [...u.statuses],
-      loyal: u.loyal,
-      underlyingId: this.renderKeyFor(u),
-    }));
+    return this.board.allUnits().map((u) => this.toSnapshotUnit(u, u.location.x, u.location.y, u.hitpoints));
+  }
+
+  /** Shared by `renderUnits` (live position/hp) and `messageUnitSnapshot` (a checkpoint's captured position/hp) -- every OTHER field (type, side, abilities, etc.) is read straight off `unit` since none of them change mid-startup-event. */
+  private toSnapshotUnit(unit: Unit, x: number, y: number, hitpoints: number): SnapshotUnit {
+    return {
+      id: unit.id || null,
+      name: unit.name || null,
+      typeId: unit.type.id,
+      image: this.snapshot.unitTypes[unit.type.id]?.image ?? null,
+      side: unit.side,
+      x,
+      y,
+      canRecruit: unit.canRecruit,
+      hitpoints,
+      maxHitpoints: unit.maxHitpoints,
+      experience: unit.experience,
+      maxExperience: unit.maxExperience,
+      level: unit.type.level,
+      canAdvance: unit.type.advancesTo.length > 0,
+      movesLeft: unit.movesLeft,
+      maxMoves: unit.maxMoves,
+      attacksLeft: unit.attacksLeft,
+      maxAttacksPerTurn: unit.maxAttacksPerTurn,
+      statuses: [...unit.statuses],
+      loyal: unit.loyal,
+      underlyingId: this.renderKeyFor(unit),
+    };
+  }
+
+  /**
+   * The board as it looked exactly at `message`'s own `[message]` boundary
+   * -- see `RecordedMessage.unitsBefore`'s own doc comment. Real, reported
+   * bug (bugs2.md "Lua events/narration ... not synced with the
+   * narrative messages"): `GameShell.svelte` used to show every startup
+   * message against the board's FINAL, fully-resolved state (every
+   * startup event already having run to completion beforehand), so e.g.
+   * Dead_Water's Gwabbo was already standing at the keep by the time his
+   * very first line ("Back, you fiend!...") displayed, even though his
+   * scripted retreat there is written to happen only AFTER that line.
+   * Stepping `units` through this per-message instead keeps the board in
+   * sync with the story as it's actually being told.
+   */
+  messageUnitSnapshot(message: RecordedMessage): SnapshotUnit[] {
+    return message.unitsBefore.map((c) => this.toSnapshotUnit(c.unit, c.x, c.y, c.hitpoints));
   }
 
   /**

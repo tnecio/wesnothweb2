@@ -139,6 +139,12 @@ function actionMessage(cfg: WmlConfig, ctx: EventContext): void {
     message: cfg.getString('message', ''),
     image: cfg.hasAttribute('image') ? cfg.getString('image') : undefined,
     caption: cfg.hasAttribute('caption') ? cfg.getString('caption') : undefined,
+    unitsBefore: ctx.board.allUnits().map((unit) => ({
+      unit,
+      x: unit.location.x,
+      y: unit.location.y,
+      hitpoints: unit.hitpoints,
+    })),
   });
 }
 

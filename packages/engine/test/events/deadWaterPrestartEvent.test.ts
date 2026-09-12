@@ -220,6 +220,22 @@ describe('EventPump running Dead_Water scenario 1 real [event] blocks', () => {
     expect(fiend!.location.wmlX).toBe(35);
     expect(fiend!.location.wmlY).toBe(20);
 
+    // Real, reported bug (bugs2.md "Lua events/narration ... not synced
+    // with the narrative messages"): Gwabbo's own first line ("Back, you
+    // fiend!...") is messages[2] -- fired right after his [unit] spawn but
+    // BEFORE {MOVE_UNIT id=Gwabbo 20 10}, both in the same event body (see
+    // the real scenario source). His checkpoint at THAT message should
+    // show him at his real spawn position (34, 20), not the post-move
+    // (20, 10) the live board now has -- and he shouldn't exist at all in
+    // the two earlier messages' checkpoints, since he hadn't spawned yet.
+    expect(pump.ctx.messages[2]).toMatchObject({ speaker: 'Gwabbo', message: expect.stringContaining('Back, you fiend') });
+    const gwabboAtOwnMessage = pump.ctx.messages[2]!.unitsBefore.find((c) => c.unit === gwabbo);
+    expect(gwabboAtOwnMessage).toBeDefined();
+    expect(gwabboAtOwnMessage!.x).toBe(33); // wml (34,20) -> engine 0-based (33,19)... see below
+    expect(gwabboAtOwnMessage!.y).toBe(19);
+    expect(pump.ctx.messages[0]!.unitsBefore.some((c) => c.unit === gwabbo)).toBe(false);
+    expect(pump.ctx.messages[1]!.unitsBefore.some((c) => c.unit === gwabbo)).toBe(false);
+
     // [attack]/[recruit]/[lua] remain extension-point placeholders (see
     // actionWml.ts) -- none of them appear in this specific event body, so
     // no "extension point" warning should fire at all now that [move_unit]

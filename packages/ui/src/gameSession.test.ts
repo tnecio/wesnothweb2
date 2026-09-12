@@ -107,6 +107,39 @@ describe('GameSession.runStartupEvents (real Dead_Water scenario 1)', () => {
     // A scripted cutscene move, not a player move -- no movement-point cost.
     expect(gwabbo.movesLeft).toBe(gwabbo.maxMoves);
   });
+
+  it("real, reported bug: Gwabbo's first message showed him already at the keep -- messageUnitSnapshot now reflects his real spawn position at that point in the story, not the fully-resolved final board", () => {
+    const session = new GameSession(loadSnapshot());
+    const messages = session.runStartupEvents();
+    const gwabbo = session.board.allUnits().find((u) => u.id === 'Gwabbo')!;
+    // Fully resolved: Gwabbo has already retreated to the keep.
+    expect(gwabbo.location.wmlX).toBe(20);
+    expect(gwabbo.location.wmlY).toBe(10);
+
+    const gwabboMessageIndex = messages.findIndex((m) => m.speaker === 'Gwabbo');
+    expect(gwabboMessageIndex).toBeGreaterThan(0);
+
+    // At his OWN message, he's present (his [unit] already ran) but still
+    // at his real spawn hex -- the retreat is scripted to happen only
+    // after this message, in the same real event body.
+    const atOwnMessage = session.messageUnitSnapshot(messages[gwabboMessageIndex]!);
+    const gwabboSnapshot = atOwnMessage.find((u) => u.id === 'Gwabbo');
+    expect(gwabboSnapshot).toBeDefined();
+    expect(gwabboSnapshot!.x).not.toBe(gwabbo.location.x);
+    expect(gwabboSnapshot!.y).not.toBe(gwabbo.location.y);
+
+    // Before his own message, he doesn't exist yet at all.
+    const beforeHisSpawn = session.messageUnitSnapshot(messages[0]!);
+    expect(beforeHisSpawn.some((u) => u.id === 'Gwabbo')).toBe(false);
+
+    // A checkpoint's snapshot carries the same real per-unit fields
+    // `renderUnits` does (type/side/abilities/etc are all read straight
+    // off the live unit, only position/hp are the captured-at-the-time
+    // values) -- not just a bare position.
+    expect(gwabboSnapshot!.typeId).toBe('Merman Netcaster');
+    expect(gwabboSnapshot!.side).toBe(1);
+    expect(gwabboSnapshot!.loyal).toBe(true);
+  });
 });
 
 describe('GameSession.endTurn (hotseat cycling)', () => {

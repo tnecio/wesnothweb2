@@ -11,9 +11,26 @@
 
 import type { GameBoard } from '../model/GameBoard.js';
 import type { Location } from '../model/Location.js';
+import type { Unit } from '../model/Unit.js';
 import type { UnitType } from '../model/UnitType.js';
 import type { WmlConfig } from '../wml/config.js';
 import type { VariableStore } from './variables.js';
+
+/**
+ * One unit's position/hp as of a `[message]` boundary -- see
+ * `RecordedMessage.unitsBefore`'s own doc comment for why this exists.
+ * `unit` is the live `Unit` reference (for id/type/side lookups whose
+ * values don't change mid-event -- e.g. a startup event never advances a
+ * unit); `x`/`y`/`hitpoints` are VALUES captured at that moment, since
+ * `unit.location`/`unit.hitpoints` themselves keep changing as later
+ * actions in the same event run.
+ */
+export interface UnitCheckpoint {
+  readonly unit: Unit;
+  readonly x: number;
+  readonly y: number;
+  readonly hitpoints: number;
+}
 
 /** A recorded `[message]` (see actionWml.ts's `message` handler) -- this port's headless stand-in for showing a dialog. */
 export interface RecordedMessage {
@@ -21,6 +38,21 @@ export interface RecordedMessage {
   message: string;
   image?: string;
   caption?: string;
+  /**
+   * Real, reported bug (bugs2.md "Lua events/narration ... not synced with
+   * the narrative messages"): every unit's position/hp exactly as of right
+   * before THIS message fired (captured by `actionMessage`) -- e.g. in
+   * Dead_Water, Gwabbo's `[unit]` (spawning him) precedes his own
+   * `[message]` in the same event body, so he's already present in THIS
+   * checkpoint, but the LATER `{MOVE_UNIT id=Gwabbo 20 10}` (after his
+   * message) is not reflected until the NEXT checkpoint (or the final
+   * post-event state, if this was the last message). A caller that wants
+   * the board to visually match the story as it's being told -- not the
+   * fully-resolved end state from the very first message -- reads this
+   * instead of the live board while stepping through messages one at a
+   * time.
+   */
+  unitsBefore: readonly UnitCheckpoint[];
 }
 
 /**
