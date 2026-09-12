@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Location, distanceBetween } from '../../src/model/Location.js';
+import { Location, distanceBetween, getAdjacentTiles } from '../../src/model/Location.js';
 import { GameMap } from '../../src/model/Map.js';
 import { TerrainTypeData } from '../../src/model/Terrain.js';
 import { GameBoard } from '../../src/model/GameBoard.js';
@@ -8,7 +8,7 @@ import { Unit } from '../../src/model/Unit.js';
 import { UnitType } from '../../src/model/UnitType.js';
 import { MoveType } from '../../src/model/MoveType.js';
 import { WmlConfig } from '../../src/wml/config.js';
-import { reachableHexes, findPath, NO_PATH_VALUE } from '../../src/pathfind/pathfind.js';
+import { reachableHexes, findPath, findVacantTile, NO_PATH_VALUE } from '../../src/pathfind/pathfind.js';
 
 /**
  * Synthetic hand-built-board tests for the Wesnoth-specific pathfinding
@@ -245,5 +245,62 @@ describe('findPath (synthetic uniform-cost grid, two-hex A*)', () => {
     board.addUnit(Unit.create(enemyType, 2, dst));
     const blocked = findPath(board, mover, dst);
     expect(blocked.moveCost).toBe(NO_PATH_VALUE);
+  });
+});
+
+describe('findVacantTile (real, reported bug: [move_unit] silently no-op, needed "land on nearest empty hex" fallback)', () => {
+  const terrainData = new TerrainTypeData();
+  const flatMoveType = buildMoveType({ Gg: 1 }, terrainData);
+
+  function makeBoard(): GameBoard {
+    const map = buildFlatMap(9, terrainData);
+    const board = new GameBoard(map);
+    board.addTeam(new Team(1));
+    return board;
+  }
+
+  it('returns the target hex itself when it is already vacant', () => {
+    const board = makeBoard();
+    const target = new Location(4, 4);
+    expect(findVacantTile(board, target)?.equals(target)).toBe(true);
+  });
+
+  it('returns the nearest vacant neighbour when the target hex is occupied', () => {
+    const board = makeBoard();
+    const target = new Location(4, 4);
+    const occupant = Unit.create(makeUnitType('occupant', flatMoveType), 1, target);
+    board.addUnit(occupant);
+
+    const found = findVacantTile(board, target);
+    expect(found).toBeDefined();
+    expect(found!.equals(target)).toBe(false);
+    expect(board.hasUnitAt(found!)).toBe(false);
+    expect(distanceBetween(target, found!)).toBe(1); // the ring immediately around the target is fully vacant here.
+  });
+
+  it('keeps expanding outward past the first ring if that ring is also fully occupied', () => {
+    const board = makeBoard();
+    const target = new Location(4, 4);
+    // Fill the target and its whole first ring, leaving only the second ring vacant.
+    const filled = [target, ...getAdjacentTiles(target)];
+    for (const loc of filled) board.addUnit(Unit.create(makeUnitType(`u-${loc.key()}`, flatMoveType), 1, loc));
+
+    const found = findVacantTile(board, target);
+    expect(found).toBeDefined();
+    expect(filled.some((f) => f.equals(found!))).toBe(false);
+    expect(board.hasUnitAt(found!)).toBe(false);
+  });
+
+  it('returns undefined for an off-board location', () => {
+    const board = makeBoard();
+    expect(findVacantTile(board, new Location(-50, -50))).toBeUndefined();
+  });
+
+  it('with castleOnly, skips non-castle hexes even if vacant', () => {
+    const board = makeBoard();
+    const target = new Location(4, 4); // plain grass, not a castle, on this synthetic map
+    expect(board.map.isCastle(target)).toBe(false);
+    // No castle tiles exist on this map at all, so the search should exhaust and find nothing.
+    expect(findVacantTile(board, target, { castleOnly: true })).toBeUndefined();
   });
 });

@@ -52,8 +52,31 @@ function loadTerrainData(defines: DefineMap): TerrainTypeData {
   return TerrainTypeData.fromConfigs(terrainCfg.children('terrain_type'));
 }
 
-function makeStubResolveType(terrainData: TerrainTypeData): (id: string) => UnitType {
-  const moveType = MoveType.fromConfig(new WmlConfig(), terrainData);
+/**
+ * A REAL "swimmer" movetype (not an empty/stub one) -- Dead_Water's own map
+ * is mostly water/coast, and this test's [move_unit] assertions (see
+ * "firing 'start'" below) need `Unit.movementCost` to actually resolve
+ * real, mostly-passable costs across it: `findVacantTile`'s `passCheck`
+ * (real, reported bug's fix -- `actionMoveUnit`/`pathfind.ts`) treats an
+ * `UNREACHABLE` cost on every terrain (what an empty `[movement_costs]`
+ * resolves to -- see `MoveType.ts`'s `MOVEMENT_PARAMS.defaultValue`) as
+ * "this unit can never reach anywhere," which silently defeated the
+ * "nearest vacant hex" search this stub used to make impossible to test
+ * meaningfully.
+ */
+function loadRealSwimmerMoveType(dataRoot: string, defines: DefineMap, terrainData: TerrainTypeData): MoveType {
+  const cfg = parseWmlFile(path.join(dataRoot, 'core/units.cfg'), { dataRoot, defines: new Map(defines) });
+  function walk({ tag, config }: { tag: string; config: WmlConfig }): WmlConfig[] {
+    if (tag === 'movetype' && config.getString('name') === 'swimmer') return [config];
+    return config.allChildren().flatMap(walk);
+  }
+  const found = cfg.allChildren().flatMap(walk)[0];
+  if (!found) throw new Error('movetype swimmer not found');
+  return MoveType.fromConfig(found, terrainData);
+}
+
+function makeStubResolveType(dataRoot: string, defines: DefineMap, terrainData: TerrainTypeData): (id: string) => UnitType {
+  const moveType = loadRealSwimmerMoveType(dataRoot, defines, terrainData);
   const attack = AttackType.fromConfig(new WmlConfig());
   const cache = new Map<string, UnitType>();
   return (id: string) => {
@@ -69,7 +92,7 @@ function makeStubResolveType(terrainData: TerrainTypeData): (id: string) => Unit
 describe('EventPump running Dead_Water scenario 1 real [event] blocks', () => {
   const defines = loadDefines();
   const terrainData = loadTerrainData(defines);
-  const resolveType = makeStubResolveType(terrainData);
+  const resolveType = makeStubResolveType(dataRoot, defines, terrainData);
 
   const scenarioCfg = parseWmlFile(path.join(campaignDir, 'scenarios/01_Invasion.cfg'), {
     dataRoot,
@@ -178,9 +201,24 @@ describe('EventPump running Dead_Water scenario 1 real [event] blocks', () => {
     // The scenario places Gwabbo with hitpoints=4 explicitly.
     expect(gwabbo!.hitpoints).toBe(4);
 
-    // [move_unit]/[capture_village] are extension-point placeholders (see actionWml.ts): the
-    // event body should still run to completion around them without throwing, logging a clear
-    // "extension point not implemented" warning rather than silently doing nothing or crashing.
-    expect(warnings.some((w) => w.includes('extension point'))).toBe(true);
+    // Real, reported bug: `{MOVE_UNIT id=Gwabbo 20 10}` (a [move_unit]
+    // action) used to be a no-op extension point -- Gwabbo would stay
+    // wherever his [unit] tag placed him (34, 20) instead of retreating
+    // toward the keep. Now a real relocation: no movement-point cost (this
+    // is a scripted cutscene move, not a player move -- see actionWml.ts's
+    // actionMoveUnit doc comment), so movesLeft is untouched.
+    expect(gwabbo!.location.wmlX).toBe(20);
+    expect(gwabbo!.location.wmlY).toBe(10);
+
+    // The fiend's own earlier [move_unit] (34,23 -> 35,20) in the same
+    // event body, same real fix.
+    expect(fiend!.location.wmlX).toBe(35);
+    expect(fiend!.location.wmlY).toBe(20);
+
+    // [attack]/[recruit]/[lua] remain extension-point placeholders (see
+    // actionWml.ts) -- none of them appear in this specific event body, so
+    // no "extension point" warning should fire at all now that [move_unit]
+    // (the only such tag this event used) is a real implementation.
+    expect(warnings.some((w) => w.includes('extension point'))).toBe(false);
   });
 });

@@ -90,6 +90,17 @@ describe('GameSession.runStartupEvents (real Dead_Water scenario 1)', () => {
     expect(messagesAgain).toHaveLength(0);
     expect(session.board.allUnits()).toHaveLength(unitCountAfterFirst);
   });
+
+  it("real, reported bug: Gwabbo's scripted retreat ({MOVE_UNIT id=Gwabbo 20 10}, a [move_unit] action) actually relocates him, using his real Merman Netcaster movement stats end-to-end", () => {
+    const session = new GameSession(loadSnapshot());
+    session.runStartupEvents();
+    const gwabbo = session.board.allUnits().find((u) => u.id === 'Gwabbo')!;
+    expect(gwabbo).toBeDefined();
+    expect(gwabbo.location.wmlX).toBe(20);
+    expect(gwabbo.location.wmlY).toBe(10);
+    // A scripted cutscene move, not a player move -- no movement-point cost.
+    expect(gwabbo.movesLeft).toBe(gwabbo.maxMoves);
+  });
 });
 
 describe('GameSession.endTurn (hotseat cycling)', () => {
@@ -799,5 +810,132 @@ describe('GameSession.endTurn applies real healing (rest/heals-ability/poison) -
     expect(kaiKrellis.hitpoints).toBeGreaterThan(hpBefore);
     expect(kaiKrellis.hitpoints).toBe(Math.min(kaiKrellis.maxHitpoints, hpBefore + 8)); // real heals_8 value.
     expect(session.log.some((l) => l.includes('heals 8 HP') && l.includes('Cylanna'))).toBe(true);
+  });
+});
+
+describe('GameSession.unitInfo (real, reported bug: UI missing weapon type/abilities info)', () => {
+  it("Kai Krellis' real single melee weapon (scepter/impact) shows up with type/range, and he has no abilities", () => {
+    const session = new GameSession(loadSnapshot());
+    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    const info = session.unitInfo(kaiKrellis);
+
+    expect(info.attacks).toHaveLength(1);
+    expect(info.attacks[0]!.name).toBe('scepter');
+    expect(info.attacks[0]!.type).toBe('impact');
+    expect(info.attacks[0]!.range).toBe('melee');
+    expect(info.abilities).toEqual([]);
+  });
+
+  it("real Cylanna's abilities_list=heals_8,cures resolve to real player-facing names, not just tag ids", () => {
+    const session = new GameSession(loadSnapshot());
+    session.runStartupEvents();
+    const cylanna = session.board.allUnits().find((u) => u.id === 'Cylanna')!;
+    const info = session.unitInfo(cylanna);
+
+    expect(info.abilities.length).toBeGreaterThanOrEqual(2);
+    const names = info.abilities.map((a) => a.name);
+    expect(names).toContain('heals +8');
+    expect(names).toContain('cures');
+    // Every real ability carries a real, non-empty description (the whole point of showing it in the UI).
+    for (const a of info.abilities) expect(a.description.length).toBeGreaterThan(0);
+  });
+
+  it("Mal-Kevek's real 3 weapons (staff/chill wave/shadow wave) each report their real type and range", () => {
+    const { session, malKevek } = withAdjacentLeaders();
+    const info = session.unitInfo(malKevek);
+
+    expect(info.attacks).toHaveLength(3);
+    const byName = Object.fromEntries(info.attacks.map((a) => [a.name, a]));
+    expect(byName['staff']).toMatchObject({ type: 'impact', range: 'melee' });
+    expect(byName['chill wave']).toMatchObject({ type: 'cold', range: 'ranged' });
+    expect(byName['shadow wave']).toMatchObject({ type: 'arcane', range: 'ranged' });
+  });
+});
+
+describe('GameSession unit inspection (real, reported bug: no way to see information about enemy units)', () => {
+  it('clicking an enemy that is NOT an attack target (nothing of mine selected) inspects it without selecting/acting on it', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    // No unit selected yet.
+    session.handleHexClick(malKevek.location.x, malKevek.location.y);
+
+    expect(session.inspectedUnit).toBe(malKevek);
+    expect(session.selectedUnit).toBeNull(); // enemy click never selects for movement/action
+    expect(session.unitInfo(session.inspectedUnit!).name).toBe(session.unitDisplayName(malKevek));
+  });
+
+  it('clicking a non-attackable enemy while my own unit is selected inspects it WITHOUT disturbing the current selection/highlights', () => {
+    const session = new GameSession(loadSnapshot());
+    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    const malKevek = session.board.allUnits().find((u) => u.type.id === 'Dark Sorcerer')!;
+    // Real content: not adjacent at t=0 -- so clicking Mal-Kevek here hits
+    // the "enemy, but not an attack candidate" branch, not the attack branch.
+    session.selectUnit(kaiKrellis);
+    const reachableBefore = session.reachable;
+
+    const result = session.handleHexClick(malKevek.location.x, malKevek.location.y);
+
+    expect(session.inspectedUnit).toBe(malKevek);
+    expect(session.selectedUnit).toBe(kaiKrellis); // untouched
+    expect(session.reachable).toEqual(reachableBefore); // untouched
+    expect(result).toContain('Mal-Kevek');
+  });
+
+  it('selecting a different unit of mine clears any prior inspection', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    session.handleHexClick(malKevek.location.x, malKevek.location.y);
+    expect(session.inspectedUnit).toBe(malKevek);
+
+    session.selectUnit(kaiKrellis);
+    expect(session.inspectedUnit).toBeNull();
+  });
+
+  it('clicking empty ground with nothing selected clears any prior inspection', () => {
+    const { session, malKevek } = withAdjacentLeaders();
+    session.handleHexClick(malKevek.location.x, malKevek.location.y);
+    expect(session.inspectedUnit).toBe(malKevek);
+
+    // Any real empty hex on the map -- (0, 0) is off-board/water on this map, just needs to have no unit.
+    const emptyLoc = new Location(0, 0);
+    expect(session.board.unitAt(emptyLoc)).toBeUndefined();
+    session.handleHexClick(emptyLoc.x, emptyLoc.y);
+    expect(session.inspectedUnit).toBeNull();
+  });
+});
+
+describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, reported bug: melee vs. ranged not shown)', () => {
+  it("attackerWeaponOptions reports each real weapon's real type/range", () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    session.selectUnit(malKevek);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+
+    const byName = Object.fromEntries(session.attackerWeaponOptions.map((o) => [o.name, o]));
+    expect(byName['staff']).toMatchObject({ type: 'impact', range: 'melee' });
+    expect(byName['chill wave']).toMatchObject({ type: 'cold', range: 'ranged' });
+  });
+
+  it('attacking with a ranged weapon against a defender with only a melee weapon shows NO defender weapon/counter in the preview', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    session.selectUnit(malKevek);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    const chillWaveIndex = malKevek.attacks.findIndex((a) => a.name === 'chill wave');
+    session.selectAttackerWeapon(chillWaveIndex);
+
+    const preview = session.pendingAttack!.preview;
+    expect(preview.attacker.weapon).toMatchObject({ name: 'chill wave', range: 'ranged' });
+    expect(preview.defender.weapon).toBeUndefined(); // Kai Krellis' scepter is melee-only -- no counter.
+    expect(preview.defender.numBlows).toBe(0);
+  });
+
+  it('attacking with the melee weapon against the same defender DOES show a real melee counter-weapon', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    session.selectUnit(malKevek);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    const staffIndex = malKevek.attacks.findIndex((a) => a.name === 'staff');
+    session.selectAttackerWeapon(staffIndex);
+
+    const preview = session.pendingAttack!.preview;
+    expect(preview.attacker.weapon).toMatchObject({ name: 'staff', range: 'melee' });
+    expect(preview.defender.weapon).toMatchObject({ name: 'scepter', range: 'melee' });
+    expect(preview.defender.numBlows).toBeGreaterThan(0);
   });
 });

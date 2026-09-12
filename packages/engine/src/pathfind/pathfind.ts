@@ -47,11 +47,14 @@
  *    unconditionally has the ability and wrong for a hypothetical
  *    conditionally-active one -- there are no mainline abilities like that
  *    for skirmisher specifically, so this is a safe approximation today.
- *  - `full_cost_map`/`mark_route`/`find_vacant_tile`: higher-level helpers
- *    built on top of `find_routes`/`a_star_search` for other upstream
- *    features (AI cost-map aggregation, move-route annotations for the
- *    "marks" UI overlay, recruit/recall placement search). Not needed yet
- *    by anything in this project's scope; add when a caller needs them.
+ *  - `full_cost_map`/`mark_route`: higher-level helpers built on top of
+ *    `find_routes`/`a_star_search` for other upstream features (AI cost-map
+ *    aggregation, move-route annotations for the "marks" UI overlay). Not
+ *    needed yet by anything in this project's scope; add when a caller
+ *    needs them. (`find_vacant_tile` -- the other helper this bullet used
+ *    to list here -- IS now ported, see below: the `[move_unit]` WML action
+ *    needs it, real content relies on that tag's "nearest vacant hex"
+ *    fallback.)
  */
 
 import { Location, getAdjacentTiles } from '../model/Location.js';
@@ -465,4 +468,54 @@ export function reachableHexes(board: GameBoard, unit: Unit, options: ReachableH
     zocUnit,
     viewingTeam,
   });
+}
+
+// --- find_vacant_tile: nearest unoccupied hex to a point ---
+
+export interface FindVacantTileOptions {
+  /** Only consider castle tiles (mirrors upstream's `VACANT_CASTLE` enumerator; omit/false for `VACANT_ANY`). */
+  castleOnly?: boolean;
+  /** If given, a hex the unit can't enter at all (`movementCost` returns `UNREACHABLE`) is skipped once the search has expanded past a 10-hex radius (mirrors upstream's `pass_check`). */
+  passCheck?: Unit;
+}
+
+/**
+ * Mirrors `pathfind::find_vacant_tile`: the hex closest to `loc` (breadth-
+ * first outward, `loc` itself checked first) that has no unit on it, or
+ * `undefined` if none is found within 50 rings. Used by the `[move_unit]`
+ * WML action (real content commonly targets an already-occupied hex,
+ * relying on this "land nearby instead" fallback -- see that macro's own
+ * comment: "setting the destination on an existing unit... causes the unit
+ * to move to the nearest vacant hex instead").
+ */
+export function findVacantTile(board: GameBoard, loc: Location, options: FindVacantTileOptions = {}): Location | undefined {
+  if (!board.map.onBoard(loc)) return undefined;
+  const castleOnly = options.castleOnly ?? false;
+  const passCheck = options.passCheck;
+
+  const checked = new Set<string>();
+  let pending = new Set<string>([loc.key()]);
+
+  for (let distance = 0; distance < 50; distance++) {
+    if (pending.size === 0) return undefined;
+    const checking = pending;
+    pending = new Set<string>();
+
+    for (const key of checking) {
+      const here = Location.fromKey(key);
+      if (castleOnly && !board.map.isCastle(here)) continue;
+
+      const unreachable = !!passCheck && passCheck.movementCost(board.map.getTerrain(here)) >= UNREACHABLE;
+      if (unreachable && distance > 10) continue;
+      if (!board.hasUnitAt(here) && !unreachable) return here;
+
+      for (const adj of getAdjacentTiles(here)) {
+        if (!board.map.onBoard(adj)) continue;
+        const adjKey = adj.key();
+        if (!checked.has(adjKey) && !checking.has(adjKey)) pending.add(adjKey);
+      }
+    }
+    for (const key of checking) checked.add(key);
+  }
+  return undefined;
 }

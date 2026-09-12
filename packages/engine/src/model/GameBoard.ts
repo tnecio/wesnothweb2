@@ -75,7 +75,7 @@ export class GameBoard {
     return this.unitsByLocation.has(loc.key());
   }
 
-  /** Moves a unit's location key in the index; does not touch its .location field (caller's job, mirrors upstream's split responsibility). */
+  /** Moves a unit's location key in the index AND its own `.location` field to match. */
   moveUnit(from: Location, to: Location): void {
     const unit = this.removeUnitAt(from);
     if (!unit) return;

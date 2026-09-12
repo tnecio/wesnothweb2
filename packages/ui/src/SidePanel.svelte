@@ -4,6 +4,7 @@
 
   let {
     selected,
+    inspected,
     pendingPreview,
     attackerWeaponOptions,
     statusMessage,
@@ -27,6 +28,8 @@
     onLoad,
   }: {
     selected: SelectedUnitInfo | null;
+    /** A unit clicked purely to view its info (any side) -- see `GameSession.inspectedUnit`. Shown alongside `selected`, addressing "no way to see information about enemy units". */
+    inspected: SelectedUnitInfo | null;
     pendingPreview: CombatPreview | null;
     /** The attacker's usable weapons against the current target -- see `GameSession.attackerWeaponOptions`. Empty unless `pendingPreview` is set. */
     attackerWeaponOptions: AttackerWeaponOption[];
@@ -60,6 +63,11 @@
 
   function pct(fraction: number): string {
     return `${Math.round(fraction * 100)}%`;
+  }
+
+  /** "melee, blade" style label for a weapon's range/damage type -- addresses "UI is missing information about weapon type". */
+  function rangeType(w: { range: string; type: string }): string {
+    return `${w.range}, ${w.type}`;
   }
 </script>
 
@@ -100,9 +108,13 @@
               class="weapon-option"
               class:selected={opt.selected}
               onclick={() => onSelectAttackerWeapon(opt.index)}
+              title={opt.specials.length > 0 ? opt.specials.map((s) => s.name).join(', ') : undefined}
             >
               <span class="name">{opt.name}</span>
-              <span class="stats">{opt.damage}&times;{opt.numAttacks}</span>
+              <span class="stats">{opt.damage}&times;{opt.numAttacks} ({rangeType(opt)})</span>
+              {#if opt.specials.length > 0}
+                <span class="specials">{opt.specials.map((s) => s.name).join(', ')}</span>
+              {/if}
             </button>
           {/each}
         </div>
@@ -110,6 +122,12 @@
       <div class="combatant attacker">
         <div class="name">{pendingPreview.attacker.name} <span class="role">(attacker)</span></div>
         <div>HP {pendingPreview.attacker.hp}/{pendingPreview.attacker.maxHp}</div>
+        {#if pendingPreview.attacker.weapon}
+          <div>Weapon: {pendingPreview.attacker.weapon.name} ({rangeType(pendingPreview.attacker.weapon)})</div>
+          {#if pendingPreview.attacker.weapon.specials.length > 0}
+            <div class="hint-inline">{pendingPreview.attacker.weapon.specials.map((s) => s.name).join(', ')}</div>
+          {/if}
+        {/if}
         <div>Chance to hit: {pendingPreview.attacker.chanceToHit}%</div>
         <div>Damage per blow: {pendingPreview.attacker.damagePerBlow} &times; {pendingPreview.attacker.numBlows} strikes</div>
         <div>Chance to die: {pct(pendingPreview.attacker.deathChance)}</div>
@@ -117,6 +135,14 @@
       <div class="combatant defender">
         <div class="name">{pendingPreview.defender.name} <span class="role">(defender)</span></div>
         <div>HP {pendingPreview.defender.hp}/{pendingPreview.defender.maxHp}</div>
+        {#if pendingPreview.defender.weapon}
+          <div>Weapon: {pendingPreview.defender.weapon.name} ({rangeType(pendingPreview.defender.weapon)})</div>
+          {#if pendingPreview.defender.weapon.specials.length > 0}
+            <div class="hint-inline">{pendingPreview.defender.weapon.specials.map((s) => s.name).join(', ')}</div>
+          {/if}
+        {:else}
+          <div class="hint-inline">No usable counter-weapon (range mismatch) -- will not fight back.</div>
+        {/if}
         <div>Chance to hit: {pendingPreview.defender.chanceToHit}%</div>
         <div>Damage per blow: {pendingPreview.defender.damagePerBlow} &times; {pendingPreview.defender.numBlows} strikes</div>
         <div>Chance to die: {pct(pendingPreview.defender.deathChance)}</div>
@@ -127,16 +153,63 @@
       </div>
     </section>
   {:else}
+    {#snippet unitInfo(info: SelectedUnitInfo)}
+      <div>Type: {info.typeId}</div>
+      <div>Side: {info.side}</div>
+      <div>Position: ({info.x}, {info.y})</div>
+      <div>Terrain: {info.terrainName} (Defense: {info.defensePercent}%)</div>
+      <div>HP: {info.hp}/{info.maxHp}</div>
+      <div>Moves left: {info.movesLeft}/{info.maxMoves}</div>
+      <div>Attacks left: {info.attacksLeft}</div>
+      {#if info.attacks.length > 0}
+        <!-- Real weapon type/range/specials -- addresses "UI is missing information about weapon type/specials". -->
+        <div class="attacks">
+          <div class="attacks-label">Attacks:</div>
+          <ul>
+            {#each info.attacks as atk (atk.name)}
+              <li>
+                <span class="name">{atk.name}</span>
+                <span class="stats">{atk.damage}&times;{atk.numAttacks} ({rangeType(atk)})</span>
+                {#if atk.specials.length > 0}
+                  <span class="specials" title={atk.specials.map((s) => s.description).join('\n\n')}>
+                    {atk.specials.map((s) => s.name).join(', ')}
+                  </span>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+      {#if info.abilities.length > 0}
+        <!-- Real abilities (e.g. heals, skirmisher) -- addresses "UI is missing information about abilities". -->
+        <div class="abilities">
+          <div class="attacks-label">Abilities:</div>
+          <ul>
+            {#each info.abilities as ab (ab.name)}
+              <li title={ab.description}>{ab.name}</li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+    {/snippet}
+
     {#if selected}
       <section class="unit-info">
         <h3>{selected.name}</h3>
-        <div>Type: {selected.typeId}</div>
-        <div>Side: {selected.side}</div>
-        <div>Position: ({selected.x}, {selected.y})</div>
-        <div>Terrain: {selected.terrainName} (Defense: {selected.defensePercent}%)</div>
-        <div>HP: {selected.hp}/{selected.maxHp}</div>
-        <div>Moves left: {selected.movesLeft}/{selected.maxMoves}</div>
-        <div>Attacks left: {selected.attacksLeft}</div>
+        {@render unitInfo(selected)}
+      </section>
+    {/if}
+
+    {#if inspected}
+      <!--
+        A unit clicked purely to view its info -- friend or enemy, addresses
+        "no way to see information about enemy units". Independent of
+        `selected` (see GameSession.inspectedUnit's own doc comment): shown
+        as its own section so it doesn't disturb the acting-unit display above.
+      -->
+      <section class="unit-info inspected">
+        <h3>{inspected.name} <span class="role">(viewing)</span></h3>
+        {@render unitInfo(inspected)}
       </section>
     {/if}
 
@@ -214,7 +287,7 @@
       </section>
     {/if}
 
-    {#if !selected && recruitOptions.length === 0 && recallOptions.length === 0}
+    {#if !selected && !inspected && recruitOptions.length === 0 && recallOptions.length === 0}
       <p class="hint">
         Click one of your units to select it. Blue hexes are where it can move;
         red hexes are adjacent enemies it can attack.
@@ -280,9 +353,52 @@
     font-size: 0.95rem;
     color: #f1e6c8;
   }
+  .unit-info {
+    border: 1px solid #4a4432;
+    border-radius: 4px;
+    padding: 0.5rem 0.6rem;
+    background: #23201a;
+  }
   .unit-info div,
   .combatant div {
     margin: 0.15rem 0;
+  }
+  .unit-info.inspected {
+    border-color: #6a4a4a;
+  }
+  .attacks,
+  .abilities {
+    margin-top: 0.35rem;
+  }
+  .attacks-label {
+    opacity: 0.75;
+    font-size: 0.85em;
+  }
+  .attacks ul,
+  .abilities ul {
+    list-style: none;
+    margin: 0.15rem 0 0;
+    padding: 0;
+  }
+  .attacks li,
+  .abilities li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: baseline;
+    padding: 0.1rem 0;
+  }
+  .attacks .name {
+    font-weight: 700;
+  }
+  .attacks .stats {
+    opacity: 0.85;
+    font-size: 0.9em;
+  }
+  .specials {
+    font-style: italic;
+    opacity: 0.8;
+    font-size: 0.85em;
   }
   .prediction {
     border: 1px solid #4a4432;

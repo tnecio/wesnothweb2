@@ -22,23 +22,28 @@
  * `kill`, `modify_unit` (simplified, see below), `unit` (spawn), `gold`,
  * `store_gold`, `allow_recruit`, `capture_village` (side= only, see its
  * own doc comment), `recall` (see its own doc comment for what's
- * deliberately not re-implemented from upstream's C++ `[recall]` handler).
+ * deliberately not re-implemented from upstream's C++ `[recall]` handler),
+ * `move_unit` (real, reported bug: real scenario content -- e.g.
+ * Dead_Water scenario 1's `{MOVE_UNIT id=Gwabbo 20 10}` -- silently did
+ * nothing; see that handler's own doc comment for what it does and does
+ * not cover, and `pathfind.ts`'s `findVacantTile`, ported alongside it).
  *
  * Presentation-only tags that have no headless effect are registered as
  * explicit no-ops (not silently dropped) so real content doesn't spam
  * "unsupported tag" warnings: `music`, `sound`, `scroll_to`,
  * `scroll_to_unit`, `delay`, `redraw`, `highlight`, `floating_text`,
- * `label`, `objectives`.
+ * `label`, `objectives`, `move_unit_fake` (a pure animation of a move
+ * `move_unit` already performed for real).
  *
  * ## Extension points (NOT implemented here, on purpose)
- * `[attack]`, `[recruit]`, `[move_unit]`/`[move_unit_fake]` (need
- * `packages/engine/src/actions/`'s move/combat/recruit logic, being built
- * in parallel -- explicitly out of scope for this module per the task
- * brief) and `[lua]` (needs the Phase 3 Lua bridge). Each is registered
- * with a placeholder handler that logs a clear "extension point" message
- * and no-ops, rather than either crashing or silently doing nothing --
- * `ActionRegistry.register(tag, handler)` is public specifically so later
- * work can override these without touching this file.
+ * `[attack]`, `[recruit]` (need `packages/engine/src/actions/`'s
+ * combat/recruit logic, being built in parallel -- explicitly out of
+ * scope for this module per the task brief) and `[lua]` (needs the Phase
+ * 3 Lua bridge) remain placeholders. Each is registered with a handler
+ * that logs a clear "extension point" message and no-ops, rather than
+ * either crashing or silently doing nothing -- `ActionRegistry.
+ * register(tag, handler)` is public specifically so later work can
+ * override these without touching this file.
  *
  * ## Known simplifications
  * `[modify_unit]` upstream (`data/lua/wml/modify_unit.lua`) is a fully
@@ -60,10 +65,11 @@
  * enough that adding them later doesn't require restructuring this file.
  */
 
-import { Location, parseDirection } from '../model/Location.js';
+import { Direction, Location, parseDirection } from '../model/Location.js';
 import { Unit } from '../model/Unit.js';
 import { WmlConfig } from '../wml/config.js';
 import { checkRecruitLocation, recallUnit } from '../actions/recruit.js';
+import { findVacantTile } from '../pathfind/pathfind.js';
 import type { ActionHandler, EventContext } from './context.js';
 import { ActionRegistry } from './context.js';
 import { conditionalPassed } from './conditionalWml.js';
@@ -643,6 +649,84 @@ function actionRecall(cfg: WmlConfig, ctx: EventContext): void {
   ctx.log('warn', '[recall]: no recall-list unit on any side matched the filter');
 }
 
+// --- [move_unit] ---
+
+/**
+ * Mirrors `data/lua/wml/move_unit.lua`'s `wesnoth.wml_actions.move_unit`:
+ * relocates every unit matching `cfg` (as a unit filter -- `to_x`/`to_y`/
+ * `fire_event`/etc. aren't among the keys `unitMatchesFilter` checks, so
+ * `cfg` is used as-is, matching upstream's own approach of stripping only
+ * the path/control keys before treating the rest as a filter) directly to
+ * its target hex -- NOT a real player move: no movement-point cost, no
+ * zone-of-control stop, no pathfinding at all, since this is upstream's
+ * scripted/cutscene relocation (its own macro doc: "moves a unit from its
+ * current location to the given location, displaying movement normally").
+ * If the target hex is occupied, lands on the nearest vacant hex instead
+ * (`findVacantTile`, mirroring `wesnoth.paths.find_vacant_hex`).
+ *
+ * Deliberately NOT ported: `to_location=`/`dir=` path specs (multi-hex
+ * scripted routes) -- only the far more common absolute `to_x=`/`to_y=`
+ * form (optionally comma-lists, matched positionally against multiple
+ * filtered units, same as upstream) is implemented; `check_passability=no`
+ * (always passability-checks, matching upstream's default); `clear_shroud=`
+ * (no fog/shroud model yet, see `pathfind.ts`'s module doc comment).
+ * `fire_event=` IS supported (raises a real `moveto` event via `ctx.raise`,
+ * queued for the next pump pass like every other `raise` call in this
+ * file -- see that field's own doc comment on the batching this implies).
+ */
+function actionMoveUnit(cfg: WmlConfig, ctx: EventContext): void {
+  if (cfg.hasAttribute('to_location') || cfg.hasAttribute('dir')) {
+    ctx.log('warn', '[move_unit]: to_location=/dir= path specs are not supported (only to_x=/to_y=) -- ignored');
+  }
+  const toXStr = cfg.getString('to_x', '');
+  const toYStr = cfg.getString('to_y', '');
+  if (!toXStr || !toYStr) {
+    ctx.log('warn', '[move_unit]: missing to_x=/to_y= (the only supported destination form) -- no-op');
+    return;
+  }
+  const toXs = toXStr.split(',').map((s) => s.trim());
+  const toYs = toYStr.split(',').map((s) => s.trim());
+  const fireEvent = cfg.getBoolean('fire_event', false);
+  const checkPassability = cfg.getBoolean('check_passability', true);
+
+  const units = findUnits(ctx.board, cfg);
+  for (let i = 0; i < units.length; i++) {
+    const unit = units[i]!;
+    // Positional pairing with the comma-list, clamped to the last entry --
+    // mirrors upstream's own coroutine-based `path_locs` running out of
+    // `to_x`/`to_y` entries and repeatedly yielding `nil` (which its
+    // `tonumber(x) or current_unit:to_map(false)` then reads back as
+    // "stay put on this axis").
+    const xStr = toXs[Math.min(i, toXs.length - 1)]!;
+    const yStr = toYs[Math.min(i, toYs.length - 1)]!;
+    const wmlX = Number(xStr);
+    const wmlY = Number(yStr);
+    if (!Number.isFinite(wmlX) || !Number.isFinite(wmlY)) {
+      ctx.log('error', `[move_unit]: invalid to_x=/to_y= ("${xStr}", "${yStr}")`);
+      continue;
+    }
+
+    const fromLoc = unit.location;
+    const requested = Location.fromWml(wmlX, wmlY);
+    const alreadyThere = requested.equals(fromLoc);
+    const target = alreadyThere
+      ? requested
+      : findVacantTile(ctx.board, requested, { passCheck: checkPassability ? unit : undefined });
+    if (!target) {
+      ctx.log('error', `[move_unit]: could not find a vacant hex near (${wmlX}, ${wmlY})`);
+      continue;
+    }
+
+    // Real Lua's own facing rule: purely left/right, from the ORIGINAL hex
+    // to the FINAL one -- not `directionTo`'s full 6-direction geometry.
+    if (fromLoc.x < target.x) unit.facing = Direction.SouthEast;
+    else if (fromLoc.x > target.x) unit.facing = Direction.SouthWest;
+
+    ctx.board.moveUnit(fromLoc, target);
+    if (fireEvent) ctx.raise('moveto', target, fromLoc);
+  }
+}
+
 // --- registry ---
 
 /**
@@ -668,6 +752,7 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('allow_recruit', actionAllowRecruit);
   registry.register('capture_village', actionCaptureVillage);
   registry.register('recall', actionRecall);
+  registry.register('move_unit', actionMoveUnit);
 
   for (const tag of [
     'music',
@@ -683,14 +768,17 @@ export function createDefaultActionRegistry(): ActionRegistry {
     'select_unit',
     'unit_overlay',
     'remove_unit_overlay',
+    // Purely a cosmetic animation of a move `[move_unit]` (above) already
+    // performed for real -- upstream's own `move_unit.lua` calls this
+    // itself right before setting the unit's real x/y. Headless, so
+    // there's nothing to implement, unlike `move_unit` itself.
+    'move_unit_fake',
   ]) {
     registry.register(tag, noop);
   }
 
   registry.register('attack', extensionPoint('attack', 'packages/engine/src/actions/'));
   registry.register('recruit', extensionPoint('recruit', 'packages/engine/src/actions/'));
-  registry.register('move_unit', extensionPoint('move_unit', 'packages/engine/src/actions/ + pathfind/'));
-  registry.register('move_unit_fake', extensionPoint('move_unit_fake', 'packages/engine/src/actions/ + pathfind/'));
   registry.register('lua', extensionPoint('lua', 'packages/lua-bridge/ (Phase 3)'));
 
   return registry;

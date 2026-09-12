@@ -437,8 +437,22 @@ export function betterCombat(
  * "no weapon") that gives the best expected outcome for the defender
  * against `attackerWeaponIndex`, mirroring `battle_context::
  * choose_defender_weapon`'s intent (a simplified, non-harm-weighted
- * version -- upstream also considers each candidate's own range legality
- * and AI aggression settings, which are caller concerns here).
+ * version -- upstream also considers AI aggression settings, which are a
+ * caller concern here).
+ *
+ * The filter for "can this defender weapon even be used to retaliate" is
+ * `def.range() != att.range()` (`attack.cpp`'s `choose_defender_weapon`,
+ * verified directly) -- a STRING comparison of each weapon's `range=`
+ * label ("melee"/"ranged"/a custom value), NOT the numeric `min_range`/
+ * `max_range` distance bounds (those gate whether the ATTACKER can use a
+ * weapon against a target at a given hex distance at all, a separate,
+ * earlier check -- real combat is between adjacent hexes, distance 1, for
+ * everything except specialised ranged-attack content). Filtering by
+ * distance here made a melee attacker's target retaliate with ANY weapon
+ * whose (distance-based) min/max happened to include 1, including a
+ * defender's own ranged-only weapon -- e.g. a spearman's javelin throw
+ * drawing a bow counter from a unit with no melee weapon at all. Real,
+ * reported bug.
  */
 export function chooseDefenderWeaponIndex(
   attacker: Unit,
@@ -481,8 +495,8 @@ export function chooseDefenderWeaponIndex(
 
   let consideredAny = false;
   defender.attacks.forEach((weapon, index) => {
-    const inRange = distance <= weapon.maxRange && distance >= weapon.minRange;
-    if (!inRange) return;
+    const rangeMatches = weapon.range === attackerWeapon.range;
+    if (!rangeMatches || weapon.defenseWeight <= 0) return;
     consideredAny = true;
     tryWeapon(index, weapon);
   });

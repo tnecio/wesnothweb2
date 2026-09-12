@@ -322,4 +322,92 @@ describe('executeMove village capture', () => {
     expect(mover.location.equals(villageLoc)).toBe(false);
     expect(board.villageOwner(villageLoc)).toBeUndefined();
   });
+
+  it('capturing a village zaps the rest of the turn\'s movement (real, reported bug)', () => {
+    const { board, villageLoc } = makeVillageBoard();
+    const mover = Unit.create(moverType, 1, new Location(0, 3));
+    mover.movesLeft = 5;
+    mover.maxMoves = 5;
+    board.addUnit(mover);
+
+    const route = findPath(board, mover, villageLoc, { seeAll: true });
+    const result = executeMove(board, mover, route.steps, { seeAll: true });
+
+    expect(result.enteredVillage).toBe(true);
+    expect(result.movesLeft).toBe(0);
+    expect(mover.movesLeft).toBe(0);
+  });
+
+  it('entering a village already owned by the mover\'s own side does NOT zap movement', () => {
+    const { board, villageLoc } = makeVillageBoard();
+    board.captureVillage(villageLoc, 1);
+
+    const mover = Unit.create(moverType, 1, new Location(0, 3));
+    mover.movesLeft = 5;
+    mover.maxMoves = 5;
+    board.addUnit(mover);
+
+    const route = findPath(board, mover, villageLoc, { seeAll: true });
+    const result = executeMove(board, mover, route.steps, { seeAll: true });
+
+    expect(result.enteredVillage).toBe(true);
+    expect(result.movesLeft).toBeGreaterThan(0);
+  });
+});
+
+describe('executeMove friendly-unit pass-through (real, reported bug)', () => {
+  /** Same minimal empty-terrain-registry fixture as the ZoC describe block above (falls back to keying costs by the raw terrain code directly). */
+  const terrainData = new TerrainTypeData();
+  const flatMoveType = (() => {
+    const cfg = new WmlConfig();
+    const costs = new WmlConfig();
+    costs.setAttribute('Gg', 1);
+    cfg.addChild('movement_costs', costs);
+    return MoveType.fromConfig(cfg, terrainData);
+  })();
+  const moverType = makeUnitType('mover', flatMoveType, 5);
+
+  function makeFlatBoard(): GameBoard {
+    const row = Array.from({ length: 9 }, () => 'Gg').join(',');
+    const rows = Array.from({ length: 9 }, () => row);
+    const board = new GameBoard(GameMap.fromMapString(rows.join('\n'), terrainData, 1));
+    board.addTeam(new Team(1));
+    board.addTeam(new Team(2));
+    return board;
+  }
+
+  it('a unit can move past (not onto) a hex with a FRIENDLY unit standing on it', () => {
+    const board = makeFlatBoard();
+    const mover = Unit.create(moverType, 1, new Location(0, 3));
+    mover.movesLeft = 5;
+    mover.maxMoves = 5;
+    board.addUnit(mover);
+
+    const blocker = Unit.create(moverType, 1, new Location(2, 3)); // same side -- directly on the straight-line path
+    board.addUnit(blocker);
+
+    const dst = new Location(4, 3);
+    const route = findPath(board, mover, dst, { seeAll: true });
+    const result = executeMove(board, mover, route.steps, { seeAll: true });
+
+    expect(result.stoppedEarly).toBe(false);
+    expect(mover.location.equals(dst)).toBe(true);
+    expect(blocker.location.equals(new Location(2, 3))).toBe(true); // untouched
+  });
+
+  it('a unit CANNOT move past (or onto) a hex with an ENEMY unit standing on it', () => {
+    const board = makeFlatBoard();
+    const mover = Unit.create(moverType, 1, new Location(0, 3));
+    mover.movesLeft = 5;
+    mover.maxMoves = 5;
+    board.addUnit(mover);
+
+    const enemy = Unit.create(moverType, 2, new Location(2, 3));
+    board.addUnit(enemy);
+
+    const dst = new Location(4, 3);
+    // findPath with seeAll must already refuse to route through the enemy hex.
+    const route = findPath(board, mover, dst, { seeAll: true });
+    expect(route.steps.some((h) => h.equals(enemy.location))).toBe(false);
+  });
 });

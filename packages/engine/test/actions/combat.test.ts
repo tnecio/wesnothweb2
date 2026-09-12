@@ -49,15 +49,16 @@ function flatMoveType(terrainData: TerrainTypeData, defensePercent: number): Mov
   return MoveType.fromConfig(cfg, terrainData);
 }
 
-function makeUnitType(id: string, hitpoints: number, moveType: MoveType, weapon: AttackType): UnitType {
-  return new UnitType(id, id, '', 'neutral', 1, hitpoints, 5, 5, 0, 1, 0, -1, 500, [], '', false, false, false, moveType, [weapon], []);
+function makeUnitType(id: string, hitpoints: number, moveType: MoveType, weapon: AttackType | AttackType[]): UnitType {
+  const weapons = Array.isArray(weapon) ? weapon : [weapon];
+  return new UnitType(id, id, '', 'neutral', 1, hitpoints, 5, 5, 0, 1, 0, -1, 500, [], '', false, false, false, moveType, weapons, []);
 }
 
-function makeWeapon(damage: number, numAttacks: number): AttackType {
+function makeWeapon(damage: number, numAttacks: number, range: 'melee' | 'ranged' = 'melee'): AttackType {
   const cfg = new WmlConfig();
   cfg.setAttribute('name', 'test-weapon');
   cfg.setAttribute('type', 'blade');
-  cfg.setAttribute('range', 'melee');
+  cfg.setAttribute('range', range);
   cfg.setAttribute('damage', damage);
   cfg.setAttribute('number', numAttacks);
   return AttackType.fromConfig(cfg);
@@ -172,6 +173,71 @@ describe('executeAttack (hand-built units, hand-verifiable outcomes)', () => {
     // 50%) produce a different hit/miss sequence -- guards against the RNG
     // wiring being a no-op that always takes the same branch.
     expect(runA.result.blows.map((b) => b.hit)).not.toEqual(runC.result.blows.map((b) => b.hit));
+  });
+});
+
+describe('executeAttack range matching (real, reported bug: melee/ranged retaliation)', () => {
+  /**
+   * Real Wesnoth (`attack.cpp`'s `choose_defender_weapon`, verified
+   * directly): `def.range() != att.range()` -- a defender can only counter
+   * with a weapon whose `range=` STRING label matches the attacker's, not
+   * merely one whose (largely vestigial, for standard adjacent-hex combat)
+   * numeric min/max distance happens to cover the current distance. A
+   * melee attacker facing a defender with ONLY a ranged weapon should draw
+   * no counter-attack at all.
+   */
+  it('a melee attacker vs. a defender with only a ranged weapon draws no counter-attack', () => {
+    const { board, terrainData } = makeBoard();
+    const moveType = flatMoveType(terrainData, 100);
+    const attackerType = makeUnitType('spearman', 30, moveType, makeWeapon(8, 1, 'melee'));
+    const defenderType = makeUnitType('archer', 30, moveType, makeWeapon(5, 3, 'ranged'));
+    const attacker = Unit.create(attackerType, 1, new Location(0, 0));
+    const defender = Unit.create(defenderType, 2, new Location(0, 1));
+    board.addUnit(attacker);
+    board.addUnit(defender);
+
+    const rng = new RngDeterministic(new MtRng(1));
+    const result = executeAttack(board, rng, new Location(0, 0), 0, new Location(0, 1));
+
+    expect(result.blows.every((b) => b.attackerTurn)).toBe(true);
+    expect(attacker.hitpoints).toBe(30); // never struck back
+  });
+
+  it('a melee attacker vs. a defender with BOTH melee and ranged weapons draws a melee counter, not the ranged one', () => {
+    const { board, terrainData } = makeBoard();
+    const moveType = flatMoveType(terrainData, 100);
+    const attackerType = makeUnitType('spearman', 30, moveType, makeWeapon(8, 1, 'melee'));
+    const defenderType = makeUnitType('swordsman-archer', 30, moveType, [makeWeapon(2, 1, 'melee'), makeWeapon(99, 3, 'ranged')]);
+    const attacker = Unit.create(attackerType, 1, new Location(0, 0));
+    const defender = Unit.create(defenderType, 2, new Location(0, 1));
+    board.addUnit(attacker);
+    board.addUnit(defender);
+
+    const rng = new RngDeterministic(new MtRng(1));
+    const result = executeAttack(board, rng, new Location(0, 0), 0, new Location(0, 1));
+
+    const counterBlow = result.blows.find((b) => !b.attackerTurn);
+    expect(counterBlow).toBeDefined();
+    // The 99-damage ranged weapon would have one-shot the attacker (30 hp) --
+    // its damage never applying proves the melee (2-damage) weapon was chosen.
+    expect(attacker.hitpoints).toBeGreaterThan(0);
+  });
+
+  it('two ranged attackers can exchange ranged counter-fire (range compatibility, not "melee always wins")', () => {
+    const { board, terrainData } = makeBoard();
+    const moveType = flatMoveType(terrainData, 100);
+    const attackerType = makeUnitType('archer-1', 30, moveType, makeWeapon(4, 1, 'ranged'));
+    const defenderType = makeUnitType('archer-2', 30, moveType, makeWeapon(3, 1, 'ranged'));
+    const attacker = Unit.create(attackerType, 1, new Location(0, 0));
+    const defender = Unit.create(defenderType, 2, new Location(0, 1));
+    board.addUnit(attacker);
+    board.addUnit(defender);
+
+    const rng = new RngDeterministic(new MtRng(1));
+    const result = executeAttack(board, rng, new Location(0, 0), 0, new Location(0, 1));
+
+    expect(result.blows.some((b) => !b.attackerTurn)).toBe(true);
+    expect(attacker.hitpoints).toBeLessThan(30);
   });
 });
 

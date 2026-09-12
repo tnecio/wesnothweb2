@@ -218,11 +218,20 @@ export function executeMove(board: GameBoard, unit: Unit, path: readonly Locatio
 
   for (let i = 1; i < planned.steps.length; i++) {
     const hex = planned.steps[i]!;
-    if (board.hasUnitAt(hex)) {
-      // Defensive: shouldn't happen given a path from `findPath`/`reachableHexes`
-      // (which already exclude enemy-occupied hexes), but never walk into an
-      // occupied hex if it somehow does.
-      break;
+    const occupant = board.unitAt(hex);
+    if (occupant) {
+      const occupantTeam = board.getTeam(occupant.side);
+      const unitTeam = board.getTeam(unit.side);
+      const isEnemy = !!unitTeam && !!occupantTeam && unitTeam.isEnemy(occupantTeam);
+      // Mirrors `unit_mover::check_for_obstructing_unit`: only an ENEMY
+      // occupant ever blocks movement (defensive here -- shouldn't happen
+      // given a path from `findPath`/`reachableHexes`, which already
+      // exclude enemy-occupied hexes). A FRIENDLY unit does NOT obstruct
+      // at all -- upstream's `cache_hidden_units` walks straight past
+      // allied-occupied hexes with no stop, since this port never mutates
+      // an intermediate hex's occupant (only origin/final are written),
+      // there is nothing further to do here beyond not blocking.
+      if (isEnemy) break;
     }
     actualSteps.push(hex);
     actualMovesLeft = planned.movesLeftAfter[i]!;
@@ -244,10 +253,17 @@ export function executeMove(board: GameBoard, unit: Unit, path: readonly Locatio
     unit.facing = directionTo(prevHex, finalHex);
     unit.setStatus(UnitStatus.NotMoved, false);
   }
-  unit.movesLeft = actualMovesLeft;
-
   const enteredVillage = board.map.isVillage(finalHex);
-  if (enteredVillage) board.captureVillage(finalHex, unit.side);
+  if (enteredVillage) {
+    // Mirrors `unit_mover::post_move`: capturing a village (i.e. its owner
+    // was NOT already this unit's side -- entering one you already own
+    // doesn't cost anything extra) "zaps" the rest of this turn's movement,
+    // in addition to reassigning ownership.
+    const alreadyOwned = board.villageOwner(finalHex) === unit.side;
+    board.captureVillage(finalHex, unit.side);
+    if (!alreadyOwned) actualMovesLeft = 0;
+  }
+  unit.movesLeft = actualMovesLeft;
 
   return {
     path: actualSteps,

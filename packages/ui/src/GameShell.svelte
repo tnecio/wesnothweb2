@@ -97,6 +97,8 @@
 
   let units = $state<SnapshotUnit[]>(session.renderUnits);
   let selected = $state<SelectedUnitInfo | null>(null);
+  /** The currently-inspected unit's view-model (see `GameSession.inspectedUnit`) -- any unit clicked purely to view its info, independent of `selected`. */
+  let inspected = $state<SelectedUnitInfo | null>(null);
   let selectedHex = $state<HexPoint | null>(null);
   let reachable = $state<HexPoint[]>([]);
   let attackTargets = $state<HexPoint[]>([]);
@@ -118,28 +120,21 @@
 
   function selectedInfo(): SelectedUnitInfo | null {
     const u = session.selectedUnit;
-    if (!u) return null;
-    return {
-      name: session.unitDisplayName(u),
-      typeId: u.type.id,
-      side: u.side,
-      x: u.location.x,
-      y: u.location.y,
-      hp: u.hitpoints,
-      maxHp: u.maxHitpoints,
-      movesLeft: u.movesLeft,
-      maxMoves: u.maxMoves,
-      attacksLeft: u.attacksLeft,
-      terrainName: session.board.map.terrainName(u.location),
-      // `defenseModifier` is upstream's "chance to be hit" convention (lower is better) -- flip to the player-facing "Defense: N%" real Wesnoth shows.
-      defensePercent: 100 - u.defenseModifier(session.board.map.getTerrain(u.location)),
-    };
+    return u ? session.unitInfo(u) : null;
+  }
+
+  /** `null` when nothing's inspected, or when the inspected unit is the same one `selected` already shows (avoids rendering the same unit's info twice). */
+  function inspectedInfo(): SelectedUnitInfo | null {
+    const u = session.inspectedUnit;
+    if (!u || u === session.selectedUnit) return null;
+    return session.unitInfo(u);
   }
 
   /** Re-derives every `$state` view from `session`'s current (just-mutated) state. Call after every session mutation. */
   function sync(message?: string | null): void {
     units = session.renderUnits;
     selected = selectedInfo();
+    inspected = inspectedInfo();
     selectedHex = session.selectedUnit ? { x: session.selectedUnit.location.x, y: session.selectedUnit.location.y } : null;
     reachable = session.reachable;
     attackTargets = session.attackCandidates.map((u) => ({ x: u.location.x, y: u.location.y }));
@@ -204,6 +199,32 @@
       await boardView.playAnimationSequence(buildMoveAnimationCues(move), 2);
     }
     sync(message);
+  }
+
+  /**
+   * Dev-only debug hook for automated visual testing (Playwright etc.):
+   * `window.__wesnoth.clickHex(x, y)` simulates a real click on
+   * engine-convention hex `(x, y)` through the EXACT SAME code path a real
+   * pointer click on the board takes (`handleHexClick`), without needing to
+   * compute screen pixel coordinates -- which depend on the board's current
+   * pan/zoom/scroll state and are fragile to guess from a screenshot.
+   * `window.__wesnoth.session` exposes the live `GameSession` for
+   * introspection (e.g. `session.board.allUnits().find(u => u.id ===
+   * 'Gwabbo').location` to find a real hex to click, rather than guessing).
+   * Stripped from production builds (`import.meta.env.DEV`), so this never
+   * ships as a real attack surface.
+   */
+  // `packages/ui` has no `vite/client` types of its own (it's a library
+  // package, not a Vite app), hence the cast -- `apps/web`, the only real
+  // consumer, does run under Vite, so `import.meta.env.DEV` is genuinely
+  // present at runtime there.
+  if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV && typeof window !== 'undefined') {
+    (window as unknown as { __wesnoth: unknown }).__wesnoth = {
+      get session() {
+        return session;
+      },
+      clickHex: (x: number, y: number) => handleHexClick(x, y),
+    };
   }
 
   // The `phase !== 'playing'` guards below are defensive: StoryViewer/
@@ -504,6 +525,7 @@
     {/key}
     <SidePanel
       {selected}
+      {inspected}
       {pendingPreview}
       {attackerWeaponOptions}
       {statusMessage}

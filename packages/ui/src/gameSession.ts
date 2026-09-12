@@ -71,6 +71,8 @@ import {
   type GoldCarryoverResult,
   type WmlAttributeValue,
   type WmlConfigJson,
+  type AttackType,
+  type RegistryEntry,
 } from '@wesnothweb2/engine';
 
 /**
@@ -109,6 +111,16 @@ export interface CombatantPreview {
   numBlows: number;
   /** 0-1 probability of ending this exchange at 0 hp, from the real `simulateCombat` probability matrix. */
   deathChance: number;
+  /**
+   * The weapon actually in use this exchange, or `undefined` for "fights
+   * back with nothing" (a defender with no range-compatible counter-weapon
+   * -- see `chooseDefenderWeaponIndex`). Addresses "UI is missing
+   * information about the weapon type" -- the prediction popup previously
+   * showed damage/hit-chance with no indication of melee vs. ranged,
+   * damage type, or specials (e.g. a player couldn't tell from the UI
+   * alone why a javelin throw drew no counter-attack).
+   */
+  weapon?: WeaponInfo;
 }
 
 export interface CombatPreview {
@@ -116,7 +128,52 @@ export interface CombatPreview {
   defender: CombatantPreview;
 }
 
-/** A view-model of the selected unit, for the side panel -- deliberately plain data, not a live `Unit` reference. */
+/** One real `[specials]` child (e.g. `[damage] id=backstab`) reduced to its player-facing `name=`/`description=`, for a unit-info/weapon display. Not context-evaluated (e.g. "backstab" is listed whether or not a flanker is actually present right now) -- matches real Wesnoth's own weapon-description tooltip, which lists what a weapon HAS, not what's active this instant. */
+export interface WeaponSpecialInfo {
+  name: string;
+  description: string;
+}
+
+/** One real `[abilities]` child (e.g. `[heals]`), reduced the same way as `WeaponSpecialInfo`. */
+export interface AbilityInfo {
+  name: string;
+  description: string;
+}
+
+/** A view-model of one of a unit's `[attack]` weapons, for the side panel/combat prediction -- addresses "UI is missing information about weapon type" (real, reported: melee/ranged and damage type were shown nowhere). */
+export interface WeaponInfo {
+  name: string;
+  /** Damage type (e.g. "blade", "pierce", "impact", "fire", "cold", "arcane"). */
+  type: string;
+  /** "melee" or "ranged" (or a custom `range=` value real content occasionally defines) -- see `combatStats.ts`'s `chooseDefenderWeaponIndex` doc comment for why this label, not a hex distance, governs what can counter it. */
+  range: string;
+  damage: number;
+  numAttacks: number;
+  specials: readonly WeaponSpecialInfo[];
+}
+
+function buildWeaponInfo(weapon: AttackType): WeaponInfo {
+  return {
+    name: weapon.name,
+    type: weapon.type,
+    range: weapon.range,
+    damage: weapon.damage,
+    numAttacks: weapon.numAttacks,
+    specials: weapon.specials.map((cfg) => ({
+      name: cfg.getString('name') || cfg.getString('id'),
+      description: cfg.getString('description'),
+    })),
+  };
+}
+
+function buildAbilityInfo(entry: RegistryEntry): AbilityInfo {
+  return {
+    name: entry.config.getString('name') || entry.tag,
+    description: entry.config.getString('description'),
+  };
+}
+
+/** A view-model of a unit, for the side panel -- deliberately plain data, not a live `Unit` reference. Used for both the currently-*selected* (your own, actionable) unit and any *inspected* unit (see `GameSession.inspectedUnit`) -- addresses "no way to see information about enemy units". */
 export interface SelectedUnitInfo {
   name: string;
   typeId: string;
@@ -132,6 +189,30 @@ export interface SelectedUnitInfo {
   terrainName: string;
   /** Real terrain defense on the unit's own hex, as the player-facing percentage (`100 - defenseModifier`, since `defenseModifier` is upstream's "chance to be hit" convention -- lower is better). */
   defensePercent: number;
+  /** This unit type's real weapons, each with its damage type/range/specials -- addresses "UI is missing information about weapon type/specials". */
+  attacks: readonly WeaponInfo[];
+  /** This unit type's real abilities (e.g. heals, skirmisher) -- addresses "UI is missing information about abilities and specials". */
+  abilities: readonly AbilityInfo[];
+}
+
+/** Builds a `SelectedUnitInfo` view-model for any live `Unit` -- shared by `GameSession.selectedUnitInfo`/`inspectedUnitInfo` (`GameShell.svelte` used to build this itself, inline, only for `selectedUnit`; centralised here so both selection and inspection stay in sync with each other and with `WeaponInfo`/`AbilityInfo`). */
+export function buildUnitInfo(board: GameBoard, unit: Unit, displayName: string): SelectedUnitInfo {
+  return {
+    name: displayName,
+    typeId: unit.type.id,
+    side: unit.side,
+    x: unit.location.x,
+    y: unit.location.y,
+    hp: unit.hitpoints,
+    maxHp: unit.maxHitpoints,
+    movesLeft: unit.movesLeft,
+    maxMoves: unit.maxMoves,
+    attacksLeft: unit.attacksLeft,
+    terrainName: board.map.terrainName(unit.location),
+    defensePercent: 100 - unit.defenseModifier(board.map.getTerrain(unit.location)),
+    attacks: unit.attacks.map(buildWeaponInfo),
+    abilities: unit.type.abilities.map(buildAbilityInfo),
+  };
 }
 
 /** An attack the player has targeted but not yet committed -- shown in the side panel with Confirm/Cancel. */
@@ -175,8 +256,13 @@ export interface LastMoveAnimation {
 export interface AttackerWeaponOption {
   index: number;
   name: string;
+  /** Damage type (e.g. "blade", "pierce") -- addresses "UI is missing information about the weapon type". */
+  type: string;
+  /** "melee" or "ranged" (or a custom `range=` value). */
+  range: string;
   damage: number;
   numAttacks: number;
+  specials: readonly WeaponSpecialInfo[];
   /** Whether this is the weapon `pendingAttack.preview` currently reflects. */
   selected: boolean;
 }
@@ -313,6 +399,19 @@ export class GameSession {
   turnNumber = 1;
 
   selectedUnit: Unit | null = null;
+  /**
+   * A unit the player clicked purely to VIEW its info -- any unit, friend
+   * or enemy, that `handleHexClick` didn't otherwise act on (move/attack/
+   * reselect). Addresses "no way to see information about enemy units":
+   * independent of `selectedUnit` (which drives move/attack highlighting
+   * for the player's OWN unit), so inspecting an enemy doesn't disturb an
+   * in-progress selection. Cleared whenever the clicked hex is empty, or
+   * a hex click does something else (move/attack/recruit/reselect) --
+   * see `handleHexClick`'s branches. `null` if nothing has been inspected
+   * (or the inspected unit is the same one already shown via `selectedUnit`,
+   * to avoid a caller rendering the same unit's info twice).
+   */
+  inspectedUnit: Unit | null = null;
   /** Hexes `selectedUnit` can move to this turn (excludes its own hex). */
   reachable: HexPoint[] = [];
   /** Adjacent enemy units `selectedUnit` could attack (empty if it has no attacks left). */
@@ -369,11 +468,15 @@ export class GameSession {
     if (!pending) return [];
     return this.viableAttackerWeaponIndices(pending.attacker).map((index) => {
       const weapon = pending.attacker.attacks[index]!;
+      const info = buildWeaponInfo(weapon);
       return {
         index,
-        name: weapon.name,
-        damage: weapon.damage,
-        numAttacks: weapon.numAttacks,
+        name: info.name,
+        type: info.type,
+        range: info.range,
+        damage: info.damage,
+        numAttacks: info.numAttacks,
+        specials: info.specials,
         selected: index === pending.attackerWeaponIndex,
       };
     });
@@ -536,6 +639,11 @@ export class GameSession {
     return u.name || u.type.name || u.type.id;
   }
 
+  /** Builds a `SelectedUnitInfo` view-model for any live unit currently on the board -- see `buildUnitInfo`. */
+  unitInfo(u: Unit): SelectedUnitInfo {
+    return buildUnitInfo(this.board, u, this.unitDisplayName(u));
+  }
+
   private computeAttackCandidates(unit: Unit): Unit[] {
     if (unit.attacksLeft <= 0) return [];
     const team = this.board.getTeam(unit.side);
@@ -550,11 +658,12 @@ export class GameSession {
     return targets;
   }
 
-  /** Selects `unit` and (re)computes its move/attack/recruit options. Clears any pending attack/recruit. */
+  /** Selects `unit` and (re)computes its move/attack/recruit options. Clears any pending attack/recruit, and any unrelated unit inspection. */
   selectUnit(unit: Unit): void {
     this.pendingAttack = null;
     this.pendingRecruitTypeId = null;
     this.pendingRecallIndex = null;
+    this.inspectedUnit = null;
     this.selectedUnit = unit;
     if (unit.movesLeft > 0) {
       const { destinations } = reachableHexes(this.board, unit, { seeAll: true });
@@ -572,6 +681,7 @@ export class GameSession {
 
   clearSelection(): void {
     this.selectedUnit = null;
+    this.inspectedUnit = null;
     this.reachable = [];
     this.attackCandidates = [];
     this.recruitTiles = [];
@@ -969,6 +1079,7 @@ export class GameSession {
         damagePerBlow: aStats.damage,
         numBlows: aStats.numBlows,
         deathChance: aCombatant.hpDist[0] ?? 0,
+        weapon: buildWeaponInfo(attackerWeapon),
       },
       defender: {
         name: this.unitDisplayName(defender),
@@ -979,6 +1090,7 @@ export class GameSession {
         damagePerBlow: dStats.damage,
         numBlows: dStats.numBlows,
         deathChance: dCombatant.hpDist[0] ?? 0,
+        weapon: defenderWeapon ? buildWeaponInfo(defenderWeapon) : undefined,
       },
     };
 
@@ -1054,7 +1166,13 @@ export class GameSession {
           this.selectUnit(clickedUnit);
           return null;
         }
-        return null;
+        // An enemy (or an inactive side's unit) that isn't a valid attack
+        // target right now -- not actionable, but still worth showing its
+        // info (addresses "no way to see information about enemy units").
+        // Deliberately does NOT touch `sel`/`reachable`/`attackCandidates`:
+        // the player's own selection and move/attack highlights stay put.
+        this.inspectedUnit = clickedUnit;
+        return `Viewing ${this.unitDisplayName(clickedUnit)}.`;
       }
 
       if (this.reachable.some((h) => h.x === x && h.y === y)) {
@@ -1065,8 +1183,15 @@ export class GameSession {
       return null;
     }
 
-    if (clickedUnit && clickedUnit.side === this.activeSide) {
-      this.selectUnit(clickedUnit);
+    if (clickedUnit) {
+      if (clickedUnit.side === this.activeSide) {
+        this.selectUnit(clickedUnit);
+      } else {
+        this.inspectedUnit = clickedUnit;
+        return `Viewing ${this.unitDisplayName(clickedUnit)}.`;
+      }
+    } else {
+      this.inspectedUnit = null;
     }
     return null;
   }
