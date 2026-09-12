@@ -240,6 +240,64 @@ describe('EventPump + action WML (synthetic content)', () => {
     expect(ids.sort()).toEqual(['a', 'b']);
   });
 
+  it('[store_unit] kill=yes then [unstore_unit] round-trips a unit off and back onto the board at its original position -- real, reported bug: Liberty scenario 1\'s Baldras was permanently removed because [unstore_unit] wasn\'t implemented at all (silently skipped as an unregistered tag)', () => {
+    const board = makeBoard();
+    const { manager, pump } = makePump(board);
+    const leader = Unit.fromConfig(
+      parseWml(`[unit]\n  type=Merman Fighter\n  side=1\n  x=1\n  y=2\n  id=Baldras\n  name=Baldras\n  canrecruit=yes\n  experience=25\n[/unit]`).child('unit')!,
+      makeResolveType(),
+    );
+    leader.hitpoints = 30; // damage it, so the restore-with-original-hp path is actually exercised
+    board.addUnit(leader);
+
+    const eventCfg = parseWml(`
+      [event]
+        name=go
+        [store_unit]
+          variable=goodguys
+          kill=yes
+          [filter]
+            side=1
+          [/filter]
+        [/store_unit]
+        [unstore_unit]
+          variable=goodguys
+        [/unstore_unit]
+      [/event]
+    `).child('event')!;
+    manager.addFromWml(eventCfg);
+
+    pump.fire('go');
+
+    const restored = board.allUnits().find((u) => u.id === 'Baldras');
+    expect(restored).toBeDefined();
+    expect(restored!.id).toBe('Baldras');
+    expect(restored!.name).toBe('Baldras');
+    expect(restored!.canRecruit).toBe(true);
+    expect(restored!.hitpoints).toBe(30);
+    expect(restored!.location.x).toBe(0); // wml x=1,y=2 -> onboard (0,1)
+    expect(restored!.location.y).toBe(1);
+  });
+
+  it('[unstore_unit] logs an error rather than throwing when the variable is empty/missing', () => {
+    const board = makeBoard();
+    const warnings: string[] = [];
+    const { manager, pump } = makePump(board, (level, msg) => {
+      if (level === 'error') warnings.push(msg);
+    });
+    const eventCfg = parseWml(`
+      [event]
+        name=go
+        [unstore_unit]
+          variable=nothing_stored_here
+        [/unstore_unit]
+      [/event]
+    `).child('event')!;
+    manager.addFromWml(eventCfg);
+    expect(() => pump.fire('go')).not.toThrow();
+    expect(warnings.some((w) => w.includes('unstore_unit'))).toBe(true);
+  });
+
   it('an unregistered tag logs a warning and does not throw, and an extension-point tag (e.g. [attack]) is a documented no-op', () => {
     const board = makeBoard();
     const warnings: string[] = [];

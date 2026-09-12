@@ -25,12 +25,12 @@ import {
  * hand-read real stats, matching this project's established verification
  * discipline (see docs/PROGRESS.md).
  *
- * The `base_unit=`-inheritance and `[male]`/`[female]`-wholesale-ignore
- * paths are each ALSO covered by a synthetic test below: `base_unit=` is
- * verified (via `grep -rl "base_unit=" wesnoth/data/`) to be used NOWHERE
- * in the entire `wesnoth` submodule, so no real content exercises that
- * code path -- it would be dishonest to claim it's "real-content tested"
- * without flagging that explicitly, per this project's testing discipline.
+ * The `[base_unit]`-inheritance path is covered both by real content
+ * (Liberty's `units/Villagers.cfg`, which reskins Thug/Bandit/Highwayman as
+ * Peasant/Village-Elder/Senior-Village-Elder via exactly this tag) and by a
+ * synthetic test below for the parts real content doesn't happen to
+ * exercise (multi-level chains, circular-chain detection). `[male]`/
+ * `[female]`-wholesale-ignore is synthetic-only (see its own test).
  */
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -169,18 +169,66 @@ describe('collectUnitTypeConfigs / collectMovementTypeConfigs (real data/core/un
     });
   });
 
-  it('no real [unit_type] anywhere in the wesnoth submodule uses base_unit= (confirmed by this loader finding zero derived types among the real registry)', () => {
-    for (const [id, cfg] of rawUnitTypes) {
-      expect(cfg.hasAttribute('base_unit'), `unexpected base_unit= on real type "${id}"`).toBe(false);
-    }
+});
+
+describe('[base_unit] against real Liberty content (units/Villagers.cfg reskins Thug/Bandit/Highwayman)', () => {
+  const defines = loadDefines();
+  const libertyDir = path.join(dataRoot, 'campaigns/Liberty');
+  const libertyDefines: DefineMap = new Map(defines);
+  libertyDefines.set('CAMPAIGN_LIBERTY', {
+    name: 'CAMPAIGN_LIBERTY',
+    params: [],
+    optionalParams: new Map(),
+    body: '',
+    dir: dataRoot,
+    location: '<test>',
+  });
+  preloadDefines(path.join(libertyDir, '_main.cfg'), libertyDefines, { dataRoot });
+
+  const terrainCfg = parseWmlFile(path.join(dataRoot, 'core/terrain.cfg'), { dataRoot, defines: new Map(libertyDefines) });
+  const terrainData = TerrainTypeData.fromConfigs(terrainCfg.children('terrain_type'));
+  const coreUnitsCfg = parseWmlFile(path.join(dataRoot, 'core/units.cfg'), { dataRoot, defines: new Map(libertyDefines) });
+  const libertyMainCfg = parseWmlFile(path.join(libertyDir, '_main.cfg'), { dataRoot, defines: new Map(libertyDefines) });
+
+  const rawUnitTypes = collectUnitTypeConfigs(coreUnitsCfg);
+  collectUnitTypeConfigs(libertyMainCfg, rawUnitTypes);
+  const movementTypes = collectMovementTypeConfigs(coreUnitsCfg);
+  collectMovementTypeConfigs(libertyMainCfg, movementTypes);
+
+  it('Bandit_Peasant ([base_unit] id=Bandit) inherits Bandit\'s real hp/movement/attacks, but keeps its own overridden name/advances_to', () => {
+    expect(rawUnitTypes.get('Bandit_Peasant')!.child('base_unit')!.getString('id')).toBe('Bandit');
+    const bandit = UnitType.fromConfig(flattenUnitTypeConfig('Bandit', rawUnitTypes), movementTypes, terrainData);
+    const flat = flattenUnitTypeConfig('Bandit_Peasant', rawUnitTypes);
+    const banditPeasant = UnitType.fromConfig(flat, movementTypes, terrainData);
+
+    // Inherited from the real Bandit base type -- NOT left at defaults (this
+    // is exactly the bug this test regresses: Liberty's Baldras rendered as
+    // a blank white placeholder circle with hp 1/1 and no image before this
+    // loader read [base_unit] as a child tag rather than a base_unit=
+    // attribute real Wesnoth never actually emits).
+    expect(banditPeasant.hitpoints).toBe(bandit.hitpoints);
+    expect(banditPeasant.movement).toBe(bandit.movement);
+    expect(banditPeasant.attacks).toHaveLength(bandit.attacks.length);
+    expect(banditPeasant.attacks[0]!.damage).toBe(bandit.attacks[0]!.damage);
+    expect(flat.getString('image')).toBe(rawUnitTypes.get('Bandit')!.getString('image'));
+
+    // Overridden on the derived side, not inherited.
+    expect(flat.getString('name')).toBe('Village Elder');
+    expect(flat.getString('advances_to')).toBe('Highwayman_Peasant');
   });
 });
 
-describe('flattenUnitTypeConfig / flattenAllUnitTypes: base_unit= inheritance (synthetic -- see this file\'s doc comment on why)', () => {
+describe('flattenUnitTypeConfig / flattenAllUnitTypes: [base_unit] inheritance (synthetic -- see this file\'s doc comment on why)', () => {
   function unitTypeCfg(attrs: Record<string, string | number | boolean>, children: Record<string, WmlConfig> = {}): WmlConfig {
     const cfg = new WmlConfig();
     for (const [k, v] of Object.entries(attrs)) cfg.setAttribute(k, v);
     for (const [tag, child] of Object.entries(children)) cfg.addChild(tag, child);
+    return cfg;
+  }
+  /** Builds the real `[base_unit] id=<baseId> [/base_unit]` child tag (`types.cpp`: `base_unit["id"]`). */
+  function baseUnitTag(baseId: string): WmlConfig {
+    const cfg = new WmlConfig();
+    cfg.setAttribute('id', baseId);
     return cfg;
   }
   function attackCfg(name: string, damage: number, number: number): WmlConfig {
@@ -196,7 +244,7 @@ describe('flattenUnitTypeConfig / flattenAllUnitTypes: base_unit= inheritance (s
     raw.set('Base Fighter', unitTypeCfg({ id: 'Base Fighter', hitpoints: 30, movement: 5, cost: 10, level: 1 }));
     raw.set(
       'Elite Fighter',
-      unitTypeCfg({ id: 'Elite Fighter', base_unit: 'Base Fighter', hitpoints: 45 /* overrides */ }),
+      unitTypeCfg({ id: 'Elite Fighter', hitpoints: 45 /* overrides */ }, { base_unit: baseUnitTag('Base Fighter') }),
     );
 
     const flat = flattenUnitTypeConfig('Elite Fighter', raw);
@@ -218,7 +266,7 @@ describe('flattenUnitTypeConfig / flattenAllUnitTypes: base_unit= inheritance (s
     const defenseBase = base.addChild('defense');
     defenseBase.setAttribute('forest', 40);
 
-    const derived = unitTypeCfg({ id: 'Elite Fighter', base_unit: 'Base Fighter' });
+    const derived = unitTypeCfg({ id: 'Elite Fighter' }, { base_unit: baseUnitTag('Base Fighter') });
     derived.addChild('attack', attackCfg('greatsword', 9, 2)); // derived has ITS OWN [attack] -- replaces base's TWO attacks wholesale
     raw.set('Elite Fighter', derived);
 
@@ -234,8 +282,8 @@ describe('flattenUnitTypeConfig / flattenAllUnitTypes: base_unit= inheritance (s
   it('recursive base_unit chains flatten correctly (grandparent -> parent -> child)', () => {
     const raw = new Map<string, WmlConfig>();
     raw.set('Grandparent', unitTypeCfg({ id: 'Grandparent', hitpoints: 20, movement: 4, cost: 5 }));
-    raw.set('Parent', unitTypeCfg({ id: 'Parent', base_unit: 'Grandparent', hitpoints: 30 }));
-    raw.set('Child', unitTypeCfg({ id: 'Child', base_unit: 'Parent', movement: 6 }));
+    raw.set('Parent', unitTypeCfg({ id: 'Parent', hitpoints: 30 }, { base_unit: baseUnitTag('Grandparent') }));
+    raw.set('Child', unitTypeCfg({ id: 'Child', movement: 6 }, { base_unit: baseUnitTag('Parent') }));
 
     const flat = flattenUnitTypeConfig('Child', raw);
     expect(flat.getNumber('hitpoints')).toBe(30); // from Parent
@@ -245,8 +293,8 @@ describe('flattenUnitTypeConfig / flattenAllUnitTypes: base_unit= inheritance (s
 
   it('throws on a circular base_unit chain rather than infinite-looping', () => {
     const raw = new Map<string, WmlConfig>();
-    raw.set('A', unitTypeCfg({ id: 'A', base_unit: 'B' }));
-    raw.set('B', unitTypeCfg({ id: 'B', base_unit: 'A' }));
+    raw.set('A', unitTypeCfg({ id: 'A' }, { base_unit: baseUnitTag('B') }));
+    raw.set('B', unitTypeCfg({ id: 'B' }, { base_unit: baseUnitTag('A') }));
     expect(() => flattenUnitTypeConfig('A', raw)).toThrow(/circular/i);
   });
 
@@ -258,7 +306,7 @@ describe('flattenUnitTypeConfig / flattenAllUnitTypes: base_unit= inheritance (s
   it('flattenAllUnitTypes flattens every id in the registry', () => {
     const raw = new Map<string, WmlConfig>();
     raw.set('Base Fighter', unitTypeCfg({ id: 'Base Fighter', hitpoints: 30 }));
-    raw.set('Elite Fighter', unitTypeCfg({ id: 'Elite Fighter', base_unit: 'Base Fighter', hitpoints: 45 }));
+    raw.set('Elite Fighter', unitTypeCfg({ id: 'Elite Fighter', hitpoints: 45 }, { base_unit: baseUnitTag('Base Fighter') }));
     const all = flattenAllUnitTypes(raw);
     expect(all.get('Base Fighter')!.getNumber('hitpoints')).toBe(30);
     expect(all.get('Elite Fighter')!.getNumber('hitpoints')).toBe(45);

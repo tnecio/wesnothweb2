@@ -10,13 +10,22 @@
  * Real semantics this ports from `src/units/types.cpp`/`src/config.cpp`
  * (`unit_type::unit_type`, `apply_base_unit`, `config::inherit_from`):
  *
- * 1. **`base_unit=`** (a `[unit_type]` attribute naming another unit_type's
- *    `id`): the derived type inherits every attribute from the base type's
- *    OWN (already-flattened, recursively) config, EXCEPT where the derived
+ * 1. **`[base_unit]`** (a `[unit_type]` CHILD TAG, e.g. `[base_unit]
+ *    id=Bandit [/base_unit]` -- NOT a `base_unit=` attribute; real Wesnoth
+ *    (`types.cpp`'s constructor: `cfg.optional_child("base_unit")` /
+ *    `base_unit["id"]`) never reads an attribute of that name at all): the
+ *    derived type inherits every attribute from the base type's OWN
+ *    (already-flattened, recursively) config, EXCEPT where the derived
  *    type's own config already sets that attribute directly. Attribute-level
  *    inheritance: derived wins wherever it actually sets the attribute; base
  *    fills in anything left unset. `flattenUnitTypeConfig` below implements
- *    exactly this, recursively (a base type can itself have a `base_unit=`).
+ *    exactly this, recursively (a base type can itself have a `[base_unit]`).
+ *    Real content DOES use this: Liberty's `units/Villagers.cfg` reskins
+ *    Thug/Bandit/Highwayman as Peasant/Village-Elder/Senior-Village-Elder
+ *    via exactly this tag (its "outlaw_type_hack" trick) -- discovered when
+ *    Liberty scenario 1 rendered Baldras and other villager-disguised units
+ *    as blank white placeholder circles, because the (previously untested
+ *    against any real content) attribute-based check here never matched.
  *
  * 2. **Child tags** (`[attack]`, `[movement_costs]`, `[vision_costs]`,
  *    `[jamming_costs]`, `[defense]`, `[resistance]`, `[abilities]`, and --
@@ -29,12 +38,15 @@
  *    derived type's first `[attack]` merges attribute-by-attribute into the
  *    base's first `[attack]`, its second into the base's second, etc. --
  *    not a blunt "replace or inherit the whole set"). Verified this doesn't
- *    silently corrupt any REAL stat this project ships: `base_unit=` is not
- *    used ANYWHERE in the entire `wesnoth` submodule's `data/` tree (checked
- *    directly -- `grep -rl "base_unit=" wesnoth/data/` finds nothing), so
- *    this simplification's code path is exercised only by this module's own
- *    synthetic tests, never by real content in this project today. Flagged
- *    here rather than silently assumed correct, per this project's testing
+ *    silently corrupt any REAL stat this project ships: every real
+ *    `[base_unit]` USER found so far (Liberty's Villagers.cfg, reskinning
+ *    Thug/Bandit/Highwayman) only adds a small `[abilities]` marker tag
+ *    (`outlaw_type_hack`, a cosmetic unit-box-color hint this engine doesn't
+ *    model) on the derived side, and the base types it points at
+ *    (`data/core/units/humans/Outlaw*.cfg`) have no `[abilities]` block at
+ *    all to lose -- so wholesale-replace-if-any-children never collides with
+ *    a genuine partial override in real content today. Flagged here rather
+ *    than silently assumed correct in general, per this project's testing
  *    discipline (see docs/PROGRESS.md).
  *
  * 3. **`[male]`/`[female]` sub-tags are deliberately NOT flattened at all**
@@ -183,12 +195,12 @@ function mergeUnitTypeConfig(base: WmlConfig, derived: WmlConfig): WmlConfig {
 }
 
 /**
- * Resolves `id`'s fully-flattened config: itself if it has no `base_unit=`,
- * otherwise `base_unit`'s own (recursively flattened) config merged with
- * its own attributes/children on top (see module doc comment). Memoizes via
- * `cache` (shared across a whole `flattenAllUnitTypes` call, or pass your
+ * Resolves `id`'s fully-flattened config: itself if it has no `[base_unit]`
+ * child, otherwise the base type's own (recursively flattened) config merged
+ * with its own attributes/children on top (see module doc comment). Memoizes
+ * via `cache` (shared across a whole `flattenAllUnitTypes` call, or pass your
  * own to flatten one id at a time against a larger raw registry). Throws on
- * an unknown id or a circular `base_unit=` chain.
+ * an unknown id or a circular `[base_unit]` chain.
  */
 export function flattenUnitTypeConfig(
   id: string,
@@ -204,7 +216,8 @@ export function flattenUnitTypeConfig(
     throw new Error(`flattenUnitTypeConfig: no [unit_type] found for id "${id}"`);
   }
 
-  if (!raw.hasAttribute('base_unit')) {
+  const baseUnitTag = raw.child('base_unit');
+  if (!baseUnitTag) {
     cache.set(id, raw);
     return raw;
   }
@@ -213,7 +226,7 @@ export function flattenUnitTypeConfig(
     throw new Error(`flattenUnitTypeConfig: circular base_unit chain involving "${id}"`);
   }
   resolving.add(id);
-  const baseId = raw.getString('base_unit');
+  const baseId = baseUnitTag.getString('id');
   const baseFlat = flattenUnitTypeConfig(baseId, rawConfigs, cache, resolving);
   resolving.delete(id);
 
