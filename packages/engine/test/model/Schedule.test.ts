@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { parseWmlFile, preloadDefines, preloadDefinesFromDir, type DefineMap } from '../../src/wml/index.js';
 import { Schedule } from '../../src/model/Schedule.js';
 import { WmlConfig } from '../../src/wml/config.js';
+import { Location } from '../../src/model/Location.js';
 
 /**
  * Real-content test: Dead Water scenario 1's real `{DEFAULT_SCHEDULE}`
@@ -34,15 +35,15 @@ describe('Schedule.fromScenarioConfig (real Dead_Water scenario 1 {DEFAULT_SCHED
 
   it('parses the real 6-phase default schedule with real names/ids/lawful_bonus values', () => {
     expect(schedule.hasSchedule).toBe(true);
-    expect(schedule.times.map((t) => t.id)).toEqual(['dawn', 'morning', 'afternoon', 'dusk', 'first_watch', 'second_watch']);
-    expect(schedule.times.map((t) => t.name)).toEqual(['Dawn', 'Morning', 'Afternoon', 'Dusk', 'First Watch', 'Second Watch']);
+    expect(schedule.globalTimes.map((t) => t.id)).toEqual(['dawn', 'morning', 'afternoon', 'dusk', 'first_watch', 'second_watch']);
+    expect(schedule.globalTimes.map((t) => t.name)).toEqual(['Dawn', 'Morning', 'Afternoon', 'Dusk', 'First Watch', 'Second Watch']);
     // Real values from wesnoth/data/core/macros/schedules.cfg: morning/afternoon are lawful-favoring (+25), first/second watch chaotic-favoring (-25), dawn/dusk neutral (0).
-    expect(schedule.times.map((t) => t.lawfulBonus)).toEqual([0, 25, 25, 0, -25, -25]);
-    for (const t of schedule.times) expect(t.image.length).toBeGreaterThan(0);
+    expect(schedule.globalTimes.map((t) => t.lawfulBonus)).toEqual([0, 25, 25, 0, -25, -25]);
+    for (const t of schedule.globalTimes) expect(t.image.length).toBeGreaterThan(0);
   });
 
   it('defaults current_time to 0 (dawn) and maxLiminalBonus to the real 25 floor when the scenario sets neither', () => {
-    expect(schedule.currentTimeStart).toBe(0);
+    expect(schedule.timeOfDayForTurn(1).id).toBe('dawn');
     expect(schedule.maxLiminalBonus).toBe(25);
   });
 
@@ -91,5 +92,125 @@ describe('Schedule (synthetic edge cases)', () => {
     expect(schedule.hasSchedule).toBe(false);
     expect(schedule.timeOfDayForTurn(1)).toEqual({ id: '', name: '', image: '', lawfulBonus: 0, red: 0, green: 0, blue: 0 });
     expect(schedule.timeOfDayForTurn(50).lawfulBonus).toBe(0);
+  });
+
+  function threeTimeSchedule(): Schedule {
+    const scenario = new WmlConfig();
+    scenario.addChild('time', makeTimeCfg('a', 0));
+    scenario.addChild('time', makeTimeCfg('b', 10));
+    scenario.addChild('time', makeTimeCfg('c', 20));
+    return Schedule.fromScenarioConfig(scenario);
+  }
+
+  describe('random_start_time=', () => {
+    function cfgWithRandom(random: string): WmlConfig {
+      const scenario = new WmlConfig();
+      scenario.addChild('time', makeTimeCfg('a', 0));
+      scenario.addChild('time', makeTimeCfg('b', 10));
+      scenario.addChild('time', makeTimeCfg('c', 20));
+      scenario.setAttribute('random_start_time', random);
+      return scenario;
+    }
+
+    it('is ignored (defaults to index 0) when no rng is supplied', () => {
+      expect(Schedule.fromScenarioConfig(cfgWithRandom('yes')).timeOfDayForTurn(1).id).toBe('a');
+    });
+
+    it('yes/true picks a fully random index via the rng', () => {
+      const rng = { nextRandom: () => 7 }; // 7 % 3 = 1 -> "b"
+      expect(Schedule.fromScenarioConfig(cfgWithRandom('yes'), rng).timeOfDayForTurn(1).id).toBe('b');
+    });
+
+    it('a comma-separated list of 1-based indices picks (and wraps) one of them, consuming a second draw', () => {
+      let calls = 0;
+      const draws = [1, 999]; // first draw picks which list entry (1 % 2 -> index 1 -> "3"); second draw is consumed and discarded.
+      const rng = { nextRandom: () => draws[calls++]! };
+      // "1,3": candidates are literal indices 1 and 3; 3 wraps mod 3 -> 0 -> "a".
+      const schedule = Schedule.fromScenarioConfig(cfgWithRandom('1,3'), rng);
+      expect(schedule.timeOfDayForTurn(1).id).toBe('a');
+      expect(calls).toBe(2); // both next_random() calls upstream makes were consumed.
+    });
+
+    it('no/false/absent leaves the schedule at index 0 even with an rng available', () => {
+      const rng = { nextRandom: () => 7 };
+      expect(Schedule.fromScenarioConfig(cfgWithRandom('no'), rng).timeOfDayForTurn(1).id).toBe('a');
+    });
+
+    it('an explicit current_time= always wins, regardless of random_start_time=', () => {
+      const scenario = cfgWithRandom('yes');
+      scenario.setAttribute('current_time', 2);
+      const rng = { nextRandom: () => 7 };
+      expect(Schedule.fromScenarioConfig(scenario, rng).timeOfDayForTurn(1).id).toBe('c');
+    });
+  });
+
+  describe('[time_area] / [remove_time_area]', () => {
+    it('a hex inside the area uses the area schedule; outside, the global one', () => {
+      const schedule = threeTimeSchedule();
+      const inside = new Location(2, 2);
+      const outside = new Location(5, 5);
+      schedule.addTimeArea('campfire', new Set([inside.key()]), [{ id: 'firelight', name: 'Firelight', image: '', lawfulBonus: 25, red: 0, green: 0, blue: 0 }], 0, 1);
+
+      expect(schedule.timeOfDayAt(inside, 1).id).toBe('firelight');
+      expect(schedule.timeOfDayAt(outside, 1).id).toBe('a');
+      expect(schedule.areaIdAt(inside)).toBe('campfire');
+      expect(schedule.areaIdAt(outside)).toBeUndefined();
+    });
+
+    it('anchors the area\'s own current_time= to the turn it was created on, not turn 1', () => {
+      const schedule = threeTimeSchedule();
+      const loc = new Location(0, 0);
+      const areaTimes = [
+        { id: 'x', name: 'x', image: '', lawfulBonus: 0, red: 0, green: 0, blue: 0 },
+        { id: 'y', name: 'y', image: '', lawfulBonus: 0, red: 0, green: 0, blue: 0 },
+      ];
+      schedule.addTimeArea('a1', new Set([loc.key()]), areaTimes, 0, 5); // created on turn 5, starting at index 0 ("x").
+      expect(schedule.timeOfDayAt(loc, 5).id).toBe('x');
+      expect(schedule.timeOfDayAt(loc, 6).id).toBe('y');
+      expect(schedule.timeOfDayAt(loc, 7).id).toBe('x'); // wraps.
+    });
+
+    it('a later area with the same overlapping hex wins (most-recently-added priority)', () => {
+      const schedule = threeTimeSchedule();
+      const loc = new Location(1, 1);
+      schedule.addTimeArea('first', new Set([loc.key()]), [{ id: 'old', name: '', image: '', lawfulBonus: 0, red: 0, green: 0, blue: 0 }], 0, 1);
+      schedule.addTimeArea('second', new Set([loc.key()]), [{ id: 'new', name: '', image: '', lawfulBonus: 0, red: 0, green: 0, blue: 0 }], 0, 1);
+      expect(schedule.timeOfDayAt(loc, 1).id).toBe('new');
+    });
+
+    it('remove_time_area with a matching id removes just that area, restoring the global schedule there', () => {
+      const schedule = threeTimeSchedule();
+      const loc = new Location(3, 3);
+      schedule.addTimeArea('campfire', new Set([loc.key()]), [{ id: 'firelight', name: '', image: '', lawfulBonus: 0, red: 0, green: 0, blue: 0 }], 0, 1);
+      schedule.removeTimeArea('campfire');
+      expect(schedule.timeOfDayAt(loc, 1).id).toBe('a');
+      expect(schedule.areaIds).toEqual([]);
+    });
+
+    it('remove_time_area with an empty id clears every area', () => {
+      const schedule = threeTimeSchedule();
+      schedule.addTimeArea('one', new Set(['0,0']), [{ id: 't', name: '', image: '', lawfulBonus: 0, red: 0, green: 0, blue: 0 }], 0, 1);
+      schedule.addTimeArea('two', new Set(['1,1']), [{ id: 't', name: '', image: '', lawfulBonus: 0, red: 0, green: 0, blue: 0 }], 0, 1);
+      schedule.removeTimeArea('');
+      expect(schedule.areaIds).toEqual([]);
+    });
+  });
+
+  describe('replaceSchedule ([replace_schedule])', () => {
+    it('replaces the global schedule outright, re-anchored at the turn it happens on', () => {
+      const schedule = threeTimeSchedule();
+      expect(schedule.timeOfDayForTurn(10).id).toBe('a'); // turn 10 -> index (10-1)%3 = 0 -> "a", before replacing.
+      schedule.replaceSchedule([{ id: 'new1', name: '', image: '', lawfulBonus: 0, red: 0, green: 0, blue: 0 }, { id: 'new2', name: '', image: '', lawfulBonus: 0, red: 0, green: 0, blue: 0 }], 0, 10);
+      expect(schedule.timeOfDayForTurn(10).id).toBe('new1');
+      expect(schedule.timeOfDayForTurn(11).id).toBe('new2');
+    });
+
+    it('does not affect existing [time_area]s', () => {
+      const schedule = threeTimeSchedule();
+      const loc = new Location(0, 0);
+      schedule.addTimeArea('campfire', new Set([loc.key()]), [{ id: 'firelight', name: '', image: '', lawfulBonus: 0, red: 0, green: 0, blue: 0 }], 0, 1);
+      schedule.replaceSchedule([{ id: 'new', name: '', image: '', lawfulBonus: 0, red: 0, green: 0, blue: 0 }], 0, 1);
+      expect(schedule.timeOfDayAt(loc, 1).id).toBe('firelight');
+    });
   });
 });
