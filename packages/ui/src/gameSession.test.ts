@@ -207,6 +207,23 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
     expect(session.recruitTiles.some((t) => t.x === target.x && t.y === target.y)).toBe(false);
   });
 
+  it('real, reported bug: recruiting never played any animation -- sets lastRecruitAnimation to the new unit + the recruiting leader', () => {
+    const session = new GameSession(loadSnapshot());
+    const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
+    session.selectUnit(leader);
+    const typeId = session.recruitOptions[0]!.typeId;
+    const target = session.recruitTiles[0]!;
+
+    expect(session.lastRecruitAnimation).toBeNull();
+    session.selectRecruitType(typeId);
+    session.handleHexClick(target.x, target.y);
+
+    expect(session.lastRecruitAnimation).not.toBeNull();
+    expect(session.lastRecruitAnimation!.leader).toBe(leader);
+    expect(session.lastRecruitAnimation!.unit.location.x).toBe(target.x);
+    expect(session.lastRecruitAnimation!.unit.location.y).toBe(target.y);
+  });
+
   it('refuses to recruit when the side cannot afford the unit', () => {
     const session = new GameSession(loadSnapshot());
     const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
@@ -494,6 +511,12 @@ describe('GameSession recall UI (selectRecallUnit / recallOptions / handleHexCli
     expect(placedUnit).toBeDefined();
     expect(next.board.recallList(1)).toHaveLength(options.length - 1);
     expect(next.board.getTeam(1)!.gold).toBe(goldBefore - recalled!.cost);
+    // Real, reported bug: recalling never played any animation either
+    // (real Wesnoth's actions::place_recruit -- and its unit_recruited
+    // animation call -- handles recruit and recall identically).
+    expect(next.lastRecruitAnimation).not.toBeNull();
+    expect(next.lastRecruitAnimation!.leader).toBe(leader);
+    expect(next.lastRecruitAnimation!.unit).toBe(placedUnit);
   });
 });
 

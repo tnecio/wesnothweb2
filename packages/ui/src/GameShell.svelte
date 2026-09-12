@@ -51,6 +51,7 @@
     type VillageOwnerInfo,
     type LastAttackAnimation,
     type LastMoveAnimation,
+    type LastRecruitAnimation,
   } from './gameSession.js';
   import { saveGame, loadGame } from './persistence.js';
   import TurnBanner from './TurnBanner.svelte';
@@ -198,6 +199,11 @@
       // attack blow, there's no real per-frame content (damage numbers,
       // hit/miss) worth lingering on here.
       await boardView.playAnimationSequence(buildMoveAnimationCues(move), 2);
+    }
+    const recruit = session.lastRecruitAnimation;
+    session.lastRecruitAnimation = null;
+    if (recruit && boardView) {
+      await boardView.playAnimationSequence(buildRecruitAnimationCues(recruit));
     }
     sync(message);
   }
@@ -399,6 +405,72 @@
         },
       ];
     });
+  }
+
+  /**
+   * Real, reported bug: recruitment never played any animation at all.
+   * Mirrors `unit_recruited` (`units/udisplay.cpp`): the new unit plays
+   * "recruited" at its own hex (secondLoc = the leader's hex), and the
+   * leader -- turned to face it -- plays "recruiting" (secondLoc = the
+   * new unit's hex), both in place (no `restAt`, i.e. lunge-and-return
+   * convention, same as attack/defend -- neither unit actually relocates).
+   */
+  function buildRecruitAnimationCues(info: LastRecruitAnimation): UnitAnimationCue[][] {
+    const terrainAt = terrainLookup(session.board);
+    const unitKey = spriteKey({
+      underlyingId: session.renderKeyFor(info.unit),
+      typeId: info.unit.type.id,
+      x: info.unit.location.x,
+      y: info.unit.location.y,
+    });
+    const leaderKey = spriteKey({
+      underlyingId: session.renderKeyFor(info.leader),
+      typeId: info.leader.type.id,
+      x: info.leader.location.x,
+      y: info.leader.location.y,
+    });
+    const unitHex = { x: info.unit.location.x, y: info.unit.location.y };
+    const leaderHex = { x: info.leader.location.x, y: info.leader.location.y };
+
+    const unitContext: AnimationContext = {
+      loc: info.unit.location,
+      secondLoc: info.leader.location,
+      myUnit: info.unit,
+      event: 'recruited',
+      value: 0,
+      value2: 0,
+      hit: 'invalid',
+      terrainAtLoc: terrainAt(info.unit.location),
+    };
+    const leaderContext: AnimationContext = {
+      loc: info.leader.location,
+      secondLoc: info.unit.location,
+      myUnit: info.leader,
+      event: 'recruiting',
+      value: 0,
+      value2: 0,
+      hit: 'invalid',
+      terrainAtLoc: terrainAt(info.leader.location),
+    };
+
+    return [
+      [
+        {
+          key: unitKey,
+          anim: chooseAnimation(animationsFor(info.unit.type.id), unitContext),
+          direction: info.unit.facing,
+          srcHex: unitHex,
+          dstHex: leaderHex,
+        },
+        {
+          key: leaderKey,
+          anim: chooseAnimation(animationsFor(info.leader.type.id), leaderContext),
+          direction: directionBetween(info.leader.location, info.unit.location) ?? info.leader.facing,
+          srcHex: leaderHex,
+          dstHex: unitHex,
+        },
+      ],
+    ];
   }
 
   async function handleConfirmAttack(): Promise<void> {

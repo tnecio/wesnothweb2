@@ -256,6 +256,19 @@ export interface LastMoveAnimation {
   readonly path: readonly Location[];
 }
 
+/**
+ * Everything a caller needs to animate a just-committed recruit/recall --
+ * see `GameSession.lastRecruitAnimation`. Mirrors real Wesnoth's
+ * `unit_recruited` (`units/udisplay.cpp`): the new unit plays "recruited"
+ * at its own hex, and the leader (if any) plays "recruiting" facing it --
+ * same two-context shape as `LastAttackAnimation`'s per-blow pair, just a
+ * single fixed pair rather than one per blow.
+ */
+export interface LastRecruitAnimation {
+  readonly unit: Unit;
+  readonly leader: Unit;
+}
+
 /** One of the attacker's usable weapons against the current target -- see `GameSession.attackerWeaponOptions`. */
 export interface AttackerWeaponOption {
   index: number;
@@ -446,6 +459,14 @@ export class GameSession {
    * same reasoning as attacks.
    */
   lastMoveAnimation: LastMoveAnimation | null = null;
+  /**
+   * Set by `tryRecruitAt`/`tryRecallAt` every time a HUMAN recruit/recall
+   * actually places a unit -- see `LastRecruitAnimation`'s own doc
+   * comment. Same read-once-then-clear contract as `lastAttackAnimation`.
+   * Not set for AI-played recruits (`playAiTurn` places units directly)
+   * for the same reasoning as attacks/moves.
+   */
+  lastRecruitAnimation: LastRecruitAnimation | null = null;
 
   /**
    * The real terrain defense `selectedUnit` would have at `(x, y)` (the
@@ -807,6 +828,7 @@ export class GameSession {
     }
     const type = this.resolveType(typeId);
     const result = recruitUnit(this.board, team, type, loc, leader.location);
+    this.lastRecruitAnimation = { unit: result.unit, leader };
     const message = `Recruited ${name} for ${result.cost} gold.`;
     this.log.unshift(message);
     // Re-select the leader so recruitTiles/attackCandidates refresh (the
@@ -849,6 +871,7 @@ export class GameSession {
     // own doc comment on why: most recall-list units share `underlyingId=0`).
     list.splice(index, 1);
     const result = recallUnit(this.board, team, unit, loc, leader.location);
+    this.lastRecruitAnimation = { unit: result.unit, leader };
     const message = `Recalled ${name} for ${result.cost} gold.`;
     this.log.unshift(message);
     this.selectUnit(leader);
