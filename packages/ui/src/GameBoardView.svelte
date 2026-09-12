@@ -33,7 +33,15 @@
    * top-level report.
    */
   import * as PIXI from 'pixi.js';
-  import { SnapshotBoard, type ScenarioSnapshot, type HexPoint, type SnapshotUnit, type VillageOwnerPoint, type UnitAnimationCue } from '@wesnothweb2/renderer';
+  import {
+    SnapshotBoard,
+    type ScenarioSnapshot,
+    type HexPoint,
+    type SnapshotUnit,
+    type VillageOwnerPoint,
+    type UnitAnimationCue,
+  } from '@wesnothweb2/renderer';
+  import { fetchTerrainGraphicsRules } from './terrainGraphicsRulesCache.js';
 
   let {
     snapshot,
@@ -172,11 +180,14 @@
 
     (async () => {
       app = new PIXI.Application();
-      await app.init({
-        backgroundColor: 0x111111,
-        resizeTo: host,
-        antialias: true,
-      });
+      const [, terrainGraphicsRules] = await Promise.all([
+        app.init({
+          backgroundColor: 0x111111,
+          resizeTo: host,
+          antialias: true,
+        }),
+        fetchTerrainGraphicsRules(),
+      ]);
       if (cancelled) {
         app.destroy();
         return;
@@ -189,6 +200,7 @@
         onHexHover: (x, y) => {
           hoveredHex = { x, y };
         },
+        terrainGraphicsRules,
       });
       await newBoard.render();
       if (cancelled) {

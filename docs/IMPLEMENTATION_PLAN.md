@@ -543,15 +543,20 @@ are tracked as real, in-scope work under the new **Phase 15**.
 
 ## Phase 9 — Terrain visuals
 
-**Status: in progress (2026-09-12) -- rule parsing + client-side matching
-delivered and verified against real content (10,063 rules, matching
-attempt #1's own oracle-verified count exactly; full Dead_Water scenario-1
-map resolves with no gaps). Not yet wired into actual rendering** -- see
-`docs/PROGRESS.md`'s 2026-09-12 entry for the full account. Remaining:
-build-time snapshot loader, `SnapshotBoard` wiring to replace flat-coloured
-hexes, ToD tinting, animation start-time jitter, `center=` multi-hex
-image slicing, and revisiting the brute-force matching's ~7s/scenario
-build cost if it proves too slow once wired into the real load path.
+**Status: real per-hex compositing delivered and live (2026-09-12).**
+Rule parsing + client-side matching + `SnapshotBoard` wiring all land the
+same day: real terrain art now renders in the actual game view (verified
+live in a browser against the real Dead_Water scenario, cross-checked
+against screenshots from the real Wesnoth binary on the identical map).
+10,063 rules parsed, matching attempt #1's own oracle-verified count on
+the same content exactly. See `docs/PROGRESS.md`'s two 2026-09-12
+entries for the full account, including a real bug this surfaced (global
+multi-hex image cropping, `center=`/`RuleImage.sourceLoc`) that WML
+reading alone had wrongly written off as a minor edge case.
+Remaining: ToD tinting (Phase 12), animation start-time jitter, the
+brute-force matching's ~7s/scenario build cost (acceptable for now,
+revisit if felt as real load-time jank), and more systematic screenshot
+comparison beyond Dead_Water scenario 1.
 
 Split out of Phase 4
 (2026-09-09, user's call): real per-hex `[terrain_graphics]` image

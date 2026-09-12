@@ -194,6 +194,24 @@ export interface HexTerrainLayers {
 const EMPTY_LAYERS: HexTerrainLayers = { background: [], foreground: [] }
 
 /**
+ * Mirrors `load_image_sub_file`'s loc/center crop (`picture.cpp` ~L423-434),
+ * the piece that makes multi-hex-spanning source art (e.g. real mountain
+ * art -- `mountains/basic3.png` is 180x216px, not 72x72) resolve to the
+ * right 72x72 slice for THIS hex instead of a single generic centre-crop
+ * shared by every hex that references the image. Encoded as a `~GLOBAL(...)`
+ * pseudo-op (mirroring how `~HEXED()`/`~TOD()` are already modelled as
+ * trailing pseudo-ops rather than real IPF modifiers) consumed by
+ * `ImageCache`'s HEXED case, which has the decoded bitmap's real
+ * width/height in hand -- this function can't finish the computation itself
+ * (`surf->w/2 - center_x` needs the actual decoded size), only pass along
+ * the ingredients.
+ */
+function globalCropMod(image: RuleImage): string {
+  const { x, y } = image.sourceLoc
+  return `~GLOBAL(${x},${y},${image.centerX},${image.centerY})`
+}
+
+/**
  * Resolves one hex's final image layers for a given time-of-day. Mirrors
  * `tile::rebuild_cache`/`get_terrain_frames_at`: stable-sorts by
  * (layer, basey), then per image walks its variants in declared order
@@ -220,9 +238,13 @@ export function getTerrainFramesAt(tiles: TerrainTiles, x: number, y: number, to
       const anim = variant.images[idx]!
       const offsetX = image.basex - TILE_SIZE / 2
       const offsetY = image.basey - TILE_SIZE / 2
+      // Global (multi-hex-spanning) source images need a crop op ahead of the
+      // usual `~HEXED()` masking -- see `RuleImage.sourceLoc`'s own doc comment
+      // and `globalCropMod` below for the exact upstream formula this mirrors.
+      const globalMod = image.globalImage ? globalCropMod(image) : ''
       const frames: TerrainFrame[] = anim.map((f) => ({
         path: f.path,
-        mods: f.mods,
+        mods: f.mods + globalMod,
         durationMs: f.durationMs,
         offsetX,
         offsetY,

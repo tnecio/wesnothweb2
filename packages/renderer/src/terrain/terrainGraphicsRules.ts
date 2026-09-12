@@ -11,15 +11,21 @@
  * per hex, per time-of-day -- is `terrainBuilder.ts`, which runs client-side.
  *
  * Deliberately NOT ported (documented gaps, not silent gaps):
- *  - `center=` multi-hex image slicing (`image::locator`'s `center_x/y`
- *    constructor, used only by `global_image=true` rule_images spanning
- *    several hexes, e.g. some bridge/large-decoration art). Parsed and
- *    carried on `RuleImage.centerX/Y` for completeness, but the runtime
- *    resolver in `terrainBuilder.ts` does not yet apply the per-hex crop --
- *    it draws the image at `basex/basey` like any single-hex image. A small
- *    minority of real content; most terrain art is single-hex.
  *  - The `animate_water` preference toggle (`tile::rebuild_cache`'s
  *    `prefs::get().animate_water()`) -- this port always animates.
+ *
+ * `center=` multi-hex image slicing (`image::locator`'s `center_x/y`
+ * constructor) WAS initially skipped here as "a small minority of real
+ * content, mostly bridges/large decorations" -- wrong, discovered via a
+ * real, visible bug (large black gaps between real mountain hexes in a live
+ * browser render, cross-checked against the real engine's own
+ * `--screenshot` output on the identical map file): `global_image=true`
+ * rule_images turn out to be how a MAJOR terrain type (mountains --
+ * `mountains/basic3.png` is 180x216px, not 72x72) is drawn at all. Now
+ * ported: `RuleImage.sourceLoc` (set by `loadRuleImages`, after rotation)
+ * plus `centerX/centerY` give `terrainBuilder.ts`'s `globalCropMod` what it
+ * needs to crop the right 72x72 window per hex (see its own doc comment for
+ * the exact upstream formula, `picture.cpp`'s `load_image_sub_file`).
  */
 
 import { WmlConfig } from '@wesnothweb2/engine/src/wml/config.js'
@@ -27,7 +33,7 @@ import {
   parseTerrainList,
   terrainMatches,
   STAR,
-  type TerrainCode,
+  TerrainCode,
 } from '@wesnothweb2/engine/src/model/Terrain.js'
 import { TILE_SIZE } from '../hexGeometry.js'
 import { squareParentheticalSplit } from '../animation/frame.js'
@@ -101,6 +107,18 @@ export interface RuleImage {
   readonly isWater: boolean
   /** Declared `[variant]`s in document order, THEN the `[image]`'s own default variant last (see `addImagesFromConfig`). */
   readonly variants: readonly RuleImageVariant[]
+  /**
+   * The owning constraint's own (already-rotated) hex offset -- ONLY
+   * meaningful when `globalImage` is true. Mirrors `image::locator`'s
+   * `loc_` field, which `load_image_sub_file` (picture.cpp) uses to crop a
+   * 72x72 window out of a LARGER, multi-hex-spanning source image (real
+   * mountain art is the prime example -- e.g. `mountains/basic3.png` is
+   * 180x216px, not 72x72). Set by `loadRuleImages` (which runs after
+   * rotation, matching upstream's `load_images` running after
+   * `rotate_rule`), not at parse time. `{x:0, y:0}` for non-global images
+   * (unused there).
+   */
+  sourceLoc: HexOffset
 }
 
 /** Mirrors `rule_image::is_background()`: `UNITPOS = 36 + 18 = 54`. */
@@ -182,6 +200,7 @@ export function loadRuleImages(rule: BuildingRule, imageExists: (path: string) =
 
   for (const constraint of rule.constraints) {
     for (const img of constraint.images) {
+      img.sourceLoc = constraint.loc
       for (const variant of img.variants as Array<{ -readonly [K in keyof RuleImageVariant]: RuleImageVariant[K] }>) {
         const varStrings = getVariations(variant.imageString, variant.variations)
         const resolvedImages: RuleImageAnimation[] = []
@@ -264,6 +283,7 @@ function addImagesFromConfig(images: RuleImage[], cfg: WmlConfig, global: boolea
       globalImage: global,
       isWater,
       variants,
+      sourceLoc: { x: 0, y: 0 }, // filled in by loadRuleImages (needs the post-rotation constraint.loc)
     })
   }
 }
@@ -657,5 +677,24 @@ export function parseTerrainGraphicsRules(
   // ties broken by insertion order) -- `build_terrains`'s `apply_rule` flag side effects make
   // this order load-bearing, not cosmetic. `Array#sort` is stable (ES2019+).
   rules.sort((a, b) => a.precedence - b.precedence)
+  return rules
+}
+
+/**
+ * Reconstructs real `TerrainCode` instances inside a rule list that just
+ * came back through `JSON.parse` (e.g. fetched by the browser from a
+ * build-time-generated snapshot). `JSON.parse` produces plain `{base,
+ * overlay}` objects with no `TerrainCode` prototype -- `constraintMatches`/
+ * `terrainMatches` call `.equals()` on entries, which would throw on those.
+ * Mutates and returns the same array (freshly parsed JSON has no other
+ * references to it, so this is safe and avoids a full second copy of a
+ * potentially large rule list).
+ */
+export function reviveBuildingRules(rules: BuildingRule[]): BuildingRule[] {
+  for (const rule of rules) {
+    for (const c of rule.constraints) {
+      c.terrainTypesMatch = c.terrainTypesMatch.map((t) => new TerrainCode(t.base, t.overlay))
+    }
+  }
   return rules
 }

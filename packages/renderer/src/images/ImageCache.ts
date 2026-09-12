@@ -308,6 +308,31 @@ class ImageCacheImpl {
         return out
       }
 
+      // ~GLOBAL(locX,locY,centerX,centerY) — pseudo-op (not a real IPF
+      // modifier, see `hexedRef`'s own doc comment for the pattern this
+      // follows) emitted by `terrain/terrainBuilder.ts`'s `globalCropMod`
+      // for `global_image=true` terrain-graphics images: crops the 72x72
+      // window belonging to hex `(locX, locY)` out of a LARGER, multi-hex-
+      // spanning source image (real mountain art is the prime example --
+      // `mountains/basic.png` is much bigger than one hex). Mirrors
+      // `picture.cpp`'s `load_image_sub_file`'s loc/center crop exactly,
+      // including that `center` only applies its extra shift when BOTH
+      // components are >= 0 (upstream's sentinel for "not set" is -1).
+      // Always runs before the final `~HEXED()` masking step.
+      case 'GLOBAL': {
+        const [locX, locY, centerX, centerY] = args.map(Number)
+        if (![locX, locY, centerX, centerY].every(Number.isFinite)) return src
+        let x = TILE * 0.75 * locX!
+        let y = TILE * locY! + (TILE / 2) * (locX! % 2)
+        if (centerX! >= 0 && centerY! >= 0) {
+          x += src.width / 2 - centerX!
+          y += src.height / 2 - centerY!
+        }
+        const out = makeCanvas(TILE, TILE)
+        ctx2d(out).drawImage(src as CanvasImageSource, x, y, TILE, TILE, 0, 0, TILE, TILE)
+        return out
+      }
+
       // ~MASK(ref[,x,y]) — clip to the mask.
       //
       // The engine takes the per-pixel MINIMUM of the two alphas

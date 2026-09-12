@@ -1858,3 +1858,79 @@ the already-existing `makeLayerSprite`/`ImageCache` to actually draw);
 `center=` multi-hex image slicing; animation start-time jitter; ToD colour
 tinting (Phase 12); the "cheapest constraint" perf optimization if ~7s
 per scenario load turns out to matter in practice.
+
+## 2026-09-12 (cont'd): Phase 9 wired into real rendering -- and a real bug found via the real engine's own screenshot
+
+Continued straight from the morning's rule-parsing/matching work into
+actually drawing it: a build script
+(`apps/web/scripts/build-terrain-graphics-rules.mjs`) ships the parsed
+rule list as one shared static asset (`terrain-graphics-rules.json`,
+17MB uncompressed / ~360KB gzipped -- fetched once, cached across every
+scenario), `SnapshotBoard.renderTerrain` now calls `buildTerrainTiles`/
+`getTerrainFramesAt` per hex and builds real `makeLayerSprite` sprites
+(background under units, a new `terrainForegroundLayer` over them),
+falling back to the old flat-colour placeholder if the rule set is
+empty/missing. `GameBoardView.svelte` fetches+revives the rules once
+(`packages/ui/src/terrainGraphicsRulesCache.ts`) and passes them through.
+
+**Verified live in a real browser** (Playwright + the project's existing
+Dead_Water scenario, no console errors): real water/grass/sand/castle
+art rendering, correct hex-alpha-mask clipping, castle walls/towers
+correctly oriented via the rotation-template matching. Screenshots
+compared directly against ground truth captured from the REAL Wesnoth
+1.16.9 binary (`wesnoth --screenshot`, same technique demonstrated
+earlier this session) rendering the exact same `Home_1.map` file.
+
+**A real, visually-obvious bug turned up this way**: mountain/hill
+terrain rendered as sparse, disconnected peak icons with large BLACK
+gaps between them (canvas showing through) instead of the real engine's
+dense, continuous rocky texture. Root-caused by re-reading
+`picture.cpp`'s `load_image_sub_file`: real mountain art
+(`mountains/basic.png` etc.) is NOT one 72x72 image per hex -- it's a
+much larger source image (e.g. `mountains/basic3.png` is 180x216px)
+that real Wesnoth crops a *different* 72x72 window out of per hex,
+using that image's `[terrain_graphics]`-declared `base=`/`center=`
+attributes plus the matching constraint's own relative hex offset. This
+project's port had this specific mechanism explicitly flagged as an
+already-known, deliberately-deferred gap ("`center=` multi-hex image
+slicing... a small minority of real content, mostly bridge/large-
+decoration art") -- WRONG: it turns out to be how a major, common
+terrain type (mountains) is drawn at all, discovered only once real
+pixels were on screen and cross-checked against the real engine's own
+output, not from reading the WML alone.
+
+Fixed: `RuleImage.sourceLoc` (the owning, already-rotated constraint's
+own hex offset, set by `loadRuleImages` -- mirrors when upstream's
+`image::locator` captures `constraint.loc`, which is AFTER rotation)
+plus a new `~GLOBAL(locX,locY,centerX,centerY)` pseudo-op in
+`ImageCache.ts` (mirroring how `~HEXED()`/`~TOD()` are already modelled
+as trailing pseudo-ops) that performs the exact upstream crop formula
+using the real decoded bitmap's own width/height -- something no amount
+of WML-only reasoning could precompute ahead of time. Verified the
+before/after directly: the same real Dead_Water mountain range went
+from disconnected icon fragments over black gaps to dense, continuous,
+Wesnoth-authentic rock texture, matching the real engine's own
+`--screenshot` output of the identical map.
+
+All 268 engine + 32 lua-bridge + 3 oracle-tools + 144 renderer + 33 UI
+tests still pass; typecheck clean across every package.
+
+**Noted for future self**: this is the second time this session a
+documented "small minority of real content" simplification turned out
+to be load-bearing for a MAJOR terrain/unit category once real pixels
+were actually compared against the real engine (the first was
+yesterday's hit-flash mechanism). Reading the WML/C++ source in
+isolation, without ever rendering real output side-by-side against the
+real game, seems to systematically under-estimate how often an
+"edge case" mechanism is actually doing most of the visible work for
+some major, common category of content. Prioritize getting to a real,
+comparable screenshot early for any new rendering feature, rather than
+treating "the source reads like a rare case" as sufficient evidence on
+its own.
+
+**Remaining for Phase 9**: ToD colour tinting (Phase 12), animation
+start-time jitter, the brute-force matching's ~7s/scenario build cost
+(acceptable for now, revisit if it's felt as real load-time jank), and
+whatever smaller visual discrepancies only turn up from further,
+more systematic screenshot comparison against the real game (not yet
+done exhaustively -- only Dead_Water scenario 1 checked so far).

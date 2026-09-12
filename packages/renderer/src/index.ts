@@ -116,6 +116,27 @@ export {
   applyTodTint,
 } from './animation/timeOfDay'
 
+// ── Terrain visuals (Phase 9): real [terrain_graphics] rule parsing +
+//    client-side per-hex matching (see docs/PROGRESS.md's 2026-09-12 entry) ──
+export {
+  type BuildingRule,
+  type TerrainConstraint,
+  type RuleImage,
+  type RuleImageVariant,
+  parseTerrainGraphicsRules,
+  reviveBuildingRules,
+  constraintMatches,
+  isBackgroundImage,
+} from './terrain/terrainGraphicsRules'
+
+export {
+  type TerrainMapQuery,
+  type TerrainTiles,
+  type HexTerrainLayers,
+  buildTerrainTiles,
+  getTerrainFramesAt,
+} from './terrain/terrainBuilder'
+
 // ── Vertical-slice scenario snapshot board (see module doc comment) ────────
 export {
   SnapshotBoard,

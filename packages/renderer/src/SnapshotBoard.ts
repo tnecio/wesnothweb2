@@ -68,10 +68,15 @@
 
 import * as PIXI from 'pixi.js';
 import { Direction } from '@wesnothweb2/engine/src/model/Location.js';
+import { parseTerrainCode, NONE_TERRAIN, type TerrainCode } from '@wesnothweb2/engine/src/model/Terrain.js';
 import { hexCorners, hexToPixel, HEX_SIZE, type HexCoord } from './hexGeometry.js';
-import { ImageCache, setImageBaseUrl } from './images/ImageCache.js';
+import { ImageCache, hexedRef, setImageBaseUrl } from './images/ImageCache.js';
+import { joinRef } from './images/ipf.js';
 import { sampleAnimation, animationDurationMs } from './animation/playback.js';
 import type { UnitAnimationDef } from './animation/unitAnimation.js';
+import { makeLayerSprite, type TerrainLayer } from './terrainPositioning.js';
+import { buildTerrainTiles, getTerrainFramesAt, type TerrainMapQuery } from './terrain/terrainBuilder.js';
+import type { BuildingRule } from './terrain/terrainGraphicsRules.js';
 
 export interface SnapshotTerrainHex {
   x: number; // engine-convention 0-based
@@ -202,6 +207,15 @@ export interface SnapshotBoardOptions {
   onHexClick?: (x: number, y: number) => void;
   /** Called with a hex's engine-convention (0-based) (x,y) when the pointer moves over a terrain tile -- lets a caller show a live coordinate readout, useful for describing positions precisely (e.g. reporting a bug). */
   onHexHover?: (x: number, y: number) => void;
+  /**
+   * The real, parsed `[terrain_graphics]` rule list (see
+   * `terrain/terrainGraphicsRules.ts` -- typically fetched as JSON built by
+   * `apps/web/scripts/build-terrain-graphics-rules.mjs` and revived via
+   * `reviveBuildingRules`). When omitted, `renderTerrain` falls back to the
+   * flat-coloured placeholder (`colorForTerrain`) -- useful for tests/tools
+   * that don't want to fetch the ~17MB rule set, or haven't built it yet.
+   */
+  terrainGraphicsRules?: readonly BuildingRule[];
 }
 
 /** What `setHighlights` should currently draw, replacing whatever it drew last call. */
@@ -260,6 +274,15 @@ export class SnapshotBoard {
   private readonly highlightLayer = new PIXI.Container();
   private readonly unitLayer = new PIXI.Container();
   /**
+   * Real per-hex `[terrain_graphics]` image layers whose `basey` puts them
+   * in FRONT of unit sprites (upstream's `rule_image::is_background() ==
+   * false` -- rare in practice, mostly tall structural pieces like bridge
+   * railings). Sits above `unitLayer` so those pieces actually draw over
+   * units standing "behind" them, below `selectionLayer` so the selected-
+   * unit ring still reads clearly on top of everything.
+   */
+  private readonly terrainForegroundLayer = new PIXI.Container();
+  /**
    * Holds ONLY the selected-unit ring, added to the stage AFTER
    * `unitLayer` -- see `setHighlights`' doc comment on why this is a
    * separate layer from `highlightLayer` (which stays under `unitLayer`,
@@ -291,6 +314,8 @@ export class SnapshotBoard {
    */
   private renderQueue: Promise<void> = Promise.resolve();
 
+  private readonly terrainGraphicsRules?: readonly BuildingRule[];
+
   constructor(
     private readonly snapshot: ScenarioSnapshot,
     options: SnapshotBoardOptions = {},
@@ -298,9 +323,17 @@ export class SnapshotBoard {
     if (options.imageBaseUrl) setImageBaseUrl(options.imageBaseUrl);
     this.onHexClick = options.onHexClick;
     this.onHexHover = options.onHexHover;
+    this.terrainGraphicsRules = options.terrainGraphicsRules;
     this.units = snapshot.units;
     this.teamColor = new Map(snapshot.teams.map((t) => [t.side, t.color]));
-    this.stage.addChild(this.terrainLayer, this.villageLayer, this.highlightLayer, this.unitLayer, this.selectionLayer);
+    this.stage.addChild(
+      this.terrainLayer,
+      this.villageLayer,
+      this.highlightLayer,
+      this.unitLayer,
+      this.terrainForegroundLayer,
+      this.selectionLayer,
+    );
   }
 
   /** Queues a `renderUnits()` run behind any already in flight -- see `renderQueue`'s own doc comment. */
@@ -310,33 +343,111 @@ export class SnapshotBoard {
   }
 
   async render(): Promise<void> {
-    this.renderTerrain();
+    await this.renderTerrain();
     await this.queueRenderUnits();
   }
 
-  private renderTerrain(): void {
-    for (const hex of this.snapshot.terrain) {
-      const coord = toHexCoord(hex.x, hex.y);
-      const { x: cx, y: cy } = hexToPixel(coord);
-      const corners = hexCorners(cx, cy);
+  /** Builds the `TerrainMapQuery` `terrain/terrainBuilder.ts` needs directly from the snapshot's flat hex list -- see that module's own doc comment for why this is a client-side adapter rather than a real `GameMap`. */
+  private buildTerrainMapQuery(): TerrainMapQuery {
+    const byKey = new Map<string, TerrainCode>();
+    for (const hex of this.snapshot.terrain) byKey.set(`${hex.x},${hex.y}`, parseTerrainCode(hex.code));
+    const { width, height } = this.snapshot.map;
+    return {
+      width,
+      height,
+      terrainAt: (x, y) => byKey.get(`${x},${y}`) ?? NONE_TERRAIN,
+      onBoard: (x, y) => byKey.has(`${x},${y}`),
+    };
+  }
 
-      const g = new PIXI.Graphics();
-      g.poly(corners.flatMap((p) => [p.x, p.y]));
-      g.fill({ color: colorForTerrain(hex.code) });
+  /**
+   * One hex's real, click/hover-interactive placeholder polygon -- kept
+   * even when real terrain images render on top (see `renderTerrain`):
+   * a stacked layer's own hex-alpha-mask means its VISIBLE footprint never
+   * exceeds the hex it was resolved for (see `terrainPositioning.ts`'s own
+   * doc comment), so routing clicks by hex geometry here, independent of
+   * whatever's drawn on top, stays correct. Non-interactive terrain image
+   * sprites (PixiJS default `eventMode`) let pointer events pass straight
+   * through to this polygon, exactly like unit sprites already do.
+   */
+  private buildHexHitArea(x: number, y: number, cx: number, cy: number, flatColorCode: string | null): PIXI.Graphics {
+    const g = new PIXI.Graphics();
+    const corners = hexCorners(cx, cy);
+    g.poly(corners.flatMap((p) => [p.x, p.y]));
+    if (flatColorCode !== null) {
+      g.fill({ color: colorForTerrain(flatColorCode) });
       g.stroke({ width: 1, color: 0x000000, alpha: 0.15 });
-      if (this.onHexClick || this.onHexHover) {
-        const hx = hex.x;
-        const hy = hex.y;
-        g.eventMode = 'static';
-        if (this.onHexClick) {
-          g.cursor = 'pointer';
-          g.on('pointertap', () => this.onHexClick?.(hx, hy));
-        }
-        if (this.onHexHover) {
-          g.on('pointerover', () => this.onHexHover?.(hx, hy));
-        }
+    } else {
+      g.fill({ color: 0x000000, alpha: 0 });
+    }
+    if (this.onHexClick || this.onHexHover) {
+      g.eventMode = 'static';
+      if (this.onHexClick) {
+        g.cursor = 'pointer';
+        g.on('pointertap', () => this.onHexClick?.(x, y));
       }
-      this.terrainLayer.addChild(g);
+      if (this.onHexHover) {
+        g.on('pointerover', () => this.onHexHover?.(x, y));
+      }
+    }
+    return g;
+  }
+
+  private async renderTerrain(): Promise<void> {
+    if (!this.terrainGraphicsRules || this.terrainGraphicsRules.length === 0) {
+      this.renderTerrainFlat();
+      return;
+    }
+    await this.renderTerrainReal(this.terrainGraphicsRules);
+  }
+
+  /** The pre-Phase-9 flat-coloured placeholder -- see `SnapshotBoardOptions.terrainGraphicsRules`'s own doc comment on when this still applies. */
+  private renderTerrainFlat(): void {
+    for (const hex of this.snapshot.terrain) {
+      const { x: cx, y: cy } = hexToPixel(toHexCoord(hex.x, hex.y));
+      this.terrainLayer.addChild(this.buildHexHitArea(hex.x, hex.y, cx, cy, hex.code));
+    }
+  }
+
+  /**
+   * Real per-hex `[terrain_graphics]` image compositing (Phase 9): matches
+   * `rules` against the snapshot's map once (`buildTerrainTiles`), resolves
+   * every hex's final layers for a fixed time-of-day (no ToD system yet --
+   * Phase 12; an empty string matches any `tods=`-unfiltered variant, which
+   * is the overwhelming majority of real content), preloads every image
+   * reference those layers need, then builds one `makeLayerSprite` per
+   * layer -- background layers into `terrainLayer` (under units),
+   * foreground layers (rare -- tall structural pieces) into
+   * `terrainForegroundLayer` (over units).
+   */
+  private async renderTerrainReal(rules: readonly BuildingRule[]): Promise<void> {
+    const query = this.buildTerrainMapQuery();
+    const offMapCode = parseTerrainCode('_off^_usr');
+    const tiles = buildTerrainTiles(rules as BuildingRule[], query, { offMapCode });
+
+    const perHex: Array<{ x: number; y: number; cx: number; cy: number; bg: TerrainLayer[]; fg: TerrainLayer[] }> = [];
+    const refs = new Set<string>();
+    for (const hex of this.snapshot.terrain) {
+      const { background, foreground } = getTerrainFramesAt(tiles, hex.x, hex.y, '');
+      const { x: cx, y: cy } = hexToPixel(toHexCoord(hex.x, hex.y));
+      perHex.push({ x: hex.x, y: hex.y, cx, cy, bg: [...background], fg: [...foreground] });
+      for (const layer of [...background, ...foreground]) {
+        for (const frame of layer.frames) refs.add(hexedRef(joinRef(frame.path, frame.mods)));
+      }
+    }
+
+    await ImageCache.preload(refs);
+
+    for (const hex of perHex) {
+      this.terrainLayer.addChild(this.buildHexHitArea(hex.x, hex.y, hex.cx, hex.cy, null));
+      for (const layer of hex.bg) {
+        const sprite = makeLayerSprite(layer, hex.cx, hex.cy);
+        if (sprite) this.terrainLayer.addChild(sprite);
+      }
+      for (const layer of hex.fg) {
+        const sprite = makeLayerSprite(layer, hex.cx, hex.cy);
+        if (sprite) this.terrainForegroundLayer.addChild(sprite);
+      }
     }
   }
 
