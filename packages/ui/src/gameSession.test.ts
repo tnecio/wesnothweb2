@@ -97,6 +97,12 @@ describe('GameSession.runStartupEvents (real Dead_Water scenario 1)', () => {
     expect(session.board.allUnits()).toHaveLength(unitCountAfterFirst);
   });
 
+  it('real, reported bug: unit sprites always rendered in raw magenta instead of the unit\'s side color -- renderUnits now carries each unit\'s real flag_rgb (defaulting to "magenta") for SnapshotBoard to recolor with', () => {
+    const session = new GameSession(loadSnapshot());
+    const kaiKrellis = session.renderUnits.find((u) => u.id === 'Kai Krellis')!;
+    expect(kaiKrellis.flagRgb).toBe('magenta'); // real Merman Child King unit_type sets no flag_rgb= override
+  });
+
   it("real, reported bug: Gwabbo's scripted retreat ({MOVE_UNIT id=Gwabbo 20 10}, a [move_unit] action) actually relocates him, using his real Merman Netcaster movement stats end-to-end", () => {
     const session = new GameSession(loadSnapshot());
     session.runStartupEvents();

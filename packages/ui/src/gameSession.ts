@@ -714,6 +714,7 @@ export class GameSession {
       name: unit.name || null,
       typeId: unit.type.id,
       image: this.snapshot.unitTypes[unit.type.id]?.image ?? null,
+      flagRgb: this.snapshot.unitTypes[unit.type.id]?.flagRgb,
       side: unit.side,
       x,
       y,

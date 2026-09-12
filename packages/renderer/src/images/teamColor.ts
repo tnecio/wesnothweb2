@@ -31,6 +31,8 @@ export interface ColorData {
   sideRanges: Record<number, ColorRange>
   /** Named colour ranges, for ~RC(palette>range). */
   ranges: Record<string, ColorRange>
+  /** The `default=yes`-marked `[color_range]` ids, in file order -- `game_config::default_colors`. See `resolveSideColorId`. */
+  defaultColors: readonly string[]
 }
 
 /** Pack an 8-bit RGB triple into a single integer key. */
@@ -113,3 +115,29 @@ export function applyColorMapping(data: Uint8ClampedArray, map: Map<number, numb
 
 /** The reference palette unit art is drawn in, when ~TC does not name one. */
 export const DEFAULT_TC_PALETTE = 'magenta'
+
+/**
+ * Port of `team::get_side_color_id`/`get_side_color_id_from_config`: a
+ * side's `[side] color=` value, if it names a real color_range id (e.g.
+ * "red"); otherwise (blank, or a *numeric* value -- either a `color=N`
+ * cross-reference to another side's color, or `Team.ts`'s own
+ * `String(side)` placeholder default when no `color=` was set at all)
+ * falls back to `defaultColors[side-1]` (the `default=yes`-marked
+ * `[color_range]`s, in file order -- see `build-team-colors.mjs`).
+ *
+ * Deliberately simplified vs. upstream for the numeric-cross-reference
+ * case: real Wesnoth recurses (`color=2` resolves to whatever side 2's OWN
+ * color resolves to, which could itself be an explicit override), this
+ * just indexes `defaultColors` directly by that number -- correct for the
+ * overwhelming majority of real content (a numeric `color=` almost always
+ * points at a side using its own default color), wrong only if that
+ * *target* side also has its own explicit non-default `color=` override.
+ */
+export function resolveSideColorId(color: string, side: number, defaultColors: readonly string[]): string {
+  const trimmed = color.trim()
+  const asNumber = Number(trimmed)
+  if (trimmed !== '' && Number.isFinite(asNumber) && asNumber > 0) {
+    return defaultColors[asNumber - 1] ?? trimmed
+  }
+  return trimmed || (defaultColors[side - 1] ?? '')
+}

@@ -112,6 +112,8 @@ export interface UnitTypeSnapshot {
   attacks: AttackTypeSnapshot[];
   /** Real image path collected from `data/core/units.cfg`/the campaign's `_main.cfg`, or `null` if none was found. */
   image?: string | null;
+  /** Real `[unit_type] flag_rgb=`, defaulting to "magenta" (matches `unit_type::flag_rgb()`'s own default) -- the reference palette a unit's sprite is recolored FROM, via `~RC(flagRgb>side's color id)`. See `SnapshotUnit.flagRgb`. */
+  flagRgb?: string;
 }
 
 export interface SnapshotTerrainHex {
@@ -131,6 +133,8 @@ export interface SnapshotUnit {
   canRecruit: boolean;
   hitpoints: number;
   maxHitpoints: number;
+  /** This unit's real `flag_rgb=` (see `UnitTypeSnapshot.flagRgb`'s own doc comment), for team-color recoloring -- `undefined` reads as the real default ("magenta"). */
+  flagRgb?: string;
   /**
    * XP/moves/attacks/status fields the renderer needs for the real HP/XP
    * bars, moves-left orb, and status tint (see `@wesnothweb2/renderer`'s

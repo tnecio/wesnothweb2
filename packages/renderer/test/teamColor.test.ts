@@ -3,6 +3,7 @@ import {
   applyColorMapping,
   generateColorMapping,
   packRgb,
+  resolveSideColorId,
   type ColorRange,
   type Rgb,
 } from '../src/images/teamColor'
@@ -94,5 +95,32 @@ describe('applyColorMapping', () => {
     const data = new Uint8ClampedArray([1, 2, 3, 255])
     applyColorMapping(data, new Map())
     expect([...data]).toEqual([1, 2, 3, 255])
+  })
+})
+
+describe('resolveSideColorId (team::get_side_color_id) -- real, reported bug: units rendered magenta instead of their side color', () => {
+  const defaultColors = ['red', 'blue', 'green', 'purple', 'black', 'brown', 'orange', 'white', 'teal']
+
+  it('an explicit non-numeric [side] color= (e.g. "teal") passes straight through', () => {
+    expect(resolveSideColorId('teal', 1, defaultColors)).toBe('teal')
+  })
+
+  it('Team.ts\'s own String(side) placeholder default (no real color= set) resolves via defaultColors[side-1]', () => {
+    expect(resolveSideColorId('1', 1, defaultColors)).toBe('red')
+    expect(resolveSideColorId('2', 2, defaultColors)).toBe('blue')
+    expect(resolveSideColorId('9', 9, defaultColors)).toBe('teal')
+  })
+
+  it('a numeric [side] color=N (cross-referencing another side\'s color) resolves via defaultColors[N-1], not the acting side', () => {
+    expect(resolveSideColorId('2', 5, defaultColors)).toBe('blue') // side 5, but color=2
+  })
+
+  it('a blank color= falls back to defaultColors[side-1]', () => {
+    expect(resolveSideColorId('', 3, defaultColors)).toBe('green')
+  })
+
+  it('an out-of-range side/number falls back gracefully rather than throwing', () => {
+    expect(resolveSideColorId('99', 1, defaultColors)).toBe('99') // no defaultColors[98] -- returns the raw value, same as upstream's own empty-string failure mode being "no recolor"
+    expect(resolveSideColorId('', 99, defaultColors)).toBe('')
   })
 })

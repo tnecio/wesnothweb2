@@ -172,6 +172,11 @@ class ImageCacheImpl {
     this.colorMaps.clear()
   }
 
+  /** The palettes/ranges/defaultColors supplied via `setColorData`, or `null` if none has been set yet. */
+  getColorData(): ColorData | null {
+    return this.colors
+  }
+
   private tcMapping(side: number, paletteName: string): Map<number, number> | null {
     if (!this.colors || !Number.isFinite(side)) return null
     const key = `TC:${side}:${paletteName}`

@@ -35,6 +35,7 @@
   import * as PIXI from 'pixi.js';
   import {
     SnapshotBoard,
+    ImageCache,
     type ScenarioSnapshot,
     type HexPoint,
     type SnapshotUnit,
@@ -42,6 +43,7 @@
     type UnitAnimationCue,
   } from '@wesnothweb2/renderer';
   import { fetchTerrainGraphicsRules } from './terrainGraphicsRulesCache.js';
+  import { fetchTeamColors } from './teamColorsCache.js';
 
   let {
     snapshot,
@@ -186,19 +188,29 @@
       // Sprite count is not the bottleneck; see SnapshotBoard's
       // `installHitArea` for what actually was.
       app = new PIXI.Application();
-      const [, terrainGraphicsRules] = await Promise.all([
+      const [, terrainGraphicsRules, teamColors] = await Promise.all([
         app.init({
           backgroundColor: 0x111111,
           resizeTo: host,
           antialias: true,
         }),
         fetchTerrainGraphicsRules(),
+        fetchTeamColors(),
       ]);
       if (cancelled) {
         app.destroy();
         return;
       }
       host.appendChild(app.canvas);
+      // Real, reported bug (bugs3.md #3): unit sprites always rendered in
+      // their raw reference palette (magenta) instead of the unit's side
+      // color -- `ImageCache` needs real palette/range data before it can
+      // apply `~RC(flag_rgb>side_color_id)` (see `SnapshotBoard.
+      // buildUnitVisual`). `sideRanges` is left empty: this recolor path
+      // resolves a side's color id up front (`resolveSideColorId`, using
+      // `defaultColors`) rather than relying on `ImageCache`'s own
+      // side-number fallback.
+      ImageCache.setColorData(teamColors ? { ...teamColors, sideRanges: {} } : null);
 
       const newBoard = new SnapshotBoard(snapshot, {
         imageBaseUrl: '/game-images',

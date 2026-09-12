@@ -80,6 +80,7 @@ import {
 } from './hexGeometry.js';
 import { ImageCache, hexedRef, setImageBaseUrl, setEngineImageBaseUrl } from './images/ImageCache.js';
 import { joinRef } from './images/ipf.js';
+import { resolveSideColorId } from './images/teamColor.js';
 import { sampleAnimation, animationDurationMs } from './animation/playback.js';
 import type { UnitAnimationDef } from './animation/unitAnimation.js';
 import { makeLayerSprite, type TerrainLayer } from './terrainPositioning.js';
@@ -115,6 +116,16 @@ export interface SnapshotUnit {
   canRecruit: boolean;
   hitpoints: number;
   maxHitpoints: number;
+  /**
+   * This unit's real `[unit_type] flag_rgb=` (defaults to "magenta" when
+   * absent), the reference palette its sprite is drawn in -- real, reported
+   * bug (bugs3.md #3): unit sprites always rendered in this raw reference
+   * palette, never recolored to the unit's actual side. `buildUnitVisual`/
+   * the sprite-rebuild path append `~RC(flagRgb>sideColorId)` when
+   * resolving the sprite texture; see `images/teamColor.ts`'s
+   * `resolveSideColorId` for how `sideColorId` itself is derived.
+   */
+  flagRgb?: string;
   /**
    * XP/moves/attacks/status fields for the real HP/XP bars, moves-left
    * orb, and status tint (`drawUnitOverlays`) -- all optional since a unit
@@ -598,19 +609,29 @@ export class SnapshotBoard {
     let sprite: PIXI.Sprite | null = null;
 
     if (unit.image) {
-      const texture = await ImageCache.resolve(unit.image);
+      // Team recolor: real Wesnoth appends `~RC(flag_rgb>side_color_id)` to
+      // every unit sprite at render time (`unit::TC_image_mods`) -- real,
+      // reported bug (bugs3.md #3): sprites always rendered in their raw
+      // reference palette (almost always magenta), never the unit's side
+      // color, because nothing supplied `ImageCache`'s color data/computed
+      // this modifier. `getColorData()` returns null (skip the modifier,
+      // same as upstream with no color data loaded) until `apps/web` calls
+      // `setColorData` once at startup (see `build-team-colors.mjs`).
+      const colorData = ImageCache.getColorData();
+      const rawColor = this.teamColor.get(unit.side);
+      const colorId = colorData && rawColor !== undefined ? resolveSideColorId(rawColor, unit.side, colorData.defaultColors) : '';
+      const ref = colorId ? joinRef(unit.image, `RC(${unit.flagRgb ?? 'magenta'}>${colorId})`) : unit.image;
+      const texture = await ImageCache.resolve(ref);
       if (texture) {
         sprite = new PIXI.Sprite(texture);
         sprite.anchor.set(0.5, 0.5);
       }
     }
 
-    // Team recolor (magenta palette swap) needs the unit's *_ColorMap
-    // team-color reference resolved via ImageCache's TC modifier, which
-    // requires knowing the recolor target up front -- deferred for this
-    // slice (real content still renders, just not recoloured per side);
-    // draw a small side-colour marker underneath instead so sides are
-    // visually distinguishable without it. No sprite at all (image
+    // A small side-colour marker dot underneath every sprite -- kept even
+    // now that recoloring is real (some unit art has little/no magenta
+    // area, e.g. mostly-metal or all-white sprites, where the recolor
+    // alone can be easy to miss at a glance). No sprite at all (image
     // missing/unresolvable) -- fall back to a bigger, undecorated dot so
     // the unit is still visible and clickable-by-proxy.
     if (sprite) {

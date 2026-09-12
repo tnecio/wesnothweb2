@@ -265,16 +265,25 @@ function rootImagePath(raw) {
   return `core/images/${raw}`;
 }
 
-/** Walks a parsed tree collecting every [unit_type] (including [male]/[female] variant children) id -> top-level image path (rooted, see rootImagePath). */
-function collectUnitTypeImages(cfg, out) {
+/**
+ * Walks a parsed tree collecting every [unit_type] (including [male]/
+ * [female] variant children) id -> top-level image path (rooted, see
+ * rootImagePath) into `images`, and id -> real `flag_rgb=` (defaulting to
+ * "magenta", matching `unit_type::flag_rgb()`'s own default and
+ * `unit::TC_image_mods()`'s `~RC(flag_rgb>side_color_id)` -- real, reported
+ * bug bugs3.md #3: unit sprites rendered in raw magenta, never the unit's
+ * side color, for lack of this data) into `flagRgb`.
+ */
+function collectUnitTypeImages(cfg, images, flagRgb) {
   for (const { tag, config } of cfg.allChildren()) {
     if (tag === 'unit_type') {
       const id = config.getString('id');
       const image = config.getString('image');
-      if (id && image && !out.has(id)) out.set(id, rootImagePath(image));
-      collectUnitTypeImages(config, out); // [male]/[female] sub-variants
+      if (id && image && !images.has(id)) images.set(id, rootImagePath(image));
+      if (id && !flagRgb.has(id)) flagRgb.set(id, config.getString('flag_rgb', 'magenta'));
+      collectUnitTypeImages(config, images, flagRgb); // [male]/[female] sub-variants
     } else {
-      collectUnitTypeImages(config, out);
+      collectUnitTypeImages(config, images, flagRgb);
     }
   }
 }
@@ -301,7 +310,8 @@ const terrainData = TerrainTypeData.fromConfigs(terrainCfg.children('terrain_typ
 console.log('Parsing data/core/units.cfg for real unit-type image paths (this takes a few seconds)...');
 const coreUnitsCfg = parseWmlFile(path.join(dataRoot, 'core/units.cfg'), { dataRoot, defines: new Map(defines) });
 const unitImages = new Map();
-collectUnitTypeImages(coreUnitsCfg, unitImages);
+const unitFlagRgb = new Map();
+collectUnitTypeImages(coreUnitsCfg, unitImages, unitFlagRgb);
 
 // Synthetic campaigns have no _main.cfg (no custom unit types either --
 // deliberately, see this file's module doc comment) -- an empty stand-in
@@ -311,7 +321,7 @@ collectUnitTypeImages(coreUnitsCfg, unitImages);
 const campaignMainCfg = isRealCampaign
   ? parseWmlFile(path.join(campaignDir, '_main.cfg'), { dataRoot, defines: new Map(defines) })
   : new WmlConfig();
-collectUnitTypeImages(campaignMainCfg, unitImages);
+collectUnitTypeImages(campaignMainCfg, unitImages, unitFlagRgb);
 console.log(`Collected ${unitImages.size} unit-type image paths from real WML.`);
 
 const scenarioCfg = parseWmlFile(scenarioFile, { dataRoot, defines: new Map(defines) });
@@ -505,6 +515,7 @@ function unitTypeToSnapshot(t) {
     doNotList: t.doNotList,
     attacks: t.attacks.map(attackTypeToSnapshot),
     image: unitImages.get(t.id) ?? null,
+    flagRgb: unitFlagRgb.get(t.id) ?? 'magenta',
   };
 }
 
