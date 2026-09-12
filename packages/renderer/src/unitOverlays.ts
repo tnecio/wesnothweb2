@@ -78,12 +78,28 @@ export const DEFAULT_XP_BAR_SCALING = 0.5;
  * `display_context::unit_orb_status`, collapsed from 4 own-side states to 3
  * (see module doc comment): `disengaged` (can move, can't attack) reads as
  * `partial` here, same as upstream's real `partial` state.
+ *
+ * `canMove`/`canAttackHere` mirror `unit_can_move`'s `can_move_result` --
+ * real, reported bug: a unit boxed in with movement points left but no
+ * reachable adjacent hex, and no attack possible, used to read as `partial`
+ * (yellow) because this function only ever looked at the raw
+ * `movesLeft <= 0` counter; the real orb only turns green/yellow when the
+ * unit could actually still act. See `engine`'s `actions/unitCanAct.ts` for
+ * how callers compute these two booleans (needs board/terrain access this
+ * pure color-math module deliberately doesn't have).
  */
 export type MovesOrbStatus = 'unmoved' | 'partial' | 'moved';
 
-export function movesOrbStatus(movesLeft: number, maxMoves: number, attacksLeft: number, maxAttacksPerTurn: number): MovesOrbStatus {
+export function movesOrbStatus(
+  movesLeft: number,
+  maxMoves: number,
+  attacksLeft: number,
+  maxAttacksPerTurn: number,
+  canMove: boolean,
+  canAttackHere: boolean,
+): MovesOrbStatus {
   if (movesLeft === maxMoves && attacksLeft === maxAttacksPerTurn) return 'unmoved';
-  if (movesLeft <= 0 && attacksLeft <= 0) return 'moved';
+  if (!canMove && !canAttackHere) return 'moved';
   return 'partial';
 }
 

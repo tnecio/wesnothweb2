@@ -134,6 +134,16 @@ export interface SnapshotUnit {
   maxMoves?: number;
   attacksLeft?: number;
   maxAttacksPerTurn?: number;
+  /**
+   * Real reachability for the moves-left orb (`movesOrbStatus`) -- mirrors
+   * `display_context::unit_can_move`'s two booleans. Real, reported bug: a
+   * unit with `movesLeft > 0` but no reachable adjacent hex, and no attack
+   * possible, used to show the "partial" (yellow) orb since the orb logic
+   * only checked the raw moves-left counter. See `engine`'s
+   * `actions/unitCanAct.ts`.
+   */
+  canMove?: boolean;
+  canAttackHere?: boolean;
   /** Real boolean status flags this unit currently has (e.g. `poisoned`, `slowed`, `petrified`) -- see `Unit.statuses`. Only the ones the renderer actually draws something for need to be present; harmless to include others. */
   statuses?: readonly string[];
   /** `Unit.loyal` -- whether to draw the real loyal-icon overlay (`misc/loyal-icon.png`). */
@@ -686,7 +696,14 @@ export class SnapshotBoard {
       unit.attacksLeft !== undefined &&
       unit.maxAttacksPerTurn !== undefined
     ) {
-      const status = movesOrbStatus(unit.movesLeft, unit.maxMoves, unit.attacksLeft, unit.maxAttacksPerTurn);
+      const status = movesOrbStatus(
+        unit.movesLeft,
+        unit.maxMoves,
+        unit.attacksLeft,
+        unit.maxAttacksPerTurn,
+        unit.canMove ?? unit.movesLeft > 0,
+        unit.canAttackHere ?? unit.attacksLeft > 0,
+      );
       // Real Wesnoth draws the real, team-recoloured `orb.png` at the same
       // anchor as the unit sprite itself; this project draws a plain
       // colored dot near the hex's top-left corner instead (no real asset

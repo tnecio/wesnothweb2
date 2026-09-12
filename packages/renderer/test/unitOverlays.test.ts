@@ -60,16 +60,20 @@ describe('xpColor (units/unit.cpp xp_color, can_advance=true branch)', () => {
 })
 
 describe('movesOrbStatus (display_context::unit_orb_status, collapsed to 3 states)', () => {
-  it('unmoved: full moves AND full attacks', () => {
-    expect(movesOrbStatus(6, 6, 2, 2)).toBe('unmoved')
+  it('unmoved: full moves AND full attacks (checked before canMove/canAttackHere)', () => {
+    expect(movesOrbStatus(6, 6, 2, 2, true, true)).toBe('unmoved')
   })
   it('moved: no moves AND no attacks left', () => {
-    expect(movesOrbStatus(0, 6, 0, 2)).toBe('moved')
+    expect(movesOrbStatus(0, 6, 0, 2, false, false)).toBe('moved')
   })
-  it('partial: anything else, including the real disengaged case (moved some, no attacks)', () => {
-    expect(movesOrbStatus(3, 6, 2, 2)).toBe('partial') // moved some, can still attack
-    expect(movesOrbStatus(3, 6, 0, 2)).toBe('partial') // moved some, no attacks (real "disengaged")
-    expect(movesOrbStatus(6, 6, 0, 2)).toBe('partial') // full moves, no attacks (real "disengaged")
+  it('real, reported bug: a unit with moves left but no reachable hex, and no attack possible, is "moved" (red) not "partial" (yellow)', () => {
+    expect(movesOrbStatus(3, 6, 0, 2, false, false)).toBe('moved')
+  })
+  it('partial: anything else, including the real disengaged case (can move or attack, but not fully unmoved)', () => {
+    expect(movesOrbStatus(3, 6, 2, 2, true, true)).toBe('partial') // moved some, can still attack
+    expect(movesOrbStatus(3, 6, 0, 2, true, false)).toBe('partial') // moved some, no attacks, but can still move (real "disengaged")
+    expect(movesOrbStatus(6, 6, 0, 2, true, false)).toBe('partial') // full moves, no attacks, can still move (real "disengaged")
+    expect(movesOrbStatus(0, 6, 2, 2, false, true)).toBe('partial') // no moves left, but can still attack from here
   })
   it('every status has a distinct real ORB_COLOR entry', () => {
     expect(new Set(Object.values(ORB_COLOR)).size).toBe(3)

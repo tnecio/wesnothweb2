@@ -59,6 +59,7 @@ import {
   connectedCastleTiles,
   recruitUnit,
   recallUnit,
+  unitCanAct,
   checkVictory,
   applySideHealing,
   computeGoldCarryover,
@@ -702,6 +703,7 @@ export class GameSession {
 
   /** Shared by `renderUnits` (live position/hp) and `messageUnitSnapshot` (a checkpoint's captured position/hp) -- every OTHER field (type, side, abilities, etc.) is read straight off `unit` since none of them change mid-startup-event. */
   private toSnapshotUnit(unit: Unit, x: number, y: number, hitpoints: number): SnapshotUnit {
+    const { canMove, canAttackHere } = unitCanAct(this.board, unit);
     return {
       id: unit.id || null,
       name: unit.name || null,
@@ -721,6 +723,8 @@ export class GameSession {
       maxMoves: unit.maxMoves,
       attacksLeft: unit.attacksLeft,
       maxAttacksPerTurn: unit.maxAttacksPerTurn,
+      canMove,
+      canAttackHere,
       statuses: [...unit.statuses],
       loyal: unit.loyal,
       underlyingId: this.renderKeyFor(unit),

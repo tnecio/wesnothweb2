@@ -971,6 +971,23 @@ describe('GameSession.unitInfo (real, reported bug: UI missing weapon type/abili
   });
 });
 
+describe('GameSession.renderUnits moves-orb reachability (real, reported bug: a unit with an unspent attack but nowhere left to use it showed the yellow "partial" orb instead of red "moved")', () => {
+  it('real Dead_Water scenario 1: moving Kai Krellis to (25,10) leaves him with 1 attack left but no adjacent enemy and no more moves -- canMove/canAttackHere are both false, so his orb reads "moved", not "partial"', () => {
+    const session = new GameSession(loadSnapshot());
+    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    session.selectUnit(kaiKrellis);
+    expect(session.reachable.some((l) => l.x === 25 && l.y === 10)).toBe(true);
+
+    session.handleHexClick(25, 10);
+
+    expect(kaiKrellis.movesLeft).toBe(0);
+    expect(kaiKrellis.attacksLeft).toBe(1); // an attack is still nominally available...
+    const snap = session.renderUnits.find((u) => u.id === 'Kai Krellis')!;
+    expect(snap.canMove).toBe(false);
+    expect(snap.canAttackHere).toBe(false); // ...but there's no adjacent enemy to use it on.
+  });
+});
+
 describe('GameSession unit inspection (real, reported bug: no way to see information about enemy units)', () => {
   it('clicking an enemy that is NOT an attack target (nothing of mine selected) inspects it without selecting/acting on it', () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();

@@ -151,6 +151,9 @@ export interface SnapshotUnit {
   maxMoves?: number;
   attacksLeft?: number;
   maxAttacksPerTurn?: number;
+  /** Real reachability for the moves-left orb -- see `@wesnothweb2/renderer`'s `SnapshotUnit` (structurally the same interface) and `actions/unitCanAct.ts`'s `unitCanAct`. */
+  canMove?: boolean;
+  canAttackHere?: boolean;
   statuses?: readonly string[];
   /** `Unit.loyal` -- whether to draw the real loyal-icon overlay (`misc/loyal-icon.png`). */
   loyal?: boolean;
