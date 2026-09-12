@@ -2179,3 +2179,85 @@ Both verified via real engine tests (`UnitTypeDatabase.test.ts`'s new
 a live browser session confirming Baldras selects with correct HP/
 moves/attacks and a real sprite. All engine/renderer/ui suites green
 (326/170/57), typecheck clean.
+
+## 2026-09-12 (cont'd): Phase 11 (Fog, Shroud & Vision) delivered, Under the Burning Suns added as its testbed
+
+Per the user's own reshuffle of `IMPLEMENTATION_PLAN.md` (gameplay before
+UI breadth), moved straight from Phase 6 breadth into Phase 11. Ported,
+tested, and wired end to end in one session:
+
+**Engine core**: `ShroudMap` (`shroud_map`), `Team.shrouded`/`fogged`
+honouring `share_vision=`/legacy `share_view=`/`share_maps=`,
+`GameBoard.isShrouded`/`isFogged`; `pathfind/visibility.ts`'s
+`isUnitVisibleToTeam`/`unitInvisible`/`wouldBeDiscovered` (covers `hides`
+abilities -- ambush/nightstalk/concealment/submerge/swamp_lurk/burrow --
+evaluated against real `[filter_location]` terrain/`time_of_day=`);
+`actions/vision.ts`'s `ShroudClearer`/`recalculateFog`/`clearShroud`/
+`actorSighted` (real vision/jamming paths, not straight-line radius).
+`executeMove` now mirrors `unit_mover`: hidden units cached before
+moving (unseen enemies block, invisible ones ambush), fog cleared hex by
+hex, movement stops at a reasonable hex once units come into view,
+`sighted` raised, `MoveResult.undoBlocked` mirrors upstream's
+`undo_blocked()`. `executeAttack`/`recruitUnit`/`recallUnit` clear fog
+and fire `attack`/`last breath`/`die`/`recruit`/`recall` the same way.
+`simpleAi.ts` now scores everything through its own side's real fog.
+
+**Events**: `GameSession` now keeps ONE event pump for the whole
+scenario (previously a throwaway one for prestart/start only), firing
+`turn N`/`new turn`/`side turn`/`turn refresh`/`side turn end`/`turn end`
+with the matching `clear_shroud`/`recalculate_fog` calls, `moveto`/
+`capture`/`sighted`/`attack`/`attack end` from real actions, and
+`[endlevel]` (new, `data/lua/wml/endlevel.lua` ported) ending the
+scenario. `[remove_shroud]`/`[place_shroud]`/`[lift_fog]`/`[reset_fog]`
+implemented via a new shared `findLocations` (`terrain_filter::
+get_locations`: `x,y=`/`terrain=`/`[and]`/`[or]`/`[not]`/`radius=` with
+`[filter_radius]`). SUF gained `[filter_location]`/`[filter_vision]`.
+
+**Rendering**: `packages/renderer/src/fogShroud.ts` ports
+`display::get_fog_shroud_images` exactly -- including two genuine
+upstream quirks confirmed by executing the ported algorithm rather than
+hand-tracing it: a failed run-extension leaves its frontier hex to start
+a fresh, separate run (so a 5-in-a-row fogged neighbour run can emit TWO
+overlapping images, not one), and a fully shroud-surrounded hex (no
+`void-all.png` exists) never lets its frontier index return to `start`,
+so the algorithm's own hard 6-iteration safety cap is what actually
+stops it, producing 3x-repeated overlapping images -- both faithfully
+reproduced, not "fixed to be smarter than upstream." Wired into a new
+`fog_shroud` PIXI layer above every unit layer (matching upstream's
+`drawing_layer` enum order exactly), with a shrouded hex's terrain
+container hidden entirely rather than drawn under the overlay.
+`GameSession.renderUnits` filters by real fog-aware visibility;
+`villageOwnership` now remembers each village's last-known owner while
+fogged instead of showing the live one.
+
+**Testbed**: Under the Burning Suns added as a fourth mainline campaign
+(scenarios 1-4 built -- shroud + the two-suns schedule; fog + `sighted`;
+`[time_area]`; underground schedule). Building it surfaced two real,
+unrelated bugs, both fixed:
+1. `build-scenario-snapshot.mjs`'s `map_file=` resolution only tried
+   `<campaign>/maps/<file>` (Dead Water's convention) -- UtBS's own
+   `{UTBS_MAP}` macro sets `map_file=` to a path already rooted at
+   `data/` (`campaigns/Under_the_Burning_Suns/maps/<file>`), which is
+   equally valid per real Wesnoth's VFS search path. Now tries the
+   data-root-relative form first.
+2. **The more consequential one**: `checkVictory` only ever asked "which
+   sides currently have a `canRecruit` unit," so UtBS's `no_leader=yes`
+   AI sides (2-4, whose real leaders are placed by a later scripted
+   event, not inline in `[side]`) had zero qualifying units at scenario
+   start and were silently dropped from `notDefeated` -- ending the
+   scenario in an instant false "Victory!" turn 1, before the antagonist
+   ever appeared. Root cause: `no_leader=`/`SnapshotTeam.noLeader` was
+   never threaded from the build script through the client snapshot at
+   all. Fixed by threading it through and rewriting `checkVictory` to
+   delegate to the already-correct `GameBoard.teamIsDefeated` (which also
+   picks up the previously-ignored `team.lost` flag as a bonus
+   correctness fix) instead of re-deriving similar logic.
+
+Verified live in a real browser: UtBS scenario 1 renders real terrain in
+the explored area with a solid black shroud covering the rest, in-play
+dialogue/`moveto` messages display in order, and 6 turns cycle across
+all 4 sides (AI-controlled included, real two-suns schedule visibly
+advancing -- "First Dawn" -> "The Short Dark" by turn 6) with zero
+console errors and no false victory/defeat. Engine/renderer/ui suites
+all green (367/184/57), typecheck and `svelte-check` (0 errors) clean
+throughout.

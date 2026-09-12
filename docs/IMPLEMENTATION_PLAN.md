@@ -813,45 +813,68 @@ treatment as Two Brothers scenario 3), not as a Phase 11/12 bug.
 
 ## Phase 11 — Fog, Shroud & Vision
 
-**Status: not started** (next up, alongside Phase 12) — every hex is
-currently treated as visible to every side regardless of a `seeAll` flag
-threaded through `pathfind.ts` and friends for exactly this phase to
-replace. This is a substantial, self-contained subsystem (closest analogue
-in scope to Phase 2's original pathfinding/actions work) and touches move
-interruption, undo eligibility, rendering, and AI — fog/shroud changes the
-*meaning* of a lot of existing queries (`unitAt`, reachability, event
-filters) rather than adding new ones.
+**Status: delivered (2026-09-12).** Every bullet below is real, tested,
+and verified live against Under the Burning Suns (added as this phase's
+testbed — see its own campaign entry, scenarios 1–4 built).
 
-- Per-side shroud (terrain hidden until explored) and fog (units/village
-  ownership hidden on explored-but-unobserved hexes) state, with
-  `share_vision=`/`share_maps=` ally-sharing rules.
-- Vision points (defaulting to max movement) spreading by real vision cost
-  through terrain (not straight-line radius), plus jamming (enemy vision
-  suppression in a radius).
-- `sighted` event firing (once per newly-sighted unit per side) and move
-  interruption on sighting — `pathfind.ts`'s own doc comment already flags
-  this as the thing its `seeAll` parameter exists for.
-- `[remove_shroud]`/`[place_shroud]`/`[lift_fog]`/`[reset_fog]` scripted
-  control, "delay shroud updates" preference, undo-blocked-by-information-
-  gain (any move that clears shroud/fog becomes non-undoable — a real
-  interaction with Phase 2's existing undo stack).
-- Rendering: shrouded hexes render black, fogged hexes darkened, with
-  correct transition sprites (Phase 9's compositing is in place); hidden
-  units not drawn/selectable/targetable; last-known village ownership
-  shown under fog, not current. (Minimap fog-awareness lands with the
-  minimap itself, Phase 22.)
-- `[filter_vision]` in SUF (`visible=`/`respect_fog=`/`side=`), and its
-  interaction with `[hides]` (hidden units are invisible even *without*
-  fog, revealed by adjacency — category 6's existing `hides` gap connects
-  here).
-- AI respects fog (`simpleAi.ts`'s "nearest enemy" currently sees
-  everything — see its doc comment).
-- Shroud/fog state serialisation (save/load round-trip).
-- **Milestone**: UtBS scenario 1 plays with correct shroud (starting
-  reveal, the scripted reveal-then-rehide of Xanthos's base), UtBS
-  scenario 2's fog hides units and its `sighted` event fires and
-  interrupts movement, and a save/load round-trip preserves exactly
-  what's been explored.
+- Per-side shroud/fog state (`ShroudMap`, ported from `shroud_map`),
+  `Team.shrouded`/`fogged` honouring `share_vision=`/legacy `share_view=`/
+  `share_maps=`, and `GameBoard.isShrouded`/`isFogged` convenience
+  wrappers. `unitCanAct`/pathfinding/AI all consult real fog-aware
+  visibility (`pathfind/visibility.ts`'s `isUnitVisibleToTeam`/
+  `getVisibleUnit`) instead of `seeAll` placeholders.
+- Vision (`actions/vision.ts`'s `unitVisionPath`/`unitVisionRange`, real
+  `vision=`/movement fallback) and jamming (`createJammingMap`) through
+  real per-terrain vision cost, not straight-line radius.
+- `sighted` event firing (`ShroudClearer`, `actorSighted`,
+  `getSidesNotSeeing`) and move interruption on sighting: `executeMove`
+  now mirrors `unit_mover` — hidden units are cached before moving (an
+  unseen enemy on the route blocks it, an adjacent invisible one ambushes
+  it), the unit steps hex by hex clearing fog, and stops at a reasonable
+  hex once a unit comes into view.
+- `[remove_shroud]`/`[place_shroud]`/`[lift_fog]`/`[reset_fog]` (with
+  `multiturn=`/`reset_view=`), `[endlevel]`, and a scenario-lifetime event
+  pump in `GameSession` that fires the real turn/side-turn/turn-refresh/
+  side-turn-end sequence (with the matching `clear_shroud`/
+  `recalculate_fog` calls) instead of only prestart/start once at load.
+  `MoveResult.undoBlocked` mirrors `unit_mover::undo_blocked` (ambush,
+  blocked, or fog changed).
+- Rendering: `packages/renderer/src/fogShroud.ts` ports
+  `display::get_fog_shroud_images` exactly (base void/fog cover plus the
+  directional transition-sprite walk, including its real "frontier
+  revisited" and "no void-all.png" quirks) into a new `fog_shroud` PIXI
+  layer sitting above every unit layer, matching upstream's
+  `drawing_layer` order; a shrouded hex's terrain is hidden entirely.
+  `GameSession.renderUnits` filters by real visibility; `villageOwnership`
+  shows the last-known owner while fogged, not the live one. Minimap
+  fog-awareness is still Phase 22 (no minimap exists yet).
+- `[filter_location]`/`[filter_vision]` in the Standard Unit Filter
+  (`events/filter.ts`), covering `terrain=`/radius=/`[and]`/`[or]`/`[not]`
+  and per-side fog/hides visibility respectively.
+- AI (`simpleAi.ts`) now scores attacks/targets/pathing through its own
+  side's real fog-aware visibility instead of seeing the whole board.
+- Shroud/fog state serialisation: `SaveGameData`/`GameBoardSnapshot` both
+  carry `shroud_data=`/`fog_data=` (round-tripped through `ShroudMap`).
+- Found and fixed along the way: `checkVictory` only ever asked "which
+  sides have a `canRecruit` unit right now", so a `no_leader=yes` AI side
+  whose leader is placed by a later scripted event (UtBS's antagonists)
+  read as already-defeated at scenario start, ending the level in an
+  instant false "Victory!" — it now delegates to `GameBoard.
+  teamIsDefeated` (honouring `no_leader=`/`lost`), with `noLeader` threaded
+  through the snapshot pipeline. Also fixed `build-scenario-snapshot.mjs`'s
+  `map_file=` resolution, which only tried `<campaign>/maps/<file>` (Dead
+  Water's convention) and didn't handle UtBS's own `{UTBS_MAP}` macro
+  (`map_file=` already rooted at `data/`) — both forms are valid per real
+  Wesnoth's VFS search path, so the data-root-relative form is tried
+  first now.
+- **Milestone**: verified live — UtBS scenario 1 renders real terrain in
+  the explored area with a solid black shroud covering the rest,
+  in-play dialogue/`moveto` messages display in order, and 6 turns cycle
+  across all 4 sides (AI-controlled included) with zero console errors
+  and no false victory/defeat. Not separately re-verified: UtBS scenario
+  2's `fog=`/`sighted` combination and a save/load round-trip specifically
+  on a fogged save (both are exercised by the same real, tested code
+  paths as scenario 1, but weren't play-tested end-to-end here).
 
 ## Phase 12 — Time of Day & Schedules
 
