@@ -988,6 +988,24 @@ describe('GameSession.renderUnits moves-orb reachability (real, reported bug: a 
   });
 });
 
+describe('GameSession.reachable defensePercent (real, reported bug: the map only showed a reachable hex\'s terrain defense on hover, never all of a selected unit\'s real options at a glance)', () => {
+  it('real Dead_Water scenario 1: every one of Kai Krellis\' reachable hexes carries its own real terrain defense, matching defensePercentAt for the same hex', () => {
+    const session = new GameSession(loadSnapshot());
+    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    session.selectUnit(kaiKrellis);
+
+    expect(session.reachable.length).toBeGreaterThan(0);
+    for (const hex of session.reachable) {
+      expect(hex.defensePercent).toBe(session.defensePercentAt(hex.x, hex.y));
+      expect(hex.defensePercent).toBeGreaterThanOrEqual(0);
+      expect(hex.defensePercent).toBeLessThanOrEqual(100);
+    }
+    // Real Dead_Water scenario 1 is mostly water/coast -- confirms this isn't a flat, unvarying number.
+    const distinctValues = new Set(session.reachable.map((h) => h.defensePercent));
+    expect(distinctValues.size).toBeGreaterThan(1);
+  });
+});
+
 describe('GameSession unit inspection (real, reported bug: no way to see information about enemy units)', () => {
   it('clicking an enemy that is NOT an attack target (nothing of mine selected) inspects it without selecting/acting on it', () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();

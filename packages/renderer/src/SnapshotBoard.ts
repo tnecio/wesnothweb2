@@ -296,8 +296,14 @@ export interface SnapshotBoardOptions {
 export interface HighlightState {
   /** The selected unit's own hex, outlined. */
   selected?: HexPoint | null;
-  /** Hexes the selected unit could move to this turn. */
-  reachable?: readonly HexPoint[];
+  /**
+   * Hexes the selected unit could move to this turn -- an entry's optional
+   * `defensePercent` (real, reported bug: "the map should show the terrain
+   * defence of a unit on its reachable hexes") draws that hex's real
+   * terrain-defense percentage as a small label on the tile itself, not
+   * just on hover.
+   */
+  reachable?: readonly (HexPoint & { defensePercent?: number })[];
   /** Adjacent enemy hexes the selected unit could attack. */
   attackTargets?: readonly HexPoint[];
   /** Vacant castle tiles the selected leader could recruit onto. */
@@ -1052,7 +1058,20 @@ export class SnapshotBoard {
       this.highlightLayer.addChild(g);
     };
 
-    for (const hex of state.reachable ?? []) drawFill(hex, 0x3fa9f5, 0.45);
+    for (const hex of state.reachable ?? []) {
+      drawFill(hex, 0x3fa9f5, 0.45);
+      if (hex.defensePercent !== undefined) {
+        const coord = toHexCoord(hex.x, hex.y);
+        const { x: cx, y: cy } = hexToPixel(coord);
+        const label = new PIXI.Text({
+          text: `${hex.defensePercent}%`,
+          style: { fontSize: 14, fontWeight: 'bold', fill: 0xffffff, stroke: { color: 0x000000, width: 3 } },
+        });
+        label.anchor.set(0.5);
+        label.position.set(cx, cy);
+        this.highlightLayer.addChild(label);
+      }
+    }
     for (const hex of state.attackTargets ?? []) drawFill(hex, 0xe23b3b, 0.5);
     for (const hex of state.recruitTiles ?? []) drawFill(hex, 0x3fdf6a, 0.45);
 

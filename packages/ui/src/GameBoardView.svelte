@@ -59,7 +59,7 @@
     /** Live unit positions/HP -- re-applied to the board whenever this changes. */
     units: SnapshotUnit[];
     selectedHex?: HexPoint | null;
-    reachable?: readonly HexPoint[];
+    reachable?: readonly (HexPoint & { defensePercent?: number })[];
     attackTargets?: readonly HexPoint[];
     recruitTiles?: readonly HexPoint[];
     /** Live village ownership (village hex -> owning side, or unowned if absent) -- re-applied whenever it changes, same as `units`. */

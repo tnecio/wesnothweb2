@@ -49,6 +49,7 @@
     type SaveGameData,
     type EconomyInfo,
     type VillageOwnerInfo,
+    type ReachableHexPoint,
     type LastAttackAnimation,
     type LastMoveAnimation,
     type LastRecruitAnimation,
@@ -105,7 +106,7 @@
   /** The currently-inspected unit's view-model (see `GameSession.inspectedUnit`) -- any unit clicked purely to view its info, independent of `selected`. */
   let inspected = $state<SelectedUnitInfo | null>(null);
   let selectedHex = $state<HexPoint | null>(null);
-  let reachable = $state<HexPoint[]>([]);
+  let reachable = $state<ReachableHexPoint[]>([]);
   let attackTargets = $state<HexPoint[]>([]);
   let recruitTiles = $state<HexPoint[]>([]);
   let recruitOptions = $state<RecruitOption[]>([]);

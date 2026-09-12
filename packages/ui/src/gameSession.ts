@@ -103,6 +103,11 @@ export interface VillageOwnerInfo extends HexPoint {
   side: number;
 }
 
+/** One hex the selected unit could move to this turn, with the real terrain defense (`100 - defenseModifier`, see `SelectedUnitInfo.defensePercent`'s own doc comment) it would have there -- real, reported bug (bugs3.md #2): the map only ever showed a hex's defense on hover, never all of a selected unit's real options at a glance. */
+export interface ReachableHexPoint extends HexPoint {
+  defensePercent: number;
+}
+
 /** One combatant's side of a `CombatPreview` -- feeds the side panel's combat-prediction display. */
 export interface CombatantPreview {
   name: string;
@@ -453,7 +458,7 @@ export class GameSession {
    */
   inspectedUnit: Unit | null = null;
   /** Hexes `selectedUnit` can move to this turn (excludes its own hex). */
-  reachable: HexPoint[] = [];
+  reachable: ReachableHexPoint[] = [];
   /** Adjacent enemy units `selectedUnit` could attack (empty if it has no attacks left). */
   attackCandidates: Unit[] = [];
   /** Vacant castle tiles `selectedUnit` (a leader on its keep) could recruit onto -- empty otherwise. */
@@ -797,7 +802,11 @@ export class GameSession {
       const ownLoc = unit.location;
       this.reachable = destinations
         .values()
-        .map((step) => ({ x: step.curr.x, y: step.curr.y }))
+        .map((step) => ({
+          x: step.curr.x,
+          y: step.curr.y,
+          defensePercent: 100 - unit.defenseModifier(this.board.map.getTerrain(step.curr)),
+        }))
         .filter((h) => !(h.x === ownLoc.x && h.y === ownLoc.y));
     } else {
       this.reachable = [];
