@@ -54,7 +54,8 @@ import { advanceUnitFully } from '../actions/advancement.js';
 export interface AiTurnOptions {
   /** Resolves a recruit-list/type id to its real `UnitType` (see `combat.ts`'s plague `resolveType` param for the same established pattern -- this module has no snapshot access of its own). */
   readonly resolveType: (id: string) => UnitType;
-  readonly lawfulBonus?: number;
+  /** The real, location-aware ToD lawful_bonus (schedule + `[time_area]` + `[illuminates]`, see `actions/illumination.ts`'s `effectiveTimeOfDayAt`) -- omit for a permanently neutral board. */
+  readonly lawfulBonusAt?: (loc: Location) => number;
   readonly maxLiminalBonus?: number;
   /** A trade is taken only if its score clears this bar (net expected HP swing, kill/death-weighted -- see `evaluateAttack`). Default 0 (never take a clearly net-negative trade); lower it to make the AI more aggressive. */
   readonly attackScoreThreshold?: number;
@@ -161,7 +162,8 @@ function evaluateAttack(board: GameBoard, unit: Unit, fromLoc: Location, target:
   board.moveUnit(originalLoc, fromLoc);
   try {
     const abilityOptions: UnitStatsOptions = {
-      lawfulBonus: options.lawfulBonus ?? 0,
+      attackerLawfulBonus: options.lawfulBonusAt?.(fromLoc) ?? 0,
+      defenderLawfulBonus: options.lawfulBonusAt?.(target.location) ?? 0,
       maxLiminalBonus: options.maxLiminalBonus ?? 0,
       backstabActive: isBackstabActive(board, fromLoc, target.location),
       attackerLeadershipBonus: computeLeadershipBonus(board, unit),
@@ -333,7 +335,8 @@ export function playAiTurn(board: GameBoard, side: number, rng: Rng, options: Ai
         defenderTerrainDefense,
       );
       const result = executeAttack(board, rng, unit.location, attack.weaponIndex, defender.location, defenderWeaponIndex, {
-        lawfulBonus: options.lawfulBonus,
+        attackerLawfulBonus: options.lawfulBonusAt?.(unit.location),
+        defenderLawfulBonus: options.lawfulBonusAt?.(defender.location),
         maxLiminalBonus: options.maxLiminalBonus,
         resolveType: options.resolveType,
       });

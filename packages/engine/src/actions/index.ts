@@ -12,3 +12,4 @@ export * from './advancement.js';
 export * from './undo.js';
 export * from './victory.js';
 export * from './carryover.js';
+export * from './illumination.js';

@@ -11,6 +11,7 @@
 
 import type { GameBoard } from '../model/GameBoard.js';
 import type { Location } from '../model/Location.js';
+import type { Schedule } from '../model/Schedule.js';
 import type { Unit } from '../model/Unit.js';
 import type { UnitType } from '../model/UnitType.js';
 import type { WmlConfig } from '../wml/config.js';
@@ -116,6 +117,8 @@ export class ActionRegistry {
  */
 export interface EventContext {
   board: GameBoard;
+  /** The scenario's live ToD schedule -- `[time_area]`/`[remove_time_area]`/`[replace_schedule]` mutate it in place (see `todWml.ts`). */
+  schedule: Schedule;
   variables: VariableStore;
   registry: ActionRegistry;
   /** Looks up a `UnitType` by WML `type=` id, e.g. for `[unit]`/`[modify_unit] type=`. */

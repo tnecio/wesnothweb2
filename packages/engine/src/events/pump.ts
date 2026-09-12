@@ -44,6 +44,7 @@
 
 import type { GameBoard } from '../model/GameBoard.js';
 import { Location } from '../model/Location.js';
+import { Schedule, DEFAULT_MAX_LIMINAL_BONUS } from '../model/Schedule.js';
 import type { UnitType } from '../model/UnitType.js';
 import { WmlConfig } from '../wml/config.js';
 import { createDefaultActionRegistry, runActionSequence } from './actionWml.js';
@@ -125,6 +126,8 @@ export interface EventPumpOptions {
   /** Defaults to `createDefaultActionRegistry()`; pass a shared one to layer combat/recruit/Lua handlers in. */
   registry?: ActionRegistry;
   log?: EventContext['log'];
+  /** Defaults to a fresh, empty (permanently neutral) `Schedule` -- pass the session's real one so `[time_area]`/`[replace_schedule]`/`[store_time_of_day]` have somewhere to act. */
+  schedule?: Schedule;
 }
 
 /** TS port of `wml_event_pump`: queues and dispatches events to registered `[event]` handlers. */
@@ -138,6 +141,7 @@ export class EventPump {
   ) {
     this.ctx = {
       board: options.board,
+      schedule: options.schedule ?? new Schedule([], 0, DEFAULT_MAX_LIMINAL_BONUS),
       variables: options.variables,
       registry: options.registry ?? createDefaultActionRegistry(),
       resolveType: options.resolveType,

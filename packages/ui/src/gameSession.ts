@@ -74,6 +74,7 @@ import {
   findVictoryEndlevelGoldConfig,
   computeCarryoverRecruits,
   scheduleFromScenarioConfigJson,
+  effectiveTimeOfDayAt,
   type Schedule,
   type TimeOfDayEntry,
   type GameBoardSnapshot,
@@ -658,7 +659,13 @@ export class GameSession {
   /** Game turn whose `turn N`/`new turn` events have fired (`tod_manager::turn_event_fired`). */
   private turnEventsFiredFor = 0;
   private readonly raiseEvent: RaiseEvent = (name, loc1, loc2) => this.eventPump.raise(name, loc1, loc2);
-  /** The real `[time]` schedule this scenario's own (already macro-expanded) `scenarioConfigJson` declares -- see `Schedule`'s own doc comment. Built once at construction since the schedule itself never changes mid-scenario (no `[replace_schedule]` support yet). */
+  /**
+   * The real `[time]` schedule this scenario's own (already macro-expanded)
+   * `scenarioConfigJson` declares -- see `Schedule`'s own doc comment. The
+   * reference is fixed at construction, but `Schedule` is itself mutable
+   * state (`[time_area]`/`[remove_time_area]`/`[replace_schedule]` all
+   * change it in place, see `todWml.ts`).
+   */
   private readonly schedule: Schedule;
 
   constructor(snapshot: GameBoardSnapshot, options: GameSessionOptions = {}) {
@@ -669,23 +676,41 @@ export class GameSession {
     this.resolveType = createTypeResolver(snapshot);
     this.rng = new RngDeterministic(new MtRng(options.seed ?? 0xc0ffee));
     this.goldCarryover = options.goldCarryover ?? null;
-    this.schedule = scheduleFromScenarioConfigJson(snapshot.scenarioConfigJson);
+    // random_start_time= is resolved once here, before any events run --
+    // matches upstream's own timing (tod_manager::resolve_random, called
+    // from the play_controller constructor sequence before fire_prestart).
+    this.schedule = scheduleFromScenarioConfigJson(snapshot.scenarioConfigJson, this.rng);
     const manager = new EventManager();
     manager.loadScenarioEvents(WmlConfig.fromJSON(snapshot.scenarioConfigJson));
-    this.eventPump = new EventPump(manager, { board: this.board, variables: new VariableStore(), resolveType: this.resolveType });
-    this.board.lawfulBonusAt = () => this.currentTimeOfDay.lawfulBonus;
+    this.eventPump = new EventPump(manager, {
+      board: this.board,
+      variables: new VariableStore(),
+      resolveType: this.resolveType,
+      schedule: this.schedule,
+    });
+    this.board.lawfulBonusAt = (loc) => this.timeOfDayAt(loc).lawfulBonus;
   }
 
   /**
-   * The real `[time]` entry active on the current game turn (`turnNumber`)
-   * -- mirrors `tod_manager::get_time_of_day()`. Advances by real turn
-   * number, not side turn (matches upstream: the whole schedule steps once
-   * per game turn, not once per side). See `Schedule`'s own doc comment
-   * for what's deliberately simplified (no `[time_area]`/
-   * `[replace_schedule]`/`random_start_time=`).
+   * The real `[time]` entry active on the current game turn (`turnNumber`),
+   * IGNORING `[time_area]`/`[illuminates]` -- mirrors `tod_manager::
+   * get_time_of_day()` (its no-location overload). This is what a global
+   * status-bar indicator should show; per-hex/per-combatant code should
+   * use `timeOfDayAt` instead.
    */
   get currentTimeOfDay(): TimeOfDayEntry {
     return this.schedule.timeOfDayForTurn(this.turnNumber);
+  }
+
+  /**
+   * The real, fully location-aware ToD at `loc` -- schedule, any covering
+   * `[time_area]`, and `[illuminates]`, all layered the way upstream's own
+   * `get_illuminated_time_of_day` does. This is what combat/event filters
+   * should use, never `currentTimeOfDay` (which is deliberately global-
+   * only, for the status bar).
+   */
+  timeOfDayAt(loc: Location): TimeOfDayEntry {
+    return effectiveTimeOfDayAt(this.board, this.schedule, this.turnNumber, loc);
   }
 
   /**
@@ -1127,7 +1152,7 @@ export class GameSession {
   private playAiSide(side: number, outAnimations: AiAnimationEvent[]): void {
     const actions = playAiTurn(this.board, side, this.rng, {
       resolveType: this.resolveType,
-      lawfulBonus: this.currentTimeOfDay.lawfulBonus,
+      lawfulBonusAt: (loc) => this.timeOfDayAt(loc).lawfulBonus,
       maxLiminalBonus: this.schedule.maxLiminalBonus,
     });
     for (const action of actions) {
@@ -1361,7 +1386,8 @@ export class GameSession {
       attackerTerrainDefense,
       defenderTerrainDefense,
       options: {
-        lawfulBonus: this.currentTimeOfDay.lawfulBonus,
+        attackerLawfulBonus: this.timeOfDayAt(attacker.location).lawfulBonus,
+        defenderLawfulBonus: this.timeOfDayAt(defender.location).lawfulBonus,
         maxLiminalBonus: this.schedule.maxLiminalBonus,
         backstabActive: isBackstabActive(this.board, attacker.location, defender.location),
         attackerLeadershipBonus: computeLeadershipBonus(this.board, attacker),
@@ -1570,7 +1596,8 @@ export class GameSession {
       defenderLoc,
       pending.defenderWeaponIndex,
       {
-        lawfulBonus: this.currentTimeOfDay.lawfulBonus,
+        attackerLawfulBonus: this.timeOfDayAt(attackerLoc).lawfulBonus,
+        defenderLawfulBonus: this.timeOfDayAt(defenderLoc).lawfulBonus,
         maxLiminalBonus: this.schedule.maxLiminalBonus,
         resolveType: this.resolveType,
         raise: this.raiseEvent,

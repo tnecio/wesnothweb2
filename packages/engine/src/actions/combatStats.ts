@@ -153,8 +153,19 @@ function highestSpecialValue(weapon: AttackType, id: string, attr = 'value', fal
 // --- battle_context_unit_stats construction ---
 
 export interface UnitStatsOptions {
-  /** `[time]lawful_bonus=`; see `combatModifier`'s doc comment. Default 0 (neutral ToD). */
-  readonly lawfulBonus?: number;
+  /**
+   * The real ToD lawful_bonus AT THE ATTACKER'S OWN HEX (schedule +
+   * `[time_area]` + `[illuminates]`, see `actions/illumination.ts`'s
+   * `effectiveTimeOfDayAt`) -- mirrors `combat_modifier`'s per-unit
+   * `get_illuminated_time_of_day(units, map, loc)` call, which upstream
+   * makes separately for the attacker and the defender's own locations
+   * (they can differ: standing in a lit radius, or straddling a
+   * `[time_area]` boundary, changes only THAT unit's bonus). Used only
+   * when `isAttacker` is true for this call. Default 0 (neutral ToD).
+   */
+  readonly attackerLawfulBonus?: number;
+  /** Same, at the defender's own hex -- used only when `isAttacker` is false for this call. */
+  readonly defenderLawfulBonus?: number;
   readonly maxLiminalBonus?: number;
   /** Overrides the terrain-defense-derived base hit chance (mirrors the `opp_terrain_defense` optional param). */
   readonly opponentTerrainDefense?: number;
@@ -257,7 +268,8 @@ export function computeUnitStats(
   // --- damage ---
   const baseDamage = weapon.damage;
   let damageMultiplier = 100;
-  damageMultiplier += combatModifier(options.lawfulBonus ?? 0, weapon.alignment ?? unit.type.alignment, false, options.maxLiminalBonus ?? 0);
+  const lawfulBonus = (isAttacker ? options.attackerLawfulBonus : options.defenderLawfulBonus) ?? 0;
+  damageMultiplier += combatModifier(lawfulBonus, weapon.alignment ?? unit.type.alignment, false, options.maxLiminalBonus ?? 0);
   const leadershipBonus = (isAttacker ? options.attackerLeadershipBonus : options.defenderLeadershipBonus) ?? 0;
   if (leadershipBonus !== 0) damageMultiplier += leadershipBonus;
   const resistanceModifier = (isAttacker ? options.attackerResistanceModifier : options.defenderResistanceModifier) ?? opponent.resistanceAgainst(weapon.type);
