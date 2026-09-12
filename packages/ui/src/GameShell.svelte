@@ -25,7 +25,7 @@
    * before entering 'messages', so the board already reflects every real
    * event-spawned unit by the time the player gets control.
    */
-  import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage, TimeOfDayEntry, Unit } from '@wesnothweb2/engine';
+  import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage, TimeOfDayEntry, Unit, AiAnimationEvent } from '@wesnothweb2/engine';
   import { WmlConfig, directionBetween } from '@wesnothweb2/engine';
   import {
     type HexPoint,
@@ -508,9 +508,45 @@
     sync();
   }
 
-  function handleEndTurn(): void {
+  /**
+   * Real, reported bug: an AI-controlled side's whole turn used to resolve
+   * with zero animation (a deliberate simplification at the time -- see
+   * `LastAttackAnimation`'s own doc comment -- since reversed:
+   * `GameSession.lastAiAnimations`). `session.endTurn()` has already fully
+   * resolved every AI action by the time it returns (board is at its final
+   * state), so each event here is played back against `boardView` using
+   * the exact same cue builders a human's own actions use -- `
+   * AiAnimationEvent`'s attack/move/recruit variants are structurally
+   * identical to `LastAttackAnimation`/`LastMoveAnimation`/
+   * `LastRecruitAnimation`, so the same builders apply directly.
+   *
+   * Known simplification: there's no incremental `sync()` between events,
+   * so a unit that died mid-turn keeps its sprite on screen (other
+   * animations still play correctly around it, cue positions are always
+   * explicit) until the single `sync()` at the end reconciles everything
+   * -- an acceptable rough edge for a first cut given real per-action
+   * board reconciliation would need `GameSession` to expose intermediate
+   * board snapshots, not just the final one.
+   */
+  async function playAiAnimations(events: readonly AiAnimationEvent[]): Promise<void> {
+    if (!boardView) return;
+    for (const event of events) {
+      if (event.kind === 'attack') {
+        await boardView.playAnimationSequence(buildBlowAnimationCues(event));
+      } else if (event.kind === 'move') {
+        await boardView.playAnimationSequence(buildMoveAnimationCues(event), 2);
+      } else {
+        await boardView.playAnimationSequence(buildRecruitAnimationCues(event));
+      }
+    }
+  }
+
+  async function handleEndTurn(): Promise<void> {
     if (phase !== 'playing') return;
     const message = session.endTurn();
+    const aiAnimations = session.lastAiAnimations;
+    session.lastAiAnimations = null;
+    if (aiAnimations) await playAiAnimations(aiAnimations);
     sync(message);
   }
 

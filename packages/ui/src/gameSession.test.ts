@@ -172,6 +172,25 @@ describe('GameSession auto-plays controller=ai sides (real Dead_Water scenario 1
     // before side 1's), proving side 2 actually got a turn in between.
     expect(session.log.some((l) => l.includes('Turn 1') && l.includes('side 2'))).toBe(true);
   });
+
+  it("real, reported bug: AI turns played no animation at all -- endTurn() now sets lastAiAnimations to every real AiAnimationEvent side 2's turn produced", () => {
+    const session = new GameSession(loadSnapshot());
+    expect(session.lastAiAnimations).toBeNull();
+
+    session.endTurn();
+
+    // Real Dead_Water scenario 1's side 2 leader (Mal-Kevek) starts with
+    // real movement and no reachable target turn 1 -- the movement
+    // fallback should always find SOMETHING to do (advance toward the
+    // distant Kai Krellis), so this is a real, non-vacuous check of the
+    // end-to-end wiring (endTurn -> playAiSide -> playAiTurn's real
+    // animation field), not just "didn't crash".
+    expect(session.lastAiAnimations).not.toBeNull();
+    expect(session.lastAiAnimations!.length).toBeGreaterThan(0);
+    for (const event of session.lastAiAnimations!) {
+      expect(['move', 'attack', 'recruit']).toContain(event.kind);
+    }
+  });
 });
 
 describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)', () => {

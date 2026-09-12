@@ -196,6 +196,80 @@ describe('playAiTurn: combat decisions', () => {
   });
 });
 
+describe('playAiTurn: real, reported bug -- AI actions carried no animation data at all', () => {
+  it('an attack action carries a real AiAnimationEvent with the attacker/defender/weapon indices/result', () => {
+    const board = makeBoard(terrainData);
+    const moveType = flatMoveType(terrainData, 100);
+    const strongType = makeUnitType('strong', 40, moveType, makeWeapon(10, 3));
+    const weakType = makeUnitType('weak', 8, moveType, makeWeapon(1, 1));
+
+    const attacker = Unit.create(strongType, 1, Location.fromWml(3, 3), { canRecruit: true });
+    const target = Unit.create(weakType, 2, Location.fromWml(4, 3));
+    board.addUnit(attacker);
+    board.addUnit(target);
+
+    const rng = new RngDeterministic(new MtRng(3));
+    const actions = playAiTurn(board, 1, rng, { resolveType: () => strongType });
+
+    const attackAction = actions.find((a) => a.kind === 'attack')!;
+    expect(attackAction.animation).toBeDefined();
+    expect(attackAction.animation).toMatchObject({
+      kind: 'attack',
+      attacker,
+      attackerWeaponIndex: 0,
+      defender: target,
+    });
+    if (attackAction.animation?.kind === 'attack') {
+      expect(attackAction.animation.result.blows.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('a movement-fallback action carries a real AiAnimationEvent with the full path', () => {
+    const board = makeBoard(terrainData);
+    const moveType = flatMoveType(terrainData, 0);
+    const type = makeUnitType('soldier', 20, moveType, makeWeapon(3, 1));
+
+    const unit = Unit.create(type, 1, Location.fromWml(1, 6), { canRecruit: true }); // far corner, away from the village
+    const enemy = Unit.create(type, 2, Location.fromWml(6, 6)); // far away, not reachable this turn
+    board.addUnit(unit);
+    board.addUnit(enemy);
+    unit.attacksLeft = 0; // isolate decideMove's own fallback from the attack-branch's pre-attack repositioning (also animated, but separately -- see the "attack action" test above).
+
+    const rng = new RngDeterministic(new MtRng(5));
+    const actions = playAiTurn(board, 1, rng, { resolveType: () => type });
+
+    const moveAction = actions.find((a) => a.kind === 'move' && a.message.length > 0)!;
+    expect(moveAction).toBeDefined();
+    expect(moveAction.animation).toMatchObject({ kind: 'move', unit });
+    if (moveAction.animation?.kind === 'move') {
+      expect(moveAction.animation.path.length).toBeGreaterThan(1);
+      expect(moveAction.animation.path[moveAction.animation.path.length - 1]).toEqual(unit.location);
+    }
+  });
+
+  it('a recruit action carries a real AiAnimationEvent with the new unit and its leader', () => {
+    const board = makeBoard(terrainData);
+    const moveType = flatMoveType(terrainData, 0);
+    const cheapType = makeUnitType('cheap', 10, moveType, makeWeapon(2, 1), 10);
+
+    const team = board.getTeam(1)!;
+    team.gold = 15;
+    team.canRecruit = new Set(['cheap']);
+    const leaderType = makeUnitType('leader', 30, moveType, makeWeapon(1, 1), 0);
+    const leader = Unit.create(leaderType, 1, Location.fromWml(1, 1), { canRecruit: true });
+    board.addUnit(leader);
+
+    const rng = new RngDeterministic(new MtRng(1));
+    const actions = playAiTurn(board, 1, rng, { resolveType: (id) => (id === 'cheap' ? cheapType : leaderType) });
+
+    const recruitAction = actions.find((a) => a.kind === 'recruit')!;
+    expect(recruitAction.animation).toMatchObject({ kind: 'recruit', leader });
+    if (recruitAction.animation?.kind === 'recruit') {
+      expect(recruitAction.animation.unit.type.id).toBe('cheap');
+    }
+  });
+});
+
 describe('playAiTurn: plague (real, reported bug: AI attacks never wired resolveType into executeAttack, so a plague kill never spawned a replacement)', () => {
   it('an AI-controlled plague kill spawns a real Walking Corpse on the killer\'s side', () => {
     const board = makeBoard(terrainData);

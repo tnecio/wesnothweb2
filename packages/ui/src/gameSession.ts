@@ -43,6 +43,7 @@ import {
   computeLeadershipBonus,
   computeResistanceModifier,
   playAiTurn,
+  type AiAnimationEvent,
   type AttackBlowResult,
   type AttackResult,
   buildBattleContext,
@@ -467,6 +468,22 @@ export class GameSession {
    * for the same reasoning as attacks/moves.
    */
   lastRecruitAnimation: LastRecruitAnimation | null = null;
+  /**
+   * Set by `endTurn` every time it auto-plays one or more consecutive
+   * `ai`/`network_ai`-controlled sides, to every real `AiAnimationEvent`
+   * those sides' actions produced, IN ORDER (across however many
+   * consecutive AI sides `endTurn` looped through -- see its own doc
+   * comment) -- real, reported bug (bugs2.md "animations during AI
+   * turn"): previously nothing at all played for an AI turn, a
+   * deliberate simplification at the time (see `lastAttackAnimation`'s
+   * own doc comment) this reverses. `board` is already at its final
+   * state for the whole span by the time `endTurn` returns (see
+   * `AiAction.animation`'s own doc comment on why that's fine to
+   * animate against anyway); same read-once-then-clear contract as the
+   * other `lastXAnimation` fields. `null` (not `[]`) when no AI side
+   * played this call.
+   */
+  lastAiAnimations: readonly AiAnimationEvent[] | null = null;
 
   /**
    * The real terrain defense `selectedUnit` would have at `(x, y)` (the
@@ -902,6 +919,7 @@ export class GameSession {
    * isn't `playerSide` -- true hotseat, unchanged from before).
    */
   endTurn(): string {
+    const aiAnimations: AiAnimationEvent[] = [];
     let message = this.advanceOneTurn();
     if (!message) return '';
     // Auto-play consecutive AI-controlled sides. Bounded by `sides.length`
@@ -912,23 +930,27 @@ export class GameSession {
     for (let guard = 0; guard < 1000 && !this.scenarioResult; guard++) {
       const team = this.board.getTeam(this.activeSide);
       if (!team || (team.controller !== 'ai' && team.controller !== 'network_ai')) break;
-      this.playAiSide(this.activeSide);
+      this.playAiSide(this.activeSide, aiAnimations);
       if (this.scenarioResult) break;
       const next = this.advanceOneTurn();
       if (!next) break;
       message = next;
     }
+    this.lastAiAnimations = aiAnimations.length > 0 ? aiAnimations : null;
     return message;
   }
 
-  /** Runs `playAiTurn` for `side` and logs what it did -- see `endTurn`'s own doc comment. */
-  private playAiSide(side: number): void {
+  /** Runs `playAiTurn` for `side`, logs what it did, and appends every real animation event it produced to `outAnimations` (see `endTurn`'s own doc comment on why these accumulate across possibly several consecutive AI sides). */
+  private playAiSide(side: number, outAnimations: AiAnimationEvent[]): void {
     const actions = playAiTurn(this.board, side, this.rng, {
       resolveType: this.resolveType,
       lawfulBonus: this.currentTimeOfDay.lawfulBonus,
       maxLiminalBonus: this.schedule.maxLiminalBonus,
     });
-    for (const action of actions) this.log.unshift(action.message);
+    for (const action of actions) {
+      if (action.message) this.log.unshift(action.message);
+      if (action.animation) outAnimations.push(action.animation);
+    }
     if (actions.some((a) => a.kind === 'attack')) this.checkForGameEnd();
   }
 

@@ -43,9 +43,9 @@ import type { Unit } from '../model/Unit.js';
 import type { UnitType } from '../model/UnitType.js';
 import type { Rng } from '../rng/Rng.js';
 import { reachableHexes, findPath, type PathStep } from '../pathfind/pathfind.js';
-import { executeMove } from '../actions/move.js';
+import { executeMove, type MoveResult } from '../actions/move.js';
 import { findVacantCastleTile, recruitUnit } from '../actions/recruit.js';
-import { executeAttack, isBackstabActive } from '../actions/combat.js';
+import { executeAttack, isBackstabActive, type AttackResult } from '../actions/combat.js';
 import { buildBattleContext, chooseDefenderWeaponIndex, type UnitStatsOptions } from '../actions/combatStats.js';
 import { simulateCombat } from '../actions/attackPrediction.js';
 import { computeLeadershipBonus, computeResistanceModifier } from '../actions/abilityEffects.js';
@@ -61,10 +61,46 @@ export interface AiTurnOptions {
 
 export type AiActionKind = 'recruit' | 'move' | 'attack';
 
+/**
+ * Enough raw data for a caller with a renderer (`packages/ui`'s
+ * `GameShell.svelte`) to build and play the same real per-action
+ * animation a human's own move/attack/recruit already gets -- see
+ * `AiAction.animation`'s own doc comment for why this exists as a
+ * separate, explicit field rather than something the caller re-derives
+ * from board state after the fact.
+ */
+export type AiAnimationEvent =
+  | { readonly kind: 'move'; readonly unit: Unit; readonly path: readonly Location[] }
+  | {
+      readonly kind: 'attack';
+      readonly attacker: Unit;
+      readonly attackerWeaponIndex: number;
+      readonly defender: Unit;
+      readonly defenderWeaponIndex: number;
+      readonly result: AttackResult;
+    }
+  | { readonly kind: 'recruit'; readonly unit: Unit; readonly leader: Unit };
+
 export interface AiAction {
   readonly kind: AiActionKind;
-  /** Human-readable summary, ready to drop straight into a UI log (matches this project's other `string` log-line conventions). */
+  /** Human-readable summary, ready to drop straight into a UI log (matches this project's other `string` log-line conventions). Empty for a sub-step (e.g. repositioning before an attack) that's real for animation purposes but not worth its own log line -- callers appending to a log should skip empty messages. */
   readonly message: string;
+  /**
+   * Real, reported bug (bugs2.md "animations during AI turn"): every AI
+   * move/attack/recruit used to apply directly to `board` with nothing a
+   * caller could animate -- `GameSession.lastAttackAnimation`'s own doc
+   * comment documents this as a deliberate simplification at the time,
+   * which this field reverses. `playAiTurn` still fully resolves the
+   * side's whole turn synchronously (so `board` is already at its final
+   * state by the time this function returns) -- callers that want to
+   * animate should read `AiAction[]` in order and, for each one with an
+   * `animation`, build + play the corresponding cues (reusing this
+   * project's existing `buildMoveAnimationCues`/`buildBlowAnimationCues`/
+   * `buildRecruitAnimationCues` logic) BEFORE reconciling the renderer to
+   * the final board state, since each cue's own src/dst hex data is what
+   * actually drives the visual, not `board`'s live positions.
+   */
+  readonly animation?: AiAnimationEvent;
 }
 
 const DEFAULT_ATTACK_SCORE_THRESHOLD = 0;
@@ -93,7 +129,11 @@ function doRecruiting(board: GameBoard, side: number, options: AiTurnOptions, ac
     affordable.sort((a, b) => recruitPowerScore(b) / Math.max(1, b.cost) - recruitPowerScore(a) / Math.max(1, a.cost));
     const chosen = affordable[0]!;
     const result = recruitUnit(board, team, chosen, vacant, leader.location);
-    actions.push({ kind: 'recruit', message: `${team.teamName || `Side ${side}`} recruited a ${chosen.name} for ${result.cost}g.` });
+    actions.push({
+      kind: 'recruit',
+      message: `${team.teamName || `Side ${side}`} recruited a ${chosen.name} for ${result.cost}g.`,
+      animation: { kind: 'recruit', unit: result.unit, leader },
+    });
   }
 }
 
@@ -196,28 +236,32 @@ function nearestEnemyLocation(board: GameBoard, unit: Unit): Location | undefine
   return best;
 }
 
-function moveUnitTo(board: GameBoard, unit: Unit, dest: Location): boolean {
+function moveUnitTo(board: GameBoard, unit: Unit, dest: Location): MoveResult | undefined {
   const route = findPath(board, unit, dest, { seeAll: true });
-  if (route.steps.length === 0) return false;
-  executeMove(board, unit, route.steps, { seeAll: true });
-  return true;
+  if (route.steps.length === 0) return undefined;
+  return executeMove(board, unit, route.steps, { seeAll: true });
 }
 
-/** Movement-only fallback for a unit with no worthwhile attack: capture a reachable unowned/enemy village, else close distance to the nearest enemy. Returns a log message if it moved. */
-function decideMove(board: GameBoard, unit: Unit, destinations: readonly PathStep[]): string | undefined {
+/** Movement-only fallback for a unit with no worthwhile attack: capture a reachable unowned/enemy village, else close distance to the nearest enemy. Pushes a real `move` action (message + animation) if it moved. */
+function decideMove(board: GameBoard, unit: Unit, destinations: readonly PathStep[], actions: AiAction[]): void {
   const candidates = destinations.filter((d) => !d.curr.equals(unit.location));
-  if (candidates.length === 0) return undefined;
+  if (candidates.length === 0) return;
 
   const villageDest = candidates.find((d) => board.map.isVillage(d.curr) && board.villageOwner(d.curr) !== unit.side);
   if (villageDest) {
-    if (moveUnitTo(board, unit, villageDest.curr)) {
-      return `${unit.type.name} advanced to capture a village.`;
+    const result = moveUnitTo(board, unit, villageDest.curr);
+    if (result) {
+      actions.push({
+        kind: 'move',
+        message: `${unit.type.name} advanced to capture a village.`,
+        animation: { kind: 'move', unit, path: result.path },
+      });
     }
-    return undefined;
+    return;
   }
 
   const enemyLoc = nearestEnemyLocation(board, unit);
-  if (!enemyLoc) return undefined;
+  if (!enemyLoc) return;
   const currentDist = distanceBetween(unit.location, enemyLoc);
   let bestDest: Location | undefined;
   let bestDist = currentDist;
@@ -228,10 +272,16 @@ function decideMove(board: GameBoard, unit: Unit, destinations: readonly PathSte
       bestDest = d.curr;
     }
   }
-  if (bestDest && moveUnitTo(board, unit, bestDest)) {
-    return `${unit.type.name} advanced toward the enemy.`;
+  if (bestDest) {
+    const result = moveUnitTo(board, unit, bestDest);
+    if (result) {
+      actions.push({
+        kind: 'move',
+        message: `${unit.type.name} advanced toward the enemy.`,
+        animation: { kind: 'move', unit, path: result.path },
+      });
+    }
   }
-  return undefined;
 }
 
 /**
@@ -262,11 +312,25 @@ export function playAiTurn(board: GameBoard, side: number, rng: Rng, options: Ai
     const attack = bestAttack(board, unit, steps, options);
     if (attack && attack.score >= threshold) {
       if (!attack.destination.equals(unit.location)) {
-        moveUnitTo(board, unit, attack.destination);
+        const moveResult = moveUnitTo(board, unit, attack.destination);
+        // Real animation for the repositioning step, but no separate log
+        // line -- the attack message below already covers the outcome.
+        if (moveResult) actions.push({ kind: 'move', message: '', animation: { kind: 'move', unit, path: moveResult.path } });
       }
       const attackerName = unit.type.name;
-      const defenderName = attack.target.type.name;
-      const result = executeAttack(board, rng, unit.location, attack.weaponIndex, attack.target.location, undefined, {
+      const defender = attack.target;
+      const defenderName = defender.type.name;
+      const attackerTerrainDefense = unit.defenseModifier(board.map.getTerrain(unit.location));
+      const defenderTerrainDefense = defender.defenseModifier(board.map.getTerrain(defender.location));
+      const defenderWeaponIndex = chooseDefenderWeaponIndex(
+        unit,
+        attack.weaponIndex,
+        defender,
+        1,
+        attackerTerrainDefense,
+        defenderTerrainDefense,
+      );
+      const result = executeAttack(board, rng, unit.location, attack.weaponIndex, defender.location, defenderWeaponIndex, {
         lawfulBonus: options.lawfulBonus,
         maxLiminalBonus: options.maxLiminalBonus,
         resolveType: options.resolveType,
@@ -275,12 +339,19 @@ export function playAiTurn(board: GameBoard, side: number, rng: Rng, options: Ai
       actions.push({
         kind: 'attack',
         message: `${attackerName} attacked ${defenderName}: ${result.blows.filter((b) => b.hit).length}/${result.blows.length} blows landed.`,
+        animation: {
+          kind: 'attack',
+          attacker: unit,
+          attackerWeaponIndex: attack.weaponIndex,
+          defender,
+          defenderWeaponIndex,
+          result,
+        },
       });
       continue;
     }
 
-    const moveMessage = decideMove(board, unit, steps);
-    if (moveMessage) actions.push({ kind: 'move', message: moveMessage });
+    decideMove(board, unit, steps, actions);
   }
 
   return actions;
