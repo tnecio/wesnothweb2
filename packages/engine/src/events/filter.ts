@@ -26,7 +26,8 @@
  */
 
 import type { GameBoard } from '../model/GameBoard.js';
-import { Location } from '../model/Location.js';
+import { Location, distanceBetween, getAdjacentTiles } from '../model/Location.js';
+import { parseTerrainList, terrainMatches } from '../model/Terrain.js';
 import type { Unit } from '../model/Unit.js';
 import type { WmlConfig } from '../wml/config.js';
 import { MapFormulaCallable, parseFormula, Variant } from '../formula/index.js';
@@ -149,3 +150,76 @@ export function locationMatchesFilter(loc: Location, filterCfg: WmlConfig): bool
   if (yStr !== '' && !inRanges(loc.wmlY, parseRanges(yStr))) return false;
   return true;
 }
+
+/** The per-hex part of a standard location filter: `x,y=`, `terrain=`, and `[filter]` on the unit standing there. */
+function locationSelfMatches(board: GameBoard, loc: Location, cfg: WmlConfig): boolean {
+  if (!locationMatchesFilter(loc, cfg)) return false;
+  if (cfg.hasAttribute('terrain') && !terrainMatches(board.map.getTerrain(loc), parseTerrainList(cfg.getString('terrain')))) {
+    return false;
+  }
+  const unitFilter = cfg.child('filter');
+  if (unitFilter) {
+    const u = board.unitAt(loc);
+    if (!u || !unitMatchesFilter(u, unitFilter, board)) return false;
+  }
+  return true;
+}
+
+/**
+ * Mirrors `terrain_filter::get_locations` (what `wesnoth.map.find` and
+ * tags like `[remove_shroud]` use): on-board hexes matching `x,y=`,
+ * `terrain=` and `[filter]`, then `[and]`/`[or]`/`[not]` applied in
+ * document order, then expanded by `radius=` (through hexes matching
+ * `[filter_radius]`, if given). Not covered: `find_in=`, `[filter_adjacent_location]`,
+ * `owner_side=`, `time_of_day=`, `area=`.
+ */
+export function findLocations(board: GameBoard, cfg: WmlConfig): Location[] {
+  const map = board.map;
+  const all: Location[] = [];
+  for (let x = 0; x < map.w(); x++) {
+    for (let y = 0; y < map.h(); y++) all.push(new Location(x, y));
+  }
+  const matched = new Map<string, Location>();
+  for (const loc of all) {
+    if (locationSelfMatches(board, loc, cfg)) matched.set(loc.key(), loc);
+  }
+
+  for (const { tag, config } of cfg.allChildren()) {
+    if (tag !== 'and' && tag !== 'or' && tag !== 'not') continue;
+    const other = new Set(findLocations(board, config).map((l) => l.key()));
+    if (tag === 'and') {
+      for (const key of [...matched.keys()]) if (!other.has(key)) matched.delete(key);
+    } else if (tag === 'or') {
+      for (const key of other) if (!matched.has(key)) matched.set(key, Location.fromKey(key));
+    } else {
+      for (const key of other) matched.delete(key);
+    }
+  }
+
+  const radius = cfg.getNumber('radius', 0);
+  if (radius <= 0 || matched.size === 0) return [...matched.values()];
+
+  const radiusFilter = cfg.child('filter_radius');
+  if (!radiusFilter) {
+    const seeds = [...matched.values()];
+    return all.filter((loc) => matched.has(loc.key()) || seeds.some((s) => distanceBetween(s, loc) <= radius));
+  }
+  // get_tiles_radius with a predicate: grow ring by ring, only through hexes the predicate accepts.
+  const allowed = new Set(findLocations(board, radiusFilter).map((l) => l.key()));
+  const result = new Map(matched);
+  let frontier = [...matched.values()];
+  for (let step = 0; step < radius && frontier.length > 0; step++) {
+    const next: Location[] = [];
+    for (const loc of frontier) {
+      for (const adj of getAdjacentTiles(loc)) {
+        if (result.has(adj.key()) || !map.onBoard(adj)) continue;
+        if (!allowed.has(adj.key())) continue;
+        result.set(adj.key(), adj);
+        next.push(adj);
+      }
+    }
+    frontier = next;
+  }
+  return [...result.values()];
+}
+

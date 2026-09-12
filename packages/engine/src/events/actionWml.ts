@@ -82,6 +82,7 @@ import type { ActionHandler, EventContext } from './context.js';
 import { ActionRegistry } from './context.js';
 import { conditionalPassed } from './conditionalWml.js';
 import { findUnits, locationMatchesFilter, unitMatchesFilter } from './filter.js';
+import { actionLiftFog, actionPlaceShroud, actionRemoveShroud, actionResetFog } from './shroudWml.js';
 import { newVarNode, varNodeFromConfig, varNodeToConfig, VariableStore, type VarNode } from './variables.js';
 import { parseScenarioObjectives } from './objectives.js';
 
@@ -914,6 +915,10 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('move_unit', actionMoveUnit);
   registry.register('objectives', actionObjectives);
   registry.register('endlevel', actionEndlevel);
+  registry.register('remove_shroud', actionRemoveShroud);
+  registry.register('place_shroud', actionPlaceShroud);
+  registry.register('lift_fog', actionLiftFog);
+  registry.register('reset_fog', actionResetFog);
 
   for (const tag of [
     'music',
