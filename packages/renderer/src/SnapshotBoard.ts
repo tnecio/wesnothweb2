@@ -78,13 +78,25 @@ import {
   HEX_ROW_HEIGHT,
   type HexCoord,
 } from './hexGeometry.js';
-import { ImageCache, hexedRef, setImageBaseUrl } from './images/ImageCache.js';
+import { ImageCache, hexedRef, setImageBaseUrl, setEngineImageBaseUrl } from './images/ImageCache.js';
 import { joinRef } from './images/ipf.js';
 import { sampleAnimation, animationDurationMs } from './animation/playback.js';
 import type { UnitAnimationDef } from './animation/unitAnimation.js';
 import { makeLayerSprite, type TerrainLayer } from './terrainPositioning.js';
 import { buildTerrainTiles, getTerrainFramesAt, type TerrainMapQuery } from './terrain/terrainBuilder.js';
 import type { BuildingRule } from './terrain/terrainGraphicsRules.js';
+import {
+  ENERGY_BAR,
+  energyBarHeight,
+  energyBarFilled,
+  hpColor,
+  xpColor,
+  DEFAULT_HP_BAR_SCALING,
+  DEFAULT_XP_BAR_SCALING,
+  movesOrbStatus,
+  ORB_COLOR,
+  statusTint,
+} from './unitOverlays.js';
 
 export interface SnapshotTerrainHex {
   x: number; // engine-convention 0-based
@@ -103,6 +115,27 @@ export interface SnapshotUnit {
   canRecruit: boolean;
   hitpoints: number;
   maxHitpoints: number;
+  /**
+   * XP/moves/attacks/status fields for the real HP/XP bars, moves-left
+   * orb, and status tint (`drawUnitOverlays`) -- all optional since a unit
+   * built straight from the static, pre-game `ScenarioSnapshot` JSON
+   * (fetched before any `GameSession` exists -- see module doc comment)
+   * won't have them; `drawUnitOverlays` treats a missing value as "draw
+   * nothing for this part" rather than crashing or guessing. Always
+   * populated once a live `GameSession.renderUnits()` is the source.
+   */
+  experience?: number;
+  maxExperience?: number;
+  /** This unit type's real level -- used only to scale the XP bar's height down for higher levels (`energy_bar::get_height`'s `xp_bar_scaling / max(level, 1)`, `units/drawer.cpp`), matching real Wesnoth's shorter-looking XP bar on units that need much more experience per level. */
+  level?: number;
+  /** Whether this unit type has any real advancement path (`UnitType.advancesTo.length > 0`) -- the XP bar is hidden entirely for a unit that can never level up (`u.experience() > 0 && u.can_advance()`, `units/drawer.cpp`), same as real Wesnoth. */
+  canAdvance?: boolean;
+  movesLeft?: number;
+  maxMoves?: number;
+  attacksLeft?: number;
+  maxAttacksPerTurn?: number;
+  /** Real boolean status flags this unit currently has (e.g. `poisoned`, `slowed`, `petrified`) -- see `Unit.statuses`. Only the ones the renderer actually draws something for need to be present; harmless to include others. */
+  statuses?: readonly string[];
   /**
    * A stable per-instance key for sprite identity across `updateUnits`
    * calls (see that method's own doc comment on why this replaced full
@@ -167,6 +200,13 @@ interface UnitVisual {
   /** The `SnapshotUnit.image`/`.side` this visual was last built from, to detect when a rebuild (not just a reposition) is needed. */
   lastImage: string | null;
   lastSide: number;
+  /**
+   * The real HP bar, XP bar (when shown), and moves-left orb -- all
+   * redrawn (not rebuilt) every `renderUnits`/`updateUnits` pass by
+   * `updateOverlays`, since they're cheap vector shapes, not textures.
+   * See `unitOverlays.ts` for the color/geometry math this draws.
+   */
+  bars: PIXI.Graphics;
 }
 
 /** 0-based engine (x,y) -> 1-based renderer HexCoord -- see module doc comment. */
@@ -211,6 +251,8 @@ function colorForTerrain(code: string): number {
 export interface SnapshotBoardOptions {
   /** Base URL images are served from (see ImageCache.setImageBaseUrl). */
   imageBaseUrl?: string;
+  /** Base URL `engine/`-prefixed references are served from (see ImageCache.setEngineImageBaseUrl). */
+  engineImageBaseUrl?: string;
   /** Called with a hex's engine-convention (0-based) (x,y) when a terrain tile is clicked -- see module doc comment. */
   onHexClick?: (x: number, y: number) => void;
   /** Called with a hex's engine-convention (0-based) (x,y) when the pointer moves over a terrain tile -- lets a caller show a live coordinate readout, useful for describing positions precisely (e.g. reporting a bug). */
@@ -329,6 +371,7 @@ export class SnapshotBoard {
     options: SnapshotBoardOptions = {},
   ) {
     if (options.imageBaseUrl) setImageBaseUrl(options.imageBaseUrl);
+    if (options.engineImageBaseUrl) setEngineImageBaseUrl(options.engineImageBaseUrl);
     this.onHexClick = options.onHexClick;
     this.onHexHover = options.onHexHover;
     this.terrainGraphicsRules = options.terrainGraphicsRules;
@@ -548,6 +591,9 @@ export class SnapshotBoard {
       container.addChild(marker);
     }
 
+    const bars = new PIXI.Graphics();
+    container.addChild(bars);
+
     return {
       container,
       sprite,
@@ -555,7 +601,97 @@ export class SnapshotBoard {
       overlay: null,
       lastImage: unit.image,
       lastSide: unit.side,
+      bars,
     };
+  }
+
+  /**
+   * Draws one real energy bar (`units/drawer.cpp`'s `draw_bar`) into `g` at
+   * `index` (0 = HP, 1 = XP -- `ENERGY_BAR.spacing` apart), in coordinates
+   * local to a unit's container (hex CENTER, not top-left -- `ENERGY_BAR`'s
+   * constants are top-left-relative real pixel offsets on a 72px hex, so
+   * every coordinate here is shifted by half a tile). Height is clamped the
+   * same way real Wesnoth clamps it: the bar's bottom edge never sits
+   * closer than `ENERGY_BAR.originY` px from the hex's own bottom edge.
+   */
+  private drawEnergyBar(g: PIXI.Graphics, index: number, heightPx: number, filled: number, color: number): void {
+    const TILE = 72;
+    const maxHeight = TILE - 2 * ENERGY_BAR.originY;
+    const h = Math.max(0, Math.min(heightPx, maxHeight));
+    if (h <= 0) return;
+    const left = ENERGY_BAR.originX + ENERGY_BAR.spacing * index - TILE / 2;
+    const top = ENERGY_BAR.originY - TILE / 2;
+    const w = ENERGY_BAR.width;
+    g.rect(left, top, w, h).fill({ color: ENERGY_BAR.borderColor, alpha: ENERGY_BAR.borderAlpha });
+    const innerW = w - 2;
+    const innerH = h - 2;
+    if (innerW <= 0 || innerH <= 0) return;
+    g.rect(left + 1, top + 1, innerW, innerH).fill({ color: ENERGY_BAR.backgroundColor, alpha: ENERGY_BAR.backgroundAlpha });
+    const filledH = innerH * Math.max(0, Math.min(1, filled));
+    if (filledH > 0) {
+      g.rect(left + 1, top + 1 + (innerH - filledH), innerW, filledH).fill({ color, alpha: 0.8 });
+    }
+  }
+
+  /**
+   * Redraws `visual.bars` (HP bar, XP bar, moves-left orb) and updates
+   * `visual.sprite`'s status tint/grayscale from `unit`'s current real
+   * state -- called every `renderUnits` pass, right after position/rebuild
+   * bookkeeping, so it always reflects the latest hitpoints/experience/
+   * moves/statuses. See `unitOverlays.ts` for the underlying color/
+   * threshold math (ported from `units/drawer.cpp`/`unit.cpp`) and its own
+   * doc comment for the two deliberate simplifications (orb position isn't
+   * pixel-matched to the real `orb.png` asset -- drawn as a plain dot
+   * instead, see the module doc comment on why a real image asset wasn't
+   * used here; and the moves-orb states are collapsed 4-to-3).
+   */
+  private updateOverlays(visual: UnitVisual, unit: SnapshotUnit): void {
+    visual.bars.clear();
+
+    if (unit.maxHitpoints > 0) {
+      const heightPx = energyBarHeight(unit.maxHitpoints, DEFAULT_HP_BAR_SCALING);
+      const filled = energyBarFilled(unit.hitpoints, unit.maxHitpoints);
+      this.drawEnergyBar(visual.bars, 0, heightPx, filled, hpColor(unit.hitpoints, unit.maxHitpoints));
+    }
+
+    // Real visibility gate: `u.experience() > 0 && u.can_advance()` (units/drawer.cpp).
+    if (unit.canAdvance && (unit.experience ?? 0) > 0 && unit.maxExperience !== undefined) {
+      const level = unit.level ?? 0;
+      const heightPx = energyBarHeight(unit.maxExperience, DEFAULT_XP_BAR_SCALING / Math.max(level, 1));
+      const experience = unit.experience ?? 0;
+      const filled = energyBarFilled(experience, unit.maxExperience);
+      const toAdvance = Math.max(0, unit.maxExperience - experience);
+      this.drawEnergyBar(visual.bars, 1, heightPx, filled, xpColor(toAdvance));
+    }
+
+    if (
+      unit.movesLeft !== undefined &&
+      unit.maxMoves !== undefined &&
+      unit.attacksLeft !== undefined &&
+      unit.maxAttacksPerTurn !== undefined
+    ) {
+      const status = movesOrbStatus(unit.movesLeft, unit.maxMoves, unit.attacksLeft, unit.maxAttacksPerTurn);
+      // Real Wesnoth draws the real, team-recoloured `orb.png` at the same
+      // anchor as the unit sprite itself; this project draws a plain
+      // colored dot near the hex's top-left corner instead (no real asset
+      // load/recolor -- see module doc comment), which is where the real
+      // orb visually reads on a real board.
+      visual.bars.circle(-26, -26, 4).fill({ color: ORB_COLOR[status], alpha: 0.9 });
+    }
+
+    if (visual.sprite) {
+      const statuses = unit.statuses ?? [];
+      visual.sprite.tint = statusTint(statuses.includes('poisoned'), statuses.includes('slowed'));
+      if (statuses.includes('petrified')) {
+        if (!visual.sprite.filters || (visual.sprite.filters as PIXI.Filter[]).length === 0) {
+          const filter = new PIXI.ColorMatrixFilter();
+          filter.desaturate();
+          visual.sprite.filters = [filter];
+        }
+      } else if (visual.sprite.filters) {
+        visual.sprite.filters = null;
+      }
+    }
   }
 
   /**
@@ -617,11 +753,13 @@ export class SnapshotBoard {
         visual.container.addChild(...rebuilt.container.removeChildren());
         visual.sprite = rebuilt.sprite;
         visual.marker = rebuilt.marker;
+        visual.bars = rebuilt.bars;
         visual.overlay = null; // the old overlay sprite (if any) was just destroyed along with its old container children.
         visual.lastImage = unit.image;
         visual.lastSide = unit.side;
       }
       if (visual.overlay) visual.overlay.alpha = 0; // a hit-flash should never outlive the animation that caused it.
+      this.updateOverlays(visual, unit);
       visual.container.x = cx;
       visual.container.y = cy;
       if (visual.sprite) {

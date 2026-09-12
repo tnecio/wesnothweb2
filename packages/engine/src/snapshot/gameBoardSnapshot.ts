@@ -130,6 +130,27 @@ export interface SnapshotUnit {
   canRecruit: boolean;
   hitpoints: number;
   maxHitpoints: number;
+  /**
+   * XP/moves/attacks/status fields the renderer needs for the real HP/XP
+   * bars, moves-left orb, and status tint (see `@wesnothweb2/renderer`'s
+   * `SnapshotUnit`, this interface's structural twin, for what draws from
+   * them) -- optional here, unlike on that copy, since THIS interface also
+   * doubles as `GameBoardSnapshot.units`' element type (the static, build-
+   * script-produced JSON `gameBoardFromSnapshot` reads for a fresh board;
+   * `build-scenario-snapshot.mjs` doesn't emit these, and doesn't need to,
+   * since `gameBoardFromSnapshot` always builds live `Unit`s from real
+   * `UnitType` defaults regardless). Always populated by `GameSession.
+   * renderUnits` (the live re-render path this was actually added for).
+   */
+  experience?: number;
+  maxExperience?: number;
+  level?: number;
+  canAdvance?: boolean;
+  movesLeft?: number;
+  maxMoves?: number;
+  attacksLeft?: number;
+  maxAttacksPerTurn?: number;
+  statuses?: readonly string[];
   /** A stable per-instance render/sprite-identity key -- NOT the real `Unit.underlyingId` (which defaults to 0 and isn't reliably unique). Never set by anything in this module (only `GameSession.renderUnits`, in `packages/ui`, the LIVE re-render path, populates it, from a session-local `WeakMap<Unit, number>`); see `@wesnothweb2/renderer`'s `SnapshotUnit` (structurally the same interface, independently declared) for the full explanation. */
   underlyingId?: number;
 }

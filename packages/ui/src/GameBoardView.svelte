@@ -202,6 +202,7 @@
 
       const newBoard = new SnapshotBoard(snapshot, {
         imageBaseUrl: '/game-images',
+        engineImageBaseUrl: '/game-images-engine',
         onHexClick: wrappedOnHexClick,
         onHexHover: (x, y) => {
           hoveredHex = { x, y };

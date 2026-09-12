@@ -88,15 +88,41 @@ export function setImageBaseUrl(base: string): void {
 }
 
 /**
+ * Base URL for "engine" images — real Wesnoth mounts two physical roots onto
+ * one `images/...` VFS namespace: `data/core/images/` (content art: units,
+ * terrain, portraits) and a separate top-level `images/` (built-in engine
+ * chrome: orbs, energy bars, the leader crown, cursors, panels — see
+ * `wesnoth/images/` vs. `wesnoth/data/core/images/` in the checked-out
+ * submodule; confirmed against `data/game_config.cfg`'s `orb=`/
+ * `leader_crown`-equivalent paths, which resolve only under the former).
+ * `imageUrl` can't merge two physical roots into one lookup the way the real
+ * VFS does, so a reference to something that only exists under the engine
+ * root is spelled with an explicit `engine/` pseudo-prefix (stripped here,
+ * not part of the real path) — see `imageUrl`'s own doc comment.
+ */
+let engineImageBaseUrl = '/data/data-engine'
+
+/** Override the base URL used for `engine/`-prefixed references — see {@link engineImageBaseUrl}. No trailing slash needed. */
+export function setEngineImageBaseUrl(base: string): void {
+  engineImageBaseUrl = base.replace(/\/+$/, '')
+}
+
+/**
  * Turn an engine image reference into a fetchable URL.
  *
  * Terrain layer paths arrive already resolved against the VFS
  * ("core/images/terrain/..."). References *inside* modifiers do not — a mask is
  * named relative to the images root ("terrain/masks/7hex-tr.png") — so those get
- * the core images prefix.
+ * the core images prefix. An `engine/` prefix instead routes to
+ * {@link engineImageBaseUrl} (see its own doc comment) — used only for the
+ * handful of engine-chrome assets (currently just the leader crown) that
+ * don't exist under `core/images/` at all.
  */
 export function imageUrl(path: string): string {
   const clean = path.replace(/^\/+/, '')
+  if (clean.startsWith('engine/')) {
+    return `${engineImageBaseUrl}/${clean.slice('engine/'.length)}`
+  }
   const rooted = clean.startsWith('core/') || clean.startsWith('campaigns/')
     ? clean
     : `core/images/${clean}`

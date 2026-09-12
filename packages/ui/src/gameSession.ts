@@ -621,6 +621,15 @@ export class GameSession {
       canRecruit: u.canRecruit,
       hitpoints: u.hitpoints,
       maxHitpoints: u.maxHitpoints,
+      experience: u.experience,
+      maxExperience: u.maxExperience,
+      level: u.type.level,
+      canAdvance: u.type.advancesTo.length > 0,
+      movesLeft: u.movesLeft,
+      maxMoves: u.maxMoves,
+      attacksLeft: u.attacksLeft,
+      maxAttacksPerTurn: u.maxAttacksPerTurn,
+      statuses: [...u.statuses],
       underlyingId: this.renderKeyFor(u),
     }));
   }

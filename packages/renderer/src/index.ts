@@ -18,7 +18,24 @@ export {
   todRef,
   imageUrl,
   setImageBaseUrl,
+  setEngineImageBaseUrl,
 } from './images/ImageCache'
+
+// ── Unit HP/XP bar, moves orb, status tint ──────────────────────────────────
+export {
+  ENERGY_BAR,
+  energyBarHeight,
+  energyBarFilled,
+  hpColor,
+  KILL_EXPERIENCE,
+  xpColor,
+  DEFAULT_HP_BAR_SCALING,
+  DEFAULT_XP_BAR_SCALING,
+  type MovesOrbStatus,
+  movesOrbStatus,
+  ORB_COLOR,
+  statusTint,
+} from './unitOverlays'
 
 export {
   type Rgb,
