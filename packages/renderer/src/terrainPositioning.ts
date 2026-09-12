@@ -37,23 +37,24 @@ export interface TerrainLayer {
 }
 
 /**
- * The (offsetX, offsetY) carried by a layer's first frame — "which hex this
- * layer actually belongs to", not a draw-time nudge.
+ * The (offsetX, offsetY) carried by a layer's first frame.
  *
- * Upstream never offsets anything at draw time (`display.cpp` blits each
- * texture at its own hex rect) — but upstream attaches a rule's images to
- * each constraint's *own* tile, so no offset is needed there. A
- * `get_terrain_frames_at()`-style query (see attempt #1's
- * `Refactor_display_layer.md`) reports a rule's images against the tile it
- * queried, encoding the target hex in basex/basey instead. In practice most
- * layers carry a non-zero offset and every common value is a hex-grid step
- * (±54,±36), (0,±72) — i.e. a neighbouring hex.
+ * Upstream never offsets anything at draw time: `display::draw_hex` blits
+ * every terrain texture at `get_location_rect(loc)` of the tile the image is
+ * attached to, and `terrain_builder::apply_rule` attaches each constraint's
+ * images to that constraint's *own* tile. Which slice of a multi-hex image
+ * lands on which tile is the `~GLOBAL(...)` crop's job (see
+ * `terrain/terrainBuilder.ts`), not a position nudge.
  *
- * So the offset says *which hex this layer belongs to* and must be applied.
- * Dropping it collapses every layer onto the queried hex and the board breaks
- * into visible hexagons; applying it without hex-clipping (via `~HEXED()`)
- * leaves overlapping rectangles. Verified against a real Wesnoth screenshot
- * of the same scenario in attempt #1.
+ * attempt #1 concluded the opposite ("the offset says which hex this layer
+ * belongs to and must be applied") because its engine fork's
+ * `get_terrain_frames_at()` reported a rule's images against the tile it
+ * queried and encoded the target hex in basex/basey. This project's
+ * `terrainBuilder.ts` mirrors upstream's per-tile attachment instead, so it
+ * always emits `offsetX = offsetY = 0`; applying `basex - 36` on top of that
+ * double-shifted every layer and broke every transition (caught by comparing
+ * against the real engine's `--screenshot` of the same map). The field is
+ * kept for the rare caller that genuinely wants a draw-time nudge.
  */
 export function layerOffset(frame: TerrainFrame): { x: number; y: number } {
   return { x: frame.offsetX ?? 0, y: frame.offsetY ?? 0 }

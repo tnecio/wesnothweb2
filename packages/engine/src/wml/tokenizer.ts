@@ -17,6 +17,8 @@
  * attribution is needed later.
  */
 
+import { INLINE_MARK } from './preprocessor.js';
+
 export type TokenType =
   | 'NEWLINE'
   | 'EQUALS'
@@ -84,8 +86,8 @@ export class Tokenizer {
   constructor(src: string, initialTextdomain = 'wesnoth') {
     this.src = src;
     this.textdomain = initialTextdomain;
-    this.current = src.length > 0 ? src.charAt(0) : EOF;
-    this.idx = 1;
+    this.idx = 0;
+    this.current = this.rawNext();
   }
 
   /** Line number (1-based) at which the most recently returned token starts. */
@@ -94,6 +96,11 @@ export class Tokenizer {
   }
 
   private rawNext(): Char {
+    // Skip preprocessor boundary marks (see `INLINE_MARK`) transparently --
+    // they are never content. `peekChar` deliberately does NOT skip them: a
+    // mark between `""` and `""` is exactly what stops the `""` escaped-quote
+    // lookahead from fusing two adjacent empty strings into one literal quote.
+    while (this.idx < this.src.length && this.src.charAt(this.idx) === INLINE_MARK) this.idx++;
     if (this.idx >= this.src.length) return EOF;
     const c = this.src.charAt(this.idx);
     this.idx++;

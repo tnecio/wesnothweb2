@@ -553,9 +553,12 @@ the same content exactly. See `docs/PROGRESS.md`'s two 2026-09-12
 entries for the full account, including a real bug this surfaced (global
 multi-hex image cropping, `center=`/`RuleImage.sourceLoc`) that WML
 reading alone had wrongly written off as a minor edge case.
-Remaining: ToD tinting (Phase 12), animation start-time jitter, the
-brute-force matching's ~7s/scenario build cost (acceptable for now,
-revisit if felt as real load-time jank), and more systematic screenshot
+Second pass the same day fixed four real bugs (draw-time offsets, a
+preprocessor quoting bug, paren-blind frame splitting, one truncating
+division in `rotate()`) and the build cost (7.1s -> 0.43s via upstream's
+own prefilter) -- see PROGRESS.md's second 2026-09-12 entry. Remaining:
+ToD tinting (Phase 12), animation start-time jitter, `ImageCache.preload`
+cost (~7s for ~3,400 masked crops), and more systematic screenshot
 comparison beyond Dead_Water scenario 1.
 
 Split out of Phase 4

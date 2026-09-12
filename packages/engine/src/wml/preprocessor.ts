@@ -56,7 +56,25 @@
  */
 
 import * as fs from 'node:fs';
+
 import * as path from 'node:path';
+
+/**
+ * Stand-in for upstream's `INLINED_PREPROCESS_DIRECTIVE_CHAR` (0xFE) marker
+ * lines. Upstream's preprocessor output carries a `\\376line ...` marker line
+ * at the start of every substituted macro argument and macro body, and its
+ * tokenizer skips those at the character level -- which is what keeps two
+ * adjacent substituted arguments from fusing into one token. The case that
+ * made this matter: `{WATER_342_180_TILE_VARIANTS "" ... "" ...}` substituted
+ * into `...~CROP(0,0,72,72){MASKIPF}{IPF}:{DURATION}`. Without a boundary the
+ * output is four quotes in a row, which the tokenizer (ours and upstream's
+ * alike -- a doubled quote inside a string is an escaped quote) reads as ONE
+ * literal quote; with the boundary it is two empty strings, i.e. nothing --
+ * verified against `wesnoth --preprocess` on the same source. `Tokenizer`
+ * skips this character everywhere except as the lookahead of that escape
+ * check. U+FFFE is a Unicode noncharacter, so it cannot occur in real WML.
+ */
+export const INLINE_MARK = '\uFFFE';
 
 export interface MacroDefinition {
   name: string;
@@ -288,7 +306,10 @@ function readQuoted(src: string, pos: number, ctx: Ctx, active: boolean): { text
     const c = src.charAt(pos);
     if (c === '"') {
       if (src.charAt(pos + 1) === '"') {
-        out += '"';
+        // An escaped quote stays `""` verbatim -- upstream `put()`s every char and
+        // leaves collapsing to the tokenizer. Collapsing here left a lone `"` in
+        // the substituted text, which then terminated the string early.
+        out += '""';
         pos += 2;
         continue;
       }
@@ -567,7 +588,9 @@ function readBraceExpr(src: string, pos: number, ctx: Ctx, active: boolean): { t
   if (chunks.length === 0) {
     fail(src, callSitePos, 'No macro or file substitution target specified');
   }
-  const symbol = chunks[0] as string;
+  // Upstream erases its inline marker lines from the symbol before lookup
+  // (`{TRAIT_{PARAM}}`-style names are built from substituted arguments).
+  const symbol = (chunks[0] as string).split(INLINE_MARK).join('');
   const args = chunks.slice(1);
 
   if (symbol === CURRENT_FILE_SYM && args.length === 0) {
@@ -587,7 +610,7 @@ function readBraceExpr(src: string, pos: number, ctx: Ctx, active: boolean): { t
     if (args.length !== 0) {
       fail(src, callSitePos, `Macro argument '${symbol}' does not expect any arguments`);
     }
-    return { text: ctx.localArgs.get(symbol) as string, pos };
+    return { text: INLINE_MARK + (ctx.localArgs.get(symbol) as string) + INLINE_MARK, pos };
   }
 
   const macro = ctx.defines.get(symbol);
@@ -607,7 +630,7 @@ function readBraceExpr(src: string, pos: number, ctx: Ctx, active: boolean): { t
       domain: ctx.domain,
     };
     const r = expandText(macro.body, 0, nestedCtx, true, false);
-    return { text: r.text, pos };
+    return { text: INLINE_MARK + r.text, pos };
   }
 
   // Not a known macro or special symbol: treat as a file/directory to include.

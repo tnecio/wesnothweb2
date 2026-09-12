@@ -1934,3 +1934,91 @@ start-time jitter, the brute-force matching's ~7s/scenario build cost
 whatever smaller visual discrepancies only turn up from further,
 more systematic screenshot comparison against the real game (not yet
 done exhaustively -- only Dead_Water scenario 1 checked so far).
+
+## 2026-09-12 (cont'd): terrain "looks nothing like it should" + "performance tanked" -- four real bugs, found by comparing against the real engine
+
+User reported the live Dead_Water render bore little resemblance to the
+real game (hard hex edges, missing transitions, floating castle-wall
+stubs, gapped mountains) and that performance had tanked. All four
+root causes below were found by comparing concrete artefacts against
+the real engine -- `display.cpp`, `wesnoth --preprocess` output, and
+`--screenshot` renders of the same map -- not by reasoning from the WML.
+
+1. **Draw-time offsets were wrong, and the doc comment saying otherwise
+   was attempt #1's, not upstream's.** `display::draw_hex` blits every
+   terrain texture at `get_location_rect(loc)` of the tile it's attached
+   to; `basex`/`basey` only feed the layer sort and the bg/fg split.
+   `terrainPositioning.ts`'s `layerOffset` comment asserted the opposite
+   ("the offset says which hex this layer belongs to and must be
+   applied") -- true for attempt #1's engine fork, which reported images
+   against the queried tile, false for this port, which attaches per
+   tile like upstream. Applying `basex - 36` double-shifted every layer:
+   that was the hard edges and the wall stubs. Offsets are now always 0.
+
+2. **A WML preprocessor bug corrupted every water tile.** Real content
+   calls `{WATER_342_180_TILE_VARIANTS "" ... "" ...}` and substitutes
+   both empty args back-to-back into `...~CROP(0,0,72,72){MASKIPF}{IPF}`.
+   Our output was four quotes in a row, which the tokenizer (ours AND
+   upstream's -- `""` inside a string is an escaped quote) reads as one
+   literal `"`, so every water frame's mods became `CROP(0,0,72,72)"`.
+   Upstream avoids this only because its preprocessor emits `\376line`
+   marker lines around every substitution and its tokenizer skips them
+   at the character level; `wesnoth --preprocess` on a 6-line repro
+   confirmed the intended result (`x~CROP(0,0):1`). Ported the same
+   mechanism: `INLINE_MARK` (U+FFFE, a noncharacter) around every
+   substituted argument/body, skipped by `Tokenizer.rawNext` but not by
+   its `""` lookahead. First attempt -- stripping quotes off wholly-quoted
+   args -- broke real `units.cfg` (multi-line `"~CHAN(\n...)"` args need
+   their quotes) and was reverted; the marker approach is the faithful
+   one. Also fixed `readQuoted` collapsing `""` to `"` early.
+
+3. **The shared `squareParentheticalSplit` port ignored parentheses.**
+   Upstream's default bracket sets are `"(["`/`")]"` for BOTH unit frames
+   and terrain images; ours only nested `[...]`, so `~CROP(0,0,72,72)`
+   split into four bogus frames and the op silently no-op'd. Fixed at the
+   shared helper (parens nest, only `[..]` expands). A terrain-only
+   splitter tried first lost `[01~13]` frame expansion and dropped 102
+   real rules -- the real-content rule count (10,063, attempt #1's
+   oracle-verified number) caught it immediately.
+
+4. **One integer-division port error in `rotate()`.** Upstream's
+   `(rj - 1) / 2` truncates; the port used `Math.floor`, which differs
+   for even negative `rj` (-3/2: -1 vs -2). Every rotated constraint with
+   an even negative `rj` landed one hex south -- exactly the templates
+   whose anchor sits at an odd *template* column, which is all real
+   `map=` transition/wall templates, and exactly why my earlier geometry
+   test (anchor at template x=0) passed while the real 3x3 water dump
+   showed the NW transition one hex off. New `terrainRotationGeometry.
+   test.ts` covers both template parities x both map parities x all six
+   angles, including a real-style `map=` template.
+
+Also ported the missing 1-hex off-map ring (`_off^_usr` background +
+`off-map/border.png` edge fades) that upstream draws around the board.
+
+**Performance.** Measured, not guessed (Playwright + in-page timing):
+- Build: 7.1s -> 0.43s by porting upstream's own `terrain_by_type_`
+  cheapest-constraint prefilter (previously skipped as "pure
+  performance" -- it is, and it's ~16x). Type iteration order mirrors
+  `std::map<terrain_code>` (base, overlay) because `set_no_flag=base`
+  rules make candidate order load-bearing.
+- Hit-testing: 1,161 per-hex interactive `Graphics` replaced by one
+  `hitArea` on the terrain layer + `pixelToHex`, and
+  `interactiveChildren = false` -- a parent `hitArea` does NOT stop
+  PixiJS from walking every child, so each pointermove was traversing
+  ~10k objects.
+- Tried PixiJS's `CullerPlugin` on per-hex containers: made every frame
+  ~10x SLOWER (dialog clicks 0.5s -> 24s each), bisected and removed. A
+  plain `app.render()` of all ~8,700 sprites costs ~3.8ms CPU / 2.8ms
+  with `gl.finish`, so sprite count was never the frame-time problem.
+- Remaining load cost is `ImageCache.preload` of 3,404 masked crops
+  (~6.9s in headless Chromium) -- the per-pixel min-alpha mask in JS.
+  Left as-is for now; it's one-time per scenario and fidelity-critical.
+
+**Lessons, again**: (a) a doc comment that says "verified against X" is
+only as good as X -- attempt #1's was verified against its own fork; (b)
+the cheapest oracle is the real binary: `wesnoth --preprocess` and
+`wesnoth --screenshot` each settled in minutes what reading C++ had not;
+(c) synthetic 3x3 dumps of resolved layers per hex were the tool that
+turned "looks wrong" into four separable, testable defects.
+
+All 272 engine + 150 renderer + 33 UI tests pass; typecheck clean.

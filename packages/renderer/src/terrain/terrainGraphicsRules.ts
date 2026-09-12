@@ -168,7 +168,7 @@ function getVariations(base: string, variations: string): string[] {
 
 /** Splits an already-`@V`-substituted image string into its animation-cycle frames. Mirrors `load_images`'s inner loop. */
 function parseFrames(varString: string, imageExists: (path: string) => boolean): RuleImageFrame[] | null {
-  const chunks = squareParentheticalSplit(varString)
+  const chunks = squareParentheticalSplit(varString) // upstream defaults: `(` and `[` both nest, only `[..]` expands
   const frames: RuleImageFrame[] = []
   for (const chunk of chunks) {
     const items = chunk.split(':')
@@ -443,7 +443,12 @@ function rotateConstraintLoc(loc: HexOffset, angle: number): HexOffset {
   const ri = r.ii * vi + r.ij * vj
   const rj = r.ji * vi + r.jj * vj
   const x = rj
-  const y = ri + (rj >= 0 ? Math.floor(rj / 2) : Math.floor((rj - 1) / 2))
+  // Both divisions are plain C++ truncating integer division. NOT floor:
+  // for rj = -2, `(rj - 1) / 2` is -3/2 = -1 truncated, but floor(-1.5) = -2
+  // -- that one-off shifted every rotated constraint with an even negative
+  // rj one hex south (real symptom: transitions/castle walls landing on the
+  // wrong hex for templates whose anchor sits at an odd template column).
+  const y = ri + (rj >= 0 ? Math.trunc(rj / 2) : Math.trunc((rj - 1) / 2))
   return { x, y }
 }
 

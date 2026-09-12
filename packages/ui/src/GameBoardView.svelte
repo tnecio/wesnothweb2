@@ -179,6 +179,12 @@
     host.addEventListener('pointerleave', onPointerLeave);
 
     (async () => {
+      // Deliberately NO PixiJS CullerPlugin here: tried for the real
+      // terrain layer (~8,700 sprites) and it made every frame ~10x SLOWER
+      // (measured: dialog clicks went from ~0.5s to ~24s each), while a
+      // plain `app.render()` of the whole unculled board costs ~2ms of CPU.
+      // Sprite count is not the bottleneck; see SnapshotBoard's
+      // `installHitArea` for what actually was.
       app = new PIXI.Application();
       const [, terrainGraphicsRules] = await Promise.all([
         app.init({

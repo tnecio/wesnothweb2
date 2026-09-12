@@ -9,13 +9,6 @@
  *
  * Deliberate simplification vs. upstream, matching `terrainGraphicsRules.ts`'s
  * own documented gaps:
- *  - No "find the cheapest constraint to pre-filter candidate hexes"
- *    optimization (`build_terrains`'s `terrain_by_type_`-based search). That
- *    optimization only exists for performance; this port instead tests every
- *    rule against every hex directly (`ruleMatches` with no
- *    `type_checked` short-circuit), which is semantically identical --
- *    slower, but far simpler to keep correct. Revisit if real maps prove
- *    too slow.
  *  - No `is_empty_hex` (fully-transparent placeholder image) filtering --
  *    affects a small minority of real art (mostly cave/wall dummy tiles per
  *    attempt #1's own measurement: 29 of 5,566 terrain PNGs).
@@ -30,9 +23,14 @@
 
 import type { TerrainCode } from '@wesnothweb2/engine/src/model/Terrain.js'
 import type { TerrainFrame, TerrainLayer } from '../terrainPositioning.js'
-import { TILE_SIZE } from '../hexGeometry.js'
-import { legacySum, type HexOffset } from './legacyHex.js'
-import { constraintMatches, isBackgroundImage, type BuildingRule, type RuleImage } from './terrainGraphicsRules.js'
+import { legacyDifference, legacySum, type HexOffset } from './legacyHex.js'
+import {
+  constraintMatches,
+  isBackgroundImage,
+  type BuildingRule,
+  type RuleImage,
+  type TerrainConstraint,
+} from './terrainGraphicsRules.js'
 
 /** The padding margin `build_terrains` uses beyond the visible board (`tile_map_`'s own `-2..w+1` range). */
 const BUILD_MARGIN = 2
@@ -100,6 +98,8 @@ function ruleMatches(
   map: TerrainMapQuery,
   offMapCode: TerrainCode,
   tiles: Map<string, TileState>,
+  /** The constraint whose terrain match is already known to hold at `loc` (upstream's `type_checked`) -- skipped below. */
+  typeChecked: TerrainConstraint | null = null,
 ): boolean {
   if (rule.modX > 0 && loc.x % rule.modX !== 0) return false
   if (rule.modY > 0 && loc.y % rule.modY !== 0) return false
@@ -114,7 +114,9 @@ function ruleMatches(
   for (const cons of rule.constraints) {
     const tloc = legacySum(loc, cons.loc)
     if (!withinPadding(tloc, map)) return false
-    if (!constraintMatches(terrainAtPadded(tloc, map, offMapCode), cons.terrainTypesMatch)) return false
+    if (cons !== typeChecked && !constraintMatches(terrainAtPadded(tloc, map, offMapCode), cons.terrainTypesMatch)) {
+      return false
+    }
 
     const flags = tiles.get(tileKey(tloc.x, tloc.y))?.flags
     for (const f of cons.noFlag) {
@@ -172,11 +174,59 @@ export function buildTerrainTiles(
     }
   }
 
+  // `terrain_by_type_`: every padded-range hex grouped by its terrain code, in
+  // upstream's exact iteration order -- `std::map<terrain_code, ...>` orders
+  // by (base, overlay) and each type's location list is filled x-outer,
+  // y-inner. Order matters beyond performance: a rule whose own `set_flag`
+  // blocks its own later matches (`set_no_flag=base` is everywhere) is
+  // decided by which candidate hex gets applied first.
+  const terrainByType = new Map<string, { code: TerrainCode; locs: HexOffset[] }>()
+  for (let x = -BUILD_MARGIN; x <= map.width + BUILD_MARGIN - 1; x++) {
+    for (let y = -BUILD_MARGIN; y <= map.height + BUILD_MARGIN - 1; y++) {
+      const code = terrainAtPadded({ x, y }, map, options.offMapCode)
+      const key = code.key()
+      const entry = terrainByType.get(key)
+      if (entry) entry.locs.push({ x, y })
+      else terrainByType.set(key, { code, locs: [{ x, y }] })
+    }
+  }
+  const typesInOrder = [...terrainByType.values()].sort(
+    (a, b) => a.code.base - b.code.base || a.code.overlay - b.code.overlay,
+  )
+
+  // Mirrors `build_terrains`' candidate prefilter: for each rule, pick the
+  // constraint whose terrain match covers the FEWEST hexes on this map, then
+  // only try anchoring the rule at those hexes (translating each back to the
+  // rule's own origin with the same legacy hex arithmetic upstream uses).
+  // Semantically identical to testing every rule against every hex, ~50x
+  // cheaper on a real map (Dead_Water scenario 1: ~7s -> well under 1s).
   for (const rule of rules) {
-    for (let x = -BUILD_MARGIN; x <= map.width + BUILD_MARGIN - 1; x++) {
-      for (let y = -BUILD_MARGIN; y <= map.height + BUILD_MARGIN - 1; y++) {
-        const loc = { x, y }
-        if (ruleMatches(rule, loc, map, options.offMapCode, tiles)) {
+    let minSize = Number.POSITIVE_INFINITY
+    let minTypes: Array<{ code: TerrainCode; locs: HexOffset[] }> = []
+    let minConstraint: TerrainConstraint | null = null
+
+    for (const cons of rule.constraints) {
+      const matching: Array<{ code: TerrainCode; locs: HexOffset[] }> = []
+      let size = 0
+      for (const entry of typesInOrder) {
+        if (!constraintMatches(entry.code, cons.terrainTypesMatch)) continue
+        size += entry.locs.length
+        if (size >= minSize) break // not a minimum, bail out (upstream's own early exit)
+        matching.push(entry)
+      }
+      if (size < minSize) {
+        minSize = size
+        minTypes = matching
+        minConstraint = cons
+        if (minSize === 0) break // a constraint no hex satisfies: the rule can never match
+      }
+    }
+    if (!minConstraint) continue
+
+    for (const entry of minTypes) {
+      for (const itor of entry.locs) {
+        const loc = legacyDifference(itor, minConstraint.loc)
+        if (ruleMatches(rule, loc, map, options.offMapCode, tiles, minConstraint)) {
           applyRule(rule, loc, map, tiles)
         }
       }
@@ -208,7 +258,7 @@ const EMPTY_LAYERS: HexTerrainLayers = { background: [], foreground: [] }
  */
 function globalCropMod(image: RuleImage): string {
   const { x, y } = image.sourceLoc
-  return `~GLOBAL(${x},${y},${image.centerX},${image.centerY})`
+  return `GLOBAL(${x},${y},${image.centerX},${image.centerY})`
 }
 
 /**
@@ -236,18 +286,26 @@ export function getTerrainFramesAt(tiles: TerrainTiles, x: number, y: number, to
 
       const idx = Math.floor(rand / 7919) % variant.images.length
       const anim = variant.images[idx]!
-      const offsetX = image.basex - TILE_SIZE / 2
-      const offsetY = image.basey - TILE_SIZE / 2
       // Global (multi-hex-spanning) source images need a crop op ahead of the
       // usual `~HEXED()` masking -- see `RuleImage.sourceLoc`'s own doc comment
       // and `globalCropMod` below for the exact upstream formula this mirrors.
       const globalMod = image.globalImage ? globalCropMod(image) : ''
+      const modsFor = (mods: string): string => (globalMod ? (mods ? `${mods}~${globalMod}` : globalMod) : mods)
+      // No draw-time offset, ever: upstream's `display::draw_hex` blits every
+      // terrain texture at `get_location_rect(loc)` of the tile it's attached
+      // to (`draw::blit(t, dest)`), and `basex`/`basey` only feed the
+      // layer/basey sort above plus the background/foreground split. Which
+      // slice of a multi-hex image lands on which tile is entirely the
+      // `~GLOBAL(...)` crop's job. Applying `basex - 36` here as an offset
+      // (attempt #1's model, whose fork encoded target hexes differently)
+      // double-shifted every layer and broke every transition -- verified
+      // against the real engine's own screenshot of the same map.
       const frames: TerrainFrame[] = anim.map((f) => ({
         path: f.path,
-        mods: f.mods + globalMod,
+        mods: modsFor(f.mods),
         durationMs: f.durationMs,
-        offsetX,
-        offsetY,
+        offsetX: 0,
+        offsetY: 0,
       }))
       const layer: TerrainLayer = { frames }
       ;(isBackgroundImage(image) ? background : foreground).push(layer)

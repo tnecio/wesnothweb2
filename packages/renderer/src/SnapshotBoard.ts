@@ -69,7 +69,15 @@
 import * as PIXI from 'pixi.js';
 import { Direction } from '@wesnothweb2/engine/src/model/Location.js';
 import { parseTerrainCode, NONE_TERRAIN, type TerrainCode } from '@wesnothweb2/engine/src/model/Terrain.js';
-import { hexCorners, hexToPixel, HEX_SIZE, type HexCoord } from './hexGeometry.js';
+import {
+  hexCorners,
+  hexToPixel,
+  pixelToHex,
+  HEX_SIZE,
+  HEX_COL_WIDTH,
+  HEX_ROW_HEIGHT,
+  type HexCoord,
+} from './hexGeometry.js';
 import { ImageCache, hexedRef, setImageBaseUrl } from './images/ImageCache.js';
 import { joinRef } from './images/ipf.js';
 import { sampleAnimation, animationDurationMs } from './animation/playback.js';
@@ -361,39 +369,57 @@ export class SnapshotBoard {
   }
 
   /**
-   * One hex's real, click/hover-interactive placeholder polygon -- kept
-   * even when real terrain images render on top (see `renderTerrain`):
-   * a stacked layer's own hex-alpha-mask means its VISIBLE footprint never
-   * exceeds the hex it was resolved for (see `terrainPositioning.ts`'s own
-   * doc comment), so routing clicks by hex geometry here, independent of
-   * whatever's drawn on top, stays correct. Non-interactive terrain image
-   * sprites (PixiJS default `eventMode`) let pointer events pass straight
-   * through to this polygon, exactly like unit sprites already do.
+   * Click/hover routing for the whole board through ONE interactive
+   * object: `terrainLayer` itself, with a rectangular `hitArea` covering the
+   * map and `pixelToHex` resolving the hex from the local pointer position.
+   * This replaced one interactive `PIXI.Graphics` polygon per hex (1,161 of
+   * them on Dead_Water's map) -- with real terrain art those polygons drew
+   * nothing yet still cost a display object each, every frame. Routing by
+   * hex geometry stays correct regardless of what's drawn on top: a layer's
+   * hex-alpha-mask keeps its visible footprint inside the hex it was
+   * resolved for (see `terrainPositioning.ts`), and non-interactive sprites
+   * (PixiJS default `eventMode`) let pointer events pass straight through.
    */
-  private buildHexHitArea(x: number, y: number, cx: number, cy: number, flatColorCode: string | null): PIXI.Graphics {
-    const g = new PIXI.Graphics();
-    const corners = hexCorners(cx, cy);
-    g.poly(corners.flatMap((p) => [p.x, p.y]));
-    if (flatColorCode !== null) {
-      g.fill({ color: colorForTerrain(flatColorCode) });
-      g.stroke({ width: 1, color: 0x000000, alpha: 0.15 });
-    } else {
-      g.fill({ color: 0x000000, alpha: 0 });
+  private installHitArea(): void {
+    if (!this.onHexClick && !this.onHexHover) return;
+    const onBoard = new Set(this.snapshot.terrain.map((h) => `${h.x},${h.y}`));
+    const { width, height } = this.snapshot.map;
+    const layer = this.terrainLayer;
+    layer.eventMode = 'static';
+    layer.hitArea = new PIXI.Rectangle(0, 0, (width + 1) * HEX_COL_WIDTH, (height + 1) * HEX_ROW_HEIGHT);
+    // A parent `hitArea` does NOT stop PixiJS from hit-testing children
+    // (`EventBoundary.hitTestRecursive` recurses whenever
+    // `interactiveChildren` is set) -- without this, every pointermove
+    // walked all ~10k terrain sprites/containers.
+    layer.interactiveChildren = false;
+    if (this.onHexClick) layer.cursor = 'pointer';
+
+    const hexAt = (e: PIXI.FederatedPointerEvent): HexPoint | null => {
+      const local = layer.toLocal(e.global);
+      const coord = pixelToHex(local.x, local.y);
+      const hex = { x: coord.x - 1, y: coord.y - 1 };
+      return onBoard.has(`${hex.x},${hex.y}`) ? hex : null;
+    };
+
+    if (this.onHexClick) {
+      layer.on('pointertap', (e) => {
+        const hex = hexAt(e);
+        if (hex) this.onHexClick?.(hex.x, hex.y);
+      });
     }
-    if (this.onHexClick || this.onHexHover) {
-      g.eventMode = 'static';
-      if (this.onHexClick) {
-        g.cursor = 'pointer';
-        g.on('pointertap', () => this.onHexClick?.(x, y));
-      }
-      if (this.onHexHover) {
-        g.on('pointerover', () => this.onHexHover?.(x, y));
-      }
+    if (this.onHexHover) {
+      let last: HexPoint | null = null;
+      layer.on('pointermove', (e) => {
+        const hex = hexAt(e);
+        if (!hex || (last && last.x === hex.x && last.y === hex.y)) return;
+        last = hex;
+        this.onHexHover?.(hex.x, hex.y);
+      });
     }
-    return g;
   }
 
   private async renderTerrain(): Promise<void> {
+    this.installHitArea();
     if (!this.terrainGraphicsRules || this.terrainGraphicsRules.length === 0) {
       this.renderTerrainFlat();
       return;
@@ -405,7 +431,11 @@ export class SnapshotBoard {
   private renderTerrainFlat(): void {
     for (const hex of this.snapshot.terrain) {
       const { x: cx, y: cy } = hexToPixel(toHexCoord(hex.x, hex.y));
-      this.terrainLayer.addChild(this.buildHexHitArea(hex.x, hex.y, cx, cy, hex.code));
+      const g = new PIXI.Graphics();
+      g.poly(hexCorners(cx, cy).flatMap((p) => [p.x, p.y]));
+      g.fill({ color: colorForTerrain(hex.code) });
+      g.stroke({ width: 1, color: 0x000000, alpha: 0.15 });
+      this.terrainLayer.addChild(g);
     }
   }
 
@@ -423,30 +453,60 @@ export class SnapshotBoard {
   private async renderTerrainReal(rules: readonly BuildingRule[]): Promise<void> {
     const query = this.buildTerrainMapQuery();
     const offMapCode = parseTerrainCode('_off^_usr');
-    const tiles = buildTerrainTiles(rules as BuildingRule[], query, { offMapCode });
+    const tiles = buildTerrainTiles(rules as BuildingRule[], query, {
+      offMapCode,
+    });
 
-    const perHex: Array<{ x: number; y: number; cx: number; cy: number; bg: TerrainLayer[]; fg: TerrainLayer[] }> = [];
+    // Every board hex PLUS the one-hex off-map ring around it: upstream draws
+    // that ring too (`display::draw_hex` runs over the border when
+    // `draw_border` is set), which is where the `_off^_usr` background and
+    // the `off-map/border.png` edge fades come from -- without it the map
+    // ends in a hard black sawtooth instead of the real game's soft edge.
+    const { width, height } = this.snapshot.map;
+    const perHex: Array<{
+      x: number;
+      y: number;
+      cx: number;
+      cy: number;
+      bg: TerrainLayer[];
+      fg: TerrainLayer[];
+    }> = [];
     const refs = new Set<string>();
-    for (const hex of this.snapshot.terrain) {
-      const { background, foreground } = getTerrainFramesAt(tiles, hex.x, hex.y, '');
-      const { x: cx, y: cy } = hexToPixel(toHexCoord(hex.x, hex.y));
-      perHex.push({ x: hex.x, y: hex.y, cx, cy, bg: [...background], fg: [...foreground] });
-      for (const layer of [...background, ...foreground]) {
-        for (const frame of layer.frames) refs.add(hexedRef(joinRef(frame.path, frame.mods)));
+    for (let x = -1; x <= width; x++) {
+      for (let y = -1; y <= height; y++) {
+        const { background, foreground } = getTerrainFramesAt(tiles, x, y, '');
+        const { x: cx, y: cy } = hexToPixel(toHexCoord(x, y));
+        perHex.push({ x, y, cx, cy, bg: [...background], fg: [...foreground] });
+        for (const layer of [...background, ...foreground]) {
+          for (const frame of layer.frames) refs.add(hexedRef(joinRef(frame.path, frame.mods)));
+        }
       }
     }
 
     await ImageCache.preload(refs);
 
+    // One container per hex per layer -- a grouping only (a future per-hex
+    // ToD retint or terrain-change rebuild can target one hex's sprites).
+    // NOT for culling: PixiJS's CullerPlugin was tried on exactly this
+    // structure and made every frame ~10x slower, while rendering all
+    // ~8,700 sprites unculled costs ~2ms of CPU (see GameBoardView).
+    const hexContainer = (): PIXI.Container => new PIXI.Container();
     for (const hex of perHex) {
-      this.terrainLayer.addChild(this.buildHexHitArea(hex.x, hex.y, hex.cx, hex.cy, null));
-      for (const layer of hex.bg) {
-        const sprite = makeLayerSprite(layer, hex.cx, hex.cy);
-        if (sprite) this.terrainLayer.addChild(sprite);
+      if (hex.bg.length > 0) {
+        const c = hexContainer();
+        for (const layer of hex.bg) {
+          const sprite = makeLayerSprite(layer, hex.cx, hex.cy);
+          if (sprite) c.addChild(sprite);
+        }
+        this.terrainLayer.addChild(c);
       }
-      for (const layer of hex.fg) {
-        const sprite = makeLayerSprite(layer, hex.cx, hex.cy);
-        if (sprite) this.terrainForegroundLayer.addChild(sprite);
+      if (hex.fg.length > 0) {
+        const c = hexContainer();
+        for (const layer of hex.fg) {
+          const sprite = makeLayerSprite(layer, hex.cx, hex.cy);
+          if (sprite) c.addChild(sprite);
+        }
+        this.terrainForegroundLayer.addChild(c);
       }
     }
   }
@@ -488,7 +548,14 @@ export class SnapshotBoard {
       container.addChild(marker);
     }
 
-    return { container, sprite, marker, overlay: null, lastImage: unit.image, lastSide: unit.side };
+    return {
+      container,
+      sprite,
+      marker,
+      overlay: null,
+      lastImage: unit.image,
+      lastSide: unit.side,
+    };
   }
 
   /**
@@ -616,10 +683,15 @@ export class SnapshotBoard {
       if (!cue.anim) continue;
       const paths = new Set<string>();
       for (const frame of cue.anim.frames) {
-        const seq = cue.direction === Direction.NorthEast || cue.direction === Direction.SouthEast
-          || cue.direction === Direction.NorthWest || cue.direction === Direction.SouthWest
-          ? (frame.imageDiagonal.length > 0 ? frame.imageDiagonal : frame.image)
-          : frame.image;
+        const seq =
+          cue.direction === Direction.NorthEast ||
+          cue.direction === Direction.SouthEast ||
+          cue.direction === Direction.NorthWest ||
+          cue.direction === Direction.SouthWest
+            ? frame.imageDiagonal.length > 0
+              ? frame.imageDiagonal
+              : frame.image
+            : frame.image;
         for (const step of seq) paths.add(step.value);
       }
       await Promise.all([...paths].map((p) => ImageCache.resolve(p)));
@@ -645,7 +717,8 @@ export class SnapshotBoard {
               const texture = await ImageCache.resolve(sample.imagePath);
               if (texture && visual.sprite && visual.sprite.texture !== texture) visual.sprite.texture = texture;
             }
-            if (visual.sprite) visual.sprite.scale.x = sample.hflip ? -Math.abs(visual.sprite.scale.x) : Math.abs(visual.sprite.scale.x);
+            if (visual.sprite)
+              visual.sprite.scale.x = sample.hflip ? -Math.abs(visual.sprite.scale.x) : Math.abs(visual.sprite.scale.x);
             visual.container.x = sample.x;
             visual.container.y = sample.y;
             this.applyBlend(visual, sample.blendRatio, sample.blendColor);
@@ -795,7 +868,6 @@ export class SnapshotBoard {
       this.selectionLayer.addChild(inner);
     }
   }
-
 }
 
 function sideMarkerColor(colorName: string | undefined): number {

@@ -145,9 +145,15 @@ function expandZone(zone: string): string[] {
 }
 
 /**
- * TS port of `square_parenthetical_split(val, ',', "[", "]")`: splits on
- * top-level commas, expanding any `[A~B]`/`[a,b,c]`/`[x*N]` bracket group(s)
- * within each comma zone and zipping multiple groups positionally.
+ * TS port of `square_parenthetical_split(val, ',')` with upstream's DEFAULT
+ * bracket sets (`left = "(["`, `right = ")]"` -- what both `progressive_single`
+ * (unit frames) and `terrain_builder::load_images` call it with): splits on
+ * top-level commas, where BOTH `(...)` and `[...]` suppress splitting, but
+ * only `[A~B]`/`[a,b,c]`/`[x*N]` groups are expanded and zipped positionally
+ * (upstream records `square_left`/`square_right` only for `[`/`]`). Parens
+ * matter because IPF argument lists live inside them: `water01.png~CROP(0,0,72,72)`
+ * is ONE frame, not four -- treating it as four silently turned every
+ * terrain `~CROP` into a no-op.
  */
 export function squareParentheticalSplit(val: string): string[] {
   if (!val) return [];
@@ -161,9 +167,9 @@ export function squareParentheticalSplit(val: string): string[] {
     if (i === val.length || (c === ',' && depth === 0)) {
       zones.push(val.slice(start, i));
       start = i + 1;
-    } else if (c === '[') {
+    } else if (c === '[' || c === '(') {
       depth++;
-    } else if (c === ']') {
+    } else if (c === ']' || c === ')') {
       depth--;
     }
   }
