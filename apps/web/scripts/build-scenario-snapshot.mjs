@@ -71,7 +71,7 @@
  * builds a REAL `UnitType` per id via `UnitType.fromConfig(flattenedCfg,
  * movementTypeConfigs, terrainData)`, where `flattenedCfg` comes from
  * `flattenAllUnitTypes` (`packages/engine/src/model/UnitTypeDatabase.ts`) --
- * the real `base_unit=`/`[male]`/`[female]`-aware flattening loader, see
+ * the real `[base_unit]`/`[male]`/`[female]`-aware flattening loader, see
  * that module's own doc comment for the exact (deliberately simplified)
  * semantics and why they're safe for every real type this project ships.
  * The snapshot now also carries `unitTypeConfigs`/`movementTypeConfigs`/
@@ -266,25 +266,29 @@ function rootImagePath(raw) {
 }
 
 /**
- * Walks a parsed tree collecting every [unit_type] (including [male]/
- * [female] variant children) id -> top-level image path (rooted, see
- * rootImagePath) into `images`, and id -> real `flag_rgb=` (defaulting to
- * "magenta", matching `unit_type::flag_rgb()`'s own default and
- * `unit::TC_image_mods()`'s `~RC(flag_rgb>side_color_id)` -- real, reported
- * bug bugs3.md #3: unit sprites rendered in raw magenta, never the unit's
- * side color, for lack of this data) into `flagRgb`.
+ * Derives id -> top-level image path (rooted, see rootImagePath) into
+ * `images`, and id -> real `flag_rgb=` (defaulting to "magenta", matching
+ * `unit_type::flag_rgb()`'s own default and `unit::TC_image_mods()`'s
+ * `~RC(flag_rgb>side_color_id)` -- real, reported bug bugs3.md #3: unit
+ * sprites rendered in raw magenta, never the unit's side color, for lack of
+ * this data) into `flagRgb`, for every id in `flattenedConfigs`.
+ *
+ * Deliberately reads `image=`/`flag_rgb=` off each id's FLATTENED config
+ * (post `[base_unit]` inheritance), not the raw per-id config: a type like
+ * Liberty's `Bandit_Peasant` (`[base_unit] id=Bandit [/base_unit]`) sets
+ * neither attribute itself at all -- it inherits both from `Bandit`. Reading
+ * the raw config here (this function's own prior implementation, which
+ * walked the parsed tree directly instead of taking `flattenedConfigs`) left
+ * `images` with no entry for any such id, which is why Liberty's Baldras
+ * (a Bandit_Peasant) rendered as a blank white placeholder circle: with no
+ * resolved image, `buildUnitVisual` (packages/renderer/src/SnapshotBoard.ts)
+ * falls back to its "image missing" bare marker-dot case.
  */
-function collectUnitTypeImages(cfg, images, flagRgb) {
-  for (const { tag, config } of cfg.allChildren()) {
-    if (tag === 'unit_type') {
-      const id = config.getString('id');
-      const image = config.getString('image');
-      if (id && image && !images.has(id)) images.set(id, rootImagePath(image));
-      if (id && !flagRgb.has(id)) flagRgb.set(id, config.getString('flag_rgb', 'magenta'));
-      collectUnitTypeImages(config, images, flagRgb); // [male]/[female] sub-variants
-    } else {
-      collectUnitTypeImages(config, images, flagRgb);
-    }
+function collectUnitTypeImages(flattenedConfigs, images, flagRgb) {
+  for (const [id, config] of flattenedConfigs) {
+    const image = config.getString('image');
+    if (image && !images.has(id)) images.set(id, rootImagePath(image));
+    if (!flagRgb.has(id)) flagRgb.set(id, config.getString('flag_rgb', 'magenta'));
   }
 }
 
@@ -309,19 +313,31 @@ const terrainData = TerrainTypeData.fromConfigs(terrainCfg.children('terrain_typ
 
 console.log('Parsing data/core/units.cfg for real unit-type image paths (this takes a few seconds)...');
 const coreUnitsCfg = parseWmlFile(path.join(dataRoot, 'core/units.cfg'), { dataRoot, defines: new Map(defines) });
-const unitImages = new Map();
-const unitFlagRgb = new Map();
-collectUnitTypeImages(coreUnitsCfg, unitImages, unitFlagRgb);
 
 // Synthetic campaigns have no _main.cfg (no custom unit types either --
 // deliberately, see this file's module doc comment) -- an empty stand-in
-// config keeps every downstream use (collectUnitTypeImages/
-// collectUnitTypeConfigs/collectMovementTypeConfigs) a no-op for them
-// without needing separate isRealCampaign branches at each call site.
+// config keeps every downstream use (collectUnitTypeConfigs/
+// collectMovementTypeConfigs) a no-op for them without needing separate
+// isRealCampaign branches at each call site.
 const campaignMainCfg = isRealCampaign
   ? parseWmlFile(path.join(campaignDir, '_main.cfg'), { dataRoot, defines: new Map(defines) })
   : new WmlConfig();
-collectUnitTypeImages(campaignMainCfg, unitImages, unitFlagRgb);
+
+// Real UnitType resolver -- see this file's "Real per-unit-type combat/
+// movement stats" doc comment above. `rawUnitTypeConfigs` collects every
+// [unit_type]'s own (unflattened) config from the two real trees;
+// `flattenAllUnitTypes` resolves `[base_unit]` inheritance (see
+// UnitTypeDatabase.ts for the exact, deliberately-simplified semantics) --
+// computed up front so `collectUnitTypeImages` below can read images/
+// flag_rgb off the FLATTENED configs, not the raw ones (see its own doc
+// comment for why that distinction matters).
+const rawUnitTypeConfigs = collectUnitTypeConfigs(coreUnitsCfg);
+collectUnitTypeConfigs(campaignMainCfg, rawUnitTypeConfigs);
+const flattenedUnitTypes = flattenAllUnitTypes(rawUnitTypeConfigs);
+
+const unitImages = new Map();
+const unitFlagRgb = new Map();
+collectUnitTypeImages(flattenedUnitTypes, unitImages, unitFlagRgb);
 console.log(`Collected ${unitImages.size} unit-type image paths from real WML.`);
 
 const scenarioCfg = parseWmlFile(scenarioFile, { dataRoot, defines: new Map(defines) });
@@ -375,19 +391,13 @@ for (const code of codesInUse) {
   };
 }
 
-// Real UnitType resolver -- see this file's "Real per-unit-type combat/
-// movement stats" doc comment above. `rawUnitTypeConfigs` collects every
-// [unit_type]'s own (unflattened) config from the same two real trees
-// `collectUnitTypeImages` already walked for image paths; `flattenAllUnitTypes`
-// resolves base_unit= inheritance (see UnitTypeDatabase.ts for the exact,
-// deliberately-simplified semantics); `movementTypeConfigs` is the real
-// [movetype] registry (all 38 of them live inside data/core/units.cfg's
-// own [units] block, alongside the [unit_type]s and [race]s).
-const rawUnitTypeConfigs = collectUnitTypeConfigs(coreUnitsCfg);
-collectUnitTypeConfigs(campaignMainCfg, rawUnitTypeConfigs);
+// `movementTypeConfigs` is the real [movetype] registry (all 38 of them
+// live inside data/core/units.cfg's own [units] block, alongside the
+// [unit_type]s and [race]s) -- `rawUnitTypeConfigs`/`flattenedUnitTypes`
+// (needed by `resolveType` below) were already computed above, before
+// `collectUnitTypeImages`.
 const movementTypeConfigs = collectMovementTypeConfigs(coreUnitsCfg);
 collectMovementTypeConfigs(campaignMainCfg, movementTypeConfigs);
-const flattenedUnitTypes = flattenAllUnitTypes(rawUnitTypeConfigs);
 
 // Real `[units][weapon_specials]`/`[units][abilities]` registries --
 // resolves real content's `specials_list=`/`abilities_list=` shorthand

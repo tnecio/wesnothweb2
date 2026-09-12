@@ -2127,3 +2127,55 @@ depth instead.
   browser screenshot. No gaps found.
 - Dead_Water (13), Two_Brothers (5), and Liberty (8) are now all fully
   buildable/chainable mainline campaigns -- 26 real scenarios total.
+
+## 2026-09-13: Liberty scenario 1 bug report -- two real, previously-undetected engine gaps (the forced-victory chain check above missed both, since neither produces a console error)
+
+User reported Liberty scenario 1's units rendering as unmoveable white
+circles. Root-caused to two distinct, real gaps, both invisible to the
+"chain scenarios via forced victory, watch for console errors" check
+used above -- that check never selects a unit or inspects its stats,
+so a wrong/missing unit is silently invisible to it:
+
+1. **`[base_unit]` (a `[unit_type]` CHILD TAG) was never read at all.**
+   `UnitTypeDatabase.ts`'s `flattenUnitTypeConfig` only checked for a
+   `base_unit=` ATTRIBUTE -- which, it turns out, real Wesnoth's C++
+   (`types.cpp`) never actually emits or reads; the doc comment's old
+   claim that `base_unit=` is "used nowhere in the wesnoth submodule"
+   was true but irrelevant, since real content uses the child-tag form
+   exclusively. Liberty's `units/Villagers.cfg` reskins Thug/Bandit/
+   Highwayman as Peasant/Village-Elder/Senior-Village-Elder via exactly
+   this tag; with it unrecognized, those derived types got NONE of the
+   base type's stats/image (1 HP, no image -- the reported white
+   circles). Fixed by reading the `[base_unit]` child tag's `id=`
+   instead of a `base_unit=` attribute; `build-scenario-snapshot.mjs`'s
+   `collectUnitTypeImages` was also quietly relying on the same
+   never-worked path (reading `image=`/`flag_rgb=` off each type's RAW,
+   unflattened config) and is now fixed to read the FLATTENED config.
+   Every real scenario snapshot was rebuilt (Dead_Water/Two_Brothers'
+   counts also went 332->333/327->328: `data/core/units/monsters/
+   Ant_Egg.cfg` uses `[base_unit]` too, previously silently broken for
+   every campaign, not just Liberty).
+2. **`[unstore_unit]` was never implemented at all** (silently skipped
+   as an unregistered action tag, `runActionSequence`'s "not supported"
+   warn path). Liberty scenario 1 hides Baldras off-board during the
+   opening goblin conversation via the common `[store_unit] kill=yes`
+   .. `[unstore_unit]` idiom -- with the second half a no-op, Baldras
+   was permanently removed from the game after turn 1's setup, leaving
+   the scenario unplayable (no leader to select/move/recruit with).
+   Fixed: `actionUnstoreUnit` ports `data/lua/wml-tags.lua`'s
+   `wml_actions.unstore_unit`, reusing `Unit.fromConfig` (the stored
+   var-node's shape is `store_unit`'s own `unitToVarNode` output, an
+   exact dual of what `Unit.fromConfig` reads). NOT ported: `advance=`/
+   `animate=`/`text=`/`color=` (cosmetic), `find_vacant=`, and
+   recall-list restores -- none needed by Liberty's own usage.
+   `[modifications]` still isn't preserved through a store/kill/
+   unstore round-trip (a pre-existing `store_unit` gap), so Baldras
+   restores without his personal `mace-spiked` weapon rename -- a real
+   but lower-severity remaining gap, not fixed this round.
+
+Both verified via real engine tests (`UnitTypeDatabase.test.ts`'s new
+`[base_unit] against real Liberty content` suite;
+`pumpAndActions.test.ts`'s new store/kill/unstore round-trip test) and
+a live browser session confirming Baldras selects with correct HP/
+moves/attacks and a real sprite. All engine/renderer/ui suites green
+(326/170/57), typecheck clean.

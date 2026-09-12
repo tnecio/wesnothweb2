@@ -19,7 +19,11 @@
  * `root` incl. square/cube, `ipart`/`fpart`, `min`/`max`, `string_length`,
  * `reverse`, `join`), `set_variables` (`replace`/`append`/`merge`≈append/
  * `insert` modes over `[value]` children), `clear_variable`, `store_unit`,
- * `kill`, `modify_unit` (simplified, see below), `unit` (spawn), `gold`,
+ * `unstore_unit` (real, reported bug: a common "hide units off-board during
+ * a cutscene" idiom -- `[store_unit] kill=yes` then a later `[unstore_unit]`
+ * -- silently never restored the unit at all, permanently removing it; see
+ * that handler's own doc comment), `kill`, `modify_unit` (simplified, see
+ * below), `unit` (spawn), `gold`,
  * `store_gold`, `allow_recruit`, `capture_village` (side= only, see its
  * own doc comment), `recall` (see its own doc comment for what's
  * deliberately not re-implemented from upstream's C++ `[recall]` handler),
@@ -77,7 +81,7 @@ import type { ActionHandler, EventContext } from './context.js';
 import { ActionRegistry } from './context.js';
 import { conditionalPassed } from './conditionalWml.js';
 import { findUnits, locationMatchesFilter, unitMatchesFilter } from './filter.js';
-import { newVarNode, varNodeFromConfig, VariableStore, type VarNode } from './variables.js';
+import { newVarNode, varNodeFromConfig, varNodeToConfig, VariableStore, type VarNode } from './variables.js';
 import { parseScenarioObjectives } from './objectives.js';
 
 // --- shared helpers ---
@@ -394,6 +398,74 @@ function actionStoreUnit(cfg: WmlConfig, ctx: EventContext): void {
       if (u.location.valid()) ctx.board.removeUnitAt(u.location);
     }
   }
+}
+
+// --- [unstore_unit] ---
+
+/**
+ * Real, reported bug: Liberty scenario 1's `[store_unit] variable=
+ * goodguys_store kill=yes [filter] side=1 [/filter] [/store_unit]` (hiding
+ * Baldras off-board during the opening goblin conversation, a common real
+ * WML idiom for a cutscene) has a matching `[unstore_unit] variable=
+ * goodguys_store [/unstore_unit]` a few lines later meant to put him right
+ * back -- but this tag was never registered as an action handler at all, so
+ * `runActionSequence` silently skipped it (a `[tag] not supported` warn
+ * log). Baldras stayed permanently removed: the scenario's own leader unit
+ * was simply absent from the board for the entire rest of the playthrough,
+ * making it unplayable (no unit to select/move/recruit with). Discovered
+ * investigating a "white circle units that can't move" bug report -- the
+ * OTHER half of that report was `[base_unit]` (see UnitTypeDatabase.ts's
+ * fix, same session), but this is a distinct, more severe issue underneath.
+ *
+ * Ports `data/lua/wml-tags.lua`'s `wml_actions.unstore_unit`: reads the
+ * stored unit config back out of `variable=` (the container-node rules --
+ * implicit index 0 for a plain array-variable name, explicit `foo[n]`
+ * otherwise -- are the same ones `[store_unit]`'s own `variable=` uses, see
+ * `VariableStore.getContainerNode`), rebuilds a real `Unit` from it via the
+ * exact same `Unit.fromConfig` path `[unit]` uses (their config shapes are
+ * exact duals: `unitToVarNode` writes precisely the attributes
+ * `Unit.fromConfig` reads), and places it at `x=`/`y=` if given, else the
+ * unit's own stored position (matching upstream's `x = cfg.x or unit.x`).
+ *
+ * NOT ported: `advance=`/`animate=`/`text=`/`color=` (cosmetic-only, no
+ * headless effect -- consistent with this file's other no-op cosmetic
+ * tags), `find_vacant=`/`check_passability=` (no real content exercised so
+ * far needs a vacant-hex fallback here), and restoring to a recall list
+ * (`x,y=recall,recall` -- Liberty's own usage always restores to the map).
+ * Also inherits `[store_unit]`'s own gap: `unitToVarNode` doesn't serialize
+ * `[modifications]`, so a unit's `[object]` effects (Baldras's own
+ * `mace-spiked` weapon override, granted in his `[side]` block) are lost
+ * across a store/kill/unstore round-trip -- a real but lower-severity gap
+ * than the unit being missing entirely, not fixed here.
+ */
+function actionUnstoreUnit(cfg: WmlConfig, ctx: EventContext): void {
+  const variable = cfg.getString('variable', '');
+  if (!variable) {
+    ctx.log('error', '[unstore_unit] missing required variable= attribute');
+    return;
+  }
+  const node = ctx.variables.getContainerNode(variable, false);
+  if (!node || node.attrs.size === 0) {
+    ctx.log('error', `[unstore_unit]: variable '${variable}' doesn't contain unit data`);
+    return;
+  }
+  const unitCfg = varNodeToConfig(node);
+  let unit: Unit;
+  try {
+    unit = Unit.fromConfig(unitCfg, ctx.resolveType);
+  } catch (e) {
+    ctx.log('error', `Error occurred inside [unstore_unit]: ${e instanceof Error ? e.message : String(e)}`);
+    return;
+  }
+  if (cfg.hasAttribute('x') && cfg.hasAttribute('y')) {
+    unit.location = Location.fromConfig(cfg);
+  }
+  if (!unit.location.valid()) {
+    ctx.log('error', "[unstore_unit]: stored unit has no valid location (recall-list restore isn't supported)");
+    return;
+  }
+  ctx.board.addUnit(unit);
+  ctx.board.captureVillage(unit.location, unit.side);
 }
 
 // --- [kill] ---
@@ -780,6 +852,7 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('set_variables', actionSetVariables);
   registry.register('clear_variable', actionClearVariable);
   registry.register('store_unit', actionStoreUnit);
+  registry.register('unstore_unit', actionUnstoreUnit);
   registry.register('kill', actionKill);
   registry.register('modify_unit', actionModifyUnit);
   registry.register('unit', actionUnit);
