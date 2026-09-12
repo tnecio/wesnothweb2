@@ -2,16 +2,33 @@
  * TS port of upstream Wesnoth's `team`/`team::team_info` (src/team.hpp/.cpp).
  *
  * Scope: the gameplay-relevant fields of a `[side]` -- gold/income, the
- * recruit list, controller, team/display name, and defeat state. Explicitly
- * NOT ported here: shroud/fog-of-war tile bitmaps (`shroud_map`,
- * `fog_clearer_`) and the observer/proxy-controller/countdown-clock
- * bookkeeping (`side_proxy_controller`, `countdown_time`, `disallow_observers`,
- * ...), which are UI/session concerns rather than core simulation state --
- * revisit if/when Phase 2's fog-of-war or Phase 8's multiplayer session
- * handling needs them.
+ * recruit list, controller, team/display name, defeat state, and per-side
+ * shroud/fog (`shroud_`, `fog_`, `fog_clearer_`, `share_vision`). Not
+ * ported: observer/proxy-controller/countdown-clock bookkeeping
+ * (`side_proxy_controller`, `countdown_time`, `disallow_observers`, ...).
+ *
+ * Upstream's `team::shrouded`/`fogged` reach the team list through
+ * `resources::gameboard`; here the caller passes the ally teams instead
+ * (`GameBoard.isShrouded`/`isFogged` do that).
  */
 
 import type { WmlConfig } from '../wml/config.js';
+import type { Location } from './Location.js';
+import { ShroudMap } from './ShroudMap.js';
+
+/** Mirrors `team_shared_vision::type`. */
+export type SharedVision = 'all' | 'shroud' | 'none';
+
+function parseSharedVision(cfg: WmlConfig): SharedVision {
+  // `team_info::handle_legacy_share_vision`: the old keys override share_vision= when present.
+  if (cfg.hasAttribute('share_view') || cfg.hasAttribute('share_maps')) {
+    if (cfg.getBoolean('share_view', false)) return 'all';
+    if (cfg.getBoolean('share_maps', true)) return 'shroud';
+    return 'none';
+  }
+  const v = cfg.getString('share_vision', 'all');
+  return v === 'shroud' || v === 'none' ? v : 'all';
+}
 
 export type SideController = 'human' | 'ai' | 'network' | 'network_ai' | 'reserved';
 
@@ -59,6 +76,15 @@ export class Team {
   carryoverBonus: number;
   carryoverGold: number;
   variables: WmlConfig | undefined;
+  /** Mirrors `shroud_`: terrain hidden until explored. */
+  shroud: ShroudMap;
+  /** Mirrors `fog_`: units hidden on hexes not currently in vision. */
+  fog: ShroudMap;
+  /** Mirrors `fog_clearer_`: hexes kept clear of fog by `[lift_fog] multiturn=yes`, keyed by `Location.key()`. */
+  fogClearer: Set<string>;
+  shareVision: SharedVision;
+  /** Mirrors `auto_shroud_updates_` (false = the player's "delay shroud updates" mode). */
+  autoShroudUpdates: boolean;
 
   constructor(side: number, options: Partial<Team> = {}) {
     this.side = side;
@@ -88,6 +114,11 @@ export class Team {
     this.carryoverBonus = options.carryoverBonus ?? 0;
     this.carryoverGold = options.carryoverGold ?? 0;
     this.variables = options.variables;
+    this.shroud = options.shroud ?? new ShroudMap(false);
+    this.fog = options.fog ?? new ShroudMap(false);
+    this.fogClearer = options.fogClearer ?? new Set();
+    this.shareVision = options.shareVision ?? 'all';
+    this.autoShroudUpdates = options.autoShroudUpdates ?? true;
   }
 
   /**
@@ -107,7 +138,7 @@ export class Team {
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
     const gold = cfg.getNumber('gold', 100);
-    return new Team(side, {
+    const team = new Team(side, {
       gold,
       startGold: gold,
       income: cfg.getNumber('income', 0),
@@ -133,7 +164,75 @@ export class Team {
       carryoverBonus: cfg.getNumber('carryover_bonus', 0),
       carryoverGold: cfg.getNumber('carryover_gold', 0),
       variables: cfg.child('variables'),
+      shareVision: parseSharedVision(cfg),
+      autoShroudUpdates: cfg.getBoolean('auto_shroud', true),
     });
+    // `team::build`
+    team.fog.enabled = cfg.getBoolean('fog', false);
+    team.fog.read(cfg.getString('fog_data', ''));
+    team.shroud.enabled = cfg.getBoolean('shroud', false);
+    team.shroud.read(cfg.getString('shroud_data', ''));
+    return team;
+  }
+
+  usesShroud(): boolean {
+    return this.shroud.enabled;
+  }
+  usesFog(): boolean {
+    return this.fog.enabled;
+  }
+  fogOrShroud(): boolean {
+    return this.usesShroud() || this.usesFog();
+  }
+  shareMaps(): boolean {
+    return this.shareVision !== 'none';
+  }
+  shareView(): boolean {
+    return this.shareVision === 'all';
+  }
+
+  /** Mirrors `team::ally_shroud`: shroud maps of non-enemy teams sharing maps with this one (and this team's own). */
+  allyShroudMaps(teams: readonly Team[]): ShroudMap[] {
+    return teams.filter((t) => !this.isEnemy(t) && (t === this || t.shareMaps())).map((t) => t.shroud);
+  }
+
+  /** Mirrors `team::ally_fog`. */
+  allyFogMaps(teams: readonly Team[]): ShroudMap[] {
+    return teams.filter((t) => !this.isEnemy(t) && (t === this || t.shareView())).map((t) => t.fog);
+  }
+
+  /** Mirrors `team::shrouded`. Pass the full team list to honour shared maps; omit it to use only this team's own map. */
+  shrouded(loc: Location, teams?: readonly Team[]): boolean {
+    if (!teams) return this.shroud.valueAt(loc);
+    return this.shroud.sharedValueAt(this.allyShroudMaps(teams), loc);
+  }
+
+  /** Mirrors `team::fogged` (shrouded implies fogged; `fog_clearer_` overrides fog). */
+  fogged(loc: Location, teams?: readonly Team[]): boolean {
+    if (this.shrouded(loc, teams)) return true;
+    if (this.fogClearer.has(loc.key())) return false;
+    if (!teams) return this.fog.valueAt(loc);
+    return this.fog.sharedValueAt(this.allyFogMaps(teams), loc);
+  }
+
+  /** Mirrors `team::clear_shroud`. */
+  clearShroud(loc: Location): boolean {
+    return this.shroud.clearLoc(loc);
+  }
+  /** Mirrors `team::clear_fog`. */
+  clearFog(loc: Location): boolean {
+    return this.fog.clearLoc(loc);
+  }
+  placeShroud(loc: Location): void {
+    this.shroud.placeLoc(loc);
+  }
+  /** Mirrors `team::reshroud`. */
+  reshroud(): void {
+    this.shroud.reset();
+  }
+  /** Mirrors `team::refog`. */
+  refog(): void {
+    this.fog.reset();
   }
 
   /** Mirrors `team::is_enemy`: sides are hostile unless the same team_name (alliance) groups them. */

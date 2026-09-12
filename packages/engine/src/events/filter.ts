@@ -68,6 +68,7 @@ export function unitFormulaContext(unit: Unit): MapFormulaCallable {
   self.add('max_moves', Variant.int(unit.maxMoves));
   self.add('experience', Variant.int(unit.experience));
   self.add('level', Variant.int(unit.level));
+  self.add('resting', Variant.int(unit.resting ? 1 : 0));
   const top = new MapFormulaCallable();
   top.add('self', Variant.callable(self));
   return top;

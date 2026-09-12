@@ -18,10 +18,12 @@ export * from './model/UnitType.js';
 export * from './model/UnitTypeDatabase.js';
 export * from './model/Unit.js';
 export * from './model/Team.js';
+export * from './model/ShroudMap.js';
 export * from './model/GameBoard.js';
 export * from './model/Schedule.js';
 
 export * from './pathfind/pathfind.js';
+export * from './pathfind/visibility.js';
 export * from './actions/index.js';
 export * from './ai/simpleAi.js';
 export * from './rng/index.js';

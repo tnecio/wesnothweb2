@@ -196,6 +196,8 @@ export class UnitType {
     public readonly numTraits: number = 2,
     /** Raw `[trait]` candidate configs (this type's own inline ones, then `GLOBAL_TRAITS`) -- see module doc comment. */
     public readonly possibleTraits: readonly WmlConfig[] = GLOBAL_TRAITS,
+    /** Whether `vision=` was set; upstream's `vision_ < 0` means "use max movement" (see `actions/vision.ts`'s `unitVisionRange`). */
+    public readonly hasExplicitVision: boolean = false,
   ) {}
 
   /** Mirrors `unit_type::experience_needed`: the modifier is the game-wide `[game_config] experience_modifier` (default 100 = unchanged). */
@@ -266,6 +268,7 @@ export class UnitType {
       abilities,
       numTraits,
       possibleTraits,
+      cfg.hasAttribute('vision'),
     );
   }
 }

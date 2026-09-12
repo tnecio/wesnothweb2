@@ -5,6 +5,7 @@ export * from './combatStats.js';
 export * from './combat.js';
 export * from './move.js';
 export * from './unitCanAct.js';
+export * from './vision.js';
 export * from './recruit.js';
 export * from './heal.js';
 export * from './advancement.js';

@@ -26,6 +26,13 @@ export class GameBoard {
   /** Which side (if any) currently owns each village, keyed by `Location.key()`. Mirrors `team::villages_`/`village_owner`. */
   private readonly villageOwners = new Map<string, number>();
 
+  /**
+   * Effective `lawful_bonus` at a hex (upstream's `tod_manager::get_illuminated_time_of_day`),
+   * installed by whoever owns the schedule; `null` means neutral everywhere.
+   * Lets board-level rules like `[filter_location] time_of_day=` avoid depending on the session.
+   */
+  lawfulBonusAt: ((loc: Location) => number) | null = null;
+
   constructor(map: GameMap) {
     this.map = map;
   }
@@ -42,6 +49,18 @@ export class GameBoard {
 
   teams(): Team[] {
     return [...this.teamsBySide.values()].sort((a, b) => a.side - b.side);
+  }
+
+  /** `get_team(side).shrouded(loc)` with shared maps honoured. */
+  isShrouded(side: number, loc: Location): boolean {
+    const team = this.teamsBySide.get(side);
+    return !!team && team.shrouded(loc, this.teams());
+  }
+
+  /** `get_team(side).fogged(loc)` with shared vision honoured. */
+  isFogged(side: number, loc: Location): boolean {
+    const team = this.teamsBySide.get(side);
+    return !!team && team.fogged(loc, this.teams());
   }
 
   /** Mirrors `game_board::team_is_defeated`: no leader unit left, or explicitly marked lost. */

@@ -10,20 +10,9 @@
  *
  *  - **Teleportation** (`teleport.cpp`/`teleport_map`): no ability-evaluation
  *    model exists yet (see `astar.ts`'s module doc comment) to feed one.
- *  - **Fog/shroud** (`team::shrouded`/`uses_shroud`): `Team.ts`'s own module
- *    doc comment explicitly excludes the shroud bitmap from this port ("UI/
- *    session concerns", revisit for Phase 2's fog-of-war). `find_routes`'s
- *    shroud check and `shortest_path_calculator`'s shrouded-is-impassable
- *    rule are both skipped as a result -- every hex is currently treated as
- *    visible ("see all") from a shroud standpoint, regardless of the
- *    `seeAll` flag passed in (which still controls plain unit *visibility*,
- *    i.e. `hidden=yes`-style invisibility, via `Unit.isVisibleToTeam`).
- *  - **Vision/jamming cost maps** (`vision_path`, `jamming_path`, the
- *    `jamming_map` parameter of `find_routes`): these build on the same
- *    `find_routes` core ported here (a caller could add a `jammingCost`
- *    hook the same way upstream threads `jamming_map` through), but nothing
- *    in this project's current scope (no vision/fog-of-war system yet)
- *    exercises them, so they're left for whoever builds that.
+ *  - Vision/jamming paths themselves live in `actions/vision.ts`; this
+ *    module only provides `find_routes`' `jamming_map` hook they use. Unit
+ *    visibility (fog, `hides`) comes from `visibility.ts`.
  *  - **`emits_zoc()`'s per-unit override**: upstream's `unit::emits_zoc()`
  *    is `emit_zoc_ && !incapacitated()`, where `emit_zoc_` is a mutable
  *    per-unit flag that *usually* mirrors `unit_type::has_zoc()` but can be
@@ -65,34 +54,12 @@ import type { Team } from '../model/Team.js';
 import type { Unit } from '../model/Unit.js';
 import { aStarSearch, NO_PATH_VALUE, type CostCalculator, type PlainRoute } from './astar.js';
 import { IndexedHeap } from './heap.js';
+import { getVisibleUnit } from './visibility.js';
 
 export { NO_PATH_VALUE } from './astar.js';
 export type { PlainRoute } from './astar.js';
 
 // --- unit/team helpers shared by the cost calculator and find_routes ---
-
-/**
- * Mirrors `game_board::get_visible_unit` in simplified form (no fog/shroud,
- * see module doc comment): the unit at `loc`, or `undefined` if there is
- * none or it's invisible to `viewingTeam` (per `Unit.isVisibleToTeam`).
- * `viewingTeam === undefined` (or `seeAll`) means "see all".
- */
-function getVisibleUnit(
-  board: GameBoard,
-  loc: Location,
-  viewingTeam: Team | undefined,
-  seeAll: boolean,
-): Unit | undefined {
-  const u = board.unitAt(loc);
-  if (!u) return undefined;
-  if (seeAll || !viewingTeam) return u;
-  const isAlly = (a: number, b: number): boolean => {
-    const ta = board.getTeam(a);
-    const tb = board.getTeam(b);
-    return !!ta && !!tb && !ta.isEnemy(tb);
-  };
-  return u.isVisibleToTeam(viewingTeam.side, isAlly, seeAll) ? u : undefined;
-}
 
 /** Mirrors `unit::emits_zoc()` -- see module doc comment for the per-unit-override gap. */
 export function emitsZoc(unit: Unit): boolean {
@@ -307,6 +274,8 @@ export interface FindRoutesOptions {
   zocUnit?: Unit;
   /** Only this team's visible units are considered; omit for "see all". */
   viewingTeam?: Team;
+  /** Mirrors `find_routes`' `jamming_map`: extra cost per hex (keyed by `Location.key()`), used by vision paths. */
+  jammingMap?: ReadonlyMap<string, number>;
 }
 
 export interface FindRoutesResult {
@@ -377,7 +346,9 @@ export function findRoutes(options: FindRoutesOptions & { board: GameBoard; orig
       if (nodes.has(nk)) continue;
 
       const terrain = map.getTerrain(nextHex);
-      const cost = costFn(terrain, slowed);
+      let cost = costFn(terrain, slowed);
+      const jam = options.jammingMap?.get(nk);
+      if (jam !== undefined) cost += jam;
 
       let nextMovesLeft = curNode.movesLeft - cost;
       let nextTurnsLeft = curNode.turnsLeft;
@@ -410,6 +381,11 @@ export function findRoutes(options: FindRoutesOptions & { board: GameBoard; orig
         ) {
           nextMovesLeft = 0;
         }
+      }
+
+      // bug #2199: in "Show Enemy Moves", don't pathfind enemy units through the player's shroud.
+      if (!seeAll && viewingTeam && currentTeam && viewingTeam !== currentTeam && viewingTeam.shrouded(nextHex, board.teams())) {
+        continue;
       }
 
       nodes.set(nk, { movesLeft: nextMovesLeft, turnsLeft: nextTurnsLeft, prev: curHex });
