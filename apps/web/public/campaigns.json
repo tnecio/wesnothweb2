@@ -33,8 +33,14 @@
     {
       "id": "synthetic_abilities",
       "name": "[Debug] Abilities & Specials",
-      "description": "13 real mainline units, each demonstrating one weapon special or ability (poison, drains, berserk, firststrike, marksman, magical, backstab, charge, swarm, plague, heals, regenerate, skirmisher) -- for fast specials/abilities debugging.",
+      "description": "15 real mainline units, each demonstrating one weapon special or ability (poison, drains, berserk, firststrike, marksman, magical, backstab, charge, swarm, plague, heals, regenerate, skirmisher, leadership, illuminates) -- for fast specials/abilities debugging.",
       "firstScenario": "synth_abilities_01"
+    },
+    {
+      "id": "synthetic_advancement",
+      "name": "[Debug] Unit Advancement",
+      "description": "Two real units one combat-XP gain from leveling up -- one with a single real advances_to= option (advances immediately), one with three (opens the real advancement-choice dialog) -- for fast advancement debugging.",
+      "firstScenario": "synth_advancement_01"
     }
   ]
 }

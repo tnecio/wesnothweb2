@@ -565,6 +565,15 @@ export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBo
     });
     unit.hitpoints = u.hitpoints;
     unit.maxHitpoints = u.maxHitpoints;
+    // Real, reported bug: a scenario-authored [unit] experience= override
+    // (e.g. a debug scenario setting a unit up one hit from advancing) was
+    // silently dropped here -- same shape as the hitpoints override just
+    // above, just never written. Optional since older/static snapshots
+    // built before build-scenario-snapshot.mjs started emitting these
+    // don't have them (real Unit.create defaults already apply in that
+    // case, same as before this fix).
+    if (u.experience !== undefined) unit.experience = u.experience;
+    if (u.maxExperience !== undefined) unit.maxExperience = u.maxExperience;
     board.addUnit(unit);
     // Mirrors `GameBoard.fromConfig`'s own initial-placement capture (real
     // `unit_creator`'s default `allow_get_village=true`) -- this snapshot's

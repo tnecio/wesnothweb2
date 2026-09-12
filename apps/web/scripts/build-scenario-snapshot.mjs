@@ -439,6 +439,13 @@ const units = board.allUnits().map((u) => ({
   canRecruit: u.canRecruit,
   hitpoints: u.hitpoints,
   maxHitpoints: u.maxHitpoints,
+  // Real, reported bug: a scenario-authored [unit] experience= override
+  // (e.g. a debug scenario setting a unit up one hit from advancing) was
+  // silently dropped by this snapshot -- gameBoardFromSnapshot only ever
+  // applied hitpoints/maxHitpoints on top of the resolved type's real
+  // defaults, never experience/maxExperience.
+  experience: u.experience,
+  maxExperience: u.maxExperience,
 }));
 
 const teams = board.teams().map((t) => ({

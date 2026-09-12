@@ -142,6 +142,24 @@ describe('gameBoardFromSnapshot', () => {
     expect(result.stoppedEarly).toBe(false);
   });
 
+  it('real, reported bug: a scenario-authored [unit] experience= override was silently dropped -- now applied the same way hitpoints already was', () => {
+    const snapshot = tinySnapshot();
+    snapshot.units[0]!.experience = 34;
+    snapshot.units[0]!.maxExperience = 35;
+    const { unitsByKey } = gameBoardFromSnapshot(snapshot);
+
+    const attacker = unitsByKey.get(unitKeyFor({ id: 'attacker', x: 0, y: 0 }))!;
+    expect(attacker.experience).toBe(34);
+    expect(attacker.maxExperience).toBe(35);
+  });
+
+  it('omitting experience/maxExperience (older/static snapshots) falls back to the real type default, same as before this fix', () => {
+    const { unitsByKey } = gameBoardFromSnapshot(tinySnapshot());
+    const attacker = unitsByKey.get(unitKeyFor({ id: 'attacker', x: 0, y: 0 }))!;
+    expect(attacker.experience).toBe(0);
+    expect(attacker.maxExperience).toBeGreaterThan(0);
+  });
+
   it('rebuilds real per-type combat stats so executeAttack deals real (non-zero) damage', () => {
     const { board, unitsByKey } = gameBoardFromSnapshot(tinySnapshot());
     const attacker = unitsByKey.get(unitKeyFor({ id: 'attacker', x: 0, y: 0 }))!;
