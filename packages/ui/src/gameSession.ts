@@ -55,7 +55,14 @@ import {
   MtRng,
   gameBoardFromSnapshot,
   createTypeResolver,
-  runScenarioStartupEvents,
+  EventManager,
+  EventPump,
+  VariableStore,
+  WmlConfig,
+  clearShroud,
+  recalculateFog,
+  getVisibleUnit,
+  type RaiseEvent,
   connectedCastleTiles,
   recruitUnit,
   recallUnit,
@@ -389,7 +396,7 @@ export interface SaveGameData {
   activeSide: number;
   scenarioResult: 'victory' | 'defeat' | null;
   startupEventsRun: boolean;
-  teams: readonly { side: number; gold: number }[];
+  teams: readonly { side: number; gold: number; shroudData?: string; fogData?: string }[];
   units: readonly {
     id: string | null;
     name: string | null;
@@ -634,6 +641,15 @@ export class GameSession {
     return key;
   }
   private startupEventsRun = false;
+  /**
+   * One event pump for the whole scenario, so in-play events (moveto,
+   * sighted, die, turn N, ...) fire during play the way upstream's do, and
+   * `first_time_only` handlers stay spent.
+   */
+  private readonly eventPump: EventPump;
+  /** Game turn whose `turn N`/`new turn` events have fired (`tod_manager::turn_event_fired`). */
+  private turnEventsFiredFor = 0;
+  private readonly raiseEvent: RaiseEvent = (name, loc1, loc2) => this.eventPump.raise(name, loc1, loc2);
   /** The real `[time]` schedule this scenario's own (already macro-expanded) `scenarioConfigJson` declares -- see `Schedule`'s own doc comment. Built once at construction since the schedule itself never changes mid-scenario (no `[replace_schedule]` support yet). */
   private readonly schedule: Schedule;
 
@@ -646,6 +662,10 @@ export class GameSession {
     this.rng = new RngDeterministic(new MtRng(options.seed ?? 0xc0ffee));
     this.goldCarryover = options.goldCarryover ?? null;
     this.schedule = scheduleFromScenarioConfigJson(snapshot.scenarioConfigJson);
+    const manager = new EventManager();
+    manager.loadScenarioEvents(WmlConfig.fromJSON(snapshot.scenarioConfigJson));
+    this.eventPump = new EventPump(manager, { board: this.board, variables: new VariableStore(), resolveType: this.resolveType });
+    this.board.lawfulBonusAt = () => this.currentTimeOfDay.lawfulBonus;
   }
 
   /**
@@ -683,15 +703,76 @@ export class GameSession {
   runStartupEvents(): RecordedMessage[] {
     if (this.startupEventsRun) return [];
     this.startupEventsRun = true;
-    const { messages, objectivesBySide } = runScenarioStartupEvents(this.board, this.snapshot.scenarioConfigJson, ['prestart', 'start'], {
-      resolveType: this.resolveType,
-    });
-    const objectives = objectivesBySide.get(this.playerSide);
+    this.fire('prestart');
+    // play_controller::init: every side's shroud is cleared from its starting units, without sighted events.
+    for (const team of this.board.teams()) clearShroud(this.board, team.side);
+    this.fire('start');
+    this.fireSideTurnEvents(this.activeSide);
+    this.fireTurnRefreshEvents(this.activeSide);
+    this.checkForGameEnd();
+    const messages = this.takeEventMessages();
+    const objectives = this.eventPump.ctx.objectivesBySide.get(this.playerSide);
     // Real `team.objectives_changed = not silent` -- a silent firing updates
     // the side's objectives without popping the dialog (matches upstream's
     // own gate on whether `show_objectives` should auto-trigger).
     if (objectives && !objectives.silent) this.scenarioObjectives = objectives;
     return messages;
+  }
+
+  /** `[message]`s recorded by events since the last call (startup or in-play), oldest first. */
+  takeEventMessages(): RecordedMessage[] {
+    return this.eventPump.ctx.messages.splice(0);
+  }
+
+  private fire(name: string, loc1?: Location, loc2?: Location): void {
+    if (this.scenarioResult) return;
+    this.eventPump.fire(name, loc1, loc2);
+  }
+
+  /** Pumps anything raised by the last action (sighted, moveto, ...), then applies `[endlevel]`/leader loss. */
+  private pumpEvents(): void {
+    if (!this.scenarioResult) this.eventPump.pump();
+    this.checkForGameEnd();
+  }
+
+  /** `play_controller::do_init_side`'s events that come before income and healing. */
+  private fireSideTurnEvents(side: number): void {
+    const turn = this.turnNumber;
+    this.eventPump.ctx.variables.set('side_number', side);
+    this.eventPump.ctx.variables.set('turn_number', turn);
+    if (this.turnEventsFiredFor !== turn) {
+      this.turnEventsFiredFor = turn;
+      this.fire(`turn ${turn}`);
+      this.fire('new turn');
+    }
+    this.fire('side turn');
+    this.fire(`side ${side} turn`);
+    this.fire(`side turn ${turn}`);
+    this.fire(`side ${side} turn ${turn}`);
+  }
+
+  /** `do_init_side`'s `turn refresh` events, then `clear_shroud(side, true)` so vision is accurate. */
+  private fireTurnRefreshEvents(side: number): void {
+    const turn = this.turnNumber;
+    this.fire('turn refresh');
+    this.fire(`side ${side} turn refresh`);
+    this.fire(`turn ${turn} refresh`);
+    this.fire(`side ${side} turn ${turn} refresh`);
+    clearShroud(this.board, side, { resetFog: true, raise: this.raiseEvent });
+    this.pumpEvents();
+  }
+
+  /** `play_controller::finish_side_turn_events`. */
+  private fireSideTurnEndEvents(side: number): void {
+    const turn = this.turnNumber;
+    clearShroud(this.board, side, { raise: this.raiseEvent });
+    this.fire('side turn end');
+    this.fire(`side ${side} turn end`);
+    this.fire(`side turn ${turn} end`);
+    this.fire(`side ${side} turn ${turn} end`);
+    // Refog only after all of the side's own events are done.
+    recalculateFog(this.board, side, this.raiseEvent);
+    this.pumpEvents();
   }
 
   /**
@@ -783,7 +864,7 @@ export class GameSession {
     if (!team) return [];
     const targets: Unit[] = [];
     for (const adj of getAdjacentTiles(unit.location)) {
-      const other = this.board.unitAt(adj);
+      const other = getVisibleUnit(this.board, adj, team, false);
       if (!other) continue;
       const otherTeam = this.board.getTeam(other.side);
       if (otherTeam && team.isEnemy(otherTeam)) targets.push(other);
@@ -799,7 +880,7 @@ export class GameSession {
     this.inspectedUnit = null;
     this.selectedUnit = unit;
     if (unit.movesLeft > 0) {
-      const { destinations } = reachableHexes(this.board, unit, { seeAll: true });
+      const { destinations } = reachableHexes(this.board, unit, { viewingTeam: this.board.getTeam(unit.side) });
       const ownLoc = unit.location;
       this.reachable = destinations
         .values()
@@ -929,10 +1010,12 @@ export class GameSession {
       return `Not enough gold to recruit ${name} (needs ${cost}, have ${team.gold}).`;
     }
     const type = this.resolveType(typeId);
-    const result = recruitUnit(this.board, team, type, loc, leader.location, this.rng);
+    const result = recruitUnit(this.board, team, type, loc, leader.location, this.rng, this.raiseEvent);
     this.lastRecruitAnimation = { unit: result.unit, leader };
     const message = `Recruited ${name} for ${result.cost} gold.`;
     this.log.unshift(message);
+    this.eventPump.raise('recruit', loc, leader.location);
+    this.pumpEvents();
     // Re-select the leader so recruitTiles/attackCandidates refresh (the
     // just-filled tile is no longer vacant) -- the leader's own moves/
     // attacks are untouched by recruiting.
@@ -972,10 +1055,12 @@ export class GameSession {
     // `underlyingId` lookup, which is unsafe here (see `RecallOption.index`'s
     // own doc comment on why: most recall-list units share `underlyingId=0`).
     list.splice(index, 1);
-    const result = recallUnit(this.board, team, unit, loc, leader.location);
+    const result = recallUnit(this.board, team, unit, loc, leader.location, undefined, this.raiseEvent);
     this.lastRecruitAnimation = { unit: result.unit, leader };
     const message = `Recalled ${name} for ${result.cost} gold.`;
     this.log.unshift(message);
+    this.eventPump.raise('recall', loc, leader.location);
+    this.pumpEvents();
     this.selectUnit(leader);
     return message;
   }
@@ -1036,7 +1121,7 @@ export class GameSession {
       if (action.message) this.log.unshift(action.message);
       if (action.animation) outAnimations.push(action.animation);
     }
-    if (actions.some((a) => a.kind === 'attack')) this.checkForGameEnd();
+    this.pumpEvents();
   }
 
   /**
@@ -1051,6 +1136,8 @@ export class GameSession {
   private advanceOneTurn(): string | null {
     if (this.scenarioResult) return null;
     this.clearSelection();
+    this.fireSideTurnEndEvents(this.activeSide);
+    if (this.scenarioResult) return null;
     const sides = this.board
       .teams()
       .map((t) => t.side)
@@ -1059,11 +1146,22 @@ export class GameSession {
     const wrapped = idx === -1 || idx === sides.length - 1;
     const nextSide = wrapped ? sides[0] : sides[idx + 1];
     if (nextSide === undefined) return null;
-    if (wrapped) this.turnNumber += 1;
+    if (wrapped) {
+      this.fire('turn end');
+      this.fire(`turn ${this.turnNumber} end`);
+      this.checkForGameEnd();
+      if (this.scenarioResult) return null;
+      this.turnNumber += 1;
+    }
     this.activeSide = nextSide;
+    this.fireSideTurnEvents(nextSide);
+    this.checkForGameEnd();
+    if (this.scenarioResult) return null;
     for (const unit of this.board.unitsForSide(nextSide)) {
       unit.movesLeft = unit.maxMoves;
       unit.attacksLeft = unit.maxAttacksPerTurn;
+      // unit::new_turn: ambushers revealed last turn can hide again.
+      unit.setStatus('uncovered', false);
     }
     // Income/upkeep: mirrors `play_controller::play_side`'s
     // `if (turn() > 1) { current_team().new_turn(); ... }` -- the very
@@ -1110,6 +1208,8 @@ export class GameSession {
       }
       if (outcome.curePoison) this.log.unshift(`${name}'s poison is cured.`);
     }
+    this.fireTurnRefreshEvents(nextSide);
+    if (this.scenarioResult) return null;
     const teamName = this.board.getTeam(nextSide)?.teamName ?? String(nextSide);
     const message = `Turn ${this.turnNumber} -- side ${nextSide} (${teamName})'s turn.`;
     this.log.unshift(message);
@@ -1244,12 +1344,31 @@ export class GameSession {
   private moveSelectedTo(dest: Location): string | null {
     const unit = this.selectedUnit;
     if (!unit) return null;
-    const route = findPath(this.board, unit, dest, { seeAll: true });
+    const start = unit.location;
+    const route = findPath(this.board, unit, dest);
     if (route.steps.length === 0) return null;
-    const result = executeMove(this.board, unit, route.steps, { seeAll: true });
+    const ownersBefore = route.steps.map((step) => this.board.villageOwner(step));
+    const result = executeMove(this.board, unit, route.steps, { raise: this.raiseEvent });
     if (result.path.length > 1) this.lastMoveAnimation = { unit, path: result.path };
     const name = this.unitDisplayName(unit);
-    let message = result.ambushed ? `${name} was ambushed!` : `${name} moved.`;
+    const message = result.ambushed
+      ? `${name} was ambushed!`
+      : result.sightedStop
+        ? `${name} stopped: units sighted.`
+        : `${name} moved.`;
+    if (result.path.length > 1) {
+      // unit_mover::post_move: capture (via get_village), then moveto.
+      if (result.enteredVillage && ownersBefore[result.path.length - 1] !== unit.side) {
+        this.eventPump.raise('capture', unit.location, start);
+      }
+      this.eventPump.raise('moveto', unit.location, start);
+    }
+    this.pumpEvents();
+    if (this.scenarioResult || this.board.unitAt(unit.location) !== unit) {
+      this.clearSelection();
+      this.log.unshift(message);
+      return message;
+    }
     // Re-select from the unit's new position so move/attack options refresh
     // (mirrors real Wesnoth: a unit stays selected after moving so it can
     // still attack an adjacent enemy this turn).
@@ -1372,19 +1491,36 @@ export class GameSession {
     const pending = this.pendingAttack;
     if (!pending) return null;
 
+    const attackerLoc = pending.attacker.location;
+    const defenderLoc = pending.defender.location;
+    this.fire('attack', attackerLoc, defenderLoc);
+    this.checkForGameEnd();
+    if (this.scenarioResult || this.board.unitAt(attackerLoc) !== pending.attacker || this.board.unitAt(defenderLoc) !== pending.defender) {
+      // The attack event ended the scenario or moved/removed a combatant: upstream aborts the attack.
+      this.clearSelection();
+      return null;
+    }
+
     const result = executeAttack(
       this.board,
       this.rng,
-      pending.attacker.location,
+      attackerLoc,
       pending.attackerWeaponIndex,
-      pending.defender.location,
+      defenderLoc,
       pending.defenderWeaponIndex,
       {
         lawfulBonus: this.currentTimeOfDay.lawfulBonus,
         maxLiminalBonus: this.schedule.maxLiminalBonus,
         resolveType: this.resolveType,
+        raise: this.raiseEvent,
+        onUnitDying: (dead, killer) => {
+          this.eventPump.fire('last breath', dead.location, killer.location);
+          this.eventPump.fire('die', dead.location, killer.location);
+        },
       },
     );
+    this.eventPump.raise('attack end', attackerLoc, defenderLoc);
+    this.eventPump.pump();
 
     this.lastAttackAnimation = {
       attacker: pending.attacker,
@@ -1508,7 +1644,7 @@ export class GameSession {
       activeSide: this.activeSide,
       scenarioResult: this.scenarioResult,
       startupEventsRun: this.startupEventsRun,
-      teams: this.board.teams().map((t) => ({ side: t.side, gold: t.gold })),
+      teams: this.board.teams().map((t) => ({ side: t.side, gold: t.gold, shroudData: t.shroud.write(), fogData: t.fog.write() })),
       units: this.board.allUnits().map((u) => ({
         id: u.id || null,
         name: u.name || null,
@@ -1569,7 +1705,10 @@ export class GameSession {
     }
     for (const t of data.teams) {
       const team = this.board.getTeam(t.side);
-      if (team) team.gold = t.gold;
+      if (!team) continue;
+      team.gold = t.gold;
+      if (t.shroudData !== undefined) team.shroud.read(t.shroudData);
+      if (t.fogData !== undefined) team.fog.read(t.fogData);
     }
     // Optional-on-read (see `SaveGameData.recall`'s own doc comment): a save
     // written before this field existed simply had no recall-list units.
@@ -1670,6 +1809,13 @@ export class GameSession {
    */
   private checkForGameEnd(): void {
     if (this.scenarioResult) return;
+    const endLevel = this.eventPump.ctx.endLevel;
+    if (endLevel) {
+      this.scenarioResult = endLevel.result;
+      this.clearSelection();
+      this.log.unshift(endLevel.result === 'victory' ? 'Victory!' : 'Defeat.');
+      return;
+    }
     const { continueLevel, notDefeated } = checkVictory(this.board);
     if (continueLevel) return;
     this.scenarioResult = notDefeated.includes(this.playerSide) ? 'victory' : 'defeat';

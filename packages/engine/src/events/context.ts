@@ -70,6 +70,16 @@ export interface ExitState {
   type: 'none' | 'break' | 'continue' | 'return';
 }
 
+/** What `[endlevel]` decided (`data/lua/wml/endlevel.lua`), for whoever owns the scenario flow. */
+export interface EndLevelState {
+  result: 'victory' | 'defeat';
+  /** `next_scenario=` override, if given. */
+  nextScenario?: string;
+  /** Per-side carryover overrides from `[endlevel]` or its `[result] side=` children. */
+  carryover: Map<number, { bonus?: boolean; carryoverAdd?: boolean; carryoverPercentage?: number }>;
+  endText?: string;
+}
+
 export type ActionHandler = (cfg: WmlConfig, ctx: EventContext) => void;
 
 /**
@@ -128,6 +138,8 @@ export interface EventContext {
   /** The `queued_event`'s own `data` config (e.g. weapon info for combat events) -- opaque here, not yet consumed by any ported tag. */
   eventData: WmlConfig;
   exit: ExitState;
+  /** Set by `[endlevel]` (first firing wins); the session ends the scenario when it sees this. */
+  endLevel?: EndLevelState;
   /** Queues a new event, processed once the current pump pass finishes (see pump.ts's module doc comment on batching). */
   raise: (name: string, loc1?: Location, loc2?: Location, data?: WmlConfig) => void;
   log: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;

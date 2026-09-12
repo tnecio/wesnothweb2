@@ -141,7 +141,14 @@ export function executeAttack(
   attackerWeaponIndex: number,
   defenderLoc: Location,
   defenderWeaponIndex?: number,
-  options: AttackOptions & { raise?: RaiseEvent } = {},
+  options: AttackOptions & {
+    raise?: RaiseEvent;
+    /**
+     * Runs `last breath`/`die` while the dying unit is still on the board (`attack::unit_killed`).
+     * If WML removes, replaces or heals the unit, it is not removed and no plague spawns.
+     */
+    onUnitDying?: (dead: Unit, killer: Unit) => void;
+  } = {},
 ): AttackResult {
   const attacker = board.unitAt(attackerLoc);
   const defender = board.unitAt(defenderLoc);
@@ -221,6 +228,10 @@ export function executeAttack(
 
   const handleDeath = (killerIsAttacker: boolean, killerUnit: Unit, deadUnit: Unit): void => {
     const deadLoc = deadUnit.location;
+    if (options.onUnitDying) {
+      options.onUnitDying(deadUnit, killerUnit);
+      if (board.unitAt(deadLoc) !== deadUnit || deadUnit.hitpoints > 0) return;
+    }
     board.removeUnitAt(deadLoc);
 
     const killerWeapon = killerIsAttacker ? attackerWeapon : defenderWeapon;

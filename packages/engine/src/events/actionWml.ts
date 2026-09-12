@@ -72,6 +72,7 @@
  * enough that adding them later doesn't require restructuring this file.
  */
 
+import type { EndLevelState } from './context.js';
 import { Direction, Location, parseDirection } from '../model/Location.js';
 import { Unit } from '../model/Unit.js';
 import { WmlConfig } from '../wml/config.js';
@@ -838,6 +839,55 @@ function actionObjectives(cfg: WmlConfig, ctx: EventContext): void {
 // --- registry ---
 
 /**
+ * Mirrors `wml_actions.endlevel` (`data/lua/wml/endlevel.lua`): the
+ * scenario ends in victory if a human side wins, else in defeat if a human
+ * side loses or `result=defeat`. Repeated firings are ignored.
+ */
+function actionEndlevel(cfg: WmlConfig, ctx: EventContext): void {
+  if (ctx.endLevel) {
+    ctx.log('warn', 'Repeated [endlevel] execution, ignoring');
+    return;
+  }
+  const sideResults = new Map<number, WmlConfig>();
+  for (const r of cfg.children('result')) sideResults.set(r.getNumber('side', 0), r);
+
+  const carryover: EndLevelState['carryover'] = new Map();
+  let humanVictory = false;
+  let humanDefeat = false;
+  const cfgResult = cfg.getString('result', 'victory');
+  for (const team of ctx.board.teams()) {
+    const sideResult = sideResults.get(team.side);
+    const outcome = sideResult?.getString('result', '') || cfgResult;
+    if (outcome !== 'victory' && outcome !== 'defeat') {
+      ctx.log('error', `invalid result= key in [endlevel] '${outcome}'`);
+      return;
+    }
+    if (team.controller === 'human') {
+      if (outcome === 'victory') humanVictory = true;
+      else humanDefeat = true;
+    }
+    const pick = (key: string): WmlConfig | undefined =>
+      sideResult?.hasAttribute(key) ? sideResult : cfg.hasAttribute(key) ? cfg : undefined;
+    const entry: { bonus?: boolean; carryoverAdd?: boolean; carryoverPercentage?: number } = {};
+    const bonusCfg = pick('bonus');
+    if (bonusCfg) entry.bonus = bonusCfg.getBoolean('bonus');
+    const addCfg = pick('carryover_add');
+    if (addCfg) entry.carryoverAdd = addCfg.getBoolean('carryover_add');
+    const pctCfg = pick('carryover_percentage');
+    if (pctCfg) entry.carryoverPercentage = pctCfg.getNumber('carryover_percentage');
+    if (Object.keys(entry).length > 0) carryover.set(team.side, entry);
+  }
+
+  const proceed = humanVictory || (!humanDefeat && cfgResult !== 'defeat');
+  ctx.endLevel = {
+    result: proceed ? 'victory' : 'defeat',
+    carryover,
+    ...(cfg.hasAttribute('next_scenario') ? { nextScenario: cfg.getString('next_scenario') } : {}),
+    ...(cfg.hasAttribute('end_text') ? { endText: cfg.getString('end_text') } : {}),
+  };
+}
+
+/**
  * Builds a fresh registry with every action tag this module implements
  * (plus the presentation no-ops and extension-point placeholders)
  * pre-registered. Callers needing combat/recruit/Lua support should
@@ -863,6 +913,7 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('recall', actionRecall);
   registry.register('move_unit', actionMoveUnit);
   registry.register('objectives', actionObjectives);
+  registry.register('endlevel', actionEndlevel);
 
   for (const tag of [
     'music',

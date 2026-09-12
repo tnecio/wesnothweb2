@@ -11,7 +11,7 @@ export { unitMatchesFilter, findUnits, locationMatchesFilter, unitFormulaContext
 export { conditionalPassed, builtinConditions } from './conditionalWml.js';
 
 export { ActionRegistry } from './context.js';
-export type { ActionHandler, EventContext, ExitState, RecordedMessage } from './context.js';
+export type { ActionHandler, EventContext, EndLevelState, ExitState, RecordedMessage } from './context.js';
 
 export { parseScenarioObjectives, turnCounterSuffix, OBJECTIVE_COLOR } from './objectives.js';
 export type { ScenarioObjectives, ScenarioObjectiveEntry, GoldCarryoverEntry, ObjectiveCondition } from './objectives.js';

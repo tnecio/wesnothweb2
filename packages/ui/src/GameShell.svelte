@@ -234,6 +234,16 @@
     applyMessagePhaseUnits();
   }
 
+  /** Shows `[message]`s that in-play events (moveto, sighted, turn N, ...) recorded during the last action. */
+  function showEventMessages(): void {
+    const pending = session.takeEventMessages();
+    if (pending.length === 0) return;
+    startupMessages = pending;
+    messageIndex = 0;
+    phase = 'messages';
+    applyMessagePhaseUnits();
+  }
+
   async function handleHexClick(x: number, y: number): Promise<void> {
     if (phase !== 'playing') return;
     const message = session.handleHexClick(x, y);
@@ -253,6 +263,7 @@
       await boardView.playAnimationSequence(buildRecruitAnimationCues(recruit));
     }
     sync(message);
+    showEventMessages();
   }
 
   /**
@@ -529,6 +540,7 @@
       await boardView.playAnimationSequence(buildBlowAnimationCues(anim));
     }
     sync(message);
+    showEventMessages();
   }
 
   function handleCancelAttack(): void {
@@ -600,6 +612,7 @@
     session.lastAiAnimations = null;
     if (aiAnimations) await playAiAnimations(aiAnimations);
     sync(message);
+    showEventMessages();
   }
 
   async function handleSave(): Promise<void> {
@@ -642,7 +655,7 @@
   function advanceMessage(): void {
     messageIndex += 1;
     if (messageIndex >= startupMessages.length) {
-      phase = 'playing';
+      phase = session.scenarioResult ? 'ended' : 'playing';
       units = session.renderUnits;
     } else {
       units = session.messageUnitSnapshot(startupMessages[messageIndex]!);
