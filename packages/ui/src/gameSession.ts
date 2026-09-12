@@ -630,6 +630,7 @@ export class GameSession {
       attacksLeft: u.attacksLeft,
       maxAttacksPerTurn: u.maxAttacksPerTurn,
       statuses: [...u.statuses],
+      loyal: u.loyal,
       underlyingId: this.renderKeyFor(u),
     }));
   }

@@ -231,6 +231,20 @@ export class Unit {
     return this.petrified;
   }
 
+  /**
+   * Mirrors `unit::loyal()` (`upkeep_ == upkeep_loyal`): true when a real
+   * `[trait] id=loyal` (e.g. the `{TRAIT_LOYAL}` macro, `wesnoth/data/core/
+   * macros/traits.cfg`) is among this unit's `modifications`. This project
+   * doesn't apply `[effect]`s generically (see this file's module doc
+   * comment), so unlike upstream this doesn't actually zero the unit's
+   * upkeep anywhere -- it's read only for the real loyal-icon overlay
+   * (`GameSession.renderUnits` -> `SnapshotUnit.loyal` ->
+   * `SnapshotBoard`'s `misc/loyal-icon.png`).
+   */
+  get loyal(): boolean {
+    return this.modifications.some((m) => m.kind === 'trait' && m.cfg.getString('id') === 'loyal');
+  }
+
   // --- XP / leveling (mirrors unit::experience_to_advance/advances/advance_to) ---
 
   experienceToAdvance(): number {

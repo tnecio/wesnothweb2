@@ -136,6 +136,8 @@ export interface SnapshotUnit {
   maxAttacksPerTurn?: number;
   /** Real boolean status flags this unit currently has (e.g. `poisoned`, `slowed`, `petrified`) -- see `Unit.statuses`. Only the ones the renderer actually draws something for need to be present; harmless to include others. */
   statuses?: readonly string[];
+  /** `Unit.loyal` -- whether to draw the real loyal-icon overlay (`misc/loyal-icon.png`). */
+  loyal?: boolean;
   /**
    * A stable per-instance key for sprite identity across `updateUnits`
    * calls (see that method's own doc comment on why this replaced full
@@ -207,6 +209,18 @@ interface UnitVisual {
    * See `unitOverlays.ts` for the color/geometry math this draws.
    */
   bars: PIXI.Graphics;
+  /**
+   * The real leader crown (`misc/leader-crown.png`, drawn when `canRecruit`)
+   * and loyal icon (`misc/loyal-icon.png`, drawn when `loyal`) -- both real
+   * 72px-hex-canvas overlays anchored the same way as the unit sprite
+   * itself (see `units/drawer.cpp`'s `textures` list, which draws the orb/
+   * crown/overlays all at the same `xoff,yoff` as the sprite). Lazily
+   * loaded the first time actually needed (most units are neither) and
+   * toggled via `.visible` afterward rather than destroyed, same pattern
+   * as `overlay`'s lazy hit-flash sprite.
+   */
+  crownIcon: PIXI.Sprite | null;
+  loyalIcon: PIXI.Sprite | null;
 }
 
 /** 0-based engine (x,y) -> 1-based renderer HexCoord -- see module doc comment. */
@@ -602,6 +616,8 @@ export class SnapshotBoard {
       lastImage: unit.image,
       lastSide: unit.side,
       bars,
+      crownIcon: null,
+      loyalIcon: null,
     };
   }
 
@@ -695,6 +711,44 @@ export class SnapshotBoard {
   }
 
   /**
+   * Lazily loads and toggles the real leader-crown/loyal-icon overlays --
+   * see `UnitVisual.crownIcon`/`loyalIcon`'s own doc comment. Split out
+   * from the synchronous `updateOverlays` since these need a real texture
+   * load (`ImageCache.resolve`) the bars/tint never do.
+   */
+  private async updateIcons(visual: UnitVisual, unit: SnapshotUnit): Promise<void> {
+    if (unit.canRecruit) {
+      if (!visual.crownIcon) {
+        const texture = await ImageCache.resolve('engine/misc/leader-crown.png');
+        if (texture) {
+          const sprite = new PIXI.Sprite(texture);
+          sprite.anchor.set(0.5, 0.5);
+          visual.container.addChild(sprite);
+          visual.crownIcon = sprite;
+        }
+      }
+      if (visual.crownIcon) visual.crownIcon.visible = true;
+    } else if (visual.crownIcon) {
+      visual.crownIcon.visible = false;
+    }
+
+    if (unit.loyal) {
+      if (!visual.loyalIcon) {
+        const texture = await ImageCache.resolve('misc/loyal-icon.png');
+        if (texture) {
+          const sprite = new PIXI.Sprite(texture);
+          sprite.anchor.set(0.5, 0.5);
+          visual.container.addChild(sprite);
+          visual.loyalIcon = sprite;
+        }
+      }
+      if (visual.loyalIcon) visual.loyalIcon.visible = true;
+    } else if (visual.loyalIcon) {
+      visual.loyalIcon.visible = false;
+    }
+  }
+
+  /**
    * Approximates the real `blend_with`/`blend_ratio` hit-flash (e.g.
    * `[defend]`'s red pulse on a landed blow, real or the generic
    * engine-injected fallback -- see `unitAnimation.ts`'s own doc comment)
@@ -755,11 +809,14 @@ export class SnapshotBoard {
         visual.marker = rebuilt.marker;
         visual.bars = rebuilt.bars;
         visual.overlay = null; // the old overlay sprite (if any) was just destroyed along with its old container children.
+        visual.crownIcon = null; // ditto for the crown/loyal icons, if any.
+        visual.loyalIcon = null;
         visual.lastImage = unit.image;
         visual.lastSide = unit.side;
       }
       if (visual.overlay) visual.overlay.alpha = 0; // a hit-flash should never outlive the animation that caused it.
       this.updateOverlays(visual, unit);
+      await this.updateIcons(visual, unit);
       visual.container.x = cx;
       visual.container.y = cy;
       if (visual.sprite) {

@@ -151,6 +151,8 @@ export interface SnapshotUnit {
   attacksLeft?: number;
   maxAttacksPerTurn?: number;
   statuses?: readonly string[];
+  /** `Unit.loyal` -- whether to draw the real loyal-icon overlay (`misc/loyal-icon.png`). */
+  loyal?: boolean;
   /** A stable per-instance render/sprite-identity key -- NOT the real `Unit.underlyingId` (which defaults to 0 and isn't reliably unique). Never set by anything in this module (only `GameSession.renderUnits`, in `packages/ui`, the LIVE re-render path, populates it, from a session-local `WeakMap<Unit, number>`); see `@wesnothweb2/renderer`'s `SnapshotUnit` (structurally the same interface, independently declared) for the full explanation. */
   underlyingId?: number;
 }

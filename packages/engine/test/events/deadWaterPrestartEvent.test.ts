@@ -200,6 +200,11 @@ describe('EventPump running Dead_Water scenario 1 real [event] blocks', () => {
     expect(gwabbo!.side).toBe(1);
     // The scenario places Gwabbo with hitpoints=4 explicitly.
     expect(gwabbo!.hitpoints).toBe(4);
+    // Real [modifications][trait]{TRAIT_LOYAL} -- see Unit.loyal's own doc
+    // comment (the real, reported bug this covers: the loyal-icon overlay
+    // had no engine-side signal to draw from at all).
+    expect(gwabbo!.loyal).toBe(true);
+    expect(fiend!.loyal).toBe(false);
 
     // Real, reported bug: `{MOVE_UNIT id=Gwabbo 20 10}` (a [move_unit]
     // action) used to be a no-op extension point -- Gwabbo would stay
