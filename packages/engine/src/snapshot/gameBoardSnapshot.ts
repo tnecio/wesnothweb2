@@ -196,6 +196,17 @@ export interface SnapshotTeam {
   /** `[side] shroud_data=`/`fog_data=`, in `ShroudMap.write()` format. */
   shroudData?: string;
   fogData?: string;
+  /**
+   * `[side] no_leader=` -- real, reported bug: without this, a side with
+   * `no_leader=yes` and no units yet placed (e.g. an AI antagonist whose
+   * leader is spawned by a later scripted event, common in cutscene-heavy
+   * campaigns like Under the Burning Suns) read as already-defeated
+   * (`GameBoard.teamIsDefeated`'s "no canRecruit unit" fallback) the
+   * moment any victory check ran, ending the scenario in an instant false
+   * "Victory!" before the antagonist ever appeared. Optional/defaulting
+   * to `false` for older snapshots, same pattern as the fields above.
+   */
+  noLeader?: boolean;
 }
 
 /** One `[story][part]` -- see `apps/web/scripts/build-scenario-snapshot.mjs`'s `extractStory`. */
@@ -564,6 +575,7 @@ export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBo
         incomePerVillage: t.incomePerVillage ?? 1,
         supportPerVillage: t.supportPerVillage ?? 1,
         shareVision: t.shareVision ?? 'all',
+        noLeader: t.noLeader ?? false,
       }),
     );
     const team = board.getTeam(t.side)!;

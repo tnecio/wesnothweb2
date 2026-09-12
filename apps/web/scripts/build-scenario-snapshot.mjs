@@ -354,7 +354,17 @@ const scenario = scenarioCfg.child('scenario');
 // content load instead of failing the whole build.
 const mapFileName = scenario.getString('map_file', '');
 if (mapFileName) {
-  scenario.setAttribute('map_data', fs.readFileSync(path.join(campaignDir, 'maps', mapFileName), 'utf8'));
+  // `map_file=` is resolved against the general WML data search path, so a
+  // real campaign can spell it either as a path already rooted at data/
+  // (e.g. Under_the_Burning_Suns's own `{UTBS_MAP}` macro:
+  // "campaigns/Under_the_Burning_Suns/maps/<file>") or as a bare filename
+  // resolved against ITS OWN campaign's maps/ (e.g. Dead_Water's
+  // `map_file=Wolf_Coast.map`) -- try the data-root-relative form first,
+  // falling back to the campaign-relative one.
+  const dataRootPath = path.join(dataRoot, mapFileName);
+  const campaignRelativePath = path.join(campaignDir, 'maps', mapFileName);
+  const mapPath = fs.existsSync(dataRootPath) ? dataRootPath : campaignRelativePath;
+  scenario.setAttribute('map_data', fs.readFileSync(mapPath, 'utf8'));
 } else if (!scenario.hasAttribute('map_data')) {
   console.warn(`Warning: "${scenario.getString('id')}" has no map_file=/map_data= -- using a trivial 1-hex placeholder map.`);
   scenario.setAttribute('map_data', 'Gg');
@@ -484,6 +494,12 @@ const teams = board.teams().map((t) => ({
   fog: t.fog.enabled,
   shroud: t.shroud.enabled,
   shareVision: t.shareVision,
+  // Real, reported bug: without this, a `no_leader=yes` AI side whose
+  // leader is placed by a later scripted event (rather than inline in
+  // [side]) read as already-defeated the instant any victory check ran,
+  // ending the scenario in an instant false "Victory!" -- see
+  // GameBoardSnapshot.SnapshotTeam's own doc comment.
+  noLeader: t.noLeader,
 }));
 
 /** Serializes a real `AttackType` instance to `AttackTypeSnapshot` shape. */

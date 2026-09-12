@@ -205,4 +205,26 @@ describe('gameBoardFromSnapshot', () => {
     expect(boardWithoutIncome.getTeam(1)!.income).toBe(0);
     expect(boardWithoutIncome.getTeam(1)!.incomePerVillage).toBe(1);
   });
+
+  it('real, reported bug: [side] no_leader=yes with no units yet placed read as already-defeated the instant any victory check ran', () => {
+    // Under the Burning Suns scenario 1: sides 2-4 (`no_leader=yes`) have
+    // their real leaders placed by a later scripted event, not inline in
+    // [side] -- with `noLeader` missing from the snapshot, a zero-unit,
+    // non-`noLeader` side always reads as defeated (`GameBoard.
+    // teamIsDefeated`'s "no canRecruit unit" fallback), instantly ending
+    // the scenario in a false "Victory!" the moment the game session's own
+    // startup victory check ran, before the antagonist ever appeared.
+    const snapshot = tinySnapshot();
+    snapshot.teams[1]!.noLeader = true;
+    snapshot.units = snapshot.units.filter((u) => u.side !== 2); // side 2 has zero units, same as UtBS's antagonists at scenario start
+    const { board } = gameBoardFromSnapshot(snapshot);
+    expect(board.teamIsDefeated(2)).toBe(false);
+
+    // Without noLeader=true (older/static snapshots, or a real side that
+    // isn't no_leader=yes), the same zero-unit side IS correctly defeated.
+    const snapshotWithoutNoLeader = tinySnapshot();
+    snapshotWithoutNoLeader.units = snapshotWithoutNoLeader.units.filter((u) => u.side !== 2);
+    const { board: boardWithoutNoLeader } = gameBoardFromSnapshot(snapshotWithoutNoLeader);
+    expect(boardWithoutNoLeader.teamIsDefeated(2)).toBe(true);
+  });
 });
