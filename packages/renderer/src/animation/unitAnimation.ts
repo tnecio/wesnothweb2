@@ -246,6 +246,39 @@ function buildAnimationDef(branch: AnimBranch, events: readonly string[], baseSc
 }
 
 /**
+ * The real, unconditional 225ms red hit-flash `add_anims` appends to the
+ * END of ANY `[defend]` animation whose `hits=` includes `hit`/`kill`
+ * (animation.cpp ~L790-820: `animations.back().add_frame(225ms,
+ * frame_builder().image(...).duration(225ms).blend("0.0,0.5:75,0.0:75,
+ * 0.5:75,0.0", {255,0,0}))`) -- applied whether the block came from the
+ * "author didn't set hits=" auto-split OR an explicit `hits=hit`/`kill`/
+ * `yes` (e.g. via `DEFENSE_ANIM_FILTERED`'s `[if] hits=hit`), REGARDLESS
+ * of whether the unit's own WML mentions blend at all. This is NOT the
+ * same thing as `parseUnitAnimations`' separate low-priority "no
+ * [defend] at all" fallback below -- THIS is why real Bandit (plain
+ * `DEFENSE_ANIM`, no explicit `hits=`) and real Spearman
+ * (`DEFENSE_ANIM_FILTERED`, explicit `hits=hit`) both flash red on a
+ * landed hit despite neither macro mentioning a blend anywhere in its
+ * own WML text -- a real, previously-missed gap (this project first
+ * built a *different*, lower-priority fallback for the "no [defend] at
+ * all" case, then found -- from a real screenshot of Bandit flashing
+ * red -- that the actual, far more common mechanism is this unconditional
+ * per-animation append, not a competing candidate). The extra frame
+ * reuses whatever image the animation's own last frame ends on (`image_
+ * loc = animations.back().get_last_frame().end_parameters().image`).
+ */
+function appendHitFlash(def: UnitAnimationDef): UnitAnimationDef {
+  if (!def.hits.includes('hit') && !def.hits.includes('kill')) return def;
+  const lastFrame = def.frames[def.frames.length - 1];
+  const lastImage = lastFrame?.image[lastFrame.image.length - 1]?.value ?? '';
+  const flashCfg = new WmlConfig();
+  flashCfg.setAttribute('image', `${lastImage}:225`);
+  flashCfg.setAttribute('blend_ratio', '0.0,0.5:75,0.0:75,0.5:75,0.0');
+  flashCfg.setAttribute('blend_color', '255,0,0');
+  return { ...def, frames: [...def.frames, buildFrameFields(flashCfg, 225)] };
+}
+
+/**
  * `[defend]`'s hits-based auto-split (animation.cpp `add_anims`
  * ~L778-820): when the author didn't set `hits=` explicitly, the block is
  * split into a "miss" and a "hit-or-kill" variant, each penalised by -1 so
@@ -253,7 +286,9 @@ function buildAnimationDef(branch: AnimBranch, events: readonly string[], baseSc
  * `DEFENSE_ANIM_RANGE`'s `[if] hits=hit`) outscores the auto-generated
  * default when both match. When the author DID set `hits=` (a
  * comma-separated list), one `unit_animation` is emitted per listed value
- * (mirrors `utils::split(anim["hits"])`'s loop), with no penalty.
+ * (mirrors `utils::split(anim["hits"])`'s loop), with no penalty. Either
+ * way, a resulting hit/kill variant gets the real hit-flash appended --
+ * see `appendHitFlash`'s own doc comment.
  */
 function buildDefendAnimations(branch: AnimBranch): UnitAnimationDef[] {
   if (!bhas(branch, 'value') && bhas(branch, 'damage')) {
@@ -265,13 +300,13 @@ function buildDefendAnimations(branch: AnimBranch): UnitAnimationDef[] {
     const withHits = (hits: string): AnimBranch => ({ attrs: new Map(branch.attrs).set('hits', hits), children: branch.children });
     return [
       buildAnimationDef(withHits('no'), ['defend'], -1),
-      buildAnimationDef(withHits('yes'), ['defend'], -1),
+      appendHitFlash(buildAnimationDef(withHits('yes'), ['defend'], -1)),
     ];
   }
 
   return splitList(hitsRaw).map((hitType) => {
     const b: AnimBranch = { attrs: new Map(branch.attrs).set('hits', hitType), children: branch.children };
-    return buildAnimationDef(b, ['defend']);
+    return appendHitFlash(buildAnimationDef(b, ['defend']));
   });
 }
 

@@ -234,7 +234,7 @@ describe('parseUnitAnimations: real add_anims offset= defaulting for movement_an
   });
 });
 
-describe('parseUnitAnimations: the generic engine-injected "defend" hit-flash fallback (fill_initial_animations, animation.cpp ~L570-579)', () => {
+describe('parseUnitAnimations: the "defend" hit-flash -- both the low-priority no-[defend]-at-all fallback (fill_initial_animations, animation.cpp ~L570-579) and the real unconditional per-animation append (appendHitFlash, add_anims ~L790-820)', () => {
   function defendCtx(hit: 'hit' | 'miss' | 'kill'): AnimationContext {
     const unit = Unit.create(makeUnitType('X'), 1, new Location(0, 0));
     return {
@@ -263,15 +263,23 @@ describe('parseUnitAnimations: the generic engine-injected "defend" hit-flash fa
     expect(missTop[0]!.animationParams.blendRatio).toEqual([]);
   });
 
-  it('a unit type that DOES author its own [defend] still has the fallback present but never WINS (real content, e.g. DEFENSE_ANIM_FILTERED-based, always outscores it)', () => {
+  it('a unit type that DOES author its own [defend] still has the low-priority fallback present but never WINS on score -- its OWN hit variant wins instead, and ALSO carries the real unconditional hit-flash (appendHitFlash, a separate mechanism from this fallback -- see that function\'s own doc comment)', () => {
     const cfg = wml({}, [
       ['defend', wml({ hits: 'hit', base_score: 1 }, [['frame', wml({ image: 'own-hit-pose.png' })]])],
     ]);
     const anims = parseUnitAnimations(cfg);
-    expect(anims.some((a) => a.events.includes('defend') && a.animationParams.blendRatio.length > 0)).toBe(true); // the fallback is still present...
+    expect(anims.some((a) => a.events.includes('defend') && a.animationParams.blendRatio.length > 0)).toBe(true); // the low-priority fallback is still present...
 
     const hitTop = selectTopAnimations(anims, defendCtx('hit'));
     expect(hitTop).toHaveLength(1);
-    expect(hitTop[0]!.animationParams.blendRatio).toEqual([]); // ...but the author's own (higher-scored) hit variant wins, not the flash.
+    // ...but the author's own (higher-scored) hit variant wins over it...
+    expect(hitTop[0]!.baseScore).toBe(1);
+    expect(hitTop[0]!.frames[0]!.image[0]!.value).toBe('own-hit-pose.png');
+    // ...and STILL flashes red, via a real, separately-appended frame
+    // (not the fallback's animation-wide blend) -- exactly matching real
+    // Wesnoth's own Spearman/Bandit behavior.
+    const lastFrame = hitTop[0]!.frames[hitTop[0]!.frames.length - 1]!;
+    expect(lastFrame.blendRatio.length).toBeGreaterThan(0);
+    expect(lastFrame.blendColor).toBe('255,0,0');
   });
 });

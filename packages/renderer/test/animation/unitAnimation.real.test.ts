@@ -163,10 +163,19 @@ describe('parseUnitAnimations + matching (real Elvish Fighter content)', () => {
     expect(chosen).toBeDefined();
     expect(chosen!.hits).toEqual(['hit']);
     expect(chosen!.baseScore).toBe(0);
-    // Real frame content from DEFENSE_ANIM_RANGE: {BASE_IMAGE}:1,{REACTION_IMAGE}:250,{BASE_IMAGE}:1 -- one [frame] tag with 3 bracket-expanded images.
-    expect(chosen!.frames).toHaveLength(1);
+    // Real frame content from DEFENSE_ANIM_RANGE: {BASE_IMAGE}:1,{REACTION_IMAGE}:250,{BASE_IMAGE}:1 -- one [frame] tag with 3 bracket-expanded images...
+    expect(chosen!.frames).toHaveLength(2);
     expect(chosen!.frames[0]!.image).toHaveLength(3);
     expect(chosen!.frames[0]!.image.map((i) => i.durationMs)).toEqual([1, 250, 1]);
+    // ...plus the real, unconditional 225ms red hit-flash `add_anims` appends
+    // to ANY hit/kill [defend] variant (animation.cpp ~L790-803) -- see
+    // `appendHitFlash`'s own doc comment. Confirmed against a real
+    // screenshot of Bandit (a DIFFERENT, simpler macro) flashing red on a
+    // landed hit: this append is unconditional, not tied to what the
+    // macro itself declares.
+    expect(chosen!.frames[1]!.durationMs).toBe(225);
+    expect(chosen!.frames[1]!.blendColor).toBe('255,0,0');
+    expect(chosen!.frames[1]!.blendRatio.length).toBeGreaterThan(0);
   });
 
   it('"defend, miss, melee" falls back to the auto-split miss variant (no author-provided miss-specific branch exists)', () => {

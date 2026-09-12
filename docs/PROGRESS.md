@@ -1726,3 +1726,54 @@ UI + 121 renderer tests pass; typecheck clean. Verified live: a 2-hex
 move now takes ~470ms wall-clock (previously ~940ms-equivalent at 1x);
 a full attack exchange still resolves correctly with the new blend code
 path active and no console errors.
+
+## 2026-09-12: correcting the hit-flash fix -- the real mechanism was different, and more common, than first found
+
+User provided a real Wesnoth screenshot (Spearman vs. Bandit) showing
+the Bandit unmistakably flashed solid red mid-hit -- direct evidence
+against yesterday's conclusion that Spearman/Bandit-style real content
+wouldn't show a flash at all (a real WML-fidelity claim, not a hunch,
+but wrong).
+
+Re-read the real source once more, specifically `add_anims` itself
+(`animation.cpp` ~L790-820, the function that processes a unit's OWN
+authored `[defend]` blocks) rather than only `fill_initial_animations`'s
+separate low-priority fallback (yesterday's focus). Found the actual
+mechanism: `add_anims` UNCONDITIONALLY appends an extra 225ms frame
+(reusing whatever image the animation already ends on, `blend_ratio=
+"0.0,0.5:75,0.0:75,0.5:75,0.0"`, `blend_color=255,0,0`) to ANY `[defend]`
+variant whose `hits=` includes `hit`/`kill` -- for BOTH the "author
+didn't set hits=" auto-split path AND an explicit `hits=hit`/`kill`/`yes`
+(e.g. via `DEFENSE_ANIM_FILTERED`'s `[if] hits=hit`) -- regardless of
+whether the unit's own macro/WML mentions blend anywhere. This is a
+completely different, and far more commonly-triggered, mechanism than
+yesterday's low-priority fallback (which only fires for a unit with NO
+`[defend]` at all): it modifies the WINNING animation itself, not a
+competing low-scored candidate.
+
+Verified directly against both real units from the screenshot's
+scenario shape: real Bandit (plain `DEFENSE_ANIM`, no explicit `hits=`)
+and real Spearman (`DEFENSE_ANIM_FILTERED`, explicit `hits=hit` inside
+an `[if]`) BOTH now correctly get the red-flash frame appended to their
+hit variant. Implemented as `unitAnimation.ts`'s new `appendHitFlash`,
+called from `buildDefendAnimations` (both its auto-split and
+explicit-`hits=` branches) -- kept yesterday's separate low-priority
+fallback too (still real, for the rarer "no `[defend]` at all" case;
+now clearly secondary rather than the primary mechanism). Updated the
+tests that had encoded the wrong (yesterday's) model to correctly check
+the appended frame's own `blendRatio`/`blendColor` rather than the
+animation-wide field.
+
+Verified live end-to-end via a `window.__debugBoard` instrumentation
+pass (removed after): both units in the Combat Debug scenario
+(Spearman/Orcish Grunt) reached real `overlay.alpha = 0.5` with
+`tint = 0xFF0000` during a real attack exchange, confirming the fix
+renders correctly, not just in isolated unit tests. All 268 engine + 33
+UI + 121 renderer tests pass; typecheck clean.
+
+Noted for future self: when a real screenshot/observation contradicts a
+prior "verified against real source" conclusion, the right response is
+to go back and read MORE of the surrounding real source (here: the
+sibling function actually responsible, not just the one already found),
+not to assume the fidelity claim was directionally right and just
+narrower than tested.
