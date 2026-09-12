@@ -25,7 +25,7 @@
    * before entering 'messages', so the board already reflects every real
    * event-spawned unit by the time the player gets control.
    */
-  import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage, TimeOfDayEntry, Unit, AiAnimationEvent } from '@wesnothweb2/engine';
+  import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage, TimeOfDayEntry, Unit, AiAnimationEvent, ScenarioObjectives } from '@wesnothweb2/engine';
   import { WmlConfig, directionBetween } from '@wesnothweb2/engine';
   import {
     type HexPoint,
@@ -61,6 +61,7 @@
   import StoryViewer from './StoryViewer.svelte';
   import MessageViewer from './MessageViewer.svelte';
   import AdvancementDialog from './AdvancementDialog.svelte';
+  import ObjectivesDialog from './ObjectivesDialog.svelte';
   import ScenarioEndOverlay from './ScenarioEndOverlay.svelte';
 
   let { snapshot }: { snapshot: GameBoardSnapshot } = $props();
@@ -94,7 +95,7 @@
   let continuing = $state(false);
   let continueError = $state<string | null>(null);
 
-  let phase = $state<'story' | 'messages' | 'playing' | 'ended'>(storyParts.length > 0 ? 'story' : 'messages');
+  let phase = $state<'story' | 'objectives' | 'messages' | 'playing' | 'ended'>(storyParts.length > 0 ? 'story' : 'messages');
   let storyIndex = $state(0);
   let startupMessages = $state<RecordedMessage[]>([]);
   let messageIndex = $state(0);
@@ -199,12 +200,35 @@
     units = message ? session.messageUnitSnapshot(message) : session.renderUnits;
   }
 
+  /**
+   * Real, reported bug (bugs3.md "objectives dialog"): a scenario's real
+   * `[objectives]` (see `GameSession.scenarioObjectives`'s own doc
+   * comment) used to have no dialog to show it in at all. Ordered before
+   * 'messages': real Wesnoth's own event order fires `[objectives]`
+   * (usually in `prestart`) before the dialogue that follows it (usually
+   * in `start`), so this reads chronologically first here too, even
+   * though both already fully ran by the time either phase shows
+   * anything (`runStartupEvents` is synchronous -- see that method's own
+   * doc comment).
+   */
+  function decidePostEventsPhase(): 'objectives' | 'messages' | 'playing' {
+    if (session.scenarioObjectives) return 'objectives';
+    if (startupMessages.length > 0) return 'messages';
+    return 'playing';
+  }
+
+  function advanceObjectives(): void {
+    phase = startupMessages.length > 0 ? 'messages' : 'playing';
+    applyMessagePhaseUnits();
+  }
+
   // No story: run the startup events immediately so the board/side panel
   // reflect the real event-spawned units from the very first render, and
-  // go straight to 'messages' (or 'playing' if the events recorded none).
+  // go straight to 'objectives' (if the events set any), else 'messages',
+  // else 'playing'.
   if (storyParts.length === 0) {
     startupMessages = session.runStartupEvents();
-    if (startupMessages.length === 0) phase = 'playing';
+    phase = decidePostEventsPhase();
     sync();
     applyMessagePhaseUnits();
   }
@@ -609,7 +633,7 @@
       startupMessages = session.runStartupEvents();
       messageIndex = 0;
       sync();
-      phase = startupMessages.length > 0 ? 'messages' : 'playing';
+      phase = decidePostEventsPhase();
       applyMessagePhaseUnits();
     }
   }
@@ -654,7 +678,7 @@
       startupMessages = [];
       if (nextStoryParts.length === 0) {
         startupMessages = session.runStartupEvents();
-        phase = startupMessages.length > 0 ? 'messages' : 'playing';
+        phase = decidePostEventsPhase();
       } else {
         phase = 'story';
       }
@@ -729,6 +753,14 @@
 
   {#if phase === 'story'}
     <StoryViewer parts={storyParts} index={storyIndex} onNext={advanceStory} />
+  {:else if phase === 'objectives' && session.scenarioObjectives}
+    <ObjectivesDialog
+      scenarioName={activeSnapshot.scenario.name}
+      objectives={session.scenarioObjectives}
+      currentTurn={turnNumber}
+      turnsLimit={scenarioTurnsLimit}
+      onClose={advanceObjectives}
+    />
   {:else if phase === 'messages'}
     <MessageViewer messages={startupMessages} index={messageIndex} onNext={advanceMessage} />
   {:else if phase === 'ended' && session.scenarioResult && !pendingAdvancement}

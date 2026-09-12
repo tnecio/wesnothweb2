@@ -13,6 +13,9 @@ export { conditionalPassed, builtinConditions } from './conditionalWml.js';
 export { ActionRegistry } from './context.js';
 export type { ActionHandler, EventContext, ExitState, RecordedMessage } from './context.js';
 
+export { parseScenarioObjectives, turnCounterSuffix, OBJECTIVE_COLOR } from './objectives.js';
+export type { ScenarioObjectives, ScenarioObjectiveEntry, GoldCarryoverEntry, ObjectiveCondition } from './objectives.js';
+
 export { createDefaultActionRegistry, runActionSequence, applySetVariable } from './actionWml.js';
 
 export { EventManager, EventPump, standardizeEventName } from './pump.js';

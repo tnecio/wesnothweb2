@@ -15,6 +15,7 @@ import type { Unit } from '../model/Unit.js';
 import type { UnitType } from '../model/UnitType.js';
 import type { WmlConfig } from '../wml/config.js';
 import type { VariableStore } from './variables.js';
+import type { ScenarioObjectives } from './objectives.js';
 
 /**
  * One unit's position/hp as of a `[message]` boundary -- see
@@ -111,6 +112,16 @@ export interface EventContext {
   resolveType: (id: string) => UnitType;
   /** `[message]`'s headless stand-in for "show a dialog" -- see `RecordedMessage`. */
   messages: RecordedMessage[];
+  /**
+   * Real, reported bug (bugs3.md "objectives dialog"): `[objectives]` used
+   * to be a plain no-op. Mirrors Lua's own `scenario_objectives` table
+   * (`data/lua/wml/objectives.lua`), keyed by side -- `actionWml.ts`'s
+   * `actionObjectives` populates this for every side named in `side=`
+   * (or every side on the board, if absent); a later firing for the same
+   * side replaces its entry, matching upstream's own "last one wins"
+   * table-write semantics.
+   */
+  objectivesBySide: Map<number, ScenarioObjectives>;
   /** The event currently being processed: `loc1`/`loc2` back `$x1`/`$y1`/`$x2`/`$y2` and `[filter]`/`[filter_second]`. */
   loc1: Location;
   loc2: Location;

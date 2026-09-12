@@ -63,6 +63,7 @@ import {
   ActionRegistry,
   createDefaultActionRegistry,
   type RecordedMessage,
+  type ScenarioObjectives,
 } from '../events/index.js';
 import { Location } from '../model/Location.js';
 import { GameMap } from '../model/Map.js';
@@ -602,6 +603,8 @@ export interface ScenarioEventsResult {
   messages: RecordedMessage[];
   /** The live variable store used, in case the caller wants to inspect/reuse it (e.g. for a later `runScenarioStartupEvents` call in the same session). */
   variables: VariableStore;
+  /** Real `[objectives]` firings, by side -- see `EventContext.objectivesBySide`'s own doc comment. */
+  objectivesBySide: Map<number, ScenarioObjectives>;
 }
 
 /**
@@ -638,5 +641,5 @@ export function runScenarioStartupEvents(
     pump.fire(name);
   }
 
-  return { messages: pump.ctx.messages, variables };
+  return { messages: pump.ctx.messages, variables, objectivesBySide: pump.ctx.objectivesBySide };
 }

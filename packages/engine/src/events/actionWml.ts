@@ -26,14 +26,17 @@
  * `move_unit` (real, reported bug: real scenario content -- e.g.
  * Dead_Water scenario 1's `{MOVE_UNIT id=Gwabbo 20 10}` -- silently did
  * nothing; see that handler's own doc comment for what it does and does
- * not cover, and `pathfind.ts`'s `findVacantTile`, ported alongside it).
+ * not cover, and `pathfind.ts`'s `findVacantTile`, ported alongside it),
+ * `objectives` (real, reported bug: used to be a no-op -- see
+ * `objectives.ts`'s own doc comment for the real `data/lua/wml/
+ * objectives.lua` logic it ports and what's deliberately scoped out).
  *
  * Presentation-only tags that have no headless effect are registered as
  * explicit no-ops (not silently dropped) so real content doesn't spam
  * "unsupported tag" warnings: `music`, `sound`, `scroll_to`,
  * `scroll_to_unit`, `delay`, `redraw`, `highlight`, `floating_text`,
- * `label`, `objectives`, `move_unit_fake` (a pure animation of a move
- * `move_unit` already performed for real).
+ * `label`, `move_unit_fake` (a pure animation of a move `move_unit`
+ * already performed for real).
  *
  * ## Extension points (NOT implemented here, on purpose)
  * `[attack]`, `[recruit]` (need `packages/engine/src/actions/`'s
@@ -75,6 +78,7 @@ import { ActionRegistry } from './context.js';
 import { conditionalPassed } from './conditionalWml.js';
 import { findUnits, locationMatchesFilter, unitMatchesFilter } from './filter.js';
 import { newVarNode, varNodeFromConfig, VariableStore, type VarNode } from './variables.js';
+import { parseScenarioObjectives } from './objectives.js';
 
 // --- shared helpers ---
 
@@ -733,6 +737,32 @@ function actionMoveUnit(cfg: WmlConfig, ctx: EventContext): void {
   }
 }
 
+// --- [objectives] ---
+
+/**
+ * Real, reported bug (bugs3.md): `[objectives]` was a plain no-op, so no
+ * caller had any structured data to show a real objectives dialog with.
+ * Mirrors `wml_actions.objectives` (`data/lua/wml/objectives.lua`): parses
+ * the block once (`parseScenarioObjectives`) and applies it to every side
+ * named in `side=` (a comma-separated list, matching real WML's own
+ * convention -- see `findUnits`' side-filter handling elsewhere in this
+ * file for the same pattern), or every side currently on the board if
+ * `side=` is absent (real `#sides_cfg == 0` branch).
+ */
+function actionObjectives(cfg: WmlConfig, ctx: EventContext): void {
+  const parsed = parseScenarioObjectives(cfg);
+  const sideAttr = cfg.getString('side', '');
+  const sides = sideAttr
+    ? sideAttr
+        .split(',')
+        .map((s) => Number(s.trim()))
+        .filter((n) => Number.isFinite(n))
+    : ctx.board.teams().map((t) => t.side);
+  for (const side of sides) {
+    ctx.objectivesBySide.set(side, parsed);
+  }
+}
+
 // --- registry ---
 
 /**
@@ -759,6 +789,7 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('capture_village', actionCaptureVillage);
   registry.register('recall', actionRecall);
   registry.register('move_unit', actionMoveUnit);
+  registry.register('objectives', actionObjectives);
 
   for (const tag of [
     'music',
@@ -770,7 +801,6 @@ export function createDefaultActionRegistry(): ActionRegistry {
     'highlight',
     'floating_text',
     'label',
-    'objectives',
     'select_unit',
     'unit_overlay',
     'remove_unit_overlay',

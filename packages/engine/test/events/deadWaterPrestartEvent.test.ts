@@ -156,6 +156,20 @@ describe('EventPump running Dead_Water scenario 1 real [event] blocks', () => {
     expect(board.allUnits().map((u) => u.id)).toContain('Kai Krellis');
     expect(board.allUnits().map((u) => u.id)).toContain('Mal-Kevek');
     expect(board.allUnits()).toHaveLength(2 /* leaders */ + 6 /* citizens */ + 1 /* Cylanna */);
+
+    // Real, reported bug (bugs3.md "objectives dialog"): the scenario's
+    // own real [objectives] (side=1, {HOW_TO_LOSE} + a real
+    // [gold_carryover]) used to be a no-op -- now parsed and recorded per
+    // side.
+    const objectives = pump.ctx.objectivesBySide.get(1);
+    expect(objectives).toBeDefined();
+    expect(objectives!.objectives).toContainEqual({ description: 'Defeat enemy leader', condition: 'win', showTurnCounter: false });
+    expect(objectives!.objectives).toContainEqual({ description: 'Death of Kai Krellis', condition: 'lose', showTurnCounter: false });
+    expect(objectives!.objectives).toContainEqual({ description: 'Death of Cylanna', condition: 'lose', showTurnCounter: false });
+    expect(objectives!.objectives).toContainEqual({ description: 'Turns run out', condition: 'lose', showTurnCounter: true });
+    expect(objectives!.goldCarryover).toEqual([{ bonus: true, carryoverPercentage: 40 }]);
+    // Side 2 never got its own [objectives] in this event.
+    expect(pump.ctx.objectivesBySide.has(2)).toBe(false);
   });
 
   it('firing "start" records real [message] dialogue and spawns Gwabbo/the fiend via [unit]', () => {

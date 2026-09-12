@@ -44,6 +44,7 @@ import {
   computeResistanceModifier,
   playAiTurn,
   type AiAnimationEvent,
+  type ScenarioObjectives,
   advanceUnitTo,
   type AttackBlowResult,
   type AttackResult,
@@ -498,6 +499,17 @@ export class GameSession {
   /** Units still waiting for an advancement check -- see `queueAdvancement`/`processAdvancementQueue`. Drained (auto-advancing single-option units, cascading on overflow XP) until either empty or a multi-option unit sets `pendingAdvancement` and pauses the drain. */
   private readonly advancementQueue: Unit[] = [];
   /**
+   * Real, reported bug (bugs3.md "objectives dialog"): the scenario's own
+   * real `[objectives]` (fired by `runStartupEvents`, for `playerSide`)
+   * used to have nowhere to go -- set once, here, the first time a
+   * non-`silent=` firing occurs. `GameShell.svelte` shows this once at
+   * scenario start (see its own phase-sequencing doc comment); unlike
+   * `pendingAdvancement`, nothing clears this afterward -- a caller that
+   * wants to let the player reopen it later (real Wesnoth's own
+   * "Objectives" menu item) can just keep reading this field.
+   */
+  scenarioObjectives: ScenarioObjectives | null = null;
+  /**
    * Set by `endTurn` every time it auto-plays one or more consecutive
    * `ai`/`network_ai`-controlled sides, to every real `AiAnimationEvent`
    * those sides' actions produced, IN ORDER (across however many
@@ -662,9 +674,14 @@ export class GameSession {
   runStartupEvents(): RecordedMessage[] {
     if (this.startupEventsRun) return [];
     this.startupEventsRun = true;
-    const { messages } = runScenarioStartupEvents(this.board, this.snapshot.scenarioConfigJson, ['prestart', 'start'], {
+    const { messages, objectivesBySide } = runScenarioStartupEvents(this.board, this.snapshot.scenarioConfigJson, ['prestart', 'start'], {
       resolveType: this.resolveType,
     });
+    const objectives = objectivesBySide.get(this.playerSide);
+    // Real `team.objectives_changed = not silent` -- a silent firing updates
+    // the side's objectives without popping the dialog (matches upstream's
+    // own gate on whether `show_objectives` should auto-trigger).
+    if (objectives && !objectives.silent) this.scenarioObjectives = objectives;
     return messages;
   }
 

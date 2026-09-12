@@ -108,6 +108,18 @@ describe('GameSession.runStartupEvents (real Dead_Water scenario 1)', () => {
     expect(gwabbo.movesLeft).toBe(gwabbo.maxMoves);
   });
 
+  it('real, reported bug: no in-game dialog ever showed the scenario objectives -- runStartupEvents now sets scenarioObjectives from the real [objectives] in the scenario', () => {
+    const session = new GameSession(loadSnapshot());
+    expect(session.scenarioObjectives).toBeNull();
+    session.runStartupEvents();
+
+    const objectives = session.scenarioObjectives;
+    expect(objectives).not.toBeNull();
+    expect(objectives!.objectives).toContainEqual({ description: 'Defeat enemy leader', condition: 'win', showTurnCounter: false });
+    expect(objectives!.objectives).toContainEqual({ description: 'Turns run out', condition: 'lose', showTurnCounter: true });
+    expect(objectives!.goldCarryover).toEqual([{ bonus: true, carryoverPercentage: 40 }]);
+  });
+
   it("real, reported bug: Gwabbo's first message showed him already at the keep -- messageUnitSnapshot now reflects his real spawn position at that point in the story, not the fully-resolved final board", () => {
     const session = new GameSession(loadSnapshot());
     const messages = session.runStartupEvents();

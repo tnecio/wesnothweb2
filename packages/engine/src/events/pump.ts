@@ -142,6 +142,7 @@ export class EventPump {
       registry: options.registry ?? createDefaultActionRegistry(),
       resolveType: options.resolveType,
       messages: [] as RecordedMessage[],
+      objectivesBySide: new Map(),
       loc1: Location.NULL,
       loc2: Location.NULL,
       eventData: new WmlConfig(),
