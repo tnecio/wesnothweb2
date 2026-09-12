@@ -159,6 +159,7 @@
       <div>Position: ({info.x}, {info.y})</div>
       <div>Terrain: {info.terrainName} (Defense: {info.defensePercent}%)</div>
       <div>HP: {info.hp}/{info.maxHp}</div>
+      <div>XP: {info.xp}/{info.maxXp}</div>
       <div>Moves left: {info.movesLeft}/{info.maxMoves}</div>
       <div>Attacks left: {info.attacksLeft}</div>
       {#if info.attacks.length > 0}

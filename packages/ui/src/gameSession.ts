@@ -182,6 +182,8 @@ export interface SelectedUnitInfo {
   y: number;
   hp: number;
   maxHp: number;
+  xp: number;
+  maxXp: number;
   movesLeft: number;
   maxMoves: number;
   attacksLeft: number;
@@ -205,6 +207,8 @@ export function buildUnitInfo(board: GameBoard, unit: Unit, displayName: string)
     y: unit.location.y,
     hp: unit.hitpoints,
     maxHp: unit.maxHitpoints,
+    xp: unit.experience,
+    maxXp: unit.maxExperience,
     movesLeft: unit.movesLeft,
     maxMoves: unit.maxMoves,
     attacksLeft: unit.attacksLeft,

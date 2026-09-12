@@ -832,6 +832,17 @@ describe('GameSession.unitInfo (real, reported bug: UI missing weapon type/abili
     expect(info.abilities).toEqual([]);
   });
 
+  it('real, reported bug: XP is not present in the unit infobox -- unitInfo now reports the unit\'s real experience/maxExperience', () => {
+    const session = new GameSession(loadSnapshot());
+    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    kaiKrellis.experience = 3;
+    const info = session.unitInfo(kaiKrellis);
+
+    expect(info.xp).toBe(3);
+    expect(info.maxXp).toBe(kaiKrellis.maxExperience);
+    expect(info.maxXp).toBeGreaterThan(0);
+  });
+
   it("real Cylanna's abilities_list=heals_8,cures resolve to real player-facing names, not just tag ids", () => {
     const session = new GameSession(loadSnapshot());
     session.runStartupEvents();
