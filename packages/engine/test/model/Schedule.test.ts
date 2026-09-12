@@ -213,4 +213,29 @@ describe('Schedule (synthetic edge cases)', () => {
       expect(schedule.timeOfDayAt(loc, 1).id).toBe('firelight');
     });
   });
+
+  describe('exportState / importState (save/load round-trip)', () => {
+    it('round-trips a replaced global schedule and an active [time_area] through a plain-JSON snapshot', () => {
+      const schedule = threeTimeSchedule();
+      const loc = new Location(2, 2);
+      schedule.replaceSchedule([{ id: 'night', name: '', image: '', lawfulBonus: -25, red: 0, green: 0, blue: 0 }], 0, 5);
+      schedule.addTimeArea('campfire', new Set([loc.key()]), [{ id: 'firelight', name: '', image: '', lawfulBonus: 25, red: 0, green: 0, blue: 0 }], 0, 5);
+
+      const json = JSON.parse(JSON.stringify(schedule.exportState()));
+      const restored = threeTimeSchedule(); // starts with a completely different schedule/no areas.
+      restored.importState(json);
+
+      expect(restored.timeOfDayForTurn(5).id).toBe('night');
+      expect(restored.timeOfDayAt(loc, 5).id).toBe('firelight');
+      expect(restored.areaIds).toEqual(['campfire']);
+    });
+
+    it('round-trips a schedule with no areas and no replacement (the common case)', () => {
+      const schedule = threeTimeSchedule();
+      const restored = new Schedule([], 0, 25);
+      restored.importState(schedule.exportState());
+      expect(restored.timeOfDayForTurn(1).id).toBe('a');
+      expect(restored.areaIds).toEqual([]);
+    });
+  });
 });

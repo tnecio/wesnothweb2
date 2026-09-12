@@ -76,6 +76,7 @@ import {
   scheduleFromScenarioConfigJson,
   effectiveTimeOfDayAt,
   type Schedule,
+  type ScheduleState,
   type TimeOfDayEntry,
   type GameBoardSnapshot,
   type SnapshotUnit,
@@ -436,6 +437,14 @@ export interface SaveGameData {
     maxHitpoints: number;
     level: number;
   }[];
+  /**
+   * The live ToD schedule's mutated state (`[replace_schedule]`'s new
+   * global schedule, every active `[time_area]`) -- optional on read so a
+   * save written before Phase 12 still loads (the schedule then just
+   * stays as freshly rebuilt from the scenario's own static `[time]`
+   * config, matching this field's absence).
+   */
+  schedule?: ScheduleState;
 }
 
 /**
@@ -1731,6 +1740,7 @@ export class GameSession {
       turnNumber: this.turnNumber,
       activeSide: this.activeSide,
       scenarioResult: this.scenarioResult,
+      schedule: this.schedule.exportState(),
       startupEventsRun: this.startupEventsRun,
       teams: this.board.teams().map((t) => ({ side: t.side, gold: t.gold, shroudData: t.shroud.write(), fogData: t.fog.write() })),
       units: this.board.allUnits().map((u) => ({
@@ -1816,6 +1826,10 @@ export class GameSession {
     this.activeSide = data.activeSide;
     this.scenarioResult = data.scenarioResult;
     this.startupEventsRun = data.startupEventsRun;
+    // Optional-on-read (see `SaveGameData.schedule`'s own doc comment): an
+    // older save simply leaves the schedule as freshly built from the
+    // scenario's own static config.
+    if (data.schedule) this.schedule.importState(data.schedule);
     this.clearSelection();
     this.lastKnownVillageOwner.clear();
     this.syncVillageMemory();

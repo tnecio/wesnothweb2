@@ -393,6 +393,20 @@ describe('GameSession.toSaveData / loadSaveData (round-trip, see persistence.ts 
     expect(reloaded.handleHexClick(0, 0)).toBeNull();
     expect(reloaded.endTurn()).toBe('');
   });
+
+  it('round-trips the live ToD schedule (Schedule.test.ts covers the deeper [time_area]/[replace_schedule] mutation cases; this just confirms the wiring)', () => {
+    const session = new GameSession(loadSnapshot());
+    session.runStartupEvents();
+    const someUnit = session.board.allUnits()[0]!;
+    const beforeTod = session.timeOfDayAt(someUnit.location);
+
+    const saved = session.toSaveData();
+    expect(saved.schedule).toBeDefined();
+
+    const reloaded = new GameSession(loadSnapshot());
+    reloaded.loadSaveData(saved);
+    expect(reloaded.timeOfDayAt(someUnit.location)).toEqual(beforeTod);
+  });
 });
 
 describe('GameSession victory/defeat (real leader-death check, see checkVictory)', () => {

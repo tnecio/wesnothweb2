@@ -66,7 +66,7 @@ export function parseTimes(cfg: WmlConfig): TimeOfDayEntry[] {
 }
 
 /** A `[time]` sequence anchored to the turn its `currentTime` index was established on -- mirrors `calculate_time_index_at_turn`'s inputs. */
-interface AnchoredSequence {
+export interface AnchoredSequence {
   readonly times: readonly TimeOfDayEntry[];
   readonly anchorTurn: number;
   readonly anchorIndex: number;
@@ -84,6 +84,12 @@ export interface TimeArea {
   readonly id: string;
   readonly hexes: ReadonlySet<string>;
   readonly schedule: AnchoredSequence;
+}
+
+/** Plain-JSON-safe snapshot of a `Schedule`'s live, mutated state -- see `Schedule.exportState`/`importState` (used by `GameSession`'s save/load). */
+export interface ScheduleState {
+  readonly global: AnchoredSequence;
+  readonly areas: readonly { readonly id: string; readonly hexes: readonly string[]; readonly times: readonly TimeOfDayEntry[]; readonly anchorTurn: number; readonly anchorIndex: number }[];
 }
 
 /**
@@ -174,6 +180,20 @@ export class Schedule {
   /** Mirrors `tod_manager::replace_schedule`: replaces the GLOBAL schedule outright, re-anchored at `turnNumber` (`[time_area]`s are untouched). */
   replaceSchedule(times: readonly TimeOfDayEntry[], currentTime: number, turnNumber: number): void {
     this.globalSchedule = { times, anchorTurn: turnNumber, anchorIndex: currentTime };
+  }
+
+  /** Captures every bit of live, mutated state (`[replace_schedule]`'s new global schedule, every `[time_area]`) for save/load -- see `ScheduleState`. */
+  exportState(): ScheduleState {
+    return {
+      global: { ...this.globalSchedule },
+      areas: this.areas.map((a) => ({ id: a.id, hexes: [...a.hexes], ...a.schedule })),
+    };
+  }
+
+  /** Restores state captured by `exportState` -- replaces the global schedule and every `[time_area]` outright. */
+  importState(state: ScheduleState): void {
+    this.globalSchedule = { ...state.global };
+    this.areas = state.areas.map((a) => ({ id: a.id, hexes: new Set(a.hexes), schedule: { times: a.times, anchorTurn: a.anchorTurn, anchorIndex: a.anchorIndex } }));
   }
 
   /** Builds a `Schedule` from a `[scenario]` config's own (already macro-expanded) `[time]` children. `rng` resolves `random_start_time=` the same way `tod_manager::resolve_random` does -- see module doc comment; omit it to leave `current_time=`'s literal value untouched (matches an absent/`no` `random_start_time=`). */
