@@ -10,6 +10,7 @@ import {
   DEFAULT_XP_BAR_SCALING,
   movesOrbStatus,
   ORB_COLOR,
+  ORB_COLOR_ID,
   statusTint,
 } from '../src/unitOverlays'
 
@@ -77,6 +78,9 @@ describe('movesOrbStatus (display_context::unit_orb_status, collapsed to 3 state
   })
   it('every status has a distinct real ORB_COLOR entry', () => {
     expect(new Set(Object.values(ORB_COLOR)).size).toBe(3)
+  })
+  it('ORB_COLOR_ID matches the real default *_orb_color preferences (data/game_config.cfg)', () => {
+    expect(ORB_COLOR_ID).toEqual({ unmoved: 'brightgreen', partial: 'brightorange', moved: 'red' })
   })
 })
 

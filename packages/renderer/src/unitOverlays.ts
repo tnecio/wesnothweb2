@@ -111,6 +111,25 @@ export const ORB_COLOR: Record<MovesOrbStatus, number> = {
 };
 
 /**
+ * Real default `*_orb_color` preferences (`data/game_config.cfg`'s
+ * `unmoved_orb_color`/`partial_orb_color`/`moved_orb_color`), as the real
+ * `color_range` ids `~RC(magenta>id)` needs (not `ORB_COLOR`'s hex numbers,
+ * which approximate the same ranges' "average shade" for the old
+ * procedurally-drawn dot -- see `SnapshotBoard.updateIcons`, which draws
+ * the real `misc/orb.png` asset recolored with these ids instead. Real,
+ * reported bug (bugs3.md #1): the procedural dot's hand-guessed position
+ * didn't match the real crown/loyal-icon overlays' position (both of which
+ * were already the real, pre-positioned-via-transparent-padding 72x72
+ * assets, drawn at the unit's own anchor) -- using the real `orb.png`
+ * asset the same way fixes both the color AND the alignment at once.
+ */
+export const ORB_COLOR_ID: Record<MovesOrbStatus, string> = {
+  unmoved: 'brightgreen',
+  partial: 'brightorange',
+  moved: 'red',
+};
+
+/**
  * `units/drawer.cpp`'s poison/slow tint block (`redraw_unit`, "Add future
  * colored states here"), returning a plain multiplicative tint approximating
  * the real alpha blend toward the averaged color -- see module doc comment.
