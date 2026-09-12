@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Location, getAdjacentTiles, type GameBoardSnapshot } from '@wesnothweb2/engine';
+import { Location, Unit, getAdjacentTiles, createTypeResolver, type GameBoardSnapshot } from '@wesnothweb2/engine';
 import { GameSession } from './gameSession.js';
 
 /**
@@ -1063,5 +1063,108 @@ describe('GameSession.confirmAttack real, reported bug: plague kill did not spaw
       return;
     }
     throw new Error('Target Plague never died across 200 seeds -- suspiciously unlucky, or a real regression.');
+  });
+});
+
+describe('GameSession unit advancement (real, reported bug: advances_to= was never wired up -- a unit could never actually level up)', () => {
+  it('a single-option advance (Merman Fighter -> Merman Warrior) happens immediately, with no pending choice', () => {
+    const resolveType = createTypeResolver(new GameSession(loadSnapshot()).snapshot);
+    const fighterType = resolveType('Merman Fighter');
+    const dummyType = resolveType('Merman Citizen');
+
+    // Retry across seeds for a guaranteed hit (same established pattern as
+    // the plague test above -- GameSession has no way to force one).
+    for (let seed = 0; seed < 50; seed++) {
+      const s = new GameSession(loadSnapshot(), { seed });
+      const f = Unit.create(fighterType, 1, new Location(10, 10), { canRecruit: false });
+      f.experience = f.maxExperience - 1; // one real combat XP gain away from advancing.
+      const d = Unit.create(dummyType, 2, new Location(11, 10));
+      d.hitpoints = 1;
+      s.board.addUnit(f);
+      s.board.addUnit(d);
+      s.selectUnit(f);
+      s.handleHexClick(d.location.x, d.location.y);
+      s.confirmAttack();
+      if (f.type.id === 'Merman Warrior') {
+        expect(s.pendingAdvancement).toBeNull();
+        expect(f.hitpoints).toBe(f.maxHitpoints);
+        expect(s.log[0]).toContain('advances to Merman Warrior');
+        return;
+      }
+    }
+    throw new Error('Fighter never landed a hit across 50 seeds -- suspiciously unlucky, or a real regression.');
+  });
+
+  it('a multi-option advance (Merman Citizen -> Brawler/Fighter/Hunter) blocks on pendingAdvancement until the player chooses', () => {
+    const resolveType = (session: GameSession) => createTypeResolver(session.snapshot);
+    for (let seed = 0; seed < 50; seed++) {
+      const s = new GameSession(loadSnapshot(), { seed });
+      const rt = resolveType(s);
+      const citizenType = rt('Merman Citizen');
+      const dummyType = rt('Merman Citizen');
+      const citizen = Unit.create(citizenType, 1, new Location(10, 10), { canRecruit: false });
+      citizen.experience = citizen.maxExperience - 1;
+      const dummy = Unit.create(dummyType, 2, new Location(11, 10));
+      dummy.hitpoints = 1;
+      s.board.addUnit(citizen);
+      s.board.addUnit(dummy);
+      s.selectUnit(citizen);
+      s.handleHexClick(dummy.location.x, dummy.location.y);
+      s.confirmAttack();
+
+      if (s.pendingAdvancement) {
+        expect(s.pendingAdvancement.unit).toBe(citizen);
+        const optionIds = s.pendingAdvancement.options.map((t) => t.id).sort();
+        expect(optionIds).toEqual(['Merman Brawler', 'Merman Fighter', 'Merman Hunter'].sort());
+
+        s.chooseAdvancement('Merman Hunter');
+        expect(s.pendingAdvancement).toBeNull();
+        expect(citizen.type.id).toBe('Merman Hunter');
+        expect(citizen.hitpoints).toBe(citizen.maxHitpoints);
+        expect(s.log[0]).toContain('advances to Merman Hunter');
+        return;
+      }
+    }
+    throw new Error('Citizen never landed a hit across 50 seeds -- suspiciously unlucky, or a real regression.');
+  });
+});
+
+describe('GameSession advancement + victory ordering (real, reported bug: a kill that both wins the scenario and levels up the killer left the level-up unreachable)', () => {
+  it('a scenario-winning kill still sets pendingAdvancement -- GameSession.confirmAttack checks advancement before checkForGameEnd, matching real Wesnoth', () => {
+    const resolveType = createTypeResolver(new GameSession(loadSnapshot()).snapshot);
+    const citizenType = resolveType('Merman Citizen');
+
+    for (let seed = 0; seed < 50; seed++) {
+      const s = new GameSession(loadSnapshot(), { seed });
+      const malKevek = s.board.allUnits().find((u) => u.type.id === 'Dark Sorcerer')!;
+      s.board.removeUnitAt(malKevek.location);
+      const citizen = Unit.create(citizenType, 1, new Location(malKevek.location.x + 1, malKevek.location.y), { canRecruit: false });
+      citizen.experience = citizen.maxExperience - 1;
+      s.board.addUnit(citizen);
+      malKevek.location = new Location(malKevek.location.x, malKevek.location.y);
+      s.board.addUnit(malKevek);
+      malKevek.hitpoints = 1;
+
+      s.selectUnit(citizen);
+      s.handleHexClick(malKevek.location.x, malKevek.location.y);
+      if (!s.pendingAttack) continue; // not adjacent/no valid attack this seed's layout -- try another.
+      s.confirmAttack();
+
+      if (s.scenarioResult === 'victory') {
+        // The whole point: the win didn't silently skip or discard the
+        // pending level-up choice.
+        expect(s.pendingAdvancement).not.toBeNull();
+        expect(s.pendingAdvancement!.unit).toBe(citizen);
+
+        // Resolving it afterward still works normally, and only THEN is
+        // there nothing left blocking the scenario-end overlay.
+        const optionId = s.pendingAdvancement!.options[0]!.id;
+        s.chooseAdvancement(optionId);
+        expect(s.pendingAdvancement).toBeNull();
+        expect(citizen.type.id).toBe(optionId);
+        return;
+      }
+    }
+    throw new Error('Never landed the winning blow across 50 seeds -- suspiciously unlucky, or a real regression.');
   });
 });

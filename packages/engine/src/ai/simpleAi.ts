@@ -49,6 +49,7 @@ import { executeAttack, isBackstabActive, type AttackResult } from '../actions/c
 import { buildBattleContext, chooseDefenderWeaponIndex, type UnitStatsOptions } from '../actions/combatStats.js';
 import { simulateCombat } from '../actions/attackPrediction.js';
 import { computeLeadershipBonus, computeResistanceModifier } from '../actions/abilityEffects.js';
+import { advanceUnitFully } from '../actions/advancement.js';
 
 export interface AiTurnOptions {
   /** Resolves a recruit-list/type id to its real `UnitType` (see `combat.ts`'s plague `resolveType` param for the same established pattern -- this module has no snapshot access of its own). */
@@ -59,7 +60,7 @@ export interface AiTurnOptions {
   readonly attackScoreThreshold?: number;
 }
 
-export type AiActionKind = 'recruit' | 'move' | 'attack';
+export type AiActionKind = 'recruit' | 'move' | 'attack' | 'advance';
 
 /**
  * Enough raw data for a caller with a renderer (`packages/ui`'s
@@ -348,6 +349,21 @@ export function playAiTurn(board: GameBoard, side: number, rng: Rng, options: Ai
           result,
         },
       });
+      // Real Wesnoth checks both combatants for advancement right after
+      // the exchange (attack_unit_and_advance, actions/attack.cpp); the
+      // AI always picks randomly among its options (no dialog -- see
+      // advancement.ts's own doc comment on why that's the right call
+      // for a non-human side).
+      if (!result.attackerDied) {
+        for (const step of advanceUnitFully(board, unit, rng, options.resolveType)) {
+          actions.push({ kind: 'advance', message: `${step.fromTypeId} advances to ${step.toTypeId}!` });
+        }
+      }
+      if (!result.defenderDied) {
+        for (const step of advanceUnitFully(board, defender, rng, options.resolveType)) {
+          actions.push({ kind: 'advance', message: `${step.fromTypeId} advances to ${step.toTypeId}!` });
+        }
+      }
       continue;
     }
 

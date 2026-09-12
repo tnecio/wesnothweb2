@@ -52,6 +52,7 @@
     type LastAttackAnimation,
     type LastMoveAnimation,
     type LastRecruitAnimation,
+    type PendingAdvancement,
   } from './gameSession.js';
   import { saveGame, loadGame } from './persistence.js';
   import TurnBanner from './TurnBanner.svelte';
@@ -59,6 +60,7 @@
   import SidePanel from './SidePanel.svelte';
   import StoryViewer from './StoryViewer.svelte';
   import MessageViewer from './MessageViewer.svelte';
+  import AdvancementDialog from './AdvancementDialog.svelte';
   import ScenarioEndOverlay from './ScenarioEndOverlay.svelte';
 
   let { snapshot }: { snapshot: GameBoardSnapshot } = $props();
@@ -110,6 +112,7 @@
   let recallOptions = $state<RecallOption[]>([]);
   let pendingRecallIndex = $state<number | null>(null);
   let pendingPreview = $state<CombatPreview | null>(null);
+  let pendingAdvancement = $state<PendingAdvancement | null>(null);
   let attackerWeaponOptions = $state<AttackerWeaponOption[]>([]);
   let log = $state<string[]>([]);
   let turnNumber = $state(session.turnNumber);
@@ -146,6 +149,7 @@
     recallOptions = session.recallOptions;
     pendingRecallIndex = session.pendingRecallIndex;
     pendingPreview = session.pendingAttack?.preview ?? null;
+    pendingAdvancement = session.pendingAdvancement;
     attackerWeaponOptions = session.attackerWeaponOptions;
     log = session.log;
     turnNumber = session.turnNumber;
@@ -508,6 +512,11 @@
     sync();
   }
 
+  function handleChooseAdvancement(typeId: string): void {
+    session.chooseAdvancement(typeId);
+    sync();
+  }
+
   function handleSelectAttackerWeapon(index: number): void {
     if (phase !== 'playing') return;
     session.selectAttackerWeapon(index);
@@ -722,7 +731,16 @@
     <StoryViewer parts={storyParts} index={storyIndex} onNext={advanceStory} />
   {:else if phase === 'messages'}
     <MessageViewer messages={startupMessages} index={messageIndex} onNext={advanceMessage} />
-  {:else if phase === 'ended' && session.scenarioResult}
+  {:else if phase === 'ended' && session.scenarioResult && !pendingAdvancement}
+    <!--
+      `!pendingAdvancement` guard: a kill that both wins the scenario AND
+      grants the killer a level-up choice is real (GameSession.confirmAttack
+      checks advancement before checkForGameEnd, mirroring real Wesnoth's
+      attack_unit_and_advance) -- without this, ScenarioEndOverlay (z-index
+      200) would render on top of AdvancementDialog (100) and leave the
+      player unable to ever resolve the pending choice. Once
+      chooseAdvancement clears it, this branch shows normally.
+    -->
     <ScenarioEndOverlay
       result={session.scenarioResult}
       {turnNumber}
@@ -733,6 +751,8 @@
       onContinue={continueToNextScenario}
     />
   {/if}
+
+  <AdvancementDialog pending={pendingAdvancement} onChoose={handleChooseAdvancement} />
 </div>
 
 <style>

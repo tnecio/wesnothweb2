@@ -359,3 +359,30 @@ describe('playAiTurn: movement fallback', () => {
     expect(newDistance).toBeLessThan(oldDistance);
   });
 });
+
+describe('playAiTurn: advancement (real, reported bug -- units never advanced anywhere in this project)', () => {
+  it('an AI-controlled kill that grants enough XP advances the attacker immediately, logged as a real "advance" action', () => {
+    const board = makeBoard(terrainData);
+    const moveType = flatMoveType(terrainData, 100); // always hit -- deterministic.
+    const weakType = makeUnitType('weak', 1, moveType, makeWeapon(1, 1));
+    // experienceNeededBase=1 -- any real combat XP gain immediately qualifies for advancement.
+    const advancedType = new UnitType('advanced', 'advanced', '', 'neutral', 2, 40, 5, 5, 0, 1, 10, -1, 500, [], '', false, false, false, moveType, [makeWeapon(10, 3)], []);
+    const strongType = new UnitType('strong', 'strong', '', 'neutral', 1, 40, 5, 5, 0, 1, 10, -1, 1, ['advanced'], '', false, false, false, moveType, [makeWeapon(10, 3)], []);
+
+    const attacker = Unit.create(strongType, 1, Location.fromWml(3, 3), { canRecruit: true });
+    const target = Unit.create(weakType, 2, Location.fromWml(4, 3));
+    board.addUnit(attacker);
+    board.addUnit(target);
+
+    const rng = new RngDeterministic(new MtRng(3));
+    const resolveType = (id: string): UnitType => (id === 'advanced' ? advancedType : strongType);
+    const actions = playAiTurn(board, 1, rng, { resolveType });
+
+    expect(actions.filter((a) => a.kind === 'attack')).toHaveLength(1);
+    const advanceAction = actions.find((a) => a.kind === 'advance');
+    expect(advanceAction).toBeDefined();
+    expect(advanceAction!.message).toBe('strong advances to advanced!');
+    expect(attacker.type.id).toBe('advanced');
+    expect(attacker.hitpoints).toBe(attacker.maxHitpoints); // advancing fully heals, matching real get_advanced_unit.
+  });
+});

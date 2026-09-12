@@ -44,6 +44,7 @@ import {
   computeResistanceModifier,
   playAiTurn,
   type AiAnimationEvent,
+  advanceUnitTo,
   type AttackBlowResult,
   type AttackResult,
   buildBattleContext,
@@ -153,7 +154,7 @@ export interface WeaponInfo {
   specials: readonly WeaponSpecialInfo[];
 }
 
-function buildWeaponInfo(weapon: AttackType): WeaponInfo {
+export function buildWeaponInfo(weapon: AttackType): WeaponInfo {
   return {
     name: weapon.name,
     type: weapon.type,
@@ -167,7 +168,7 @@ function buildWeaponInfo(weapon: AttackType): WeaponInfo {
   };
 }
 
-function buildAbilityInfo(entry: RegistryEntry): AbilityInfo {
+export function buildAbilityInfo(entry: RegistryEntry): AbilityInfo {
   return {
     name: entry.config.getString('name') || entry.tag,
     description: entry.config.getString('description'),
@@ -268,6 +269,22 @@ export interface LastMoveAnimation {
 export interface LastRecruitAnimation {
   readonly unit: Unit;
   readonly leader: Unit;
+}
+
+/**
+ * A unit that's currently blocked on the player choosing which real
+ * `advances_to=` type to become -- mirrors `unit_advancement_choice::
+ * query_user`'s human-dialog branch (`actions/advancement.ts`'s own doc
+ * comment explicitly scoped that out as "a UI concern", which this
+ * fills in). Set by `GameSession`'s internal advancement queue
+ * (`queueAdvancement`/`processAdvancementQueue`) whenever a unit that
+ * just gained enough XP has 2+ real advancement options -- a single-
+ * option unit advances immediately with no prompt (matching upstream:
+ * the dialog only appears when there's an actual choice to make).
+ */
+export interface PendingAdvancement {
+  readonly unit: Unit;
+  readonly options: readonly UnitType[];
 }
 
 /** One of the attacker's usable weapons against the current target -- see `GameSession.attackerWeaponOptions`. */
@@ -468,6 +485,18 @@ export class GameSession {
    * for the same reasoning as attacks/moves.
    */
   lastRecruitAnimation: LastRecruitAnimation | null = null;
+  /**
+   * The unit currently blocked on the player's advancement choice, if any
+   * -- see `PendingAdvancement`'s own doc comment. While set, callers
+   * should block other play (matching real Wesnoth's modal advance
+   * dialog) until `chooseAdvancement` resolves it. `null` the rest of
+   * the time, including immediately after `chooseAdvancement` -- unlike
+   * the `lastXAnimation` fields, this ISN'T read-once-then-clear by the
+   * caller; `GameSession` itself owns clearing it.
+   */
+  pendingAdvancement: PendingAdvancement | null = null;
+  /** Units still waiting for an advancement check -- see `queueAdvancement`/`processAdvancementQueue`. Drained (auto-advancing single-option units, cascading on overflow XP) until either empty or a multi-option unit sets `pendingAdvancement` and pauses the drain. */
+  private readonly advancementQueue: Unit[] = [];
   /**
    * Set by `endTurn` every time it auto-plays one or more consecutive
    * `ai`/`network_ai`-controlled sides, to every real `AiAnimationEvent`
@@ -1370,12 +1399,71 @@ export class GameSession {
     // checkForGameEnd() overwrites the log's top entry with the outcome
     // message if the scenario just ended, on top of the combat message
     // above (both stay in `log`, most-recent-first).
+    // Real Wesnoth checks both combatants for advancement right after the
+    // exchange (`attack_unit_and_advance`, actions/attack.cpp), before any
+    // victory check -- a unit that just landed the kill needed to end the
+    // scenario still gets to level up first.
+    if (!result.attackerDied) this.queueAdvancement(pending.attacker);
+    if (!result.defenderDied) this.queueAdvancement(pending.defender);
+    this.processAdvancementQueue();
+
     if (result.defenderDied || result.attackerDied) this.checkForGameEnd();
     return this.scenarioResult ? this.log[0]! : message;
   }
 
   cancelAttack(): void {
     this.pendingAttack = null;
+  }
+
+  /** Pushes `unit` onto the advancement queue if it's real, reported bug (bugs2.md "unit advancement"): a unit reaching full XP never actually advanced anywhere in this project -- `actions/advancement.ts` existed but nothing called it. No-op if `unit` doesn't currently have enough XP to advance. */
+  private queueAdvancement(unit: Unit): void {
+    if (unit.advances()) this.advancementQueue.push(unit);
+  }
+
+  /**
+   * Drains `advancementQueue`: a unit with exactly one real
+   * `advances_to=` option advances immediately (no choice to make,
+   * matching upstream -- the dialog only ever appears for an actual
+   * choice), and -- since overflow XP can cascade straight into ANOTHER
+   * advancement (`Unit.advanceTo` carries it over) -- is re-queued if it
+   * still qualifies afterward. A unit with 2+ options instead sets
+   * `pendingAdvancement` and stops draining; `chooseAdvancement` resumes
+   * the drain once the player picks.
+   */
+  private processAdvancementQueue(): void {
+    while (this.advancementQueue.length > 0) {
+      const unit = this.advancementQueue.shift()!;
+      if (!unit.advances()) continue; // healed/demoted by something else in between -- no longer eligible.
+      const optionIds = unit.type.advancesTo;
+      if (optionIds.length === 1) {
+        const before = unit.type.name;
+        const result = advanceUnitTo(unit, this.resolveType(optionIds[0]!));
+        this.log.unshift(`${before} advances to ${result.unit.type.name}!`);
+        if (result.canAdvanceAgain) this.advancementQueue.unshift(unit);
+        continue;
+      }
+      this.pendingAdvancement = { unit, options: optionIds.map((id) => this.resolveType(id)) };
+      return;
+    }
+  }
+
+  /**
+   * Resolves the current `pendingAdvancement` to `typeId` (must be one of
+   * its own `options`), logs it, and resumes draining the advancement
+   * queue (the same unit re-queues itself if overflow XP lets it advance
+   * again immediately).
+   */
+  chooseAdvancement(typeId: string): void {
+    const pending = this.pendingAdvancement;
+    if (!pending) return;
+    const chosen = pending.options.find((t) => t.id === typeId);
+    if (!chosen) return;
+    const before = pending.unit.type.name;
+    const result = advanceUnitTo(pending.unit, chosen);
+    this.log.unshift(`${before} advances to ${result.unit.type.name}!`);
+    this.pendingAdvancement = null;
+    if (result.canAdvanceAgain) this.advancementQueue.unshift(pending.unit);
+    this.processAdvancementQueue();
   }
 
   /** Captures every mutable bit of live state -- see `SaveGameData`'s own doc comment. */
