@@ -26,10 +26,28 @@
  *    `unit_type` construction upstream; a loader building `UnitType`s from
  *    parsed WML should do the equivalent flattening before calling
  *    `UnitType.fromConfig`, so it isn't duplicated here.
- *  - Name generation / `[trait]` pools from `unit_race` (src/units/race.hpp):
- *    race is kept as a plain id string (`raceId`), not a full `unit_race`
- *    object, since name generators are a content-flavor feature, not core
- *    combat/turn state.
+ *  - Name generation from `unit_race` (src/units/race.hpp): race is kept as
+ *    a plain id string (`raceId`), not a full `unit_race` object, since name
+ *    generators are a content-flavor feature, not core combat/turn state.
+ *  - `[trait]` pools ARE now partially ported (`possibleTraits`/`numTraits`,
+ *    used by `actions/recruit.ts`'s `generateTraits` -- real, reported bug:
+ *    recruited units never got random traits at all). What's ported: this
+ *    type's own inline `[trait]` children (musthave traits like
+ *    `{TRAIT_MECHANICAL}`/`{TRAIT_FEARLESS_MUSTHAVE}`, when a unit_type
+ *    embeds them directly -- the common real-content pattern, see e.g.
+ *    `data/core/units/undead/Corpse_Soulless.cfg`), plus the 4 real traits
+ *    common to every unit type (`GLOBAL_TRAITS` below: strong/quick/
+ *    intelligent/resilient, ported from `{TRAIT_STRONG}` etc in
+ *    `data/core/macros/traits.cfg`, added unconditionally in upstream's own
+ *    `unit_type` constructor). `numTraits` defaults to 2 (`cfg["num_traits"]`
+ *    if set) -- correct for the overwhelming majority of real races. What's
+ *    NOT ported: `[race]`-level `num_traits=`/`additional_traits`/
+ *    `ignore_race_traits`/`ignore_global_traits` (race is a plain id string,
+ *    see above) -- so a unit_type belonging to a race with a non-default
+ *    `num_traits` (e.g. `mechanical`'s 1, only ever reached by
+ *    scenario-placed `[unit]`s, not recruited ones -- see `generateTraits`'s
+ *    own doc comment on why that's out of scope here) would, if recruited,
+ *    wrongly get up to 2 slots instead of the race's real count.
  */
 
 import { WmlConfig } from '../wml/config.js';
@@ -49,6 +67,14 @@ export interface RegistryEntry {
 }
 
 const EMPTY_REGISTRY: ReadonlyMap<string, RegistryEntry> = new Map();
+
+/** Builds a raw `[trait]`-shaped `WmlConfig` for one of the 4 real traits common to every unit type -- see `UnitType`'s module doc comment. */
+function globalTrait(id: string): WmlConfig {
+  return new WmlConfig().setAttribute('id', id).setAttribute('male_name', id).setAttribute('female_name', id).setAttribute('availability', 'any');
+}
+
+/** The 4 real traits ported verbatim from `{TRAIT_STRONG}`/`{TRAIT_QUICK}`/`{TRAIT_INTELLIGENT}`/`{TRAIT_RESILIENT}` (`data/core/macros/traits.cfg`), added to every unit type's trait pool by upstream's own `unit_type` constructor -- see `UnitType`'s module doc comment. */
+export const GLOBAL_TRAITS: readonly WmlConfig[] = [globalTrait('strong'), globalTrait('quick'), globalTrait('intelligent'), globalTrait('resilient')];
 
 /** Resolves a comma-separated `*_list=` attribute value against a registry, mirroring `unit_type_data::add_registry_entries`'s id-resolution loop -- unknown ids are silently skipped (matches upstream's WRN-log-and-continue, not an error). */
 function resolveIdList(listValue: string, registry: ReadonlyMap<string, RegistryEntry>): RegistryEntry[] {
@@ -166,6 +192,10 @@ export class UnitType {
      * `src/units/abilities.cpp`). See `RegistryEntry`'s own doc comment.
      */
     public readonly abilities: readonly RegistryEntry[],
+    /** How many `[trait]` slots `generateTraits` fills for a freshly recruited unit of this type -- mirrors `unit_type::num_traits()`, see module doc comment on what's NOT ported (race-level defaults). */
+    public readonly numTraits: number = 2,
+    /** Raw `[trait]` candidate configs (this type's own inline ones, then `GLOBAL_TRAITS`) -- see module doc comment. */
+    public readonly possibleTraits: readonly WmlConfig[] = GLOBAL_TRAITS,
   ) {}
 
   /** Mirrors `unit_type::experience_needed`: the modifier is the game-wide `[game_config] experience_modifier` (default 100 = unchanged). */
@@ -206,6 +236,9 @@ export class UnitType {
     const listedAbilities = resolveIdList(cfg.getString('abilities_list', ''), registries.abilities ?? EMPTY_REGISTRY);
     const abilities = [...inlineAbilities, ...listedAbilities];
 
+    const numTraits = cfg.getNumber('num_traits', 2);
+    const possibleTraits = [...cfg.children('trait'), ...GLOBAL_TRAITS];
+
     return new UnitType(
       id,
       name,
@@ -231,6 +264,8 @@ export class UnitType {
       moveType,
       attacks,
       abilities,
+      numTraits,
+      possibleTraits,
     );
   }
 }

@@ -288,6 +288,21 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
     expect(session.lastRecruitAnimation!.unit.location.y).toBe(target.y);
   });
 
+  it('real, reported bug: recruited units never got any character traits, and the unit infobox never showed trait information -- a freshly recruited unit now gets 2 real traits (e.g. strong/quick/intelligent/resilient), surfaced in unitInfo().traits', () => {
+    const session = new GameSession(loadSnapshot());
+    const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
+    session.selectUnit(leader);
+    const typeId = session.recruitOptions[0]!.typeId;
+    const target = session.recruitTiles[0]!;
+
+    session.selectRecruitType(typeId);
+    session.handleHexClick(target.x, target.y);
+
+    const placed = session.board.allUnits().find((u) => u.location.x === target.x && u.location.y === target.y)!;
+    expect(placed.traitNames).toHaveLength(2);
+    expect(session.unitInfo(placed).traits).toEqual(placed.traitNames);
+  });
+
   it('refuses to recruit when the side cannot afford the unit', () => {
     const session = new GameSession(loadSnapshot());
     const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;

@@ -13,7 +13,8 @@ import { UnitType, AttackType } from '../../src/model/UnitType.js';
 import { MoveType } from '../../src/model/MoveType.js';
 import { RngDeterministic } from '../../src/rng/RngDeterministic.js';
 import { MtRng } from '../../src/rng/MtRng.js';
-import { recruitUnit, recallUnit, dismissUnit, canRecruitOn, checkRecruitLocation } from '../../src/actions/recruit.js';
+import { recruitUnit, recallUnit, dismissUnit, canRecruitOn, checkRecruitLocation, generateTraits } from '../../src/actions/recruit.js';
+import { GLOBAL_TRAITS } from '../../src/model/UnitType.js';
 import { calculateHealing, applySideHealing } from '../../src/actions/heal.js';
 import { advanceUnitTo, chooseAdvancementRandomly } from '../../src/actions/advancement.js';
 import { killXp, combatXp } from '../../src/actions/gameConfig.js';
@@ -77,7 +78,7 @@ describe('recruit/recall/dismiss', () => {
     const check = checkRecruitLocation(board, 1, castleLoc, keepLoc, () => true);
     expect(check.result).toBe('ok');
 
-    const result = recruitUnit(board, team, recruitType, castleLoc, keepLoc);
+    const result = recruitUnit(board, team, recruitType, castleLoc, keepLoc, new RngDeterministic(new MtRng(2026)));
 
     expect(team.gold).toBe(35); // 50 - 15
     expect(result.unit.hitpoints).toBe(20); // healed to full
@@ -124,6 +125,70 @@ describe('recruit/recall/dismiss', () => {
     const dismissed = dismissUnit(board, 1, a.underlyingId);
     expect(dismissed).toBe(a);
     expect(board.recallList(1)).toEqual([b]);
+  });
+
+  it('recruiting gives the fresh unit exactly numTraits (2) real random traits, drawn from the real global pool -- real, reported bug: recruited units never got any traits at all', () => {
+    const terrainData = loadTerrainData();
+    const moveType = flatMoveType(terrainData);
+    const map = GameMap.fromMapString('Gg, Gg, Gg, Gg\nGg, Kh, Ch, Gg\nGg, Gg, Gg, Gg\nGg, Gg, Gg, Gg', terrainData);
+    const board = new GameBoard(map);
+    const team = new Team(1, { gold: 50 });
+    board.addTeam(team);
+
+    const recruitType = makeUnitType('grunt', 20, moveType);
+    const result = recruitUnit(board, team, recruitType, Location.fromWml(2, 1), Location.fromWml(1, 1), new RngDeterministic(new MtRng(2026)));
+
+    const traitIds = result.unit.modifications.filter((m) => m.kind === 'trait').map((m) => m.cfg.getString('id'));
+    expect(traitIds).toHaveLength(2);
+    expect(new Set(traitIds).size).toBe(2); // no trait picked twice
+    const globalIds = new Set(GLOBAL_TRAITS.map((t) => t.getString('id')));
+    for (const id of traitIds) expect(globalIds.has(id)).toBe(true);
+    expect(result.unit.traitNames).toEqual(traitIds); // strong/quick/intelligent/resilient display the same as their id
+  });
+});
+
+describe('generateTraits (mirrors unit::generate_traits)', () => {
+  function trait(attrs: Record<string, string>): WmlConfig {
+    const cfg = new WmlConfig();
+    for (const [k, v] of Object.entries(attrs)) cfg.setAttribute(k, v);
+    return cfg;
+  }
+
+  it('adds every musthave trait unconditionally, even past numTraits, and does not random-fill beyond numTraits once musthave traits already fill it', () => {
+    const terrainData = loadTerrainData();
+    const moveType = flatMoveType(terrainData);
+    const type = new UnitType(
+      'mudcrawler', 'mudcrawler', '', 'neutral', 1, 20, 5, 5, 0, 1, 10, -1, 32, [], '', false, false, false, moveType,
+      [AttackType.fromConfig(new WmlConfig())], [], 1,
+      [trait({ id: 'mechanical', availability: 'musthave' }), ...GLOBAL_TRAITS],
+    );
+    const picked = generateTraits(type, new RngDeterministic(new MtRng(1)));
+    expect(picked.map((m) => m.cfg.getString('id'))).toEqual(['mechanical']);
+  });
+
+  it('honors require_traits: a trait requiring another unpicked trait is skipped until that trait has been picked', () => {
+    const terrainData = loadTerrainData();
+    const moveType = flatMoveType(terrainData);
+    const type = new UnitType(
+      'test', 'test', '', 'neutral', 1, 20, 5, 5, 0, 1, 10, -1, 32, [], '', false, false, false, moveType,
+      [AttackType.fromConfig(new WmlConfig())], [], 2,
+      [trait({ id: 'strong_swimmer', require_traits: 'strong' }), trait({ id: 'strong' })],
+    );
+    const picked = generateTraits(type, new RngDeterministic(new MtRng(1)));
+    expect(picked.map((m) => m.cfg.getString('id'))).toEqual(['strong', 'strong_swimmer']);
+  });
+
+  it('honors exclude_traits: once one of a mutually-exclusive pair is picked, the other is never a candidate, so a slot can go unfilled', () => {
+    const terrainData = loadTerrainData();
+    const moveType = flatMoveType(terrainData);
+    const type = new UnitType(
+      'test', 'test', '', 'neutral', 1, 20, 5, 5, 0, 1, 10, -1, 32, [], '', false, false, false, moveType,
+      [AttackType.fromConfig(new WmlConfig())], [], 2,
+      [trait({ id: 'weak', exclude_traits: 'strong' }), trait({ id: 'strong' })],
+    );
+    const picked = generateTraits(type, new RngDeterministic(new MtRng(1)));
+    expect(picked).toHaveLength(1); // whichever of weak/strong got picked first excludes the other, and there's no 3rd candidate
+    expect(['weak', 'strong']).toContain(picked[0]!.cfg.getString('id'));
   });
 });
 

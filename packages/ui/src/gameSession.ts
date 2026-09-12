@@ -198,6 +198,8 @@ export interface SelectedUnitInfo {
   attacks: readonly WeaponInfo[];
   /** This unit type's real abilities (e.g. heals, skirmisher) -- addresses "UI is missing information about abilities and specials". */
   abilities: readonly AbilityInfo[];
+  /** This unit's real `[trait]` modifications (e.g. "strong", "intelligent") -- real, reported bug: there was no way to see whether a unit had any traits, or what they were. See `Unit.traitNames`/`actions/recruit.ts`'s `generateTraits`. */
+  traits: readonly string[];
 }
 
 /** Builds a `SelectedUnitInfo` view-model for any live `Unit` -- shared by `GameSession.selectedUnitInfo`/`inspectedUnitInfo` (`GameShell.svelte` used to build this itself, inline, only for `selectedUnit`; centralised here so both selection and inspection stay in sync with each other and with `WeaponInfo`/`AbilityInfo`). */
@@ -219,6 +221,7 @@ export function buildUnitInfo(board: GameBoard, unit: Unit, displayName: string)
     defensePercent: 100 - unit.defenseModifier(board.map.getTerrain(unit.location)),
     attacks: unit.attacks.map(buildWeaponInfo),
     abilities: unit.type.abilities.map(buildAbilityInfo),
+    traits: unit.traitNames,
   };
 }
 
@@ -912,7 +915,7 @@ export class GameSession {
       return `Not enough gold to recruit ${name} (needs ${cost}, have ${team.gold}).`;
     }
     const type = this.resolveType(typeId);
-    const result = recruitUnit(this.board, team, type, loc, leader.location);
+    const result = recruitUnit(this.board, team, type, loc, leader.location, this.rng);
     this.lastRecruitAnimation = { unit: result.unit, leader };
     const message = `Recruited ${name} for ${result.cost} gold.`;
     this.log.unshift(message);

@@ -112,7 +112,7 @@ function recruitPowerScore(type: UnitType): number {
   return type.hitpoints + bestAttackDamage * 3;
 }
 
-function doRecruiting(board: GameBoard, side: number, options: AiTurnOptions, actions: AiAction[]): void {
+function doRecruiting(board: GameBoard, side: number, rng: Rng, options: AiTurnOptions, actions: AiAction[]): void {
   const team = board.getTeam(side);
   if (!team) return;
 
@@ -129,7 +129,7 @@ function doRecruiting(board: GameBoard, side: number, options: AiTurnOptions, ac
 
     affordable.sort((a, b) => recruitPowerScore(b) / Math.max(1, b.cost) - recruitPowerScore(a) / Math.max(1, a.cost));
     const chosen = affordable[0]!;
-    const result = recruitUnit(board, team, chosen, vacant, leader.location);
+    const result = recruitUnit(board, team, chosen, vacant, leader.location, rng);
     actions.push({
       kind: 'recruit',
       message: `${team.teamName || `Side ${side}`} recruited a ${chosen.name} for ${result.cost}g.`,
@@ -296,7 +296,7 @@ function decideMove(board: GameBoard, unit: Unit, destinations: readonly PathSte
  */
 export function playAiTurn(board: GameBoard, side: number, rng: Rng, options: AiTurnOptions): AiAction[] {
   const actions: AiAction[] = [];
-  doRecruiting(board, side, options, actions);
+  doRecruiting(board, side, rng, options, actions);
 
   const threshold = options.attackScoreThreshold ?? DEFAULT_ATTACK_SCORE_THRESHOLD;
   // Snapshot the unit list once: units recruited this turn have 0 moves/attacks

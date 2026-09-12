@@ -35,8 +35,60 @@
 import { Location, getAdjacentTiles, oppositeDirection, Direction, ALL_DIRECTIONS, distanceBetween } from '../model/Location.js';
 import type { GameBoard } from '../model/GameBoard.js';
 import type { Team } from '../model/Team.js';
-import { Unit } from '../model/Unit.js';
+import { Unit, type UnitModification } from '../model/Unit.js';
 import type { UnitType } from '../model/UnitType.js';
+import type { Rng } from '../rng/Rng.js';
+
+function splitList(value: string): string[] {
+  return value
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+/**
+ * Mirrors `unit::generate_traits(must_have_only=false)`: fills `type`'s
+ * `numTraits` slots from `type.possibleTraits`, `musthave`-availability ones
+ * first (unconditionally, even beyond `numTraits` -- matches upstream, which
+ * never caps the musthave pass), then randomly for the rest, honoring each
+ * candidate's `require_traits=`/`exclude_traits=` against what's already
+ * been picked. Stops early if no candidate remains (matches upstream's
+ * "could only generate N traits" case, e.g. a small `possibleTraits` pool).
+ *
+ * Deliberately NOT ported: the leader-only exclusion (`!can_recruit() ||
+ * avl == "any"`) -- moot here since this is only ever called for a freshly
+ * recruited unit (`Unit.create`'s `canRecruit: false` at this module's
+ * `recruitUnit`), never a leader. See `UnitType`'s own module doc comment
+ * for what `numTraits`/`possibleTraits` themselves don't model (race-level
+ * defaults).
+ */
+export function generateTraits(type: UnitType, rng: Rng): UnitModification[] {
+  const picked: UnitModification[] = [];
+  const hasId = (id: string) => picked.some((m) => m.cfg.getString('id') === id);
+
+  for (const t of type.possibleTraits) {
+    if (t.getString('availability', 'any') === 'musthave' && !hasId(t.getString('id'))) {
+      picked.push({ kind: 'trait', cfg: t });
+    }
+  }
+
+  while (picked.length < type.numTraits) {
+    const pickedIds = picked.map((m) => m.cfg.getString('id'));
+    const pickedExcludes = picked.flatMap((m) => splitList(m.cfg.getString('exclude_traits', '')));
+    const candidates = type.possibleTraits.filter((t) => {
+      const id = t.getString('id');
+      if (hasId(id) || pickedExcludes.includes(id)) return false;
+      if (splitList(t.getString('require_traits', '')).some((r) => !pickedIds.includes(r))) return false;
+      if (splitList(t.getString('exclude_traits', '')).some((e) => pickedIds.includes(e))) return false;
+      return true;
+    });
+    if (candidates.length === 0) break;
+    const chosen = candidates[rng.getRandomInt(0, candidates.length - 1)]!;
+    picked.push({ kind: 'trait', cfg: chosen });
+  }
+
+  return picked;
+}
 
 /** Mirrors `actions::RECRUIT_CHECK`. */
 export type RecruitCheck =
@@ -239,10 +291,12 @@ function placeRecruit(
  * recruit_unit`. `loc`/`from` should already have passed `checkRecruitLocation`
  * (this function does not itself re-validate placement legality -- callers
  * building a full recruit command should call `checkRecruitLocation` first
- * and surface its result to the player/AI).
+ * and surface its result to the player/AI). `rng` generates this unit's
+ * random traits (`generateTraits`) -- real, reported bug: recruited units
+ * never got any.
  */
-export function recruitUnit(board: GameBoard, team: Team, type: UnitType, loc: Location, from: Location): PlaceRecruitResult {
-  const unit = Unit.create(type, team.side, loc, { canRecruit: false });
+export function recruitUnit(board: GameBoard, team: Team, type: UnitType, loc: Location, from: Location, rng: Rng): PlaceRecruitResult {
+  const unit = Unit.create(type, team.side, loc, { canRecruit: false, modifications: generateTraits(type, rng) });
   return placeRecruit(board, team, unit, loc, from, type.cost, false, false);
 }
 

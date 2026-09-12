@@ -162,6 +162,10 @@
       <div>XP: {info.xp}/{info.maxXp}</div>
       <div>Moves left: {info.movesLeft}/{info.maxMoves}</div>
       <div>Attacks left: {info.attacksLeft}</div>
+      {#if info.traits.length > 0}
+        <!-- Real character traits (e.g. strong, intelligent) -- addresses "no information about character traits in the unit infobox". -->
+        <div>Traits: {info.traits.join(', ')}</div>
+      {/if}
       {#if info.attacks.length > 0}
         <!-- Real weapon type/range/specials -- addresses "UI is missing information about weapon type/specials". -->
         <div class="attacks">

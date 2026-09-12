@@ -245,6 +245,21 @@ export class Unit {
     return this.modifications.some((m) => m.kind === 'trait' && m.cfg.getString('id') === 'loyal');
   }
 
+  /**
+   * Display names of this unit's `[trait]` modifications (e.g. "strong",
+   * "intelligent") -- real, reported bug: there was no way to see whether a
+   * unit had any traits at all, or what they were. See `UnitType`'s module
+   * doc comment for how `modifications` gets `kind: 'trait'` entries in the
+   * first place (`actions/recruit.ts`'s `generateTraits`, for freshly
+   * recruited units) and this file's own module doc comment for why a
+   * trait's numeric `[effect]`s still don't apply to anything.
+   */
+  get traitNames(): readonly string[] {
+    return this.modifications
+      .filter((m) => m.kind === 'trait')
+      .map((m) => m.cfg.getString('male_name', m.cfg.getString('name', m.cfg.getString('id'))));
+  }
+
   // --- XP / leveling (mirrors unit::experience_to_advance/advances/advance_to) ---
 
   experienceToAdvance(): number {
