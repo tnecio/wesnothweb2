@@ -43,6 +43,7 @@
     type UnitAnimationCue,
     type FogShroudHex,
   } from '@wesnothweb2/renderer';
+  import type { TimeOfDayEntry } from '@wesnothweb2/engine';
   import { fetchTerrainGraphicsRules } from './terrainGraphicsRulesCache.js';
   import { fetchTeamColors } from './teamColorsCache.js';
 
@@ -55,6 +56,7 @@
     recruitTiles = [],
     villageOwners = [],
     hexVisibility = [],
+    timeOfDay = undefined,
     onHexClick,
     hoverDefensePercent,
   }: {
@@ -70,6 +72,8 @@
     villageOwners?: readonly VillageOwnerPoint[];
     /** Per-hex shroud/fog state for the board's fog overlay -- see `GameSession.hexVisibility`. Empty when the scenario uses neither. */
     hexVisibility?: readonly FogShroudHex[];
+    /** The current global ToD's red=/green=/blue= colour shift -- see `SnapshotBoard.updateTimeOfDayTint`. Omit for no tint (a scenario with no [time] schedule). */
+    timeOfDay?: Pick<TimeOfDayEntry, 'red' | 'green' | 'blue'>;
     onHexClick: (x: number, y: number) => void;
     /** Real terrain-defense percentage the currently selected unit would have at (x, y), for the hover status line -- `undefined`/`null` when nothing is selected or the hex is off-board. */
     hoverDefensePercent?: (x: number, y: number) => number | null;
@@ -246,6 +250,7 @@
       newBoard.setHighlights({ selected: selectedHex, reachable, attackTargets, recruitTiles });
       newBoard.updateVillageOwnership(villageOwners);
       newBoard.updateFogShroud(hexVisibility);
+      if (timeOfDay) newBoard.updateTimeOfDayTint(timeOfDay);
     })().catch((err) => {
       console.error(err);
       status = `failed to load: ${err instanceof Error ? err.message : String(err)}`;
@@ -278,6 +283,10 @@
 
   $effect(() => {
     board?.updateFogShroud(hexVisibility);
+  });
+
+  $effect(() => {
+    if (timeOfDay) board?.updateTimeOfDayTint(timeOfDay);
   });
 
   /**
