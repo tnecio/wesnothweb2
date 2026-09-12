@@ -13,6 +13,12 @@
       "firstScenario": "01_Rooting_Out_a_Mage"
     },
     {
+      "id": "liberty",
+      "name": "Liberty",
+      "description": "Mainline campaign: a village militia leader rebels against increasingly tyrannical Wesnothian authority.",
+      "firstScenario": "01_The_Raid"
+    },
+    {
       "id": "synthetic_combat",
       "name": "[Debug] Combat",
       "description": "Two adjacent leaders on a tiny grassland map -- for fast combat-math debugging, no setup turns needed.",

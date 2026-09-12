@@ -2022,3 +2022,108 @@ the cheapest oracle is the real binary: `wesnoth --preprocess` and
 turned "looks wrong" into four separable, testable defects.
 
 All 272 engine + 150 renderer + 33 UI tests pass; typecheck clean.
+
+## 2026-09-12 (cont'd): bugs3.md's 7 real, reported bugs -- traits, objectives dialog, team recolor, moves-orb fixes
+
+All committed individually (this project's "commit often" convention):
+
+1. **`[objectives]` was a pure no-op.** Ported the real logic
+   (`data/lua/wml/objectives.lua`): a new `packages/engine/src/events/
+   objectives.ts` (parser + turn-counter-suffix formula + default
+   labels/colors, all ported verbatim), threaded through `EventContext`/
+   `EventPump`/a real `actionObjectives` handler, `GameSession.
+   scenarioObjectives`, and a new `ObjectivesDialog.svelte` shown once at
+   scenario start. Verified live against real Dead_Water content
+   (title/Victory/Defeat/Gold-carryover sections, correct colors, correct
+   turn-counter suffix).
+2. **Recruited units never got random traits, and the infobox couldn't
+   show them anyway.** Ported `unit::generate_traits` (musthave-first,
+   then random honoring `require_traits=`/`exclude_traits=`):
+   `UnitType.numTraits`/`possibleTraits` (this type's own inline
+   `[trait]`s + the 4 real global ones from `data/core/macros/
+   traits.cfg`), `actions/recruit.ts`'s new `generateTraits`, and
+   `Unit.traitNames` surfaced as a "Traits:" line in `SidePanel`. Not
+   ported: `[race]`-level `num_traits=`/`ignore_race_traits` (race stays
+   a plain id string here) -- a documented, narrow gap.
+3. **Unit sprites always rendered in raw magenta.** The `~RC`/`~TC`
+   pixel-recolor machinery (`ImageCache`/`teamColor.ts`) already existed
+   but nothing ever fed it real data. Added `build-team-colors.mjs`
+   (parses `data/core/team-colors.cfg` into palettes/ranges/
+   defaultColors, one static asset like the terrain-graphics-rules
+   build), collected each unit_type's real `flag_rgb=` alongside its
+   image path, and wired `SnapshotBoard.buildUnitVisual` to resolve each
+   side's real color id (`teamColor.ts`'s new `resolveSideColorId`,
+   mirroring `team::get_side_color_id`) and append `~RC(flagRgb>colorId)`
+   before resolving the sprite texture. Verified live: Dead_Water side 1
+   (default color) renders red, side 2 (`color=teal`) renders teal.
+4. **The moves-left dot showed yellow ("partial") instead of red
+   ("moved") when a unit genuinely had nowhere left to move/attack.**
+   `movesOrbStatus` only ever checked the raw `movesLeft`/`attacksLeft`
+   counters, never real reachability. Ported `display_context::
+   unit_can_move` as a new `actions/unitCanAct.ts` (adjacent-hex terrain
+   cost vs. remaining moves; a live/visible/non-incapacitated enemy
+   within a weapon's real `min_range=`/`max_range=`, via `Location.
+   getRing`), threaded through `SnapshotUnit.canMove`/`canAttackHere`.
+   Verified against the exact reported repro (Kai Krellis moved to
+   Dead_Water (25,10): 1 attack nominally left, no adjacent enemy, 0
+   moves left -- orb is now red, not yellow).
+5. **No way to see a hex's terrain defense without hovering it one at a
+   time.** `GameSession.selectUnit` now attaches each reachable hex's
+   real `defensePercent`; `SnapshotBoard` draws it as a small label on
+   every highlighted move-range hex.
+6. **The moves-left dot was a procedurally-drawn dot at a hand-guessed
+   offset, misaligned with the (correctly-positioned) leader-crown/
+   loyal-icon overlays.** Both of those were already the real 72px-hex-
+   canvas assets, drawn at the unit's own anchor (matching upstream's
+   `drawer.cpp` `textures` vector, all blitted at the identical
+   destination rect). Replaced the procedural dot with the real
+   `misc/orb.png` asset, recolored per status via the same `~RC`
+   pipeline as (3) (`ORB_COLOR_ID`: the real `unmoved_orb_color`/etc.
+   defaults from `data/game_config.cfg`), added to the sprite's
+   container in the same order upstream pushes its `textures` vector
+   (orb, then crown, then loyal) so the crown correctly draws on top
+   where they overlap.
+7. **The "Scenario Progression" synthetic debug campaign had no keep/
+   castle at all**, making it impossible to test recall. Rebuilt both
+   maps with a proper bordered keep+castle block (reusing the border-
+   margin lesson from an earlier session's `abilities.map` fix).
+
+Each fix has new, real-content-backed tests (engine unit tests,
+`GameSession`-level tests against the real Dead_Water snapshot) plus a
+live-browser Playwright screenshot confirming the visual before commit.
+All engine/renderer/ui suites green; typecheck clean throughout.
+
+## 2026-09-12 (cont'd): Phase 6 breadth -- Two Brothers fully chained, Liberty (8 scenarios) added as a third campaign
+
+Tried AI-vs-AI (every side played by `simpleAi.ts`'s heuristic) as a
+faster stand-in for a real human playthrough, to find gameplay-shaped
+gaps beyond the existing forced-victory smoke chain. Result: the
+heuristic AI is too weak to reliably survive even Dead_Water scenario 1
+playing the "player" side too (loses by turn 3) -- a loss there
+conflates "AI is weak" (expected, Phase 7 is an MVP) with "engine has a
+real gap," so it isn't a trustworthy signal without much deeper
+per-scenario digging either way. Flagged this to the user rather than
+guessing which explanation applied; asked to prioritize breadth over
+depth instead.
+
+- All 5 Two Brothers scenarios now chain end-to-end via the real UI
+  (forced-victory at each step) with zero console/engine errors;
+  scenarios 1, 2, 4, 5 also confirmed rendering correctly (real story
+  art/board/terrain) in live browser screenshots. Scenario 3's real
+  `[option]` gap (previously only confirmed via a forced-victory script
+  reporting defeat) is now precisely characterized: `actionMessage`
+  reads neither `variable=` nor `[option]` children at all, so the
+  password exchange silently always takes the "wrong password" branch.
+  Properly fixing this needs the event pump to suspend mid-event for a
+  live player choice and resume afterward -- this project's `[message]`/
+  event execution is currently 100% synchronous (an event runs to
+  completion, and its recorded messages are replayed to the player only
+  afterward), so this is a real architecture change, not a quick add.
+  Deliberately not attempted this session.
+- Liberty (8 scenarios, the next-shortest mainline campaign) built
+  clean on the first try for every scenario, was registered in
+  `campaigns.json`, and all 8 scenarios chain via the real UI with zero
+  errors; scenario 1 also confirmed rendering correctly in a live
+  browser screenshot. No gaps found.
+- Dead_Water (13), Two_Brothers (5), and Liberty (8) are now all fully
+  buildable/chainable mainline campaigns -- 26 real scenarios total.

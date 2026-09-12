@@ -464,6 +464,38 @@ script correctly reporting "defeat" rather than a false "victory" — that
 scenario 3's core WML logic genuinely depends on the still-missing
 `[option]` player-choice support (see Phase 5's priority note above).
 
+**Two Brothers fully chained + a third campaign (2026-09-12)**: all 5
+Two Brothers scenarios now build and chain end-to-end via the real UI
+(forced-victory at each step, same technique as Dead_Water's own
+chain) with zero engine/console errors — scenarios 1, 2, 4, and 5 also
+confirmed rendering correctly (real story/board/terrain) in a live
+browser screenshot. The `[option]` gap in scenario 3 is real and still
+unfixed (`[message]`'s `variable=`/`[option]` children are silently
+ignored by `actionMessage`, so the password exchange always takes the
+"wrong password" branch) — not attempted here: doing this properly
+needs the event pump to suspend mid-event for a live player choice and
+resume afterward (this project's `[message]`/event execution is
+currently 100% synchronous, with WML events run to completion before
+their recorded messages are replayed to the player after the fact),
+which is a real architecture change, not a small addition. Liberty (8
+scenarios, the next-shortest mainline campaign after Two Brothers) was
+then brought up the same way: builds cleanly end-to-end, registered in
+`campaigns.json`, and all 8 scenarios chain via the real UI with zero
+errors (scenario 1 also confirmed rendering correctly in a live
+browser screenshot) — no gaps found in this pass. Dead_Water (13),
+Two_Brothers (5), and Liberty (8) are now all fully buildable/
+chainable mainline campaigns.
+
+- AI-vs-AI (`simpleAi.ts`'s heuristic playing every side) was tried as a
+  faster substitute for a real human playthrough, to find gameplay-shaped
+  gaps beyond forced-victory chaining -- found instead that the current
+  heuristic AI is too weak to reliably survive even Dead_Water scenario 1
+  when playing the "player" side too (loses by turn 3), so a loss there
+  conflates "AI is weak" with "engine has a real gap" and isn't a
+  trustworthy signal without much deeper per-scenario investigation either
+  way. A real (human-judgment-driven) playthrough, or a stronger AI, would
+  still be needed to find the deeper gaps this phase's own goal calls for.
+
 - Finish `Dead_Water` (remaining scenarios), then expand to other mainline
   campaigns one at a time; every failure is a missing WML tag, WFL feature,
   or Lua API surface to port, driven by concrete repro cases rather than
