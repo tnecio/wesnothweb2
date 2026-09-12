@@ -176,6 +176,69 @@ describe('executeAttack (hand-built units, hand-verifiable outcomes)', () => {
   });
 });
 
+/** A weapon with one real `[specials][plague type=X]` child, matching the real `WEAPON_SPECIAL_PLAGUE`/`WEAPON_SPECIAL_PLAGUE_TYPE` macro shape (see `wesnoth/data/core/macros/weapon_specials.cfg`). */
+function makePlagueWeapon(damage: number, spawnType: string): AttackType {
+  const cfg = new WmlConfig();
+  cfg.setAttribute('name', 'plague-weapon');
+  cfg.setAttribute('type', 'blade');
+  cfg.setAttribute('range', 'melee');
+  cfg.setAttribute('damage', damage);
+  cfg.setAttribute('number', 1);
+  const specials = cfg.addChild('specials');
+  const plague = new WmlConfig();
+  plague.setAttribute('id', 'plague');
+  plague.setAttribute('type', spawnType);
+  specials.addChild('plague', plague);
+  return AttackType.fromConfig(cfg);
+}
+
+describe('executeAttack plague special (real, reported bug: a plague kill never spawned a replacement)', () => {
+  it('a lethal plague blow spawns the special\'s real [plague] type=, on the killer\'s side, at the defender\'s former location, when a resolveType is provided', () => {
+    const { board, terrainData } = makeBoard();
+    const moveType = flatMoveType(terrainData, 100); // always hit -- deterministic.
+    const zombieType = makeUnitType('Walking Corpse', 20, moveType, makeWeapon(3, 1));
+    const attackerType = makeUnitType('Debug Plaguebearer', 20, moveType, makePlagueWeapon(6, 'Walking Corpse'));
+    const defenderType = makeUnitType('Target Plague', 6, moveType, makeWeapon(0, 0));
+
+    const attacker = Unit.create(attackerType, 1, new Location(0, 0));
+    const defender = Unit.create(defenderType, 2, new Location(0, 1));
+    board.addUnit(attacker);
+    board.addUnit(defender);
+
+    const rng = new RngDeterministic(new MtRng(1));
+    const result = executeAttack(board, rng, new Location(0, 0), 0, new Location(0, 1), undefined, {
+      resolveType: (id) => (id === 'Walking Corpse' ? zombieType : undefined),
+    });
+
+    expect(result.defenderDied).toBe(true);
+    expect(result.plagueSpawn).toEqual({ type: 'Walking Corpse', at: new Location(0, 1), spawned: true });
+
+    const spawned = board.unitAt(new Location(0, 1));
+    expect(spawned).toBeDefined();
+    expect(spawned!.type.id).toBe('Walking Corpse');
+    expect(spawned!.side).toBe(1); // the killer's side, not the original defender's.
+  });
+
+  it('reports the candidate spawn but does NOT spawn one when no resolveType is given -- real, reported bug\'s exact original shape', () => {
+    const { board, terrainData } = makeBoard();
+    const moveType = flatMoveType(terrainData, 100);
+    const attackerType = makeUnitType('Debug Plaguebearer', 20, moveType, makePlagueWeapon(6, 'Walking Corpse'));
+    const defenderType = makeUnitType('Target Plague', 6, moveType, makeWeapon(0, 0));
+
+    const attacker = Unit.create(attackerType, 1, new Location(0, 0));
+    const defender = Unit.create(defenderType, 2, new Location(0, 1));
+    board.addUnit(attacker);
+    board.addUnit(defender);
+
+    const rng = new RngDeterministic(new MtRng(1));
+    const result = executeAttack(board, rng, new Location(0, 0), 0, new Location(0, 1));
+
+    expect(result.defenderDied).toBe(true);
+    expect(result.plagueSpawn).toEqual({ type: 'Walking Corpse', at: new Location(0, 1), spawned: false });
+    expect(board.unitAt(new Location(0, 1))).toBeUndefined();
+  });
+});
+
 describe('executeAttack range matching (real, reported bug: melee/ranged retaliation)', () => {
   /**
    * Real Wesnoth (`attack.cpp`'s `choose_defender_weapon`, verified

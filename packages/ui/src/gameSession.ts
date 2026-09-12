@@ -1235,7 +1235,11 @@ export class GameSession {
       pending.attackerWeaponIndex,
       pending.defender.location,
       pending.defenderWeaponIndex,
-      { lawfulBonus: this.currentTimeOfDay.lawfulBonus, maxLiminalBonus: this.schedule.maxLiminalBonus },
+      {
+        lawfulBonus: this.currentTimeOfDay.lawfulBonus,
+        maxLiminalBonus: this.schedule.maxLiminalBonus,
+        resolveType: this.resolveType,
+      },
     );
 
     this.lastAttackAnimation = {

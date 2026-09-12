@@ -196,6 +196,43 @@ describe('playAiTurn: combat decisions', () => {
   });
 });
 
+describe('playAiTurn: plague (real, reported bug: AI attacks never wired resolveType into executeAttack, so a plague kill never spawned a replacement)', () => {
+  it('an AI-controlled plague kill spawns a real Walking Corpse on the killer\'s side', () => {
+    const board = makeBoard(terrainData);
+    const moveType = flatMoveType(terrainData, 100); // always hit -- deterministic.
+    const zombieType = makeUnitType('Walking Corpse', 20, moveType, makeWeapon(3, 1));
+
+    const plagueCfg = new WmlConfig();
+    plagueCfg.setAttribute('name', 'plague-weapon');
+    plagueCfg.setAttribute('type', 'blade');
+    plagueCfg.setAttribute('range', 'melee');
+    plagueCfg.setAttribute('damage', 10);
+    plagueCfg.setAttribute('number', 1);
+    const specials = plagueCfg.addChild('specials');
+    const plague = new WmlConfig();
+    plague.setAttribute('id', 'plague');
+    plague.setAttribute('type', 'Walking Corpse');
+    specials.addChild('plague', plague);
+    const plaguebearerType = makeUnitType('Debug Plaguebearer', 40, moveType, AttackType.fromConfig(plagueCfg));
+    const weakType = makeUnitType('weak', 5, moveType, makeWeapon(1, 1));
+
+    const attacker = Unit.create(plaguebearerType, 1, Location.fromWml(3, 3), { canRecruit: true });
+    const target = Unit.create(weakType, 2, Location.fromWml(4, 3));
+    board.addUnit(attacker);
+    board.addUnit(target);
+
+    const rng = new RngDeterministic(new MtRng(3));
+    const resolveType = (id: string): UnitType => (id === 'Walking Corpse' ? zombieType : plaguebearerType);
+    const actions = playAiTurn(board, 1, rng, { resolveType });
+
+    expect(actions.filter((a) => a.kind === 'attack')).toHaveLength(1);
+    const spawned = board.unitAt(Location.fromWml(4, 3));
+    expect(spawned).toBeDefined();
+    expect(spawned!.type.id).toBe('Walking Corpse');
+    expect(spawned!.side).toBe(1);
+  });
+});
+
 describe('playAiTurn: movement fallback', () => {
   it('captures a reachable unowned village when no attack is available', () => {
     const board = makeBoard(terrainData);

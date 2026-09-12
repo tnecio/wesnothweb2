@@ -269,6 +269,7 @@ export function playAiTurn(board: GameBoard, side: number, rng: Rng, options: Ai
       const result = executeAttack(board, rng, unit.location, attack.weaponIndex, attack.target.location, undefined, {
         lawfulBonus: options.lawfulBonus,
         maxLiminalBonus: options.maxLiminalBonus,
+        resolveType: options.resolveType,
       });
       if (!result.attackerDied) unit.movesLeft = 0; // mirrors GameSession.confirmAttack's "attack cancels movement" rule.
       actions.push({

@@ -28,6 +28,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const snapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/01_Invasion.json');
 const nextSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/02_Flight.json');
 const economySnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/synth_economy_01.json');
+const abilitiesSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/synth_abilities_01.json');
 const wolfCoastSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/03_Wolf_Coast.json');
 
 /** Real Dead Water scenario 3 -- chained here to exercise `{RECALL_LOYAL_UNITS}` (a real `prestart`-event macro expanding to several `[recall] id=X` calls) against a real recall list carried two scenarios deep. */
@@ -46,6 +47,11 @@ function loadNextSnapshot(): GameBoardSnapshot {
 /** Real "Economy Debug" synthetic scenario -- gold=40/income=2 (side 1), gold=50/income=1 (side 2), both village_gold=1, one real village at (5,5) -- see synthetic-campaigns/economy/. */
 function loadEconomySnapshot(): GameBoardSnapshot {
   return JSON.parse(fs.readFileSync(economySnapshotPath, 'utf8')) as GameBoardSnapshot;
+}
+
+/** Real "Abilities & Specials Debug" synthetic scenario -- see synthetic-campaigns/abilities/. */
+function loadAbilitiesSnapshot(): GameBoardSnapshot {
+  return JSON.parse(fs.readFileSync(abilitiesSnapshotPath, 'utf8')) as GameBoardSnapshot;
 }
 
 /**
@@ -937,5 +943,39 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
     expect(preview.attacker.weapon).toMatchObject({ name: 'staff', range: 'melee' });
     expect(preview.defender.weapon).toMatchObject({ name: 'scepter', range: 'melee' });
     expect(preview.defender.numBlows).toBeGreaterThan(0);
+  });
+});
+
+describe('GameSession.confirmAttack real, reported bug: plague kill did not spawn a Walking Corpse', () => {
+  it("Debug Plaguebearer's real specials_list=plague, when it kills the weakened Target Plague (hitpoints=6, one hit from its damage=6 touch attack), spawns a real Walking Corpse on the attacker's side", () => {
+    // GameSession has no way to force a hit (see the "does not touch
+    // movesLeft when the attacker died" test above for the established
+    // precedent) -- so retry across seeds until the (highly likely, since
+    // a single hit is lethal here) kill actually happens.
+    for (let seed = 0; seed < 200; seed++) {
+      const session = new GameSession(loadAbilitiesSnapshot(), { seed });
+      const plaguebearer = session.board.allUnits().find((u) => u.id === 'Debug Plaguebearer')!;
+      const target = session.board.allUnits().find((u) => u.id === 'Target Plague')!;
+      expect(plaguebearer.type.id).toBe('Walking Corpse');
+      expect(target.hitpoints).toBe(6);
+
+      session.selectUnit(plaguebearer);
+      session.handleHexClick(target.location.x, target.location.y);
+      expect(session.pendingAttack).not.toBeNull();
+      session.confirmAttack();
+
+      const targetStillThere = session.board.unitAt(target.location);
+      if (targetStillThere === target) continue; // target survived this seed's rolls -- try another.
+
+      // Real, reported bug: this used to stay a plain empty hex (GameSession
+      // never passed a resolveType into executeAttack, so the plague
+      // special's spawn candidate was always reported unresolved).
+      const spawned = session.board.unitAt(target.location);
+      expect(spawned).toBeDefined();
+      expect(spawned!.type.id).toBe('Walking Corpse');
+      expect(spawned!.side).toBe(plaguebearer.side);
+      return;
+    }
+    throw new Error('Target Plague never died across 200 seeds -- suspiciously unlucky, or a real regression.');
   });
 });

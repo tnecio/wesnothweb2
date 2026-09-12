@@ -32,10 +32,10 @@ const syntheticRoot = path.join(repoRoot, 'synthetic-campaigns');
 
 function findScenarioFiles(dir: string): string[] {
   const out: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...findScenarioFiles(full));
-    else if (entry.name.endsWith('.cfg') && full.includes(`${path.sep}scenarios${path.sep}`)) out.push(full);
+  for (const name of fs.readdirSync(dir)) {
+    const full = path.join(dir, name);
+    if (fs.statSync(full).isDirectory()) out.push(...findScenarioFiles(full));
+    else if (name.endsWith('.cfg') && full.includes('/scenarios/')) out.push(full);
   }
   return out;
 }
