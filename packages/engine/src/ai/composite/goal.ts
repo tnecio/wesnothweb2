@@ -18,6 +18,8 @@ import type { AiContext } from '../context.js';
 import type { Target } from './target.js';
 
 export interface Goal {
+  /** `[goal] id=` -- how `[modify_ai] path=goal[<id>] action=delete` (the single most common real-content `[modify_ai]` shape, e.g. Son of the Black Eye's "defend_Braga") addresses one goal. Empty when the WML author gave none. */
+  readonly id: string;
   isActive(ctx: AiContext): boolean;
   addTargets(ctx: AiContext, targets: Target[]): void;
 }
@@ -28,8 +30,10 @@ function isGoalActive(ctx: AiContext, cfg: WmlConfig): boolean {
 
 /** Mirrors `target_unit_goal` (`name=target`/`target_unit`, the default for an unrecognized/empty `name=`): every unit matching `[criteria]` (a SUF) becomes an explicit target. */
 export class TargetUnitGoal implements Goal {
+  readonly id: string;
   private readonly value: number;
   constructor(private readonly cfg: WmlConfig) {
+    this.id = cfg.getString('id', '');
     this.value = cfg.getNumber('value', 0);
   }
   isActive(ctx: AiContext): boolean {
@@ -48,8 +52,10 @@ export class TargetUnitGoal implements Goal {
 
 /** Mirrors `target_location_goal` (`name=target_location`): every hex matching `[criteria]` (a SLF) becomes an explicit target. */
 export class TargetLocationGoal implements Goal {
+  readonly id: string;
   private readonly value: number;
   constructor(private readonly cfg: WmlConfig) {
+    this.id = cfg.getString('id', '');
     this.value = cfg.getNumber('value', 0);
   }
   isActive(ctx: AiContext): boolean {
@@ -70,12 +76,14 @@ export class TargetLocationGoal implements Goal {
  * it as a `threat` target, valued higher the closer it is.
  */
 export class ProtectGoal implements Goal {
+  readonly id: string;
   private readonly value: number;
   private readonly radius: number;
   constructor(
     private readonly cfg: WmlConfig,
     private readonly protectUnit: boolean,
   ) {
+    this.id = cfg.getString('id', '');
     this.value = cfg.getNumber('value', 1.0);
     const r = cfg.getNumber('protect_radius', 1);
     this.radius = r < 1 ? 20 : r;

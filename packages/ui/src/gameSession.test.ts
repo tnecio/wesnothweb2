@@ -252,8 +252,8 @@ describe('GameSession auto-plays controller=ai sides (real Dead_Water scenario 1
     // real movement and no reachable target turn 1 -- the movement
     // fallback should always find SOMETHING to do (advance toward the
     // distant Kai Krellis), so this is a real, non-vacuous check of the
-    // end-to-end wiring (endTurn -> playAiSide -> playAiTurn's real
-    // animation field), not just "didn't crash".
+    // end-to-end wiring (endTurn -> playAiSide -> aiManager.playTurn's
+    // real animation field), not just "didn't crash".
     expect(session.lastAiAnimations).not.toBeNull();
     expect(session.lastAiAnimations!.length).toBeGreaterThan(0);
     for (const event of session.lastAiAnimations!) {

@@ -89,14 +89,14 @@ export class CombatCandidateAction extends CandidateAction {
 
     const survivingAttacker = board.unitAt(to);
     if (survivingAttacker) {
-      for (const _step of advanceUnitFully(board, survivingAttacker, this.ctx.host.rng, this.ctx.host.resolveType)) {
-        /* real, observable behaviour (see module doc comment); no action log at this layer yet -- Phase 29 S5. */
+      for (const step of advanceUnitFully(board, survivingAttacker, this.ctx.host.rng, this.ctx.host.resolveType)) {
+        this.ctx.logAction({ kind: 'advance', message: `${step.fromTypeId} advances to ${step.toTypeId}!` });
       }
     }
     const survivingDefender = board.unitAt(targetLoc);
     if (survivingDefender) {
-      for (const _step of advanceUnitFully(board, survivingDefender, this.ctx.host.rng, this.ctx.host.resolveType)) {
-        /* see above */
+      for (const step of advanceUnitFully(board, survivingDefender, this.ctx.host.rng, this.ctx.host.resolveType)) {
+        this.ctx.logAction({ kind: 'advance', message: `${step.fromTypeId} advances to ${step.toTypeId}!` });
       }
     }
   }

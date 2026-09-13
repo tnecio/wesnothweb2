@@ -2587,3 +2587,70 @@ exclusion, and retreat triggering/declining correctly (including the
 "in reach of the leader" override and `caution=0`). Engine/renderer/ui
 suites all green (544/193/83), typecheck and `svelte-check` (0 errors)
 clean. Branch `phase-29-real-ai`.
+
+**S5 (GameSession integration -- MILESTONE: Dead Water plays with the real
+AI), delivered** (2026-09-13):
+- `ai/manager.ts`: `AiManager`, one `AiComposite` per side, built lazily
+  from `findSideConfig(scenarioConfigJson, side)?.children('ai')`.
+  `playTurn(side)` runs `newTurn()`+`playTurn()` and drains the side's
+  action log (see below) -- the exact same `AiAction[]` contract
+  `simpleAi.ts`'s `playAiTurn` used, so `GameShell.playAiAnimations` needed
+  no changes at all. `appendSideAi` (`[modify_side][ai]`) rebuilds a side's
+  composite with an extra `[ai]` block merged in. `modifyAi` supports two
+  real `[modify_ai] path=` shapes: `goal[<id>]` (by far the most common
+  real-content shape -- e.g. Son of the Black Eye's "defend_Braga"/
+  "defend_Meato") and `stage[<id>].candidate_action[<ca_id>]`; any other
+  path shape (`aspect[...]`, ...) is logged and ignored -- a documented
+  gap, matching this port's established pattern for real-but-partial
+  `[modify_ai]` coverage.
+- `AiContext` gained an action log (`logAction`/`drainActionLog`) that
+  `executeMove`/`executeAttack`/`executeRecruit`/`executeRecall` append to
+  automatically (plus `caCombat.ts`'s own explicit `advance` entries) --
+  every CA gets real UI animations for free, with no CA-specific plumbing
+  needed. Also gained `addGoal`/`deleteGoal` (goals are now a mutable list,
+  not a construction-time-only array, so `[modify_ai]` can add/remove
+  them) and `Goal.id` (every goal class now carries its `[goal] id=`).
+- `ai/wmlActions.ts`: the `[modify_ai]`/`[modify_side]`/`[micro_ai]` action
+  tags, registered onto `GameSession`'s own `ActionRegistry` (via its
+  documented "externally register-able" contract, not by teaching
+  `events/actionWml.ts` about the `ai/` package) -- delegating to
+  `EventContext.ai` (a new optional field), which is undefined (not a
+  no-op stub) for any host without a real AI engine, so the tags log a
+  clear "not loaded" warning rather than silently doing nothing.
+  `[modify_side]` also handles `team_name=`/`user_team_name=`/
+  `controller=`/`recruit=`/`gold=`/`income=` directly (previously
+  completely unregistered).
+- `GameSession`: constructs one `AiManager`, fires `ai turn` before every
+  AI side's turn (mirrors `manager::play_turn`'s own pre-turn event, so
+  WML hooked on it fires for AI sides too -- it never did before),
+  registers the AI WML actions, and `playAiSide` now calls
+  `aiManager.playTurn(side)` instead of the Phase 7 heuristic.
+  **`simpleAi.ts` and its 12 tests are deleted** -- their intent (good
+  trade taken, bad trade declined, village capture, closing distance,
+  advancement) is now covered by the real CAs' own tests
+  (`caCombat.test.ts`, `caVillages.test.ts`, `caMoveToTargets.test.ts`).
+  Save/load needed no new code: `AiManager` holds a live reference to
+  `GameSession`'s own `board`/`rng` (mutated in place by `loadSaveData`,
+  never reassigned), so an in-session load transparently keeps working;
+  the one documented gap is that `[modify_ai]`/`appendSideAi` changes made
+  before a save do not survive `fromSaveData` building a brand new
+  session (only the original scenario config does).
+- **Verification**: `gameSession.test.ts`'s existing real-Dead-Water-
+  scenario-1 test ("a single endTurn() call ... auto-plays the whole of
+  side 2's AI turn") now exercises the actual RCA framework end-to-end
+  (construct `AiManager` from the real scenario `[side][ai]` config,
+  `ai turn` fires, `playAiSide` drains a real, non-empty animation log)
+  and still passes unmodified -- this is the milestone's vitest half. Its
+  browser half (Dead Water 1, live End Turn, console clean) was NOT
+  verified this session: no browser-automation tool is available in this
+  background job's environment, so this is an honest gap, not a silent
+  skip -- recommended before calling Phase 29's Dead Water milestone
+  fully done.
+
+5 new engine tests (`manager.test.ts`): `playTurn` moves a leader and
+returns a real action log, `idle_ai` returns an empty log, `appendSideAi`
+rebuilds a composite with a new block applied, `modifyAi` deletes a
+candidate action from a running stage, and adds/deletes a `[goal]` by id.
+Engine/renderer/ui suites all green (537/193/83 -- net -7 engine tests
+from deleting `simpleAi.test.ts`'s 12 and adding 5 new), typecheck and
+`svelte-check` (0 errors) clean. Branch `phase-29-real-ai`.

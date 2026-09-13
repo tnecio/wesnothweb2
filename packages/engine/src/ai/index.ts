@@ -1,7 +1,4 @@
-// Phase 7 heuristic AI -- superseded by the framework below as of Phase 29 S5 (kept until then, see docs/IMPLEMENTATION_PLAN.md's Phase 29 section).
-export * from './simpleAi.js';
-
-// Phase 29: the real RCA candidate-action framework.
+// Phase 29: the real RCA candidate-action framework (replaced the Phase 7 heuristic, simpleAi.ts, as of S5).
 export type { AiAction, AiActionKind, AiAnimationEvent, AiHost } from './types.js';
 export { AiContext } from './context.js';
 export { calculateMoves, type CalculateMovesOptions, type CalculatedMoves, type MoveMap } from './moveMaps.js';
@@ -21,6 +18,8 @@ export { CombatCandidateAction } from './default/caCombat.js';
 export { AttackAnalysis, chooseAttackerWeapon, type AttackMovement } from './default/attackAnalysis.js';
 export { analyzeTargets, rateTerrain, type AnalyzeTargetsOptions } from './default/aspectAttacks.js';
 export { RecruitmentCandidateAction, compareUnitTypes } from './default/recruitment.js';
+export { AiManager, type ModifyAiActionKind } from './manager.js';
+export { registerAiWmlActions, type AiWmlHooks } from './wmlActions.js';
 export { MoveLeaderToGoalsCandidateAction } from './default/caMoveLeaderToGoals.js';
 export { MoveToTargetsCandidateAction } from './default/caMoveToTargets.js';
 export { RetreatCandidateAction } from './default/caRetreat.js';

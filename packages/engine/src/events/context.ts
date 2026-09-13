@@ -161,4 +161,6 @@ export interface EventContext {
   /** Queues a new event, processed once the current pump pass finishes (see pump.ts's module doc comment on batching). */
   raise: (name: string, loc1?: Location, loc2?: Location, data?: WmlConfig) => void;
   log: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
+  /** Set by a host with a real AI engine (`packages/ui`'s `GameSession`, Phase 29 S5) -- backs the `[modify_ai]`/`[modify_side]`/`[micro_ai]` action tags (`ai/wmlActions.ts`). Undefined (rather than a no-op stub) in any context without one, e.g. a headless test that never constructs an `AiManager`, so those tags log a clear "not loaded" warning instead of silently doing nothing. */
+  ai?: import('../ai/wmlActions.js').AiWmlHooks;
 }

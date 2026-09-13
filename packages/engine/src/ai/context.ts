@@ -27,7 +27,7 @@ import { performAttack } from '../actions/attackSequence.js';
 import type { AttackResult } from '../actions/combat.js';
 import { recruitUnit, recallUnit, type PlaceRecruitResult } from '../actions/recruit.js';
 import type { UnitType } from '../model/UnitType.js';
-import type { AiHost } from './types.js';
+import type { AiHost, AiAction } from './types.js';
 import { isAspectActive, type CompositeAspect } from './composite/aspect.js';
 import { calculateMoves, type MoveMap } from './moveMaps.js';
 import { powerProjection as powerProjectionFn } from './powerProjection.js';
@@ -58,7 +58,7 @@ export class AiContext {
   readonly host: AiHost;
   readonly side: number;
   private readonly aspects: ReadonlyMap<string, CompositeAspect>;
-  private readonly goals: readonly Goal[];
+  private goals: Goal[];
   private gamestateChangeCounter = 0;
 
   private srcDstCache?: MoveMap;
@@ -69,12 +69,13 @@ export class AiContext {
   private attacksCache?: AttackAnalysis[];
   private attacksCacheGamestate?: number;
   private recentAttackLocs: Location[] = [];
+  private actionLog: AiAction[] = [];
 
   constructor(host: AiHost, side: number, aspects: ReadonlyMap<string, CompositeAspect>, goals: readonly Goal[] = []) {
     this.host = host;
     this.side = side;
     this.aspects = aspects;
-    this.goals = goals;
+    this.goals = [...goals];
   }
 
   get board(): GameBoard {
@@ -268,6 +269,18 @@ export class AiContext {
     return this.goals;
   }
 
+  /** Mirrors `[modify_ai] path=goal[] action=add` (a bare `goal[]` -- no id needed to append). */
+  addGoal(goal: Goal): void {
+    this.goals.push(goal);
+  }
+
+  /** Mirrors `[modify_ai] path=goal[<id>] action=delete` -- the single most common real-content `[modify_ai]` shape. Returns whether one was actually removed. */
+  deleteGoal(id: string): boolean {
+    const before = this.goals.length;
+    this.goals = this.goals.filter((g) => g.id !== id);
+    return this.goals.length !== before;
+  }
+
   /**
    * Mirrors the `attacks` aspect (`ai_default_rca::aspect_attacks`,
    * `invalidate_on_gamestate_change=yes`): every viable attack combination
@@ -310,6 +323,22 @@ export class AiContext {
     return boolOrIdListMatches(this.resolveAspect('leader_ignores_keep')?.getString('value', 'no') ?? 'no', leaderId);
   }
 
+  // --- action log (for a host with a renderer, e.g. `packages/ui`'s `GameShell`, to replay real animations --
+  //     mirrors `simpleAi.ts`'s own `AiAction[]` return value; `AiManager.playTurn` (Phase 29 S5) drains this once
+  //     per side turn) ---
+
+  /** Appends one entry to this turn's action log -- used directly by CAs whose own semantics (e.g. advancement) aren't already covered by `executeMove`/`executeAttack`/`executeRecruit`/`executeRecall` below. */
+  logAction(action: AiAction): void {
+    this.actionLog.push(action);
+  }
+
+  /** Returns and clears everything logged so far this call -- `AiManager.playTurn` drains this once per side turn. */
+  drainActionLog(): AiAction[] {
+    const log = this.actionLog;
+    this.actionLog = [];
+    return log;
+  }
+
   // --- gamestate-tracked actions ---
 
   /** Mirrors `check_move_action`/`execute_move_action` collapsed into one call (this port's action results aren't split into a separate non-executing "check" phase yet -- see this file's own module doc comment). `removeMovement` (default true, matching every S1 CA's own usage) zeroes `movesLeft` once the move lands, mirroring `remove_movement=true`. */
@@ -319,13 +348,20 @@ export class AiContext {
       if (removeMovement) unit.movesLeft = 0;
       this.bumpGamestateChange();
       this.host.pump();
+      this.logAction({ kind: 'move', message: '', animation: { kind: 'move', unit, path } });
     }
     return outcome;
   }
 
   /** Mirrors `check_attack_action`/`execute_attack_action` collapsed into one call (see this file's own module doc comment on why check/execute aren't split yet). Records the target into `recentAttacks` and bumps the gamestate-change counter unconditionally -- a real attack always changes SOMETHING (attacks_left at minimum), matching upstream's own `attack_result` always reporting `is_gamestate_changed()`. */
   executeAttack(attackerLoc: Location, attackerWeaponIndex: number, defenderLoc: Location, defenderWeaponIndex: number | undefined): AttackResult {
-    const result = performAttack(this.host.board, this.host.rng, attackerLoc, attackerWeaponIndex, defenderLoc, defenderWeaponIndex, {
+    const board = this.host.board;
+    const attacker = board.unitAt(attackerLoc);
+    const defender = board.unitAt(defenderLoc);
+    const attackerHitpointsBefore = attacker?.hitpoints ?? 0;
+    const defenderHitpointsBefore = defender?.hitpoints ?? 0;
+
+    const result = performAttack(board, this.host.rng, attackerLoc, attackerWeaponIndex, defenderLoc, defenderWeaponIndex, {
       attackerLawfulBonus: this.host.lawfulBonusAt(attackerLoc),
       defenderLawfulBonus: this.host.lawfulBonusAt(defenderLoc),
       maxLiminalBonus: this.host.maxLiminalBonus,
@@ -336,23 +372,55 @@ export class AiContext {
     this.recentAttackLocs.push(defenderLoc);
     this.bumpGamestateChange();
     this.host.pump();
+
+    if (attacker && defender) {
+      const hits = result.blows.filter((b) => b.hit).length;
+      this.logAction({
+        kind: 'attack',
+        message: `${attacker.type.name} attacked ${defender.type.name}: ${hits}/${result.blows.length} blows landed.`,
+        animation: {
+          kind: 'attack',
+          attacker,
+          attackerWeaponIndex,
+          defender,
+          defenderWeaponIndex: defenderWeaponIndex ?? -1,
+          result,
+          attackerTypeId: attacker.type.id,
+          defenderTypeId: defender.type.id,
+          attackerHitpointsBefore,
+          defenderHitpointsBefore,
+        },
+      });
+    }
     return result;
   }
 
   /** Mirrors `check_recruit_action`/`execute_recruit_action` collapsed into one call: a fresh `type` for `team`, placed at `loc` (a vacant castle/keep tile), from the recruiting leader at `from`. Caller (the recruitment CA) is responsible for affordability/legality checks -- this always spends the gold and places the unit. */
   executeRecruit(team: Team, type: UnitType, loc: Location, from: Location): PlaceRecruitResult {
+    const leader = this.host.board.unitAt(from);
     const result = recruitUnit(this.host.board, team, type, loc, from, this.host.rng, this.host.raise);
     this.bumpGamestateChange();
     this.host.pump();
+    this.logAction({
+      kind: 'recruit',
+      message: `${team.teamName || `Side ${team.side}`} recruited a ${type.name} for ${result.cost}g.`,
+      animation: leader ? { kind: 'recruit', unit: result.unit, leader } : undefined,
+    });
     return result;
   }
 
   /** Mirrors `check_recall_action`/`execute_recall_action`: pulls `unit` off `team`'s recall list and places it at `loc`. */
   executeRecall(team: Team, unit: Unit, loc: Location, from: Location): PlaceRecruitResult {
+    const leader = this.host.board.unitAt(from);
     this.host.board.removeFromRecallList(team.side, unit.underlyingId);
     const result = recallUnit(this.host.board, team, unit, loc, from, undefined, this.host.raise);
     this.bumpGamestateChange();
     this.host.pump();
+    this.logAction({
+      kind: 'recruit',
+      message: `${team.teamName || `Side ${team.side}`} recalled ${unit.type.name} for ${result.cost}g.`,
+      animation: leader ? { kind: 'recruit', unit: result.unit, leader } : undefined,
+    });
     return result;
   }
 

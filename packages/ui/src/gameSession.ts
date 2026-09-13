@@ -42,7 +42,12 @@ import {
   isBackstabActive,
   computeLeadershipBonus,
   computeResistanceModifier,
-  playAiTurn,
+  AiManager,
+  registerAiWmlActions,
+  findSideConfig,
+  type AiWmlHooks,
+  type AiHost,
+  type AiAction,
   type AiAnimationEvent,
   type ScenarioObjectives,
   advanceUnitTo,
@@ -692,8 +697,8 @@ export class GameSession {
    * Set by `tryRecruitAt`/`tryRecallAt` every time a HUMAN recruit/recall
    * actually places a unit -- see `LastRecruitAnimation`'s own doc
    * comment. Same read-once-then-clear contract as `lastAttackAnimation`.
-   * Not set for AI-played recruits (`playAiTurn` places units directly)
-   * for the same reasoning as attacks/moves.
+   * Not set for AI-played recruits (`aiManager.playTurn` places units
+   * directly) for the same reasoning as attacks/moves.
    */
   lastRecruitAnimation: LastRecruitAnimation | null = null;
   /**
@@ -913,6 +918,13 @@ export class GameSession {
    * change it in place, see `todWml.ts`).
    */
   private readonly schedule: Schedule;
+  /**
+   * The real RCA candidate-action AI (Phase 29), one composite per side,
+   * built lazily from that side's own `[side][ai]` blocks. Replaces the
+   * Phase 7 heuristic (`playAiTurn`/`simpleAi.ts`, deleted) -- `playAiSide`
+   * below is the only caller.
+   */
+  private readonly aiManager: AiManager;
 
   constructor(snapshot: GameBoardSnapshot, options: GameSessionOptions = {}) {
     this.snapshot = snapshot;
@@ -935,6 +947,32 @@ export class GameSession {
       schedule: this.schedule,
     });
     this.board.lawfulBonusAt = (loc) => this.timeOfDayAt(loc).lawfulBonus;
+
+    const aiHost: AiHost = {
+      board: this.board,
+      rng: this.rng,
+      resolveType: this.resolveType,
+      lawfulBonusAt: (loc) => this.timeOfDayAt(loc).lawfulBonus,
+      maxLiminalBonus: this.schedule.maxLiminalBonus,
+      turnNumber: () => this.turnNumber,
+      timeOfDayId: () => this.currentTimeOfDay.id,
+      raise: (name, loc1, loc2, data) => this.eventPump.raise(name, loc1, loc2, data),
+      fire: (name, loc1, loc2) => this.eventPump.fire(name, loc1, loc2),
+      pump: () => this.pumpEvents(),
+      log: () => {
+        /* no dedicated AI debug log sink yet -- warnings from a misconfigured [modify_ai]/aspect surface via the
+           browser console being the intended audience for now, not this session's own player-facing `log`. */
+      },
+      scenarioEnded: () => !!this.scenarioResult,
+    };
+    this.aiManager = new AiManager(aiHost, (side) => findSideConfig(snapshot.scenarioConfigJson, side)?.children('ai') ?? []);
+    const aiWmlHooks: AiWmlHooks = {
+      modifyAi: (side, action, path, cfg) => this.aiManager.modifyAi(side, action, path, cfg),
+      appendSideAi: (side, cfg) => this.aiManager.appendSideAi(side, cfg),
+      microAi: () => aiHost.log('warn', '[micro_ai]: Lua AI engine not loaded yet (Phase 29 S9+)'),
+    };
+    registerAiWmlActions(this.eventPump.ctx.registry);
+    this.eventPump.ctx.ai = aiWmlHooks;
   }
 
   /**
@@ -1415,14 +1453,11 @@ export class GameSession {
    * mirroring a real "start of turn" refresh (see this project's own
    * `Unit.create`/`Unit.fromConfig` defaults for what "full" means).
    *
-   * ## Hotseat, plus a real AI for `controller=ai` sides (2026-09-11)
+   * ## Hotseat, plus a real AI for `controller=ai` sides
    *
-   * Until this session, there was no AI (Phase 7), so EVERY side --
-   * including `controller=ai` ones -- was actually played by whichever
-   * human sat at the keyboard (hotseat). `packages/engine/src/ai/
-   * simpleAi.ts`'s `playAiTurn` now exists (a real, if deliberately
-   * simple, heuristic AI reusing this project's own real combat-
-   * prediction/pathfinding/recruit code), so `endTurn` now auto-plays any
+   * Phase 7 shipped a heuristic AI (`simpleAi.ts`); Phase 29 replaced it
+   * with `this.aiManager` (`packages/engine/src/ai/manager.ts`), the real
+   * upstream candidate-action/aspect framework. `endTurn` auto-plays any
    * `ai`/`network_ai`-controlled side immediately upon reaching it,
    * looping through any further consecutive AI sides, and only returns
    * once a human-controlled side is reached (or the scenario ends).
@@ -1453,13 +1488,10 @@ export class GameSession {
     return message;
   }
 
-  /** Runs `playAiTurn` for `side`, logs what it did, and appends every real animation event it produced to `outAnimations` (see `endTurn`'s own doc comment on why these accumulate across possibly several consecutive AI sides). */
+  /** Runs `aiManager.playTurn` for `side`, logs what it did, and appends every real animation event it produced to `outAnimations` (see `endTurn`'s own doc comment on why these accumulate across possibly several consecutive AI sides). */
   private playAiSide(side: number, outAnimations: AiAnimationEvent[]): void {
-    const actions = playAiTurn(this.board, side, this.rng, {
-      resolveType: this.resolveType,
-      lawfulBonusAt: (loc) => this.timeOfDayAt(loc).lawfulBonus,
-      maxLiminalBonus: this.schedule.maxLiminalBonus,
-    });
+    this.fire('ai turn'); // mirrors manager::play_turn's own pre-turn event, real content hooks WML on it.
+    const actions: AiAction[] = this.aiManager.playTurn(side);
     for (const action of actions) {
       if (action.message) this.log.unshift(action.message);
       if (action.animation) outAnimations.push(action.animation);
