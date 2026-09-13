@@ -1029,6 +1029,30 @@ describe('GameSession.renderUnits moves-orb reachability (real, reported bug: a 
     expect(snap.canMove).toBe(false);
     expect(snap.canAttackHere).toBe(false); // ...but there's no adjacent enemy to use it on.
   });
+
+  it('real, reported bug: enemy units carry no moves-left orb data at all -- only the viewing player\'s own units do', () => {
+    const session = new GameSession(loadSnapshot());
+    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    const malKevek = session.board.allUnits().find((u) => u.type.id === 'Dark Sorcerer')!;
+    expect(kaiKrellis.side).toBe(session.playerSide);
+    expect(malKevek.side).not.toBe(session.playerSide);
+
+    const mine = session.renderUnits.find((u) => u.id === kaiKrellis.id)!;
+    const theirs = session.renderUnits.find((u) => u.side === malKevek.side)!;
+
+    expect(mine.movesLeft).toBe(kaiKrellis.movesLeft);
+    expect(mine.maxMoves).toBe(kaiKrellis.maxMoves);
+    expect(mine.attacksLeft).toBe(kaiKrellis.attacksLeft);
+    expect(mine.maxAttacksPerTurn).toBe(kaiKrellis.maxAttacksPerTurn);
+    expect(typeof mine.canMove).toBe('boolean');
+
+    expect(theirs.movesLeft).toBeUndefined();
+    expect(theirs.maxMoves).toBeUndefined();
+    expect(theirs.attacksLeft).toBeUndefined();
+    expect(theirs.maxAttacksPerTurn).toBeUndefined();
+    expect(theirs.canMove).toBeUndefined();
+    expect(theirs.canAttackHere).toBeUndefined();
+  });
 });
 
 describe('GameSession.reachable defensePercent (real, reported bug: the map only showed a reachable hex\'s terrain defense on hover, never all of a selected unit\'s real options at a glance)', () => {

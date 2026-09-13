@@ -850,9 +850,26 @@ export class GameSession {
       .map((u) => this.toSnapshotUnit(u, u.location.x, u.location.y, u.hitpoints));
   }
 
-  /** Shared by `renderUnits` (live position/hp) and `messageUnitSnapshot` (a checkpoint's captured position/hp) -- every OTHER field (type, side, abilities, etc.) is read straight off `unit` since none of them change mid-startup-event. */
+  /**
+   * Shared by `renderUnits` (live position/hp) and `messageUnitSnapshot` (a
+   * checkpoint's captured position/hp) -- every OTHER field (type, side,
+   * abilities, etc.) is read straight off `unit` since none of them change
+   * mid-startup-event.
+   *
+   * Real, reported bug: the moves-left orb (`SnapshotBoard.updateIcons`)
+   * shows whenever `movesLeft`/`maxMoves`/`attacksLeft`/`maxAttacksPerTurn`
+   * are present on the `SnapshotUnit`, which used to be true for EVERY
+   * unit regardless of side -- so enemy (and any other non-viewing-player)
+   * units showed the same green/yellow/red orb as the player's own, even
+   * though that orb is meaningless information about a side that isn't
+   * even the player's to command. Real Wesnoth only shows it for the
+   * viewing player's own units by default. Left `undefined` for anyone
+   * else, matching how `SnapshotUnit`'s own fields already document this
+   * convention (`updateIcons`'s "present = draw it" contract).
+   */
   private toSnapshotUnit(unit: Unit, x: number, y: number, hitpoints: number): SnapshotUnit {
-    const { canMove, canAttackHere } = unitCanAct(this.board, unit);
+    const isOwnUnit = unit.side === this.playerSide;
+    const { canMove, canAttackHere } = isOwnUnit ? unitCanAct(this.board, unit) : { canMove: undefined, canAttackHere: undefined };
     return {
       id: unit.id || null,
       name: unit.name || null,
@@ -869,10 +886,10 @@ export class GameSession {
       maxExperience: unit.maxExperience,
       level: unit.type.level,
       canAdvance: unit.type.advancesTo.length > 0,
-      movesLeft: unit.movesLeft,
-      maxMoves: unit.maxMoves,
-      attacksLeft: unit.attacksLeft,
-      maxAttacksPerTurn: unit.maxAttacksPerTurn,
+      movesLeft: isOwnUnit ? unit.movesLeft : undefined,
+      maxMoves: isOwnUnit ? unit.maxMoves : undefined,
+      attacksLeft: isOwnUnit ? unit.attacksLeft : undefined,
+      maxAttacksPerTurn: isOwnUnit ? unit.maxAttacksPerTurn : undefined,
       canMove,
       canAttackHere,
       statuses: [...unit.statuses],
