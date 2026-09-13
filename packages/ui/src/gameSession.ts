@@ -52,6 +52,7 @@ import {
   chooseDefenderWeaponIndex,
   simulateCombat,
   hasSpecialId,
+  combatModifier,
   RngDeterministic,
   MtRng,
   gameBoardFromSnapshot,
@@ -189,6 +190,17 @@ export interface CombatantPreview {
    * These mirror the exact same inputs `buildPreview` already computes and
    * feeds to `buildBattleContext` -- a display-only breakdown, no new
    * combat math.
+   *
+   * `lawfulBonus` is THIS COMBATANT's own actual damage modifier from the
+   * current time of day -- i.e. already run through `combatModifier`
+   * (alignment-aware: a chaotic unit's sign is FLIPPED from the
+   * schedule's raw `lawful_bonus`, neutral is always 0, liminal is a
+   * different figure entirely), NOT the schedule's raw value. Real,
+   * reported bug: this used to display the raw schedule value directly,
+   * so a chaotic unit in daylight showed "+25%" even though it was
+   * actually taking a real 25% damage PENALTY that turn (the damage
+   * number itself was always correct; only this label had the wrong
+   * sign/magnitude).
    */
   lawfulBonus: number;
   /** This combatant's own active leadership-ability damage bonus (percentage points added to the multiplier), 0 if none. */
@@ -1829,6 +1841,28 @@ export class GameSession {
 
     const attackerLawfulBonus = this.timeOfDayAt(attacker.location).lawfulBonus;
     const defenderLawfulBonus = this.timeOfDayAt(defender.location).lawfulBonus;
+    // Real, reported bug: the schedule's raw `lawful_bonus` (e.g. +25% by
+    // day) is NOT what a chaotic unit actually gets -- `combatModifier`
+    // (the same real per-unit computation `computeUnitStats` itself
+    // applies to `damageMultiplier`) flips its sign for chaotic units,
+    // zeroes it for neutral, and derives a different figure entirely for
+    // liminal. Displaying the raw schedule value unconditionally (as if
+    // it were the applied bonus) showed "+25%" for a chaotic unit in
+    // daylight even though it was actually taking a REAL 25% damage
+    // PENALTY that turn -- the damage number itself was always correct;
+    // only this label read the wrong sign/magnitude. `weapon.alignment ??
+    // unit.type.alignment` and the hardcoded `false` (isFearless) mirror
+    // `computeUnitStats`'s own call exactly, so this is always the same
+    // number that's actually folded into `damagePerBlow` above.
+    const attackerToDModifier = combatModifier(
+      attackerLawfulBonus,
+      attackerWeapon.alignment ?? attacker.type.alignment,
+      false,
+      this.schedule.maxLiminalBonus,
+    );
+    const defenderToDModifier = defenderWeapon
+      ? combatModifier(defenderLawfulBonus, defenderWeapon.alignment ?? defender.type.alignment, false, this.schedule.maxLiminalBonus)
+      : 0;
     // The real GEOMETRIC condition (a flanking ally-of-attacker on the far
     // side of the defender) -- feeds `buildBattleContext`'s own
     // `hasSpecialId(weapon, 'backstab')`-gated damage doubling below, same
@@ -1900,7 +1934,7 @@ export class GameSession {
         resistanceModifier: computeResistanceModifier(this.board, defender, attackerWeapon.type, false, defender.location),
         baseDamage: attackerWeapon.damage,
         hpDist: aCombatant.hpDist,
-        lawfulBonus: attackerLawfulBonus,
+        lawfulBonus: attackerToDModifier,
         leadershipBonus: attackerLeadershipBonus,
         chargeActive,
         backstabActive: attackerBackstabActive,
@@ -1925,7 +1959,7 @@ export class GameSession {
         resistanceModifier: defenderWeapon ? computeResistanceModifier(this.board, attacker, defenderWeapon.type, true, attacker.location) : undefined,
         baseDamage: defenderWeapon?.damage,
         hpDist: dCombatant.hpDist,
-        lawfulBonus: defenderLawfulBonus,
+        lawfulBonus: defenderToDModifier,
         leadershipBonus: defenderLeadershipBonus,
         // Charge only ever applies "when used offensively" -- the ATTACKER's own weapon gates it for
         // the whole exchange (see the comment above `chargeActive`'s computation), so the defender's

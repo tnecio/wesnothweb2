@@ -1446,6 +1446,30 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
     expect(preview.defender.chanceToHitSource).toBeNull();
   });
 
+  it('real, reported bug: a chaotic unit\'s displayed lawfulBonus is its own actual (sign-flipped) damage modifier, not the schedule\'s raw lawful_bonus -- a chaotic unit in daylight actually takes a damage PENALTY, so it must show negative, not the schedule\'s own positive value', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    expect(malKevek.type.alignment).toBe('chaotic'); // Dark Sorcerer
+
+    // Turn 1 is Dawn (lawful_bonus=0, real schedule) -- jump straight to
+    // turn 2 (Morning, lawful_bonus=25) via `turnNumber` directly rather
+    // than a real `endTurn()`, which would also auto-play side 2's (Mal-
+    // Kevek's own) AI turn and disturb the adjacency this test relies on.
+    session.turnNumber = 2;
+    const rawLawfulBonus = session.timeOfDayAt(malKevek.location).lawfulBonus;
+    expect(rawLawfulBonus).toBe(25); // the schedule's own real Morning value -- sanity-checks the setup itself
+
+    session.selectUnit(malKevek);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    const staffIndex = malKevek.attacks.findIndex((a) => a.name === 'staff');
+    session.selectAttackerWeapon(staffIndex);
+
+    const preview = session.pendingAttack!.preview;
+    // The real bug this regresses: before the fix, this read +25 (the raw
+    // schedule value) even though malKevek, being chaotic, actually took
+    // a REAL -25% damage modifier this exchange.
+    expect(preview.attacker.lawfulBonus).toBe(-25);
+  });
+
   it('real, reported bug (bugs5.md #2): backstabActive stays false when the GEOMETRIC flanking condition holds but the attacker\'s own weapon has no backstab special -- a flanking ally alone does not make backstab "active"', () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
 
