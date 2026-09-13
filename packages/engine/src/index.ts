@@ -25,7 +25,7 @@ export * from './model/Schedule.js';
 export * from './pathfind/pathfind.js';
 export * from './pathfind/visibility.js';
 export * from './actions/index.js';
-export * from './ai/simpleAi.js';
+export * from './ai/index.js';
 export * from './rng/index.js';
 export * from './events/index.js';
 export { WmlConfig, type WmlAttributeValue, type WmlConfigJson } from './wml/config.js';

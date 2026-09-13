@@ -1,0 +1,68 @@
+/**
+ * TS port of `readonly_context_impl::power_projection` (`src/ai/
+ * contexts.cpp`): a rough "how much combat power could reach/threaten
+ * this hex" score, used throughout the default AI (villages' threat
+ * filter, healing's vulnerability check, combat's `vulnerability`/
+ * `support` terms). For each of the 6 neighbours of `loc`, the single
+ * best unit (from `dstSrc`) that could occupy it contributes a rating;
+ * ratings are summed and divided by 100000.
+ *
+ * Simplified vs. upstream (documented, not silent): upstream iterates to
+ * a fixed point, letting a unit be reassigned to a DIFFERENT neighbour if
+ * that raises the total; this port greedily assigns each unit to at most
+ * one neighbour on a first-come basis (neighbours processed in a fixed
+ * order), which slightly undercounts in rare highly-contested
+ * configurations but matches for the single-neighbour and
+ * no-shared-unit cases this phase's own tests exercise.
+ */
+
+import { getAdjacentTiles, type Location } from '../model/Location.js';
+import type { GameBoard } from '../model/GameBoard.js';
+import type { Unit } from '../model/Unit.js';
+import { combatModifier } from '../actions/combatStats.js';
+import type { MoveMap } from './moveMaps.js';
+
+export interface PowerProjectionContext {
+  readonly turnNumber: number;
+  readonly lawfulBonusAt: (loc: Location) => number;
+  readonly maxLiminalBonus: number;
+}
+
+/** Mirrors the per-unit rating term inside `power_projection`'s loop. */
+function unitRating(board: GameBoard, unit: Unit, hex: Location, ctx: PowerProjectionContext): number {
+  const defenseChanceToBeHit = 100 - unit.defenseModifier(board.map.getTerrain(hex));
+  const lawfulBonus = ctx.lawfulBonusAt(hex);
+  const todModifier = combatModifier(lawfulBonus, unit.type.alignment, false, ctx.maxLiminalBonus);
+  let maxDamage = 0;
+  for (const attack of unit.attacks) {
+    maxDamage = Math.max(maxDamage, attack.damage * attack.numAttacks * (100 + todModifier));
+  }
+  const villageMultiplier = board.map.isVillage(hex) ? 3 : 2;
+  const hpFactor = Math.sqrt(unit.hitpoints / Math.max(1, unit.maxHitpoints));
+  return (hpFactor * 1000 * defenseChanceToBeHit * maxDamage * villageMultiplier) / 200;
+}
+
+export function powerProjection(board: GameBoard, loc: Location, dstSrc: MoveMap, ctx: PowerProjectionContext): number {
+  const used = new Set<string>();
+  let total = 0;
+  for (const hex of getAdjacentTiles(loc)) {
+    const candidates = dstSrc.get(hex.key()) ?? [];
+    let best = 0;
+    let bestUnitKey: string | undefined;
+    for (const srcLoc of candidates) {
+      if (used.has(srcLoc.key())) continue;
+      const unit = board.unitAt(srcLoc);
+      if (!unit) continue;
+      const rating = unitRating(board, unit, hex, ctx);
+      if (rating > best) {
+        best = rating;
+        bestUnitKey = srcLoc.key();
+      }
+    }
+    if (bestUnitKey) {
+      used.add(bestUnitKey);
+      total += best;
+    }
+  }
+  return total / 100000;
+}

@@ -2386,3 +2386,57 @@ golden reproducibility test not touching the AI). Supersedes Phase 7's
 `builtinConfigsInSync.test.ts`). Engine/renderer/ui suites all green
 throughout (447/193/83), typecheck and `svelte-check` (0 errors) clean.
 Branch `phase-29-real-ai`.
+
+**S1 (RCA framework core + idle_ai + simple CAs), delivered** (2026-09-13):
+- `ai/composite/rca.ts`: the real RCA scheduler, ported line-for-line from
+  `stage_rca.cpp:78-146` -- enable all candidate actions, repeat: sort by
+  `max_score` descending, early-break each pass once no remaining CA's
+  `max_score` can beat the best score found so far, evaluate/execute the
+  winner, and if `execute()` didn't actually change the gamestate (tracked
+  via `AiContext`'s gamestate-change counter, bumped only by real
+  `executeMove`/`stopUnit` mutations) disable that CA for the rest of
+  *this* stage invocation only -- until nothing scores above 0, capped at
+  `EXECUTION_CAP` (1000, a safety valve upstream lacks). Caught a real
+  scheduler bug while writing `rcaStage.test.ts`: the `execute()`-throws
+  catch path disabled the offending CA but never set `executed = true`,
+  so the whole stage silently stopped after the first throwing CA instead
+  of giving the next-best CA its turn -- fixed.
+- `ai/composite/aspect.ts` + `ai/config/upgrade.ts`: `CompositeAspect`
+  (`[default]` + `[facet]`s gated by `turns=`/`time_of_day=`, last-active-
+  facet-wins) and `expand_simplified_aspects`/`parseSideAiConfig`, upgrading
+  bare `[side][ai] aggression=0.8` and bare `[avoid]` into proper
+  `[aspect]`/`[facet]` form exactly as upstream's `configuration.cpp` does.
+  Verified against Dead Water scenario 1 side 2's real `[ai]` block, not
+  just synthetic WML.
+- `ai/context.ts` (`AiContext`), `ai/moveMaps.ts`, `ai/powerProjection.ts`,
+  `ai/keeps.ts`: srcdst/dstsrc move maps, `power_projection` threat
+  scoring, and keep lookup, all consumed via typed aspect getters
+  (`getAggression`, `getVillageValue`, `isPassiveLeader`, etc.) that read
+  through the composite-aspect layer above.
+- `ai/composite/aiComposite.ts` + `ai/default/registry.ts`: `AiComposite`
+  (`newTurn`/`playTurn`) builds `stages[]` from parsed config via a
+  name -> factory registry; an unregistered candidate-action name (every
+  C++/Lua CA this port doesn't implement yet, e.g. combat, recruitment)
+  logs a warning and is skipped rather than throwing, so the *real*
+  `ai_default_rca` config runs end-to-end today with only the 5 CAs below
+  actually acting.
+- Five real candidate actions ported from `ai/default/ca.cpp`: `goto`
+  (53-153), `move_leader_to_keep` (389-534, via `suitableKeep`/
+  `nearestKeep`), `leader_shares_keep` (1563-1620), `healing` (1313-1387,
+  skips units with the `regenerate` ability or a passive leader), and
+  `villages` (535-1311, reachable-unowned-village capture with simple
+  bipartite dispatch across multiple units and the leader always moving
+  last so it doesn't block the castle exit for a later recruitment pass).
+- `idle_ai` (the real `ai_algorithm=idle_ai` config, an empty stage list)
+  verified end-to-end to take zero actions ever.
+
+54 new engine tests across 8 files (`rcaStage.test.ts`, `aspect.test.ts`,
+`configUpgrade.test.ts`, `caGoto.test.ts`, `caMoveLeaderToKeep.test.ts`,
+`caLeaderSharesKeep.test.ts`, `caHealing.test.ts`, `caVillages.test.ts`)
+plus a 3-test end-to-end integration file (`aiComposite.test.ts`) driving
+the real generated `ai_default_rca`/`idle_ai` configs through the full
+composite. `packages/engine/src/ai/simpleAi.ts` (the Phase 7 heuristic)
+is untouched and still wired into `GameSession` -- S1 lands the new
+framework alongside it, unused by the running app until S5 swaps it in.
+Engine/renderer/ui suites all green (504/193/83), typecheck and
+`svelte-check` (0 errors) clean. Branch `phase-29-real-ai`.

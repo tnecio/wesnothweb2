@@ -50,6 +50,9 @@ import { buildBattleContext, chooseDefenderWeaponIndex, type UnitStatsOptions } 
 import { simulateCombat } from '../actions/attackPrediction.js';
 import { computeLeadershipBonus, computeResistanceModifier } from '../actions/abilityEffects.js';
 import { advanceUnitFully } from '../actions/advancement.js';
+import type { AiActionKind, AiAnimationEvent, AiAction } from './types.js';
+
+export type { AiActionKind, AiAnimationEvent, AiAction } from './types.js';
 
 export interface AiTurnOptions {
   /** Resolves a recruit-list/type id to its real `UnitType` (see `combat.ts`'s plague `resolveType` param for the same established pattern -- this module has no snapshot access of its own). */
@@ -61,55 +64,6 @@ export interface AiTurnOptions {
   readonly attackScoreThreshold?: number;
 }
 
-export type AiActionKind = 'recruit' | 'move' | 'attack' | 'advance';
-
-/**
- * Enough raw data for a caller with a renderer (`packages/ui`'s
- * `GameShell.svelte`) to build and play the same real per-action
- * animation a human's own move/attack/recruit already gets -- see
- * `AiAction.animation`'s own doc comment for why this exists as a
- * separate, explicit field rather than something the caller re-derives
- * from board state after the fact.
- */
-export type AiAnimationEvent =
-  | { readonly kind: 'move'; readonly unit: Unit; readonly path: readonly Location[] }
-  | {
-      readonly kind: 'attack';
-      readonly attacker: Unit;
-      readonly attackerWeaponIndex: number;
-      readonly defender: Unit;
-      readonly defenderWeaponIndex: number;
-      readonly result: AttackResult;
-      /** `attacker`/`defender`'s real type id AS OF THIS EXCHANGE, before `advanceUnitFully` below can mutate either unit's `.type` -- see `LastAttackAnimation.attackerTypeId`'s doc comment (packages/ui/src/gameSession.ts) for the full rationale; this mirrors it for the AI's own attack path. */
-      readonly attackerTypeId: string;
-      readonly defenderTypeId: string;
-      /** `attacker`/`defender`'s real hitpoints BEFORE this exchange -- see `LastAttackAnimation.attackerHitpointsBefore`'s doc comment for the full rationale (per-blow HP bar preview during animation playback); this mirrors it for the AI's own attack path. */
-      readonly attackerHitpointsBefore: number;
-      readonly defenderHitpointsBefore: number;
-    }
-  | { readonly kind: 'recruit'; readonly unit: Unit; readonly leader: Unit };
-
-export interface AiAction {
-  readonly kind: AiActionKind;
-  /** Human-readable summary, ready to drop straight into a UI log (matches this project's other `string` log-line conventions). Empty for a sub-step (e.g. repositioning before an attack) that's real for animation purposes but not worth its own log line -- callers appending to a log should skip empty messages. */
-  readonly message: string;
-  /**
-   * Real, reported bug (bugs2.md "animations during AI turn"): every AI
-   * move/attack/recruit used to apply directly to `board` with nothing a
-   * caller could animate -- `GameSession.lastAttackAnimation`'s own doc
-   * comment documents this as a deliberate simplification at the time,
-   * which this field reverses. `playAiTurn` still fully resolves the
-   * side's whole turn synchronously (so `board` is already at its final
-   * state by the time this function returns) -- callers that want to
-   * animate should read `AiAction[]` in order and, for each one with an
-   * `animation`, build + play the corresponding cues (reusing this
-   * project's existing `buildMoveAnimationCues`/`buildBlowAnimationCues`/
-   * `buildRecruitAnimationCues` logic) BEFORE reconciling the renderer to
-   * the final board state, since each cue's own src/dst hex data is what
-   * actually drives the visual, not `board`'s live positions.
-   */
-  readonly animation?: AiAnimationEvent;
-}
 
 const DEFAULT_ATTACK_SCORE_THRESHOLD = 0;
 

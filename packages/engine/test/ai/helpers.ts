@@ -8,6 +8,9 @@ import { GameBoard } from '../../src/model/GameBoard.js';
 import { Team } from '../../src/model/Team.js';
 import { UnitType, AttackType } from '../../src/model/UnitType.js';
 import { MoveType } from '../../src/model/MoveType.js';
+import { RngDeterministic } from '../../src/rng/RngDeterministic.js';
+import { MtRng } from '../../src/rng/MtRng.js';
+import type { AiHost } from '../../src/ai/types.js';
 
 /**
  * Shared test helpers for `test/ai/**` (originally `simpleAi.test.ts`'s
@@ -99,4 +102,29 @@ export function makeBoard(terrainData: TerrainTypeData): GameBoard {
   board.addTeam(new Team(1, { gold: 100, controller: 'ai' }));
   board.addTeam(new Team(2, { gold: 100 }));
   return board;
+}
+
+/**
+ * Phase 29's `AiHost` test double -- every field is overridable; sensible,
+ * inert defaults for the rest (RNG seeded for determinism, no time-of-day
+ * bonus, no fired events recorded unless the caller supplies its own
+ * `raise`). Used by every RCA-framework/candidate-action test.
+ */
+export function makeAiHost(board: GameBoard, overrides: Partial<AiHost> = {}): AiHost {
+  return {
+    board,
+    rng: new RngDeterministic(new MtRng(1)),
+    resolveType: (id: string) => {
+      throw new Error(`makeAiHost: no resolveType configured, asked for "${id}"`);
+    },
+    lawfulBonusAt: () => 0,
+    maxLiminalBonus: 0,
+    turnNumber: () => 1,
+    timeOfDayId: () => '',
+    raise: () => undefined,
+    pump: () => undefined,
+    log: () => undefined,
+    scenarioEnded: () => false,
+    ...overrides,
+  };
 }
