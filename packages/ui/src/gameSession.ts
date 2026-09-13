@@ -37,8 +37,8 @@ import {
   getAdjacentTiles,
   reachableHexes,
   findPath,
-  executeMove,
-  executeAttack,
+  performMove,
+  performAttack,
   isBackstabActive,
   computeLeadershipBonus,
   computeResistanceModifier,
@@ -1771,11 +1771,12 @@ export class GameSession {
   private moveSelectedTo(dest: Location): string | null {
     const unit = this.selectedUnit;
     if (!unit) return null;
-    const start = unit.location;
     const route = findPath(this.board, unit, dest);
     if (route.steps.length === 0) return null;
-    const ownersBefore = route.steps.map((step) => this.board.villageOwner(step));
-    const result = executeMove(this.board, unit, route.steps, { raise: this.raiseEvent });
+    // performMove owns the executeMove + capture/moveto choreography (see
+    // its own doc comment -- extracted for Phase 29 so the AI's own moves
+    // get the same events).
+    const { result } = performMove(this.board, unit, route.steps, { raise: this.raiseEvent });
     if (result.path.length > 1) this.lastMoveAnimation = { unit, path: result.path };
     const name = this.unitDisplayName(unit);
     const message = result.ambushed
@@ -1783,13 +1784,6 @@ export class GameSession {
       : result.sightedStop
         ? `${name} stopped: units sighted.`
         : `${name} moved.`;
-    if (result.path.length > 1) {
-      // unit_mover::post_move: capture (via get_village), then moveto.
-      if (result.enteredVillage && ownersBefore[result.path.length - 1] !== unit.side) {
-        this.eventPump.raise('capture', unit.location, start);
-      }
-      this.eventPump.raise('moveto', unit.location, start);
-    }
     this.pumpEvents();
     if (this.scenarioResult || this.board.unitAt(unit.location) !== unit) {
       this.clearSelection();
@@ -1945,26 +1939,19 @@ export class GameSession {
     const attackerHitpointsBefore = pending.attacker.hitpoints;
     const defenderHitpointsBefore = pending.defender.hitpoints;
 
-    const result = executeAttack(
-      this.board,
-      this.rng,
-      attackerLoc,
-      pending.attackerWeaponIndex,
-      defenderLoc,
-      pending.defenderWeaponIndex,
-      {
-        attackerLawfulBonus: this.timeOfDayAt(attackerLoc).lawfulBonus,
-        defenderLawfulBonus: this.timeOfDayAt(defenderLoc).lawfulBonus,
-        maxLiminalBonus: this.schedule.maxLiminalBonus,
-        resolveType: this.resolveType,
-        raise: this.raiseEvent,
-        onUnitDying: (dead, killer) => {
-          this.eventPump.fire('last breath', dead.location, killer.location);
-          this.eventPump.fire('die', dead.location, killer.location);
-        },
-      },
-    );
-    this.eventPump.raise('attack end', attackerLoc, defenderLoc);
+    // performAttack owns the executeAttack + last breath/die/attack end
+    // choreography (see its own doc comment -- extracted for Phase 29 so
+    // the AI's own attacks get the same events); firing 'attack' itself,
+    // the abort check above, and pumping afterward stay here since they
+    // need this session's own scenarioResult/event-pump state.
+    const result = performAttack(this.board, this.rng, attackerLoc, pending.attackerWeaponIndex, defenderLoc, pending.defenderWeaponIndex, {
+      attackerLawfulBonus: this.timeOfDayAt(attackerLoc).lawfulBonus,
+      defenderLawfulBonus: this.timeOfDayAt(defenderLoc).lawfulBonus,
+      maxLiminalBonus: this.schedule.maxLiminalBonus,
+      resolveType: this.resolveType,
+      raise: this.raiseEvent,
+      fire: (name, loc1, loc2) => this.eventPump.fire(name, loc1, loc2),
+    });
     this.eventPump.pump();
 
     this.lastAttackAnimation = {

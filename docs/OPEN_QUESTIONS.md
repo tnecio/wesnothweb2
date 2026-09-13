@@ -62,3 +62,20 @@ remains last and unscheduled.
 
 **Decided: mainline only.** `data/core`, `data/campaigns`, `data/multiplayer`.
 Add-ons are out of scope.
+
+## 7. Lua AI content: run verbatim on fengari, or hand-port to TS?
+
+**Decided 2026-09-13 (Phase 29 kickoff):** run `wesnoth/data/ai/**/*.lua`
+verbatim on the existing fengari bridge (`packages/lua-bridge`, decision
+2 above), TS-port the C++ candidate-action framework itself. Confirmed by
+direct inspection that none of `data/ai` uses Lua 5.4-only syntax (the
+`<const>`/`<close>` patch list stays at its existing 8 files), so no new
+vendor patches are needed. The alternative (hand-porting `ai_helper.lua`/
+`battle_calcs.lua`/the 5 default-loop Lua CAs/20 micro-AI types, ~15,000
+lines) was rejected as slow and translation-error-prone for content this
+large; the fengari bridge's host API (`wesnoth.*`/`ai.*`) needs real
+extension either way, but extending it is bounded, testable work,
+whereas a hand-port has to be re-verified line-by-line against upstream
+forever. See `.claude/plans/wise-squishing-deer.md` for the full staged
+plan; this supersedes decision 4's "later" with a real, in-progress phase
+(Phase 29).

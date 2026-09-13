@@ -7,22 +7,28 @@
  * Ported attribute matchers: `id=` (comma list), `type=` (comma list),
  * `side=` (comma list of side numbers), `x=`/`y=` (WML range syntax,
  * "3", "3-7", "3,5,9-11", plus the `x,y=recall,recall` off-board idiom),
- * `canrecruit=`, and boolean composition via nested `[and]`/`[or]`/`[not]`
- * (matching `conditional_wml.cpp`'s in-order-precedence semantics, reused
- * here since a unit filter's boolean structure is the same shape). Also
- * wires `formula=` through the WFL interpreter (`packages/engine/src/
- * formula/`) for simple per-unit formulas -- see `unitFormulaContext`.
+ * `canrecruit=`, `role=` (comma list), `race=` (comma list, matches
+ * `UnitType.raceId`), `ability=` (comma list, matches any of the unit
+ * type's abilities' own `id=`), `has_weapon=` (comma list, matches any
+ * current attack's `id`, i.e. its WML `name=` -- see `AttackType.id`'s
+ * own doc comment on this naming quirk), `status=` (comma list, matches
+ * any set status flag), `ai_special=guardian` (matches the Guardian
+ * status `Unit.fromConfig` sets from it), and boolean composition via
+ * nested `[and]`/`[or]`/`[not]` (matching `conditional_wml.cpp`'s
+ * in-order-precedence semantics, reused here since a unit filter's
+ * boolean structure is the same shape). Also wires `formula=` through
+ * the WFL interpreter (`packages/engine/src/formula/`) for simple
+ * per-unit formulas -- see `unitFormulaContext`. Added for Phase 29 (the
+ * real AI port): its `[filter_own]`/`[filter_enemy]` and micro-AI
+ * `[filter]` WML lean on `role=`/`ability=`/`status=` more than
+ * everyday scenario content does.
  *
- * NOT ported (noted rather than silently ignored -- see `filterHasUnknownCriteria`):
- * `name=`, `type_adv_tree=`, `ability=`/`ability_type=`, `role=`,
- * `race=`/`gender=`/`trait=`, `has_weapon=`, `find_in=`, `[filter_side]`,
- * `[filter_wml]` (arbitrary WML-subtree matching against a unit's stored
- * variables), and `formula=`'s full `unit_callable` surface (only a
- * handful of scalar fields are exposed, see `unitFormulaContext`). Real
- * content leaning on these needs a follow-up pass; `x=`/`y=`/`id=`/
- * `type=`/`side=`/`[filter_location]`/`[filter_vision]` cover the common
- * cases (including everything Dead_Water scenario 1's own event bodies
- * use).
+ * NOT ported: `name=`, `type_adv_tree=`, `ability_type=`, `gender=`,
+ * `trait=`, `find_in=`, `[filter_side]`, `[filter_wml]` (arbitrary
+ * WML-subtree matching against a unit's stored variables), and
+ * `formula=`'s full `unit_callable` surface (only a handful of scalar
+ * fields are exposed, see `unitFormulaContext`). Real content leaning on
+ * these needs a follow-up pass.
  */
 
 import type { GameBoard } from '../model/GameBoard.js';
@@ -100,6 +106,33 @@ export function unitMatchesFilter(unit: Unit, filterCfg: WmlConfig, board?: Game
   if (filterCfg.hasAttribute('canrecruit')) {
     if (unit.canRecruit !== filterCfg.getBoolean('canrecruit')) return false;
   }
+  if (filterCfg.hasAttribute('role')) {
+    const roles = filterCfg.getString('role').split(',').map((s) => s.trim());
+    if (!roles.includes(unit.role)) return false;
+  }
+  if (filterCfg.hasAttribute('race')) {
+    const races = filterCfg.getString('race').split(',').map((s) => s.trim());
+    if (!races.includes(unit.type.raceId)) return false;
+  }
+  if (filterCfg.hasAttribute('ability')) {
+    const wanted = filterCfg.getString('ability').split(',').map((s) => s.trim());
+    const has = unit.type.abilities.some((a) => wanted.includes(a.config.getString('id', '')));
+    if (!has) return false;
+  }
+  if (filterCfg.hasAttribute('has_weapon')) {
+    const wanted = filterCfg.getString('has_weapon').split(',').map((s) => s.trim());
+    const has = unit.attacks.some((a) => wanted.includes(a.id));
+    if (!has) return false;
+  }
+  if (filterCfg.hasAttribute('status')) {
+    const wanted = filterCfg.getString('status').split(',').map((s) => s.trim());
+    if (!wanted.some((s) => unit.hasStatus(s))) return false;
+  }
+  if (filterCfg.hasAttribute('ai_special')) {
+    // Real Wesnoth's only ai_special value is "guardian"; matches the Guardian status set by Unit.fromConfig.
+    const wanted = filterCfg.getString('ai_special', '');
+    if (wanted === 'guardian' && !unit.guardian) return false;
+  }
   const xStr = filterCfg.getString('x', '');
   const yStr = filterCfg.getString('y', '');
   if (xStr !== '' || yStr !== '') {
@@ -171,6 +204,24 @@ export function locationMatchesFilter(loc: Location, filterCfg: WmlConfig): bool
   if (xStr !== '' && !inRanges(loc.wmlX, parseRanges(xStr))) return false;
   if (yStr !== '' && !inRanges(loc.wmlY, parseRanges(yStr))) return false;
   return true;
+}
+
+/**
+ * Full standard location filter match (self-match + `[and]`/`[or]`/`[not]`,
+ * no `radius=` expansion) against a single hex -- used by the `avoid`
+ * aspect (Phase 29) and `ai.aspects.avoid`/`wesnoth.map.find`-style
+ * single-hex checks, where testing one location is wanted rather than
+ * enumerating every matching one via `findLocations`.
+ */
+export function locationMatchesFilterOnBoard(board: GameBoard, loc: Location, cfg: WmlConfig): boolean {
+  if (!locationSelfMatches(board, loc, cfg)) return false;
+  let matches = true;
+  for (const { tag, config } of cfg.allChildren()) {
+    if (tag === 'and') matches = matches && locationMatchesFilterOnBoard(board, loc, config);
+    else if (tag === 'or') matches = matches || locationMatchesFilterOnBoard(board, loc, config);
+    else if (tag === 'not') matches = matches && !locationMatchesFilterOnBoard(board, loc, config);
+  }
+  return matches;
 }
 
 /** The per-hex part of a standard location filter: `x,y=`, `terrain=`, and `[filter]` on the unit standing there. */

@@ -2337,3 +2337,52 @@ outside every campfire's radius does not. `{UNDERGROUND}` needed no new
 code (a single `[time]` entry, handled by existing generic parsing).
 Engine/renderer/ui suites all green throughout (400/190/62), typecheck
 and `svelte-check` (0 errors) clean.
+
+## 2026-09-13: Phase 29 (real AI port, RCA framework + Lua on fengari) planned; S0 (engine prerequisites) delivered
+
+Full plan at `.claude/plans/wise-squishing-deer.md` (13 stages, S0-S12),
+approved after two `Explore` surveys (this project's current AI state;
+upstream's real `src/ai/` framework, found intact at
+`/home/tom/wesnothweb/wesnoth/src/ai` -- the `wesnoth` submodule here is
+data-only) and one `Plan` agent design pass, plus direct verification of
+every load-bearing claim (WML macro parsing of the real `ai_default_rca.
+cfg`/`default_config.cfg`, the `[unitTypeConfigs]` flattened-config path
+already carrying `usage=` with zero snapshot-builder changes needed, the
+golden reproducibility test not touching the AI). Supersedes Phase 7's
+"Later: port the candidate-action framework" bullet.
+
+**S0 (engine prerequisites), delivered**:
+- `Unit.goto` (new field, `goto_x=`/`goto_y=` read in `fromConfig`) and
+  `UnitType.usage` (new field, `usage=`) -- both real upstream fields this
+  port never carried; the AI's `goto` candidate action and recruitment's
+  scout/healer logic need them.
+- `Unit.toConfig()`: new serializer, the dual of `fromConfig`, covering
+  the fields `unitToVarNode` (`[store_unit]`) doesn't need but the AI/Lua
+  bridge will (`goto_x`/`goto_y`, `attacks_left`, `status`, `ai_special`).
+- `events/filter.ts`: SUF gained `role=`, `race=`, `ability=`,
+  `has_weapon=`, `status=`, `ai_special=guardian`; `findLocations` is now
+  re-exported from `events/index.ts`; new `locationMatchesFilterOnBoard`
+  (self-match + `[and]`/`[or]`/`[not]`, no `radius=`) for the `avoid`
+  aspect and single-hex Lua queries.
+- `actions/moveSequence.ts`/`attackSequence.ts`: extracted the
+  `capture`/`moveto` and `last breath`/`die`/`attack end` event
+  choreography out of `GameSession.moveSelectedTo`/`confirmAttack` into
+  `performMove`/`performAttack`, reused by both. Closes a real,
+  previously-undetected gap: the Phase 7 heuristic AI's `executeMove`/
+  `executeAttack` calls fired no events at all beyond `sighted`, so any
+  WML hooked on a unit's own `moveto`/`attack`/`die` silently never fired
+  for AI-controlled units -- the real AI (S1+) will go through the same
+  `performMove`/`performAttack` and get this for free.
+- `packages/engine/scripts/gen-ai-configs.mjs`: regenerates
+  `src/ai/config/builtinAiConfigs.generated.ts` (the parsed, macro-
+  expanded `default_config.cfg` + all 4 `ais/*.cfg`) from the real
+  upstream WML, since the browser has no WML preprocessor. Verified by a
+  new drift-check test that re-parses the same files and diffs.
+- `test/ai/helpers.ts`: `simpleAi.test.ts`'s board/unit-type builders
+  extracted for reuse by the real AI's own candidate-action tests (S1+).
+
+30 new engine tests (`Unit.test.ts`, `sufNewKeys.test.ts`,
+`attackSequence.test.ts`, `moveSequence.test.ts`,
+`builtinConfigsInSync.test.ts`). Engine/renderer/ui suites all green
+throughout (447/193/83), typecheck and `svelte-check` (0 errors) clean.
+Branch `phase-29-real-ai`.

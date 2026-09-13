@@ -4,6 +4,8 @@ export * from './abilityEffects.js';
 export * from './combatStats.js';
 export * from './combat.js';
 export * from './move.js';
+export * from './moveSequence.js';
+export * from './attackSequence.js';
 export * from './unitCanAct.js';
 export * from './vision.js';
 export * from './recruit.js';

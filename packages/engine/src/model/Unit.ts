@@ -35,7 +35,7 @@
  *    implement plain `advances_to=` leveling.
  */
 
-import type { WmlConfig } from '../wml/config.js';
+import { WmlConfig } from '../wml/config.js';
 import { Location, Direction, parseDirection } from './Location.js';
 import type { TerrainCode } from './Terrain.js';
 import { AttackType, UnitType } from './UnitType.js';
@@ -104,6 +104,15 @@ export class Unit {
   readonly statuses: Set<string>;
   /** Arbitrary WML variable bag (`[variables]` child), opaque to the core model. */
   variables: WmlConfig | undefined;
+  /**
+   * Mirrors `unit::get_goto()`/`set_goto()` (`goto_x=`/`goto_y=` in WML): a
+   * pending destination a `[move_unit_fake]`-adjacent mechanism or (from
+   * Phase 29 onward) the AI's `goto` candidate action wants this unit to
+   * walk toward across however many turns it takes, cleared once reached.
+   * `undefined` means "no pending goto", matching upstream's off-board
+   * sentinel location.
+   */
+  goto: Location | undefined;
 
   private constructor(type: UnitType, side: number, location: Location, options: UnitOptions) {
     this.type = type;
@@ -130,6 +139,7 @@ export class Unit {
     this.modifications = options.modifications ?? [];
     this.statuses = new Set();
     this.variables = options.variables;
+    this.goto = undefined;
   }
 
   /** A fresh unit of `type`, as if just recruited/created (mirrors `advance_to` applied to a new unit). */
@@ -198,8 +208,66 @@ export class Unit {
     if (cfg.hasAttribute('invulnerable') && cfg.getBoolean('invulnerable')) {
       unit.statuses.add(UnitStatus.Invulnerable);
     }
+    if (cfg.hasAttribute('goto_x') && cfg.hasAttribute('goto_y')) {
+      const gotoLoc = Location.fromWml(cfg.getNumber('goto_x'), cfg.getNumber('goto_y'));
+      if (gotoLoc.valid()) unit.goto = gotoLoc;
+    }
 
     return unit;
+  }
+
+  /**
+   * Serializes this unit into a `[unit]`-shaped `WmlConfig` -- the dual of
+   * `Unit.fromConfig` (every attribute written here is one `fromConfig`
+   * reads back), covering the same field set `unitToVarNode`
+   * (`events/actionWml.ts`, for `[store_unit]`) writes plus the fields that
+   * matter for Phase 29's AI/Lua bridge (`goto_x`/`goto_y`, `attacks_left`,
+   * `status`, `ai_special`) that `unitToVarNode` doesn't need. Used for
+   * `unit.__cfg` in the Lua host API and for persisting AI-visible unit
+   * state (e.g. a pending `goto`) across save/load. Does NOT serialize
+   * `modifications` (same known gap `unitToVarNode`/`actionUnstoreUnit`
+   * document) or attack overrides beyond the base type's weapons.
+   */
+  toConfig(): WmlConfig {
+    const cfg = new WmlConfig();
+    cfg.setAttribute('type', this.type.id);
+    cfg.setAttribute('id', this.id);
+    cfg.setAttribute('name', this.name);
+    cfg.setAttribute('role', this.role);
+    cfg.setAttribute('side', this.side);
+    if (this.location.valid()) {
+      cfg.setAttribute('x', this.location.wmlX);
+      cfg.setAttribute('y', this.location.wmlY);
+    } else {
+      cfg.setAttribute('x', 'recall');
+      cfg.setAttribute('y', 'recall');
+    }
+    cfg.setAttribute('hitpoints', this.hitpoints);
+    cfg.setAttribute('max_hitpoints', this.maxHitpoints);
+    cfg.setAttribute('moves', this.movesLeft);
+    cfg.setAttribute('max_moves', this.maxMoves);
+    cfg.setAttribute('attacks_left', this.attacksLeft);
+    cfg.setAttribute('max_attacks', this.maxAttacksPerTurn);
+    cfg.setAttribute('experience', this.experience);
+    cfg.setAttribute('max_experience', this.maxExperience);
+    cfg.setAttribute('level', this.level);
+    cfg.setAttribute('canrecruit', this.canRecruit);
+    cfg.setAttribute('resting', this.resting);
+    cfg.setAttribute('hidden', this.hidden);
+    cfg.setAttribute('underlying_id', this.underlyingId);
+    if (this.guardian) cfg.setAttribute('ai_special', 'guardian');
+    if (this.goto) {
+      cfg.setAttribute('goto_x', this.goto.wmlX);
+      cfg.setAttribute('goto_y', this.goto.wmlY);
+    }
+    if (this.statuses.size > 0) {
+      const statusCfg = cfg.addChild('status');
+      for (const s of this.statuses) statusCfg.setAttribute(s, true);
+    }
+    if (this.variables) {
+      cfg.addChild('variables', this.variables);
+    }
+    return cfg;
   }
 
   // --- status flags ---

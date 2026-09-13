@@ -560,18 +560,21 @@ had a Skeleton attack a Merman Netcaster, landing back on side 1's turn
 recruiting-until-unaffordable, taking a clearly-good trade, declining a
 clearly-bad one, village capture, and closing distance.
 
-- Later: port the candidate-action framework and relevant Lua micro-AIs
-  using the Phase 3 Lua VM, for closer-to-original behavior — not
-  attempted here, deliberately (mainline AI is substantially Lua-driven,
-  `data/ai/`, 131 files using `[lua]`).
+- **Superseded by Phase 29** (2026-09-13): "port the candidate-action
+  framework and relevant Lua micro-AIs" is now underway as its own
+  phase (`.claude/plans/wise-squishing-deer.md` has the full staged
+  plan) rather than a deferred bullet here — real, dedicated scope, not
+  optional. Real content leaning on `[modify_ai]`/`[aspect]`/`[facet]`/
+  `[goal]`/`[stage]`/`[micro_ai]`/AI recruitment budgeting needs Phase 29,
+  not this one.
 
 ### Catalogue checklist (category 9's AI bullets)
 
-`[side]controller=ai` must act automatically and never hang -- now real.
+`[side]controller=ai` must act automatically and never hang -- now real
+(the MVP heuristic here; the real RCA framework as of Phase 29).
 `[modify_ai]`/`[aspect]`/`[facet]`/`[goal]`/`[stage]`, and AI recruitment
 budgeting (`[recruitment_instructions]`/`[recruit]`/`[limit]`) are real
-upstream surface that only matters once the candidate-action framework
-(the "later" bullet above) is underway — not needed for the MVP
+upstream surface Phase 29 covers — not needed for this phase's own MVP
 heuristic, which reads `recruit=`/gold directly rather than any AI
 configuration WML.
 
@@ -1320,6 +1323,46 @@ below exist yet.
 
 ---
 
+## Phase 29 — Real AI: RCA framework port + Lua CAs/micro-AIs on fengari
+
+**Status: planned 2026-09-13, S0 delivered.** Supersedes Phase 7's own
+"Later" bullet (candidate-action framework + Lua micro-AI port), which is
+now this phase's full scope rather than a deferred aside. Full staged
+plan (13 stages S0–S12, module layout, upstream file:line citations,
+test plan per stage) at `.claude/plans/wise-squishing-deer.md` — kept
+there rather than duplicated here since it's long; this section is a
+pointer + milestone summary for the phase list/coverage map's sake.
+
+- TS-ports upstream's real candidate-action framework (`src/ai/composite`/
+  `src/ai/default`: the RCA loop, aspects/facets/goals/stages, move maps/
+  power_projection, and all 9 C++ candidate actions — goto, combat,
+  recruitment, move_leader_to_{goals,keep}, get_villages, get_healing,
+  move_to_targets, leader_shares_keep) into `packages/engine/src/ai/`,
+  replacing `simpleAi.ts`'s Phase 7 heuristic.
+- Runs the real `wesnoth/data/ai/**/*.lua` (5 default-loop Lua candidate
+  actions, `ai_helper.lua`/`battle_calcs.lua`, and micro-AIs) **verbatim**
+  on the existing fengari bridge (`packages/lua-bridge`, Phase 3),
+  extended with the `wesnoth.*`/`ai.*` host API surface real content
+  needs — decided over hand-porting Lua to TS, since none of `data/ai`
+  uses Lua 5.4-only syntax.
+- Micro-AI scope, in order: shipped-campaign types first (zone_guardian,
+  messenger_escort, simple_attack, assassin, coward, forest_animals),
+  then other mainline types, then test-only types.
+- Includes a headless AI-vs-AI benchmark harness (win rate/turns/ms,
+  seeded) as a deliverable alongside unit tests and live-browser checks.
+- **Milestone (S5)**: a real mainline scenario (Dead Water 1) plays a
+  full turn under the real RCA default AI — recruiting, moving, attacking
+  by the real upstream algorithm and scoring, not a heuristic — headlessly
+  and in a live browser, before the Lua-dependent stages (S7+) begin.
+
+### Catalogue checklist (category 9's AI bullets, continued from Phase 7)
+
+`[modify_ai]`/`[aspect]`/`[facet]`/`[goal]`/`[stage]`/`[micro_ai]` and AI
+recruitment budgeting (`[recruitment_instructions]`/`[recruit]`/
+`[limit]`) become real here.
+
+---
+
 ## Priority as of 2026-09-12
 
 Explicit user direction (2026-09-12), superseding the 2026-09-09 priority
@@ -1339,6 +1382,9 @@ against the Under the Burning Suns testbed as planned.
 7. **Phase 26** (save game handling).
 8. **Phase 27** (feature completeness assessment).
 9. **Phase 28** (CI/CD/performance/platform).
+10. **Phase 29** (real AI: RCA framework + Lua on fengari) — added
+    2026-09-13, underway alongside the above rather than strictly after
+    it (Phase 7's MVP heuristic AI remains playable throughout).
 
 ### Old → new phase numbers
 
@@ -1375,10 +1421,10 @@ item.
 | 6 | Abilities | 2 (partial — generic pipeline is the main gap), 12 (illuminates) |
 | 7 | Weapon Specials | 2 (partial — same generic-pipeline gap as 6) |
 | 8 | Unit Modifications & Progression | 2 (core), 9/10 (rendering-dependent `apply_to=` variants) |
-| 9 | Sides, Economy & Turn Flow | 2 (core), 7 (AI), 25 (achievements) |
+| 9 | Sides, Economy & Turn Flow | 2 (core), 7 (MVP AI), 29 (real AI), 25 (achievements) |
 | 10 | Recruitment & Recall | 2 (rules), 13 (dialogs) |
 | 11 | Scenario & Campaign Flow | 2/5 (core), 6 (options/branching), 21 (difficulty selection) |
-| 12 | Events & WML Scripting | 2 (core + long-tail gap list), 3 (`[lua]`), 17 (suspendable events, `[option]`, cutscenes) |
+| 12 | Events & WML Scripting | 2 (core + long-tail gap list), 3 (`[lua]`), 17 (suspendable events, `[option]`, cutscenes), 29 (`[micro_ai]`/`[modify_ai]`) |
 | 13 | Fog, Shroud & Vision | 11 |
 | 14 | Time of Day & Schedules | 12 |
 | 15 | Story, Dialogue & Narrative | 5 (core), 16 (story overhaul), 17 (in-order dialogue, choices) |

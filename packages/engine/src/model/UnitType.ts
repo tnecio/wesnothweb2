@@ -198,6 +198,14 @@ export class UnitType {
     public readonly possibleTraits: readonly WmlConfig[] = GLOBAL_TRAITS,
     /** Whether `vision=` was set; upstream's `vision_ < 0` means "use max movement" (see `actions/vision.ts`'s `unitVisionRange`). */
     public readonly hasExplicitVision: boolean = false,
+    /**
+     * Mirrors `unit_type::usage()` (`usage=`, e.g. `"scout"`, `"healer"`,
+     * `"fighter"`, `"mixed fighter"`) -- a free-form WML-authored hint the
+     * AI's recruitment/scouting/healer-placement candidate actions key off
+     * (`villages_per_scout`, `ca_place_healers`'s `usage=="healer"` check).
+     * Purely descriptive; the core engine never interprets it itself.
+     */
+    public readonly usage: string = '',
   ) {}
 
   /** Mirrors `unit_type::experience_needed`: the modifier is the game-wide `[game_config] experience_modifier` (default 100 = unchanged). */
@@ -269,6 +277,7 @@ export class UnitType {
       numTraits,
       possibleTraits,
       cfg.hasAttribute('vision'),
+      cfg.getString('usage', ''),
     );
   }
 }
