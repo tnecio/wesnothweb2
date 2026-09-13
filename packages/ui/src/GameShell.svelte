@@ -141,6 +141,16 @@
   let hoveredHexInfo = $state<HoveredHexInfo | null>(null);
   /** Phase 14: the right-click context menu's position + which hex it's for, `null` when closed. */
   let contextMenuAt = $state<{ x: number; y: number; clientX: number; clientY: number } | null>(null);
+  /**
+   * Real, reported bug (bugs4.md #5): the hex a Recruit/Recall dialog was
+   * opened FROM, when opened by right-clicking a specific empty castle
+   * tile -- `handleConfirmRecruit`/`handleConfirmRecall` place the chosen
+   * unit there directly instead of arming a pending choice and making the
+   * player click the (already-known) tile a second time. `null` when the
+   * dialog was opened from the top bar's Actions menu instead (no single
+   * origin hex to prefer -- falls back to the old arm-then-click flow).
+   */
+  let recruitOriginHex = $state<HexPoint | null>(null);
 
   function selectedInfo(): SelectedUnitInfo | null {
     const u = session.selectedUnit;
@@ -640,9 +650,24 @@
     ];
   }
 
+  /**
+   * Real, reported bug (bugs4.md #1): the AttackDialog modal used to stay
+   * open (blocking the view of the board) for the ENTIRE combat animation,
+   * only closing once the full `sync(message)` below ran afterward.
+   * `session.confirmAttack()` already clears `session.pendingAttack`
+   * synchronously (so `pendingPreview`/`attackerWeaponOptions` are already
+   * stale the instant it returns) -- close the dialog immediately by
+   * setting those two `$state` vars directly, before awaiting the
+   * animation, rather than waiting for the full `sync()` that also updates
+   * `units`/HP bars/etc. (which must stay deferred until AFTER the
+   * animation finishes, or the board would jump straight to the final
+   * post-combat state and the animation would have nothing left to show).
+   */
   async function handleConfirmAttack(): Promise<void> {
     if (phase !== 'playing') return;
     const message = session.confirmAttack();
+    pendingPreview = null;
+    attackerWeaponOptions = [];
     const anim = session.lastAttackAnimation;
     session.lastAttackAnimation = null;
     if (anim && boardView) {
@@ -681,16 +706,31 @@
     sync();
   }
 
-  /** Phase 13: `RecruitDialog`'s "Recruit" button -- arms the chosen type (same effect `handleSelectRecruitType` always had) and closes the dialog, so the player's next click lands on one of the now-highlighted castle tiles. */
-  function handleConfirmRecruit(typeId: string): void {
-    handleSelectRecruitType(typeId);
+  /**
+   * Phase 13: `RecruitDialog`'s "Recruit" button. Real, reported bug
+   * (bugs4.md #5): if the dialog was opened by right-clicking a specific
+   * empty castle tile (`recruitOriginHex` set), place the recruit there
+   * immediately (through the exact same `handleHexClick` path a manual
+   * tile click would take) instead of arming a pending choice and making
+   * the player click that same tile again. Falls back to the old arm-
+   * and-wait-for-a-click behavior when there's no such origin hex (opened
+   * from the top bar's Actions menu instead).
+   */
+  async function handleConfirmRecruit(typeId: string): Promise<void> {
     recruitDialogOpen = false;
+    const origin = recruitOriginHex;
+    recruitOriginHex = null;
+    handleSelectRecruitType(typeId);
+    if (origin) await handleHexClick(origin.x, origin.y);
   }
 
   /** Phase 13: `RecallDialog`'s "Recall" button -- same shape as `handleConfirmRecruit`. */
-  function handleConfirmRecall(index: number): void {
-    handleSelectRecallUnit(index);
+  async function handleConfirmRecall(index: number): Promise<void> {
     recallDialogOpen = false;
+    const origin = recruitOriginHex;
+    recruitOriginHex = null;
+    handleSelectRecallUnit(index);
+    if (origin) await handleHexClick(origin.x, origin.y);
   }
 
   /** Phase 13: `RecallDialog`'s real "Dismiss unit" button (`GameSession.dismissRecallUnit`) -- permanently removes the entry, no placement follows. */
@@ -854,8 +894,24 @@
     { id: 'load', label: 'Load', enabled: phase === 'playing', handler: handleLoad },
   ]);
   let actionCommands = $derived<Command[]>([
-    { id: 'recruit', label: 'Recruit...', enabled: recruitOptions.length > 0, handler: () => (recruitDialogOpen = true) },
-    { id: 'recall', label: 'Recall...', enabled: recallOptions.length > 0, handler: () => (recallDialogOpen = true) },
+    {
+      id: 'recruit',
+      label: 'Recruit...',
+      enabled: recruitOptions.length > 0,
+      handler: () => {
+        recruitOriginHex = null; // no specific hex -- falls back to arm-then-click (see its own doc comment)
+        recruitDialogOpen = true;
+      },
+    },
+    {
+      id: 'recall',
+      label: 'Recall...',
+      enabled: recallOptions.length > 0,
+      handler: () => {
+        recruitOriginHex = null;
+        recallDialogOpen = true;
+      },
+    },
     { id: 'objectives', label: 'Objectives', enabled: session.scenarioObjectives !== null, handler: () => (objectivesDialogOpen = true) },
     { id: 'end-turn', label: 'End Turn', enabled: phase === 'playing', handler: handleEndTurn },
   ]);
@@ -890,13 +946,19 @@
         id: 'ctx-recruit',
         label: 'Recruit...',
         enabled: recruitOptions.length > 0 && isRecruitTile,
-        handler: () => (recruitDialogOpen = true),
+        handler: () => {
+          recruitOriginHex = { x, y }; // bugs4.md #5: place directly on the hex the menu was opened from
+          recruitDialogOpen = true;
+        },
       });
       hexCommands.push({
         id: 'ctx-recall',
         label: 'Recall...',
         enabled: recallOptions.length > 0 && isRecruitTile,
-        handler: () => (recallDialogOpen = true),
+        handler: () => {
+          recruitOriginHex = { x, y };
+          recallDialogOpen = true;
+        },
       });
       // Real `[set_menu_item]` entries the scenario's own WML declared --
       // see `GameSession.menuItems`'s own doc comment on why these are
@@ -921,6 +983,7 @@
     {activeSide}
     {scenarioTurnsLimit}
     {timeOfDay}
+    {gold}
     {economyInfo}
     {menuCommands}
     {actionCommands}
@@ -977,7 +1040,15 @@
   {/if}
 
   {#if recruitDialogOpen}
-    <RecruitDialog options={recruitOptions} {gold} onRecruit={handleConfirmRecruit} onCancel={() => (recruitDialogOpen = false)} />
+    <RecruitDialog
+      options={recruitOptions}
+      {gold}
+      onRecruit={handleConfirmRecruit}
+      onCancel={() => {
+        recruitDialogOpen = false;
+        recruitOriginHex = null;
+      }}
+    />
   {/if}
 
   {#if recallDialogOpen}
@@ -987,7 +1058,10 @@
       onRecall={handleConfirmRecall}
       onDismiss={handleDismissRecall}
       onRename={handleRenameRecall}
-      onCancel={() => (recallDialogOpen = false)}
+      onCancel={() => {
+        recallDialogOpen = false;
+        recruitOriginHex = null;
+      }}
     />
   {/if}
 

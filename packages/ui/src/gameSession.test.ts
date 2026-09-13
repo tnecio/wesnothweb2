@@ -295,6 +295,37 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
     expect(session.recruitTiles.some((t) => t.x === target.x && t.y === target.y)).toBe(false);
   });
 
+  it('real, reported bug (bugs4.md #4/#6/#8): recruitOptions/recruitTiles/recruiting itself are available WITHOUT the leader being the selected unit -- only requires it being the active side\'s turn and the leader standing on a keep with a vacant connected tile', () => {
+    const session = new GameSession(loadSnapshot());
+    const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
+    expect(session.selectedUnit).toBeNull(); // deliberately never selected anything
+
+    expect(session.recruitTiles.length).toBeGreaterThan(0);
+    expect(session.recruitOptions.length).toBeGreaterThan(0);
+
+    const team = session.board.getTeam(1)!;
+    const typeId = session.recruitOptions[0]!.typeId;
+    const target = session.recruitTiles[0]!;
+    const goldBefore = team.gold;
+
+    session.selectRecruitType(typeId);
+    const message = session.handleHexClick(target.x, target.y);
+
+    expect(message).toContain('Recruited');
+    const placed = session.board.allUnits().find((u) => u.location.x === target.x && u.location.y === target.y);
+    expect(placed?.type.id).toBe(typeId);
+    // The real bug this regresses: `team.gold` (the authoritative figure
+    // the recruit validation itself reads) actually drops here, exactly
+    // like this assertion expects -- the reported symptom ("status bar
+    // still shows the old higher amount") was `TopBar.svelte` reading the
+    // wrong field (`EconomyInfo.startGold`, deliberately frozen at
+    // scenario start) instead of this live `team.gold`, not a bug in the
+    // recruit action itself. See TopBar.svelte's own doc comment on its
+    // `gold` prop.
+    expect(team.gold).toBe(goldBefore - (session.snapshot.unitTypes[typeId]?.cost ?? 0));
+    expect(leader.canRecruit).toBe(true); // unaffected -- just confirms we're still looking at the real leader
+  });
+
   it('real, reported bug: recruiting never played any animation -- sets lastRecruitAnimation to the new unit + the recruiting leader', () => {
     const session = new GameSession(loadSnapshot());
     const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;

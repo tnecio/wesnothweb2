@@ -662,8 +662,6 @@ export class GameSession {
   reachable: ReachableHexPoint[] = [];
   /** Adjacent enemy units `selectedUnit` could attack (empty if it has no attacks left). */
   attackCandidates: Unit[] = [];
-  /** Vacant castle tiles `selectedUnit` (a leader on its keep) could recruit onto -- empty otherwise. */
-  recruitTiles: HexPoint[] = [];
   pendingAttack: PendingAttack | null = null;
   /**
    * Set by `confirmAttack` every time a HUMAN-confirmed attack resolves --
@@ -1196,7 +1194,6 @@ export class GameSession {
       this.reachable = [];
     }
     this.attackCandidates = this.computeAttackCandidates(unit);
-    this.recruitTiles = this.computeRecruitTiles(unit);
   }
 
   clearSelection(): void {
@@ -1204,7 +1201,6 @@ export class GameSession {
     this.inspectedUnit = null;
     this.reachable = [];
     this.attackCandidates = [];
-    this.recruitTiles = [];
     this.pendingAttack = null;
     this.pendingRecruitTypeId = null;
     this.pendingRecallIndex = null;
@@ -1218,10 +1214,36 @@ export class GameSession {
       .map((loc) => ({ x: loc.x, y: loc.y }));
   }
 
-  /** The selected leader's side's real recruitable types (cost/name/image from `snapshot.unitTypes`), if it's currently able to recruit. Empty otherwise. */
+  /**
+   * The active side's own recruiting leader -- on a keep, with at least
+   * one vacant connected castle tile -- independent of `selectedUnit`.
+   * Real, reported bug (bugs4.md #4/#5/#6/#8): recruiting/recalling (and
+   * even the "Recruit"/"Recall" UI showing up at all) used to require the
+   * leader to be the CURRENTLY SELECTED unit, which doesn't match real
+   * Wesnoth -- recruiting is a side-level action available any time it's
+   * your turn and your leader is correctly positioned, regardless of
+   * what's selected on screen right now. If more than one of the side's
+   * units can recruit, the first one found wins (real content this
+   * project targets has exactly one leader per side per scenario).
+   */
+  private get recruitingLeader(): Unit | null {
+    return (
+      this.board
+        .allUnits()
+        .find((u) => u.side === this.activeSide && u.canRecruit && this.computeRecruitTiles(u).length > 0) ?? null
+    );
+  }
+
+  /** Vacant castle tiles the active side's recruiting leader (see `recruitingLeader`) could recruit/recall onto -- empty if there's no such leader right now. Deliberately NOT tied to `selectedUnit` -- see `recruitingLeader`'s own doc comment. */
+  get recruitTiles(): HexPoint[] {
+    const leader = this.recruitingLeader;
+    return leader ? this.computeRecruitTiles(leader) : [];
+  }
+
+  /** The active side's real recruitable types (cost/name/image from `snapshot.unitTypes`), if it currently has a leader able to recruit. Empty otherwise. */
   get recruitOptions(): RecruitOption[] {
-    const leader = this.selectedUnit;
-    if (!leader || this.recruitTiles.length === 0) return [];
+    const leader = this.recruitingLeader;
+    if (!leader) return [];
     const team = this.board.getTeam(leader.side);
     if (!team) return [];
     return [...team.canRecruit].map((typeId) => {
@@ -1252,15 +1274,15 @@ export class GameSession {
   }
 
   /**
-   * The selected leader's side's current recall list, if it's currently
-   * able to recruit/recall (same gating as `recruitOptions` -- a leader on
-   * its keep with at least one vacant, keep-connected castle tile). See
-   * `RecallOption`'s own doc comment for why `index` (not `underlyingId`)
-   * is the selection key.
+   * The active side's current recall list, if it currently has a leader
+   * able to recruit/recall (same gating as `recruitOptions` -- see
+   * `recruitingLeader`'s own doc comment on why this is independent of
+   * `selectedUnit`). See `RecallOption`'s own doc comment for why `index`
+   * (not `underlyingId`) is the selection key.
    */
   get recallOptions(): RecallOption[] {
-    const leader = this.selectedUnit;
-    if (!leader || this.recruitTiles.length === 0) return [];
+    const leader = this.recruitingLeader;
+    if (!leader) return [];
     const team = this.board.getTeam(leader.side);
     if (!team) return [];
     return this.board.recallList(leader.side).map((u, index) => {
@@ -1303,7 +1325,7 @@ export class GameSession {
    * unit you were about to place makes that armed state meaningless).
    */
   dismissRecallUnit(index: number): void {
-    const leader = this.selectedUnit;
+    const leader = this.recruitingLeader;
     if (!leader) return;
     const removed = dismissUnitAt(this.board, leader.side, index);
     if (removed && this.pendingRecallIndex === index) this.pendingRecallIndex = null;
@@ -1311,7 +1333,7 @@ export class GameSession {
 
   /** Real Wesnoth's recall-dialog "Rename" action: sets a recall-list unit's display name directly (`Unit.name` is plain mutable data -- no engine action needed). No-op if `name` is empty (a blank name isn't a real rename, just noise). */
   renameRecallUnit(index: number, name: string): void {
-    const leader = this.selectedUnit;
+    const leader = this.recruitingLeader;
     if (!leader) return;
     const trimmed = name.trim();
     if (!trimmed) return;
@@ -1338,7 +1360,7 @@ export class GameSession {
    * matches exactly what the player clicked, or is rejected outright.
    */
   private tryRecruitAt(typeId: string, loc: Location): string | null {
-    const leader = this.selectedUnit;
+    const leader = this.recruitingLeader;
     if (!leader) return null;
     const team = this.board.getTeam(leader.side);
     if (!team) return null;
@@ -1376,7 +1398,7 @@ export class GameSession {
    * as `tryRecruitAt` -- see that method's own doc comment.
    */
   private tryRecallAt(index: number, loc: Location): string | null {
-    const leader = this.selectedUnit;
+    const leader = this.recruitingLeader;
     if (!leader) return null;
     const team = this.board.getTeam(leader.side);
     if (!team) return null;

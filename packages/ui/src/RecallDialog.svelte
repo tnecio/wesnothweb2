@@ -3,10 +3,8 @@
    * Phase 13: real Wesnoth's recall dialog (`gui/dialogs/units_dialog.cpp`'s
    * `build_recall_dialog` -- the same underlying dialog as recruit, just
    * fed the recall list instead of the recruit list), replacing
-   * `SidePanel.svelte`'s old inline recall section. Same two-step
-   * placement flow as `RecruitDialog.svelte` (see its own doc comment):
-   * "Recall" here arms the choice and closes the dialog, then the player
-   * clicks a highlighted castle tile.
+   * `SidePanel.svelte`'s old inline recall section. Same placement
+   * behavior as `RecruitDialog.svelte` -- see its own doc comment.
    */
   import { imageUrl } from '@wesnothweb2/renderer';
   import type { RecallOption } from './gameSession.js';

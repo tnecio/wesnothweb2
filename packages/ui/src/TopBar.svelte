@@ -26,6 +26,7 @@
     activeSide,
     scenarioTurnsLimit = null,
     timeOfDay = null,
+    gold,
     economyInfo,
     menuCommands,
     actionCommands,
@@ -35,6 +36,18 @@
     activeSide?: number;
     scenarioTurnsLimit?: number | null;
     timeOfDay?: TimeOfDayEntry | null;
+    /**
+     * The active side's LIVE current gold -- real, reported bug (bugs4.md
+     * #6/#8): the status bar used to show `economyInfo.startGold` instead,
+     * which is `Team.startGold` -- the side's gold AT SCENARIO START,
+     * deliberately never updated afterward (see `EconomyInfo.startGold`'s
+     * own doc comment) -- so recruiting/recalling/income never visibly
+     * changed the number shown here at all, even though the real
+     * underlying `team.gold` was correct the whole time (confirmed by
+     * recruit validation, which reads `team.gold` directly and rejects a
+     * recruit the stale display claimed was affordable).
+     */
+    gold: number;
     economyInfo: EconomyInfo;
     /** The "Menu" dropdown's commands (Save/Load, ...). */
     menuCommands: readonly Command[];
@@ -95,7 +108,7 @@
     </span>
     <span class="stat" title="Gold">
       <span class="label">Gold</span>
-      {economyInfo.startGold}
+      {gold}
     </span>
     <span class="stat" title="Villages owned">
       <span class="label">Villages</span>
