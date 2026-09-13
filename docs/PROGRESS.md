@@ -2535,3 +2535,55 @@ when it's actually the better value, `recruitment_save_gold` correctly
 blocks all recruiting, and scouts get recruited when villages call for
 them. Engine/renderer/ui suites all green (527/193/83), typecheck and
 `svelte-check` (0 errors) clean. Branch `phase-29-real-ai`.
+
+**S4 (move_to_targets + find_targets + move_leader_to_goals + retreat),
+delivered** (2026-09-13):
+- `ai/composite/goal.ts` + `ai/composite/target.ts`: the `[goal]` hierarchy
+  (`TargetUnitGoal`/`TargetLocationGoal`/`ProtectGoal`, matching `name=
+  target`/`target_unit`/`target_location`/`protect_unit`/`protect_location`)
+  and the `Target`/`TargetType` shape `findTargets` and every goal share.
+  `ai/config/upgrade.ts` now also upgrades the legacy bare `[target]`/
+  `[target_location]`/`[protect_unit]`/`[protect_location]` `[ai]` children
+  (no `[goal]` wrapper) into the modern shape -- this closes the one
+  documented gap S1's `expandSimplifiedAspects` had left open.
+  `ParsedSideAiConfig` gained `goals`, threaded into `new AiContext(host,
+  side, aspects, goals)`.
+- `ai/default/findTargets.ts`: a faithful port of `default_ai_context_impl::
+  find_targets` -- threats to the leader, unclaimed villages (plus allied
+  ones worth reinforcing when `support_villages=yes`), visible enemy
+  leaders, and every active goal's own targets, with the real
+  inverse-square-distance clustering boost between nearby targets.
+- `ai/default/caMoveLeaderToGoals.ts`: the `leader_goal` aspect
+  (`x=`/`y=`/`max_risk=`/`auto_remove=`) drives the leader towards an
+  explicit destination, refusing any hex where enemy power projection
+  times `max_risk` would exceed the leader's own hitpoints.
+- `ai/default/caMoveToTargets.ts`: the real target-chasing loop --
+  `rate_target`'s full formula (support-target multiplier, scout
+  village-targeting bonus, scout enemy-avoidance), guardian units holding
+  position, and "complex targeting" (every eligible unit gets a chance to
+  outbid the first for the best target). **Documented simplification**
+  (matches this port's established pattern for large sub-systems, e.g.
+  recruitment's skipped important-hexes): the "dangerous path" branch and
+  everything under it (troop-massing/grouping, the `support`-target
+  access-points special case, `battle_aid`/`mass` reinforcement targets)
+  is not ported -- this CA always takes upstream's own final fallback
+  instead (advance as far along the chosen route as this turn's movement
+  allows), which is real, correct movement in every case, just without the
+  "mass troops before attacking a defended target" refinement.
+- `ai/default/caRetreat.ts`: the `retreat_phase` CA (`ai_default_rca_1_14`
+  only -- the current default algorithm uses the Lua `retreat_injured`
+  micro-loop instead, Phase 29 S7+), including its own `should_retreat`
+  power-projection/exposure formula and the leader-adjacency override
+  (never retreat away from a leader it could instead help defend).
+- `AiContext` gained `getGoals`/`getLeaderGoalConfig`/`getSimpleTargeting`
+  and `bestDefensivePosition` import wiring for `caRetreat.ts`.
+
+22 new engine tests across 4 files (`findTargets.test.ts`,
+`caMoveLeaderToGoals.test.ts`, `caMoveToTargets.test.ts`,
+`caRetreat.test.ts`): village/leader/explicit-goal/clustering targets,
+ally-village exclusion, leader-goal pathing with a real `max_risk` veto,
+guardian units holding position, scout village-targeting, `[avoid]`
+exclusion, and retreat triggering/declining correctly (including the
+"in reach of the leader" override and `caution=0`). Engine/renderer/ui
+suites all green (544/193/83), typecheck and `svelte-check` (0 errors)
+clean. Branch `phase-29-real-ai`.

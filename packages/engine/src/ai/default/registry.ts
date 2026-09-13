@@ -15,12 +15,22 @@ import { HealingCandidateAction } from './caHealing.js';
 import { VillagesCandidateAction } from './caVillages.js';
 import { CombatCandidateAction } from './caCombat.js';
 import { RecruitmentCandidateAction } from './recruitment.js';
+import { MoveLeaderToGoalsCandidateAction } from './caMoveLeaderToGoals.js';
+import { MoveToTargetsCandidateAction } from './caMoveToTargets.js';
+import { RetreatCandidateAction } from './caRetreat.js';
 
 export function createDefaultCandidateActionRegistry(): Map<string, CandidateActionFactory> {
   const registry = new Map<string, CandidateActionFactory>();
   registry.set('ai_default_rca::goto_phase', (ctx, cfg) => new GotoCandidateAction(ctx, cfg));
   registry.set('ai_default_rca::combat_phase', (ctx, cfg) => new CombatCandidateAction(ctx, cfg));
   registry.set('default_recruitment::recruitment', (ctx, cfg) => new RecruitmentCandidateAction(ctx, cfg));
+  registry.set('ai_default_rca::move_leader_to_goals_phase', (ctx, cfg) => new MoveLeaderToGoalsCandidateAction(ctx, cfg));
+  registry.set('ai_default_rca::move_to_targets_phase', (ctx, cfg) => new MoveToTargetsCandidateAction(ctx, cfg));
+  registry.set('ai_default_rca::retreat_phase', (ctx, cfg) => new RetreatCandidateAction(ctx, cfg));
+  registry.set('testing_ai_default::move_leader_to_goals_phase', (ctx, cfg) => new MoveLeaderToGoalsCandidateAction(ctx, cfg));
+  registry.set('testing_ai_default::retreat_phase', (ctx, cfg) => new RetreatCandidateAction(ctx, cfg));
+  registry.set('testing_ai_default::default_move_to_targets_phase', (ctx, cfg) => new MoveToTargetsCandidateAction(ctx, cfg));
+  registry.set('testing_ai_default::testing_move_to_targets_phase', (ctx, cfg) => new MoveToTargetsCandidateAction(ctx, cfg));
   registry.set('ai_default_rca::move_leader_to_keep_phase', (ctx, cfg) => new MoveLeaderToKeepCandidateAction(ctx, cfg));
   registry.set('ai_default_rca::leader_shares_keep_phase', (ctx, cfg) => new LeaderSharesKeepCandidateAction(ctx, cfg));
   registry.set('ai_default_rca::passive_leader_shares_keep_phase', (ctx, cfg) => new LeaderSharesKeepCandidateAction(ctx, cfg));

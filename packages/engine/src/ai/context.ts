@@ -34,6 +34,7 @@ import { powerProjection as powerProjectionFn } from './powerProjection.js';
 import { nearestKeep as nearestKeepFn, suitableKeep as suitableKeepFn } from './keeps.js';
 import { analyzeTargets } from './default/aspectAttacks.js';
 import type { AttackAnalysis } from './default/attackAnalysis.js';
+import type { Goal } from './composite/goal.js';
 
 /** Real Wesnoth's `[value][not][/not][/value]` "matches nothing" idiom (the real `avoid` aspect's own built-in default) -- used as `getAvoidConfig`'s fallback when no `avoid` aspect was configured at all (e.g. a hand-built test context). */
 const AVOID_MATCHES_NOTHING = (() => {
@@ -57,6 +58,7 @@ export class AiContext {
   readonly host: AiHost;
   readonly side: number;
   private readonly aspects: ReadonlyMap<string, CompositeAspect>;
+  private readonly goals: readonly Goal[];
   private gamestateChangeCounter = 0;
 
   private srcDstCache?: MoveMap;
@@ -68,10 +70,11 @@ export class AiContext {
   private attacksCacheGamestate?: number;
   private recentAttackLocs: Location[] = [];
 
-  constructor(host: AiHost, side: number, aspects: ReadonlyMap<string, CompositeAspect>) {
+  constructor(host: AiHost, side: number, aspects: ReadonlyMap<string, CompositeAspect>, goals: readonly Goal[] = []) {
     this.host = host;
     this.side = side;
     this.aspects = aspects;
+    this.goals = goals;
   }
 
   get board(): GameBoard {
@@ -200,6 +203,9 @@ export class AiContext {
   getGrouping(): string {
     return this.resolveAspect('grouping')?.getString('value', 'offensive') ?? 'offensive';
   }
+  getSimpleTargeting(): boolean {
+    return this.resolveAspect('simple_targeting')?.getBoolean('value', false) ?? false;
+  }
   getVillageValue(): number {
     return this.resolveAspect('village_value')?.getNumber('value', 1.0) ?? 1.0;
   }
@@ -251,6 +257,15 @@ export class AiContext {
   /** The `recruitment_save_gold` aspect's `[value]` (`active=`/`begin=`/`end=`/`spend_all_gold=`) -- the real upstream default is `active=0` (disabled), matching `default_config.cfg`. */
   getRecruitmentSaveGoldConfig(): WmlConfig {
     return this.resolveAspect('recruitment_save_gold')?.child('value') ?? new WmlConfig();
+  }
+  /** The `leader_goal` aspect's raw config (`x=`/`y=`/`max_risk=`/`auto_remove=`/`id=`) -- empty by default, read by `move_leader_to_goals`. */
+  getLeaderGoalConfig(): WmlConfig {
+    return this.resolveAspect('leader_goal') ?? new WmlConfig();
+  }
+
+  /** Every `[goal]` this side's `[ai]` config declared (`target`/`target_location`/`protect_unit`/`protect_location`), in declaration order across all merged configs -- built once by `parseSideAiConfig`, NOT an aspect. */
+  getGoals(): readonly Goal[] {
+    return this.goals;
   }
 
   /**

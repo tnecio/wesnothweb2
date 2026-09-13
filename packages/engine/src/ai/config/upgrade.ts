@@ -6,30 +6,37 @@
  * combining it with the real `default_config.cfg` aspect defaults and
  * the chosen `ai_algorithm=` preset (`builtinAiConfigs.generated.ts`).
  *
- * NOT ported here (documented gap, deferred to Phase 29 S4): the
- * `old_goal_tags` upgrade (`[target]`/`[target_location]`/`[protect_unit]`/
- * `[protect_location]` -> `[goal]`+`[criteria]`) -- these tags are simply
- * copied through unrecognized until S4's `goal.ts` lands, matching this
- * project's "inert until the stage that needs it, never silently wrong"
- * convention.
+ * Phase 29 S4 closed the one documented gap this module used to have:
+ * `old_goal_tags` (`[target]`/`[target_location]`/`[protect_unit]`/
+ * `[protect_location]` as a BARE `[ai]` child, no `[goal]` wrapper --
+ * a legacy idiom real content has mostly moved on from in favor of writing
+ * `[goal name=target]...[/goal]` directly, but still recognized) is now
+ * upgraded into the modern `[goal name=...][criteria]...[/criteria][/goal]`
+ * shape `composite/goal.ts`'s `buildGoalsFromConfigs` reads.
  */
 
 import { WmlConfig, type WmlConfigJson } from '../../wml/config.js';
 import { CompositeAspect, facetFromConfig } from '../composite/aspect.js';
+import { buildGoalsFromConfigs, type Goal } from '../composite/goal.js';
 
 /** Attributes on `[ai]` that are NOT simplified-aspect shorthand -- mirrors `configuration.cpp`'s `non_aspect_attributes`. */
 const NON_ASPECT_ATTRIBUTES = new Set(['turns', 'time_of_day', 'engine', 'ai_algorithm', 'id', 'description', 'hidden', 'mp_rank']);
+
+/** Mirrors `configuration.cpp`'s `old_goal_tags` set: a bare `[ai]` child by one of these names (no `[goal]` wrapper) is the legacy goal-authoring idiom. */
+const OLD_GOAL_TAGS = new Set(['target', 'target_location', 'protect_unit', 'protect_location']);
 
 /**
  * Mirrors `configuration::expand_simplified_aspects` (`configuration.cpp:
  * 270-390`) for the subset this port currently drives: a bare `key=value`
  * attribute becomes `[aspect id=key][facet value=value turns=.. time_of_day=..][/aspect]`;
  * a bare top-level `[avoid]` child becomes the `avoid` aspect's facet
- * value directly (a config-typed aspect, not a scalar); every other child
- * tag (`[engine]`, `[stage]`, `[aspect]`, `[goal]`, `[modify_ai]`,
- * `[micro_ai]`, and anything not yet recognized, e.g. the not-yet-ported
- * `[target_location]`-style goal-upgrade tags) is copied through
- * verbatim/inert rather than dropped.
+ * value directly (a config-typed aspect, not a scalar); a bare
+ * `[target]`/`[target_location]`/`[protect_unit]`/`[protect_location]`
+ * child becomes `[goal name=<tag>][criteria]<the rest of the tag's own
+ * attrs/children>[/criteria][/goal]` (`protect_radius=`/`value=` lifted
+ * back out of the criteria onto the goal itself, matching upstream); every
+ * other child tag (`[engine]`, `[stage]`, `[aspect]`, `[goal]`,
+ * `[modify_ai]`, `[micro_ai]`) is copied through verbatim/inert.
  */
 export function expandSimplifiedAspects(rawAiCfg: WmlConfig): WmlConfig {
   const out = new WmlConfig();
@@ -61,6 +68,22 @@ export function expandSimplifiedAspects(rawAiCfg: WmlConfig): WmlConfig {
       facet.setAttribute('engine', 'cpp');
       facet.setAttribute('name', 'standard_aspect');
       facet.addChild('value', config);
+      continue;
+    }
+    if (OLD_GOAL_TAGS.has(tag)) {
+      const goalCfg = out.addChild('goal');
+      goalCfg.setAttribute('name', tag);
+      if (rawAiCfg.hasAttribute('turns')) goalCfg.setAttribute('turns', rawAiCfg.getString('turns'));
+      if (rawAiCfg.hasAttribute('time_of_day')) goalCfg.setAttribute('time_of_day', rawAiCfg.getString('time_of_day'));
+      const criteria = goalCfg.addChild('criteria');
+      for (const k of config.attributeNames()) {
+        const v = config.get(k);
+        if (v === undefined) continue;
+        if (tag.startsWith('protect') && k === 'protect_radius') goalCfg.setAttribute('protect_radius', v);
+        else if (k === 'value') goalCfg.setAttribute('value', v);
+        else criteria.setAttribute(k, v);
+      }
+      for (const child of config.allChildren()) criteria.addChild(child.tag, child.config);
       continue;
     }
     // Every other child tag copied through verbatim -- see module doc comment.
@@ -105,6 +128,8 @@ export function buildAspects(configs: readonly WmlConfig[]): Map<string, Composi
 
 export interface ParsedSideAiConfig {
   readonly aspects: Map<string, CompositeAspect>;
+  /** Every `[goal]` across `configs`, in declaration order -- see `composite/goal.ts`'s `buildGoalsFromConfigs`. Pass to `new AiContext(host, side, aspects, goals)`. */
+  readonly goals: Goal[];
   /**
    * Every `[ai]`-level config in application order (the real
    * `default_config.cfg` aspect list, the chosen `ai_algorithm=` base if
@@ -152,5 +177,5 @@ export function parseSideAiConfig(
   }
   configs.push(...expandedBlocks);
 
-  return { aspects: buildAspects(configs), configs };
+  return { aspects: buildAspects(configs), goals: buildGoalsFromConfigs(configs), configs };
 }
