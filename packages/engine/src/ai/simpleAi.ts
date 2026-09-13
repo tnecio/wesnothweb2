@@ -83,6 +83,9 @@ export type AiAnimationEvent =
       /** `attacker`/`defender`'s real type id AS OF THIS EXCHANGE, before `advanceUnitFully` below can mutate either unit's `.type` -- see `LastAttackAnimation.attackerTypeId`'s doc comment (packages/ui/src/gameSession.ts) for the full rationale; this mirrors it for the AI's own attack path. */
       readonly attackerTypeId: string;
       readonly defenderTypeId: string;
+      /** `attacker`/`defender`'s real hitpoints BEFORE this exchange -- see `LastAttackAnimation.attackerHitpointsBefore`'s doc comment for the full rationale (per-blow HP bar preview during animation playback); this mirrors it for the AI's own attack path. */
+      readonly attackerHitpointsBefore: number;
+      readonly defenderHitpointsBefore: number;
     }
   | { readonly kind: 'recruit'; readonly unit: Unit; readonly leader: Unit };
 
@@ -352,6 +355,8 @@ export function playAiTurn(board: GameBoard, side: number, rng: Rng, options: Ai
         attackerTerrainDefense,
         defenderTerrainDefense,
       );
+      const attackerHitpointsBefore = unit.hitpoints;
+      const defenderHitpointsBefore = defender.hitpoints;
       const result = executeAttack(board, rng, unit.location, attack.weaponIndex, defender.location, defenderWeaponIndex, {
         attackerLawfulBonus: options.lawfulBonusAt?.(unit.location),
         defenderLawfulBonus: options.lawfulBonusAt?.(defender.location),
@@ -373,6 +378,8 @@ export function playAiTurn(board: GameBoard, side: number, rng: Rng, options: Ai
           // unit's `.type` -- see AiAnimationEvent's attack variant doc comment.
           attackerTypeId: unit.type.id,
           defenderTypeId: defender.type.id,
+          attackerHitpointsBefore,
+          defenderHitpointsBefore,
         },
       });
       // Real Wesnoth checks both combatants for advancement right after

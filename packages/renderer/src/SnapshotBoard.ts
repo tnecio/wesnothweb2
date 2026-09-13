@@ -83,6 +83,7 @@ import {
   HEX_SIZE,
   HEX_COL_WIDTH,
   HEX_ROW_HEIGHT,
+  TILE_SIZE,
   type HexCoord,
 } from './hexGeometry.js';
 import { ImageCache, hexedRef, setImageBaseUrl, setEngineImageBaseUrl } from './images/ImageCache.js';
@@ -281,6 +282,14 @@ interface UnitVisual {
   lastOrbRef: string | null;
   /** `SnapshotUnit.flagRgb` this visual was last built from -- `playAnimations` needs it (together with `lastSide`) to append the same `~RC(flagRgb>sideColorId)` modifier to ANIMATION frame textures that `buildUnitVisual` already appends to the idle sprite (see that method's own doc comment). */
   flagRgb: string | undefined;
+  /**
+   * The full `SnapshotUnit` this visual was last drawn from -- `previewHitpoints`
+   * (per-blow HP bar updates during combat animation playback) needs every
+   * OTHER overlay field (`maxHitpoints`, `experience`, `canAdvance`, ...)
+   * to redraw the bars consistently with a temporarily-overridden
+   * hitpoints value, without disturbing the XP bar/orb from a partial redraw.
+   */
+  lastUnit: SnapshotUnit;
 }
 
 /** 0-based engine (x,y) -> 1-based renderer HexCoord -- see module doc comment. */
@@ -486,6 +495,14 @@ export class SnapshotBoard {
    * is_shrouded, terrain is not drawn at all") without rebuilding it.
    */
   private readonly terrainHexContainers = new Map<string, { bg?: PIXI.Container; fg?: PIXI.Container }>();
+  /**
+   * Floating damage/heal numerals (`unit_display`'s `float_text`) -- rising,
+   * fading red (damage) / green (heal) numbers drawn above a unit's hex.
+   * Topmost layer: real Wesnoth's floating labels are a screen-space UI
+   * overlay, unaffected by ToD tinting or fog/shroud darkening, same as
+   * `selectionLayer`'s own untinted UI chrome.
+   */
+  private readonly floatingLayer = new PIXI.Container();
   private units: SnapshotUnit[];
   private readonly teamColor: Map<number, string>;
   private readonly onHexClick?: (x: number, y: number) => void;
@@ -533,6 +550,7 @@ export class SnapshotBoard {
       this.fogShroudLayer,
       this.todTintLayer,
       this.selectionLayer,
+      this.floatingLayer,
     );
     this.todTintPositive.blendMode = 'add';
     // 'subtract' is one of PixiJS v8's "advanced" (shader-based) blend
@@ -903,6 +921,7 @@ export class SnapshotBoard {
       orbIcon: null,
       lastOrbRef: null,
       flagRgb: unit.flagRgb,
+      lastUnit: unit,
     };
   }
 
@@ -1138,6 +1157,7 @@ export class SnapshotBoard {
         visual.lastSide = unit.side;
       }
       if (visual.overlay) visual.overlay.alpha = 0; // a hit-flash should never outlive the animation that caused it.
+      visual.lastUnit = unit;
       this.updateOverlays(visual, unit);
       await this.updateIcons(visual, unit);
       visual.container.x = cx;
@@ -1295,6 +1315,70 @@ export class SnapshotBoard {
   async updateUnits(units: SnapshotUnit[]): Promise<void> {
     this.units = units;
     await this.queueRenderUnits();
+  }
+
+  /**
+   * Redraws `key`'s HP bar (and, incidentally, its XP bar/orb, since all
+   * three share one `Graphics` object -- see `updateOverlays`) using
+   * `hitpoints` instead of whatever `renderUnits` last drew it with,
+   * without touching the live `SnapshotUnit` data `this.units` holds.
+   * Real, reported bug: the HP bar only ever updated once, after a whole
+   * attack's exchange fully resolved, instead of after each individual
+   * blow the way real Wesnoth's `unit_display` does -- a caller stepping
+   * through `AttackBlowResult[]` (`GameShell.svelte`'s combat animation
+   * playback, between beats) calls this once per blow with the running
+   * post-blow hitpoints total for whichever combatant it just hit.
+   * No-ops if `key` isn't currently on screen (e.g. it died on an earlier
+   * blow this same exchange).
+   */
+  previewHitpoints(key: string, hitpoints: number): void {
+    const visual = this.unitVisuals.get(key);
+    if (!visual) return;
+    const clamped = Math.max(0, Math.min(visual.lastUnit.maxHitpoints, hitpoints));
+    this.updateOverlays(visual, { ...visual.lastUnit, hitpoints: clamped });
+  }
+
+  /**
+   * Spawns one floating numeral (`unit_display`'s `float_text`) above
+   * `key`'s current hex -- red for damage, green for heal, rising and
+   * fading out over `durationMs`. Fire-and-forget: does not block the
+   * caller or the main animation playback loop (real Wesnoth's own
+   * floating labels are likewise decorative, not something combat
+   * resolution waits on). No-ops if `key` isn't currently on screen.
+   */
+  spawnFloatingNumber(key: string, amount: number, kind: 'damage' | 'heal', durationMs = 1000): void {
+    if (amount === 0) return;
+    const visual = this.unitVisuals.get(key);
+    if (!visual) return;
+    const text = new PIXI.Text({
+      text: kind === 'damage' ? `-${Math.abs(amount)}` : `+${Math.abs(amount)}`,
+      style: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        fill: kind === 'damage' ? 0xe23b3b : 0x3fdf6a,
+        stroke: { color: 0x000000, width: 3 },
+      },
+    });
+    text.anchor.set(0.5, 1);
+    const startX = visual.container.x;
+    const startY = visual.container.y - TILE_SIZE * 0.3;
+    text.position.set(startX, startY);
+    this.floatingLayer.addChild(text);
+
+    const start = performance.now();
+    const rise = TILE_SIZE * 0.6;
+    const tick = (): void => {
+      const t = Math.min(1, (performance.now() - start) / durationMs);
+      text.position.y = startY - rise * t;
+      text.alpha = 1 - t;
+      if (t >= 1) {
+        this.floatingLayer.removeChild(text);
+        text.destroy();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   }
 
   /**

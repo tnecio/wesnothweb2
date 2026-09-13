@@ -310,11 +310,31 @@
    * default 1 (real authored speed); `GameShell.svelte` requests a
    * faster one for movement specifically.
    */
-  export async function playAnimationSequence(beats: readonly UnitAnimationCue[][], speedMultiplier = 1): Promise<void> {
+  export async function playAnimationSequence(
+    beats: readonly UnitAnimationCue[][],
+    speedMultiplier = 1,
+    onBeatComplete?: (beatIndex: number) => void,
+  ): Promise<void> {
     if (!board) return;
-    for (const cues of beats) {
-      await board.playAnimations(cues, undefined, speedMultiplier);
+    for (let i = 0; i < beats.length; i++) {
+      await board.playAnimations(beats[i]!, undefined, speedMultiplier);
+      onBeatComplete?.(i);
     }
+  }
+
+  /**
+   * Real, reported bug: the HP bar only ever updated once, after a whole
+   * attack's exchange fully resolved -- see `SnapshotBoard.previewHitpoints`'s
+   * own doc comment. Exposed for `GameShell.svelte`'s per-blow
+   * `onBeatComplete` callback (above) to call between beats.
+   */
+  export function previewHitpoints(key: string, hitpoints: number): void {
+    board?.previewHitpoints(key, hitpoints);
+  }
+
+  /** Real, reported bug: no floating damage/heal numerals ever appeared. See `SnapshotBoard.spawnFloatingNumber`'s own doc comment. */
+  export function spawnFloatingNumber(key: string, amount: number, kind: 'damage' | 'heal'): void {
+    board?.spawnFloatingNumber(key, amount, kind);
   }
 </script>
 

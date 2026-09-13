@@ -292,6 +292,17 @@ export interface LastAttackAnimation {
    */
   readonly attackerTypeId: string;
   readonly defenderTypeId: string;
+  /**
+   * `attacker`/`defender`'s real hitpoints BEFORE this exchange resolved --
+   * same rationale as `attackerTypeId`/`defenderTypeId` above, but for HP:
+   * `executeAttack` already applied every blow's damage/drain by the time
+   * `confirmAttack` returns, so a caller stepping through `result.blows` to
+   * preview the HP bar per blow (real, reported bug: it only ever updated
+   * once, at the very end of the whole exchange) needs these starting
+   * totals to run its own per-blow arithmetic forward from.
+   */
+  readonly attackerHitpointsBefore: number;
+  readonly defenderHitpointsBefore: number;
 }
 
 /** Everything a caller needs to animate the move `handleHexClick`'s move branch just resolved -- see `GameSession.lastMoveAnimation`. Same rationale as `LastAttackAnimation`: raw engine data only, no renderer dependency here. */
@@ -1652,6 +1663,15 @@ export class GameSession {
       return null;
     }
 
+    // Captured now, before executeAttack (below) mutates either unit's
+    // hitpoints -- a caller stepping through result.blows to preview the
+    // HP bar per blow (real, reported bug: it only ever updated once, at
+    // the very end) needs the PRE-combat totals to run its own per-blow
+    // arithmetic forward from, the same way attackerTypeId/defenderTypeId
+    // below need the pre-advancement type ids.
+    const attackerHitpointsBefore = pending.attacker.hitpoints;
+    const defenderHitpointsBefore = pending.defender.hitpoints;
+
     const result = executeAttack(
       this.board,
       this.rng,
@@ -1680,6 +1700,8 @@ export class GameSession {
       defender: pending.defender,
       defenderWeaponIndex: pending.defenderWeaponIndex,
       result,
+      attackerHitpointsBefore,
+      defenderHitpointsBefore,
       // Captured now, before advancement (below) can mutate either unit's
       // `.type` -- see LastAttackAnimation.attackerTypeId's own doc comment.
       attackerTypeId: pending.attacker.type.id,

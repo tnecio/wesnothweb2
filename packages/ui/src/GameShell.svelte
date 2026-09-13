@@ -438,6 +438,69 @@
   }
 
   /**
+   * Real, reported bugs: the HP bar only ever updated once, after a whole
+   * attack's exchange fully resolved, instead of after each individual
+   * blow the way real Wesnoth's `unit_display` does; and no floating
+   * damage/heal numeral ever appeared at all. Both driven by the same
+   * per-blow data -- returns a `playAnimationSequence` `onBeatComplete`
+   * callback that walks `info.result.blows` in step with the beats
+   * already playing (`buildBlowAnimationCues` builds exactly one beat per
+   * blow), running the attacker/defender HP totals forward from their
+   * real PRE-combat starting points (`attackerHitpointsBefore`/
+   * `defenderHitpointsBefore` -- see that field's own doc comment on why
+   * the live `Unit` objects can't be read for this: `executeAttack`
+   * already applied every blow before this ever plays), and previewing/
+   * spawning for whichever combatant that blow actually landed on.
+   */
+  function makeBlowPreview(info: LastAttackAnimation): (beatIndex: number) => void {
+    const attackerKey = spriteKey({
+      underlyingId: session.renderKeyFor(info.attacker),
+      typeId: info.attackerTypeId,
+      x: info.attacker.location.x,
+      y: info.attacker.location.y,
+    });
+    const defenderKey = spriteKey({
+      underlyingId: session.renderKeyFor(info.defender),
+      typeId: info.defenderTypeId,
+      x: info.defender.location.x,
+      y: info.defender.location.y,
+    });
+    let attackerHp = info.attackerHitpointsBefore;
+    let defenderHp = info.defenderHitpointsBefore;
+
+    return (beatIndex: number) => {
+      const blow = info.result.blows[beatIndex];
+      if (!blow || !boardView) return;
+      if (blow.hit) {
+        if (blow.attackerTurn) {
+          defenderHp = Math.max(0, defenderHp - blow.damage);
+          boardView.previewHitpoints(defenderKey, defenderHp);
+          boardView.spawnFloatingNumber(defenderKey, blow.damage, 'damage');
+        } else {
+          attackerHp = Math.max(0, attackerHp - blow.damage);
+          boardView.previewHitpoints(attackerKey, attackerHp);
+          boardView.spawnFloatingNumber(attackerKey, blow.damage, 'damage');
+        }
+      }
+      if (blow.drainAmount !== 0) {
+        // drainAmount always applies to whoever STRUCK this blow (the
+        // "striker" -- see GameSession.formatBlowMessage's identical
+        // attackerTurn-picks-the-striker convention), gaining HP; a rare
+        // reversed/negative drain instead shows as a second "damage" number.
+        if (blow.attackerTurn) {
+          attackerHp = Math.max(0, attackerHp + blow.drainAmount);
+          boardView.previewHitpoints(attackerKey, attackerHp);
+          boardView.spawnFloatingNumber(attackerKey, blow.drainAmount, blow.drainAmount > 0 ? 'heal' : 'damage');
+        } else {
+          defenderHp = Math.max(0, defenderHp + blow.drainAmount);
+          boardView.previewHitpoints(defenderKey, defenderHp);
+          boardView.spawnFloatingNumber(defenderKey, blow.drainAmount, blow.drainAmount > 0 ? 'heal' : 'damage');
+        }
+      }
+    };
+  }
+
+  /**
    * Builds one cue per real step of `info.path` (each hex-to-hex leg its
    * own "movement" `AnimationContext`, matching real per-step animation
    * re-selection -- terrain/direction can differ leg to leg), for
@@ -553,7 +616,7 @@
     const anim = session.lastAttackAnimation;
     session.lastAttackAnimation = null;
     if (anim && boardView) {
-      await boardView.playAnimationSequence(buildBlowAnimationCues(anim));
+      await boardView.playAnimationSequence(buildBlowAnimationCues(anim), 1, makeBlowPreview(anim));
     }
     sync(message);
     showEventMessages();
@@ -612,7 +675,7 @@
     if (!boardView) return;
     for (const event of events) {
       if (event.kind === 'attack') {
-        await boardView.playAnimationSequence(buildBlowAnimationCues(event));
+        await boardView.playAnimationSequence(buildBlowAnimationCues(event), 1, makeBlowPreview(event));
       } else if (event.kind === 'move') {
         await boardView.playAnimationSequence(buildMoveAnimationCues(event), 2);
       } else {

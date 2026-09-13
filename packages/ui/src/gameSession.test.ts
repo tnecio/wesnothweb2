@@ -1231,6 +1231,24 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
   });
 });
 
+describe('GameSession.lastAttackAnimation hitpoints-before (real, reported bug: the HP bar only ever updated once, at the end of the whole exchange)', () => {
+  it('attackerHitpointsBefore/defenderHitpointsBefore capture the REAL pre-combat totals, even though the live units already show the post-combat result by the time confirmAttack() returns', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    const attackerHpBefore = malKevek.hitpoints;
+    const defenderHpBefore = kaiKrellis.hitpoints;
+
+    session.selectUnit(malKevek);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    session.confirmAttack();
+
+    expect(session.lastAttackAnimation).not.toBeNull();
+    const anim = session.lastAttackAnimation!;
+    expect(anim.attackerHitpointsBefore).toBe(attackerHpBefore);
+    expect(anim.defenderHitpointsBefore).toBe(defenderHpBefore);
+    expect(anim.result.blows.length).toBeGreaterThan(0);
+  });
+});
+
 describe('GameSession rest-heal (real, reported bug: units that neither moved nor attacked never got the +2 rest heal)', () => {
   // A unit newly placed via board.addUnit() (like a fresh recruit, or these
   // two leaders at scenario start) starts with `resting=false` -- it hasn't
