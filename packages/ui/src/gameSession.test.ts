@@ -1382,6 +1382,25 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
     expect(preview.defender.weapon).toMatchObject({ name: 'scepter', range: 'melee' });
     expect(preview.defender.numBlows).toBeGreaterThan(0);
   });
+
+  it('real, reported bug (bugs4.md #10): CombatantPreview exposes the real time-of-day/leadership/charge/backstab/chance-to-hit-source inputs the combat dialogs display, not just the final numbers -- all neutral here (no ability/special/ToD-bonus in play), but the fields themselves must exist and be well-formed', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    session.selectUnit(malKevek);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    const staffIndex = malKevek.attacks.findIndex((a) => a.name === 'staff');
+    session.selectAttackerWeapon(staffIndex);
+
+    const preview = session.pendingAttack!.preview;
+    expect(typeof preview.attacker.lawfulBonus).toBe('number');
+    expect(typeof preview.defender.lawfulBonus).toBe('number');
+    expect(preview.attacker.leadershipBonus).toBe(0); // no leader with the leadership ability adjacent
+    expect(preview.defender.leadershipBonus).toBe(0);
+    expect(preview.attacker.chargeActive).toBe(false); // neither staff nor scepter has [damage] id=charge
+    expect(preview.attacker.backstabActive).toBe(false); // no flanking ally behind the defender
+    expect(preview.defender.backstabActive).toBe(false); // never true for a defender's own retaliation
+    expect(preview.attacker.chanceToHitSource).toBeNull(); // plain terrain-defense roll, no magical/marksman
+    expect(preview.defender.chanceToHitSource).toBeNull();
+  });
 });
 
 describe('GameSession.lastAttackAnimation hitpoints-before (real, reported bug: the HP bar only ever updated once, at the end of the whole exchange)', () => {

@@ -139,7 +139,14 @@ function specialsById(weapon: AttackType, id: string): WmlConfig[] {
   return weapon.specials.filter((s) => s.getString('id', '') === id);
 }
 
-function hasSpecialId(weapon: AttackType, id: string): boolean {
+/**
+ * Exported for `packages/ui`'s combat-prediction dialogs (bugs4.md #10):
+ * `buildPreview` (`gameSession.ts`) needs to know WHICH of the several
+ * chance-to-hit/damage modifiers this module already folds into
+ * `chanceToHit`/`damage` actually applied to a given weapon, to show a
+ * real breakdown (e.g. "70% (magical)") instead of just the final number.
+ */
+export function hasSpecialId(weapon: AttackType, id: string): boolean {
   return specialsById(weapon, id).length > 0;
 }
 

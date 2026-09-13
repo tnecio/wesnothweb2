@@ -42,6 +42,30 @@
     const factor = (c.resistanceModifier / 100).toFixed(1);
     return c.resistanceModifier > 100 ? `Vulnerability to ${c.weapon.type} ×${factor}` : `Resistance to ${c.weapon.type} ×${factor}`;
   }
+
+  /**
+   * Real, reported bug (bugs4.md #10): this dialog computed a fully
+   * correct final damage/chance-to-hit, but never showed why -- no line
+   * for a time-of-day bonus/penalty, an active leadership bonus, or a
+   * charge/backstab doubling. These mirror the exact real inputs
+   * `GameSession.buildPreview` already fed into the same combat math this
+   * dialog displays the RESULT of -- a display-only breakdown.
+   */
+  function modifierLines(c: CombatantPreview): string[] {
+    const lines: string[] = [];
+    if (c.lawfulBonus !== 0) lines.push(`Time of day: ${c.lawfulBonus > 0 ? '+' : ''}${c.lawfulBonus}% damage`);
+    if (c.leadershipBonus !== 0) lines.push(`Leadership: +${c.leadershipBonus}% damage`);
+    if (c.chargeActive) lines.push('Charge: ×2 damage (both sides)');
+    if (c.backstabActive) lines.push('Backstab: ×2 damage');
+    return lines;
+  }
+
+  /** Real, reported bug (bugs4.md #10): `magical`/`marksman` override the chance to hit with a flat value, but nothing distinguished that from an ordinary terrain-defense roll. */
+  function chanceToHitLabel(c: CombatantPreview): string {
+    if (c.chanceToHitSource === 'magical') return `${c.chanceToHit}% (magical)`;
+    if (c.chanceToHitSource === 'marksman') return `${c.chanceToHit}% (marksman)`;
+    return `${c.chanceToHit}%`;
+  }
 </script>
 
 <Modal title="Damage Calculations" width="40rem" onClose={onClose}>
@@ -66,12 +90,18 @@
             </div>
             <div class="line">
               <span class="label">Chance to hit</span>
-              <span class="value hit">{side.c.chanceToHit}%</span>
+              <span class="value hit">{chanceToHitLabel(side.c)}</span>
             </div>
             <div class="line">
               <span class="label">Chance to escape unscathed</span>
               <span class="value unscathed">{unscathedPercent(side.c)}%</span>
             </div>
+            {#if side.c.weapon.specials.length > 0}
+              <div class="specials-line">{side.c.weapon.specials.map((s) => s.name).join(', ')}</div>
+            {/if}
+            {#each modifierLines(side.c) as line (line)}
+              <div class="modifier-line">{line}</div>
+            {/each}
             <div class="outcome-label">Expected result (HP)</div>
             <div class="outcomes">
               {#each outcomes(side.c) as o (o.hp)}
@@ -180,6 +210,17 @@
   .hint {
     opacity: 0.7;
     font-size: 0.9rem;
+  }
+  .specials-line {
+    font-size: 0.8rem;
+    font-style: italic;
+    opacity: 0.85;
+    color: #c9a84a;
+  }
+  .modifier-line {
+    font-size: 0.8rem;
+    opacity: 0.85;
+    color: #8ec9e8;
   }
   .footer {
     display: flex;

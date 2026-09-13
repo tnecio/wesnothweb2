@@ -51,6 +51,7 @@ import {
   buildBattleContext,
   chooseDefenderWeaponIndex,
   simulateCombat,
+  hasSpecialId,
   RngDeterministic,
   MtRng,
   gameBoardFromSnapshot,
@@ -178,6 +179,25 @@ export interface CombatantPreview {
    * unscathed").
    */
   hpDist: readonly number[];
+  /**
+   * Real, reported bug (bugs4.md #10): the attack/damage-calculation
+   * dialogs already computed a fully correct final `chanceToHit`/
+   * `damagePerBlow`, but never showed WHY -- no indication of a time-of-day
+   * bonus/penalty, a leadership bonus, an active charge, or WHICH weapon
+   * special (`magical`/`marksman`) set the flat chance-to-hit override.
+   * These mirror the exact same inputs `buildPreview` already computes and
+   * feeds to `buildBattleContext` -- a display-only breakdown, no new
+   * combat math.
+   */
+  lawfulBonus: number;
+  /** This combatant's own active leadership-ability damage bonus (percentage points added to the multiplier), 0 if none. */
+  leadershipBonus: number;
+  /** Whether this exchange's `[damage] id=charge` special is active for this weapon (doubles both combatants' damage this exchange). `undefined` when there's no weapon. */
+  chargeActive?: boolean;
+  /** Whether this blow benefits from a real backstab (always `false` for a defender's retaliation -- backstab only ever applies to the one currently attacking). */
+  backstabActive: boolean;
+  /** Which weapon special set `chanceToHit` to a flat override, if any (`magical` always wins over `marksman` when both are present -- mirrors `computeUnitStats`'s own precedence). `null` for an ordinary terrain-defense-based chance to hit. */
+  chanceToHitSource: 'magical' | 'marksman' | null;
 }
 
 export interface CombatPreview {
@@ -1721,6 +1741,16 @@ export class GameSession {
     );
     const defenderWeapon = defenderWeaponIndex >= 0 ? defender.attacks[defenderWeaponIndex] : undefined;
 
+    const attackerLawfulBonus = this.timeOfDayAt(attacker.location).lawfulBonus;
+    const defenderLawfulBonus = this.timeOfDayAt(defender.location).lawfulBonus;
+    const backstabActive = isBackstabActive(this.board, attacker.location, defender.location);
+    const attackerLeadershipBonus = computeLeadershipBonus(this.board, attacker);
+    const defenderLeadershipBonus = computeLeadershipBonus(this.board, defender);
+    // Charge is only ever active "when used offensively" -- upstream's `active_on=offense` -- so it's
+    // the ATTACKER's weapon specifically that gates it for this whole exchange (see combatStats.ts's
+    // own `hasCharge` doc comment); both combatants' damage doubles when it is.
+    const chargeActive = hasSpecialId(attackerWeapon, 'charge');
+
     const { attacker: aStats, defender: dStats } = buildBattleContext({
       attacker,
       attackerWeapon,
@@ -1730,12 +1760,12 @@ export class GameSession {
       attackerTerrainDefense,
       defenderTerrainDefense,
       options: {
-        attackerLawfulBonus: this.timeOfDayAt(attacker.location).lawfulBonus,
-        defenderLawfulBonus: this.timeOfDayAt(defender.location).lawfulBonus,
+        attackerLawfulBonus,
+        defenderLawfulBonus,
         maxLiminalBonus: this.schedule.maxLiminalBonus,
-        backstabActive: isBackstabActive(this.board, attacker.location, defender.location),
-        attackerLeadershipBonus: computeLeadershipBonus(this.board, attacker),
-        defenderLeadershipBonus: computeLeadershipBonus(this.board, defender),
+        backstabActive,
+        attackerLeadershipBonus,
+        defenderLeadershipBonus,
         attackerResistanceModifier: computeResistanceModifier(this.board, defender, attackerWeapon.type, false, defender.location),
         defenderResistanceModifier: defenderWeapon
           ? computeResistanceModifier(this.board, attacker, defenderWeapon.type, true, attacker.location)
@@ -1743,6 +1773,14 @@ export class GameSession {
       },
     });
     const { attacker: aCombatant, defender: dCombatant } = simulateCombat(aStats, dStats);
+
+    /** Mirrors `computeUnitStats`'s own cth-override precedence (magical wins over marksman). */
+    const chanceToHitSourceFor = (weapon: AttackType | undefined): 'magical' | 'marksman' | null => {
+      if (!weapon) return null;
+      if (hasSpecialId(weapon, 'magical')) return 'magical';
+      if (hasSpecialId(weapon, 'marksman')) return 'marksman';
+      return null;
+    };
 
     const preview: CombatPreview = {
       attacker: {
@@ -1764,6 +1802,11 @@ export class GameSession {
         resistanceModifier: computeResistanceModifier(this.board, defender, attackerWeapon.type, false, defender.location),
         baseDamage: attackerWeapon.damage,
         hpDist: aCombatant.hpDist,
+        lawfulBonus: attackerLawfulBonus,
+        leadershipBonus: attackerLeadershipBonus,
+        chargeActive,
+        backstabActive,
+        chanceToHitSource: chanceToHitSourceFor(attackerWeapon),
       },
       defender: {
         name: this.unitDisplayName(defender),
@@ -1784,6 +1827,14 @@ export class GameSession {
         resistanceModifier: defenderWeapon ? computeResistanceModifier(this.board, attacker, defenderWeapon.type, true, attacker.location) : undefined,
         baseDamage: defenderWeapon?.damage,
         hpDist: dCombatant.hpDist,
+        lawfulBonus: defenderLawfulBonus,
+        leadershipBonus: defenderLeadershipBonus,
+        // Charge only ever applies "when used offensively" -- the ATTACKER's own weapon gates it for
+        // the whole exchange (see the comment above `chargeActive`'s computation), so the defender's
+        // retaliation shares the exact same flag, not one keyed off its own weapon.
+        chargeActive: defenderWeapon ? chargeActive : undefined,
+        backstabActive: false, // never applies to a defender's own retaliation blow
+        chanceToHitSource: chanceToHitSourceFor(defenderWeapon),
       },
     };
 
