@@ -89,6 +89,7 @@ import {
   type WmlConfigJson,
   type AttackType,
   type RegistryEntry,
+  UnitStatus,
 } from '@wesnothweb2/engine';
 
 /**
@@ -267,6 +268,30 @@ export function raceDisplayName(raceId: string): string {
   return RACE_NAMES[raceId] ?? (raceId.length > 0 ? raceId[0]!.toUpperCase() + raceId.slice(1) : raceId);
 }
 
+/** The standard six real damage types (`data/core/macros/*.cfg` conventionally lists resistances in this order) -- shown as a fixed-column resistances table in the infobox, per `MoveType.resistanceAgainst`'s own doc comment: unlisted types simply default to 100 (normal), so every unit has a real (if often "normal") value for all six. */
+export const DAMAGE_TYPES: readonly string[] = ['blade', 'pierce', 'impact', 'fire', 'cold', 'arcane'];
+
+/** One row of a unit's resistances table. `resistance` is upstream's own convention (>100 = weak to it, <100 = resistant) -- see `Resistances.resistanceAgainst`'s doc comment. */
+export interface ResistanceInfo {
+  damageType: string;
+  resistance: number;
+}
+
+/** Phase 14: the infobox's "terrain info for the hovered hex" view-model -- see `GameSession.hoveredHexInfo`. */
+export interface HoveredHexInfo {
+  x: number;
+  y: number;
+  terrainName: string;
+  /** The selected unit's real defense here, or `null` if nothing is selected -- see `GameSession.defensePercentAt`. */
+  defensePercent: number | null;
+}
+
+const STATUS_NAMES: Readonly<Record<string, string>> = {
+  [UnitStatus.Slowed]: 'Slowed',
+  [UnitStatus.Poisoned]: 'Poisoned',
+  [UnitStatus.Petrified]: 'Petrified',
+};
+
 /** A view-model of a unit, for the side panel -- deliberately plain data, not a live `Unit` reference. Used for both the currently-*selected* (your own, actionable) unit and any *inspected* unit (see `GameSession.inspectedUnit`) -- addresses "no way to see information about enemy units". */
 export interface SelectedUnitInfo {
   name: string;
@@ -291,10 +316,22 @@ export interface SelectedUnitInfo {
   abilities: readonly AbilityInfo[];
   /** This unit's real `[trait]` modifications (e.g. "strong", "intelligent") -- real, reported bug: there was no way to see whether a unit had any traits, or what they were. See `Unit.traitNames`/`actions/recruit.ts`'s `generateTraits`. */
   traits: readonly string[];
+  /** This unit type's real portrait/map sprite path (`snapshot.unitTypes[typeId].image`), or `null` if the snapshot never recorded one -- same source `RecruitOption`/`RecallOption`/`CombatantPreview` already use for their own portraits. */
+  image: string | null;
+  /** This unit type's real `[unit_type] level=`. */
+  level: number;
+  /** This unit type's real `alignment=` (lawful/neutral/chaotic/liminal), `undefined` if the type never set one. */
+  alignment: Alignment | undefined;
+  raceId: string;
+  raceName: string;
+  /** Fixed six-row table (`DAMAGE_TYPES`), per real Wesnoth's own resistances tooltip. */
+  resistances: readonly ResistanceInfo[];
+  /** Display names for whichever of `UnitStatus`'s poisoned/slowed/petrified this unit currently has -- the plan's explicitly called-out status icons. */
+  statuses: readonly string[];
 }
 
-/** Builds a `SelectedUnitInfo` view-model for any live `Unit` -- shared by `GameSession.selectedUnitInfo`/`inspectedUnitInfo` (`GameShell.svelte` used to build this itself, inline, only for `selectedUnit`; centralised here so both selection and inspection stay in sync with each other and with `WeaponInfo`/`AbilityInfo`). */
-export function buildUnitInfo(board: GameBoard, unit: Unit, displayName: string): SelectedUnitInfo {
+/** Builds a `SelectedUnitInfo` view-model for any live `Unit` -- shared by `GameSession.selectedUnitInfo`/`inspectedUnitInfo` (`GameShell.svelte` used to build this itself, inline, only for `selectedUnit`; centralised here so both selection and inspection stay in sync with each other and with `WeaponInfo`/`AbilityInfo`). `image` is passed in separately since it comes from the scenario snapshot's `unitTypes` table, which this module-level function (deliberately just `GameBoard`/`Unit`) has no access to -- see call sites. */
+export function buildUnitInfo(board: GameBoard, unit: Unit, displayName: string, image: string | null = null): SelectedUnitInfo {
   return {
     name: displayName,
     typeId: unit.type.id,
@@ -313,6 +350,13 @@ export function buildUnitInfo(board: GameBoard, unit: Unit, displayName: string)
     attacks: unit.attacks.map(buildWeaponInfo),
     abilities: unit.type.abilities.map(buildAbilityInfo),
     traits: unit.traitNames,
+    image,
+    level: unit.type.level,
+    alignment: unit.type.alignment,
+    raceId: unit.type.raceId,
+    raceName: raceDisplayName(unit.type.raceId),
+    resistances: DAMAGE_TYPES.map((damageType) => ({ damageType, resistance: unit.resistanceAgainst(damageType) })),
+    statuses: (Object.keys(STATUS_NAMES) as string[]).filter((status) => unit.hasStatus(status)).map((status) => STATUS_NAMES[status]!),
   };
 }
 
@@ -698,6 +742,25 @@ export class GameSession {
     return 100 - unit.defenseModifier(this.board.map.getTerrain(loc));
   }
 
+  /**
+   * Phase 14: the infobox's "terrain info for the hovered hex" -- real
+   * `[terrain_type] name=` plus (when a unit is selected) the defense
+   * percentage that unit would have there, same value `defensePercentAt`
+   * already computes. `null` for an off-board hex; the whole thing is
+   * deliberately independent of `reachable`, matching `defensePercentAt`'s
+   * own reasoning (terrain info is well-defined for any on-board hex).
+   */
+  hoveredHexInfo(x: number, y: number): HoveredHexInfo | null {
+    const loc = new Location(x, y);
+    if (!this.board.map.onBoard(loc)) return null;
+    return {
+      x,
+      y,
+      terrainName: this.board.map.terrainName(loc),
+      defensePercent: this.defensePercentAt(x, y),
+    };
+  }
+
   /** The attacker's usable weapons against the current `pendingAttack.defender`, for a weapon-choice UI. Empty when there's no pending attack, or a single entry for the common one-usable-weapon case. */
   get attackerWeaponOptions(): AttackerWeaponOption[] {
     const pending = this.pendingAttack;
@@ -1039,7 +1102,7 @@ export class GameSession {
 
   /** Builds a `SelectedUnitInfo` view-model for any live unit currently on the board -- see `buildUnitInfo`. */
   unitInfo(u: Unit): SelectedUnitInfo {
-    return buildUnitInfo(this.board, u, this.unitDisplayName(u));
+    return buildUnitInfo(this.board, u, this.unitDisplayName(u), this.snapshot.unitTypes[u.type.id]?.image ?? null);
   }
 
   private computeAttackCandidates(unit: Unit): Unit[] {

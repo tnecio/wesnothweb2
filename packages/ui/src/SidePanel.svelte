@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { RecruitOption, RecallOption, SelectedUnitInfo } from './gameSession.js';
+  import { imageUrl } from '@wesnothweb2/renderer';
+  import type { RecruitOption, RecallOption, SelectedUnitInfo, HoveredHexInfo } from './gameSession.js';
 
   let {
     selected,
@@ -8,6 +9,7 @@
     log,
     recruitOptions,
     recallOptions,
+    hoveredHexInfo = null,
     onEndTurn,
   }: {
     selected: SelectedUnitInfo | null;
@@ -27,6 +29,8 @@
     recruitOptions: RecruitOption[];
     /** Same "length only" note as `recruitOptions`. */
     recallOptions: RecallOption[];
+    /** Phase 14: the real theme's "terrain under the cursor" strip -- see `GameSession.hoveredHexInfo`. */
+    hoveredHexInfo?: HoveredHexInfo | null;
     onEndTurn: () => void;
   } = $props();
 
@@ -34,24 +38,85 @@
   function rangeType(w: { range: string; type: string }): string {
     return `${w.range}, ${w.type}`;
   }
+
+  function capitalize(s: string): string {
+    return s.length > 0 ? s[0]!.toUpperCase() + s.slice(1) : s;
+  }
+
+  /** Real convention: resistance is shown as a signed percentage relative to normal (100) -- e.g. a `resistance` of 80 (20% resistant) shows as "+20%", 130 (30% weak) as "-30%". */
+  function resistanceLabel(resistance: number): string {
+    const pct = 100 - resistance;
+    return `${pct >= 0 ? '+' : ''}${pct}%`;
+  }
 </script>
 
 <aside class="side-panel">
   <p class="status">{statusMessage}</p>
 
+  {#if hoveredHexInfo}
+    <!-- Phase 14: real theme's always-on "terrain under the cursor" strip. -->
+    <p class="hover-terrain">
+      {hoveredHexInfo.terrainName} ({hoveredHexInfo.x}, {hoveredHexInfo.y}){#if hoveredHexInfo.defensePercent !== null}
+        &mdash; Defense: {hoveredHexInfo.defensePercent}%{/if}
+    </p>
+  {/if}
+
   {#snippet unitInfo(info: SelectedUnitInfo)}
-    <div>Type: {info.typeId}</div>
-    <div>Side: {info.side}</div>
-    <div>Position: ({info.x}, {info.y})</div>
+    <div class="portrait-row">
+      {#if info.image}
+        <img class="portrait" src={imageUrl(info.image)} alt="" />
+      {/if}
+      <div class="headline">
+        <div class="name-row">
+          <span class="unit-name">{info.name}</span>
+          {#if info.statuses.length > 0}
+            <span class="statuses">
+              {#each info.statuses as status (status)}
+                <span class="status-badge" title={status}>{status}</span>
+              {/each}
+            </span>
+          {/if}
+        </div>
+        <div class="sub">Level {info.level} {info.typeId} &middot; {info.raceName} &middot; {capitalize(info.alignment ?? 'neutral')}</div>
+        <div class="sub">Side {info.side} &middot; ({info.x}, {info.y})</div>
+      </div>
+    </div>
+
+    <div class="bar-row" title="Hitpoints">
+      <span class="bar-label">HP</span>
+      <div class="bar hp"><div class="bar-fill" style={`width: ${info.maxHp > 0 ? (100 * info.hp) / info.maxHp : 0}%`}></div></div>
+      <span class="bar-value">{info.hp}/{info.maxHp}</span>
+    </div>
+    <div class="bar-row" title="Experience">
+      <span class="bar-label">XP</span>
+      <div class="bar xp"><div class="bar-fill" style={`width: ${info.maxXp > 0 ? (100 * info.xp) / info.maxXp : 0}%`}></div></div>
+      <span class="bar-value">{info.xp}/{info.maxXp}</span>
+    </div>
+    <div class="bar-row" title="Moves left">
+      <span class="bar-label">MP</span>
+      <div class="bar mp"><div class="bar-fill" style={`width: ${info.maxMoves > 0 ? (100 * info.movesLeft) / info.maxMoves : 0}%`}></div></div>
+      <span class="bar-value">{info.movesLeft}/{info.maxMoves}</span>
+    </div>
+
     <div>Terrain: {info.terrainName} (Defense: {info.defensePercent}%)</div>
-    <div>HP: {info.hp}/{info.maxHp}</div>
-    <div>XP: {info.xp}/{info.maxXp}</div>
-    <div>Moves left: {info.movesLeft}/{info.maxMoves}</div>
     <div>Attacks left: {info.attacksLeft}</div>
     {#if info.traits.length > 0}
       <!-- Real character traits (e.g. strong, intelligent) -- addresses "no information about character traits in the unit infobox". -->
       <div>Traits: {info.traits.join(', ')}</div>
     {/if}
+
+    <!-- Real resistances tooltip -- addresses "no way to see a unit's resistances". -->
+    <div class="resistances">
+      <div class="attacks-label">Resistances:</div>
+      <div class="resistance-grid">
+        {#each info.resistances as r (r.damageType)}
+          <span class="resistance-cell" class:weak={r.resistance > 100} class:strong={r.resistance < 100}>
+            {capitalize(r.damageType)}: {resistanceLabel(r.resistance)}
+          </span>
+        {/each}
+      </div>
+    </div>
+
     {#if info.attacks.length > 0}
       <!-- Real weapon type/range/specials -- addresses "UI is missing information about weapon type/specials". -->
       <div class="attacks">
@@ -86,7 +151,6 @@
 
   {#if selected}
     <section class="unit-info">
-      <h3>{selected.name}</h3>
       {@render unitInfo(selected)}
     </section>
   {/if}
@@ -99,7 +163,7 @@
       as its own section so it doesn't disturb the acting-unit display above.
     -->
     <section class="unit-info inspected">
-      <h3>{inspected.name} <span class="role">(viewing)</span></h3>
+      <div class="role">(viewing)</div>
       {@render unitInfo(inspected)}
     </section>
   {/if}
@@ -149,6 +213,15 @@
     color: #f1e6c8;
     font-style: italic;
   }
+  .hover-terrain {
+    margin: 0;
+    padding: 0.3rem 0.5rem;
+    background: #23201a;
+    border: 1px solid #3a3628;
+    border-radius: 4px;
+    font-size: 0.8em;
+    opacity: 0.85;
+  }
   h3 {
     margin: 0 0 0.4rem;
     font-size: 0.95rem;
@@ -165,6 +238,107 @@
   }
   .unit-info.inspected {
     border-color: #6a4a4a;
+  }
+  .portrait-row {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+    margin-bottom: 0.4rem;
+  }
+  .portrait {
+    width: 3.2rem;
+    height: 3.2rem;
+    object-fit: contain;
+    image-rendering: pixelated;
+    flex: 0 0 auto;
+    background: #14120e;
+    border: 1px solid #3a3628;
+    border-radius: 3px;
+  }
+  .headline {
+    min-width: 0;
+  }
+  .name-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+  .unit-name {
+    font-weight: 700;
+    color: #f1e6c8;
+    font-size: 0.95rem;
+  }
+  .statuses {
+    display: inline-flex;
+    gap: 0.25rem;
+  }
+  .status-badge {
+    font-size: 0.7em;
+    padding: 0.05rem 0.35rem;
+    border-radius: 3px;
+    background: #5a2a2a;
+    color: #f1d0d0;
+    text-transform: uppercase;
+  }
+  .sub {
+    font-size: 0.8em;
+    opacity: 0.75;
+  }
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0.2rem 0;
+  }
+  .bar-label {
+    width: 1.6rem;
+    font-size: 0.75em;
+    opacity: 0.7;
+  }
+  .bar {
+    flex: 1 1 auto;
+    height: 0.5rem;
+    background: #14120e;
+    border: 1px solid #3a3628;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+  }
+  .bar.hp .bar-fill {
+    background: #5a9e4a;
+  }
+  .bar.xp .bar-fill {
+    background: #4a7ea8;
+  }
+  .bar.mp .bar-fill {
+    background: #a8964a;
+  }
+  .bar-value {
+    width: 3.4rem;
+    text-align: right;
+    font-size: 0.8em;
+    opacity: 0.85;
+  }
+  .resistances {
+    margin-top: 0.35rem;
+  }
+  .resistance-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.15rem 0.5rem;
+    margin-top: 0.15rem;
+  }
+  .resistance-cell {
+    font-size: 0.8em;
+  }
+  .resistance-cell.weak {
+    color: #d98a6a;
+  }
+  .resistance-cell.strong {
+    color: #8ac48a;
   }
   .attacks,
   .abilities {

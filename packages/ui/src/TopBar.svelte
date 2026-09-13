@@ -10,16 +10,15 @@
    * real status figures (turn, gold, villages, units, upkeep, income, time
    * of day) in one row.
    *
-   * Deliberately NOT a full command registry yet (Phase 14's own doc
-   * comment scopes that as a separate, later piece Phase 15's hotkeys
-   * build on) -- these two menus are real, working, hand-wired lists for
-   * now; a registry would be premature abstraction before a second
-   * consumer (the right-click context menu, or Phase 15's hotkeys)
-   * actually needs the same entries.
+   * Now a real consumer of the shared `commands.ts` registry (see that
+   * module's own doc comment): both dropdowns just render whatever
+   * `Command[]` `GameShell.svelte` hands them, the same way
+   * `ContextMenu.svelte`'s right-click menu does.
    */
   import { imageUrl } from '@wesnothweb2/renderer';
   import type { TimeOfDayEntry } from '@wesnothweb2/engine';
   import type { EconomyInfo } from './gameSession.js';
+  import type { Command } from './commands.js';
 
   let {
     scenarioName,
@@ -28,15 +27,8 @@
     scenarioTurnsLimit = null,
     timeOfDay = null,
     economyInfo,
-    canRecruit,
-    canRecall,
-    hasObjectives,
-    onSave,
-    onLoad,
-    onOpenRecruit,
-    onOpenRecall,
-    onOpenObjectives,
-    onEndTurn,
+    menuCommands,
+    actionCommands,
   }: {
     scenarioName: string;
     turnNumber?: number;
@@ -44,15 +36,10 @@
     scenarioTurnsLimit?: number | null;
     timeOfDay?: TimeOfDayEntry | null;
     economyInfo: EconomyInfo;
-    canRecruit: boolean;
-    canRecall: boolean;
-    hasObjectives: boolean;
-    onSave: () => void;
-    onLoad: () => void;
-    onOpenRecruit: () => void;
-    onOpenRecall: () => void;
-    onOpenObjectives: () => void;
-    onEndTurn: () => void;
+    /** The "Menu" dropdown's commands (Save/Load, ...). */
+    menuCommands: readonly Command[];
+    /** The "Actions" dropdown's commands (Recruit/Recall/Objectives/End Turn, ...). */
+    actionCommands: readonly Command[];
   } = $props();
 
   let openMenu = $state<'menu' | 'actions' | null>(null);
@@ -82,8 +69,9 @@
       <button class="menu-button" class:open={openMenu === 'menu'} onclick={() => toggle('menu')}>Menu</button>
       {#if openMenu === 'menu'}
         <div class="dropdown">
-          <button onclick={() => run(onSave)}>Save Game</button>
-          <button onclick={() => run(onLoad)}>Load Game</button>
+          {#each menuCommands as cmd (cmd.id)}
+            <button disabled={!cmd.enabled} onclick={() => run(cmd.handler)}>{cmd.label}</button>
+          {/each}
         </div>
       {/if}
     </div>
@@ -91,11 +79,9 @@
       <button class="menu-button" class:open={openMenu === 'actions'} onclick={() => toggle('actions')}>Actions</button>
       {#if openMenu === 'actions'}
         <div class="dropdown">
-          <button disabled={!canRecruit} onclick={() => run(onOpenRecruit)}>Recruit&hellip;</button>
-          <button disabled={!canRecall} onclick={() => run(onOpenRecall)}>Recall&hellip;</button>
-          <button disabled={!hasObjectives} onclick={() => run(onOpenObjectives)}>Objectives</button>
-          <div class="dropdown-sep"></div>
-          <button onclick={() => run(onEndTurn)}>End Turn</button>
+          {#each actionCommands as cmd (cmd.id)}
+            <button disabled={!cmd.enabled} onclick={() => run(cmd.handler)}>{cmd.label}</button>
+          {/each}
         </div>
       {/if}
     </div>
@@ -200,10 +186,6 @@
   .dropdown button:disabled {
     opacity: 0.4;
     cursor: not-allowed;
-  }
-  .dropdown-sep {
-    margin: 0.25rem 0;
-    border-top: 1px solid #4a4432;
   }
   .status {
     flex: 1 1 auto;

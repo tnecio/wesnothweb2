@@ -1053,6 +1053,77 @@ describe('GameSession.unitInfo (real, reported bug: UI missing weapon type/abili
   });
 });
 
+describe('GameSession.unitInfo Phase 14 infobox fields (image/level/alignment/race/resistances/statuses)', () => {
+  it("Kai Krellis reports his real level/alignment/race, and his portrait image matches the scenario snapshot's unit-type table", () => {
+    const snapshot = loadSnapshot();
+    const session = new GameSession(snapshot);
+    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    const info = session.unitInfo(kaiKrellis);
+
+    expect(info.level).toBe(kaiKrellis.type.level);
+    expect(info.alignment).toBe(kaiKrellis.type.alignment);
+    expect(info.raceId).toBe('merman');
+    expect(info.raceName).toBe('Merfolk');
+    expect(info.image).toBe(snapshot.unitTypes[kaiKrellis.type.id]?.image ?? null);
+  });
+
+  it('resistances is a fixed six-row table (blade/pierce/impact/fire/cold/arcane), each value matching Unit.resistanceAgainst directly', () => {
+    const session = new GameSession(loadSnapshot());
+    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    const info = session.unitInfo(kaiKrellis);
+
+    expect(info.resistances.map((r) => r.damageType)).toEqual(['blade', 'pierce', 'impact', 'fire', 'cold', 'arcane']);
+    for (const r of info.resistances) {
+      expect(r.resistance).toBe(kaiKrellis.resistanceAgainst(r.damageType));
+    }
+  });
+
+  it('real, reported gap: no way to see whether a unit is poisoned/slowed/petrified -- unitInfo().statuses now surfaces exactly those three, by display name', () => {
+    const session = new GameSession(loadSnapshot());
+    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    expect(session.unitInfo(kaiKrellis).statuses).toEqual([]);
+
+    kaiKrellis.setStatus('poisoned', true);
+    kaiKrellis.setStatus('slowed', true);
+    expect(session.unitInfo(kaiKrellis).statuses).toEqual(['Slowed', 'Poisoned']);
+
+    kaiKrellis.setStatus('slowed', false);
+    kaiKrellis.setStatus('petrified', true);
+    expect(session.unitInfo(kaiKrellis).statuses).toEqual(['Poisoned', 'Petrified']);
+
+    // A status this project tracks but the infobox deliberately doesn't badge (not called out by the plan).
+    kaiKrellis.setStatus('guardian', true);
+    expect(session.unitInfo(kaiKrellis).statuses).toEqual(['Poisoned', 'Petrified']);
+  });
+});
+
+describe('GameSession.hoveredHexInfo (Phase 14 infobox: terrain info for the hovered hex)', () => {
+  it('reports real terrain name for an on-board hex, with defensePercent null when nothing is selected', () => {
+    const session = new GameSession(loadSnapshot());
+    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    const info = session.hoveredHexInfo(kaiKrellis.location.x, kaiKrellis.location.y);
+
+    expect(info).not.toBeNull();
+    expect(info!.terrainName).toBe(session.board.map.terrainName(kaiKrellis.location));
+    expect(info!.defensePercent).toBeNull();
+  });
+
+  it('once a unit is selected, defensePercent matches defensePercentAt for the same hex', () => {
+    const session = new GameSession(loadSnapshot());
+    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    session.selectUnit(kaiKrellis);
+    const target = session.reachable[0]!;
+    const info = session.hoveredHexInfo(target.x, target.y);
+
+    expect(info!.defensePercent).toBe(session.defensePercentAt(target.x, target.y));
+  });
+
+  it('returns null for an off-board hex', () => {
+    const session = new GameSession(loadSnapshot());
+    expect(session.hoveredHexInfo(-1, -1)).toBeNull();
+  });
+});
+
 describe('GameSession.renderUnits moves-orb reachability (real, reported bug: a unit with an unspent attack but nowhere left to use it showed the yellow "partial" orb instead of red "moved")', () => {
   it('real Dead_Water scenario 1: moving Kai Krellis to (25,10) leaves him with 1 attack left but no adjacent enemy and no more moves -- canMove/canAttackHere are both false, so his orb reads "moved", not "partial"', () => {
     const session = new GameSession(loadSnapshot());

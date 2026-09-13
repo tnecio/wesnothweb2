@@ -58,6 +58,8 @@
     hexVisibility = [],
     timeOfDay = undefined,
     onHexClick,
+    onHexRightClick,
+    onHexHoverChange,
     hoverDefensePercent,
   }: {
     /** Static parts (terrain/teams/scenario/map) -- read once at mount, never re-applied after. */
@@ -75,6 +77,17 @@
     /** The current global ToD's red=/green=/blue= colour shift -- see `SnapshotBoard.updateTimeOfDayTint`. Omit for no tint (a scenario with no [time] schedule). */
     timeOfDay?: Pick<TimeOfDayEntry, 'red' | 'green' | 'blue'>;
     onHexClick: (x: number, y: number) => void;
+    /**
+     * Phase 14: real Wesnoth's right-click context menu -- called with a
+     * hex's engine-convention (0-based) (x,y) AND raw viewport
+     * (`clientX`/`clientY`, for positioning an HTML popup at the cursor)
+     * when a terrain tile is right-clicked. Omit to leave right-click as a
+     * no-op (still suppresses the browser's own menu over the canvas,
+     * matching a real game window).
+     */
+    onHexRightClick?: (x: number, y: number, clientX: number, clientY: number) => void;
+    /** Bubbles the hovered hex up to a caller that wants to show live terrain info elsewhere (the infobox's "hovered hex" section) -- `null` when the pointer leaves the board. Separate from `hoverDefensePercent` (used only for this component's own inline status line) so a caller doesn't need to reimplement hover tracking itself. */
+    onHexHoverChange?: (hex: HexPoint | null) => void;
     /** Real terrain-defense percentage the currently selected unit would have at (x, y), for the hover status line -- `undefined`/`null` when nothing is selected or the hex is off-board. */
     hoverDefensePercent?: (x: number, y: number) => number | null;
   } = $props();
@@ -185,8 +198,17 @@
     host.addEventListener('wheel', onWheel, { passive: false });
     function onPointerLeave(): void {
       hoveredHex = null;
+      onHexHoverChange?.(null);
     }
     host.addEventListener('pointerleave', onPointerLeave);
+    // Real Wesnoth's right-click opens its own in-game context menu, not
+    // the browser's -- suppress the native one over the whole board
+    // unconditionally (whether or not a caller actually supplied
+    // `onHexRightClick`, matching a real game window's behavior).
+    function onContextMenu(e: MouseEvent): void {
+      e.preventDefault();
+    }
+    host.addEventListener('contextmenu', onContextMenu);
 
     (async () => {
       // Deliberately NO PixiJS CullerPlugin here: tried for the real
@@ -229,8 +251,10 @@
         imageBaseUrl: '/game-images',
         engineImageBaseUrl: '/game-images-engine',
         onHexClick: wrappedOnHexClick,
+        onHexRightClick,
         onHexHover: (x, y) => {
           hoveredHex = { x, y };
+          onHexHoverChange?.({ x, y });
         },
         terrainGraphicsRules,
       });
@@ -269,6 +293,7 @@
       host.removeEventListener('pointerup', onPointerUpCapture, true);
       host.removeEventListener('wheel', onWheel);
       host.removeEventListener('pointerleave', onPointerLeave);
+      host.removeEventListener('contextmenu', onContextMenu);
       app?.destroy(true);
     };
   });

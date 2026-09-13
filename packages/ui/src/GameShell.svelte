@@ -26,7 +26,7 @@
    * event-spawned unit by the time the player gets control.
    */
   import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage, TimeOfDayEntry, Unit, AiAnimationEvent, ScenarioObjectives } from '@wesnothweb2/engine';
-  import { WmlConfig, directionBetween } from '@wesnothweb2/engine';
+  import { WmlConfig, directionBetween, Location } from '@wesnothweb2/engine';
   import {
     type HexPoint,
     type UnitAnimationCue,
@@ -55,9 +55,12 @@
     type LastMoveAnimation,
     type LastRecruitAnimation,
     type PendingAdvancement,
+    type HoveredHexInfo,
   } from './gameSession.js';
   import { saveGame, loadGame } from './persistence.js';
+  import type { Command } from './commands.js';
   import TopBar from './TopBar.svelte';
+  import ContextMenu from './ContextMenu.svelte';
   import GameBoardView from './GameBoardView.svelte';
   import SidePanel from './SidePanel.svelte';
   import StoryViewer from './StoryViewer.svelte';
@@ -134,6 +137,10 @@
   let hexVisibility = $state<HexVisibilityPoint[]>(session.hexVisibility);
   let timeOfDay = $state<TimeOfDayEntry>(session.currentTimeOfDay);
   let statusMessage = $state('Click one of your units to select it.');
+  /** Phase 14: the infobox's "terrain info for the hovered hex" -- kept in sync by `GameBoardView`'s `onHexHoverChange`. */
+  let hoveredHexInfo = $state<HoveredHexInfo | null>(null);
+  /** Phase 14: the right-click context menu's position + which hex it's for, `null` when closed. */
+  let contextMenuAt = $state<{ x: number; y: number; clientX: number; clientY: number } | null>(null);
 
   function selectedInfo(): SelectedUnitInfo | null {
     const u = session.selectedUnit;
@@ -275,6 +282,21 @@
     }
     sync(message);
     showEventMessages();
+  }
+
+  /** `GameBoardView`'s `onHexHoverChange` -- keeps the infobox's hovered-hex terrain section live. */
+  function handleHexHoverChange(hex: HexPoint | null): void {
+    hoveredHexInfo = hex ? session.hoveredHexInfo(hex.x, hex.y) : null;
+  }
+
+  /** `GameBoardView`'s `onHexRightClick` -- opens the context menu at the clicked hex/screen position; its commands are built by `contextMenuCommands` below from the same hex. */
+  function handleHexRightClick(x: number, y: number, clientX: number, clientY: number): void {
+    if (phase !== 'playing') return;
+    contextMenuAt = { x, y, clientX, clientY };
+  }
+
+  function closeContextMenu(): void {
+    contextMenuAt = null;
   }
 
   /**
@@ -817,6 +839,68 @@
       continuing = false;
     }
   }
+
+  /**
+   * Phase 14: the command registry (`commands.ts`) -- built here, not in
+   * `commands.ts` itself, since every command closes over live session
+   * state/handlers this module owns (see that file's own doc comment).
+   * `menuCommands`/`actionCommands` feed `TopBar`'s two dropdowns exactly
+   * as the old individual props did; `contextMenuCommands` feeds the new
+   * right-click `ContextMenu`, reusing the very same handlers so both
+   * surfaces can never drift apart.
+   */
+  let menuCommands = $derived<Command[]>([
+    { id: 'save', label: 'Save', enabled: phase === 'playing', handler: handleSave },
+    { id: 'load', label: 'Load', enabled: phase === 'playing', handler: handleLoad },
+  ]);
+  let actionCommands = $derived<Command[]>([
+    { id: 'recruit', label: 'Recruit...', enabled: recruitOptions.length > 0, handler: () => (recruitDialogOpen = true) },
+    { id: 'recall', label: 'Recall...', enabled: recallOptions.length > 0, handler: () => (recallDialogOpen = true) },
+    { id: 'objectives', label: 'Objectives', enabled: session.scenarioObjectives !== null, handler: () => (objectivesDialogOpen = true) },
+    { id: 'end-turn', label: 'End Turn', enabled: phase === 'playing', handler: handleEndTurn },
+  ]);
+
+  /**
+   * Real Wesnoth's right-click menu is per-hex context-sensitive (a
+   * castle tile shows Recruit/Recall, a reachable hex shows Move Here, an
+   * adjacent enemy shows Attack, ...) -- built fresh from `contextMenuAt`
+   * each time the menu opens, delegating the actual move/attack/select
+   * logic to `handleHexClick` (the exact same code path a real left click
+   * on that hex already takes) rather than duplicating it.
+   */
+  let contextMenuCommands = $derived.by((): Command[] => {
+    const at = contextMenuAt;
+    const hexCommands: Command[] = [];
+    if (at && phase === 'playing') {
+      const { x, y } = at;
+      const loc = new Location(x, y);
+      const unitHere = session.board.unitAt(loc);
+      const isReachable = reachable.some((h) => h.x === x && h.y === y);
+      const isAttackTarget = attackTargets.some((h) => h.x === x && h.y === y);
+      const isRecruitTile = recruitTiles.some((h) => h.x === x && h.y === y);
+      if (unitHere && unitHere.side === activeSide && unitHere !== session.selectedUnit) {
+        hexCommands.push({ id: 'ctx-select', label: 'Select Unit', enabled: true, handler: () => handleHexClick(x, y) });
+      }
+      if (unitHere && unitHere.side !== activeSide) {
+        hexCommands.push({ id: 'ctx-inspect', label: 'Unit Description', enabled: true, handler: () => handleHexClick(x, y) });
+      }
+      hexCommands.push({ id: 'ctx-move', label: 'Move Here', enabled: isReachable, handler: () => handleHexClick(x, y) });
+      hexCommands.push({ id: 'ctx-attack', label: 'Attack', enabled: isAttackTarget, handler: () => handleHexClick(x, y) });
+      hexCommands.push({
+        id: 'ctx-recruit',
+        label: 'Recruit...',
+        enabled: recruitOptions.length > 0 && isRecruitTile,
+        handler: () => (recruitDialogOpen = true),
+      });
+      hexCommands.push({
+        id: 'ctx-recall',
+        label: 'Recall...',
+        enabled: recallOptions.length > 0 && isRecruitTile,
+        handler: () => (recallDialogOpen = true),
+      });
+    }
+    return [...hexCommands, ...actionCommands.filter((c) => c.id === 'objectives' || c.id === 'end-turn')];
+  });
 </script>
 
 <div class="game-shell">
@@ -827,15 +911,8 @@
     {scenarioTurnsLimit}
     {timeOfDay}
     {economyInfo}
-    canRecruit={recruitOptions.length > 0}
-    canRecall={recallOptions.length > 0}
-    hasObjectives={session.scenarioObjectives !== null}
-    onSave={handleSave}
-    onLoad={handleLoad}
-    onOpenRecruit={() => (recruitDialogOpen = true)}
-    onOpenRecall={() => (recallDialogOpen = true)}
-    onOpenObjectives={() => (objectivesDialogOpen = true)}
-    onEndTurn={handleEndTurn}
+    {menuCommands}
+    {actionCommands}
   />
   <div class="main">
     <!--
@@ -866,11 +943,17 @@
         {hexVisibility}
         {timeOfDay}
         onHexClick={handleHexClick}
+        onHexRightClick={handleHexRightClick}
+        onHexHoverChange={handleHexHoverChange}
         hoverDefensePercent={(x, y) => session.defensePercentAt(x, y)}
       />
     {/key}
-    <SidePanel {selected} {inspected} {statusMessage} {log} {recruitOptions} {recallOptions} onEndTurn={handleEndTurn} />
+    <SidePanel {selected} {inspected} {statusMessage} {log} {recruitOptions} {recallOptions} {hoveredHexInfo} onEndTurn={handleEndTurn} />
   </div>
+
+  {#if contextMenuAt}
+    <ContextMenu x={contextMenuAt.clientX} y={contextMenuAt.clientY} commands={contextMenuCommands} onClose={closeContextMenu} />
+  {/if}
 
   {#if pendingPreview}
     <AttackDialog

@@ -346,6 +346,16 @@ export interface SnapshotBoardOptions {
   /** Called with a hex's engine-convention (0-based) (x,y) when the pointer moves over a terrain tile -- lets a caller show a live coordinate readout, useful for describing positions precisely (e.g. reporting a bug). */
   onHexHover?: (x: number, y: number) => void;
   /**
+   * Phase 14: real Wesnoth's right-click context menu. Called with a hex's
+   * engine-convention (0-based) (x,y) AND the raw browser viewport
+   * coordinates (`clientX`/`clientY`, for positioning an HTML popup menu at
+   * the cursor) when a terrain tile is right-clicked. The caller is
+   * responsible for suppressing the browser's own native context menu
+   * (a separate DOM `contextmenu` event this module doesn't see) --
+   * `GameBoardView.svelte` does this on `canvasHost`.
+   */
+  onHexRightClick?: (x: number, y: number, clientX: number, clientY: number) => void;
+  /**
    * The real, parsed `[terrain_graphics]` rule list (see
    * `terrain/terrainGraphicsRules.ts` -- typically fetched as JSON built by
    * `apps/web/scripts/build-terrain-graphics-rules.mjs` and revived via
@@ -507,6 +517,7 @@ export class SnapshotBoard {
   private readonly teamColor: Map<number, string>;
   private readonly onHexClick?: (x: number, y: number) => void;
   private readonly onHexHover?: (x: number, y: number) => void;
+  private readonly onHexRightClick?: (x: number, y: number, clientX: number, clientY: number) => void;
   /** Persistent per-unit sprite/marker, keyed by `spriteKey` -- see module doc comment on why (animation needs a stable object to animate, not a fresh one every `updateUnits`). */
   private readonly unitVisuals = new Map<string, UnitVisual>();
   /**
@@ -538,6 +549,7 @@ export class SnapshotBoard {
     if (options.engineImageBaseUrl) setEngineImageBaseUrl(options.engineImageBaseUrl);
     this.onHexClick = options.onHexClick;
     this.onHexHover = options.onHexHover;
+    this.onHexRightClick = options.onHexRightClick;
     this.terrainGraphicsRules = options.terrainGraphicsRules;
     this.units = snapshot.units;
     this.teamColor = new Map(snapshot.teams.map((t) => [t.side, t.color]));
@@ -637,7 +649,7 @@ export class SnapshotBoard {
    * (PixiJS default `eventMode`) let pointer events pass straight through.
    */
   private installHitArea(): void {
-    if (!this.onHexClick && !this.onHexHover) return;
+    if (!this.onHexClick && !this.onHexHover && !this.onHexRightClick) return;
     const onBoard = new Set(this.snapshot.terrain.map((h) => `${h.x},${h.y}`));
     const { width, height } = this.snapshot.map;
     const layer = this.terrainLayer;
@@ -658,9 +670,24 @@ export class SnapshotBoard {
     };
 
     if (this.onHexClick) {
+      // Real, reported bug: PixiJS's `pointertap` fires on EVERY mouse
+      // button's release, not just the left one (confirmed directly in
+      // `EventBoundary.mapPointerUp`: it dispatches `rightclick` THEN
+      // unconditionally also dispatches `pointertap` for the same
+      // release) -- so a right-click meant to only open the context menu
+      // was ALSO firing a normal move/select/attack on whatever hex it
+      // landed on. `e.button === 0` restricts this to the left button,
+      // matching the native DOM `click` event's own convention.
       layer.on('pointertap', (e) => {
+        if (e.button !== 0) return;
         const hex = hexAt(e);
         if (hex) this.onHexClick?.(hex.x, hex.y);
+      });
+    }
+    if (this.onHexRightClick) {
+      layer.on('rightclick', (e) => {
+        const hex = hexAt(e);
+        if (hex) this.onHexRightClick?.(hex.x, hex.y, e.clientX, e.clientY);
       });
     }
     if (this.onHexHover) {
