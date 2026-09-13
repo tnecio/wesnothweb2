@@ -122,6 +122,7 @@ export function makeAiHost(board: GameBoard, overrides: Partial<AiHost> = {}): A
     turnNumber: () => 1,
     timeOfDayId: () => '',
     raise: () => undefined,
+    fire: () => undefined,
     pump: () => undefined,
     log: () => undefined,
     scenarioEnded: () => false,

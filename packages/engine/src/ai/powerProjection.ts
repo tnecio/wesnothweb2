@@ -66,3 +66,50 @@ export function powerProjection(board: GameBoard, loc: Location, dstSrc: MoveMap
   }
   return total / 100000;
 }
+
+export interface DefensivePosition {
+  /** The best reachable hex found, if any (undefined only when `loc` has no unit or no reachable destination beat the "chance to hit 100" starting bound). */
+  readonly loc?: Location;
+  /** 0-100 "chance to be hit" (upstream's `defense_modifier` convention) at the chosen hex, or 100 if none was found. */
+  readonly chanceToHit: number;
+  readonly vulnerability: number;
+  readonly support: number;
+}
+
+/**
+ * TS port of `readonly_context_impl::best_defensive_position` (`src/ai/
+ * contexts.cpp:445-489`): among the hexes the unit currently at `loc` can
+ * reach this turn (`srcDst`), the one with the lowest chance to be hit,
+ * breaking ties by the highest (support - vulnerability). Used by
+ * `attack_analysis::analyze`'s `alternative_terrain_quality` (Phase 29 S2)
+ * to compare an attack's actual terrain against "what if this unit just
+ * repositioned instead". Not cached (documented simplification, matches
+ * `composite/aspect.ts`'s own note on why this port skips upstream's
+ * invalidate-on-gamestate-change caching).
+ */
+export function bestDefensivePosition(
+  board: GameBoard,
+  loc: Location,
+  srcDst: MoveMap,
+  dstSrc: MoveMap,
+  enemyDstSrc: MoveMap,
+  ctx: PowerProjectionContext,
+): DefensivePosition {
+  const unit = board.unitAt(loc);
+  if (!unit) return { chanceToHit: 0, vulnerability: 0, support: 0 };
+
+  let best: DefensivePosition = { chanceToHit: 100, vulnerability: 10000, support: 0 };
+
+  for (const dest of srcDst.get(loc.key()) ?? []) {
+    const defense = unit.defenseModifier(board.map.getTerrain(dest));
+    if (defense > best.chanceToHit) continue;
+
+    const vulnerability = powerProjection(board, dest, enemyDstSrc, ctx);
+    const support = powerProjection(board, dest, dstSrc, ctx);
+
+    if (defense < best.chanceToHit || support - vulnerability > best.support - best.vulnerability) {
+      best = { loc: dest, chanceToHit: defense, vulnerability, support };
+    }
+  }
+  return best;
+}

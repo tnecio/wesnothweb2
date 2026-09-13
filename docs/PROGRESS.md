@@ -2440,3 +2440,58 @@ is untouched and still wired into `GameSession` -- S1 lands the new
 framework alongside it, unused by the running app until S5 swaps it in.
 Engine/renderer/ui suites all green (504/193/83), typecheck and
 `svelte-check` (0 errors) clean. Branch `phase-29-real-ai`.
+
+**S2 (attacks aspect + attack_analysis + combat CA), delivered** (2026-09-13):
+- `ai/powerProjection.ts`: added `bestDefensivePosition` (`contexts.cpp:
+  445-489`) -- among an attacker's reachable hexes, the one with the
+  lowest chance to be hit, tie-broken by support minus vulnerability. Not
+  cached (documented simplification, matches `aspect.ts`'s own note).
+- `ai/default/attackAnalysis.ts`: `AttackAnalysis`, a line-for-line port of
+  `attack_analysis::analyze`/`rating`/`attack_close` (`attack.cpp`) --
+  simulates a whole multi-attacker exchange against one target (chaining
+  the defender's accumulated damage across attackers via `Combatant`'s
+  `prev` parameter, exactly like upstream's `prev_def`), then scores it:
+  chance-to-kill/target-value, average losses (with advancement/plague
+  rewards), terrain-quality-vs-alternative exposure risk, a leader-threat
+  multiplier, and a "don't throw units away for nothing" sanity veto.
+  Reuses this port's own `buildBattleContext`/`simulateCombat`/
+  `chooseDefenderWeaponIndex`/`betterCombat`/`isBackstabActive`/
+  `computeLeadershipBonus`/`computeResistanceModifier` -- the exact same
+  machinery a human's attack preview and Phase 7's heuristic AI use, per
+  this project's standing "one real combat engine" principle. Documented
+  simplification: weapon selection for multi-attacker combos uses a fresh
+  (non-`prevDef`-chained) simulation as a heuristic; only the final scored
+  numbers are correctly chained (no `unit_stats_cache` either -- a real
+  perf pass is S12).
+- `ai/default/aspectAttacks.ts`: `analyzeTargets`/`doAttackAnalysis`/
+  `rateTerrain`, the real `ai_default_rca::aspect_attacks` exploration --
+  recursively builds every attack combination (depth capped at 5, 1000
+  positions) against every visible enemy, picking each attacker's single
+  best-rated adjacent hex via terrain/healing/village/backstab/leadership
+  bonuses balanced against vulnerability/support, honoring the `attacks`
+  aspect's `[filter_own]`/`[filter_enemy]`.
+- `AiContext`: `getAttacks()` (the `attacks` aspect itself, cached until
+  the gamestate actually changes, the one aspect this port bothers
+  caching -- matches upstream's `invalidate_on_gamestate_change=yes`),
+  `executeAttack` (gamestate-tracked, mirrors `executeMove`/`stopUnit`),
+  `isAttackClose`/`clearRecentAttacks` (mirrors `game_info::
+  recent_attacks`, cleared once per side turn by `AiComposite.newTurn`).
+  `AiHost` gained a `fire` method (immediate, non-queued event dispatch
+  for `last breath`/`die` mid-attack, matching `GameSession.confirmAttack`'s
+  own `fire:` callback to `performAttack`).
+- `ai/default/caCombat.ts`: `CombatCandidateAction`
+  (`ai_default_rca::combat_phase`, `ca.cpp:154-266`) -- picks the
+  best-`rating()` combo from `getAttacks()`, executes just its first
+  attacker's (move +) attack, then advances whichever combatant survived
+  (explicit here, matching `simpleAi.ts`'s own convention, since real
+  advancement is otherwise invisible plumbing inside upstream's synced
+  command executor).
+
+23 new engine tests across 3 files (`attackAnalysis.test.ts`,
+`aspectAttacks.test.ts`, `caCombat.test.ts`): a strong attacker takes a
+clearly good trade (verified both directly via `rating()` and end-to-end
+via the CA), a weak attacker declines a clearly bad one, `[filter_own]`/
+`[filter_enemy]` gate correctly, allies are never targeted, and
+`analyze()` leaves the board exactly as it found it. Engine/renderer/ui
+suites all green (516/193/83), typecheck and `svelte-check` (0 errors)
+clean. Branch `phase-29-real-ai`.

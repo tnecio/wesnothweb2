@@ -15,7 +15,7 @@
  * inlined here rather than prematurely extracted).
  */
 
-import { Location } from '../model/Location.js';
+import { Location, distanceBetween } from '../model/Location.js';
 import type { GameBoard } from '../model/GameBoard.js';
 import type { Team } from '../model/Team.js';
 import type { Unit } from '../model/Unit.js';
@@ -23,11 +23,15 @@ import { WmlConfig } from '../wml/config.js';
 import type { DestVect } from '../pathfind/pathfind.js';
 import { locationMatchesFilterOnBoard } from '../events/filter.js';
 import { performMove, type PerformMoveResult } from '../actions/moveSequence.js';
+import { performAttack } from '../actions/attackSequence.js';
+import type { AttackResult } from '../actions/combat.js';
 import type { AiHost } from './types.js';
 import { isAspectActive, type CompositeAspect } from './composite/aspect.js';
 import { calculateMoves, type MoveMap } from './moveMaps.js';
 import { powerProjection as powerProjectionFn } from './powerProjection.js';
 import { nearestKeep as nearestKeepFn, suitableKeep as suitableKeepFn } from './keeps.js';
+import { analyzeTargets } from './default/aspectAttacks.js';
+import type { AttackAnalysis } from './default/attackAnalysis.js';
 
 /** Real Wesnoth's `[value][not][/not][/value]` "matches nothing" idiom (the real `avoid` aspect's own built-in default) -- used as `getAvoidConfig`'s fallback when no `avoid` aspect was configured at all (e.g. a hand-built test context). */
 const AVOID_MATCHES_NOTHING = (() => {
@@ -57,6 +61,10 @@ export class AiContext {
   private dstSrcCache?: MoveMap;
   private enemySrcDstCache?: MoveMap;
   private enemyDstSrcCache?: MoveMap;
+
+  private attacksCache?: AttackAnalysis[];
+  private attacksCacheGamestate?: number;
+  private recentAttackLocs: Location[] = [];
 
   constructor(host: AiHost, side: number, aspects: ReadonlyMap<string, CompositeAspect>) {
     this.host = host;
@@ -220,6 +228,42 @@ export class AiContext {
   getAvoidConfig(): WmlConfig {
     return this.resolveAspect('avoid')?.child('value') ?? AVOID_MATCHES_NOTHING;
   }
+  /** The `attacks` aspect's active facet body -- its `[filter_own]`/`[filter_enemy]` children gate `getAttacks()`. Falls back to an empty config (no filters) when no `attacks` aspect was configured at all (e.g. a hand-built test context). */
+  getAttacksAspectConfig(): WmlConfig {
+    return this.resolveAspect('attacks') ?? new WmlConfig();
+  }
+
+  /**
+   * Mirrors the `attacks` aspect (`ai_default_rca::aspect_attacks`,
+   * `invalidate_on_gamestate_change=yes`): every viable attack combination
+   * against every visible enemy, from `aspectAttacks.ts`'s `analyzeTargets`.
+   * Cached until the gamestate actually changes (a move/attack/stopunit),
+   * matching upstream's own invalidation trigger -- see `composite/
+   * aspect.ts`'s module doc comment on why this is the one aspect this port
+   * bothers caching.
+   */
+  getAttacks(): AttackAnalysis[] {
+    const snapshot = this.gamestateSnapshot();
+    if (this.attacksCache === undefined || this.attacksCacheGamestate !== snapshot) {
+      const cfg = this.getAttacksAspectConfig();
+      this.attacksCache = analyzeTargets(this, {
+        filterOwn: cfg.child('filter_own'),
+        filterEnemy: cfg.child('filter_enemy'),
+      });
+      this.attacksCacheGamestate = snapshot;
+    }
+    return this.attacksCache;
+  }
+
+  /** Mirrors `game_info::recent_attacks` (`ai/actions.cpp:307`), inserted by `executeAttack`; read by `AttackAnalysis.attackClose`. */
+  isAttackClose(loc: Location): boolean {
+    return this.recentAttackLocs.some((l) => distanceBetween(l, loc) < 4);
+  }
+
+  /** Mirrors `manager::play_turn`'s `get_ai_info().recent_attacks.clear()` -- called once per side turn by `AiComposite.newTurn`. */
+  clearRecentAttacks(): void {
+    this.recentAttackLocs = [];
+  }
 
   isPassiveLeader(leaderId: string): boolean {
     return boolOrIdListMatches(this.resolveAspect('passive_leader')?.getString('value', 'no') ?? 'no', leaderId);
@@ -242,6 +286,22 @@ export class AiContext {
       this.host.pump();
     }
     return outcome;
+  }
+
+  /** Mirrors `check_attack_action`/`execute_attack_action` collapsed into one call (see this file's own module doc comment on why check/execute aren't split yet). Records the target into `recentAttacks` and bumps the gamestate-change counter unconditionally -- a real attack always changes SOMETHING (attacks_left at minimum), matching upstream's own `attack_result` always reporting `is_gamestate_changed()`. */
+  executeAttack(attackerLoc: Location, attackerWeaponIndex: number, defenderLoc: Location, defenderWeaponIndex: number | undefined): AttackResult {
+    const result = performAttack(this.host.board, this.host.rng, attackerLoc, attackerWeaponIndex, defenderLoc, defenderWeaponIndex, {
+      attackerLawfulBonus: this.host.lawfulBonusAt(attackerLoc),
+      defenderLawfulBonus: this.host.lawfulBonusAt(defenderLoc),
+      maxLiminalBonus: this.host.maxLiminalBonus,
+      resolveType: this.host.resolveType,
+      raise: this.host.raise,
+      fire: this.host.fire,
+    });
+    this.recentAttackLocs.push(defenderLoc);
+    this.bumpGamestateChange();
+    this.host.pump();
+    return result;
   }
 
   /** Mirrors `check_stopunit_action`/`execute_stopunit_action`: zeroes moves and/or attacks without moving, used by CAs (e.g. `goto`) to burn a unit's turn when its intended move didn't land, so the RCA loop doesn't blacklist them for "lying" in `evaluate()`. */

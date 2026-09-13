@@ -63,6 +63,8 @@ export interface AiHost {
   readonly turnNumber: () => number;
   readonly timeOfDayId: () => string;
   readonly raise: (name: string, loc1?: Location, loc2?: Location, data?: WmlConfig) => void;
+  /** Fires an event IMMEDIATELY (not queued), for `last breath`/`die` -- must run while a dying unit is still on the board (mirrors `GameSession.confirmAttack`'s own `fire:` callback to `performAttack`, Phase 29 S2's `AiContext.executeAttack`). */
+  readonly fire: (name: string, loc1: Location, loc2: Location) => void;
   /** Drains anything `raise` queued (mirrors `GameSession.pumpEvents`); called by the AI after each executed action. */
   readonly pump: () => void;
   readonly log: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;

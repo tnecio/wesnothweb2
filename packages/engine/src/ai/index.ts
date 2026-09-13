@@ -5,7 +5,7 @@ export * from './simpleAi.js';
 export type { AiAction, AiActionKind, AiAnimationEvent, AiHost } from './types.js';
 export { AiContext } from './context.js';
 export { calculateMoves, type CalculateMovesOptions, type CalculatedMoves, type MoveMap } from './moveMaps.js';
-export { powerProjection, type PowerProjectionContext } from './powerProjection.js';
+export { powerProjection, bestDefensivePosition, type PowerProjectionContext, type DefensivePosition } from './powerProjection.js';
 export { nearestKeep, suitableKeep, allKeeps } from './keeps.js';
 export { isAspectActive, facetFromConfig, CompositeAspect, type AspectFacet } from './composite/aspect.js';
 export { expandSimplifiedAspects, buildAspects, parseSideAiConfig, type ParsedSideAiConfig } from './config/upgrade.js';
@@ -17,5 +17,8 @@ export { MoveLeaderToKeepCandidateAction } from './default/caMoveLeaderToKeep.js
 export { LeaderSharesKeepCandidateAction } from './default/caLeaderSharesKeep.js';
 export { HealingCandidateAction } from './default/caHealing.js';
 export { VillagesCandidateAction } from './default/caVillages.js';
+export { CombatCandidateAction } from './default/caCombat.js';
+export { AttackAnalysis, chooseAttackerWeapon, type AttackMovement } from './default/attackAnalysis.js';
+export { analyzeTargets, rateTerrain, type AnalyzeTargetsOptions } from './default/aspectAttacks.js';
 export { createDefaultCandidateActionRegistry } from './default/registry.js';
 export { DEFAULT_AI_CONFIG_JSON, AI_ALGORITHM_CONFIGS_JSON } from './config/builtinAiConfigs.generated.js';
