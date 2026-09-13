@@ -86,8 +86,34 @@ export type AiAnimationEvent =
       /** `attacker`/`defender`'s real hitpoints BEFORE this exchange -- see `LastAttackAnimation.attackerHitpointsBefore`'s doc comment for the full rationale (per-blow HP bar preview during animation playback); this mirrors it for the AI's own attack path. */
       readonly attackerHitpointsBefore: number;
       readonly defenderHitpointsBefore: number;
+      /**
+       * `attacker`/`defender`'s real location AS OF THIS EXCHANGE -- real,
+       * reported bug (bugs4.md #2/#3): a caller building this event's
+       * animation cues used to read `attacker.location`/`defender.location`
+       * LIVE, well after `playAiTurn` had already resolved the WHOLE rest
+       * of this side's turn (every `AiAnimationEvent` this function returns
+       * is only ever consumed after the fact, one whole turn at a time --
+       * see `AiAction.animation`'s own doc comment). If `attacker` went on
+       * to take a LATER action this same turn (a unit can attack and still
+       * have moves left, e.g. after a scripted reposition-then-attack, or
+       * simply be reused by a later `decideMove` pass), its animation
+       * played back at that FINAL location instead of where this exchange
+       * actually happened -- e.g. a leader that recruited then moved
+       * showing its "recruiting" animation at its post-move hex instead of
+       * on its keep. Captured here, at the moment this action is decided,
+       * exactly like `move`'s own `path` above.
+       */
+      readonly attackerLocation: Location;
+      readonly defenderLocation: Location;
     }
-  | { readonly kind: 'recruit'; readonly unit: Unit; readonly leader: Unit };
+  | {
+      readonly kind: 'recruit';
+      readonly unit: Unit;
+      readonly leader: Unit;
+      /** Same rationale as the `attack` variant's `attackerLocation`/`defenderLocation` above (bugs4.md #2/#3) -- `leader` in particular routinely takes a later action (moving) this same turn after recruiting. */
+      readonly unitLocation: Location;
+      readonly leaderLocation: Location;
+    };
 
 export interface AiAction {
   readonly kind: AiActionKind;
@@ -136,11 +162,13 @@ function doRecruiting(board: GameBoard, side: number, rng: Rng, options: AiTurnO
 
     affordable.sort((a, b) => recruitPowerScore(b) / Math.max(1, b.cost) - recruitPowerScore(a) / Math.max(1, a.cost));
     const chosen = affordable[0]!;
-    const result = recruitUnit(board, team, chosen, vacant, leader.location, rng);
+    const leaderLocation = leader.location;
+    const result = recruitUnit(board, team, chosen, vacant, leaderLocation, rng);
+    const unitLocation = result.unit.location;
     actions.push({
       kind: 'recruit',
       message: `${team.teamName || `Side ${side}`} recruited a ${chosen.name} for ${result.cost}g.`,
-      animation: { kind: 'recruit', unit: result.unit, leader },
+      animation: { kind: 'recruit', unit: result.unit, leader, unitLocation, leaderLocation },
     });
   }
 }
@@ -357,6 +385,8 @@ export function playAiTurn(board: GameBoard, side: number, rng: Rng, options: Ai
       );
       const attackerHitpointsBefore = unit.hitpoints;
       const defenderHitpointsBefore = defender.hitpoints;
+      const attackerLocation = unit.location;
+      const defenderLocation = defender.location;
       const result = executeAttack(board, rng, unit.location, attack.weaponIndex, defender.location, defenderWeaponIndex, {
         attackerLawfulBonus: options.lawfulBonusAt?.(unit.location),
         defenderLawfulBonus: options.lawfulBonusAt?.(defender.location),
@@ -380,6 +410,8 @@ export function playAiTurn(board: GameBoard, side: number, rng: Rng, options: Ai
           defenderTypeId: defender.type.id,
           attackerHitpointsBefore,
           defenderHitpointsBefore,
+          attackerLocation,
+          defenderLocation,
         },
       });
       // Real Wesnoth checks both combatants for advancement right after

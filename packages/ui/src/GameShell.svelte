@@ -399,8 +399,16 @@
       x: info.defender.location.x,
       y: info.defender.location.y,
     });
-    const attackerHex = { x: info.attacker.location.x, y: info.attacker.location.y };
-    const defenderHex = { x: info.defender.location.x, y: info.defender.location.y };
+    // Real, reported bug (bugs4.md #2/#3): frozen at combat-resolution time
+    // (`info.attackerLocation`/`defenderLocation`), NOT re-read from the
+    // live `.location` field -- an AI-played attack's cue is only built
+    // AFTER `playAiTurn` has already resolved the WHOLE rest of that
+    // side's turn, so a live read here could show either combatant at
+    // wherever a LATER action left it instead of where this exchange
+    // actually took place. See `AiAnimationEvent`'s attack variant (engine
+    // package) for the full rationale.
+    const attackerHex = { x: info.attackerLocation.x, y: info.attackerLocation.y };
+    const defenderHex = { x: info.defenderLocation.x, y: info.defenderLocation.y };
 
     // Each blow's own `attackerContext`/`defenderContext` (the "attack"-
     // event/"defend"-event pair) can belong to EITHER real combatant --
@@ -593,38 +601,45 @@
     const unitKey = spriteKey({
       underlyingId: session.renderKeyFor(info.unit),
       typeId: info.unit.type.id,
-      x: info.unit.location.x,
-      y: info.unit.location.y,
+      x: info.unitLocation.x,
+      y: info.unitLocation.y,
     });
     const leaderKey = spriteKey({
       underlyingId: session.renderKeyFor(info.leader),
       typeId: info.leader.type.id,
-      x: info.leader.location.x,
-      y: info.leader.location.y,
+      x: info.leaderLocation.x,
+      y: info.leaderLocation.y,
     });
-    const unitHex = { x: info.unit.location.x, y: info.unit.location.y };
-    const leaderHex = { x: info.leader.location.x, y: info.leader.location.y };
+    // Real, reported bug (bugs4.md #2/#3): frozen at recruit-resolution
+    // time (`info.unitLocation`/`leaderLocation`), NOT re-read from the
+    // live `.location` field -- the leader in particular routinely takes
+    // a LATER action (moving) this same AI turn after recruiting, and an
+    // AI-played recruit's cue is only built after the WHOLE rest of that
+    // turn already resolved. See `AiAnimationEvent`'s recruit variant
+    // (engine package) for the full rationale.
+    const unitHex = { x: info.unitLocation.x, y: info.unitLocation.y };
+    const leaderHex = { x: info.leaderLocation.x, y: info.leaderLocation.y };
 
     const unitContext: AnimationContext = {
-      loc: info.unit.location,
-      secondLoc: info.leader.location,
+      loc: info.unitLocation,
+      secondLoc: info.leaderLocation,
       myUnit: info.unit,
       event: 'recruited',
       value: 0,
       value2: 0,
       hit: 'invalid',
-      terrainAtLoc: terrainAt(info.unit.location),
+      terrainAtLoc: terrainAt(info.unitLocation),
       secondUnit: info.leader,
     };
     const leaderContext: AnimationContext = {
-      loc: info.leader.location,
-      secondLoc: info.unit.location,
+      loc: info.leaderLocation,
+      secondLoc: info.unitLocation,
       myUnit: info.leader,
       event: 'recruiting',
       value: 0,
       value2: 0,
       hit: 'invalid',
-      terrainAtLoc: terrainAt(info.leader.location),
+      terrainAtLoc: terrainAt(info.leaderLocation),
       secondUnit: info.unit,
     };
 
@@ -641,7 +656,7 @@
         {
           key: leaderKey,
           anim: chooseAnimation(animationsFor(info.leader.type.id), leaderContext),
-          direction: directionBetween(info.leader.location, info.unit.location) ?? info.leader.facing,
+          direction: directionBetween(info.leaderLocation, info.unitLocation) ?? info.leader.facing,
           srcHex: leaderHex,
           dstHex: unitHex,
           holdInPlace: true,
@@ -852,19 +867,40 @@
    * identical to `LastAttackAnimation`/`LastMoveAnimation`/
    * `LastRecruitAnimation`, so the same builders apply directly.
    *
-   * Known simplification: there's no incremental `sync()` between events,
-   * so a unit that died mid-turn keeps its sprite on screen (other
-   * animations still play correctly around it, cue positions are always
-   * explicit) until the single `sync()` at the end reconciles everything
-   * -- an acceptable rough edge for a first cut given real per-action
-   * board reconciliation would need `GameSession` to expose intermediate
-   * board snapshots, not just the final one.
+   * Known simplification: there's no incremental `sync()` between events
+   * (other than the explicit `removeUnitVisual` death cleanup below, and
+   * `buildBlowAnimationCues`/`buildRecruitAnimationCues` now reading each
+   * event's own FROZEN location fields rather than live `.location` --
+   * see bugs4.md #2/#3 and `AiAnimationEvent`'s own doc comment) -- a
+   * unit's HP bar/position otherwise only reconciles with `board`'s live
+   * state at the single `sync()` after the whole turn finishes. An
+   * acceptable rough edge for a first cut given real per-action board
+   * reconciliation would need `GameSession` to expose intermediate board
+   * snapshots, not just the final one.
    */
   async function playAiAnimations(events: readonly AiAnimationEvent[]): Promise<void> {
     if (!boardView) return;
     for (const event of events) {
       if (event.kind === 'attack') {
         await boardView.playAnimationSequence(buildBlowAnimationCues(event), 1, makeBlowPreview(event));
+        // Real, reported bug (bugs4.md #3): without this, a unit that died
+        // on an early event of this same AI turn kept its stale sprite on
+        // screen through every later event's animation too (only actually
+        // disappearing at the final `sync()`), so a later event's own unit
+        // moving onto/through that hex could visually overlap with it --
+        // "units standing on the same hex". Remove it the instant its own
+        // death animation finishes, same as `previewHitpoints`/
+        // `spawnFloatingNumber`'s "poke the renderer directly" convention.
+        if (event.result.attackerDied) {
+          boardView.removeUnitVisual(
+            spriteKey({ underlyingId: session.renderKeyFor(event.attacker), typeId: event.attackerTypeId, x: event.attackerLocation.x, y: event.attackerLocation.y }),
+          );
+        }
+        if (event.result.defenderDied) {
+          boardView.removeUnitVisual(
+            spriteKey({ underlyingId: session.renderKeyFor(event.defender), typeId: event.defenderTypeId, x: event.defenderLocation.x, y: event.defenderLocation.y }),
+          );
+        }
       } else if (event.kind === 'move') {
         await boardView.playAnimationSequence(buildMoveAnimationCues(event), 2);
       } else {

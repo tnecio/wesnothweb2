@@ -449,6 +449,18 @@ export interface LastAttackAnimation {
    */
   readonly attackerHitpointsBefore: number;
   readonly defenderHitpointsBefore: number;
+  /**
+   * `attacker`/`defender`'s real location AS OF THIS EXCHANGE -- see
+   * `AiAnimationEvent`'s attack variant (`packages/engine/src/ai/
+   * simpleAi.ts`) for the full rationale (bugs4.md #2/#3): this project's
+   * human-confirmed-attack path always builds/plays its animation cue
+   * immediately (no interleaving risk), but carries the same frozen
+   * fields for consistency with the AI path, so `buildBlowAnimationCues`
+   * (GameShell.svelte) can read ONE shape regardless of which side threw
+   * the punch.
+   */
+  readonly attackerLocation: Location;
+  readonly defenderLocation: Location;
 }
 
 /** Everything a caller needs to animate the move `handleHexClick`'s move branch just resolved -- see `GameSession.lastMoveAnimation`. Same rationale as `LastAttackAnimation`: raw engine data only, no renderer dependency here. */
@@ -469,6 +481,9 @@ export interface LastMoveAnimation {
 export interface LastRecruitAnimation {
   readonly unit: Unit;
   readonly leader: Unit;
+  /** Same rationale as `LastAttackAnimation.attackerLocation`/`defenderLocation` above (bugs4.md #2/#3). */
+  readonly unitLocation: Location;
+  readonly leaderLocation: Location;
 }
 
 /**
@@ -1416,8 +1431,9 @@ export class GameSession {
       return `Not enough gold to recruit ${name} (needs ${cost}, have ${team.gold}).`;
     }
     const type = this.resolveType(typeId);
-    const result = recruitUnit(this.board, team, type, loc, leader.location, this.rng, this.raiseEvent);
-    this.lastRecruitAnimation = { unit: result.unit, leader };
+    const leaderLocation = leader.location;
+    const result = recruitUnit(this.board, team, type, loc, leaderLocation, this.rng, this.raiseEvent);
+    this.lastRecruitAnimation = { unit: result.unit, leader, unitLocation: result.unit.location, leaderLocation };
     const message = `Recruited ${name} for ${result.cost} gold.`;
     this.log.unshift(message);
     this.eventPump.raise('recruit', loc, leader.location);
@@ -1461,8 +1477,9 @@ export class GameSession {
     // `underlyingId` lookup, which is unsafe here (see `RecallOption.index`'s
     // own doc comment on why: most recall-list units share `underlyingId=0`).
     list.splice(index, 1);
-    const result = recallUnit(this.board, team, unit, loc, leader.location, undefined, this.raiseEvent);
-    this.lastRecruitAnimation = { unit: result.unit, leader };
+    const leaderLocation = leader.location;
+    const result = recallUnit(this.board, team, unit, loc, leaderLocation, undefined, this.raiseEvent);
+    this.lastRecruitAnimation = { unit: result.unit, leader, unitLocation: result.unit.location, leaderLocation };
     const message = `Recalled ${name} for ${result.cost} gold.`;
     this.log.unshift(message);
     this.eventPump.raise('recall', loc, leader.location);
@@ -2079,6 +2096,8 @@ export class GameSession {
       // `.type` -- see LastAttackAnimation.attackerTypeId's own doc comment.
       attackerTypeId: pending.attacker.type.id,
       defenderTypeId: pending.defender.type.id,
+      attackerLocation: attackerLoc,
+      defenderLocation: defenderLoc,
     };
 
     const attackerName = pending.preview.attacker.name;

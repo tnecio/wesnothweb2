@@ -153,6 +153,39 @@ describe('playAiTurn: recruiting', () => {
     expect(actions.filter((a) => a.kind === 'recruit')).toHaveLength(0);
     expect(team.gold).toBe(5);
   });
+
+  it('real, reported bug (bugs4.md #2/#3): a recruit action\'s animation freezes the leader\'s location AT RECRUIT TIME, even though the SAME leader goes on to move away later in this same turn (a recruiting leader keeps its own moves -- only the fresh recruit itself starts moveless)', () => {
+    const board = makeBoard(terrainData);
+    const moveType = flatMoveType(terrainData, 0);
+    const cheapType = makeUnitType('cheap', 10, moveType, makeWeapon(2, 1), 5);
+    const team = board.getTeam(1)!;
+    team.gold = 5; // affords exactly one recruit, so the OTHER castle tile stays vacant and doesn't block the leader's own later move
+    team.canRecruit = new Set(['cheap']);
+    const resolveType = (): UnitType => cheapType;
+
+    const leaderType = makeUnitType('leader', 30, moveType, makeWeapon(1, 1), 0);
+    const keepLoc = Location.fromWml(1, 1);
+    const leader = Unit.create(leaderType, 1, keepLoc, { canRecruit: true });
+    board.addUnit(leader);
+
+    const rng = new RngDeterministic(new MtRng(1));
+    const actions = playAiTurn(board, 1, rng, { resolveType });
+
+    // The leader really did move away from the keep this same turn (toward the reachable, unowned village).
+    expect(leader.location.equals(keepLoc)).toBe(false);
+
+    const recruitAction = actions.find((a) => a.kind === 'recruit');
+    expect(recruitAction).toBeDefined();
+    const anim = recruitAction!.animation;
+    expect(anim?.kind).toBe('recruit');
+    if (anim?.kind === 'recruit') {
+      // The bug this regresses: reading `leader.location` LIVE here (instead of the frozen
+      // `leaderLocation` this test asserts on) would wrongly report the leader's POST-move
+      // location instead of where it actually stood when it recruited.
+      expect(anim.leaderLocation.equals(keepLoc)).toBe(true);
+      expect(anim.leaderLocation.equals(leader.location)).toBe(false);
+    }
+  });
 });
 
 describe('playAiTurn: combat decisions', () => {

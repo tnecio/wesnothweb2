@@ -361,6 +361,11 @@
   export function spawnFloatingNumber(key: string, amount: number, kind: 'damage' | 'heal'): void {
     board?.spawnFloatingNumber(key, amount, kind);
   }
+
+  /** Real, reported bug (bugs4.md #3): a unit that died mid-AI-turn kept a stale sprite on screen until the turn's deferred sync(). See `SnapshotBoard.removeUnitVisual`'s own doc comment. */
+  export function removeUnitVisual(key: string): void {
+    board?.removeUnitVisual(key);
+  }
 </script>
 
 <div class="board-view">

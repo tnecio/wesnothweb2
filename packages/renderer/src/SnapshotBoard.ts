@@ -1409,6 +1409,33 @@ export class SnapshotBoard {
   }
 
   /**
+   * Immediately destroys and removes `key`'s unit visual, if it's
+   * currently on screen -- the same "poke the renderer directly, don't
+   * wait for the next full `updateUnits()`" convention as
+   * `previewHitpoints`/`spawnFloatingNumber` above. Real, reported bug
+   * (bugs4.md #3): during an AI turn's animation playback (`GameShell.
+   * playAiAnimations`), every action's board-state mutation already
+   * happened before ANY of that turn's animations start playing (see
+   * `AiAction.animation`'s own doc comment) -- so a unit that died on an
+   * EARLY event kept its stale sprite on screen through every LATER
+   * event's animation too, only actually disappearing at the single
+   * `sync()` call after the whole turn finishes. If a later event's own
+   * unit happened to move onto or through that same hex, the two sprites
+   * visually overlapped, reading as "units standing on the same hex".
+   * Calling this the instant a death animation finishes playing removes
+   * the stale sprite right away instead of leaving it for the deferred
+   * sync. No-ops if `key` isn't currently on screen (already gone, or
+   * never existed).
+   */
+  removeUnitVisual(key: string): void {
+    const visual = this.unitVisuals.get(key);
+    if (!visual) return;
+    this.unitLayer.removeChild(visual.container);
+    visual.container.destroy({ children: true });
+    this.unitVisuals.delete(key);
+  }
+
+  /**
    * Draws (replacing any previous) a small owning-side flag marker on
    * every currently-owned village -- live game state (changes as villages
    * get captured), so this is a separate, re-callable update like
