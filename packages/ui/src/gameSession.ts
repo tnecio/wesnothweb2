@@ -1486,7 +1486,15 @@ export class GameSession {
   handleHexClick(x: number, y: number): string | null {
     if (this.scenarioResult) return null;
     const loc = new Location(x, y);
-    const clickedUnit = this.board.unitAt(loc);
+    // Real, reported bug: this used to read `board.unitAt(loc)` directly,
+    // which ignores fog/shroud entirely -- a player could click any hex
+    // (e.g. one under shroud they've never seen) and get full info on
+    // whatever unit secretly stood there. `getVisibleUnit` mirrors the same
+    // fog-aware lookup `renderUnits`/AI targeting already use elsewhere in
+    // this file; it always returns the player's own units regardless of
+    // fog (see `isUnitVisibleToTeam`'s `team.side === unit.side` case).
+    const playerTeam = this.board.getTeam(this.playerSide);
+    const clickedUnit = getVisibleUnit(this.board, loc, playerTeam, false);
 
     if (this.pendingAttack) {
       // Any board click while an attack is pending confirmation cancels it

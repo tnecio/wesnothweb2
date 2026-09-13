@@ -1138,6 +1138,19 @@ describe('GameSession unit inspection (real, reported bug: no way to see informa
     session.handleHexClick(emptyLoc.x, emptyLoc.y);
     expect(session.inspectedUnit).toBeNull();
   });
+
+  it('real, reported bug: clicking a hex under fog/shroud does NOT reveal the unit secretly standing there', () => {
+    const { session, malKevek } = withAdjacentLeaders();
+    const team = session.board.getTeam(session.playerSide)!;
+    team.shroud.enabled = true; // never cleared -- every hex, including malKevek's, starts fully shrouded.
+    expect(session.board.isShrouded(session.playerSide, malKevek.location)).toBe(true);
+
+    const result = session.handleHexClick(malKevek.location.x, malKevek.location.y);
+
+    expect(session.inspectedUnit).toBeNull();
+    expect(session.selectedUnit).toBeNull();
+    expect(result).toBeNull();
+  });
 });
 
 describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, reported bug: melee vs. ranged not shown)', () => {
