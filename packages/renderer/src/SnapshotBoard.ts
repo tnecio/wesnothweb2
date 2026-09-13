@@ -264,6 +264,8 @@ interface UnitVisual {
   orbIcon: PIXI.Sprite | null;
   /** The `path~mods` ref `orbIcon`'s texture was last resolved from, so `updateIcons` only re-resolves when `MovesOrbStatus` (or its visibility) actually changed. */
   lastOrbRef: string | null;
+  /** `SnapshotUnit.flagRgb` this visual was last built from -- `playAnimations` needs it (together with `lastSide`) to append the same `~RC(flagRgb>sideColorId)` modifier to ANIMATION frame textures that `buildUnitVisual` already appends to the idle sprite (see that method's own doc comment). */
+  flagRgb: string | undefined;
 }
 
 /** 0-based engine (x,y) -> 1-based renderer HexCoord -- see module doc comment. */
@@ -784,6 +786,27 @@ export class SnapshotBoard {
   }
 
   /**
+   * Appends the real `~RC(flagRgb>sideColorId)` team-recolor modifier
+   * (`unit::TC_image_mods`) to `imagePath` for `side`, or returns it
+   * unmodified if no color data is loaded yet (`ImageCache.setColorData`
+   * hasn't run) or the side has no resolvable color id. Shared by
+   * `buildUnitVisual` (the static idle sprite) and `playAnimations`
+   * (movement/attack/death/recruit animation frames) so both resolve the
+   * exact same way -- real, reported bug: animation frames were resolved
+   * straight from `sample.imagePath` with no recolor at all, so a unit
+   * rendered in its raw reference palette (almost always magenta) for the
+   * ENTIRE duration of any animation (most visibly during a death
+   * animation, but really any of them), even though its static idle
+   * sprite was already correctly recolored.
+   */
+  private teamColoredRef(imagePath: string, side: number, flagRgb: string | undefined): string {
+    const colorData = ImageCache.getColorData();
+    const rawColor = this.teamColor.get(side);
+    const colorId = colorData && rawColor !== undefined ? resolveSideColorId(rawColor, side, colorData.defaultColors) : '';
+    return colorId ? joinRef(imagePath, `RC(${flagRgb ?? 'magenta'}>${colorId})`) : imagePath;
+  }
+
+  /**
    * Builds a fresh `sprite`+`marker` pair for `unit` (a real sprite plus a
    * small side-colour marker dot beneath it, matching upstream's own
    * "team recolor via magenta palette swap" placeholder -- see the marker
@@ -805,10 +828,7 @@ export class SnapshotBoard {
       // this modifier. `getColorData()` returns null (skip the modifier,
       // same as upstream with no color data loaded) until `apps/web` calls
       // `setColorData` once at startup (see `build-team-colors.mjs`).
-      const colorData = ImageCache.getColorData();
-      const rawColor = this.teamColor.get(unit.side);
-      const colorId = colorData && rawColor !== undefined ? resolveSideColorId(rawColor, unit.side, colorData.defaultColors) : '';
-      const ref = colorId ? joinRef(unit.image, `RC(${unit.flagRgb ?? 'magenta'}>${colorId})`) : unit.image;
+      const ref = this.teamColoredRef(unit.image, unit.side, unit.flagRgb);
       const texture = await ImageCache.resolve(ref);
       if (texture) {
         sprite = new PIXI.Sprite(texture);
@@ -845,6 +865,7 @@ export class SnapshotBoard {
       loyalIcon: null,
       orbIcon: null,
       lastOrbRef: null,
+      flagRgb: unit.flagRgb,
     };
   }
 
@@ -1139,7 +1160,7 @@ export class SnapshotBoard {
 
     // Pre-resolve every real texture this playback will need up front, so
     // no frame swap stalls on a still-loading image mid-animation.
-    for (const { cue } of active) {
+    for (const { cue, visual } of active) {
       if (!cue.anim) continue;
       const paths = new Set<string>();
       for (const frame of cue.anim.frames) {
@@ -1154,7 +1175,7 @@ export class SnapshotBoard {
             : frame.image;
         for (const step of seq) paths.add(step.value);
       }
-      await Promise.all([...paths].map((p) => ImageCache.resolve(p)));
+      await Promise.all([...paths].map((p) => ImageCache.resolve(this.teamColoredRef(p, visual.lastSide, visual.flagRgb))));
     }
 
     const totalMs = Math.max(...active.map((a) => a.duration));
@@ -1174,7 +1195,7 @@ export class SnapshotBoard {
             const animT = t * speedMultiplier;
             const sample = sampleAnimation(cue.anim, cue.direction, animT, src, dst);
             if (sample.imagePath) {
-              const texture = await ImageCache.resolve(sample.imagePath);
+              const texture = await ImageCache.resolve(this.teamColoredRef(sample.imagePath, visual.lastSide, visual.flagRgb));
               if (texture && visual.sprite && visual.sprite.texture !== texture) visual.sprite.texture = texture;
             }
             if (visual.sprite)
