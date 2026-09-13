@@ -2261,3 +2261,79 @@ advancing -- "First Dawn" -> "The Short Dark" by turn 6) with zero
 console errors and no false victory/defeat. Engine/renderer/ui suites
 all green (367/184/57), typecheck and `svelte-check` (0 errors) clean
 throughout.
+
+## 2026-09-13: Phase 12 (Time of Day & Schedules) delivered
+
+Per the reordered plan, moved straight from Phase 11 into Phase 12. Per
+the user's own guidance ("UtBS has a custom day-night cycle, so test
+defaults on a simple/synthetic campaign and use UtBS for the special ToD
+WML tags"), verified the default six-phase schedule against real Dead
+Water and the special tags against real Under the Burning Suns content.
+
+**Engine**: `Schedule` (`packages/engine/src/model/Schedule.ts`) is now
+genuinely stateful, mirroring `tod_manager` itself: the global schedule
+and every `[time_area]` are each an "anchored sequence" (a turn number +
+the index active on it), so turn advancement needs no per-turn mutation.
+`random_start_time=` is resolved once via the session's RNG, matching
+`tod_manager::resolve_random`'s exact draw sequence (including its extra,
+otherwise-unused second draw for the list form). New `events/todWml.ts`
+implements `[time_area]`/`[remove_time_area]` (reusing Phase 11's
+`findLocations`), `[replace_schedule]`, and `[store_time_of_day]`. New
+`actions/illumination.ts` ports `get_illuminated_time_of_day`'s
+`[illuminates]` effect, including the net-darker/net-brighter composition
+for overlapping sources.
+
+**Real bug found and fixed**: `combat_modifier` computes the attacker's
+and defender's ToD bonus SEPARATELY, from each unit's own hex (a lit
+radius or a `[time_area]` boundary can put them in different ToD) --
+this project applied one shared global value to both. `UnitStatsOptions.
+lawfulBonus` is now `attackerLawfulBonus`/`defenderLawfulBonus`, threaded
+through `combat.ts`/`simpleAi.ts` (now via a `lawfulBonusAt(loc)`
+callback so the AI scores per candidate hex) and `GameSession`'s three
+real call sites via a new `timeOfDayAt(loc)` method. `GameBoard.
+lawfulBonusAt` (the Phase 11 `[filter_location] time_of_day=` hook) is
+now genuinely location-aware too, not just shaped like it.
+
+**Rendering, and a real bug found by testing live**: `SnapshotBoard.
+updateTimeOfDayTint` reconstructs `image::set_color_adjustment` (the real
+per-channel additive/clamp tint) as two full-board rects -- `'add'`-
+blended for positive channels, `'subtract'`-blended for negative -- above
+the fog/shroud layer. Chosen over the already-built-but-never-wired
+per-texture `~TOD()` pseudo-op (`animation/timeOfDay.ts`, apparently
+built ahead of this phase) to avoid re-resolving and caching a second
+copy of the whole terrain atlas every time the schedule advances. First
+attempt rendered the ENTIRE board solid black the instant any tint (even
+a tiny one) was applied, with no console error. Bisected by temporarily
+exposing the live `SnapshotBoard` on `window` and calling
+`updateTimeOfDayTint` with isolated positive-only and negative-only
+values: `'add'` worked correctly (a real reddish tint over real terrain),
+`'subtract'` was black regardless of magnitude -- pointing at the blend
+mode itself, not the (already unit-tested) colour math. Root cause: in
+PixiJS v8, `'subtract'` is an "advanced" (shader-based) blend mode, not a
+native GL blend equation like `'add'`, and needs (a) its extension
+registered via `PIXI.extensions.add(PIXI.SubtractBlend)` and (b) the
+renderer created with `useBackBuffer: true` -- without both, the blend
+filter has no valid backbuffer to read the composited scene from and
+silently renders solid black. Both fixed; verified live afterwards.
+
+**Save/load**: `Schedule.exportState`/`importState` round-trip the
+mutated global schedule and every active `[time_area]` through
+`SaveGameData`, optional on read so older saves still load unaffected.
+
+**Verification**: live against real Dead Water (default `{DEFAULT_
+SCHEDULE}`) -- turn 1 (Dawn) vs. turn 5 (First Watch) show a visibly
+darker/cooler board, matching the schedule's own red/green/blue shift,
+with correct gameplay (real AI-controlled undead advancing) throughout
+and zero console errors. Live against Under the Burning Suns scenario 3's
+real `[time_area] id=campfires` (three campfire clusters, radius=2) via a
+forced-victory chain from scenario 1 -- this surfaced a real chaining-
+methodology gap (forcing victory on scenario 2 before its own recall/
+carryover had placed any units reads as an instant, wrong defeat; not a
+Phase 12 bug) which was worked around by testing `[time_area]` as a real-
+content Vitest integration test instead: loading scenario 3's real,
+already-built snapshot directly, running its actual `prestart` event, and
+confirming a campfire hex's ToD differs from the global one while a hex
+outside every campfire's radius does not. `{UNDERGROUND}` needed no new
+code (a single `[time]` entry, handled by existing generic parsing).
+Engine/renderer/ui suites all green throughout (400/190/62), typecheck
+and `svelte-check` (0 errors) clean.
