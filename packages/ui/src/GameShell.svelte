@@ -420,6 +420,7 @@
         value2: 0,
         hit: 'kill',
         terrainAtLoc: terrainLookup(session.board)(loser.location),
+        secondUnit: winner,
       };
       deathBeat.push({
         key: loserRes.key,
@@ -510,6 +511,7 @@
       value2: 0,
       hit: 'invalid',
       terrainAtLoc: terrainAt(info.unit.location),
+      secondUnit: info.leader,
     };
     const leaderContext: AnimationContext = {
       loc: info.leader.location,
@@ -520,6 +522,7 @@
       value2: 0,
       hit: 'invalid',
       terrainAtLoc: terrainAt(info.leader.location),
+      secondUnit: info.unit,
     };
 
     return [

@@ -276,3 +276,53 @@ describe('direction-filtered [attack_anim] selection (real Merman Fighter conten
     expect(top[0]!.frames.map((f) => f.durationMs)).toEqual([50, 250, 50]);
   });
 });
+
+describe('[filter_second] on a real [recruiting_anim] (real Dark Sorcerer content -- real, reported bug: the custom recruit animation never played)', () => {
+  // Dark Sorcerer's own [recruiting_anim] carries a [filter_second]
+  // race=undead requirement -- real, reported bug: the caller building this
+  // event's AnimationContext (GameShell.svelte's buildRecruitAnimationCues)
+  // never set `secondUnit` at all, only `secondLoc`. Since matchAnimation
+  // immediately MATCH_FAILs a block with secondaryUnitFilters whenever
+  // ctx.secondUnit is undefined (regardless of what secondLoc says), this
+  // custom animation could never win -- the generic default always played
+  // instead.
+  const cfg = loadUnitTypeCfg('core/units/undead/Necro_Dark_Sorcerer.cfg', defines);
+  const animations = parseUnitAnimations(cfg);
+  const unitType = buildUnitType(cfg);
+  const skeletonType = buildUnitType(loadUnitTypeCfg('core/units/undead/Skeleton.cfg', defines));
+
+  function makeLeader(): Unit {
+    return Unit.create(unitType, 1, new Location(0, 0), { canRecruit: true });
+  }
+
+  it('has a real [recruiting_anim] block distinct from the synthesized default', () => {
+    const recruiting = animations.filter((a) => a.events.includes('recruiting'));
+    expect(recruiting.length).toBeGreaterThan(0);
+    expect(recruiting.some((a) => a.secondaryUnitFilters.length > 0)).toBe(true);
+  });
+
+  it('with secondUnit populated, "recruiting" selects the real block over the generic default', () => {
+    const leader = makeLeader();
+    const recruit = Unit.create(skeletonType, 1, new Location(1, 0));
+    const ctx: AnimationContext = {
+      loc: leader.location, secondLoc: recruit.location, myUnit: leader, event: 'recruiting',
+      value: 0, value2: 0, hit: 'invalid', terrainAtLoc: NONE_TERRAIN, secondUnit: recruit,
+    };
+    const top = selectTopAnimations(animations, ctx);
+    expect(top.length).toBeGreaterThan(0);
+    expect(top.every((a) => a.baseScore > -9)).toBe(true); // strictly beats the DEFAULT_ANIM fallback
+    expect(top.some((a) => a.secondaryUnitFilters.length > 0)).toBe(true);
+  });
+
+  it('real, reported bug reproduced directly: WITHOUT secondUnit, the real block MATCH_FAILs and only the generic default is left', () => {
+    const leader = makeLeader();
+    const ctx: AnimationContext = {
+      loc: leader.location, secondLoc: new Location(1, 0), myUnit: leader, event: 'recruiting',
+      value: 0, value2: 0, hit: 'invalid', terrainAtLoc: NONE_TERRAIN, secondUnit: undefined,
+    };
+    const top = selectTopAnimations(animations, ctx);
+    for (const anim of top) {
+      expect(anim.secondaryUnitFilters.length).toBe(0);
+    }
+  });
+});
