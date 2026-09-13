@@ -316,10 +316,10 @@ export class TerrainType {
       `${base.id}^${overlay.id}`,
       overlay.name || base.name,
       code,
-      mergeAliasList(base.mvtType, overlay.mvtType),
-      mergeAliasList(base.defType, overlay.defType),
+      mergeAliasList(overlay.mvtType, base.mvtType),
+      mergeAliasList(overlay.defType, base.defType),
       dedupeSorted(
-        [...mergeAliasList(base.mvtType, overlay.mvtType), ...mergeAliasList(base.defType, overlay.defType)].filter(
+        [...mergeAliasList(overlay.mvtType, base.mvtType), ...mergeAliasList(overlay.defType, base.defType)].filter(
           (t) => !t.equals(PLUS) && !t.equals(MINUS),
         ),
       ),
@@ -351,11 +351,50 @@ function dedupeSorted(list: TerrainCode[]): TerrainCode[] {
   return [...seen.values()].sort((a, b) => (a.key() < b.key() ? -1 : a.key() > b.key() ? 1 : 0));
 }
 
-/** Splices `overlayList` in place of a `BASE_MARKER` sentinel in `baseList`, else appends it. */
-function mergeAliasList(baseList: TerrainCode[], overlayList: TerrainCode[]): TerrainCode[] {
-  const idx = baseList.findIndex((t) => t.equals(BASE_MARKER));
-  if (idx === -1) return [...baseList, ...overlayList];
-  return [...baseList.slice(0, idx), ...overlayList, ...baseList.slice(idx + 1)];
+/**
+ * Mirrors upstream's `merge_alias_lists` (src/terrain/terrain.cpp) exactly:
+ * splices `baseList` in place of the first `BASE_MARKER` (`_bas`) sentinel
+ * found in `overlayList` -- if the overlay's own alias list never mentions
+ * `_bas`, it fully overrides and `baseList` is ignored entirely (returned
+ * verbatim). Also inserts a `+`/`-` marker where the splice happens, mirroring
+ * upstream's "revert" bookkeeping, so the spliced-in base terms compare the
+ * same way (prefer-worse vs. prefer-better) the rest of the overlay's list
+ * would at that position.
+ *
+ * Real, reported bug: the previous version of this function searched for
+ * `BASE_MARKER` in `baseList` (which essentially never contains it -- `_bas`
+ * is an OVERLAY-side placeholder referencing the base, not something a base
+ * terrain's own alias list would contain) and spliced `overlayList` there
+ * instead, i.e. the arguments were used backwards relative to upstream. For
+ * any real overlay declared as `aliasof=_bas,Ft` (the standard "forest on
+ * top of some base" idiom used by pine/deciduous/snow forest, and many
+ * other overlay terrains), this left the `_bas` sentinel itself unresolved
+ * as a literal (bogus) terrain code in the merged list, which resolves to
+ * `UNREACHABLE` and -- because of the `-`/`+` "prefer worse" comparison
+ * semantics `resolveValue` implements -- poisoned the WHOLE combined
+ * terrain's movement cost to `UNREACHABLE`, regardless of the real forest
+ * cost. This made every forest-on-grassland (etc.) hex on any real map
+ * impassable to every unit. See `TerrainType.combine`'s call sites and
+ * `packages/engine/test/model/Terrain.test.ts`.
+ */
+function mergeAliasList(overlayList: readonly TerrainCode[], baseList: readonly TerrainCode[]): TerrainCode[] {
+  let revert = overlayList.length > 0 && overlayList[0]!.equals(MINUS);
+  for (let i = 0; i < overlayList.length; i++) {
+    const t = overlayList[i]!;
+    if (t.equals(PLUS)) {
+      revert = false;
+      continue;
+    }
+    if (t.equals(MINUS)) {
+      revert = true;
+      continue;
+    }
+    if (t.equals(BASE_MARKER)) {
+      const marker = revert ? MINUS : PLUS;
+      return [...overlayList.slice(0, i), ...baseList, marker, ...overlayList.slice(i + 1)];
+    }
+  }
+  return [...overlayList];
 }
 
 /**

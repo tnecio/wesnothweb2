@@ -152,6 +152,16 @@ function doRecruiting(board: GameBoard, side: number, rng: Rng, options: AiTurnO
 function evaluateAttack(board: GameBoard, unit: Unit, fromLoc: Location, target: Unit, weaponIndex: number, options: AiTurnOptions): number {
   const weapon = unit.attacks[weaponIndex];
   if (!weapon) return -Infinity;
+  // A real move can never end (or hypothetically stand) on a hex some other
+  // unit already occupies -- `findRoutes` only blocks *enemy*-occupied hexes
+  // (allies are legal to path *through* but not to stop on), so an
+  // ally-occupied hex can still show up in `destinations`. Without this
+  // guard, the temporary relocation below would silently overwrite (and
+  // permanently lose) whatever unit already stood at `fromLoc`. Real,
+  // reported bug: AI units vanishing when a colleague was evaluated as if
+  // standing on their hex.
+  const occupant = board.unitAt(fromLoc);
+  if (occupant && occupant !== unit) return -Infinity;
   const distance = 1;
   const attackerTerrainDefense = unit.defenseModifier(board.map.getTerrain(fromLoc));
   const defenderTerrainDefense = target.defenseModifier(board.map.getTerrain(target.location));
@@ -205,6 +215,11 @@ function bestAttack(board: GameBoard, unit: Unit, destinations: readonly PathSte
   if (unit.attacksLeft <= 0) return undefined;
   let best: AttackCandidate | undefined;
   for (const step of destinations) {
+    // Skip hexes some other unit already occupies -- see evaluateAttack's
+    // doc comment for why this matters (`destinations` can legally include
+    // ally-occupied pass-through hexes the unit could never actually stop on).
+    const occupant = board.unitAt(step.curr);
+    if (occupant && occupant !== unit) continue;
     for (const adj of getAdjacentTiles(step.curr)) {
       const target = getVisibleUnit(board, adj, board.getTeam(unit.side), false);
       if (!target || target.side === unit.side) continue;

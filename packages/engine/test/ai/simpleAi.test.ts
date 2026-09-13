@@ -194,6 +194,38 @@ describe('playAiTurn: combat decisions', () => {
     expect(target.hitpoints).toBe(40);
     expect(attacker.attacksLeft).toBe(1); // never attacked
   });
+
+  it('real, reported bug: an ally standing on the only reachable attack position must not vanish while the AI evaluates attacking from its hex', () => {
+    // `findRoutes` only blocks *enemy*-occupied hexes (allies are legal to
+    // path *through* but not to stop on), so an ally-occupied hex still
+    // shows up as a "destination" the AI's attack-scoring loop considers.
+    // `evaluateAttack` used to temporarily relocate the unit under
+    // evaluation onto that hex via `board.moveUnit` with no occupancy
+    // check, silently overwriting (and permanently losing) whatever unit
+    // already stood there. Colinear mover -> ally -> target chain: the
+    // ONLY hex adjacent to `target` that `mover` can reach in one move is
+    // `ally`'s own hex.
+    const board = makeBoard(terrainData);
+    const moveType = flatMoveType(terrainData, 100);
+    const type = makeUnitType('soldier', 20, moveType, makeWeapon(5, 2));
+
+    const mover = Unit.create(type, 1, Location.fromWml(3, 3), { canRecruit: true });
+    mover.movesLeft = 1;
+    mover.maxMoves = 1;
+    const ally = Unit.create(type, 1, Location.fromWml(4, 3));
+    ally.movesLeft = 0;
+    ally.attacksLeft = 0;
+    const target = Unit.create(type, 2, Location.fromWml(5, 3));
+    board.addUnit(mover);
+    board.addUnit(ally);
+    board.addUnit(target);
+
+    const rng = new RngDeterministic(new MtRng(3));
+    playAiTurn(board, 1, rng, { resolveType: () => type });
+
+    expect(board.unitAt(Location.fromWml(4, 3))).toBe(ally);
+    expect(board.allUnits()).toContain(ally);
+  });
 });
 
 describe('playAiTurn: real, reported bug -- AI actions carried no animation data at all', () => {
