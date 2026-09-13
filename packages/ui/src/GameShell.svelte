@@ -738,6 +738,7 @@
         {recruitTiles}
         {villageOwners}
         {hexVisibility}
+        {timeOfDay}
         onHexClick={handleHexClick}
         hoverDefensePercent={(x, y) => session.defensePercentAt(x, y)}
       />

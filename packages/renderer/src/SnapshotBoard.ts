@@ -67,8 +67,14 @@
  */
 
 import * as PIXI from 'pixi.js';
+// `'subtract'` (used by `updateTimeOfDayTint`'s negative-channel layer) is one of
+// PixiJS v8's "advanced" blend modes: a shader-based filter, not a native GL
+// blend equation like `'add'`/`'normal'`, so it renders nothing (silently, no
+// error) until its extension is registered. `'add'` needs no such registration.
+PIXI.extensions.add(PIXI.SubtractBlend);
 import { Direction, Location, getAdjacentTiles } from '@wesnothweb2/engine/src/model/Location.js';
 import { hexOverlayImages, defaultAssetExists, type FogShroudHex } from './fogShroud.js';
+import { splitTodTintColors } from './todTint.js';
 import { parseTerrainCode, NONE_TERRAIN, type TerrainCode } from '@wesnothweb2/engine/src/model/Terrain.js';
 import {
   hexCorners,
@@ -404,6 +410,38 @@ export class SnapshotBoard {
    */
   private readonly fogShroudLayer = new PIXI.Container();
   /**
+   * Mirrors upstream's `image::set_color_adjustment` (applied to every
+   * `image::TOD_COLORED` blit -- terrain, units, AND the fog/shroud
+   * overlay above, matching `drawing_layer::fog_shroud`'s own real ToD
+   * tinting): a per-channel additive shift, clamped to [0,255], covering
+   * the whole board.
+   *
+   * This project already has a faithful PER-TEXTURE port of that same
+   * formula (`animation/timeOfDay.ts`'s `applyTodTint`, wired into
+   * `ImageCache` as the `~TOD(r,g,b)` pseudo-op via `todRef` -- built
+   * ahead of this phase but never called). That approach bakes a tinted
+   * copy of every distinct terrain/unit texture the ToD touches, cached
+   * per (image, ToD) pair; with thousands of terrain images in play (see
+   * `renderTerrain`'s own preload cost), re-tinting on every ToD change
+   * would mean re-resolving and caching a second full copy of the
+   * terrain atlas per schedule entry. Implemented here instead as two
+   * full-board rects -- one filled with the positive part of
+   * (red,green,blue) drawn with `'add'` blend mode, one with the negative
+   * part's absolute value drawn with `'subtract'` -- which reconstructs
+   * the exact same per-channel additive/clamp result as a single
+   * composite step over whatever's already drawn, with no extra texture
+   * memory and no per-texture cache churn. `todRef`/`applyTodTint` remain
+   * available (and tested) for a future need this can't cover -- e.g. a
+   * `[time_area]`'s own distinct regional tint, which a single board-wide
+   * layer can't express without render-target compositing.
+   *
+   * Sits above `fogShroudLayer` (so fog/shroud get the tint too) and
+   * below `selectionLayer` (pure UI chrome, untinted).
+   */
+  private readonly todTintLayer = new PIXI.Container();
+  private readonly todTintPositive = new PIXI.Graphics();
+  private readonly todTintNegative = new PIXI.Graphics();
+  /**
    * Per-hex terrain containers built once by `renderTerrain`, keyed by
    * `"x,y"` (logical coordinates) -- lets `updateFogShroud` hide a
    * shrouded hex's terrain entirely (mirrors upstream's `draw_hex`: "if
@@ -455,8 +493,55 @@ export class SnapshotBoard {
       this.unitLayer,
       this.terrainForegroundLayer,
       this.fogShroudLayer,
+      this.todTintLayer,
       this.selectionLayer,
     );
+    this.todTintPositive.blendMode = 'add';
+    // 'subtract' is one of PixiJS v8's "advanced" (shader-based) blend
+    // modes, not a native GL blend equation like 'add' -- it needs its
+    // extension registered (see the `PIXI.extensions.add` call at this
+    // module's top) AND the application's renderer created with
+    // `useBackBuffer: true` (see `GameBoardView.svelte`'s `app.init`).
+    // Real, found-by-testing bug: without `useBackBuffer`, the blend
+    // filter has no valid backbuffer to read the composited scene from
+    // and silently renders solid black wherever it's applied -- not an
+    // error, not a warning in the common case, just a black board.
+    this.todTintNegative.blendMode = 'subtract';
+    this.todTintLayer.addChild(this.todTintPositive, this.todTintNegative);
+    this.todTintLayer.eventMode = 'none';
+  }
+
+  /**
+   * Draws (replacing any previous) the board-wide ToD colour tint from a
+   * `[time]` entry's real `red=`/`green=`/`blue=` -- see `todTintLayer`'s
+   * own doc comment. Pass `{ red: 0, green: 0, blue: 0 }` (neutral) to
+   * clear it. Per-`[time_area]` tinting (a region showing a DIFFERENT
+   * tint than the rest of the board) is a deliberate, documented gap --
+   * see this method's own doc comment below.
+   *
+   * NOT implemented: a hex-by-hex `[time_area]` tint. A single full-board
+   * filter/overlay can't show two different tints in two regions at once
+   * without render-target compositing (drawing the area's own hexes to a
+   * separate texture and tinting that in isolation) -- real, but bounded,
+   * additional work; the combat/event-filter consequences of
+   * `[time_area]` (the part that actually matters for gameplay) are
+   * already fully correct via `GameSession.timeOfDayAt`, independent of
+   * this visual simplification.
+   */
+  updateTimeOfDayTint(tod: { red: number; green: number; blue: number }): void {
+    const { width, height } = this.snapshot.map;
+    const x = -HEX_COL_WIDTH;
+    const y = -HEX_ROW_HEIGHT;
+    const w = (width + 2) * HEX_COL_WIDTH;
+    const h = (height + 2) * HEX_ROW_HEIGHT;
+
+    const { positive, negative } = splitTodTintColors(tod);
+
+    this.todTintPositive.clear();
+    if (positive !== 0) this.todTintPositive.rect(x, y, w, h).fill({ color: positive });
+
+    this.todTintNegative.clear();
+    if (negative !== 0) this.todTintNegative.rect(x, y, w, h).fill({ color: negative });
   }
 
   /** Queues a `renderUnits()` run behind any already in flight -- see `renderQueue`'s own doc comment. */

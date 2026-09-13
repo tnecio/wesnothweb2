@@ -878,46 +878,72 @@ testbed — see its own campaign entry, scenarios 1–4 built).
 
 ## Phase 12 — Time of Day & Schedules
 
-**Status: partially started (2026-09-11: schedule model + status-bar
-indicator built)** — `combatStats.ts`'s `combatModifier()` implements the
-real alignment × `lawful_bonus` damage-multiplier formula (lawful/
-chaotic/liminal/neutral, fearless negation). `packages/engine/src/model/
-Schedule.ts` ports `tod_manager`: parses a scenario's `[time]` entries
-(`lawful_bonus=`, `current_time=`), advances once per game turn, and
-`DEFAULT_MAX_LIMINAL_BONUS = 25` matches
-`tod_manager::get_max_liminal_bonus()`'s simplified floor. Wired end to
-end: `GameSession.currentTimeOfDay` feeds combat's `lawfulBonus`/
-`maxLiminalBonus` options and `TurnBanner.svelte` shows a ToD icon +
-name. Still missing: time areas, illumination, `random_start_time=`,
-`[replace_schedule]`/`[store_time_of_day]`, ToD colour tinting on the
-board, and a schedule preview.
+**Status: delivered (2026-09-13).** Every bullet below is real, tested,
+and verified live against Dead Water (default schedule) and Under the
+Burning Suns (its own two-suns schedule, `[time_area]`).
 
-- `[time]` definition (id/name/image/`lawful_bonus=`/colour shift) and the
-  default six-phase day cycle used when a scenario specifies none; UtBS's
-  15-step two-suns schedule as the non-default fixture.
-- Real per-turn schedule progression (wraps around), `random_start_time=`,
-  and scenario-level `[time]` overrides of the default schedule.
-- `[time_area]`/`[remove_time_area]`: named regions with their own
-  schedule, and combat/rendering inside them using the area's ToD instead
-  of the global one.
-- `[illuminates]` ability: shifts the effective `lawful_bonus` on affected
-  hexes with min/max clamping (blocked on Phase 2's generic ability
-  pipeline gap — see there).
-- `[replace_schedule]`, `[store_time_of_day]` (current or future, global or
-  at a hex).
-- Rendering: ToD colour tinting on terrain/units/overlays (Phase 9's
-  remaining item), illumination rendering brighter than neighbours, a
-  status-bar ToD indicator with tooltip explaining the current bonus.
-  (The schedule-preview dialog is Phase 14 status-bar work.)
-- ToD-conditional events, underground/indoor fixed-darkness schedules
-  (`{UNDERGROUND}`/`{INDOORS}`). ToD-driven music changes are Phase 19's.
-- ToD state serialisation (current phase + time areas round-trip through
-  save/load).
-- **Milestone**: UtBS scenario 1 plays several turns across the two-suns
-  schedule with combat bonuses matching a hand-computed table, UtBS
-  scenario 3's `[time_area]` applies its own ToD inside the area, the board
-  tint changes visibly with ToD, and the status bar shows the right ToD
-  image/name throughout.
+- `Schedule` (`packages/engine/src/model/Schedule.ts`) is now genuinely
+  stateful, mirroring `tod_manager` itself rather than a one-shot parse:
+  the global schedule and every `[time_area]` are each an "anchored
+  sequence" (a turn number + the index active on it), so turn advancement
+  needs no per-turn mutation -- creating an area or replacing the
+  schedule just re-anchors at the turn it happens on.
+  `random_start_time=` (boolean or a comma-separated list of 1-based
+  indices) is resolved once at construction via the session's own RNG,
+  matching `tod_manager::resolve_random`'s exact draw sequence.
+- `[time_area]`/`[remove_time_area]` (`events/todWml.ts`): a named region
+  following its own schedule, reusing Phase 11's `findLocations` for the
+  standard location filter. Overlapping areas resolve most-recently-added
+  wins, matching upstream's reverse iteration. `[replace_schedule]`
+  replaces the global schedule outright; `[store_time_of_day]` writes the
+  (non-illuminated) ToD fields into a WML array variable.
+- `[illuminates]` (`actions/illumination.ts`): every real mainline
+  definition (`value=25, max_value=25`, default radius=1) shifts the
+  lawful bonus at a hex, including the net-darker/net-brighter
+  composition upstream uses when multiple sources overlap.
+  `effectiveTimeOfDayAt` combines this with `Schedule.timeOfDayAt` into
+  the one function combat/rendering/event-filter code calls.
+- Location-aware combat: `combat_modifier` computes the attacker's and
+  defender's ToD bonus SEPARATELY from each unit's own hex (they can
+  differ: a lit radius, a `[time_area]` boundary) -- this project used to
+  apply one shared global value to both. Fixed throughout combat.ts/
+  simpleAi.ts/GameSession's three real call sites; `GameBoard.
+  lawfulBonusAt` (the `[filter_location] time_of_day=` hook) is now
+  genuinely location-aware too.
+- Rendering: `SnapshotBoard.updateTimeOfDayTint` reconstructs
+  `image::set_color_adjustment` (the real per-channel additive/clamp tint
+  every terrain/unit/fog blit gets) as a single composite step -- an
+  `'add'`-blended rect for positive channels, a `'subtract'`-blended one
+  for negative, both covering the whole board above the fog/shroud layer.
+  Chosen over the already-built-but-unwired per-texture `~TOD()`
+  pseudo-op (`animation/timeOfDay.ts`) to avoid re-resolving and caching
+  a second copy of the whole terrain atlas every time the schedule
+  advances. Real bug found by testing live: PixiJS v8's `'subtract'` is
+  an advanced (shader-based) blend mode needing its extension registered
+  and `useBackBuffer: true` on the renderer -- without both, it silently
+  rendered the whole board solid black. Per-`[time_area]` regional
+  tinting (a visually different tint just for that region) is a
+  deliberate, documented gap -- the combat/event-filter consequences that
+  actually matter for gameplay are already fully correct.
+- ToD state serialisation: `Schedule.exportState`/`importState` round-trip
+  the mutated global schedule and every active `[time_area]` through
+  `SaveGameData`, optional on read so older saves still load.
+- Underground/indoor fixed-darkness schedules (`{UNDERGROUND}`/
+  `{INDOORS}`) needed no new code -- they're just a single `[time]` entry,
+  handled by the existing generic parsing (verified via UtBS scenario 4).
+- **Deliberately not ported** (see each module's own doc comment):
+  `calculate_best_liminal_bonus`'s exact search heuristic (a flat `25`
+  floor is used instead, matching upstream's own floor value); terrain-
+  type `light=`/`max_light=`/`min_light=` feeding into illumination's
+  base value (`TerrainType` doesn't model these fields); a schedule-
+  preview dialog (Phase 24 UI chrome).
+- **Milestone**: verified live -- real Dead Water shows a visibly
+  darker/cooler board at turn 5 (First Watch) than turn 1 (Dawn), with
+  the status bar's ToD name/icon updating correctly throughout; Under the
+  Burning Suns scenario 3's real `[time_area]` (three campfire clusters)
+  gives a hex inside it a different ToD than a hex outside every
+  campfire's radius, confirmed both live and as a real-content
+  integration test.
 
 ## Phase 13 — Modal dialogs: recruit, recall, combat
 
@@ -1299,20 +1325,20 @@ below exist yet.
 Explicit user direction (2026-09-12), superseding the 2026-09-09 priority
 section. Phases 0–5, 7, 9, 10 are delivered (see each phase's status);
 Phase 6 content breadth continues opportunistically as each new phase
-pulls in real content, rather than as the headline focus.
+pulls in real content, rather than as the headline focus. Phases 11 and
+12 (fog/shroud/vision, time of day) are now also delivered, both verified
+against the Under the Burning Suns testbed as planned.
 
-1. **Phases 11 + 12** (fog/shroud/vision, time of day) with the Under the
-   Burning Suns testbed. ← **current focus**
-2. **Phase 13** (recruit/recall/combat modals), **Phase 14** (main game UI
-   overhaul), **Phase 15** (core keyboard shortcuts).
-3. **Phase 16** (narration), **Phase 17** (events/`[option]`/cutscenes).
-4. **Phase 18** (labels/items), **Phase 19** (audio/music).
-5. **Phase 20** (localization/accessibility).
-6. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).
-7. **Phase 25** (replay/statistics/achievements).
-8. **Phase 26** (save game handling).
-9. **Phase 27** (feature completeness assessment).
-10. **Phase 28** (CI/CD/performance/platform).
+1. **Phase 13** (recruit/recall/combat modals), **Phase 14** (main game UI
+   overhaul), **Phase 15** (core keyboard shortcuts). ← **current focus**
+2. **Phase 16** (narration), **Phase 17** (events/`[option]`/cutscenes).
+3. **Phase 18** (labels/items), **Phase 19** (audio/music).
+4. **Phase 20** (localization/accessibility).
+5. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).
+6. **Phase 25** (replay/statistics/achievements).
+7. **Phase 26** (save game handling).
+8. **Phase 27** (feature completeness assessment).
+9. **Phase 28** (CI/CD/performance/platform).
 
 ### Old → new phase numbers
 

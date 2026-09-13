@@ -30,10 +30,16 @@ const nextSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/02_Fligh
 const economySnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/synth_economy_01.json');
 const abilitiesSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/synth_abilities_01.json');
 const wolfCoastSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/03_Wolf_Coast.json');
+const utbsTimeAreaSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/03_Stirring_in_the_Night.json');
 
 /** Real Dead Water scenario 3 -- chained here to exercise `{RECALL_LOYAL_UNITS}` (a real `prestart`-event macro expanding to several `[recall] id=X` calls) against a real recall list carried two scenarios deep. */
 function loadWolfCoastSnapshot(): GameBoardSnapshot {
   return JSON.parse(fs.readFileSync(wolfCoastSnapshotPath, 'utf8')) as GameBoardSnapshot;
+}
+
+/** Real Under the Burning Suns scenario 3 -- its real prestart event declares a `[time_area] id=campfires x=14,16,13 y=10,15,20 radius=2` covering three campfire clusters with their own always-dawn-lit schedule (Phase 12's `[time_area]` testbed). */
+function loadUtbsTimeAreaSnapshot(): GameBoardSnapshot {
+  return JSON.parse(fs.readFileSync(utbsTimeAreaSnapshotPath, 'utf8')) as GameBoardSnapshot;
 }
 
 function loadSnapshot(): GameBoardSnapshot {
@@ -392,6 +398,20 @@ describe('GameSession.toSaveData / loadSaveData (round-trip, see persistence.ts 
     expect(reloaded.scenarioResult).toBe('defeat');
     expect(reloaded.handleHexClick(0, 0)).toBeNull();
     expect(reloaded.endTurn()).toBe('');
+  });
+
+  it('round-trips the live ToD schedule (Schedule.test.ts covers the deeper [time_area]/[replace_schedule] mutation cases; this just confirms the wiring)', () => {
+    const session = new GameSession(loadSnapshot());
+    session.runStartupEvents();
+    const someUnit = session.board.allUnits()[0]!;
+    const beforeTod = session.timeOfDayAt(someUnit.location);
+
+    const saved = session.toSaveData();
+    expect(saved.schedule).toBeDefined();
+
+    const reloaded = new GameSession(loadSnapshot());
+    reloaded.loadSaveData(saved);
+    expect(reloaded.timeOfDayAt(someUnit.location)).toEqual(beforeTod);
   });
 });
 
@@ -797,6 +817,23 @@ describe('GameSession.currentTimeOfDay (real [time] schedule, threaded into real
     const morningDamage = morningSession.pendingAttack!.preview.attacker.damagePerBlow;
 
     expect(morningDamage).toBeGreaterThan(dawnDamage);
+  });
+});
+
+describe('GameSession.timeOfDayAt real [time_area] (Under the Burning Suns scenario 3: campfires lit against the long dark)', () => {
+  it('a campfire hex reads its own always-lit schedule while the rest of the map follows the global (very dark) one', () => {
+    const session = new GameSession(loadUtbsTimeAreaSnapshot());
+    session.runStartupEvents(); // real prestart event declares [time_area] id=campfires x=14,16,13 y=10,15,20 radius=2.
+
+    const campfireHex = Location.fromWml(14, 10); // one of the area's own declared centres.
+    const farAwayHex = Location.fromWml(1, 1); // far outside any campfire's radius=2.
+
+    const campfireTod = session.timeOfDayAt(campfireHex);
+    const globalTod = session.currentTimeOfDay;
+    const farAwayTod = session.timeOfDayAt(farAwayHex);
+
+    expect(campfireTod.id).not.toBe(globalTod.id);
+    expect(farAwayTod.id).toBe(globalTod.id);
   });
 });
 

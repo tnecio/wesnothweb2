@@ -83,6 +83,7 @@ import { ActionRegistry } from './context.js';
 import { conditionalPassed } from './conditionalWml.js';
 import { findUnits, locationMatchesFilter, unitMatchesFilter } from './filter.js';
 import { actionLiftFog, actionPlaceShroud, actionRemoveShroud, actionResetFog } from './shroudWml.js';
+import { actionTimeArea, actionRemoveTimeArea, actionReplaceSchedule, actionStoreTimeOfDay } from './todWml.js';
 import { newVarNode, varNodeFromConfig, varNodeToConfig, VariableStore, type VarNode } from './variables.js';
 import { parseScenarioObjectives } from './objectives.js';
 
@@ -919,6 +920,10 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('place_shroud', actionPlaceShroud);
   registry.register('lift_fog', actionLiftFog);
   registry.register('reset_fog', actionResetFog);
+  registry.register('time_area', actionTimeArea);
+  registry.register('remove_time_area', actionRemoveTimeArea);
+  registry.register('replace_schedule', actionReplaceSchedule);
+  registry.register('store_time_of_day', actionStoreTimeOfDay);
 
   for (const tag of [
     'music',

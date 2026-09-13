@@ -49,9 +49,9 @@ function flatMoveType(terrainData: TerrainTypeData, defensePercent: number): Mov
   return MoveType.fromConfig(cfg, terrainData);
 }
 
-function makeUnitType(id: string, hitpoints: number, moveType: MoveType, weapon: AttackType | AttackType[]): UnitType {
+function makeUnitType(id: string, hitpoints: number, moveType: MoveType, weapon: AttackType | AttackType[], alignment: 'lawful' | 'neutral' | 'chaotic' | 'liminal' = 'neutral'): UnitType {
   const weapons = Array.isArray(weapon) ? weapon : [weapon];
-  return new UnitType(id, id, '', 'neutral', 1, hitpoints, 5, 5, 0, 1, 0, -1, 500, [], '', false, false, false, moveType, weapons, []);
+  return new UnitType(id, id, '', alignment, 1, hitpoints, 5, 5, 0, 1, 0, -1, 500, [], '', false, false, false, moveType, weapons, []);
 }
 
 function makeWeapon(damage: number, numAttacks: number, range: 'melee' | 'ranged' = 'melee'): AttackType {
@@ -173,6 +173,37 @@ describe('executeAttack (hand-built units, hand-verifiable outcomes)', () => {
     // 50%) produce a different hit/miss sequence -- guards against the RNG
     // wiring being a no-op that always takes the same branch.
     expect(runA.result.blows.map((b) => b.hit)).not.toEqual(runC.result.blows.map((b) => b.hit));
+  });
+});
+
+describe('executeAttack per-location ToD (real, reported bug: attacker and defender used to share one global lawful_bonus)', () => {
+  // `combat_modifier` calls `get_illuminated_time_of_day(units, map, loc)`
+  // separately for the attacker's and the defender's OWN location -- they
+  // can differ (a lit radius, a [time_area] boundary), so applying a
+  // single shared value to both was a real gap even before either of
+  // those existed to test with: it meant a lawful unit fighting at night
+  // never got its real chaotic penalty unless BOTH combatants happened to
+  // share the exact same ToD.
+  it('applies attackerLawfulBonus only to the attacker\'s damage and defenderLawfulBonus only to the defender\'s counter-damage', () => {
+    const { board, terrainData } = makeBoard();
+    const moveType = flatMoveType(terrainData, 100); // "100% chance to be hit" convention -- every blow always hits, isolating the lawful_bonus effect on raw damage.
+    const lawfulType = makeUnitType('paladin', 100, moveType, makeWeapon(10, 1), 'lawful');
+    const attacker = Unit.create(lawfulType, 1, new Location(0, 0));
+    const defender = Unit.create(lawfulType, 2, new Location(0, 1));
+    board.addUnit(attacker);
+    board.addUnit(defender);
+    const rng = new RngDeterministic(new MtRng(1));
+
+    // Attacker fights at night (-50, halves a lawful unit's damage);
+    // defender fights at midday (+50, boosts it) -- opposite signs, so a
+    // shared-value bug would show up as identical (wrong) damage on both sides.
+    const result = executeAttack(board, rng, new Location(0, 0), 0, new Location(0, 1), undefined, {
+      attackerLawfulBonus: -50,
+      defenderLawfulBonus: 50,
+    });
+
+    expect(result.blows[0]!.damage).toBe(5); // attacker's blow: 10 * (100-50)/100.
+    expect(result.blows[1]!.damage).toBe(15); // defender's counter-blow: 10 * (100+50)/100.
   });
 });
 
