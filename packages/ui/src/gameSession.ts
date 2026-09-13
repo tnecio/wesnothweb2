@@ -1255,6 +1255,19 @@ export class GameSession {
       }
       if (outcome.curePoison) this.log.unshift(`${name}'s poison is cured.`);
     }
+    // "Set resting now after the healing has been done" (play_controller.cpp):
+    // each unit's `resting` flag reflects whether it moved/attacked during
+    // its OWN just-finished turn (moving sets it false in executeMove,
+    // attacking sets it false in executeAttack), and the healing pass just
+    // above already consumed that value. Reset it true for every one of
+    // this side's units now, so a unit that rests THIS turn earns the
+    // heal at the START OF ITS NEXT turn -- real, reported bug: units that
+    // neither moved nor attacked never got the rest-heal, because nothing
+    // in this engine ever set `resting` true in the first place (it starts
+    // false and combat.ts only ever clears it further).
+    for (const unit of this.board.unitsForSide(nextSide)) {
+      unit.resting = true;
+    }
     this.fireTurnRefreshEvents(nextSide);
     if (this.scenarioResult) return null;
     const teamName = this.board.getTeam(nextSide)?.teamName ?? String(nextSide);

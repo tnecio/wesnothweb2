@@ -282,7 +282,14 @@ export function executeMove(board: GameBoard, unit: Unit, path: readonly Locatio
   const pathTaken = planned.steps.slice(0, reached + 1);
   while (pathTaken.length > 1 && !pathTaken[pathTaken.length - 1]!.equals(finalHex)) pathTaken.pop();
   const moved = !finalHex.equals(start);
-  if (moved) unit.setStatus(UnitStatus.NotMoved, false);
+  if (moved) {
+    unit.setStatus(UnitStatus.NotMoved, false);
+    // Mirrors `unit::end_turn()`'s `movement_ != total_movement()` check:
+    // spending any movement this turn disqualifies the unit from its next
+    // side-turn's rest-heal (`GameSession.advanceOneTurn` resets `resting`
+    // back to true for every unit at the start of its own next turn).
+    unit.resting = false;
+  }
   if (raise) actorSighted(board, unit, raise, notSeeing);
 
   const ambushed = ambusherLocations.length > 0 && reached === limit - 1;

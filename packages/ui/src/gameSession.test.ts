@@ -1191,6 +1191,81 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
   });
 });
 
+describe('GameSession rest-heal (real, reported bug: units that neither moved nor attacked never got the +2 rest heal)', () => {
+  // A unit newly placed via board.addUnit() (like a fresh recruit, or these
+  // two leaders at scenario start) starts with `resting=false` -- it hasn't
+  // been through a real side-turn-start yet, so its very first evaluated
+  // turn boundary can never earn the heal (mirrors real Wesnoth: `resting_`
+  // only ever gets set true by the per-side-turn-start reset). Every test
+  // below spends one "warm-up" endTurn() cycle to reach that reset before
+  // asserting anything, exactly as a real freshly-recruited unit would.
+
+  it('a unit that neither moves nor attacks this turn heals REST_HEAL_AMOUNT (2) at the start of its own next turn', () => {
+    const session = new GameSession(loadSnapshot());
+    const resolveType = createTypeResolver(session.snapshot);
+    const fighterType = resolveType('Merman Fighter');
+    // Far from Mal-Kevek and any village, so nothing else touches its hp this cycle.
+    const unit = Unit.create(fighterType, 1, new Location(10, 10), { canRecruit: false });
+    unit.hitpoints = unit.maxHitpoints - 5;
+    session.board.addUnit(unit);
+
+    session.endTurn(); // warm-up: resting was false, so no heal yet, but is now reset true.
+    expect(unit.hitpoints).toBe(unit.maxHitpoints - 5);
+
+    // Rested the whole of this turn too (never selected/moved/attacked) --
+    // one endTurn() auto-plays side 2's AI turn and lands back on side 1's
+    // next turn (established pattern, see "GameSession.endTurn (hotseat
+    // cycling)" above), where the heal should now apply.
+    session.endTurn();
+
+    expect(unit.hitpoints).toBe(unit.maxHitpoints - 3);
+  });
+
+  it('a unit that moves (but does not attack) this turn does NOT get the rest heal next turn', () => {
+    const session = new GameSession(loadSnapshot());
+    const resolveType = createTypeResolver(session.snapshot);
+    const fighterType = resolveType('Merman Fighter');
+    const unit = Unit.create(fighterType, 1, new Location(10, 10), { canRecruit: false });
+    unit.hitpoints = unit.maxHitpoints - 5;
+    session.board.addUnit(unit);
+
+    session.endTurn(); // warm-up.
+    const hpBeforeMove = unit.hitpoints;
+
+    session.selectUnit(unit);
+    const dest = session.reachable.find((h) => !(h.x === unit.location.x && h.y === unit.location.y));
+    expect(dest).toBeDefined();
+    session.handleHexClick(dest!.x, dest!.y);
+    expect(unit.location.equals(new Location(dest!.x, dest!.y))).toBe(true);
+
+    session.endTurn();
+
+    expect(unit.hitpoints).toBe(hpBeforeMove);
+  });
+
+  it('a unit that rests one turn, then moves the next, does NOT keep getting the rest heal forever', () => {
+    const session = new GameSession(loadSnapshot());
+    const resolveType = createTypeResolver(session.snapshot);
+    const fighterType = resolveType('Merman Fighter');
+    const unit = Unit.create(fighterType, 1, new Location(10, 10), { canRecruit: false });
+    unit.hitpoints = unit.maxHitpoints - 10;
+    session.board.addUnit(unit);
+
+    session.endTurn(); // warm-up.
+    session.endTurn(); // rested -> +2.
+    expect(unit.hitpoints).toBe(unit.maxHitpoints - 8);
+
+    session.selectUnit(unit);
+    const dest = session.reachable.find((h) => !(h.x === unit.location.x && h.y === unit.location.y));
+    expect(dest).toBeDefined();
+    session.handleHexClick(dest!.x, dest!.y);
+    const hpAfterMove = unit.hitpoints;
+
+    session.endTurn(); // moved last turn -> no rest heal this time.
+    expect(unit.hitpoints).toBe(hpAfterMove);
+  });
+});
+
 describe('GameSession.confirmAttack real, reported bug: plague kill did not spawn a Walking Corpse', () => {
   it("Debug Plaguebearer's real specials_list=plague, when it kills the weakened Target Plague (hitpoints=6, one hit from its damage=6 touch attack), spawns a real Walking Corpse on the attacker's side", () => {
     // GameSession has no way to force a hit (see the "does not touch
