@@ -65,6 +65,9 @@
   import AdvancementDialog from './AdvancementDialog.svelte';
   import ObjectivesDialog from './ObjectivesDialog.svelte';
   import ScenarioEndOverlay from './ScenarioEndOverlay.svelte';
+  import RecruitDialog from './RecruitDialog.svelte';
+  import RecallDialog from './RecallDialog.svelte';
+  import AttackDialog from './AttackDialog.svelte';
 
   let { snapshot }: { snapshot: GameBoardSnapshot } = $props();
 
@@ -116,6 +119,9 @@
   let pendingRecallIndex = $state<number | null>(null);
   let pendingPreview = $state<CombatPreview | null>(null);
   let pendingAdvancement = $state<PendingAdvancement | null>(null);
+  /** Phase 13: whether the real modal Recruit/Recall dialogs are open -- opened via `SidePanel`'s "Recruit.../Recall..." trigger, distinct from `pendingRecruitTypeId`/`pendingRecallIndex` (the ARMED, awaiting-a-tile-click state that persists after the dialog closes). */
+  let recruitDialogOpen = $state(false);
+  let recallDialogOpen = $state(false);
   let attackerWeaponOptions = $state<AttackerWeaponOption[]>([]);
   let log = $state<string[]>([]);
   let turnNumber = $state(session.turnNumber);
@@ -651,6 +657,32 @@
     sync();
   }
 
+  /** Phase 13: `RecruitDialog`'s "Recruit" button -- arms the chosen type (same effect `handleSelectRecruitType` always had) and closes the dialog, so the player's next click lands on one of the now-highlighted castle tiles. */
+  function handleConfirmRecruit(typeId: string): void {
+    handleSelectRecruitType(typeId);
+    recruitDialogOpen = false;
+  }
+
+  /** Phase 13: `RecallDialog`'s "Recall" button -- same shape as `handleConfirmRecruit`. */
+  function handleConfirmRecall(index: number): void {
+    handleSelectRecallUnit(index);
+    recallDialogOpen = false;
+  }
+
+  /** Phase 13: `RecallDialog`'s real "Dismiss unit" button (`GameSession.dismissRecallUnit`) -- permanently removes the entry, no placement follows. */
+  function handleDismissRecall(index: number): void {
+    if (phase !== 'playing') return;
+    session.dismissRecallUnit(index);
+    sync();
+  }
+
+  /** Phase 13: `RecallDialog`'s real "Rename" action (`GameSession.renameRecallUnit`). */
+  function handleRenameRecall(index: number, name: string): void {
+    if (phase !== 'playing') return;
+    session.renameRecallUnit(index, name);
+    sync();
+  }
+
   /**
    * Real, reported bug: an AI-controlled side's whole turn used to resolve
    * with zero animation (a deliberate simplification at the time -- see
@@ -822,29 +854,47 @@
     <SidePanel
       {selected}
       {inspected}
-      {pendingPreview}
-      {attackerWeaponOptions}
       {statusMessage}
       {log}
       {recruitOptions}
-      {pendingRecruitTypeId}
       {recallOptions}
-      {pendingRecallIndex}
       {turnNumber}
       {scenarioTurnsLimit}
       {activeSide}
       {gold}
       {economyInfo}
-      onConfirmAttack={handleConfirmAttack}
-      onCancelAttack={handleCancelAttack}
-      onSelectAttackerWeapon={handleSelectAttackerWeapon}
-      onSelectRecruitType={handleSelectRecruitType}
-      onSelectRecallUnit={handleSelectRecallUnit}
+      onOpenRecruit={() => (recruitDialogOpen = true)}
+      onOpenRecall={() => (recallDialogOpen = true)}
       onEndTurn={handleEndTurn}
       onSave={handleSave}
       onLoad={handleLoad}
     />
   </div>
+
+  {#if pendingPreview}
+    <AttackDialog
+      preview={pendingPreview}
+      {attackerWeaponOptions}
+      onConfirm={handleConfirmAttack}
+      onCancel={handleCancelAttack}
+      onSelectAttackerWeapon={handleSelectAttackerWeapon}
+    />
+  {/if}
+
+  {#if recruitDialogOpen}
+    <RecruitDialog options={recruitOptions} {gold} onRecruit={handleConfirmRecruit} onCancel={() => (recruitDialogOpen = false)} />
+  {/if}
+
+  {#if recallDialogOpen}
+    <RecallDialog
+      options={recallOptions}
+      {gold}
+      onRecall={handleConfirmRecall}
+      onDismiss={handleDismissRecall}
+      onRename={handleRenameRecall}
+      onCancel={() => (recallDialogOpen = false)}
+    />
+  {/if}
 
   {#if phase === 'story'}
     <StoryViewer parts={storyParts} index={storyIndex} onNext={advanceStory} />

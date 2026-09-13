@@ -15,6 +15,7 @@
    */
   import type { ScenarioObjectives } from '@wesnothweb2/engine';
   import { turnCounterSuffix, OBJECTIVE_COLOR } from '@wesnothweb2/engine';
+  import Modal from './Modal.svelte';
 
   let {
     scenarioName,
@@ -54,9 +55,8 @@
   }
 </script>
 
-<div class="objectives-overlay">
-  <div class="objectives-box">
-    <div class="scenario-name">{scenarioName}</div>
+<Modal title={scenarioName} width="32rem" onClose={onClose}>
+  {#snippet children()}
     {#if objectives.summary}
       <p class="summary">{objectives.summary}</p>
     {/if}
@@ -110,38 +110,10 @@
     <div class="footer">
       <button class="advance" onclick={onClose}>OK</button>
     </div>
-  </div>
-</div>
+  {/snippet}
+</Modal>
 
 <style>
-  .objectives-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0, 0, 0, 0.55);
-    font-family: sans-serif;
-  }
-  .objectives-box {
-    max-width: 32rem;
-    width: 90%;
-    max-height: 80vh;
-    overflow-y: auto;
-    padding: 1.25rem 1.5rem;
-    background: #23201a;
-    border: 1px solid #4a4432;
-    border-radius: 6px;
-    color: #ddd;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
-  }
-  .scenario-name {
-    font-size: 1.2rem;
-    font-weight: 700;
-    color: #f1e6c8;
-    margin-bottom: 0.5rem;
-  }
   .summary {
     margin: 0 0 0.75rem;
     line-height: 1.4;

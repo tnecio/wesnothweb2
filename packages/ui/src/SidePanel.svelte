@@ -1,28 +1,20 @@
 <script lang="ts">
-  import { imageUrl } from '@wesnothweb2/renderer';
-  import type { CombatPreview, RecruitOption, RecallOption, AttackerWeaponOption, SelectedUnitInfo, EconomyInfo } from './gameSession.js';
+  import type { RecruitOption, RecallOption, SelectedUnitInfo, EconomyInfo } from './gameSession.js';
 
   let {
     selected,
     inspected,
-    pendingPreview,
-    attackerWeaponOptions,
     statusMessage,
     log,
     recruitOptions,
-    pendingRecruitTypeId,
     recallOptions,
-    pendingRecallIndex,
     turnNumber,
     scenarioTurnsLimit,
     activeSide,
     gold,
     economyInfo,
-    onConfirmAttack,
-    onCancelAttack,
-    onSelectAttackerWeapon,
-    onSelectRecruitType,
-    onSelectRecallUnit,
+    onOpenRecruit,
+    onOpenRecall,
     onEndTurn,
     onSave,
     onLoad,
@@ -30,19 +22,12 @@
     selected: SelectedUnitInfo | null;
     /** A unit clicked purely to view its info (any side) -- see `GameSession.inspectedUnit`. Shown alongside `selected`, addressing "no way to see information about enemy units". */
     inspected: SelectedUnitInfo | null;
-    pendingPreview: CombatPreview | null;
-    /** The attacker's usable weapons against the current target -- see `GameSession.attackerWeaponOptions`. Empty unless `pendingPreview` is set. */
-    attackerWeaponOptions: AttackerWeaponOption[];
     statusMessage: string;
     log: string[];
-    /** Real recruitable types for the selected leader's side, if it's currently able to recruit -- see `GameSession.recruitOptions`. */
+    /** Real recruitable types for the selected leader's side, if it's currently able to recruit -- see `GameSession.recruitOptions`. Only its length is used here (whether to show the "Recruit..." trigger) -- the real list lives in `RecruitDialog.svelte` (Phase 13), opened via `onOpenRecruit`. */
     recruitOptions: RecruitOption[];
-    /** Which recruit type (if any) is armed, awaiting a click on a highlighted castle tile. */
-    pendingRecruitTypeId: string | null;
-    /** The selected leader's side's real recall list, if it's currently able to recruit/recall -- see `GameSession.recallOptions`. */
+    /** The selected leader's side's real recall list, if it's currently able to recruit/recall -- see `GameSession.recallOptions`. Same "length only" note as `recruitOptions` -- `RecallDialog.svelte` owns the real list. */
     recallOptions: RecallOption[];
-    /** Which recall-list entry (if any, by `RecallOption.index`) is armed, awaiting a click on a highlighted castle tile. */
-    pendingRecallIndex: number | null;
     turnNumber: number;
     /** The scenario's `turns=` limit, if it has one (null means unlimited). */
     scenarioTurnsLimit: number | null;
@@ -51,19 +36,12 @@
     gold: number;
     /** The active side's income/upkeep figures -- see `GameSession.economyInfo`. */
     economyInfo: EconomyInfo;
-    onConfirmAttack: () => void;
-    onCancelAttack: () => void;
-    onSelectAttackerWeapon: (index: number) => void;
-    onSelectRecruitType: (typeId: string) => void;
-    onSelectRecallUnit: (index: number) => void;
+    onOpenRecruit: () => void;
+    onOpenRecall: () => void;
     onEndTurn: () => void;
     onSave: () => void;
     onLoad: () => void;
   } = $props();
-
-  function pct(fraction: number): string {
-    return `${Math.round(fraction * 100)}%`;
-  }
 
   /** "melee, blade" style label for a weapon's range/damage type -- addresses "UI is missing information about weapon type". */
   function rangeType(w: { range: string; type: string }): string {
@@ -86,218 +64,94 @@
 
   <p class="status">{statusMessage}</p>
 
-  {#if pendingPreview}
-    <!--
-      The real combat-prediction popup real Wesnoth shows before you commit
-      to an attack -- fed directly by packages/engine's attackPrediction.ts
-      (simulateCombat), not hand-waved numbers. See GameSession.buildPreview.
-    -->
-    <section class="prediction">
-      <h3>Combat Prediction</h3>
-      {#if attackerWeaponOptions.length > 1}
-        <!--
-          Real Wesnoth offers a weapon choice whenever the attacker has more
-          than one usable weapon against this target (e.g. a Spearman's
-          spear vs. javelin) -- previously this project always used weapon
-          index 0 silently. See GameSession.attackerWeaponOptions/
-          selectAttackerWeapon.
-        -->
-        <div class="weapon-choice">
-          {#each attackerWeaponOptions as opt (opt.index)}
-            <button
-              class="weapon-option"
-              class:selected={opt.selected}
-              onclick={() => onSelectAttackerWeapon(opt.index)}
-              title={opt.specials.length > 0 ? opt.specials.map((s) => s.name).join(', ') : undefined}
-            >
-              <span class="name">{opt.name}</span>
-              <span class="stats">{opt.damage}&times;{opt.numAttacks} ({rangeType(opt)})</span>
-              {#if opt.specials.length > 0}
-                <span class="specials">{opt.specials.map((s) => s.name).join(', ')}</span>
+  {#snippet unitInfo(info: SelectedUnitInfo)}
+    <div>Type: {info.typeId}</div>
+    <div>Side: {info.side}</div>
+    <div>Position: ({info.x}, {info.y})</div>
+    <div>Terrain: {info.terrainName} (Defense: {info.defensePercent}%)</div>
+    <div>HP: {info.hp}/{info.maxHp}</div>
+    <div>XP: {info.xp}/{info.maxXp}</div>
+    <div>Moves left: {info.movesLeft}/{info.maxMoves}</div>
+    <div>Attacks left: {info.attacksLeft}</div>
+    {#if info.traits.length > 0}
+      <!-- Real character traits (e.g. strong, intelligent) -- addresses "no information about character traits in the unit infobox". -->
+      <div>Traits: {info.traits.join(', ')}</div>
+    {/if}
+    {#if info.attacks.length > 0}
+      <!-- Real weapon type/range/specials -- addresses "UI is missing information about weapon type/specials". -->
+      <div class="attacks">
+        <div class="attacks-label">Attacks:</div>
+        <ul>
+          {#each info.attacks as atk (atk.name)}
+            <li>
+              <span class="name">{atk.name}</span>
+              <span class="stats">{atk.damage}&times;{atk.numAttacks} ({rangeType(atk)})</span>
+              {#if atk.specials.length > 0}
+                <span class="specials" title={atk.specials.map((s) => s.description).join('\n\n')}>
+                  {atk.specials.map((s) => s.name).join(', ')}
+                </span>
               {/if}
-            </button>
+            </li>
           {/each}
-        </div>
-      {/if}
-      <div class="combatant attacker">
-        <div class="name">{pendingPreview.attacker.name} <span class="role">(attacker)</span></div>
-        <div>HP {pendingPreview.attacker.hp}/{pendingPreview.attacker.maxHp}</div>
-        {#if pendingPreview.attacker.weapon}
-          <div>Weapon: {pendingPreview.attacker.weapon.name} ({rangeType(pendingPreview.attacker.weapon)})</div>
-          {#if pendingPreview.attacker.weapon.specials.length > 0}
-            <div class="hint-inline">{pendingPreview.attacker.weapon.specials.map((s) => s.name).join(', ')}</div>
-          {/if}
-        {/if}
-        <div>Chance to hit: {pendingPreview.attacker.chanceToHit}%</div>
-        <div>Damage per blow: {pendingPreview.attacker.damagePerBlow} &times; {pendingPreview.attacker.numBlows} strikes</div>
-        <div>Chance to die: {pct(pendingPreview.attacker.deathChance)}</div>
+        </ul>
       </div>
-      <div class="combatant defender">
-        <div class="name">{pendingPreview.defender.name} <span class="role">(defender)</span></div>
-        <div>HP {pendingPreview.defender.hp}/{pendingPreview.defender.maxHp}</div>
-        {#if pendingPreview.defender.weapon}
-          <div>Weapon: {pendingPreview.defender.weapon.name} ({rangeType(pendingPreview.defender.weapon)})</div>
-          {#if pendingPreview.defender.weapon.specials.length > 0}
-            <div class="hint-inline">{pendingPreview.defender.weapon.specials.map((s) => s.name).join(', ')}</div>
-          {/if}
-        {:else}
-          <div class="hint-inline">No usable counter-weapon (range mismatch) -- will not fight back.</div>
-        {/if}
-        <div>Chance to hit: {pendingPreview.defender.chanceToHit}%</div>
-        <div>Damage per blow: {pendingPreview.defender.damagePerBlow} &times; {pendingPreview.defender.numBlows} strikes</div>
-        <div>Chance to die: {pct(pendingPreview.defender.deathChance)}</div>
+    {/if}
+    {#if info.abilities.length > 0}
+      <!-- Real abilities (e.g. heals, skirmisher) -- addresses "UI is missing information about abilities". -->
+      <div class="abilities">
+        <div class="attacks-label">Abilities:</div>
+        <ul>
+          {#each info.abilities as ab (ab.name)}
+            <li title={ab.description}>{ab.name}</li>
+          {/each}
+        </ul>
       </div>
-      <div class="actions">
-        <button class="primary" onclick={onConfirmAttack}>Attack</button>
-        <button onclick={onCancelAttack}>Cancel</button>
-      </div>
+    {/if}
+  {/snippet}
+
+  {#if selected}
+    <section class="unit-info">
+      <h3>{selected.name}</h3>
+      {@render unitInfo(selected)}
     </section>
-  {:else}
-    {#snippet unitInfo(info: SelectedUnitInfo)}
-      <div>Type: {info.typeId}</div>
-      <div>Side: {info.side}</div>
-      <div>Position: ({info.x}, {info.y})</div>
-      <div>Terrain: {info.terrainName} (Defense: {info.defensePercent}%)</div>
-      <div>HP: {info.hp}/{info.maxHp}</div>
-      <div>XP: {info.xp}/{info.maxXp}</div>
-      <div>Moves left: {info.movesLeft}/{info.maxMoves}</div>
-      <div>Attacks left: {info.attacksLeft}</div>
-      {#if info.traits.length > 0}
-        <!-- Real character traits (e.g. strong, intelligent) -- addresses "no information about character traits in the unit infobox". -->
-        <div>Traits: {info.traits.join(', ')}</div>
+  {/if}
+
+  {#if inspected}
+    <!--
+      A unit clicked purely to view its info -- friend or enemy, addresses
+      "no way to see information about enemy units". Independent of
+      `selected` (see GameSession.inspectedUnit's own doc comment): shown
+      as its own section so it doesn't disturb the acting-unit display above.
+    -->
+    <section class="unit-info inspected">
+      <h3>{inspected.name} <span class="role">(viewing)</span></h3>
+      {@render unitInfo(inspected)}
+    </section>
+  {/if}
+
+  {#if recruitOptions.length > 0 || recallOptions.length > 0}
+    <!--
+      Phase 13: opens the real modal dialogs (`RecruitDialog.svelte`/
+      `RecallDialog.svelte`) instead of showing the list inline here --
+      shown whenever the selected unit is a leader standing on its keep
+      with at least one vacant, keep-connected castle tile (see
+      `GameSession.computeRecruitTiles`).
+    -->
+    <section class="leader-actions">
+      {#if recruitOptions.length > 0}
+        <button class="action" onclick={onOpenRecruit}>Recruit&hellip;</button>
       {/if}
-      {#if info.attacks.length > 0}
-        <!-- Real weapon type/range/specials -- addresses "UI is missing information about weapon type/specials". -->
-        <div class="attacks">
-          <div class="attacks-label">Attacks:</div>
-          <ul>
-            {#each info.attacks as atk (atk.name)}
-              <li>
-                <span class="name">{atk.name}</span>
-                <span class="stats">{atk.damage}&times;{atk.numAttacks} ({rangeType(atk)})</span>
-                {#if atk.specials.length > 0}
-                  <span class="specials" title={atk.specials.map((s) => s.description).join('\n\n')}>
-                    {atk.specials.map((s) => s.name).join(', ')}
-                  </span>
-                {/if}
-              </li>
-            {/each}
-          </ul>
-        </div>
+      {#if recallOptions.length > 0}
+        <button class="action" onclick={onOpenRecall}>Recall&hellip;</button>
       {/if}
-      {#if info.abilities.length > 0}
-        <!-- Real abilities (e.g. heals, skirmisher) -- addresses "UI is missing information about abilities". -->
-        <div class="abilities">
-          <div class="attacks-label">Abilities:</div>
-          <ul>
-            {#each info.abilities as ab (ab.name)}
-              <li title={ab.description}>{ab.name}</li>
-            {/each}
-          </ul>
-        </div>
-      {/if}
-    {/snippet}
+    </section>
+  {/if}
 
-    {#if selected}
-      <section class="unit-info">
-        <h3>{selected.name}</h3>
-        {@render unitInfo(selected)}
-      </section>
-    {/if}
-
-    {#if inspected}
-      <!--
-        A unit clicked purely to view its info -- friend or enemy, addresses
-        "no way to see information about enemy units". Independent of
-        `selected` (see GameSession.inspectedUnit's own doc comment): shown
-        as its own section so it doesn't disturb the acting-unit display above.
-      -->
-      <section class="unit-info inspected">
-        <h3>{inspected.name} <span class="role">(viewing)</span></h3>
-        {@render unitInfo(inspected)}
-      </section>
-    {/if}
-
-    {#if recruitOptions.length > 0}
-      <!--
-        Real recruit list (packages/engine's actions/recruit.ts) -- cost/
-        name/image come straight from snapshot.unitTypes, cross-referenced
-        with the selected leader's team's real `recruit=`/canRecruit set.
-        Shown whenever the selected unit is a leader standing on its keep
-        with at least one vacant, keep-connected castle tile (see
-        GameSession.computeRecruitTiles) -- addresses "can't recruit".
-      -->
-      <section class="recruit">
-        <h3>Recruit</h3>
-        <ul class="recruit-list">
-          {#each recruitOptions as opt (opt.typeId)}
-            <li>
-              <button
-                class="recruit-option"
-                class:selected={pendingRecruitTypeId === opt.typeId}
-                disabled={!opt.affordable}
-                title={opt.affordable ? `Recruit ${opt.name}` : `Not enough gold (needs ${opt.cost}, have ${gold})`}
-                onclick={() => onSelectRecruitType(opt.typeId)}
-              >
-                <span class="name">{opt.name}</span>
-                <span class="cost">{opt.cost}g</span>
-              </button>
-            </li>
-          {/each}
-        </ul>
-        {#if pendingRecruitTypeId}
-          <p class="hint">Click a green-highlighted castle tile to place your recruit.</p>
-        {:else}
-          <p class="hint">Pick a unit type, then click a highlighted castle tile.</p>
-        {/if}
-      </section>
-    {/if}
-
-    {#if recallOptions.length > 0}
-      <!--
-        Real recall list (packages/engine's actions/recruit.ts's
-        recallUnit, driven by carryover -- see GameSession.startNextScenario/
-        computeCarryoverRecruits): every surviving unit carried over from a
-        finished scenario, off-board until the player recalls it here. Same
-        castle-tile-click placement flow as Recruit above, distinguished by
-        GameSession.pendingRecallIndex being keyed by list position rather
-        than unit type id (see RecallOption's own doc comment).
-      -->
-      <section class="recall">
-        <h3>Recall</h3>
-        <ul class="recruit-list">
-          {#each recallOptions as opt, i (i)}
-            <li>
-              <button
-                class="recruit-option"
-                class:selected={pendingRecallIndex === opt.index}
-                disabled={!opt.affordable}
-                title={opt.affordable ? `Recall ${opt.name}` : `Not enough gold (needs ${opt.cost}, have ${gold})`}
-                onclick={() => onSelectRecallUnit(opt.index)}
-              >
-                {#if opt.image}
-                  <img class="unit-icon" src={imageUrl(opt.image)} alt="" />
-                {/if}
-                <span class="name">{opt.name} <span class="level">(lvl {opt.level}, {opt.hp}/{opt.maxHp} hp)</span></span>
-                <span class="cost">{opt.cost}g</span>
-              </button>
-            </li>
-          {/each}
-        </ul>
-        {#if pendingRecallIndex !== null}
-          <p class="hint">Click a green-highlighted castle tile to place your recalled unit.</p>
-        {:else}
-          <p class="hint">Pick a unit to recall, then click a highlighted castle tile.</p>
-        {/if}
-      </section>
-    {/if}
-
-    {#if !selected && !inspected && recruitOptions.length === 0 && recallOptions.length === 0}
-      <p class="hint">
-        Click one of your units to select it. Blue hexes are where it can move;
-        red hexes are adjacent enemies it can attack.
-      </p>
-    {/if}
+  {#if !selected && !inspected && recruitOptions.length === 0 && recallOptions.length === 0}
+    <p class="hint">
+      Click one of your units to select it. Blue hexes are where it can move;
+      red hexes are adjacent enemies it can attack.
+    </p>
   {/if}
 
   <section class="log">
@@ -364,8 +218,7 @@
     padding: 0.5rem 0.6rem;
     background: #23201a;
   }
-  .unit-info div,
-  .combatant div {
+  .unit-info div {
     margin: 0.15rem 0;
   }
   .unit-info.inspected {
@@ -405,19 +258,6 @@
     opacity: 0.8;
     font-size: 0.85em;
   }
-  .prediction {
-    border: 1px solid #4a4432;
-    border-radius: 4px;
-    padding: 0.5rem 0.6rem;
-    background: #23201a;
-  }
-  .combatant {
-    padding: 0.3rem 0;
-    border-top: 1px solid #3a3628;
-  }
-  .combatant:first-of-type {
-    border-top: none;
-  }
   .name {
     font-weight: 700;
   }
@@ -425,98 +265,12 @@
     font-weight: 400;
     opacity: 0.7;
   }
-  .actions {
+  .leader-actions {
     display: flex;
     gap: 0.5rem;
-    margin-top: 0.5rem;
   }
-  .recruit {
-    border: 1px solid #4a4432;
-    border-radius: 4px;
-    padding: 0.5rem 0.6rem;
-    background: #23201a;
-  }
-  .recruit-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-  }
-  .recruit-option {
-    width: 100%;
-    display: flex;
-    justify-content: space-between;
-    font: inherit;
-    padding: 0.35rem 0.6rem;
-    border-radius: 4px;
-    border: 1px solid #4a4432;
-    background: #2c2820;
-    color: #eee;
-    cursor: pointer;
-  }
-  .recruit-option.selected {
-    border-color: #ffd54a;
-    background: #4a3d1e;
-  }
-  .recruit-option .cost {
-    opacity: 0.8;
-  }
-  .weapon-choice {
-    display: flex;
-    gap: 0.4rem;
-    margin-bottom: 0.5rem;
-  }
-  .weapon-option {
+  .action {
     flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.1rem;
-    font: inherit;
-    padding: 0.3rem 0.5rem;
-    border-radius: 4px;
-    border: 1px solid #4a4432;
-    background: #2c2820;
-    color: #eee;
-    cursor: pointer;
-  }
-  .weapon-option.selected {
-    border-color: #ffd54a;
-    background: #4a3d1e;
-  }
-  .weapon-option .name {
-    font-weight: 700;
-  }
-  .weapon-option .stats {
-    font-size: 0.8rem;
-    opacity: 0.8;
-  }
-  .recall {
-    border: 1px solid #4a4432;
-    border-radius: 4px;
-    padding: 0.5rem 0.6rem;
-    background: #23201a;
-  }
-  .unit-icon {
-    width: 24px;
-    height: 24px;
-    object-fit: contain;
-    flex: 0 0 auto;
-  }
-  .recall .recruit-option {
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .recall .name {
-    flex: 1 1 auto;
-    text-align: left;
-  }
-  .level {
-    font-weight: 400;
-    opacity: 0.7;
-    font-size: 0.8em;
   }
   button {
     font: inherit;

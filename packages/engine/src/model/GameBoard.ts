@@ -166,6 +166,21 @@ export class GameBoard {
   }
 
   /**
+   * Removes the recall-list unit at `index` (position in `recallList(side)`),
+   * NOT by `underlyingId` -- this project doesn't auto-assign a unique
+   * `underlying_id` to every unit (see `Unit.ts`), so several recall-list
+   * entries commonly share the default `underlyingId=0`, which would make
+   * `removeFromRecallList` remove the wrong one. Used by the recall
+   * dialog's real "Dismiss unit" button, keyed the same safe way
+   * `RecallOption.index` already is.
+   */
+  removeFromRecallListAt(side: number, index: number): Unit | undefined {
+    const list = this.recallLists.get(side);
+    if (!list || index < 0 || index >= list.length) return undefined;
+    return list.splice(index, 1)[0];
+  }
+
+  /**
    * Empties `side`'s recall list entirely -- used by callers rebuilding a
    * board's full state from scratch (e.g. `GameSession.loadSaveData`),
    * which need a clean slate rather than `removeFromRecallList`'s one-at-a-

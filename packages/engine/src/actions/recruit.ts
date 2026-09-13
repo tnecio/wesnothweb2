@@ -323,3 +323,8 @@ export function recallUnit(board: GameBoard, team: Team, unit: Unit, loc: Locati
 export function dismissUnit(board: GameBoard, side: number, underlyingId: number): Unit | undefined {
   return board.removeFromRecallList(side, underlyingId);
 }
+
+/** Same as `dismissUnit`, but keyed by recall-list position -- see `GameBoard.removeFromRecallListAt`'s own doc comment for why that's the safe key for a UI (like the recall dialog) driven by list index, not `underlyingId`. */
+export function dismissUnitAt(board: GameBoard, side: number, index: number): Unit | undefined {
+  return board.removeFromRecallListAt(side, index);
+}

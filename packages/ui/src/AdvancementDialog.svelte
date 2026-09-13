@@ -16,6 +16,7 @@
    */
   import type { PendingAdvancement } from './gameSession.js';
   import { buildWeaponInfo } from './gameSession.js';
+  import Modal from './Modal.svelte';
 
   let {
     pending,
@@ -31,8 +32,8 @@
 </script>
 
 {#if pending}
-  <div class="advancement-overlay">
-    <div class="advancement-box">
+  <Modal width="44rem" labelledBy="Unit advancement">
+    {#snippet children()}
       <div class="title">{pending.unit.name || pending.unit.type.name} has advanced! Choose a unit type to become:</div>
       <div class="options">
         {#each pending.options as option (option.id)}
@@ -50,35 +51,14 @@
           </button>
         {/each}
       </div>
-    </div>
-  </div>
+    {/snippet}
+  </Modal>
 {/if}
 
 <style>
-  .advancement-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0, 0, 0, 0.55);
-    font-family: sans-serif;
-  }
-  .advancement-box {
-    max-width: 44rem;
-    width: 90%;
-    padding: 1.25rem;
-    background: #23201a;
-    border: 1px solid #4a4432;
-    border-radius: 6px;
-    color: #ddd;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
-  }
   .title {
     font-weight: 700;
     color: #f1e6c8;
-    margin-bottom: 1rem;
   }
   .options {
     display: flex;

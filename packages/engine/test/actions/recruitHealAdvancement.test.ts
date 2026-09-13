@@ -13,7 +13,7 @@ import { UnitType, AttackType } from '../../src/model/UnitType.js';
 import { MoveType } from '../../src/model/MoveType.js';
 import { RngDeterministic } from '../../src/rng/RngDeterministic.js';
 import { MtRng } from '../../src/rng/MtRng.js';
-import { recruitUnit, recallUnit, dismissUnit, canRecruitOn, checkRecruitLocation, generateTraits } from '../../src/actions/recruit.js';
+import { recruitUnit, recallUnit, dismissUnit, dismissUnitAt, canRecruitOn, checkRecruitLocation, generateTraits } from '../../src/actions/recruit.js';
 import { GLOBAL_TRAITS } from '../../src/model/UnitType.js';
 import { calculateHealing, applySideHealing } from '../../src/actions/heal.js';
 import { advanceUnitTo, chooseAdvancementRandomly } from '../../src/actions/advancement.js';
@@ -125,6 +125,27 @@ describe('recruit/recall/dismiss', () => {
     const dismissed = dismissUnit(board, 1, a.underlyingId);
     expect(dismissed).toBe(a);
     expect(board.recallList(1)).toEqual([b]);
+  });
+
+  it("dismissUnitAt removes exactly the unit at that recall-list POSITION, even when several entries share the default underlyingId=0 -- real, reported bug class: dismissUnit's underlyingId key is ambiguous for exactly this common case (this project doesn't auto-assign unique underlying_ids, so most recall-list units share underlyingId=0)", () => {
+    const terrainData = loadTerrainData();
+    const moveType = flatMoveType(terrainData);
+    const board = new GameBoard(GameMap.fromMapString('Gg, Gg, Gg, Gg, Gg\nGg, Gg, Gg, Gg, Gg\nGg, Gg, Gg, Gg, Gg\nGg, Gg, Gg, Gg, Gg\nGg, Gg, Gg, Gg, Gg', terrainData));
+    board.addTeam(new Team(1));
+    const type = makeUnitType('grunt', 20, moveType);
+    const a = Unit.create(type, 1, Location.NULL);
+    const b = Unit.create(type, 1, Location.NULL);
+    const c = Unit.create(type, 1, Location.NULL);
+    expect(a.underlyingId).toBe(0);
+    expect(b.underlyingId).toBe(0);
+    expect(c.underlyingId).toBe(0); // all three share the same default -- dismissUnit(board, 1, 0) could only ever remove the FIRST of them.
+    board.addToRecallList(1, a);
+    board.addToRecallList(1, b);
+    board.addToRecallList(1, c);
+
+    const dismissed = dismissUnitAt(board, 1, 1); // the middle entry, by position.
+    expect(dismissed).toBe(b);
+    expect(board.recallList(1)).toEqual([a, c]);
   });
 
   it('recruiting gives the fresh unit exactly numTraits (2) real random traits, drawn from the real global pool -- real, reported bug: recruited units never got any traits at all', () => {

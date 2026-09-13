@@ -67,6 +67,7 @@ import {
   connectedCastleTiles,
   recruitUnit,
   recallUnit,
+  dismissUnitAt,
   unitCanAct,
   checkVictory,
   applySideHealing,
@@ -82,6 +83,7 @@ import {
   type SnapshotUnit,
   type RecordedMessage,
   type UnitType,
+  type Alignment,
   type GoldCarryoverResult,
   type WmlAttributeValue,
   type WmlConfigJson,
@@ -147,6 +149,33 @@ export interface CombatantPreview {
    * alone why a javelin throw drew no counter-attack).
    */
   weapon?: WeaponInfo;
+  /** For the attack/damage-calculation dialogs' detail pane (`AttackDialog.svelte`/`CombatSimulationDialog.svelte`) -- real Wesnoth's `unit_attack.cpp` shows all of this alongside the combat odds. */
+  typeId: string;
+  image: string | null;
+  level: number;
+  alignment: Alignment;
+  raceId: string;
+  traits: readonly string[];
+  /**
+   * `computeResistanceModifier`'s result against `weapon`'s damage type,
+   * as upstream's own percentage convention (100 = normal, >100 = weak
+   * to it, <100 = resistant) -- e.g. 120 means "takes 20% MORE damage",
+   * matching real Wesnoth's "Wrażliwość/Odporność ×1.2"-style breakdown
+   * line. `undefined` when there's no weapon in play (`weapon` above is
+   * also `undefined` in that case).
+   */
+  resistanceModifier?: number;
+  /** The weapon's raw, pre-resistance/charge/ability `damage=` value -- paired with `resistanceModifier` and `damagePerBlow` (the final, fully-modified per-blow damage) so a caller can show the same "base -> total" breakdown real Wesnoth's damage-calculation dialog does. */
+  baseDamage?: number;
+  /**
+   * The full post-exchange HP probability distribution (`Combatant.hpDist`,
+   * index = ending HP, value = probability 0-1) -- for the damage-
+   * calculation dialog's "expected result" bar chart. `hpDist[hp]` (this
+   * combatant's CURRENT hp, i.e. `hp` above) is the probability of ending
+   * the exchange having taken no damage at all ("chance to come out
+   * unscathed").
+   */
+  hpDist: readonly number[];
 }
 
 export interface CombatPreview {
@@ -197,6 +226,45 @@ export function buildAbilityInfo(entry: RegistryEntry): AbilityInfo {
     name: entry.config.getString('name') || entry.tag,
     description: entry.config.getString('description'),
   };
+}
+
+/**
+ * A unit type's `raceId` (e.g. `human`, `undead`) as a player-facing name,
+ * for the recruit/recall dialogs' detail pane (real Wesnoth shows
+ * `[race] name=`/`plural_name=`, not the raw id). Real `[race]` WML isn't
+ * parsed anywhere in this port (`UnitType.ts`'s own module doc comment
+ * scopes race data to just the id string), so this is a small static map
+ * covering every race real mainline campaigns in this project use --
+ * falling back to capitalizing the raw id for anything else, rather than
+ * failing or showing nothing.
+ */
+const RACE_NAMES: Readonly<Record<string, string>> = {
+  human: 'Human',
+  elf: 'Elf',
+  orc: 'Orc',
+  orcish: 'Orc',
+  undead: 'Undead',
+  dwarf: 'Dwarf',
+  merman: 'Merfolk',
+  drake: 'Drake',
+  troll: 'Troll',
+  goblin: 'Goblin',
+  naga: 'Naga',
+  monster: 'Monster',
+  wose: 'Wose',
+  bats: 'Bat',
+  wolf: 'Wolf',
+  gryphon: 'Gryphon',
+  mechanical: 'Mechanical',
+  ogre: 'Ogre',
+  raven: 'Raven',
+  khalifate: 'Khalifate',
+  falcon: 'Falcon',
+  horse: 'Horse',
+};
+
+export function raceDisplayName(raceId: string): string {
+  return RACE_NAMES[raceId] ?? (raceId.length > 0 ? raceId[0]!.toUpperCase() + raceId.slice(1) : raceId);
 }
 
 /** A view-model of a unit, for the side panel -- deliberately plain data, not a live `Unit` reference. Used for both the currently-*selected* (your own, actionable) unit and any *inspected* unit (see `GameSession.inspectedUnit`) -- addresses "no way to see information about enemy units". */
@@ -376,6 +444,14 @@ export interface RecruitOption {
   image: string | null;
   /** Whether the recruiting side currently has enough gold -- the UI should grey this option out, not hide it. */
   affordable: boolean;
+  /** This unit type's own real stats, for the recruit dialog's detail pane (`RecruitDialog.svelte`) -- matches real Wesnoth's `units_dialog`. */
+  level: number;
+  alignment: Alignment;
+  raceId: string;
+  hitpoints: number;
+  moves: number;
+  attacks: readonly WeaponInfo[];
+  abilities: readonly AbilityInfo[];
 }
 
 /**
@@ -403,6 +479,16 @@ export interface RecallOption {
   cost: number;
   /** Whether the recalling side currently has enough gold -- the UI should grey this option out, not hide it. */
   affordable: boolean;
+  /** This unit's own real stats/traits, for the recall dialog's detail pane (`RecallDialog.svelte`) -- matches real Wesnoth's `units_dialog`. */
+  xp: number;
+  maxXp: number;
+  traits: readonly string[];
+  alignment: Alignment;
+  raceId: string;
+  movesLeft: number;
+  maxMoves: number;
+  attacks: readonly WeaponInfo[];
+  abilities: readonly AbilityInfo[];
 }
 
 export interface GameSessionOptions {
@@ -1017,12 +1103,20 @@ export class GameSession {
     return [...team.canRecruit].map((typeId) => {
       const snap = this.snapshot.unitTypes[typeId];
       const cost = snap?.cost ?? 0;
+      const type = this.resolveType(typeId);
       return {
         typeId,
         name: snap?.name ?? typeId,
         cost,
         image: snap?.image ?? null,
         affordable: team.gold >= cost,
+        level: type.level,
+        alignment: type.alignment,
+        raceId: type.raceId,
+        hitpoints: type.hitpoints,
+        moves: type.movement,
+        attacks: type.attacks.map(buildWeaponInfo),
+        abilities: type.abilities.map(buildAbilityInfo),
       };
     });
   }
@@ -1058,6 +1152,15 @@ export class GameSession {
         level: u.level,
         cost,
         affordable: team.gold >= cost,
+        xp: u.experience,
+        maxXp: u.maxExperience,
+        traits: u.traitNames,
+        alignment: u.type.alignment,
+        raceId: u.type.raceId,
+        movesLeft: u.movesLeft,
+        maxMoves: u.maxMoves,
+        attacks: u.attacks.map(buildWeaponInfo),
+        abilities: u.type.abilities.map(buildAbilityInfo),
       };
     });
   }
@@ -1066,6 +1169,30 @@ export class GameSession {
   selectRecallUnit(index: number | null): void {
     this.pendingRecallIndex = this.pendingRecallIndex === index ? null : index;
     this.pendingRecruitTypeId = null;
+  }
+
+  /**
+   * Permanently removes the recall-list entry at `index` (the real
+   * dialog's "Dismiss unit" button) -- see `dismissUnitAt`'s own doc
+   * comment for why `index`, not `underlyingId`, is the safe key here.
+   * Clears any pending recall armed for that same index (dismissing the
+   * unit you were about to place makes that armed state meaningless).
+   */
+  dismissRecallUnit(index: number): void {
+    const leader = this.selectedUnit;
+    if (!leader) return;
+    const removed = dismissUnitAt(this.board, leader.side, index);
+    if (removed && this.pendingRecallIndex === index) this.pendingRecallIndex = null;
+  }
+
+  /** Real Wesnoth's recall-dialog "Rename" action: sets a recall-list unit's display name directly (`Unit.name` is plain mutable data -- no engine action needed). No-op if `name` is empty (a blank name isn't a real rename, just noise). */
+  renameRecallUnit(index: number, name: string): void {
+    const leader = this.selectedUnit;
+    if (!leader) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const unit = this.board.recallList(leader.side)[index];
+    if (unit) unit.name = trimmed;
   }
 
   /**
@@ -1478,6 +1605,15 @@ export class GameSession {
         numBlows: aStats.numBlows,
         deathChance: aCombatant.hpDist[0] ?? 0,
         weapon: buildWeaponInfo(attackerWeapon),
+        typeId: attacker.type.id,
+        image: this.snapshot.unitTypes[attacker.type.id]?.image ?? null,
+        level: attacker.level,
+        alignment: attacker.type.alignment,
+        raceId: attacker.type.raceId,
+        traits: attacker.traitNames,
+        resistanceModifier: computeResistanceModifier(this.board, defender, attackerWeapon.type, false, defender.location),
+        baseDamage: attackerWeapon.damage,
+        hpDist: aCombatant.hpDist,
       },
       defender: {
         name: this.unitDisplayName(defender),
@@ -1489,6 +1625,15 @@ export class GameSession {
         numBlows: dStats.numBlows,
         deathChance: dCombatant.hpDist[0] ?? 0,
         weapon: defenderWeapon ? buildWeaponInfo(defenderWeapon) : undefined,
+        typeId: defender.type.id,
+        image: this.snapshot.unitTypes[defender.type.id]?.image ?? null,
+        level: defender.level,
+        alignment: defender.type.alignment,
+        raceId: defender.type.raceId,
+        traits: defender.traitNames,
+        resistanceModifier: defenderWeapon ? computeResistanceModifier(this.board, attacker, defenderWeapon.type, true, attacker.location) : undefined,
+        baseDamage: defenderWeapon?.damage,
+        hpDist: dCombatant.hpDist,
       },
     };
 

@@ -625,6 +625,40 @@ describe('GameSession recall UI (selectRecallUnit / recallOptions / handleHexCli
   });
 });
 
+describe('GameSession recall dialog actions (real, reported bug: no way to rename/dismiss a recall-list unit)', () => {
+  it('dismissRecallUnit permanently removes exactly the targeted recall-list entry, by position', () => {
+    const session = new GameSession(loadSnapshot());
+    const resolveType = createTypeResolver(session.snapshot);
+    const fighterType = resolveType('Merman Fighter');
+    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    const a = Unit.create(fighterType, 1, new Location(-1, -1));
+    const b = Unit.create(fighterType, 1, new Location(-1, -1));
+    session.board.addToRecallList(1, a);
+    session.board.addToRecallList(1, b);
+    session.selectUnit(kaiKrellis);
+
+    session.dismissRecallUnit(0);
+
+    expect(session.board.recallList(1)).toEqual([b]);
+  });
+
+  it("renameRecallUnit sets the unit's display name, ignoring a blank name", () => {
+    const session = new GameSession(loadSnapshot());
+    const resolveType = createTypeResolver(session.snapshot);
+    const fighterType = resolveType('Merman Fighter');
+    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    const a = Unit.create(fighterType, 1, new Location(-1, -1));
+    session.board.addToRecallList(1, a);
+    session.selectUnit(kaiKrellis);
+
+    session.renameRecallUnit(0, 'Aeducan');
+    expect(a.name).toBe('Aeducan');
+
+    session.renameRecallUnit(0, '   ');
+    expect(a.name).toBe('Aeducan'); // unchanged -- a blank name is ignored, not a real rename.
+  });
+});
+
 describe('GameSession weapon selection (attackerWeaponOptions / selectAttackerWeapon)', () => {
   it('offers every usable weapon for a real multi-weapon attacker (Dark Sorcerer: staff/chill wave/shadow wave), defaulting to the first', () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
