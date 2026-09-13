@@ -2337,3 +2337,71 @@ outside every campfire's radius does not. `{UNDERGROUND}` needed no new
 code (a single `[time]` entry, handled by existing generic parsing).
 Engine/renderer/ui suites all green throughout (400/190/62), typecheck
 and `svelte-check` (0 errors) clean.
+
+## 2026-09-13: bugs4.md -- 11 bugs fixed (Phase 13/14 UI + AI-turn animation follow-ups)
+
+Handled while a peer session worked Phase 7 (AI) improvements in parallel.
+
+- **#1** AttackDialog now closes the instant "Attack" is clicked, before
+  the combat animation plays, instead of staying open for the whole
+  exchange -- `pendingPreview`/`attackerWeaponOptions` are cleared
+  directly, ahead of the full `sync()` that must stay deferred until
+  after the animation (or the board would jump straight to the final
+  post-combat state).
+- **#4/#6/#8** `recruitOptions`/`recruitTiles`/`recallOptions` (and
+  recruiting/recalling/dismissing/renaming themselves) no longer require
+  the leader to be the currently SELECTED unit -- only that it's the
+  active side's turn and the leader is on a keep with a vacant connected
+  castle tile (`GameSession.recruitingLeader`). Root cause of #8's "gold
+  never updates" (and #6's stale-higher-number symptom): `TopBar.svelte`
+  read `EconomyInfo.startGold` -- the side's gold AT SCENARIO START,
+  deliberately frozen forever -- instead of the live `gold` value
+  `GameShell` already tracked correctly; recruiting always spent gold
+  correctly, the status bar just never showed it.
+- **#5** Choosing a unit from the Recruit/Recall dialog now places it
+  directly on the castle tile the dialog was opened from (right-click),
+  instead of requiring a second click on that same tile.
+- **#7** Turn-start rest/village healing, poison damage, and real
+  `[heals]`/`[regenerate]` ability healing already applied the real HP
+  change but never showed it -- no floating HP-change numeral and no
+  `healed`/`poisoned`/`healing` unit animation, despite
+  `parseUnitAnimations` already fully supporting those three real WML
+  animation tags (simply never invoked). `GameSession.endTurn` now
+  accumulates every `HealOutcome` (`lastHealAnimations`), played back the
+  same way combat blows already are.
+- **#9** Every attack-list `{#each}` in the UI keyed by `atk.name`, which
+  real content routinely violates (the real Peasant has both a melee and
+  a thrown attack, both literally named "pitchfork"; Drake Arbiter has
+  twin "halberd" entries) -- selecting such a unit threw a Svelte
+  `each_key_duplicate` error that broke that render pass for the whole
+  side panel, looking like the unit couldn't be selected at all. Fixed by
+  keying by array index everywhere.
+- **#10/#11** The attack/damage-calculation dialogs already computed a
+  fully correct final damage/chance-to-hit, but never showed why (no
+  time-of-day/leadership/charge/backstab indication, no sign of which
+  weapon special set a flat chance-to-hit override) or what (no weapon
+  specials list at all in the confirmation dialog). `CombatantPreview`
+  now carries the real inputs `buildPreview` already computes, shown as
+  short badges/lines -- display-only, no combat-math change.
+- **#2/#3** Every `AiAnimationEvent` (attack/recruit) read the acting
+  unit's LIVE `.location` at cue-build time, well after `playAiTurn` had
+  already resolved the WHOLE rest of that side's turn -- a unit that took
+  a LATER action the same turn (most visibly a recruiting leader that
+  still had its own moves) had its EARLIER action's animation play back
+  at its FINAL position instead of where that action actually happened
+  (a leader appearing to teleport to its destination before its
+  recruiting animation played, at the keep it had already left). Fixed
+  by freezing each event's location(s) at the moment `playAiTurn` decides
+  the action, mirroring how `move` events already froze their own `path`.
+  Also fixed AI units appearing to "stand on the same hex": a unit that
+  died mid-AI-turn kept its stale sprite on screen until the turn's
+  single deferred `sync()`; `SnapshotBoard.removeUnitVisual` (same "poke
+  the renderer directly" convention as `previewHitpoints`/
+  `spawnFloatingNumber`) now removes it the instant its death animation
+  finishes.
+
+Verified live throughout (Economy/Combat/Abilities & Specials synthetic
+debug campaigns, real Two Brothers scenario 1 -- Mordak recruiting 7
+units then moving away in the same AI turn across multiple end-turn
+cycles, zero console errors). Engine/renderer/ui suites green throughout
+(418/193/86), typecheck and `svelte-check` (0 errors) clean.
