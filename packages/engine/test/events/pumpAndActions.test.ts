@@ -9,6 +9,7 @@ import { MoveType } from '../../src/model/MoveType.js';
 import { EventManager, EventPump } from '../../src/events/pump.js';
 import { VariableStore } from '../../src/events/variables.js';
 import { parseWml } from '../../src/wml/index.js';
+import { runActionSequence } from '../../src/events/actionWml.js';
 
 /** A tiny, fully synthetic (no real content) board -- enough to exercise the pump/action-tag machinery in isolation. */
 function makeBoard(): GameBoard {
@@ -323,5 +324,200 @@ describe('EventPump + action WML (synthetic content)', () => {
     expect(pump.ctx.variables.getBoolean('reached_end')).toBe(true);
     expect(warnings.some((w) => w.includes('totally_made_up_tag'))).toBe(true);
     expect(warnings.some((w) => w.includes('attack'))).toBe(true);
+  });
+
+  describe('[heal_unit] (Phase 14: powers the synthetic Combat campaign\'s "Reset HP" context-menu command)', () => {
+    it('with an explicit [filter], heals that unit to full and clears poisoned/slowed', () => {
+      const board = makeBoard();
+      const { manager, pump } = makePump(board);
+      const hero = Unit.fromConfig(parseWml(`[unit]\n  type=Merman Fighter\n  side=1\n  x=1\n  y=1\n  id=hero\n[/unit]`).child('unit')!, makeResolveType());
+      hero.hitpoints = 1;
+      hero.setStatus('poisoned', true);
+      hero.setStatus('slowed', true);
+      board.addUnit(hero);
+
+      const eventCfg = parseWml(`
+        [event]
+          name=go
+          [heal_unit]
+            [filter]
+              id=hero
+            [/filter]
+          [/heal_unit]
+        [/event]
+      `).child('event')!;
+      manager.addFromWml(eventCfg);
+
+      pump.fire('go');
+
+      expect(hero.hitpoints).toBe(hero.maxHitpoints);
+      expect(hero.hasStatus('poisoned')).toBe(false);
+      expect(hero.hasStatus('slowed')).toBe(false);
+    });
+
+    it('with no [filter], heals whichever unit is at $x1,$y1 -- the real upstream default', () => {
+      const board = makeBoard();
+      const { manager, pump } = makePump(board);
+      const hero = Unit.fromConfig(parseWml(`[unit]\n  type=Merman Fighter\n  side=1\n  x=1\n  y=1\n  id=hero\n[/unit]`).child('unit')!, makeResolveType());
+      hero.hitpoints = 3;
+      board.addUnit(hero);
+
+      const eventCfg = parseWml(`
+        [event]
+          name=go
+          [heal_unit]
+          [/heal_unit]
+        [/event]
+      `).child('event')!;
+      manager.addFromWml(eventCfg);
+
+      pump.fire('go', hero.location);
+
+      expect(hero.hitpoints).toBe(hero.maxHitpoints);
+    });
+
+    it('amount= a specific number adds only that much, clamped to max_hitpoints', () => {
+      const board = makeBoard();
+      const { manager, pump } = makePump(board);
+      const hero = Unit.fromConfig(parseWml(`[unit]\n  type=Merman Fighter\n  side=1\n  x=1\n  y=1\n  id=hero\n[/unit]`).child('unit')!, makeResolveType());
+      hero.hitpoints = 1;
+      board.addUnit(hero);
+
+      const eventCfg = parseWml(`
+        [event]
+          name=go
+          [heal_unit]
+            amount=2
+            [filter]
+              id=hero
+            [/filter]
+          [/heal_unit]
+        [/event]
+      `).child('event')!;
+      manager.addFromWml(eventCfg);
+
+      pump.fire('go');
+
+      expect(hero.hitpoints).toBe(3);
+    });
+  });
+
+  describe('[set_menu_item] / [clear_menu_item] (Phase 14: real right-click context-menu entries)', () => {
+    it('[set_menu_item] stores an id/description/command triple in ctx.menuItems, and does NOT run the command itself', () => {
+      const board = makeBoard();
+      const { manager, pump } = makePump(board);
+
+      const eventCfg = parseWml(`
+        [event]
+          name=prestart
+          [set_menu_item]
+            id=reset_hp
+            description="Reset HP"
+            [command]
+              [set_variable]
+                name=ran
+                value=yes
+              [/set_variable]
+            [/command]
+          [/set_menu_item]
+        [/event]
+      `).child('event')!;
+      manager.addFromWml(eventCfg);
+
+      pump.fire('prestart');
+
+      expect(pump.ctx.menuItems.has('reset_hp')).toBe(true);
+      expect(pump.ctx.menuItems.get('reset_hp')).toMatchObject({ id: 'reset_hp', description: 'Reset HP' });
+      expect(pump.ctx.variables.get('ran')).toBeUndefined();
+    });
+
+    it('a stored [command] body can be run later via runActionSequence -- the exact mechanism GameSession.runMenuItem uses', () => {
+      const board = makeBoard();
+      const { manager, pump } = makePump(board);
+      const eventCfg = parseWml(`
+        [event]
+          name=prestart
+          [set_menu_item]
+            id=reset_hp
+            [command]
+              [set_variable]
+                name=ran
+                value=yes
+              [/set_variable]
+            [/command]
+          [/set_menu_item]
+        [/event]
+      `).child('event')!;
+      manager.addFromWml(eventCfg);
+      pump.fire('prestart');
+
+      const def = pump.ctx.menuItems.get('reset_hp')!;
+      runActionSequence(def.command, pump.ctx);
+
+      expect(pump.ctx.variables.getBoolean('ran')).toBe(true);
+    });
+
+    it('description= defaults to id when omitted', () => {
+      const board = makeBoard();
+      const { manager, pump } = makePump(board);
+      const eventCfg = parseWml(`
+        [event]
+          name=go
+          [set_menu_item]
+            id=bare
+          [/set_menu_item]
+        [/event]
+      `).child('event')!;
+      manager.addFromWml(eventCfg);
+      pump.fire('go');
+
+      expect(pump.ctx.menuItems.get('bare')?.description).toBe('bare');
+    });
+
+    it('[clear_menu_item] id= removes just that one entry', () => {
+      const board = makeBoard();
+      const { manager, pump } = makePump(board);
+      const eventCfg = parseWml(`
+        [event]
+          name=go
+          [set_menu_item]
+            id=a
+          [/set_menu_item]
+          [set_menu_item]
+            id=b
+          [/set_menu_item]
+          [clear_menu_item]
+            id=a
+          [/clear_menu_item]
+        [/event]
+      `).child('event')!;
+      manager.addFromWml(eventCfg);
+      pump.fire('go');
+
+      expect(pump.ctx.menuItems.has('a')).toBe(false);
+      expect(pump.ctx.menuItems.has('b')).toBe(true);
+    });
+
+    it('[clear_menu_item] with no id= clears every menu item', () => {
+      const board = makeBoard();
+      const { manager, pump } = makePump(board);
+      const eventCfg = parseWml(`
+        [event]
+          name=go
+          [set_menu_item]
+            id=a
+          [/set_menu_item]
+          [set_menu_item]
+            id=b
+          [/set_menu_item]
+          [clear_menu_item]
+          [/clear_menu_item]
+        [/event]
+      `).child('event')!;
+      manager.addFromWml(eventCfg);
+      pump.fire('go');
+
+      expect(pump.ctx.menuItems.size).toBe(0);
+    });
   });
 });

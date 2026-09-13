@@ -90,6 +90,7 @@ import {
   type AttackType,
   type RegistryEntry,
   UnitStatus,
+  runActionSequence,
 } from '@wesnothweb2/engine';
 
 /**
@@ -275,6 +276,18 @@ export const DAMAGE_TYPES: readonly string[] = ['blade', 'pierce', 'impact', 'fi
 export interface ResistanceInfo {
   damageType: string;
   resistance: number;
+}
+
+/**
+ * Phase 14: one real `[set_menu_item]` a scenario's WML declared -- see
+ * `GameSession.menuItems`/`runMenuItem`. Deliberately just `id`/`label`
+ * (no raw `WmlConfig`): the UI layer (`GameShell.svelte`'s
+ * `contextMenuCommands`) only ever needs enough to build a `Command`, and
+ * running the actual command body stays entirely inside `GameSession`.
+ */
+export interface MenuItemOption {
+  readonly id: string;
+  readonly label: string;
 }
 
 /** Phase 14: the infobox's "terrain info for the hovered hex" view-model -- see `GameSession.hoveredHexInfo`. */
@@ -759,6 +772,48 @@ export class GameSession {
       terrainName: this.board.map.terrainName(loc),
       defensePercent: this.defensePercentAt(x, y),
     };
+  }
+
+  /**
+   * Phase 14: every real `[set_menu_item]` the scenario's WML has declared
+   * (via `[event]`s already run by `runStartupEvents`, or any later event
+   * -- `actionWml.ts`'s `actionSetMenuItem` mutates `eventPump.ctx.
+   * menuItems` in place, so this always reflects the current set).
+   * `GameShell.svelte`'s `contextMenuCommands` appends one `Command` per
+   * entry here, offered unconditionally on every hex -- this port doesn't
+   * implement `[show_if]`/`[filter_location]` per-hex gating (see
+   * `actionSetMenuItem`'s own doc comment), so a scenario author wanting a
+   * command to only make sense on certain hexes has to make its own
+   * `[command]` body a no-op elsewhere (e.g. check `$x1`/`$y1` itself).
+   */
+  get menuItems(): MenuItemOption[] {
+    return [...this.eventPump.ctx.menuItems.values()].map((item) => ({ id: item.id, label: item.description }));
+  }
+
+  /**
+   * Runs the real `[command]` body of the `[set_menu_item]` `id` names,
+   * at the right-clicked hex `(x, y)` -- sets `$x1`/`$y1`/`ctx.loc1` first
+   * (mirrors `EventPump.pump`'s own convention, see its doc comment) so a
+   * command's `[heal_unit]`/`[filter]`-less action tags default to that
+   * hex exactly the way a real `[set_menu_item]`'s `[command]` would via
+   * `wesnoth.current.event_context.x1/y1`. No-op if `id` isn't a currently
+   * registered menu item (e.g. a stale command from a menu opened before
+   * a `[clear_menu_item]` ran). Returns a log message for the caller's
+   * `sync()`, matching every other mutating method here.
+   */
+  runMenuItem(id: string, x: number, y: number): string | null {
+    const def = this.eventPump.ctx.menuItems.get(id);
+    if (!def) return null;
+    const loc = new Location(x, y);
+    this.eventPump.ctx.loc1 = loc;
+    this.eventPump.ctx.loc2 = Location.NULL;
+    this.eventPump.ctx.variables.set('x1', loc.wmlX);
+    this.eventPump.ctx.variables.set('y1', loc.wmlY);
+    runActionSequence(def.command, this.eventPump.ctx);
+    this.checkForGameEnd();
+    const message = `${def.description}.`;
+    this.log.unshift(message);
+    return message;
   }
 
   /** The attacker's usable weapons against the current `pendingAttack.defender`, for a weapon-choice UI. Empty when there's no pending attack, or a single entry for the common one-usable-weapon case. */

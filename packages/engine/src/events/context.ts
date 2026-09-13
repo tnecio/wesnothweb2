@@ -19,6 +19,19 @@ import type { VariableStore } from './variables.js';
 import type { ScenarioObjectives } from './objectives.js';
 
 /**
+ * One real `[set_menu_item]` declaration -- see `actionWml.ts`'s
+ * `actionSetMenuItem` for the real (subset) semantics this stores, and
+ * `GameSession.menuItems`/`runMenuItem` (packages/ui) for how the UI turns
+ * these into right-click context-menu entries and runs `command` when one
+ * is picked.
+ */
+export interface MenuItemDef {
+  readonly id: string;
+  readonly description: string;
+  readonly command: WmlConfig;
+}
+
+/**
  * One unit's position/hp as of a `[message]` boundary -- see
  * `RecordedMessage.unitsBefore`'s own doc comment for why this exists.
  * `unit` is the live `Unit` reference (for id/type/side lookups whose
@@ -135,6 +148,8 @@ export interface EventContext {
    * table-write semantics.
    */
   objectivesBySide: Map<number, ScenarioObjectives>;
+  /** Real `[set_menu_item]`/`[clear_menu_item]` firings, by id -- see `MenuItemDef`'s own doc comment. */
+  menuItems: Map<string, MenuItemDef>;
   /** The event currently being processed: `loc1`/`loc2` back `$x1`/`$y1`/`$x2`/`$y2` and `[filter]`/`[filter_second]`. */
   loc1: Location;
   loc2: Location;

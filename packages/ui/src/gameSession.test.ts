@@ -31,6 +31,7 @@ const economySnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/synth
 const abilitiesSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/synth_abilities_01.json');
 const wolfCoastSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/03_Wolf_Coast.json');
 const utbsTimeAreaSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/03_Stirring_in_the_Night.json');
+const combatSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/synth_combat_01.json');
 
 /** Real Dead Water scenario 3 -- chained here to exercise `{RECALL_LOYAL_UNITS}` (a real `prestart`-event macro expanding to several `[recall] id=X` calls) against a real recall list carried two scenarios deep. */
 function loadWolfCoastSnapshot(): GameBoardSnapshot {
@@ -58,6 +59,17 @@ function loadEconomySnapshot(): GameBoardSnapshot {
 /** Real "Abilities & Specials Debug" synthetic scenario -- see synthetic-campaigns/abilities/. */
 function loadAbilitiesSnapshot(): GameBoardSnapshot {
   return JSON.parse(fs.readFileSync(abilitiesSnapshotPath, 'utf8')) as GameBoardSnapshot;
+}
+
+/**
+ * Real "Combat Debug" synthetic scenario -- two adjacent leaders, plus (as
+ * of Phase 14) a real `[set_menu_item] id=reset_hp` `prestart` event whose
+ * `[command]` is a real `[heal_unit]` with no `[filter]` (so it heals
+ * whichever unit is at the right-clicked hex) -- see
+ * synthetic-campaigns/combat/scenarios/01_combat.cfg.
+ */
+function loadCombatSnapshot(): GameBoardSnapshot {
+  return JSON.parse(fs.readFileSync(combatSnapshotPath, 'utf8')) as GameBoardSnapshot;
 }
 
 /**
@@ -1603,5 +1615,48 @@ describe('GameSession advancement + victory ordering (real, reported bug: a kill
       }
     }
     throw new Error('Never landed the winning blow across 50 seeds -- suspiciously unlucky, or a real regression.');
+  });
+});
+
+describe('GameSession.menuItems / runMenuItem (Phase 14: real WML/Lua-extensible right-click context menu, [set_menu_item]/[heal_unit])', () => {
+  it('surfaces the Combat debug scenario\'s real [set_menu_item] "Reset HP" entry after startup events run', () => {
+    const session = new GameSession(loadCombatSnapshot());
+    session.runStartupEvents();
+
+    expect(session.menuItems).toEqual([{ id: 'reset_hp', label: 'Reset HP' }]);
+  });
+
+  it('runMenuItem runs the real [heal_unit] command against whichever unit is at the given hex, healing it to full', () => {
+    const session = new GameSession(loadCombatSnapshot());
+    session.runStartupEvents();
+    const hero = session.board.allUnits().find((u) => u.id === 'Debug Hero')!;
+    hero.hitpoints = 1;
+
+    const message = session.runMenuItem('reset_hp', hero.location.x, hero.location.y);
+
+    expect(hero.hitpoints).toBe(hero.maxHitpoints);
+    expect(message).toBe('Reset HP.');
+    expect(session.log[0]).toBe('Reset HP.');
+  });
+
+  it('runMenuItem is a harmless no-op on an empty hex (real [heal_unit] with no matching unit)', () => {
+    const session = new GameSession(loadCombatSnapshot());
+    session.runStartupEvents();
+
+    expect(() => session.runMenuItem('reset_hp', 0, 0)).not.toThrow();
+  });
+
+  it('runMenuItem with an unknown id is a no-op (returns null, does not throw)', () => {
+    const session = new GameSession(loadCombatSnapshot());
+    session.runStartupEvents();
+
+    expect(session.runMenuItem('not_a_real_id', 2, 3)).toBeNull();
+  });
+
+  it('a scenario with no [set_menu_item] declarations (real Dead_Water scenario 1) reports no menu items', () => {
+    const session = new GameSession(loadSnapshot());
+    session.runStartupEvents();
+
+    expect(session.menuItems).toEqual([]);
   });
 });

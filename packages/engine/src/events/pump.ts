@@ -147,6 +147,7 @@ export class EventPump {
       resolveType: options.resolveType,
       messages: [] as RecordedMessage[],
       objectivesBySide: new Map(),
+      menuItems: new Map(),
       loc1: Location.NULL,
       loc2: Location.NULL,
       eventData: new WmlConfig(),

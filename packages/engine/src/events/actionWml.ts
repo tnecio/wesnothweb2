@@ -33,7 +33,12 @@
  * not cover, and `pathfind.ts`'s `findVacantTile`, ported alongside it),
  * `objectives` (real, reported bug: used to be a no-op -- see
  * `objectives.ts`'s own doc comment for the real `data/lua/wml/
- * objectives.lua` logic it ports and what's deliberately scoped out).
+ * objectives.lua` logic it ports and what's deliberately scoped out),
+ * `heal_unit` (see its own doc comment for the real `data/lua/wml/
+ * heal_unit.lua` subset), `set_menu_item`/`clear_menu_item` (Phase 14:
+ * lets a scenario's `[event]`s declare real right-click context-menu
+ * entries -- see their own doc comments and `GameSession.menuItems`/
+ * `runMenuItem`, packages/ui, for how the UI surfaces and executes them).
  *
  * Presentation-only tags that have no headless effect are registered as
  * explicit no-ops (not silently dropped) so real content doesn't spam
@@ -889,6 +894,93 @@ function actionEndlevel(cfg: WmlConfig, ctx: EventContext): void {
   };
 }
 
+// --- [heal_unit] ---
+
+/**
+ * Real subset of `data/lua/wml/heal_unit.lua`: `[filter]` (defaults to the
+ * unit at `$x1,$y1`, i.e. `ctx.loc1` -- matches upstream reading
+ * `wesnoth.current.event_context.x1/y1`), `amount` (a number, or `"full"`/
+ * omitted for a full heal -- upstream's own default), `moves` (`"full"` or
+ * an amount added, default 0), `restore_attacks`, and `restore_statuses`
+ * (default `true`, clearing poisoned/petrified/slowed -- `unhealable` is
+ * not modelled as a status the way upstream's `status.unhealable` is, see
+ * `Unit.ts`, so it's not cleared here). NOT ported: `[filter_second]`
+ * (healer-of-record, used only for the `animate=` visual), `variable=`
+ * (per-unit result recording).
+ */
+function actionHealUnit(cfg: WmlConfig, ctx: EventContext): void {
+  const filterCfg = cfg.child('filter');
+  const units = filterCfg
+    ? findUnits(ctx.board, ctx.variables.expandConfig(filterCfg))
+    : ctx.loc1.valid()
+      ? [ctx.board.unitAt(ctx.loc1)].filter((u): u is Unit => u !== undefined)
+      : [];
+
+  const amountStr = cfg.getString('amount', 'full');
+  const movesStr = cfg.getString('moves', '');
+  const restoreAttacks = cfg.getBoolean('restore_attacks', false);
+  const restoreStatuses = cfg.getBoolean('restore_statuses', true);
+
+  for (const unit of units) {
+    if (amountStr === 'full') {
+      unit.hitpoints = unit.maxHitpoints;
+    } else {
+      const amount = Number(amountStr) || 0;
+      unit.hitpoints = Math.floor(Math.max(1, Math.min(unit.maxHitpoints, unit.hitpoints + amount)));
+    }
+
+    if (movesStr === 'full') {
+      unit.movesLeft = unit.maxMoves;
+    } else if (movesStr !== '') {
+      unit.movesLeft = Math.min(unit.maxMoves, unit.movesLeft + (Number(movesStr) || 0));
+    }
+
+    if (restoreAttacks) unit.attacksLeft = unit.maxAttacksPerTurn;
+
+    if (restoreStatuses) {
+      unit.setStatus('poisoned', false);
+      unit.setStatus('petrified', false);
+      unit.setStatus('slowed', false);
+    }
+  }
+}
+
+// --- [set_menu_item] / [clear_menu_item] ---
+
+/**
+ * Real subset of upstream's `[set_menu_item]` (`src/game_events/action_wml.
+ * cpp`'s `menu_item` handling + `src/menu_events.cpp`'s right-click menu
+ * build): `id` (required) and `description` (the menu label, defaulting to
+ * `id`), plus a `[command]` child -- the WML action body `runActionSequence`
+ * runs (via `GameSession.runMenuItem`, packages/ui) when the player picks
+ * this entry from the context menu. Registering just STORES the definition
+ * in `ctx.menuItems` (mirrors `actionObjectives`/`ctx.objectivesBySide`'s
+ * own "populate a map the UI reads later" pattern) -- it does not run
+ * anything itself. NOT ported: `[show_if]`/`[filter_location]` (real
+ * per-hex enablement -- this port's menu items are offered unconditionally
+ * on every hex, see `GameSession.menuItems`'s own doc comment),
+ * `image=`/`needs_select=`/`hotkey=`.
+ */
+function actionSetMenuItem(cfg: WmlConfig, ctx: EventContext): void {
+  const id = cfg.getString('id', '');
+  if (id === '') {
+    ctx.log('error', '[set_menu_item] missing required id=');
+    return;
+  }
+  ctx.menuItems.set(id, {
+    id,
+    description: cfg.getString('description', id),
+    command: cfg.child('command') ?? new WmlConfig(),
+  });
+}
+
+/** `id=` removes that one entry; omitted clears every menu item (matches upstream's own `[clear_menu_item]` with no id=). */
+function actionClearMenuItem(cfg: WmlConfig, ctx: EventContext): void {
+  const id = cfg.getString('id', '');
+  if (id === '') ctx.menuItems.clear();
+  else ctx.menuItems.delete(id);
+}
+
 /**
  * Builds a fresh registry with every action tag this module implements
  * (plus the presentation no-ops and extension-point placeholders)
@@ -924,6 +1016,9 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('remove_time_area', actionRemoveTimeArea);
   registry.register('replace_schedule', actionReplaceSchedule);
   registry.register('store_time_of_day', actionStoreTimeOfDay);
+  registry.register('heal_unit', actionHealUnit);
+  registry.register('set_menu_item', actionSetMenuItem);
+  registry.register('clear_menu_item', actionClearMenuItem);
 
   for (const tag of [
     'music',

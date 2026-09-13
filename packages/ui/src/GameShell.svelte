@@ -898,6 +898,17 @@
         enabled: recallOptions.length > 0 && isRecruitTile,
         handler: () => (recallDialogOpen = true),
       });
+      // Real `[set_menu_item]` entries the scenario's own WML declared --
+      // see `GameSession.menuItems`'s own doc comment on why these are
+      // offered unconditionally rather than per-hex-filtered.
+      for (const item of session.menuItems) {
+        hexCommands.push({
+          id: `wml-${item.id}`,
+          label: item.label,
+          enabled: true,
+          handler: () => sync(session.runMenuItem(item.id, x, y)),
+        });
+      }
     }
     return [...hexCommands, ...actionCommands.filter((c) => c.id === 'objectives' || c.id === 'end-turn')];
   });
