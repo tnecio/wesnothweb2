@@ -276,6 +276,22 @@ export interface LastAttackAnimation {
   readonly defender: Unit;
   readonly defenderWeaponIndex: number;
   readonly result: AttackResult;
+  /**
+   * `attacker`/`defender`'s real `type.id` AS OF THE MOMENT THIS EXCHANGE
+   * RESOLVED -- i.e. before `confirmAttack` processes any post-combat
+   * advancement. `attacker`/`defender` above are live `Unit` references
+   * that `confirmAttack` mutates in place (`Unit.advanceTo` swaps `.type`)
+   * the instant a combatant has enough XP to level up, which happens
+   * synchronously, before any caller gets a chance to actually play this
+   * animation. Real, reported bug: without capturing the type id here, the
+   * combat animation showed the unit's ALREADY-ADVANCED sprite for the
+   * whole fight (e.g. an Archer already drawn as a Longbowman mid-swing)
+   * instead of only after the fight visually finishes -- a caller building
+   * animation cues should resolve sprite/animation-set by THESE ids, not
+   * by re-reading `attacker.type.id`/`defender.type.id` live.
+   */
+  readonly attackerTypeId: string;
+  readonly defenderTypeId: string;
 }
 
 /** Everything a caller needs to animate the move `handleHexClick`'s move branch just resolved -- see `GameSession.lastMoveAnimation`. Same rationale as `LastAttackAnimation`: raw engine data only, no renderer dependency here. */
@@ -1646,6 +1662,10 @@ export class GameSession {
       defender: pending.defender,
       defenderWeaponIndex: pending.defenderWeaponIndex,
       result,
+      // Captured now, before advancement (below) can mutate either unit's
+      // `.type` -- see LastAttackAnimation.attackerTypeId's own doc comment.
+      attackerTypeId: pending.attacker.type.id,
+      defenderTypeId: pending.defender.type.id,
     };
 
     const attackerName = pending.preview.attacker.name;

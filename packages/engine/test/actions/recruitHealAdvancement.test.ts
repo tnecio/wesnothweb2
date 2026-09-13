@@ -250,6 +250,43 @@ describe('advancement', () => {
     expect(result.toTypeId).toBe(advancedType.id);
   });
 
+  it('real, reported bug: advancing fully heals but does NOT restore moves/attacks -- they carry over (clamped) from before the triggering combat', () => {
+    const terrainData = loadTerrainData();
+    const moveType = flatMoveType(terrainData);
+    const baseType = makeUnitType('grunt', 30, moveType, 10, -1, 1, ['veteran']);
+    const advancedType = makeUnitType('veteran', 60, moveType, 20, -1, 2);
+    const unit = Unit.create(baseType, 1, Location.fromWml(1, 1));
+    unit.experience = 35;
+    // Simulates the real sequence: the unit spent its move and its one
+    // attack to make the very attack that leveled it up.
+    unit.movesLeft = 0;
+    unit.attacksLeft = 0;
+
+    advanceUnitTo(unit, advancedType);
+
+    expect(unit.hitpoints).toBe(60); // still fully healed
+    expect(unit.movesLeft).toBe(0); // NOT reset to the new type's movement=5
+    expect(unit.attacksLeft).toBe(0); // NOT reset to the new type's max_attacks=1
+    expect(unit.maxMoves).toBe(5); // the new type's own max IS updated
+    expect(unit.maxAttacksPerTurn).toBe(1);
+  });
+
+  it('advancing clamps carried-over moves/attacks down to the new type\'s (possibly lower) max, rather than leaving an impossible excess', () => {
+    const terrainData = loadTerrainData();
+    const moveType = flatMoveType(terrainData);
+    const baseType = new UnitType('scout', 'scout', '', 'neutral', 1, 20, 9, 5, 0, 2, 10, -1, 32, ['footman'], '', false, false, false, moveType, [AttackType.fromConfig(new WmlConfig())], []);
+    const advancedType = makeUnitType('footman', 40, moveType, 20, -1, 2); // movement=5, maxAttacksPerTurn=1 -- both lower than scout's.
+    const unit = Unit.create(baseType, 1, Location.fromWml(1, 1));
+    unit.experience = 100;
+    unit.movesLeft = 9; // scout's full movement -- didn't move at all this turn.
+    unit.attacksLeft = 2;
+
+    advanceUnitTo(unit, advancedType);
+
+    expect(unit.movesLeft).toBe(5); // clamped to the new (lower) max, not left at 9
+    expect(unit.attacksLeft).toBe(1);
+  });
+
   it('chooseAdvancementRandomly only ever returns one of the unit type\'s own declared advancesTo options', () => {
     const terrainData = loadTerrainData();
     const moveType = flatMoveType(terrainData);

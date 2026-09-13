@@ -80,6 +80,9 @@ export type AiAnimationEvent =
       readonly defender: Unit;
       readonly defenderWeaponIndex: number;
       readonly result: AttackResult;
+      /** `attacker`/`defender`'s real type id AS OF THIS EXCHANGE, before `advanceUnitFully` below can mutate either unit's `.type` -- see `LastAttackAnimation.attackerTypeId`'s doc comment (packages/ui/src/gameSession.ts) for the full rationale; this mirrors it for the AI's own attack path. */
+      readonly attackerTypeId: string;
+      readonly defenderTypeId: string;
     }
   | { readonly kind: 'recruit'; readonly unit: Unit; readonly leader: Unit };
 
@@ -366,6 +369,10 @@ export function playAiTurn(board: GameBoard, side: number, rng: Rng, options: Ai
           defender,
           defenderWeaponIndex,
           result,
+          // Captured now, before advanceUnitFully (below) can mutate either
+          // unit's `.type` -- see AiAnimationEvent's attack variant doc comment.
+          attackerTypeId: unit.type.id,
+          defenderTypeId: defender.type.id,
         },
       });
       // Real Wesnoth checks both combatants for advancement right after

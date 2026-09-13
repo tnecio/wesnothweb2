@@ -276,24 +276,38 @@ export class Unit {
   }
 
   /**
-   * Advances this unit to `newType` in place: resets HP/moves/attacks to
-   * the new type's full values (matching the "advancing heals fully"
-   * gameplay rule) and carries over overflow XP into the new threshold.
-   * Does not apply `[effect]` modifications from traits/items -- see
-   * module doc comment.
+   * Advances this unit to `newType` in place: resets HP to the new type's
+   * full value (matching the "advancing heals fully" gameplay rule -- see
+   * `advancement.ts`'s `advanceUnitTo`, whose own doc comment cites
+   * `get_advanced_unit`'s explicit `heal_fully()` call) and carries over
+   * overflow XP into the new threshold. Does not apply `[effect]`
+   * modifications from traits/items -- see module doc comment.
+   *
+   * Moves/attacks are deliberately CARRIED OVER (clamped to the new type's
+   * max), not reset to full -- mirrors upstream's `unit::advance_to`
+   * exactly: its `stats_storage_resetter(*this, true)` snapshots the
+   * pre-advance `movement_left`/`attacks_left` and restores them clamped
+   * to the new max once the type swap is done, and `get_advanced_unit`
+   * only ever calls the separate `heal_fully()` on top of that -- it never
+   * touches moves/attacks. Real, reported bug: a unit used to get its full
+   * movement/attacks back the instant it advanced (typically mid-turn,
+   * right after the very attack that leveled it up), letting it act again
+   * for free the same turn.
    */
   advanceTo(newType: UnitType, experienceModifierPercent = 100): void {
     const overflow = this.experienceOverflow();
+    const movesLeft = this.movesLeft;
+    const attacksLeft = this.attacksLeft;
     this.type = newType;
     this.level = newType.level;
     this.hitpoints = newType.hitpoints;
     this.maxHitpoints = newType.hitpoints;
     this.maxExperience = newType.experienceNeeded(experienceModifierPercent);
     this.experience = Math.min(overflow, this.maxExperience);
-    this.movesLeft = newType.movement;
     this.maxMoves = newType.movement;
-    this.attacksLeft = newType.maxAttacksPerTurn;
+    this.movesLeft = Math.min(movesLeft, this.maxMoves);
     this.maxAttacksPerTurn = newType.maxAttacksPerTurn;
+    this.attacksLeft = Math.min(attacksLeft, this.maxAttacksPerTurn);
     this.attacks = newType.attacks;
   }
 

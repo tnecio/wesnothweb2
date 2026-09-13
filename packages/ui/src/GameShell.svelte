@@ -337,17 +337,25 @@
       terrainLookup(session.board),
     );
 
-    const attackerAnims = animationsFor(info.attacker.type.id);
-    const defenderAnims = animationsFor(info.defender.type.id);
+    // Real, reported bug: a combatant that advances (levels up) has its
+    // `.type` mutated in place synchronously, before this animation ever
+    // plays (see `LastAttackAnimation.attackerTypeId`'s own doc comment) --
+    // resolving sprite/animation-set by the live `.type.id` showed the
+    // ALREADY-ADVANCED unit for the whole fight instead of only after it
+    // visually finishes. Use the type id captured at combat-resolution time.
+    const attackerTypeId = info.attackerTypeId;
+    const defenderTypeId = info.defenderTypeId;
+    const attackerAnims = animationsFor(attackerTypeId);
+    const defenderAnims = animationsFor(defenderTypeId);
     const attackerKey = spriteKey({
       underlyingId: session.renderKeyFor(info.attacker),
-      typeId: info.attacker.type.id,
+      typeId: attackerTypeId,
       x: info.attacker.location.x,
       y: info.attacker.location.y,
     });
     const defenderKey = spriteKey({
       underlyingId: session.renderKeyFor(info.defender),
-      typeId: info.defender.type.id,
+      typeId: defenderTypeId,
       x: info.defender.location.x,
       y: info.defender.location.y,
     });

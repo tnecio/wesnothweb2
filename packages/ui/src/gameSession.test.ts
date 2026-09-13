@@ -1329,6 +1329,41 @@ describe('GameSession unit advancement (real, reported bug: advances_to= was nev
     throw new Error('Fighter never landed a hit across 50 seeds -- suspiciously unlucky, or a real regression.');
   });
 
+  it('real, reported bug: lastAttackAnimation captures the PRE-advance type id, even though the live unit already shows the new type by the time confirmAttack() returns', () => {
+    // confirmAttack() resolves the whole exchange AND any resulting
+    // advancement synchronously (advanceTo mutates `.type` in place) --
+    // an animation built from the live `attacker`/`defender` objects
+    // AFTER confirmAttack() returns would show the ALREADY-ADVANCED sprite
+    // for the whole fight (e.g. an Archer drawn as a Longbowman mid-swing)
+    // instead of only once the fight visually finishes. `attackerTypeId`/
+    // `defenderTypeId` are captured before advancement runs, specifically
+    // so a renderer can resolve sprites by these instead of the live type.
+    const resolveType = createTypeResolver(new GameSession(loadSnapshot()).snapshot);
+    const fighterType = resolveType('Merman Fighter');
+    const dummyType = resolveType('Merman Citizen');
+
+    for (let seed = 0; seed < 50; seed++) {
+      const s = new GameSession(loadSnapshot(), { seed });
+      const f = Unit.create(fighterType, 1, new Location(10, 10), { canRecruit: false });
+      f.experience = f.maxExperience - 1;
+      const d = Unit.create(dummyType, 2, new Location(11, 10));
+      d.hitpoints = 1;
+      s.board.addUnit(f);
+      s.board.addUnit(d);
+      s.selectUnit(f);
+      s.handleHexClick(d.location.x, d.location.y);
+      s.confirmAttack();
+      if (f.type.id === 'Merman Warrior') {
+        expect(s.lastAttackAnimation).not.toBeNull();
+        expect(s.lastAttackAnimation!.attackerTypeId).toBe('Merman Fighter');
+        expect(s.lastAttackAnimation!.attacker).toBe(f);
+        expect(s.lastAttackAnimation!.attacker.type.id).toBe('Merman Warrior'); // the live reference has already moved on
+        return;
+      }
+    }
+    throw new Error('Fighter never landed a hit across 50 seeds -- suspiciously unlucky, or a real regression.');
+  });
+
   it('a multi-option advance (Merman Citizen -> Brawler/Fighter/Hunter) blocks on pendingAdvancement until the player chooses', () => {
     const resolveType = (session: GameSession) => createTypeResolver(session.snapshot);
     for (let seed = 0; seed < 50; seed++) {
