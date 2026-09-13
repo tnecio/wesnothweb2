@@ -115,7 +115,18 @@
   let selectedHex = $state<HexPoint | null>(null);
   let reachable = $state<ReachableHexPoint[]>([]);
   let attackTargets = $state<HexPoint[]>([]);
+  /** Feeds the context menu's "is this hex a valid recruit/recall target" check -- selection-independent, see `GameSession.recruitTiles`'s own doc comment. NOT the board's visual highlight -- see `boardRecruitTiles` below. */
   let recruitTiles = $state<HexPoint[]>([]);
+  /**
+   * The board's green recruit-tile highlight -- real, reported bug
+   * (bugs5.md #4): unlike `recruitTiles` above, this IS tied to whether
+   * the leader is actually SELECTED (see `GameSession.boardRecruitTiles`'s
+   * own doc comment) -- showing it any time the active side merely HAD a
+   * recruiting leader somewhere (which `recruitTiles` itself now
+   * correctly does, for the context menu/dialog's sake) was distracting
+   * clutter real Wesnoth doesn't have.
+   */
+  let boardRecruitTiles = $state<HexPoint[]>([]);
   let recruitOptions = $state<RecruitOption[]>([]);
   let pendingRecruitTypeId = $state<string | null>(null);
   let recallOptions = $state<RecallOption[]>([]);
@@ -173,6 +184,7 @@
     reachable = session.reachable;
     attackTargets = session.attackCandidates.map((u) => ({ x: u.location.x, y: u.location.y }));
     recruitTiles = session.recruitTiles;
+    boardRecruitTiles = session.boardRecruitTiles;
     recruitOptions = session.recruitOptions;
     pendingRecruitTypeId = session.pendingRecruitTypeId;
     recallOptions = session.recallOptions;
@@ -288,6 +300,11 @@
     const recruit = session.lastRecruitAnimation;
     session.lastRecruitAnimation = null;
     if (recruit && boardView) {
+      // Real, reported bug (bugs5.md #3): the new unit has no visual at
+      // all until the `sync(message)` below runs -- without this, its own
+      // "recruited" half of the cue pair silently does nothing (see
+      // `SnapshotBoard.ensureUnitVisual`'s own doc comment).
+      await boardView.ensureUnitVisual(session.snapshotUnitFor(recruit.unit));
       await boardView.playAnimationSequence(buildRecruitAnimationCues(recruit));
     }
     sync(message);
@@ -823,22 +840,46 @@
    * the player click that same tile again. Falls back to the old arm-
    * and-wait-for-a-click behavior when there's no such origin hex (opened
    * from the top bar's Actions menu instead).
+   *
+   * Deliberately arms via `session.selectRecruitType` directly here, NOT
+   * `handleSelectRecruitType` (which also calls `sync()`) -- real,
+   * reported bug (bugs5.md, found while fixing #3): that extra `sync()`
+   * reassigns `units`, which `GameBoardView`'s reactive effect turns into
+   * a fire-and-forget `updateUnits()`/`renderUnits()` pass over the board
+   * BEFORE the recruit itself has even happened. Immediately afterward
+   * (same tick), `handleHexClick` below performs the actual recruit and
+   * calls `ensureUnitVisual` for the brand-new unit -- racing that still
+   * in-flight, now-stale pass, whose own cleanup loop (built from a
+   * `units` snapshot that predates the recruit) doesn't know the new
+   * unit's key and destroys the visual `ensureUnitVisual` just created
+   * out from under it (a real crash: "Cannot set properties of null
+   * (setting 'x')", `SnapshotBoard.updateOneUnit` mid-flight). Skipping
+   * the redundant sync when we're about to place the unit immediately
+   * anyway removes the race outright.
    */
   async function handleConfirmRecruit(typeId: string): Promise<void> {
     recruitDialogOpen = false;
     const origin = recruitOriginHex;
     recruitOriginHex = null;
-    handleSelectRecruitType(typeId);
-    if (origin) await handleHexClick(origin.x, origin.y);
+    if (origin) {
+      session.selectRecruitType(typeId);
+      await handleHexClick(origin.x, origin.y);
+    } else {
+      handleSelectRecruitType(typeId);
+    }
   }
 
-  /** Phase 13: `RecallDialog`'s "Recall" button -- same shape as `handleConfirmRecruit`. */
+  /** Phase 13: `RecallDialog`'s "Recall" button -- same shape as `handleConfirmRecruit`, including the same deliberate no-intermediate-sync reasoning. */
   async function handleConfirmRecall(index: number): Promise<void> {
     recallDialogOpen = false;
     const origin = recruitOriginHex;
     recruitOriginHex = null;
-    handleSelectRecallUnit(index);
-    if (origin) await handleHexClick(origin.x, origin.y);
+    if (origin) {
+      session.selectRecallUnit(index);
+      await handleHexClick(origin.x, origin.y);
+    } else {
+      handleSelectRecallUnit(index);
+    }
   }
 
   /** Phase 13: `RecallDialog`'s real "Dismiss unit" button (`GameSession.dismissRecallUnit`) -- permanently removes the entry, no placement follows. */
@@ -904,6 +945,14 @@
       } else if (event.kind === 'move') {
         await boardView.playAnimationSequence(buildMoveAnimationCues(event), 2);
       } else {
+        // Real, reported bug (bugs5.md #3): without this, an AI recruit's
+        // new unit had no visual until the WHOLE turn's worth of
+        // animations finished playing and the deferred `sync()` finally
+        // ran -- so its own "recruited" cue silently did nothing, and
+        // every unit an AI side recruited that turn seemed to pop into
+        // existence all at once, well after the fact. See
+        // `SnapshotBoard.ensureUnitVisual`'s own doc comment.
+        await boardView.ensureUnitVisual(session.snapshotUnitFor(event.unit));
         await boardView.playAnimationSequence(buildRecruitAnimationCues(event));
       }
     }
@@ -1148,7 +1197,7 @@
         {selectedHex}
         {reachable}
         {attackTargets}
-        {recruitTiles}
+        recruitTiles={boardRecruitTiles}
         {villageOwners}
         {hexVisibility}
         {timeOfDay}

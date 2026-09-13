@@ -366,6 +366,11 @@
   export function removeUnitVisual(key: string): void {
     board?.removeUnitVisual(key);
   }
+
+  /** Real, reported bug (bugs5.md #3): a just-recruited/recalled unit had no visual at all (so its own "recruited" animation cue silently did nothing) until the deferred sync() at the end of a whole turn's animation playback. See `SnapshotBoard.ensureUnitVisual`'s own doc comment. */
+  export async function ensureUnitVisual(unit: SnapshotUnit): Promise<void> {
+    await board?.ensureUnitVisual(unit);
+  }
 </script>
 
 <div class="board-view">

@@ -1154,52 +1154,97 @@ export class SnapshotBoard {
    * board). See module doc comment for why this replaced the previous
    * "destroy and rebuild everything" approach.
    */
+  /**
+   * Creates (if missing), updates, and positions the single `UnitVisual`
+   * for `unit` -- the per-unit body `renderUnits()`'s own loop uses,
+   * pulled out so `ensureUnitVisual` (below) can create just ONE unit's
+   * visual on demand, without touching any other unit's state the way a
+   * full `renderUnits()` pass would.
+   */
+  private async updateOneUnit(unit: SnapshotUnit): Promise<UnitVisual> {
+    const key = spriteKey(unit);
+    const coord = toHexCoord(unit.x, unit.y);
+    const { x: cx, y: cy } = hexToPixel(coord);
+
+    let visual = this.unitVisuals.get(key);
+    if (!visual) {
+      visual = await this.buildUnitVisual(unit);
+      this.unitVisuals.set(key, visual);
+      this.unitLayer.addChild(visual.container);
+    } else if (visual.lastImage !== unit.image || visual.lastSide !== unit.side) {
+      visual.container.removeChildren();
+      const rebuilt = await this.buildUnitVisual(unit);
+      visual.container.addChild(...rebuilt.container.removeChildren());
+      visual.sprite = rebuilt.sprite;
+      visual.marker = rebuilt.marker;
+      visual.bars = rebuilt.bars;
+      visual.overlay = null; // the old overlay sprite (if any) was just destroyed along with its old container children.
+      visual.crownIcon = null; // ditto for the crown/loyal/orb icons, if any.
+      visual.loyalIcon = null;
+      visual.orbIcon = null;
+      visual.lastOrbRef = null;
+      visual.lastImage = unit.image;
+      visual.lastSide = unit.side;
+    }
+    if (visual.overlay) visual.overlay.alpha = 0; // a hit-flash should never outlive the animation that caused it.
+    visual.lastUnit = unit;
+    this.updateOverlays(visual, unit);
+    await this.updateIcons(visual, unit);
+    // Defensive: `updateIcons` just awaited (a real texture load, in the
+    // worst case), during which a CONCURRENT `renderUnits()`/`updateUnits()`
+    // pass built from an older `this.units` snapshot (one that predates
+    // `unit` even existing -- e.g. `GameShell`'s reactive `units` prop
+    // update firing again before this call finished) could have already
+    // destroyed this very container as "not in its own snapshot" (see
+    // `ensureUnitVisual`'s own doc comment for the concrete real bug this
+    // guards against). Bail out rather than crash setting properties on a
+    // dead container -- the concurrent pass already removed this entry
+    // from `unitVisuals` too, so there's nothing left to keep correct.
+    if (visual.container.destroyed) return visual;
+    visual.container.x = cx;
+    visual.container.y = cy;
+    if (visual.sprite) {
+      // Real, reported bug: this used to unconditionally reset to the
+      // unmirrored orientation ("undo any hflip a prior animation left
+      // behind"), regardless of `unit.facing` -- so the idle sprite
+      // never actually mirrored to face the unit's last move/attack
+      // direction, even though it correctly reset any IN-PROGRESS
+      // animation's hflip once that animation finished. Now settles on
+      // whichever orientation `unit.facing` actually calls for.
+      const mirrored = isMirroredFacing(unit.facing);
+      visual.sprite.scale.x = mirrored ? -Math.abs(visual.sprite.scale.x) : Math.abs(visual.sprite.scale.x);
+    }
+    return visual;
+  }
+
+  /**
+   * Creates (or updates/repositions, if it somehow already exists) the
+   * visual for exactly one unit RIGHT NOW, ahead of the next full
+   * `updateUnits()`/`renderUnits()` pass -- real, reported bug (bugs5.md
+   * #3): a just-recruited unit has no visual at all until that deferred
+   * pass runs (only after `GameShell` finishes playing back the WHOLE
+   * rest of a turn's animations, batched -- see `playAiAnimations`'s own
+   * doc comment), so its own "recruited" animation cue silently did
+   * nothing at all (`playAnimationSequence` filters out any cue whose
+   * `key` has no existing visual, see its own doc comment) -- only the
+   * recruiting LEADER's half of the pair (its visual already existed)
+   * ever played, and the new unit simply popped into existence later,
+   * all at once with every other unit recruited that same turn. Callers
+   * should call this for a newly-recruited/recalled unit BEFORE playing
+   * its recruit animation cue, mirroring `previewHitpoints`/
+   * `spawnFloatingNumber`/`removeUnitVisual`'s "poke the renderer
+   * directly, don't wait for the deferred sync" convention.
+   */
+  async ensureUnitVisual(unit: SnapshotUnit): Promise<void> {
+    await this.updateOneUnit(unit);
+  }
+
   private async renderUnits(): Promise<void> {
     const seen = new Set<string>();
 
     for (const unit of this.units) {
-      const key = spriteKey(unit);
-      seen.add(key);
-      const coord = toHexCoord(unit.x, unit.y);
-      const { x: cx, y: cy } = hexToPixel(coord);
-
-      let visual = this.unitVisuals.get(key);
-      if (!visual) {
-        visual = await this.buildUnitVisual(unit);
-        this.unitVisuals.set(key, visual);
-        this.unitLayer.addChild(visual.container);
-      } else if (visual.lastImage !== unit.image || visual.lastSide !== unit.side) {
-        visual.container.removeChildren();
-        const rebuilt = await this.buildUnitVisual(unit);
-        visual.container.addChild(...rebuilt.container.removeChildren());
-        visual.sprite = rebuilt.sprite;
-        visual.marker = rebuilt.marker;
-        visual.bars = rebuilt.bars;
-        visual.overlay = null; // the old overlay sprite (if any) was just destroyed along with its old container children.
-        visual.crownIcon = null; // ditto for the crown/loyal/orb icons, if any.
-        visual.loyalIcon = null;
-        visual.orbIcon = null;
-        visual.lastOrbRef = null;
-        visual.lastImage = unit.image;
-        visual.lastSide = unit.side;
-      }
-      if (visual.overlay) visual.overlay.alpha = 0; // a hit-flash should never outlive the animation that caused it.
-      visual.lastUnit = unit;
-      this.updateOverlays(visual, unit);
-      await this.updateIcons(visual, unit);
-      visual.container.x = cx;
-      visual.container.y = cy;
-      if (visual.sprite) {
-        // Real, reported bug: this used to unconditionally reset to the
-        // unmirrored orientation ("undo any hflip a prior animation left
-        // behind"), regardless of `unit.facing` -- so the idle sprite
-        // never actually mirrored to face the unit's last move/attack
-        // direction, even though it correctly reset any IN-PROGRESS
-        // animation's hflip once that animation finished. Now settles on
-        // whichever orientation `unit.facing` actually calls for.
-        const mirrored = isMirroredFacing(unit.facing);
-        visual.sprite.scale.x = mirrored ? -Math.abs(visual.sprite.scale.x) : Math.abs(visual.sprite.scale.x);
-      }
+      seen.add(spriteKey(unit));
+      await this.updateOneUnit(unit);
     }
 
     for (const [key, visual] of this.unitVisuals) {

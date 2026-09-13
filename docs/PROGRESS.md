@@ -2405,3 +2405,52 @@ debug campaigns, real Two Brothers scenario 1 -- Mordak recruiting 7
 units then moving away in the same AI turn across multiple end-turn
 cycles, zero console errors). Engine/renderer/ui suites green throughout
 (418/193/86), typecheck and `svelte-check` (0 errors) clean.
+
+## 2026-09-13 (cont'd): bugs5.md -- 4 bugs fixed (follow-ups to bugs4.md's recruit/AI-animation work)
+
+- **#1** Recruiting/recalling no longer auto-selects the leader afterward.
+  `tryRecruitAt`/`tryRecallAt` used to re-select it "to refresh
+  recruitTiles/attackCandidates", a rationale that stopped applying once
+  bugs4.md #4 made those selection-independent getters -- so it was just
+  an unwanted, un-asked-for selection change, most noticeable recruiting
+  via the context menu with nothing selected beforehand.
+- **#4** The board's green recruit-tile highlight is tied back to
+  `selectedUnit` (`GameSession.boardRecruitTiles`, new) -- unlike
+  `recruitTiles` itself (kept selection-independent, still feeding the
+  context menu/dialog availability per bugs4.md #4), showing it any time
+  the active side merely HAD a recruiting leader somewhere, with nothing
+  selected, was distracting clutter real Wesnoth doesn't have.
+- **#2** `CombatantPreview.backstabActive` (the "Backstab ×2" badge added
+  in bugs4.md #10) was the raw GEOMETRIC flanking condition only --
+  showing "Backstab" for any weapon whenever a friendly unit merely stood
+  on the far side of the target, regardless of whether the attacker's own
+  weapon has the `backstab` special at all. Now requires both, matching
+  what the actual combat math (`combatStats.ts`) already gated the real
+  damage doubling on.
+- **#3** A just-recruited/recalled unit had no visual at all until the
+  turn's single deferred `sync()` -- so its own "recruited" animation cue
+  silently did nothing (`playAnimationSequence` drops any cue whose unit
+  has no existing visual), and every unit an AI side recruited that turn
+  seemed to pop into existence all at once, well after its own animation
+  had already played. `SnapshotBoard.ensureUnitVisual` (new) creates a
+  unit's visual on demand, right before its recruit cue plays -- same
+  "poke the renderer directly" convention as `previewHitpoints`/
+  `spawnFloatingNumber`/`removeUnitVisual`.
+
+  Fixing #3 surfaced a real, previously-latent crash while testing: the
+  context-menu recruit flow's own extra `sync()` (arming the choice)
+  raced a fire-and-forget `updateUnits()` pass against `ensureUnitVisual`
+  creating the SAME unit's visual a moment later, so a stale pass's
+  cleanup loop (built before the recruit even happened) destroyed the
+  visual out from under it mid-creation ("Cannot set properties of null
+  (setting 'x')"). Fixed by not arming through the sync-triggering path
+  when about to place the unit immediately anyway, plus a defensive
+  `container.destroyed` guard in `SnapshotBoard.updateOneUnit` so any
+  future instance of this class of race degrades gracefully instead of
+  throwing.
+
+Verified live (Economy debug campaign: no highlight/no selection-theft
+recruiting via context menu, new unit visible within ~150ms; real Two
+Brothers scenario 1's AI turn, zero console errors). Engine/renderer/ui
+suites green throughout (418/193/89), typecheck and `svelte-check`
+(0 errors) clean.

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Location, Unit, Direction, getAdjacentTiles, createTypeResolver, type GameBoardSnapshot } from '@wesnothweb2/engine';
+import { Location, Unit, Direction, getAdjacentTiles, ALL_DIRECTIONS, directionBetween, isBackstabActive, createTypeResolver, type GameBoardSnapshot } from '@wesnothweb2/engine';
 import { GameSession } from './gameSession.js';
 
 /**
@@ -324,6 +324,50 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
     // `gold` prop.
     expect(team.gold).toBe(goldBefore - (session.snapshot.unitTypes[typeId]?.cost ?? 0));
     expect(leader.canRecruit).toBe(true); // unaffected -- just confirms we're still looking at the real leader
+  });
+
+  it('real, reported bug (bugs5.md #1): recruiting/recalling no longer auto-selects the leader afterward -- most noticeable recruiting via the context menu with nothing selected beforehand, where the leader used to become selected as an unwanted side effect', () => {
+    const session = new GameSession(loadSnapshot());
+    expect(session.selectedUnit).toBeNull();
+
+    const typeId = session.recruitOptions[0]!.typeId;
+    const target = session.recruitTiles[0]!;
+    session.selectRecruitType(typeId);
+    session.handleHexClick(target.x, target.y);
+
+    expect(session.selectedUnit).toBeNull(); // still nothing selected -- recruiting must not have changed it
+
+    // Also true starting from a DIFFERENT unit selected (not the leader) --
+    // recruiting must not steal the selection away from it either.
+    const other = session.board.unitsForSide(1).find((u) => !u.canRecruit);
+    if (other) {
+      session.selectUnit(other);
+      const typeId2 = session.recruitOptions[0]?.typeId;
+      const target2 = session.recruitTiles[0];
+      if (typeId2 && target2) {
+        session.selectRecruitType(typeId2);
+        session.handleHexClick(target2.x, target2.y);
+        expect(session.selectedUnit).toBe(other);
+      }
+    }
+  });
+
+  it('real, reported bug (bugs5.md #4): boardRecruitTiles (the board\'s green highlight) stays empty unless the leader itself is the SELECTED unit, unlike recruitTiles (the context-menu/dialog set, deliberately selection-independent -- see its own doc comment)', () => {
+    const session = new GameSession(loadSnapshot());
+    const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
+
+    expect(session.selectedUnit).toBeNull();
+    expect(session.recruitTiles.length).toBeGreaterThan(0); // available regardless of selection
+    expect(session.boardRecruitTiles).toEqual([]); // but nothing to highlight yet -- leader isn't selected
+
+    session.selectUnit(leader);
+    expect(session.boardRecruitTiles.length).toBe(session.recruitTiles.length);
+
+    const other = session.board.allUnits().find((u) => u !== leader);
+    if (other) {
+      session.selectUnit(other);
+      expect(session.boardRecruitTiles).toEqual([]); // a non-leader selection highlights nothing either
+    }
   });
 
   it('real, reported bug: recruiting never played any animation -- sets lastRecruitAnimation to the new unit + the recruiting leader', () => {
@@ -1400,6 +1444,36 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
     expect(preview.defender.backstabActive).toBe(false); // never true for a defender's own retaliation
     expect(preview.attacker.chanceToHitSource).toBeNull(); // plain terrain-defense roll, no magical/marksman
     expect(preview.defender.chanceToHitSource).toBeNull();
+  });
+
+  it('real, reported bug (bugs5.md #2): backstabActive stays false when the GEOMETRIC flanking condition holds but the attacker\'s own weapon has no backstab special -- a flanking ally alone does not make backstab "active"', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+
+    // Place a friendly-to-malKevek unit directly on the opposite side of
+    // kaiKrellis from malKevek -- the real geometric backstab condition
+    // (see combat.ts's isBackstabActive), using the same direction-index
+    // logic it uses internally.
+    const dirIndex = ALL_DIRECTIONS.indexOf(directionBetween(malKevek.location, kaiKrellis.location)!);
+    const flankerLoc = getAdjacentTiles(kaiKrellis.location)[dirIndex]!;
+    const flankerType = malKevek.type; // any real type on malKevek's own side works as the "flanker"
+    const flanker = Unit.create(flankerType, malKevek.side, flankerLoc);
+    session.board.addUnit(flanker);
+
+    // Confirms the placement above actually satisfies the real geometric
+    // condition -- otherwise the assertions below would pass VACUOUSLY
+    // (backstabActive would already be false with no flanker at all).
+    expect(isBackstabActive(session.board, malKevek.location, kaiKrellis.location)).toBe(true);
+
+    session.selectUnit(malKevek);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    const staffIndex = malKevek.attacks.findIndex((a) => a.name === 'staff'); // Dark Sorcerer's staff has no backstab special
+    session.selectAttackerWeapon(staffIndex);
+
+    const preview = session.pendingAttack!.preview;
+    // The real bug this regresses: before the fix, this read `true` purely
+    // from the flanker's geometric position, regardless of the weapon.
+    expect(preview.attacker.backstabActive).toBe(false);
+    expect(preview.attacker.damagePerBlow).toBe(malKevek.attacks[staffIndex]!.damage); // no backstab doubling either
   });
 });
 

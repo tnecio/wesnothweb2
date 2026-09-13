@@ -195,7 +195,17 @@ export interface CombatantPreview {
   leadershipBonus: number;
   /** Whether this exchange's `[damage] id=charge` special is active for this weapon (doubles both combatants' damage this exchange). `undefined` when there's no weapon. */
   chargeActive?: boolean;
-  /** Whether this blow benefits from a real backstab (always `false` for a defender's retaliation -- backstab only ever applies to the one currently attacking). */
+  /**
+   * Whether this blow ACTUALLY gets a real backstab bonus -- requires
+   * BOTH the real geometric condition (a flanking ally-of-attacker on the
+   * defender's far side) AND the attacker's own weapon having the
+   * `backstab` special (real, reported bug bugs5.md #2: this used to be
+   * just the geometric condition, so the badge showed even for a weapon
+   * with no backstab special at all, whenever a friendly unit merely
+   * happened to stand on the opposite side of the target). Always
+   * `false` for a defender's retaliation -- backstab only ever applies to
+   * the one currently attacking.
+   */
   backstabActive: boolean;
   /** Which weapon special set `chanceToHit` to a flat override, if any (`magical` always wins over `marksman` when both are present -- mirrors `computeUnitStats`'s own precedence). `null` for an ordinary terrain-defense-based chance to hit. */
   chanceToHitSource: 'magical' | 'marksman' | null;
@@ -1126,6 +1136,17 @@ export class GameSession {
   }
 
   /**
+   * `toSnapshotUnit` for exactly one live unit, at its own current
+   * position/hp -- for `GameBoardView.ensureUnitVisual` (bugs5.md #3):
+   * creating a just-recruited/recalled unit's visual on demand, ahead of
+   * the next full `renderUnits`-driven sync, needs the same real
+   * `SnapshotUnit` shape `renderUnits` itself builds for every unit.
+   */
+  snapshotUnitFor(unit: Unit): SnapshotUnit {
+    return this.toSnapshotUnit(unit, unit.location.x, unit.location.y, unit.hitpoints);
+  }
+
+  /**
    * Shared by `renderUnits` (live position/hp) and `messageUnitSnapshot` (a
    * checkpoint's captured position/hp) -- every OTHER field (type, side,
    * abilities, etc.) is read straight off `unit` since none of them change
@@ -1290,10 +1311,28 @@ export class GameSession {
     );
   }
 
-  /** Vacant castle tiles the active side's recruiting leader (see `recruitingLeader`) could recruit/recall onto -- empty if there's no such leader right now. Deliberately NOT tied to `selectedUnit` -- see `recruitingLeader`'s own doc comment. */
+  /** Vacant castle tiles the active side's recruiting leader (see `recruitingLeader`) could recruit/recall onto -- empty if there's no such leader right now. Deliberately NOT tied to `selectedUnit` -- see `recruitingLeader`'s own doc comment. Feeds the context menu's "is this hex a valid recruit/recall target" check and `tryRecruitAt`/`tryRecallAt`'s own validation -- NOT the board's visual highlight, see `boardRecruitTiles` below. */
   get recruitTiles(): HexPoint[] {
     const leader = this.recruitingLeader;
     return leader ? this.computeRecruitTiles(leader) : [];
+  }
+
+  /**
+   * Vacant castle tiles to highlight green on the BOARD -- unlike
+   * `recruitTiles` above, this IS tied to `selectedUnit`: real, reported
+   * bug (bugs5.md #4): after `recruitTiles` itself stopped depending on
+   * selection (bugs4.md #4, so the Recruit context-menu entry/dialog work
+   * without the leader being selected), the board's green highlight
+   * started showing constantly too, any time the active side merely HAD a
+   * recruiting leader somewhere -- distracting clutter real Wesnoth
+   * doesn't have (it only highlights recruit tiles once you've actually
+   * selected your leader). Empty unless `selectedUnit` itself is a valid
+   * recruiting leader.
+   */
+  get boardRecruitTiles(): HexPoint[] {
+    const sel = this.selectedUnit;
+    if (!sel || sel.side !== this.activeSide || !sel.canRecruit) return [];
+    return this.computeRecruitTiles(sel);
   }
 
   /** The active side's real recruitable types (cost/name/image from `snapshot.unitTypes`), if it currently has a leader able to recruit. Empty otherwise. */
@@ -1398,8 +1437,16 @@ export class GameSession {
   }
 
   /**
-   * Places `typeId` at `loc` for the selected leader's side, mirroring
-   * `actions::recruit_unit` (`recruitUnit`) after validating the click.
+   * Places `typeId` at `loc` for the active side's recruiting leader (see
+   * `recruitingLeader`), mirroring `actions::recruit_unit` (`recruitUnit`)
+   * after validating the click. Deliberately does NOT change
+   * `selectedUnit` (real, reported bug bugs5.md #1: this used to
+   * re-select the leader afterward "to refresh recruitTiles/
+   * attackCandidates", a rationale that stopped applying once those
+   * became selection-independent getters -- see `recruitingLeader`'s own
+   * doc comment -- so it was just an unwanted, un-asked-for selection
+   * change, most noticeable recruiting via the context menu with nothing
+   * selected beforehand).
    *
    * Deliberately does NOT use `checkRecruitLocation` here, despite it
    * being the closer upstream analogue (`check_recruit_location`) --
@@ -1438,16 +1485,12 @@ export class GameSession {
     this.log.unshift(message);
     this.eventPump.raise('recruit', loc, leader.location);
     this.pumpEvents();
-    // Re-select the leader so recruitTiles/attackCandidates refresh (the
-    // just-filled tile is no longer vacant) -- the leader's own moves/
-    // attacks are untouched by recruiting.
-    this.selectUnit(leader);
     return message;
   }
 
   /**
    * Places recall-list entry `index` (see `RecallOption.index`) at `loc`
-   * for the selected leader's side, mirroring `tryRecruitAt` but for an
+   * for the active side's recruiting leader, mirroring `tryRecruitAt` but for an
    * already-existing `Unit` pulled off `board.recallList` (via the real
    * `recallUnit`, which keeps its saved hp/level rather than healing it to
    * full -- see `recruit.ts`'s `placeRecruit`'s own doc comment). Same
@@ -1484,7 +1527,6 @@ export class GameSession {
     this.log.unshift(message);
     this.eventPump.raise('recall', loc, leader.location);
     this.pumpEvents();
-    this.selectUnit(leader);
     return message;
   }
 
@@ -1787,7 +1829,19 @@ export class GameSession {
 
     const attackerLawfulBonus = this.timeOfDayAt(attacker.location).lawfulBonus;
     const defenderLawfulBonus = this.timeOfDayAt(defender.location).lawfulBonus;
-    const backstabActive = isBackstabActive(this.board, attacker.location, defender.location);
+    // The real GEOMETRIC condition (a flanking ally-of-attacker on the far
+    // side of the defender) -- feeds `buildBattleContext`'s own
+    // `hasSpecialId(weapon, 'backstab')`-gated damage doubling below, same
+    // as before. Real, reported bug (bugs5.md #2): this alone is NOT
+    // "backstab is happening" -- the geometric condition can hold with any
+    // weapon, backstab-capable or not (upstream's own combat math only
+    // ever doubles damage when BOTH this AND the weapon's own special are
+    // present) -- so the DISPLAYED badge (`attackerBackstabActive` below)
+    // additionally requires the attacker's actual weapon to have the
+    // special, matching what real Wesnoth actually applies rather than
+    // just this geometric precondition for it.
+    const backstabGeometry = isBackstabActive(this.board, attacker.location, defender.location);
+    const attackerBackstabActive = backstabGeometry && hasSpecialId(attackerWeapon, 'backstab');
     const attackerLeadershipBonus = computeLeadershipBonus(this.board, attacker);
     const defenderLeadershipBonus = computeLeadershipBonus(this.board, defender);
     // Charge is only ever active "when used offensively" -- upstream's `active_on=offense` -- so it's
@@ -1807,7 +1861,7 @@ export class GameSession {
         attackerLawfulBonus,
         defenderLawfulBonus,
         maxLiminalBonus: this.schedule.maxLiminalBonus,
-        backstabActive,
+        backstabActive: backstabGeometry,
         attackerLeadershipBonus,
         defenderLeadershipBonus,
         attackerResistanceModifier: computeResistanceModifier(this.board, defender, attackerWeapon.type, false, defender.location),
@@ -1849,7 +1903,7 @@ export class GameSession {
         lawfulBonus: attackerLawfulBonus,
         leadershipBonus: attackerLeadershipBonus,
         chargeActive,
-        backstabActive,
+        backstabActive: attackerBackstabActive,
         chanceToHitSource: chanceToHitSourceFor(attackerWeapon),
       },
       defender: {
