@@ -72,6 +72,7 @@ import {
   unitCanAct,
   checkVictory,
   applySideHealing,
+  type HealOutcome,
   computeGoldCarryover,
   findVictoryEndlevelGoldConfig,
   computeCarryoverRecruits,
@@ -753,6 +754,26 @@ export class GameSession {
    * played this call.
    */
   lastAiAnimations: readonly AiAnimationEvent[] | null = null;
+
+  /**
+   * Real, reported bug (bugs4.md #7): turn-start rest/village healing,
+   * poison damage, and real `[heals]`/`[regenerate]` ability healing
+   * (`applySideHealing`, called from `advanceOneTurn` below) already
+   * applied the real HP change to every affected unit, but nothing ever
+   * showed it happening -- no floating HP-change numeral (unlike a
+   * combat blow, see `makeBlowPreview`'s doc comment) and no `healed`/
+   * `poisoned`/`healing` unit animation (despite `parseUnitAnimations`
+   * already fully supporting those three real WML animation tags -- they
+   * were simply never invoked). Accumulates every `HealOutcome` across
+   * however many side-transitions one `endTurn()` call makes (human and
+   * AI sides alike), in chronological order; `null` (not `[]`) when
+   * nothing changed. Known simplification: played back as one batch
+   * BEFORE any AI-turn animations from the same `endTurn()` call (see
+   * `GameShell.handleEndTurn`), not fully interleaved turn-by-turn with
+   * them -- an acceptable rough edge shared with `lastAiAnimations`'s own
+   * "no incremental sync() between events" simplification.
+   */
+  lastHealAnimations: readonly HealOutcome[] | null = null;
 
   /**
    * The real terrain defense `selectedUnit` would have at `(x, y)` (the
@@ -1475,7 +1496,8 @@ export class GameSession {
    */
   endTurn(): string {
     const aiAnimations: AiAnimationEvent[] = [];
-    let message = this.advanceOneTurn();
+    const healOutcomes: HealOutcome[] = [];
+    let message = this.advanceOneTurn(healOutcomes);
     if (!message) return '';
     // Auto-play consecutive AI-controlled sides. Bounded by `sides.length`
     // guard-multiples rather than true unbounded recursion, so a
@@ -1487,11 +1509,12 @@ export class GameSession {
       if (!team || (team.controller !== 'ai' && team.controller !== 'network_ai')) break;
       this.playAiSide(this.activeSide, aiAnimations);
       if (this.scenarioResult) break;
-      const next = this.advanceOneTurn();
+      const next = this.advanceOneTurn(healOutcomes);
       if (!next) break;
       message = next;
     }
     this.lastAiAnimations = aiAnimations.length > 0 ? aiAnimations : null;
+    this.lastHealAnimations = healOutcomes.length > 0 ? healOutcomes : null;
     return message;
   }
 
@@ -1516,9 +1539,12 @@ export class GameSession {
    * upkeep and the real healing pass, and logging/returning the new
    * turn's banner message. Pulled out of `endTurn` so it can be called
    * once per side-turn, including once per AI side `endTurn` auto-plays
-   * through -- see `endTurn`'s own doc comment.
+   * through -- see `endTurn`'s own doc comment. Any real heal/poison
+   * outcomes this side-transition's turn-start healing pass produced are
+   * appended to `outHealOutcomes` (see `lastHealAnimations`'s own doc
+   * comment), mirroring `playAiSide`'s identical `outAnimations` pattern.
    */
-  private advanceOneTurn(): string | null {
+  private advanceOneTurn(outHealOutcomes: HealOutcome[]): string | null {
     if (this.scenarioResult) return null;
     this.clearSelection();
     this.fireSideTurnEndEvents(this.activeSide);
@@ -1593,6 +1619,7 @@ export class GameSession {
       }
       if (outcome.curePoison) this.log.unshift(`${name}'s poison is cured.`);
     }
+    outHealOutcomes.push(...healOutcomes);
     // "Set resting now after the healing has been done" (play_controller.cpp):
     // each unit's `resting` flag reflects whether it moved/attacked during
     // its OWN just-finished turn (moving sets it false in executeMove,

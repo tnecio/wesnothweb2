@@ -25,7 +25,7 @@
    * before entering 'messages', so the board already reflects every real
    * event-spawned unit by the time the player gets control.
    */
-  import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage, TimeOfDayEntry, Unit, AiAnimationEvent, ScenarioObjectives } from '@wesnothweb2/engine';
+  import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage, TimeOfDayEntry, Unit, AiAnimationEvent, ScenarioObjectives, HealOutcome } from '@wesnothweb2/engine';
   import { WmlConfig, directionBetween, Location } from '@wesnothweb2/engine';
   import {
     type HexPoint,
@@ -651,6 +651,99 @@
   }
 
   /**
+   * Real, reported bug (bugs4.md #7): turn-start heal/poison/regenerate
+   * outcomes (`GameSession.lastHealAnimations`) never played anything at
+   * all -- no unit animation, no floating HP-change numeral. Mirrors
+   * `units/udisplay.cpp`'s `unit_healing()`: the healed unit itself plays
+   * `poisoned` (amount < 0) or `healed` (amount >= 0, including a
+   * poison-cure-only outcome with amount 0), and each contributing healer
+   * (if any -- empty for a plain poison tick or rest heal) plays `healing`
+   * facing the healed unit, all in ONE beat (upstream's own
+   * `unit_animator` plays every participant of one `add_animation` batch
+   * concurrently, not sequentially -- same convention already used by
+   * `buildRecruitAnimationCues`).
+   */
+  function buildHealAnimationCues(outcome: HealOutcome): UnitAnimationCue[][] {
+    const terrainAt = terrainLookup(session.board);
+    const healedHex = { x: outcome.unit.location.x, y: outcome.unit.location.y };
+    const healedKey = spriteKey({
+      underlyingId: session.renderKeyFor(outcome.unit),
+      typeId: outcome.unit.type.id,
+      x: outcome.unit.location.x,
+      y: outcome.unit.location.y,
+    });
+    const healedContext: AnimationContext = {
+      loc: outcome.unit.location,
+      secondLoc: Location.NULL,
+      myUnit: outcome.unit,
+      event: outcome.amount < 0 ? 'poisoned' : 'healed',
+      value: Math.abs(outcome.amount),
+      value2: 0,
+      hit: 'invalid',
+      terrainAtLoc: terrainAt(outcome.unit.location),
+    };
+    const beat: UnitAnimationCue[] = [
+      {
+        key: healedKey,
+        anim: chooseAnimation(animationsFor(outcome.unit.type.id), healedContext),
+        direction: outcome.unit.facing,
+        srcHex: healedHex,
+        dstHex: healedHex,
+        holdInPlace: true,
+      },
+    ];
+    for (const healer of outcome.healers) {
+      const healerHex = { x: healer.location.x, y: healer.location.y };
+      const healerKey = spriteKey({
+        underlyingId: session.renderKeyFor(healer),
+        typeId: healer.type.id,
+        x: healer.location.x,
+        y: healer.location.y,
+      });
+      const healerContext: AnimationContext = {
+        loc: healer.location,
+        secondLoc: outcome.unit.location,
+        myUnit: healer,
+        event: 'healing',
+        value: outcome.amount,
+        value2: 0,
+        hit: 'invalid',
+        terrainAtLoc: terrainAt(healer.location),
+        secondUnit: outcome.unit,
+      };
+      beat.push({
+        key: healerKey,
+        anim: chooseAnimation(animationsFor(healer.type.id), healerContext),
+        direction: directionBetween(healer.location, outcome.unit.location) ?? healer.facing,
+        srcHex: healerHex,
+        dstHex: healedHex,
+        holdInPlace: true,
+      });
+    }
+    return [beat];
+  }
+
+  /** Plays every turn-start heal/poison outcome in order, spawning the same floating HP-change numeral/HP-bar update a combat blow gets (bugs4.md #7's own explicit ask: "associate the HP change numeric label with a change in HP in general, not combat hits specifically"). */
+  async function playHealAnimations(outcomes: readonly HealOutcome[]): Promise<void> {
+    if (!boardView) return;
+    for (const outcome of outcomes) {
+      const key = spriteKey({
+        underlyingId: session.renderKeyFor(outcome.unit),
+        typeId: outcome.unit.type.id,
+        x: outcome.unit.location.x,
+        y: outcome.unit.location.y,
+      });
+      await boardView.playAnimationSequence(buildHealAnimationCues(outcome), 1, () => {
+        if (!boardView) return;
+        boardView.previewHitpoints(key, outcome.unit.hitpoints);
+        if (outcome.amount !== 0) {
+          boardView.spawnFloatingNumber(key, Math.abs(outcome.amount), outcome.amount > 0 ? 'heal' : 'damage');
+        }
+      });
+    }
+  }
+
+  /**
    * Real, reported bug (bugs4.md #1): the AttackDialog modal used to stay
    * open (blocking the view of the board) for the ENTIRE combat animation,
    * only closing once the full `sync(message)` below ran afterward.
@@ -783,6 +876,13 @@
   async function handleEndTurn(): Promise<void> {
     if (phase !== 'playing') return;
     const message = session.endTurn();
+    const healOutcomes = session.lastHealAnimations;
+    session.lastHealAnimations = null;
+    // Heals/poison happen at the START of each side's turn, before that
+    // side's own actions -- played first, ahead of aiAnimations below (see
+    // `lastHealAnimations`'s own doc comment on why this isn't fully
+    // interleaved turn-by-turn across multiple AI sides).
+    if (healOutcomes) await playHealAnimations(healOutcomes);
     const aiAnimations = session.lastAiAnimations;
     session.lastAiAnimations = null;
     if (aiAnimations) await playAiAnimations(aiAnimations);

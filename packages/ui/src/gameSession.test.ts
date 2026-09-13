@@ -1451,6 +1451,24 @@ describe('GameSession rest-heal (real, reported bug: units that neither moved no
     expect(unit.hitpoints).toBe(unit.maxHitpoints - 3);
   });
 
+  it('real, reported bug (bugs4.md #7): the rest heal above is exposed via lastHealAnimations, not just silently applied -- so the UI can play a floating HP-change numeral/animation for it', () => {
+    const session = new GameSession(loadSnapshot());
+    const resolveType = createTypeResolver(session.snapshot);
+    const fighterType = resolveType('Merman Fighter');
+    const unit = Unit.create(fighterType, 1, new Location(10, 10), { canRecruit: false });
+    unit.hitpoints = unit.maxHitpoints - 5;
+    session.board.addUnit(unit);
+
+    session.endTurn(); // warm-up.
+    expect(session.lastHealAnimations).toBeNull(); // resting was false yet -- no heal outcome this cycle.
+
+    session.endTurn();
+    expect(session.lastHealAnimations).not.toBeNull();
+    const outcome = session.lastHealAnimations!.find((o) => o.unit === unit);
+    expect(outcome).toMatchObject({ amount: 2, curePoison: false });
+    expect(outcome!.healers).toEqual([]); // a plain rest heal has no contributing healer unit
+  });
+
   it('a unit that moves (but does not attack) this turn does NOT get the rest heal next turn', () => {
     const session = new GameSession(loadSnapshot());
     const resolveType = createTypeResolver(session.snapshot);
