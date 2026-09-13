@@ -20,5 +20,6 @@ export { VillagesCandidateAction } from './default/caVillages.js';
 export { CombatCandidateAction } from './default/caCombat.js';
 export { AttackAnalysis, chooseAttackerWeapon, type AttackMovement } from './default/attackAnalysis.js';
 export { analyzeTargets, rateTerrain, type AnalyzeTargetsOptions } from './default/aspectAttacks.js';
+export { RecruitmentCandidateAction, compareUnitTypes } from './default/recruitment.js';
 export { createDefaultCandidateActionRegistry } from './default/registry.js';
 export { DEFAULT_AI_CONFIG_JSON, AI_ALGORITHM_CONFIGS_JSON } from './config/builtinAiConfigs.generated.js';

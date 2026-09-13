@@ -71,8 +71,8 @@ export function makeWeapon(damage: number, numAttacks: number): AttackType {
   return AttackType.fromConfig(cfg);
 }
 
-export function makeUnitType(id: string, hitpoints: number, moveType: MoveType, weapon: AttackType, cost = 10): UnitType {
-  return new UnitType(id, id, '', 'neutral', 1, hitpoints, 5, 5, 0, 1, cost, -1, 500, [], '', false, false, false, moveType, [weapon], []);
+export function makeUnitType(id: string, hitpoints: number, moveType: MoveType, weapon: AttackType, cost = 10, usage = ''): UnitType {
+  return new UnitType(id, id, '', 'neutral', 1, hitpoints, 5, 5, 0, 1, cost, -1, 500, [], '', false, false, false, moveType, [weapon], [], 2, [], false, usage);
 }
 
 /**

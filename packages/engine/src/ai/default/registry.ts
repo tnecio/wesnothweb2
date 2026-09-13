@@ -14,11 +14,13 @@ import { LeaderSharesKeepCandidateAction } from './caLeaderSharesKeep.js';
 import { HealingCandidateAction } from './caHealing.js';
 import { VillagesCandidateAction } from './caVillages.js';
 import { CombatCandidateAction } from './caCombat.js';
+import { RecruitmentCandidateAction } from './recruitment.js';
 
 export function createDefaultCandidateActionRegistry(): Map<string, CandidateActionFactory> {
   const registry = new Map<string, CandidateActionFactory>();
   registry.set('ai_default_rca::goto_phase', (ctx, cfg) => new GotoCandidateAction(ctx, cfg));
   registry.set('ai_default_rca::combat_phase', (ctx, cfg) => new CombatCandidateAction(ctx, cfg));
+  registry.set('default_recruitment::recruitment', (ctx, cfg) => new RecruitmentCandidateAction(ctx, cfg));
   registry.set('ai_default_rca::move_leader_to_keep_phase', (ctx, cfg) => new MoveLeaderToKeepCandidateAction(ctx, cfg));
   registry.set('ai_default_rca::leader_shares_keep_phase', (ctx, cfg) => new LeaderSharesKeepCandidateAction(ctx, cfg));
   registry.set('ai_default_rca::passive_leader_shares_keep_phase', (ctx, cfg) => new LeaderSharesKeepCandidateAction(ctx, cfg));

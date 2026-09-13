@@ -25,6 +25,8 @@ import { locationMatchesFilterOnBoard } from '../events/filter.js';
 import { performMove, type PerformMoveResult } from '../actions/moveSequence.js';
 import { performAttack } from '../actions/attackSequence.js';
 import type { AttackResult } from '../actions/combat.js';
+import { recruitUnit, recallUnit, type PlaceRecruitResult } from '../actions/recruit.js';
+import type { UnitType } from '../model/UnitType.js';
 import type { AiHost } from './types.js';
 import { isAspectActive, type CompositeAspect } from './composite/aspect.js';
 import { calculateMoves, type MoveMap } from './moveMaps.js';
@@ -232,6 +234,24 @@ export class AiContext {
   getAttacksAspectConfig(): WmlConfig {
     return this.resolveAspect('attacks') ?? new WmlConfig();
   }
+  /** The `recruitment_instructions` aspect's `[value]` (its `[recruit]`/`[limit]` children) -- the real upstream default is a single `[recruit importance=0]` (recruit anything, low priority), matching `default_config.cfg`. */
+  getRecruitmentInstructionsConfig(): WmlConfig {
+    return this.resolveAspect('recruitment_instructions')?.child('value') ?? new WmlConfig();
+  }
+  /** The (old, simplified) `recruitment_pattern` aspect: a comma list of type/usage/level strings, empty by default. */
+  getRecruitmentPattern(): string {
+    return this.resolveAspect('recruitment_pattern')?.getString('value', '') ?? '';
+  }
+  getRecruitmentDiversity(): number {
+    return this.resolveAspect('recruitment_diversity')?.getNumber('value', 2.0) ?? 2.0;
+  }
+  getRecruitmentRandomness(): number {
+    return this.resolveAspect('recruitment_randomness')?.getNumber('value', 50) ?? 50;
+  }
+  /** The `recruitment_save_gold` aspect's `[value]` (`active=`/`begin=`/`end=`/`spend_all_gold=`) -- the real upstream default is `active=0` (disabled), matching `default_config.cfg`. */
+  getRecruitmentSaveGoldConfig(): WmlConfig {
+    return this.resolveAspect('recruitment_save_gold')?.child('value') ?? new WmlConfig();
+  }
 
   /**
    * Mirrors the `attacks` aspect (`ai_default_rca::aspect_attacks`,
@@ -299,6 +319,23 @@ export class AiContext {
       fire: this.host.fire,
     });
     this.recentAttackLocs.push(defenderLoc);
+    this.bumpGamestateChange();
+    this.host.pump();
+    return result;
+  }
+
+  /** Mirrors `check_recruit_action`/`execute_recruit_action` collapsed into one call: a fresh `type` for `team`, placed at `loc` (a vacant castle/keep tile), from the recruiting leader at `from`. Caller (the recruitment CA) is responsible for affordability/legality checks -- this always spends the gold and places the unit. */
+  executeRecruit(team: Team, type: UnitType, loc: Location, from: Location): PlaceRecruitResult {
+    const result = recruitUnit(this.host.board, team, type, loc, from, this.host.rng, this.host.raise);
+    this.bumpGamestateChange();
+    this.host.pump();
+    return result;
+  }
+
+  /** Mirrors `check_recall_action`/`execute_recall_action`: pulls `unit` off `team`'s recall list and places it at `loc`. */
+  executeRecall(team: Team, unit: Unit, loc: Location, from: Location): PlaceRecruitResult {
+    this.host.board.removeFromRecallList(team.side, unit.underlyingId);
+    const result = recallUnit(this.host.board, team, unit, loc, from, undefined, this.host.raise);
     this.bumpGamestateChange();
     this.host.pump();
     return result;

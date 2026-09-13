@@ -2495,3 +2495,43 @@ via the CA), a weak attacker declines a clearly bad one, `[filter_own]`/
 `analyze()` leaves the board exactly as it found it. Engine/renderer/ui
 suites all green (516/193/83), typecheck and `svelte-check` (0 errors)
 clean. Branch `phase-29-real-ai`.
+
+**S3 (recruitment CA + recruitment aspect), delivered** (2026-09-13):
+- `ai/default/recruitment.ts`: a port of `default_recruitment::recruitment`
+  (`recruitment.cpp`, ~1900 lines) covering its core score-driven loop --
+  `compare_unit_types`'s pairwise matchup formula (both directions
+  simulated via the same `chooseDefenderWeaponIndex`/`betterCombat`
+  machinery `attackAnalysis.ts` uses), `[recruit]`/`[limit]` job matching
+  (`pattern=`/`type=`/`total=`/`importance=`, the `recruitment_instructions`
+  and legacy `recruitment_pattern` aspects), `recruitment_randomness`, the
+  `recruitment_save_gold` state machine (`normal`/`save_gold`/
+  `spend_all_gold`/`leader_in_danger`, driven by `get_unit_ratio`), scout
+  allocation from neutral villages (`villages_per_scout`), recall preferred
+  over recruit when actually worth it (`recall_unit_value`), and "spend
+  until unaffordable or every job is done, one recruit at a time".
+  `AiContext` gained `executeRecruit`/`executeRecall` (gamestate-tracked,
+  mirroring `executeMove`/`executeAttack`) and typed getters for the five
+  recruitment aspects.
+- **Deliberately not ported** (documented, matches the Phase 29 plan's own
+  risk mitigation): the geometric "important hexes" border-zone map
+  analysis that upstream uses to weight average defense towards the front
+  line -- this port's `averageDefense` instead averages a unit type's
+  defense over every distinct terrain code present on the board (simpler,
+  still board-shape-aware, not front-line-aware); `do_similarity_penalty`
+  and `handle_recruitment_more` (secondary refinements on the core loop);
+  per-leader `extra_recruit=`/`recall_filter=` (this port's `Unit` has no
+  such fields); and the pure-perf caches (`unit_stats_cache`/
+  `combat_cache_`/`cheapest_unit_costs_`).
+
+13 new engine tests (`recruitment.test.ts`): `compareUnitTypes` is
+antisymmetric and zero for harmless matchups; the CA recruits repeatedly
+while affordable with room, spends until unaffordable (not until the
+castle is full), respects `[limit]` (scoring positively per real upstream
+behaviour -- `evaluate()` doesn't itself check limits, only whether any
+job exists -- while still recruiting nothing), `recruitment_pattern`
+restricts to named types, higher `importance=` wins, `recruitment_randomness=0`
+is deterministic across repeated runs, recall is preferred over recruit
+when it's actually the better value, `recruitment_save_gold` correctly
+blocks all recruiting, and scouts get recruited when villages call for
+them. Engine/renderer/ui suites all green (527/193/83), typecheck and
+`svelte-check` (0 errors) clean. Branch `phase-29-real-ai`.
