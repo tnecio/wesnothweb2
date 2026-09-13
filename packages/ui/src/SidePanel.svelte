@@ -122,7 +122,12 @@
       <div class="attacks">
         <div class="attacks-label">Attacks:</div>
         <ul>
-          {#each info.attacks as atk (atk.name)}
+          <!-- Keyed by index, NOT atk.name (bugs4.md #9): real units routinely have two attacks sharing
+               one name (e.g. the real Peasant's melee + thrown "pitchfork", Drake Arbiter's twin "halberd"
+               entries) -- keying by name threw a Svelte each_key_duplicate error selecting them, which
+               broke this whole panel's reactivity for that click and looked like the unit couldn't be
+               selected at all. -->
+          {#each info.attacks as atk, i (i)}
             <li>
               <span class="name">{atk.name}</span>
               <span class="stats">{atk.damage}&times;{atk.numAttacks} ({rangeType(atk)})</span>

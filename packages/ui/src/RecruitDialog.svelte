@@ -64,7 +64,9 @@
             <div class="attacks">
               <div class="attacks-label">Attacks</div>
               <ul>
-                {#each selected.attacks as atk (atk.name)}
+                <!-- Keyed by index, not atk.name -- see SidePanel.svelte's own comment (bugs4.md #9):
+                     real units can have two same-named attacks (e.g. Peasant's melee + thrown "pitchfork"). -->
+                {#each selected.attacks as atk, i (i)}
                   <li>
                     <span class="atk-name">{atk.name}</span>
                     <span class="atk-stats">{atk.damage}&times;{atk.numAttacks} {rangeType(atk)}</span>

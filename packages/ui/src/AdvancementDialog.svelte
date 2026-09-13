@@ -42,7 +42,9 @@
             <div class="option-stats">Level {option.level} &middot; {option.hitpoints} HP</div>
             {#if option.attacks.length > 0}
               <ul class="option-attacks">
-                {#each option.attacks as atk (atk.name)}
+                <!-- Keyed by index, not atk.name -- see SidePanel.svelte's own comment (bugs4.md #9):
+                     real units can have two same-named attacks (e.g. Peasant's melee + thrown "pitchfork"). -->
+                {#each option.attacks as atk, i (i)}
                   {@const info = buildWeaponInfo(atk)}
                   <li>{info.name} {info.damage}&times;{info.numAttacks} ({rangeType(info)})</li>
                 {/each}
