@@ -374,6 +374,22 @@ export interface UnitAnimationCue {
   readonly dstHex: HexPoint;
   /** Where the sprite should rest once this cue finishes: `'src'` (default if omitted) for a lunge-and-return (attack/defend -- the unit ends up back where it started), `'dst'` for a real relocation (movement -- the unit ends up at its new hex). */
   readonly restAt?: 'src' | 'dst';
+  /**
+   * Suppresses the synthetic lunge-and-return fallback motion `playAnimations`
+   * plays when this cue has no real matching `anim` and `srcHex !== dstHex`.
+   * Set by recruit cues (`GameShell.svelte`'s `buildRecruitAnimationCues`),
+   * whose `dstHex` is the OTHER combatant's hex purely for `sampleAnimation`'s
+   * own directional `offset=` math when a real `[recruit_anim]`/`[recruiting]`
+   * animation exists -- most real unit types don't author one (upstream's
+   * `fill_initial_animations`-synthesized implicit "recruited" fallback isn't
+   * ported, see `unitAnimation.ts`'s module doc comment), so `anim` is
+   * `undefined` far more often than not. Without this flag, both the
+   * recruiting leader and the newly recruited unit visibly lunged toward
+   * each other and back -- the attack/defend convention -- reading as an
+   * unwanted "movement" animation playing at the same time as recruitment.
+   * Real, reported bug.
+   */
+  readonly holdInPlace?: boolean;
 }
 
 /** A stable per-unit key for sprite identity -- see `SnapshotUnit.underlyingId`'s own doc comment. Exported so callers building `UnitAnimationCue`s key them identically to how `renderUnits` will look them up. */
@@ -1203,12 +1219,13 @@ export class SnapshotBoard {
             visual.container.x = sample.x;
             visual.container.y = sample.y;
             this.applyBlend(visual, sample.blendRatio, sample.blendColor);
-          } else if (cue.srcHex.x !== cue.dstHex.x || cue.srcHex.y !== cue.dstHex.y) {
+          } else if (!cue.holdInPlace && (cue.srcHex.x !== cue.dstHex.x || cue.srcHex.y !== cue.dstHex.y)) {
             // No real anim: a synthetic beat appropriate to what this cue
             // means. `restAt: 'dst'` (movement) glides straight there,
             // offset 0 -> 1 over the full duration; the default (`'src'`,
             // an attack lunge/reaction) bounces out partway and back:
-            // 0 -> 0.35 -> 0.
+            // 0 -> 0.35 -> 0. `holdInPlace` (recruit cues) skips this
+            // entirely -- see its own doc comment.
             const offset =
               cue.restAt === 'dst'
                 ? t / duration

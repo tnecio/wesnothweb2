@@ -530,6 +530,7 @@
           direction: info.unit.facing,
           srcHex: unitHex,
           dstHex: leaderHex,
+          holdInPlace: true,
         },
         {
           key: leaderKey,
@@ -537,6 +538,7 @@
           direction: directionBetween(info.leader.location, info.unit.location) ?? info.leader.facing,
           srcHex: leaderHex,
           dstHex: unitHex,
+          holdInPlace: true,
         },
       ],
     ];
