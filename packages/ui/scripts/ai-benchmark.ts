@@ -1,0 +1,171 @@
+/**
+ * Headless AI-vs-AI benchmark harness (Phase 29 S6). `GameSession` is
+ * DOM-free, so this runs entirely under `npx tsx`, no browser needed.
+ *
+ * Usage:
+ *   npx tsx packages/ui/scripts/ai-benchmark.ts --scenario synth_combat_02 --games 10 --seed 1 --max-turns 40
+ *
+ * `--scenario` is a snapshot id under `apps/web/public/scenarios/<id>.json`
+ * (build one first with `npx tsx apps/web/scripts/build-scenario-snapshot.mjs
+ * <path-to.cfg>` -- see `synthetic-campaigns/combat/scenarios/
+ * 02_combat_ai.cfg` for a ready-made both-sides-AI scenario). `--games N`
+ * plays N independent games, seeded `--seed, --seed+1, ..., --seed+N-1`.
+ * `--max-turns` bounds each game's own *scenario* turn count (not
+ * `GameSession.endTurn`'s side-turn guard directly -- this script computes
+ * that from the scenario's side count); a game that hits the cap without
+ * either leader dying is reported as `winner: "timeout"`, not an error.
+ *
+ * `--lua` is accepted but currently a no-op with a warning: the Lua-based
+ * default-loop candidate actions (`retreat_injured`/`spread_poison`/
+ * `high_xp_attack`/`place_healers`/`move_to_any_enemy`) don't exist until
+ * Phase 29 S7, so every game today runs the pure-TS candidate actions
+ * only, regardless of this flag.
+ *
+ * Output: one JSON line per game, then a plain-text summary (win rate per
+ * side, mean/median turns, mean ms/turn) -- meant to be diffed across runs
+ * (e.g. before/after S7 lands the Lua CAs) to catch both behavioural
+ * regressions (win-rate swings) and performance regressions (ms/turn).
+ */
+
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { GameBoardSnapshot, AiAnimationEvent } from '@wesnothweb2/engine';
+import { GameSession } from '../src/gameSession.js';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+
+interface Args {
+  scenario: string;
+  games: number;
+  seed: number;
+  maxTurns: number;
+  lua: boolean;
+}
+
+export function parseArgs(argv: readonly string[]): Args {
+  const args: Args = { scenario: 'synth_combat_02', games: 10, seed: 1, maxTurns: 40, lua: false };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    const next = (): string => {
+      const v = argv[++i];
+      if (v === undefined) throw new Error(`${arg} needs a value`);
+      return v;
+    };
+    switch (arg) {
+      case '--scenario':
+        args.scenario = next();
+        break;
+      case '--games':
+        args.games = Number(next());
+        break;
+      case '--seed':
+        args.seed = Number(next());
+        break;
+      case '--max-turns':
+        args.maxTurns = Number(next());
+        break;
+      case '--lua':
+        args.lua = true;
+        break;
+      default:
+        throw new Error(`Unknown argument: ${arg}`);
+    }
+  }
+  return args;
+}
+
+export function loadSnapshot(scenarioId: string): GameBoardSnapshot {
+  const file = path.join(repoRoot, 'apps/web/public/scenarios', `${scenarioId}.json`);
+  if (!fs.existsSync(file)) {
+    throw new Error(
+      `No snapshot at ${file}. Build one first: npx tsx apps/web/scripts/build-scenario-snapshot.mjs <path-to-scenario.cfg>`,
+    );
+  }
+  return JSON.parse(fs.readFileSync(file, 'utf8')) as GameBoardSnapshot;
+}
+
+function isAiControlled(session: GameSession, side: number): boolean {
+  const team = session.board.getTeam(side);
+  return !!team && (team.controller === 'ai' || team.controller === 'network_ai');
+}
+
+export interface GameResult {
+  readonly seed: number;
+  readonly winner: number | 'draw' | 'timeout';
+  readonly turns: number;
+  readonly ms: number;
+  readonly msPerTurn: number;
+  readonly actions: number;
+  readonly luaErrors: number;
+}
+
+export function playGame(snapshot: GameBoardSnapshot, seed: number, maxTurns: number): GameResult {
+  const session = new GameSession(snapshot, { seed, playerSide: 1 });
+  const numSides = session.board.teams().length;
+  const start = Date.now();
+  let actions = 0;
+
+  // endTurn() only ever plays the side it advances TO, never the one it starts on -- so a from-scratch AI-vs-AI
+  // session needs side 1's own first turn played explicitly (see GameSession.playAiSide's own doc comment).
+  if (isAiControlled(session, session.activeSide)) {
+    const anims: AiAnimationEvent[] = [];
+    session.playAiSide(session.activeSide, anims);
+    actions += anims.length;
+  }
+
+  session.endTurn(Math.max(1, maxTurns * numSides));
+  actions += session.lastAiAnimations?.length ?? 0;
+
+  const ms = Date.now() - start;
+  const turns = session.turnNumber;
+  let winner: number | 'draw' | 'timeout';
+  if (session.scenarioResult === 'victory') winner = session.playerSide;
+  else if (session.scenarioResult === 'defeat') winner = session.playerSide === 1 ? 2 : 1;
+  else winner = 'timeout';
+
+  return { seed, winner, turns, ms, msPerTurn: ms / Math.max(1, turns), actions, luaErrors: 0 };
+}
+
+function median(values: readonly number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
+}
+
+function main(): void {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.lua) {
+    console.warn('--lua requested, but Lua candidate actions do not exist until Phase 29 S7 -- ignoring.');
+  }
+  const snapshot = loadSnapshot(args.scenario);
+
+  const results: GameResult[] = [];
+  for (let i = 0; i < args.games; i++) {
+    const seed = args.seed + i;
+    const result = playGame(snapshot, seed, args.maxTurns);
+    results.push(result);
+    console.log(JSON.stringify(result));
+  }
+
+  const winCounts = new Map<string, number>();
+  for (const r of results) {
+    const key = String(r.winner);
+    winCounts.set(key, (winCounts.get(key) ?? 0) + 1);
+  }
+  const turns = results.map((r) => r.turns);
+  const msPerTurn = results.map((r) => r.msPerTurn);
+
+  console.log('\n--- summary ---');
+  console.log(`games: ${results.length}`);
+  for (const [key, count] of [...winCounts.entries()].sort()) {
+    console.log(`  winner=${key}: ${count} (${((100 * count) / results.length).toFixed(1)}%)`);
+  }
+  console.log(`turns: mean=${(turns.reduce((a, b) => a + b, 0) / turns.length).toFixed(1)} median=${median(turns).toFixed(1)}`);
+  console.log(`ms/turn: mean=${(msPerTurn.reduce((a, b) => a + b, 0) / msPerTurn.length).toFixed(2)} median=${median(msPerTurn).toFixed(2)}`);
+}
+
+// Run only when executed directly (`npx tsx ai-benchmark.ts`), not when imported by a test.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}

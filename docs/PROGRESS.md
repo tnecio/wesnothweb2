@@ -2654,3 +2654,38 @@ candidate action from a running stage, and adds/deletes a `[goal]` by id.
 Engine/renderer/ui suites all green (537/193/83 -- net -7 engine tests
 from deleting `simpleAi.test.ts`'s 12 and adding 5 new), typecheck and
 `svelte-check` (0 errors) clean. Branch `phase-29-real-ai`.
+
+**S6 (headless AI-vs-AI benchmark harness), delivered** (2026-09-13):
+- `synthetic-campaigns/combat/scenarios/02_combat_ai.cfg` +
+  `combat_ai.map`: a real, hand-authored scenario (Spearman/Bowman vs.
+  Orcish Grunt/Orcish Archer, real `data/core/units/` types) with BOTH
+  sides `controller=ai`, each with its own keep+castle and gold, three
+  neutral villages contested in the middle -- `01_combat.cfg`
+  (`controller=human`, no keeps) can't exercise the AI at all.
+- `packages/ui/scripts/ai-benchmark.ts`: `npx tsx packages/ui/scripts/
+  ai-benchmark.ts --scenario synth_combat_02 --games N --seed S
+  --max-turns T` plays N independent, deterministically-seeded games and
+  prints one JSON line per game (`{seed, winner, turns, ms, msPerTurn,
+  actions, luaErrors}`) plus a win-rate/mean-turns/mean-ms-per-turn
+  summary -- meant to be diffed across runs (e.g. before/after S7's Lua
+  CAs land) to catch behavioural and performance regressions alike.
+  `--lua` is accepted but a no-op with a warning until S7.
+- `GameSession.playAiSide` is now public (was private) and `endTurn`
+  gained an optional `maxAiSideTurns` cap (default 1000, unchanged for
+  every existing caller): `endTurn()`'s own auto-play loop only ever
+  plays the side it advances TO, never the one a from-scratch session
+  starts on, so an all-AI benchmark session needs one explicit
+  `playAiSide` call for side 1's own first turn; the cap lets the
+  harness enforce its own `--max-turns` budget rather than run to
+  `endTurn`'s internal 1000-side-turn safety valve.
+- **Live results** (10 games, `synth_combat_02`, seeds 100-107 sampled):
+  a clean 50/50 win split across seeds, 5-9 turns per game, confirming
+  both sides play real, competent, non-degenerate combat -- and bit-
+  for-bit determinism (identical seed -> identical winner/turns/actions
+  across repeated runs, only wall-clock `ms` differing).
+
+3 new tests (`ai-benchmark.test.ts`, colocated with the script): a game
+completes within budget, same-seed determinism, and a 2-game smoke test
+matching the plan's own spec. Engine/renderer/ui suites all green
+(537/193/86), typecheck and `svelte-check` (0 errors) clean. Branch
+`phase-29-real-ai`.

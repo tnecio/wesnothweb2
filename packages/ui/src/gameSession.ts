@@ -1466,16 +1466,21 @@ export class GameSession {
    * human ends up controlling (including a `human`-controlled side that
    * isn't `playerSide` -- true hotseat, unchanged from before).
    */
-  endTurn(): string {
+  endTurn(maxAiSideTurns = 1000): string {
     const aiAnimations: AiAnimationEvent[] = [];
     let message = this.advanceOneTurn();
     if (!message) return '';
     // Auto-play consecutive AI-controlled sides. Bounded by `sides.length`
     // guard-multiples rather than true unbounded recursion, so a
     // fully-AI-vs-AI scenario can't blow the call stack turn-by-turn --
-    // capped generously (1000) since a real game is turns=<=100ish and
-    // this only loops once per side-turn, not per AI action.
-    for (let guard = 0; guard < 1000 && !this.scenarioResult; guard++) {
+    // capped generously (1000, `maxAiSideTurns`'s default) since a real
+    // game is turns=<=100ish and this only loops once per side-turn, not
+    // per AI action. A caller driving an all-AI scenario with its own
+    // turn budget (`packages/ui/scripts/ai-benchmark.ts`) can pass a
+    // smaller cap to get control back before that -- this does NOT mean
+    // the scenario ended (`scenarioResult` stays `null`); the caller
+    // decides what an un-ended, capped-out game counts as.
+    for (let guard = 0; guard < maxAiSideTurns && !this.scenarioResult; guard++) {
       const team = this.board.getTeam(this.activeSide);
       if (!team || (team.controller !== 'ai' && team.controller !== 'network_ai')) break;
       this.playAiSide(this.activeSide, aiAnimations);
@@ -1488,8 +1493,19 @@ export class GameSession {
     return message;
   }
 
-  /** Runs `aiManager.playTurn` for `side`, logs what it did, and appends every real animation event it produced to `outAnimations` (see `endTurn`'s own doc comment on why these accumulate across possibly several consecutive AI sides). */
-  private playAiSide(side: number, outAnimations: AiAnimationEvent[]): void {
+  /**
+   * Runs `aiManager.playTurn` for `side`, logs what it did, and appends
+   * every real animation event it produced to `outAnimations` (see
+   * `endTurn`'s own doc comment on why these accumulate across possibly
+   * several consecutive AI sides). Public (not just `endTurn`'s own
+   * internal use) so a caller driving an all-AI scenario from the very
+   * start (e.g. `packages/ui/scripts/ai-benchmark.ts`) can play side 1's
+   * own first turn before ever calling `endTurn()` -- `endTurn()` itself
+   * only ever plays the side it advances TO, never the one it starts on,
+   * so a from-scratch session's side 1 needs one explicit call here if it
+   * too is AI-controlled.
+   */
+  playAiSide(side: number, outAnimations: AiAnimationEvent[]): void {
     this.fire('ai turn'); // mirrors manager::play_turn's own pre-turn event, real content hooks WML on it.
     const actions: AiAction[] = this.aiManager.playTurn(side);
     for (const action of actions) {
