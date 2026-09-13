@@ -65,7 +65,7 @@ import {
   type RecordedMessage,
   type ScenarioObjectives,
 } from '../events/index.js';
-import { Location } from '../model/Location.js';
+import { Location, type Direction } from '../model/Location.js';
 import { GameMap } from '../model/Map.js';
 import { Team, type SideController } from '../model/Team.js';
 import { Unit } from '../model/Unit.js';
@@ -135,6 +135,8 @@ export interface SnapshotUnit {
   maxHitpoints: number;
   /** This unit's real `flag_rgb=` (see `UnitTypeSnapshot.flagRgb`'s own doc comment), for team-color recoloring -- `undefined` reads as the real default ("magenta"). */
   flagRgb?: string;
+  /** `Unit.facing` -- drives the idle sprite's mirror on the renderer side; see `@wesnothweb2/renderer`'s `SnapshotUnit.facing` (this interface's structural twin) for the full explanation. */
+  facing?: Direction;
   /**
    * XP/moves/attacks/status fields the renderer needs for the real HP/XP
    * bars, moves-left orb, and status tint (see `@wesnothweb2/renderer`'s

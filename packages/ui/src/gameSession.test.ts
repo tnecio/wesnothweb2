@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Location, Unit, getAdjacentTiles, createTypeResolver, type GameBoardSnapshot } from '@wesnothweb2/engine';
+import { Location, Unit, Direction, getAdjacentTiles, createTypeResolver, type GameBoardSnapshot } from '@wesnothweb2/engine';
 import { GameSession } from './gameSession.js';
 
 /**
@@ -1052,6 +1052,22 @@ describe('GameSession.renderUnits moves-orb reachability (real, reported bug: a 
     expect(theirs.maxAttacksPerTurn).toBeUndefined();
     expect(theirs.canMove).toBeUndefined();
     expect(theirs.canAttackHere).toBeUndefined();
+  });
+});
+
+describe('GameSession.renderUnits idle facing (real, reported bug: the idle sprite never mirrored to face the unit\'s last move/attack direction)', () => {
+  it('a real move sets Unit.facing, and renderUnits carries that same facing through to the SnapshotUnit', () => {
+    const session = new GameSession(loadSnapshot());
+    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    session.selectUnit(kaiKrellis);
+    const dest = session.reachable.find((h) => !(h.x === kaiKrellis.location.x && h.y === kaiKrellis.location.y));
+    expect(dest).toBeDefined();
+
+    session.handleHexClick(dest!.x, dest!.y);
+
+    expect(kaiKrellis.facing).not.toBe(Direction.Indeterminate);
+    const snap = session.renderUnits.find((u) => u.id === 'Kai Krellis')!;
+    expect(snap.facing).toBe(kaiKrellis.facing);
   });
 });
 

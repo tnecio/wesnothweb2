@@ -134,6 +134,21 @@ export interface SnapshotUnit {
    */
   flagRgb?: string;
   /**
+   * `Unit.facing` -- which way the unit last moved/attacked, persisted
+   * across turns. Drives the IDLE sprite's horizontal mirror the same way
+   * `sampleAnimation`'s own direction handling already does for combat/
+   * movement frames (`hflip` true for `NorthWest`/`SouthWest`, the two
+   * "leftward" hex directions art is authored mirrored for rather than
+   * separately drawn). Real, reported bug: the idle (non-animating) sprite
+   * always reset to its unmirrored orientation on every `updateUnits`/
+   * `renderUnits` pass, regardless of which way the unit was actually
+   * facing -- only the COMBAT animation itself read `unit.facing`
+   * correctly; the standing pose in between actions did not. `undefined`
+   * (the static pre-game snapshot, or a unit that has never moved/
+   * attacked) reads as "no mirror" -- `Direction.Indeterminate`.
+   */
+  facing?: Direction;
+  /**
    * XP/moves/attacks/status fields for the real HP/XP bars, moves-left
    * orb, and status tint (`drawUnitOverlays`) -- all optional since a unit
    * built straight from the static, pre-game `ScenarioSnapshot` JSON
@@ -271,6 +286,11 @@ interface UnitVisual {
 /** 0-based engine (x,y) -> 1-based renderer HexCoord -- see module doc comment. */
 function toHexCoord(x: number, y: number): HexCoord {
   return { x: x + 1, y: y + 1 };
+}
+
+/** Mirrors `sampleAnimation`'s own direction-to-hflip rule (frame.ts): art is authored facing "rightward," and the two leftward hex directions reuse it mirrored rather than being drawn separately. Shared here so the idle sprite mirrors the exact same way a combat/movement frame already does. */
+function isMirroredFacing(facing: Direction | undefined): boolean {
+  return facing === Direction.NorthWest || facing === Direction.SouthWest;
 }
 
 /**
@@ -849,6 +869,7 @@ export class SnapshotBoard {
       if (texture) {
         sprite = new PIXI.Sprite(texture);
         sprite.anchor.set(0.5, 0.5);
+        if (isMirroredFacing(unit.facing)) sprite.scale.x = -Math.abs(sprite.scale.x);
       }
     }
 
@@ -1122,7 +1143,15 @@ export class SnapshotBoard {
       visual.container.x = cx;
       visual.container.y = cy;
       if (visual.sprite) {
-        visual.sprite.scale.x = Math.abs(visual.sprite.scale.x); // undo any hflip a prior animation left behind.
+        // Real, reported bug: this used to unconditionally reset to the
+        // unmirrored orientation ("undo any hflip a prior animation left
+        // behind"), regardless of `unit.facing` -- so the idle sprite
+        // never actually mirrored to face the unit's last move/attack
+        // direction, even though it correctly reset any IN-PROGRESS
+        // animation's hflip once that animation finished. Now settles on
+        // whichever orientation `unit.facing` actually calls for.
+        const mirrored = isMirroredFacing(unit.facing);
+        visual.sprite.scale.x = mirrored ? -Math.abs(visual.sprite.scale.x) : Math.abs(visual.sprite.scale.x);
       }
     }
 
