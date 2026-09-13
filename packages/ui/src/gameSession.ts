@@ -434,6 +434,12 @@ export interface EconomyInfo {
   villagesOwned: number;
   /** What this side's gold will change by at the start of its *next* turn: total income (base + per-village) minus any unsupported unit upkeep. Zero on turn 1, when no side has had income/upkeep applied yet -- see `endTurn`'s doc comment. */
   netIncome: number;
+  /** This side's raw total upkeep (sum of `unit.level` for every non-leader unit) -- for the status bar's real `upkeep (total)` display, mirrors `side_upkeep`. */
+  upkeepTotal: number;
+  /** The portion of `upkeepTotal` actually charged against gold each turn (`upkeepTotal - villages*support_per_village`, floored at 0) -- what `endTurn` actually deducts. */
+  upkeepCharged: number;
+  /** This side's current unit count -- for the status bar's real unit-count display. */
+  unitCount: number;
 }
 
 /** One recruitable unit type, ready for the side panel's recruit list. */
@@ -1468,11 +1474,15 @@ export class GameSession {
   get economyInfo(): EconomyInfo {
     const team = this.board.getTeam(this.activeSide);
     const expense = this.upkeepExpenseFor(this.activeSide);
+    const upkeepTotal = this.board.unitsForSide(this.activeSide).reduce((sum, unit) => sum + (unit.canRecruit ? 0 : unit.level), 0);
     return {
       startGold: team?.startGold ?? 0,
       incomePerVillage: team?.incomePerVillage ?? 0,
       villagesOwned: this.board.villageCount(this.activeSide),
       netIncome: this.turnNumber > 1 ? this.totalIncomeFor(this.activeSide) - Math.max(0, expense) : 0,
+      upkeepTotal,
+      upkeepCharged: Math.max(0, expense),
+      unitCount: this.board.unitsForSide(this.activeSide).length,
     };
   }
 

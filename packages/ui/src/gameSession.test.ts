@@ -911,7 +911,12 @@ describe('GameSession income/upkeep/village economy (real synth_economy_01: gold
 
   it('economyInfo previews startGold/incomePerVillage always, and netIncome only once turnNumber > 1', () => {
     const session = new GameSession(loadEconomySnapshot());
-    expect(session.economyInfo).toEqual({ startGold: 40, incomePerVillage: 1, villagesOwned: 0, netIncome: 0 });
+    expect(session.economyInfo).toMatchObject({ startGold: 40, incomePerVillage: 1, villagesOwned: 0, netIncome: 0 });
+    // Real, reported bug: the status bar had no way to show unit count or
+    // upkeep at all -- see TopBar.svelte (Phase 14).
+    expect(session.economyInfo.unitCount).toBe(session.board.unitsForSide(session.activeSide).length);
+    expect(session.economyInfo.upkeepTotal).toBeGreaterThanOrEqual(0);
+    expect(session.economyInfo.upkeepCharged).toBeGreaterThanOrEqual(0);
 
     session.endTurn();
     session.endTurn(); // now turn 2, side 1 active -- income already applied by endTurn itself.

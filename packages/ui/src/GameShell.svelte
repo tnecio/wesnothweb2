@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * Top-level game shell: owns one `GameSession` (see gameSession.ts) and
-   * bridges it into Svelte's reactivity for TurnBanner/GameBoardView/
+   * bridges it into Svelte's reactivity for TopBar/GameBoardView/
    * SidePanel/StoryViewer/MessageViewer. `GameSession` is a plain, rune-free
    * class (see its own doc comment for why); this component is the one
    * place that mutates it and mirrors the bits each child needs into
@@ -57,7 +57,7 @@
     type PendingAdvancement,
   } from './gameSession.js';
   import { saveGame, loadGame } from './persistence.js';
-  import TurnBanner from './TurnBanner.svelte';
+  import TopBar from './TopBar.svelte';
   import GameBoardView from './GameBoardView.svelte';
   import SidePanel from './SidePanel.svelte';
   import StoryViewer from './StoryViewer.svelte';
@@ -122,6 +122,8 @@
   /** Phase 13: whether the real modal Recruit/Recall dialogs are open -- opened via `SidePanel`'s "Recruit.../Recall..." trigger, distinct from `pendingRecruitTypeId`/`pendingRecallIndex` (the ARMED, awaiting-a-tile-click state that persists after the dialog closes). */
   let recruitDialogOpen = $state(false);
   let recallDialogOpen = $state(false);
+  /** Phase 14: real Wesnoth's Actions menu "Objectives" entry -- reopens the same `ObjectivesDialog` the scenario shows automatically at start, on demand, independent of the `phase` state machine (which only ever shows it once, at the right moment in the startup sequence). */
+  let objectivesDialogOpen = $state(false);
   let attackerWeaponOptions = $state<AttackerWeaponOption[]>([]);
   let log = $state<string[]>([]);
   let turnNumber = $state(session.turnNumber);
@@ -818,7 +820,23 @@
 </script>
 
 <div class="game-shell">
-  <TurnBanner scenarioName={activeSnapshot.scenario.name} {turnNumber} {activeSide} {scenarioTurnsLimit} {timeOfDay} />
+  <TopBar
+    scenarioName={activeSnapshot.scenario.name}
+    {turnNumber}
+    {activeSide}
+    {scenarioTurnsLimit}
+    {timeOfDay}
+    {economyInfo}
+    canRecruit={recruitOptions.length > 0}
+    canRecall={recallOptions.length > 0}
+    hasObjectives={session.scenarioObjectives !== null}
+    onSave={handleSave}
+    onLoad={handleLoad}
+    onOpenRecruit={() => (recruitDialogOpen = true)}
+    onOpenRecall={() => (recallDialogOpen = true)}
+    onOpenObjectives={() => (objectivesDialogOpen = true)}
+    onEndTurn={handleEndTurn}
+  />
   <div class="main">
     <!--
       Keyed on scenario id: GameBoardView's own doc comment says its
@@ -851,24 +869,7 @@
         hoverDefensePercent={(x, y) => session.defensePercentAt(x, y)}
       />
     {/key}
-    <SidePanel
-      {selected}
-      {inspected}
-      {statusMessage}
-      {log}
-      {recruitOptions}
-      {recallOptions}
-      {turnNumber}
-      {scenarioTurnsLimit}
-      {activeSide}
-      {gold}
-      {economyInfo}
-      onOpenRecruit={() => (recruitDialogOpen = true)}
-      onOpenRecall={() => (recallDialogOpen = true)}
-      onEndTurn={handleEndTurn}
-      onSave={handleSave}
-      onLoad={handleLoad}
-    />
+    <SidePanel {selected} {inspected} {statusMessage} {log} {recruitOptions} {recallOptions} onEndTurn={handleEndTurn} />
   </div>
 
   {#if pendingPreview}
@@ -893,6 +894,17 @@
       onDismiss={handleDismissRecall}
       onRename={handleRenameRecall}
       onCancel={() => (recallDialogOpen = false)}
+    />
+  {/if}
+
+  {#if objectivesDialogOpen && session.scenarioObjectives}
+    <!-- Phase 14: reopened on demand from the top bar's Actions menu, independent of the `phase` state machine's own one-time automatic showing (below). -->
+    <ObjectivesDialog
+      scenarioName={activeSnapshot.scenario.name}
+      objectives={session.scenarioObjectives}
+      currentTurn={turnNumber}
+      turnsLimit={scenarioTurnsLimit}
+      onClose={() => (objectivesDialogOpen = false)}
     />
   {/if}
 

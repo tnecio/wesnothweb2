@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { RecruitOption, RecallOption, SelectedUnitInfo, EconomyInfo } from './gameSession.js';
+  import type { RecruitOption, RecallOption, SelectedUnitInfo } from './gameSession.js';
 
   let {
     selected,
@@ -8,39 +8,26 @@
     log,
     recruitOptions,
     recallOptions,
-    turnNumber,
-    scenarioTurnsLimit,
-    activeSide,
-    gold,
-    economyInfo,
-    onOpenRecruit,
-    onOpenRecall,
     onEndTurn,
-    onSave,
-    onLoad,
   }: {
     selected: SelectedUnitInfo | null;
     /** A unit clicked purely to view its info (any side) -- see `GameSession.inspectedUnit`. Shown alongside `selected`, addressing "no way to see information about enemy units". */
     inspected: SelectedUnitInfo | null;
     statusMessage: string;
     log: string[];
-    /** Real recruitable types for the selected leader's side, if it's currently able to recruit -- see `GameSession.recruitOptions`. Only its length is used here (whether to show the "Recruit..." trigger) -- the real list lives in `RecruitDialog.svelte` (Phase 13), opened via `onOpenRecruit`. */
+    /**
+     * Real recruitable types for the selected leader's side, if it's
+     * currently able to recruit -- see `GameSession.recruitOptions`. Only
+     * its length is used here (to decide whether the "click a unit to
+     * select it" hint should show instead) -- the real trigger now lives
+     * in `TopBar.svelte`'s Actions menu (Phase 14: real Wesnoth's own
+     * right-hand panel has no recruit/recall buttons of its own either,
+     * only unit info/minimap/turn end).
+     */
     recruitOptions: RecruitOption[];
-    /** The selected leader's side's real recall list, if it's currently able to recruit/recall -- see `GameSession.recallOptions`. Same "length only" note as `recruitOptions` -- `RecallDialog.svelte` owns the real list. */
+    /** Same "length only" note as `recruitOptions`. */
     recallOptions: RecallOption[];
-    turnNumber: number;
-    /** The scenario's `turns=` limit, if it has one (null means unlimited). */
-    scenarioTurnsLimit: number | null;
-    activeSide: number;
-    /** The active side's current gold. */
-    gold: number;
-    /** The active side's income/upkeep figures -- see `GameSession.economyInfo`. */
-    economyInfo: EconomyInfo;
-    onOpenRecruit: () => void;
-    onOpenRecall: () => void;
     onEndTurn: () => void;
-    onSave: () => void;
-    onLoad: () => void;
   } = $props();
 
   /** "melee, blade" style label for a weapon's range/damage type -- addresses "UI is missing information about weapon type". */
@@ -50,18 +37,6 @@
 </script>
 
 <aside class="side-panel">
-  <section class="scenario-info">
-    <div>Turn {turnNumber}{#if scenarioTurnsLimit !== null} / {scenarioTurnsLimit}{/if}</div>
-    <div>Active side: {activeSide}</div>
-    <div>Gold: {gold} <span class="hint-inline">(started with {economyInfo.startGold})</span></div>
-    <div>
-      Income next turn: {economyInfo.netIncome >= 0 ? '+' : ''}{economyInfo.netIncome}
-      <span class="hint-inline">
-        ({economyInfo.villagesOwned} village{economyInfo.villagesOwned === 1 ? '' : 's'} &times; {economyInfo.incomePerVillage}g)
-      </span>
-    </div>
-  </section>
-
   <p class="status">{statusMessage}</p>
 
   {#snippet unitInfo(info: SelectedUnitInfo)}
@@ -129,24 +104,6 @@
     </section>
   {/if}
 
-  {#if recruitOptions.length > 0 || recallOptions.length > 0}
-    <!--
-      Phase 13: opens the real modal dialogs (`RecruitDialog.svelte`/
-      `RecallDialog.svelte`) instead of showing the list inline here --
-      shown whenever the selected unit is a leader standing on its keep
-      with at least one vacant, keep-connected castle tile (see
-      `GameSession.computeRecruitTiles`).
-    -->
-    <section class="leader-actions">
-      {#if recruitOptions.length > 0}
-        <button class="action" onclick={onOpenRecruit}>Recruit&hellip;</button>
-      {/if}
-      {#if recallOptions.length > 0}
-        <button class="action" onclick={onOpenRecall}>Recall&hellip;</button>
-      {/if}
-    </section>
-  {/if}
-
   {#if !selected && !inspected && recruitOptions.length === 0 && recallOptions.length === 0}
     <p class="hint">
       Click one of your units to select it. Blue hexes are where it can move;
@@ -168,8 +125,6 @@
   </section>
 
   <section class="turn-actions">
-    <button onclick={onSave} title="Save to browser storage">Save</button>
-    <button onclick={onLoad} title="Load from browser storage">Load</button>
     <button class="primary" onclick={onEndTurn}>End Turn</button>
   </section>
 </aside>
@@ -189,23 +144,10 @@
     flex-direction: column;
     gap: 0.75rem;
   }
-  .scenario-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid #3a3628;
-    font-size: 0.8rem;
-    color: #cbbf9a;
-  }
   .status {
     margin: 0;
     color: #f1e6c8;
     font-style: italic;
-  }
-  .hint-inline {
-    opacity: 0.7;
-    font-size: 0.9em;
   }
   h3 {
     margin: 0 0 0.4rem;
@@ -264,13 +206,6 @@
   .role {
     font-weight: 400;
     opacity: 0.7;
-  }
-  .leader-actions {
-    display: flex;
-    gap: 0.5rem;
-  }
-  .action {
-    flex: 1 1 auto;
   }
   button {
     font: inherit;
