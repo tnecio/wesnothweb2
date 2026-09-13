@@ -1325,13 +1325,34 @@ below exist yet.
 
 ## Phase 29 — Real AI: RCA framework port + Lua CAs/micro-AIs on fengari
 
-**Status: planned 2026-09-13, S0 delivered.** Supersedes Phase 7's own
-"Later" bullet (candidate-action framework + Lua micro-AI port), which is
-now this phase's full scope rather than a deferred aside. Full staged
-plan (13 stages S0–S12, module layout, upstream file:line citations,
-test plan per stage) at `.claude/plans/wise-squishing-deer.md` — kept
-there rather than duplicated here since it's long; this section is a
-pointer + milestone summary for the phase list/coverage map's sake.
+**Status: S0–S6 delivered (2026-09-13); MILESTONE REACHED.** Supersedes
+Phase 7's own "Later" bullet (candidate-action framework + Lua micro-AI
+port), which is now this phase's full scope rather than a deferred
+aside. Full staged plan (13 stages S0–S12, module layout, upstream
+file:line citations, test plan per stage) at `.claude/plans/
+wise-squishing-deer.md` — kept there rather than duplicated here since
+it's long; this section is a pointer + milestone summary for the phase
+list/coverage map's sake.
+
+Dead Water now plays a full turn under the real RCA default AI end to
+end (S5's milestone), `simpleAi.ts` is deleted, and a headless AI-vs-AI
+benchmark harness (S6, `packages/ui/scripts/ai-benchmark.ts`) confirms
+both sides play competent, non-degenerate, bit-for-bit-deterministic
+combat. **S7 (the Lua host API needed to run `wesnoth/data/ai/**/*.lua`
+verbatim) and S8 (browser wiring for it) are explicit, deliberate
+handoff points**, not an oversight: S7 alone (reading all 5 of its
+target Lua candidate actions confirmed this) transitively needs
+`ai_helper.lua` (2548 lines), `battle_calcs.lua` (1612 lines),
+`retreat.lua`, `location_set.lua`, and a micro-AI helper file, behind a
+`wesnoth.*`/`ai.*` host API surface (unit proxies with methods,
+`wesnoth.paths.find_reach`, `wesnoth.simulate_combat`, map/terrain
+queries, `ai.aspects.*`/`ai.get_attacks()`, Lua<->WML conversion, error
+handling) that is its own multi-session undertaking, not a same-scale
+extension of S0–S6 -- the user chose to stop here and hand it off
+explicitly (2026-09-13) rather than risk an incomplete or undertested
+attempt. The pure-TS AI (everything through S6) is real, complete, and
+independently useful without S7+; nothing about it is provisional or
+needs revisiting once S7 eventually lands.
 
 - TS-ports upstream's real candidate-action framework (`src/ai/composite`/
   `src/ai/default`: the RCA loop, aspects/facets/goals/stages, move maps/

@@ -45,10 +45,14 @@ target before moving on to other mainline content.
 
 ## 4. AI ambition
 
-**Decided:** heuristic placeholder AI is fine through the early phases, but
-a real AI opponent is a required eventual deliverable, not something to
-drop. Phase 7 reflects this: placeholder first, real candidate-action/Lua
-AI later, but "later" is a schedule position, not an optional scope item.
+**Decided, delivered 2026-09-13 (Phase 29 S0–S6):** the real candidate-
+action AI (`packages/engine/src/ai/`) has replaced Phase 7's heuristic
+placeholder (`simpleAi.ts`, deleted). Dead Water plays a full turn under
+the real RCA default AI, headlessly and end-to-end. The Lua-dependent
+layers (S7+: `wesnoth/data/ai/**/*.lua` verbatim, micro-AIs) remain
+future work, explicitly scoped and handed off rather than attempted
+this session -- see Phase 29's own status note in `docs/
+IMPLEMENTATION_PLAN.md` and item 7 below.
 
 ## 5. Multiplayer priority
 

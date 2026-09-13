@@ -2689,3 +2689,22 @@ completes within budget, same-seed determinism, and a 2-game smoke test
 matching the plan's own spec. Engine/renderer/ui suites all green
 (537/193/86), typecheck and `svelte-check` (0 errors) clean. Branch
 `phase-29-real-ai`.
+
+**Phase 29 checkpoint: S0–S6 done, S7/S8 explicitly handed off**
+(2026-09-13). After reading all 5 of S7's target Lua candidate actions
+in full, their transitive dependencies (`ai_helper.lua` 2548 lines,
+`battle_calcs.lua` 1612 lines, `retreat.lua`, `location_set.lua`, a
+micro-AI helper file) plus the `wesnoth.*`/`ai.*` host API surface they
+need (unit proxies with methods, `wesnoth.paths.find_reach`,
+`wesnoth.simulate_combat`, map/terrain queries, `ai.aspects.*`/
+`ai.get_attacks()`, Lua<->WML conversion) make S7 alone a multi-session
+undertaking, not a same-scale extension of S0–S6. Given a choice between
+(a) a reduced "S7-lite" slice, (b) stopping at the S0–S6 milestone and
+handing S7/S8 off cleanly, or (c) attempting the full scope with real
+risk of an incomplete/undertested result, the user chose (b). `docs/
+IMPLEMENTATION_PLAN.md`'s Phase 29 section and `docs/OPEN_QUESTIONS.md`
+#4 are updated accordingly; the full staged plan for S7 onward remains
+at `.claude/plans/wise-squishing-deer.md` for whenever this is picked
+back up. Everything through S6 is real, complete, and independently
+useful on its own -- nothing in it is provisional or needs revisiting
+once S7 eventually lands.
