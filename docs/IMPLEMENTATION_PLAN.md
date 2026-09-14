@@ -1416,16 +1416,55 @@ its own commit(s) with before/after numbers in docs/PROGRESS.md.
 - *Build time / repo size:* per-scenario terrain atlases for ~38 scenarios
   could be tens of MB.
 
-**Open decisions (before P5)**
-1. Commit generated atlases (like today's `public/story/` and
-   `public/derived-images/`) or gitignore them and build in `npm run
-   build`/a `predev` hook? Recommendation: gitignore + build.
-2. PNG encode/decode at build time: add `pngjs` (small, pure JS, exact
-   RGBA) or `sharp` (fast, native)? Recommendation: `pngjs`, exactness over
-   speed.
-3. Atlas granularity: per scenario (best locality, duplicated bytes) or
-   shared core-terrain bundles + per-scenario remainder. Decide from P0's
-   byte/request numbers.
+**Decisions (user, 2026-09-14)**
+1. Generated atlases are gitignored and built by `npm run build` / a
+   `predev` hook, not committed.
+2. `pngjs` for build-time PNG decode/encode (exact RGBA; build time is not
+   a concern).
+3. Per-scenario bundles are acceptable **only as a cache, never as the
+   source of truth** -- see below.
+
+**Atlases are a hint, not a manifest.** What a scenario draws cannot be
+fully known at build time: WML `[terrain]` (with `terrain=`/`layer=`),
+`[terrain_mask]`, `[replace_map]`, `[item]`/`[remove_item]` (arbitrary
+`image=`/`halo=`), Lua `wesnoth.current.map[...] =`/`wesnoth.map`
+terrain setters and `wesnoth.interface.add_item_image`, `[unit] type=$var`,
+`[transform_unit]`, advancement, `[allow_recruit]`, `[object] image=`. A
+single changed hex also changes the transition images of its neighbours
+through `[terrain_graphics]` rules (scenario-defined ones included --
+UtBS ships its own). In the four built campaigns today: `[terrain]` 1 / 3
+/ 3 / 51 times (Dead Water / Liberty / Two Brothers / UtBS), `[item]`-style
+image placement 22 / 51 / 40 / 165, `MODIFY_TERRAIN`/`PLACE_IMAGE` macros
+in 6 / 7 / 3 / 11 files, 2 scenario `[terrain_graphics]` files in UtBS,
+`[terrain_mask]` in 2 files, no variable-driven `terrain=$...` but 33
+variable-driven `type=$...`; our
+engine implements none of those actions yet, so today's board is static,
+but it will not stay that way. Therefore:
+- **Correctness never depends on the bundle.** The compositor's loader
+  always falls back to a per-file fetch for any source image not in the
+  scenario's atlas manifest (already part of P5). A miss costs one extra
+  request, never a wrong or missing sprite.
+- **Build a conservative superset, statically.** (a) the initial board's
+  exact terrain sources (real terrain builder over the map); (b) terrain
+  codes named literally anywhere in the scenario's WML (`[terrain]
+  terrain=`, `[terrain_mask]`/`[replace_map]` map files), expanded through
+  the builder for every placement *and* its neighbours' transitions --
+  approximated by building each such code against the codes adjacent to
+  its `[filter]` locations when literal, else against all codes present
+  on the map; (c) literal `image=`/`halo=` of `[item]`-style tags; (d)
+  every unit type the snapshot already enumerates as spawnable/recruitable
+  (P6). Variable-driven values (`terrain=$...`, `type=$...`) are not
+  guessed.
+- **Measure misses, don't assume zero.** In dev builds the loader counts
+  fallback fetches per scenario (`window.__atlasMisses`); `measure-load.mjs`
+  reports them and a Playwright check fails when loading a scenario's
+  initial board produces any miss. Misses seen while playing (dynamic
+  terrain, spawned types) are logged and can be fed back as an explicit
+  per-scenario extras list if they matter.
+- **Shared first, then per-scenario.** To keep bytes and build time sane,
+  split into a shared core-terrain bundle (sources used by several built
+  scenarios) plus a small per-scenario remainder; the exact split is
+  decided from P0's byte/request numbers.
 
 ---
 
