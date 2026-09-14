@@ -24,8 +24,9 @@ function arg(name, fallback) {
 const base = arg('base', 'http://localhost:5173');
 const campaigns = arg('campaign', 'dead_water,liberty,under_the_burning_suns').split(',');
 const maxParts = Number(arg('parts', '4'));
-const storySelector = arg('story-selector', '.story-overlay');
-const nextSelector = arg('next-selector', '.story-overlay .advance');
+// Defaults target the Phase 16 viewer; the N0 baseline used `.story-overlay` / `.story-overlay .advance`.
+const storySelector = arg('story-selector', '.story');
+const nextSelector = arg('next-selector', '.story .arrow[aria-label="Next"]');
 
 /** Installed before any page script: collects long tasks and image resource timings. */
 function installObservers() {
@@ -94,17 +95,31 @@ async function measure(page, campaign, label, reload) {
     return e ? { bytes: e.encodedBodySize || e.decodedBodySize, transfer: e.transferSize, fetchMs: Math.round(e.responseEnd - e.startTime), responseEnd: Math.round(e.responseEnd) } : null;
   });
 
-  const parts = [{ part: 0, imagesMs: firstImages.ms, images: firstImages.urls }];
+  // What the player feels: the first part's text fully faded in, and each Next until the next part's text is fully shown.
+  const textShown = () =>
+    page.waitForFunction(() => {
+      const t = document.querySelector('.story .text');
+      return !!t && getComputedStyle(t).opacity === '1';
+    }, undefined, { timeout: 60000 });
+  await textShown();
+  const settledMs = Date.now() - navStart;
+
+  const parts = [{ part: 0, imagesMs: firstImages.ms, images: firstImages.urls, advanceMs: 0 }];
   for (let i = 1; i < maxParts; i++) {
     const next = await page.$(nextSelector);
     if (!next) break;
     // Never press the final "Continue": it runs the scenario's startup events synchronously, which is not story cost.
     if ((await next.textContent())?.trim() === 'Continue') break;
+    const before = await page.evaluate(() => document.querySelector('.story .text')?.textContent ?? '');
+    const pressedAt = Date.now();
     await next.evaluate((el) => el.click());
     const stillStory = await page.$(storySelector);
     if (!stillStory) break;
+    await page.waitForFunction((prev) => (document.querySelector('.story .text')?.textContent ?? '') !== prev, before, { timeout: 60000 });
+    await textShown();
+    const advanceMs = Date.now() - pressedAt;
     const r = await waitForStoryImages(page);
-    parts.push({ part: i, imagesMs: r.ms, images: r.urls });
+    parts.push({ part: i, imagesMs: r.ms, images: r.urls, advanceMs });
   }
 
   const images = await imageEntries(page);
@@ -122,7 +137,7 @@ async function measure(page, campaign, label, reload) {
     p.bytes = p.images.reduce((s, u) => s + (byName.get(u)?.bytes ?? 0), 0);
     p.networkBytes = p.images.reduce((s, u) => s + (byName.get(u)?.transfer ?? 0), 0);
   }
-  return { campaign, label, firstPaintMs, scenario, parts, topResources, longTasks, maxLongTaskMs: Math.max(0, ...longTasks.map((t) => t.ms)) };
+  return { campaign, label, firstPaintMs, settledMs, scenario, parts, topResources, longTasks, maxLongTaskMs: Math.max(0, ...longTasks.map((t) => t.ms)) };
 }
 
 const browser = await chromium.launch();
@@ -142,10 +157,10 @@ try {
 }
 
 for (const r of results) console.log(JSON.stringify(r));
-console.log('\ncampaign                 run   firstPaint  scenarioKB  scenarioMs  part:imgKB/ms ...                         maxLongTask');
+console.log('\ncampaign                 run   firstPaint  textShown  scenarioKB  part:imgKB/nextMs ...                       maxLongTask');
 for (const r of results) {
-  const parts = r.parts.map((p) => `${p.part}:${Math.round(p.bytes / 1024)}/${p.imagesMs}`).join(' ');
+  const parts = r.parts.map((p) => `${p.part}:${Math.round(p.bytes / 1024)}/${p.advanceMs}`).join(' ');
   console.log(
-    `${r.campaign.padEnd(24)} ${r.label.padEnd(5)} ${String(r.firstPaintMs).padStart(10)} ${String(Math.round((r.scenario?.bytes ?? 0) / 1024)).padStart(11)} ${String(r.scenario?.fetchMs ?? '-').padStart(11)}  ${parts.padEnd(40)} ${r.maxLongTaskMs}`,
+    `${r.campaign.padEnd(24)} ${r.label.padEnd(5)} ${String(r.firstPaintMs).padStart(10)} ${String(r.settledMs).padStart(10)} ${String(Math.round((r.scenario?.bytes ?? 0) / 1024)).padStart(11)}  ${parts.padEnd(42)} ${r.maxLongTaskMs}`,
   );
 }
