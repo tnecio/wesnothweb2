@@ -3019,3 +3019,15 @@ Attack in the debug combat scenario: the first animation waits **2.2 /
 2.4 s** for its frames (9–14 image requests), with 3.1 s of main-thread
 blocked time and 44 long tasks during the exchange -- the latter is more
 than frame resolution alone explains and is to be examined in P4.
+
+## 2026-09-14 — Phase 28a P1: compositor split from PixiJS
+
+`packages/renderer/src/images/compositor.ts` now holds all pixel work,
+moved verbatim: image base URLs and `imageUrl`, `hexedRef`/`todRef`,
+source bitmap loading, colour mappings and every IPF op. It imports no
+PixiJS and needs only `fetch`, `createImageBitmap` and canvas 2D, so it can
+run in a Web Worker. `ImageCache` keeps the PixiJS side (texture cache,
+in-flight de-duplication, canvas -> texture) and re-exports the moved
+helpers, so no import site changed. `test/compositorIsolation.test.ts`
+walks the compositor's local imports and fails if any imports `pixi.js`.
+Golden check 4872/4872; renderer 194 tests, typecheck clean.
