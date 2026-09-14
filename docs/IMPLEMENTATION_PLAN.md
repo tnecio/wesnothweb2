@@ -1401,8 +1401,8 @@ its own commit(s) with before/after numbers in docs/PROGRESS.md.
 | P2 | **Worker compositor.** `images/compositor.worker.ts` (Vite `new Worker(new URL(...), { type: 'module' })`), a pool of `min(4, hardwareConcurrency - 1)` workers sharded by source path. Protocol: `init` (base URLs, colour data), `render` (batched refs with priority: visible units > terrain > animation preload), results transferred as `ImageBitmap` (`transferToImageBitmap`, zero-copy), `cancel` on board teardown. Feature-detect `OffscreenCanvas` 2D in workers (Firefox 105+, Safari 16.4+), else in-thread. | Golden hashes identical via the worker path; no `applyOp` on the main thread in a profile |
 | P3 | **Rest of the board build off-thread / paced.** Fetch + parse `terrain-graphics-rules.json` and run `getTerrainFramesAt` over the map in a worker (both PixiJS-free), returning per-hex frames and the ref list. On the main thread, create sprites and let PixiJS upload textures in per-frame batches (~8 ms budget via `requestAnimationFrame`) so ~8,700 sprites + thousands of uploads never land in one task. | Board visually identical (screenshot diff = 0 on Dead Water, Liberty, UtBS 1) |
 | P4 | **Measure + tune.** Re-run P0. Budgets: max long task < 100 ms while the story or board loads; first story part fully faded in within 1 s of the story appearing (warm cache); board-ready time no worse than baseline +10%; attack first-play latency < 100 ms once frames are preloaded. | Budget table in PROGRESS; misses documented with profiles |
-| P5 | **Terrain source atlases.** `apps/web/scripts/build-image-atlases.mjs` (run with `tsx`): per scenario, run the real terrain builder against the snapshot map + graphics rules to get the exact source files the board needs; pack them losslessly (maxrects, ≤ 4096², RGBA PNG with no gAMA/iCCP/sRGB chunks) into a few atlases + a JSON rect manifest. The compositor's `loadBitmap(path)` consults the manifest and uses `createImageBitmap(atlasBlob, sx, sy, sw, sh, { colorSpaceConversion: 'none' })`, falling back to the per-file fetch. | Golden hashes identical; Dead Water 1 terrain requests 479 → single digits |
-| P6 | **Unit animation atlases.** Per unit type, pack every frame its animations reference (`parseUnitAnimations` at build time) into one atlas, fetched when that type is first placed on the board (recruitable types lazily, off the critical path). First play of any animation needs no network. | Zero image requests during an attack in `synth_combat_01` after load |
+| P5 | **Scenario terrain bundles.** `apps/web/scripts/build-image-atlases.mjs` (run with `tsx`, `pngjs`): per scenario snapshot, run the real terrain builder over the map + graphics rules to get exactly the source files of the initial board; pack them losslessly (simple shelf/maxrects packing, ≤ 4096², RGBA PNG without gAMA/iCCP/sRGB chunks) into one or a few atlases + a JSON rect manifest. The compositor's `loadBitmap(path)` looks the path up in the loaded manifests and crops with `createImageBitmap(atlasBlob, sx, sy, sw, sh, { colorSpaceConversion: 'none' })`; anything else falls back to the per-file fetch. | Golden hashes identical; Dead Water 1 terrain requests 479 → single digits |
+| P6 | **Unit type bundles.** One bundle per unit type: its base image plus every frame its animations reference (`parseUnitAnimations` over the flattened type config), keyed by type id + content hash. Built from the unit type configs alone (core, campaign or add-on), independent of any scenario, so the browser caches each once across every scenario. Loaded when a type is first placed or about to be (recruit list), which also covers spawns, transforms and advancement. Raw magenta sprites are bundled; team colour is still applied by the compositor. | Zero image requests during an attack in `synth_combat_01` after load |
 | P7 | **Delivery.** Content-hashed atlas names (`<name>.<hash>.png`) so production can serve them `immutable`; hosting headers recorded for the Phase 28 deploy work; optional service-worker cache (ties into the offline item above). | Warm reload of Dead Water 1 makes no image revalidations for atlased assets |
 
 **Risks**
@@ -1421,10 +1421,14 @@ its own commit(s) with before/after numbers in docs/PROGRESS.md.
    `predev` hook, not committed.
 2. `pngjs` for build-time PNG decode/encode (exact RGBA; build time is not
    a concern).
-3. Per-scenario bundles are acceptable **only as a cache, never as the
-   source of truth** -- see below.
+3. Keep the bundle build simple and generic -- it should later cover all
+   mainline campaigns and extend to add-ons and user scenarios, and it is
+   not the project's core focus. Scenario bundles hold **terrain only**
+   (the initial board's exact sources); units are bundled **per unit type
+   with their animations**; no per-scenario extras lists, no static
+   guessing of runtime terrain changes, no shared-core split.
 
-**Atlases are a hint, not a manifest.** What a scenario draws cannot be
+**Bundles are a cache, not a manifest.** What a scenario draws cannot be
 fully known at build time: WML `[terrain]` (with `terrain=`/`layer=`),
 `[terrain_mask]`, `[replace_map]`, `[item]`/`[remove_item]` (arbitrary
 `image=`/`halo=`), Lua `wesnoth.current.map[...] =`/`wesnoth.map`
@@ -1440,31 +1444,16 @@ in 6 / 7 / 3 / 11 files, 2 scenario `[terrain_graphics]` files in UtBS,
 variable-driven `type=$...`; our
 engine implements none of those actions yet, so today's board is static,
 but it will not stay that way. Therefore:
-- **Correctness never depends on the bundle.** The compositor's loader
-  always falls back to a per-file fetch for any source image not in the
-  scenario's atlas manifest (already part of P5). A miss costs one extra
-  request, never a wrong or missing sprite.
-- **Build a conservative superset, statically.** (a) the initial board's
-  exact terrain sources (real terrain builder over the map); (b) terrain
-  codes named literally anywhere in the scenario's WML (`[terrain]
-  terrain=`, `[terrain_mask]`/`[replace_map]` map files), expanded through
-  the builder for every placement *and* its neighbours' transitions --
-  approximated by building each such code against the codes adjacent to
-  its `[filter]` locations when literal, else against all codes present
-  on the map; (c) literal `image=`/`halo=` of `[item]`-style tags; (d)
-  every unit type the snapshot already enumerates as spawnable/recruitable
-  (P6). Variable-driven values (`terrain=$...`, `type=$...`) are not
-  guessed.
-- **Measure misses, don't assume zero.** In dev builds the loader counts
-  fallback fetches per scenario (`window.__atlasMisses`); `measure-load.mjs`
-  reports them and a Playwright check fails when loading a scenario's
-  initial board produces any miss. Misses seen while playing (dynamic
-  terrain, spawned types) are logged and can be fed back as an explicit
-  per-scenario extras list if they matter.
-- **Shared first, then per-scenario.** To keep bytes and build time sane,
-  split into a shared core-terrain bundle (sources used by several built
-  scenarios) plus a small per-scenario remainder; the exact split is
-  decided from P0's byte/request numbers.
+- **Correctness never depends on a bundle.** The loader falls back to a
+  per-file fetch for any source image no loaded manifest contains:
+  terrain changed at runtime, `[item]` images, portraits, or a scenario/
+  add-on that never went through the build. A miss costs one request,
+  never a wrong or missing sprite. Dev builds log each fallback at debug
+  level so a broken bundle is noticeable; nothing more.
+- **What is bundled is exactly derivable:** a scenario's initial board
+  (terrain builder over its map) and a unit type's own config. Both
+  inputs exist for any scenario or add-on, so the same build works for
+  all mainline campaigns later without special cases.
 
 ---
 
