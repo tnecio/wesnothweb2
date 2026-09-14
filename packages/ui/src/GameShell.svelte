@@ -25,7 +25,7 @@
    * before entering 'messages', so the board already reflects every real
    * event-spawned unit by the time the player gets control.
    */
-  import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage, TimeOfDayEntry, Unit, AiAnimationEvent, ScenarioObjectives } from '@wesnothweb2/engine';
+  import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage, TimeOfDayEntry, Unit, AiAnimationEvent, ScenarioObjectives, HealOutcome } from '@wesnothweb2/engine';
   import { WmlConfig, directionBetween, Location } from '@wesnothweb2/engine';
   import {
     type HexPoint,
@@ -115,7 +115,18 @@
   let selectedHex = $state<HexPoint | null>(null);
   let reachable = $state<ReachableHexPoint[]>([]);
   let attackTargets = $state<HexPoint[]>([]);
+  /** Feeds the context menu's "is this hex a valid recruit/recall target" check -- selection-independent, see `GameSession.recruitTiles`'s own doc comment. NOT the board's visual highlight -- see `boardRecruitTiles` below. */
   let recruitTiles = $state<HexPoint[]>([]);
+  /**
+   * The board's green recruit-tile highlight -- real, reported bug
+   * (bugs5.md #4): unlike `recruitTiles` above, this IS tied to whether
+   * the leader is actually SELECTED (see `GameSession.boardRecruitTiles`'s
+   * own doc comment) -- showing it any time the active side merely HAD a
+   * recruiting leader somewhere (which `recruitTiles` itself now
+   * correctly does, for the context menu/dialog's sake) was distracting
+   * clutter real Wesnoth doesn't have.
+   */
+  let boardRecruitTiles = $state<HexPoint[]>([]);
   let recruitOptions = $state<RecruitOption[]>([]);
   let pendingRecruitTypeId = $state<string | null>(null);
   let recallOptions = $state<RecallOption[]>([]);
@@ -141,6 +152,16 @@
   let hoveredHexInfo = $state<HoveredHexInfo | null>(null);
   /** Phase 14: the right-click context menu's position + which hex it's for, `null` when closed. */
   let contextMenuAt = $state<{ x: number; y: number; clientX: number; clientY: number } | null>(null);
+  /**
+   * Real, reported bug (bugs4.md #5): the hex a Recruit/Recall dialog was
+   * opened FROM, when opened by right-clicking a specific empty castle
+   * tile -- `handleConfirmRecruit`/`handleConfirmRecall` place the chosen
+   * unit there directly instead of arming a pending choice and making the
+   * player click the (already-known) tile a second time. `null` when the
+   * dialog was opened from the top bar's Actions menu instead (no single
+   * origin hex to prefer -- falls back to the old arm-then-click flow).
+   */
+  let recruitOriginHex = $state<HexPoint | null>(null);
 
   function selectedInfo(): SelectedUnitInfo | null {
     const u = session.selectedUnit;
@@ -163,6 +184,7 @@
     reachable = session.reachable;
     attackTargets = session.attackCandidates.map((u) => ({ x: u.location.x, y: u.location.y }));
     recruitTiles = session.recruitTiles;
+    boardRecruitTiles = session.boardRecruitTiles;
     recruitOptions = session.recruitOptions;
     pendingRecruitTypeId = session.pendingRecruitTypeId;
     recallOptions = session.recallOptions;
@@ -278,6 +300,11 @@
     const recruit = session.lastRecruitAnimation;
     session.lastRecruitAnimation = null;
     if (recruit && boardView) {
+      // Real, reported bug (bugs5.md #3): the new unit has no visual at
+      // all until the `sync(message)` below runs -- without this, its own
+      // "recruited" half of the cue pair silently does nothing (see
+      // `SnapshotBoard.ensureUnitVisual`'s own doc comment).
+      await boardView.ensureUnitVisual(session.snapshotUnitFor(recruit.unit));
       await boardView.playAnimationSequence(buildRecruitAnimationCues(recruit));
     }
     sync(message);
@@ -389,8 +416,16 @@
       x: info.defender.location.x,
       y: info.defender.location.y,
     });
-    const attackerHex = { x: info.attacker.location.x, y: info.attacker.location.y };
-    const defenderHex = { x: info.defender.location.x, y: info.defender.location.y };
+    // Real, reported bug (bugs4.md #2/#3): frozen at combat-resolution time
+    // (`info.attackerLocation`/`defenderLocation`), NOT re-read from the
+    // live `.location` field -- an AI-played attack's cue is only built
+    // AFTER `playAiTurn` has already resolved the WHOLE rest of that
+    // side's turn, so a live read here could show either combatant at
+    // wherever a LATER action left it instead of where this exchange
+    // actually took place. See `AiAnimationEvent`'s attack variant (engine
+    // package) for the full rationale.
+    const attackerHex = { x: info.attackerLocation.x, y: info.attackerLocation.y };
+    const defenderHex = { x: info.defenderLocation.x, y: info.defenderLocation.y };
 
     // Each blow's own `attackerContext`/`defenderContext` (the "attack"-
     // event/"defend"-event pair) can belong to EITHER real combatant --
@@ -583,38 +618,45 @@
     const unitKey = spriteKey({
       underlyingId: session.renderKeyFor(info.unit),
       typeId: info.unit.type.id,
-      x: info.unit.location.x,
-      y: info.unit.location.y,
+      x: info.unitLocation.x,
+      y: info.unitLocation.y,
     });
     const leaderKey = spriteKey({
       underlyingId: session.renderKeyFor(info.leader),
       typeId: info.leader.type.id,
-      x: info.leader.location.x,
-      y: info.leader.location.y,
+      x: info.leaderLocation.x,
+      y: info.leaderLocation.y,
     });
-    const unitHex = { x: info.unit.location.x, y: info.unit.location.y };
-    const leaderHex = { x: info.leader.location.x, y: info.leader.location.y };
+    // Real, reported bug (bugs4.md #2/#3): frozen at recruit-resolution
+    // time (`info.unitLocation`/`leaderLocation`), NOT re-read from the
+    // live `.location` field -- the leader in particular routinely takes
+    // a LATER action (moving) this same AI turn after recruiting, and an
+    // AI-played recruit's cue is only built after the WHOLE rest of that
+    // turn already resolved. See `AiAnimationEvent`'s recruit variant
+    // (engine package) for the full rationale.
+    const unitHex = { x: info.unitLocation.x, y: info.unitLocation.y };
+    const leaderHex = { x: info.leaderLocation.x, y: info.leaderLocation.y };
 
     const unitContext: AnimationContext = {
-      loc: info.unit.location,
-      secondLoc: info.leader.location,
+      loc: info.unitLocation,
+      secondLoc: info.leaderLocation,
       myUnit: info.unit,
       event: 'recruited',
       value: 0,
       value2: 0,
       hit: 'invalid',
-      terrainAtLoc: terrainAt(info.unit.location),
+      terrainAtLoc: terrainAt(info.unitLocation),
       secondUnit: info.leader,
     };
     const leaderContext: AnimationContext = {
-      loc: info.leader.location,
-      secondLoc: info.unit.location,
+      loc: info.leaderLocation,
+      secondLoc: info.unitLocation,
       myUnit: info.leader,
       event: 'recruiting',
       value: 0,
       value2: 0,
       hit: 'invalid',
-      terrainAtLoc: terrainAt(info.leader.location),
+      terrainAtLoc: terrainAt(info.leaderLocation),
       secondUnit: info.unit,
     };
 
@@ -631,7 +673,7 @@
         {
           key: leaderKey,
           anim: chooseAnimation(animationsFor(info.leader.type.id), leaderContext),
-          direction: directionBetween(info.leader.location, info.unit.location) ?? info.leader.facing,
+          direction: directionBetween(info.leaderLocation, info.unitLocation) ?? info.leader.facing,
           srcHex: leaderHex,
           dstHex: unitHex,
           holdInPlace: true,
@@ -640,9 +682,117 @@
     ];
   }
 
+  /**
+   * Real, reported bug (bugs4.md #7): turn-start heal/poison/regenerate
+   * outcomes (`GameSession.lastHealAnimations`) never played anything at
+   * all -- no unit animation, no floating HP-change numeral. Mirrors
+   * `units/udisplay.cpp`'s `unit_healing()`: the healed unit itself plays
+   * `poisoned` (amount < 0) or `healed` (amount >= 0, including a
+   * poison-cure-only outcome with amount 0), and each contributing healer
+   * (if any -- empty for a plain poison tick or rest heal) plays `healing`
+   * facing the healed unit, all in ONE beat (upstream's own
+   * `unit_animator` plays every participant of one `add_animation` batch
+   * concurrently, not sequentially -- same convention already used by
+   * `buildRecruitAnimationCues`).
+   */
+  function buildHealAnimationCues(outcome: HealOutcome): UnitAnimationCue[][] {
+    const terrainAt = terrainLookup(session.board);
+    const healedHex = { x: outcome.unit.location.x, y: outcome.unit.location.y };
+    const healedKey = spriteKey({
+      underlyingId: session.renderKeyFor(outcome.unit),
+      typeId: outcome.unit.type.id,
+      x: outcome.unit.location.x,
+      y: outcome.unit.location.y,
+    });
+    const healedContext: AnimationContext = {
+      loc: outcome.unit.location,
+      secondLoc: Location.NULL,
+      myUnit: outcome.unit,
+      event: outcome.amount < 0 ? 'poisoned' : 'healed',
+      value: Math.abs(outcome.amount),
+      value2: 0,
+      hit: 'invalid',
+      terrainAtLoc: terrainAt(outcome.unit.location),
+    };
+    const beat: UnitAnimationCue[] = [
+      {
+        key: healedKey,
+        anim: chooseAnimation(animationsFor(outcome.unit.type.id), healedContext),
+        direction: outcome.unit.facing,
+        srcHex: healedHex,
+        dstHex: healedHex,
+        holdInPlace: true,
+      },
+    ];
+    for (const healer of outcome.healers) {
+      const healerHex = { x: healer.location.x, y: healer.location.y };
+      const healerKey = spriteKey({
+        underlyingId: session.renderKeyFor(healer),
+        typeId: healer.type.id,
+        x: healer.location.x,
+        y: healer.location.y,
+      });
+      const healerContext: AnimationContext = {
+        loc: healer.location,
+        secondLoc: outcome.unit.location,
+        myUnit: healer,
+        event: 'healing',
+        value: outcome.amount,
+        value2: 0,
+        hit: 'invalid',
+        terrainAtLoc: terrainAt(healer.location),
+        secondUnit: outcome.unit,
+      };
+      beat.push({
+        key: healerKey,
+        anim: chooseAnimation(animationsFor(healer.type.id), healerContext),
+        direction: directionBetween(healer.location, outcome.unit.location) ?? healer.facing,
+        srcHex: healerHex,
+        dstHex: healedHex,
+        holdInPlace: true,
+      });
+    }
+    return [beat];
+  }
+
+  /** Plays every turn-start heal/poison outcome in order, spawning the same floating HP-change numeral/HP-bar update a combat blow gets (bugs4.md #7's own explicit ask: "associate the HP change numeric label with a change in HP in general, not combat hits specifically"). */
+  async function playHealAnimations(outcomes: readonly HealOutcome[]): Promise<void> {
+    if (!boardView) return;
+    for (const outcome of outcomes) {
+      const key = spriteKey({
+        underlyingId: session.renderKeyFor(outcome.unit),
+        typeId: outcome.unit.type.id,
+        x: outcome.unit.location.x,
+        y: outcome.unit.location.y,
+      });
+      await boardView.playAnimationSequence(buildHealAnimationCues(outcome), 1, () => {
+        if (!boardView) return;
+        boardView.previewHitpoints(key, outcome.unit.hitpoints);
+        if (outcome.amount !== 0) {
+          boardView.spawnFloatingNumber(key, Math.abs(outcome.amount), outcome.amount > 0 ? 'heal' : 'damage');
+        }
+      });
+    }
+  }
+
+  /**
+   * Real, reported bug (bugs4.md #1): the AttackDialog modal used to stay
+   * open (blocking the view of the board) for the ENTIRE combat animation,
+   * only closing once the full `sync(message)` below ran afterward.
+   * `session.confirmAttack()` already clears `session.pendingAttack`
+   * synchronously (so `pendingPreview`/`attackerWeaponOptions` are already
+   * stale the instant it returns) -- close the dialog immediately by
+   * setting those two `$state` vars directly, before awaiting the
+   * animation, rather than waiting for the full `sync()` that also updates
+   * `units`/HP bars/etc. (which must stay deferred until AFTER the
+   * animation finishes, or the board would jump straight to the final
+   * post-combat state and the animation would have nothing left to show).
+   */
   async function handleConfirmAttack(): Promise<void> {
     if (phase !== 'playing') return;
     const message = session.confirmAttack();
+    pendingPreview = null;
+    attackerWeaponOptions = [];
     const anim = session.lastAttackAnimation;
     session.lastAttackAnimation = null;
     if (anim && boardView) {
@@ -681,16 +831,55 @@
     sync();
   }
 
-  /** Phase 13: `RecruitDialog`'s "Recruit" button -- arms the chosen type (same effect `handleSelectRecruitType` always had) and closes the dialog, so the player's next click lands on one of the now-highlighted castle tiles. */
-  function handleConfirmRecruit(typeId: string): void {
-    handleSelectRecruitType(typeId);
+  /**
+   * Phase 13: `RecruitDialog`'s "Recruit" button. Real, reported bug
+   * (bugs4.md #5): if the dialog was opened by right-clicking a specific
+   * empty castle tile (`recruitOriginHex` set), place the recruit there
+   * immediately (through the exact same `handleHexClick` path a manual
+   * tile click would take) instead of arming a pending choice and making
+   * the player click that same tile again. Falls back to the old arm-
+   * and-wait-for-a-click behavior when there's no such origin hex (opened
+   * from the top bar's Actions menu instead).
+   *
+   * Deliberately arms via `session.selectRecruitType` directly here, NOT
+   * `handleSelectRecruitType` (which also calls `sync()`) -- real,
+   * reported bug (bugs5.md, found while fixing #3): that extra `sync()`
+   * reassigns `units`, which `GameBoardView`'s reactive effect turns into
+   * a fire-and-forget `updateUnits()`/`renderUnits()` pass over the board
+   * BEFORE the recruit itself has even happened. Immediately afterward
+   * (same tick), `handleHexClick` below performs the actual recruit and
+   * calls `ensureUnitVisual` for the brand-new unit -- racing that still
+   * in-flight, now-stale pass, whose own cleanup loop (built from a
+   * `units` snapshot that predates the recruit) doesn't know the new
+   * unit's key and destroys the visual `ensureUnitVisual` just created
+   * out from under it (a real crash: "Cannot set properties of null
+   * (setting 'x')", `SnapshotBoard.updateOneUnit` mid-flight). Skipping
+   * the redundant sync when we're about to place the unit immediately
+   * anyway removes the race outright.
+   */
+  async function handleConfirmRecruit(typeId: string): Promise<void> {
     recruitDialogOpen = false;
+    const origin = recruitOriginHex;
+    recruitOriginHex = null;
+    if (origin) {
+      session.selectRecruitType(typeId);
+      await handleHexClick(origin.x, origin.y);
+    } else {
+      handleSelectRecruitType(typeId);
+    }
   }
 
-  /** Phase 13: `RecallDialog`'s "Recall" button -- same shape as `handleConfirmRecruit`. */
-  function handleConfirmRecall(index: number): void {
-    handleSelectRecallUnit(index);
+  /** Phase 13: `RecallDialog`'s "Recall" button -- same shape as `handleConfirmRecruit`, including the same deliberate no-intermediate-sync reasoning. */
+  async function handleConfirmRecall(index: number): Promise<void> {
     recallDialogOpen = false;
+    const origin = recruitOriginHex;
+    recruitOriginHex = null;
+    if (origin) {
+      session.selectRecallUnit(index);
+      await handleHexClick(origin.x, origin.y);
+    } else {
+      handleSelectRecallUnit(index);
+    }
   }
 
   /** Phase 13: `RecallDialog`'s real "Dismiss unit" button (`GameSession.dismissRecallUnit`) -- permanently removes the entry, no placement follows. */
@@ -719,22 +908,51 @@
    * identical to `LastAttackAnimation`/`LastMoveAnimation`/
    * `LastRecruitAnimation`, so the same builders apply directly.
    *
-   * Known simplification: there's no incremental `sync()` between events,
-   * so a unit that died mid-turn keeps its sprite on screen (other
-   * animations still play correctly around it, cue positions are always
-   * explicit) until the single `sync()` at the end reconciles everything
-   * -- an acceptable rough edge for a first cut given real per-action
-   * board reconciliation would need `GameSession` to expose intermediate
-   * board snapshots, not just the final one.
+   * Known simplification: there's no incremental `sync()` between events
+   * (other than the explicit `removeUnitVisual` death cleanup below, and
+   * `buildBlowAnimationCues`/`buildRecruitAnimationCues` now reading each
+   * event's own FROZEN location fields rather than live `.location` --
+   * see bugs4.md #2/#3 and `AiAnimationEvent`'s own doc comment) -- a
+   * unit's HP bar/position otherwise only reconciles with `board`'s live
+   * state at the single `sync()` after the whole turn finishes. An
+   * acceptable rough edge for a first cut given real per-action board
+   * reconciliation would need `GameSession` to expose intermediate board
+   * snapshots, not just the final one.
    */
   async function playAiAnimations(events: readonly AiAnimationEvent[]): Promise<void> {
     if (!boardView) return;
     for (const event of events) {
       if (event.kind === 'attack') {
         await boardView.playAnimationSequence(buildBlowAnimationCues(event), 1, makeBlowPreview(event));
+        // Real, reported bug (bugs4.md #3): without this, a unit that died
+        // on an early event of this same AI turn kept its stale sprite on
+        // screen through every later event's animation too (only actually
+        // disappearing at the final `sync()`), so a later event's own unit
+        // moving onto/through that hex could visually overlap with it --
+        // "units standing on the same hex". Remove it the instant its own
+        // death animation finishes, same as `previewHitpoints`/
+        // `spawnFloatingNumber`'s "poke the renderer directly" convention.
+        if (event.result.attackerDied) {
+          boardView.removeUnitVisual(
+            spriteKey({ underlyingId: session.renderKeyFor(event.attacker), typeId: event.attackerTypeId, x: event.attackerLocation.x, y: event.attackerLocation.y }),
+          );
+        }
+        if (event.result.defenderDied) {
+          boardView.removeUnitVisual(
+            spriteKey({ underlyingId: session.renderKeyFor(event.defender), typeId: event.defenderTypeId, x: event.defenderLocation.x, y: event.defenderLocation.y }),
+          );
+        }
       } else if (event.kind === 'move') {
         await boardView.playAnimationSequence(buildMoveAnimationCues(event), 2);
       } else {
+        // Real, reported bug (bugs5.md #3): without this, an AI recruit's
+        // new unit had no visual until the WHOLE turn's worth of
+        // animations finished playing and the deferred `sync()` finally
+        // ran -- so its own "recruited" cue silently did nothing, and
+        // every unit an AI side recruited that turn seemed to pop into
+        // existence all at once, well after the fact. See
+        // `SnapshotBoard.ensureUnitVisual`'s own doc comment.
+        await boardView.ensureUnitVisual(session.snapshotUnitFor(event.unit));
         await boardView.playAnimationSequence(buildRecruitAnimationCues(event));
       }
     }
@@ -743,6 +961,13 @@
   async function handleEndTurn(): Promise<void> {
     if (phase !== 'playing') return;
     const message = session.endTurn();
+    const healOutcomes = session.lastHealAnimations;
+    session.lastHealAnimations = null;
+    // Heals/poison happen at the START of each side's turn, before that
+    // side's own actions -- played first, ahead of aiAnimations below (see
+    // `lastHealAnimations`'s own doc comment on why this isn't fully
+    // interleaved turn-by-turn across multiple AI sides).
+    if (healOutcomes) await playHealAnimations(healOutcomes);
     const aiAnimations = session.lastAiAnimations;
     session.lastAiAnimations = null;
     if (aiAnimations) await playAiAnimations(aiAnimations);
@@ -854,8 +1079,24 @@
     { id: 'load', label: 'Load', enabled: phase === 'playing', handler: handleLoad },
   ]);
   let actionCommands = $derived<Command[]>([
-    { id: 'recruit', label: 'Recruit...', enabled: recruitOptions.length > 0, handler: () => (recruitDialogOpen = true) },
-    { id: 'recall', label: 'Recall...', enabled: recallOptions.length > 0, handler: () => (recallDialogOpen = true) },
+    {
+      id: 'recruit',
+      label: 'Recruit...',
+      enabled: recruitOptions.length > 0,
+      handler: () => {
+        recruitOriginHex = null; // no specific hex -- falls back to arm-then-click (see its own doc comment)
+        recruitDialogOpen = true;
+      },
+    },
+    {
+      id: 'recall',
+      label: 'Recall...',
+      enabled: recallOptions.length > 0,
+      handler: () => {
+        recruitOriginHex = null;
+        recallDialogOpen = true;
+      },
+    },
     { id: 'objectives', label: 'Objectives', enabled: session.scenarioObjectives !== null, handler: () => (objectivesDialogOpen = true) },
     { id: 'end-turn', label: 'End Turn', enabled: phase === 'playing', handler: handleEndTurn },
   ]);
@@ -890,13 +1131,19 @@
         id: 'ctx-recruit',
         label: 'Recruit...',
         enabled: recruitOptions.length > 0 && isRecruitTile,
-        handler: () => (recruitDialogOpen = true),
+        handler: () => {
+          recruitOriginHex = { x, y }; // bugs4.md #5: place directly on the hex the menu was opened from
+          recruitDialogOpen = true;
+        },
       });
       hexCommands.push({
         id: 'ctx-recall',
         label: 'Recall...',
         enabled: recallOptions.length > 0 && isRecruitTile,
-        handler: () => (recallDialogOpen = true),
+        handler: () => {
+          recruitOriginHex = { x, y };
+          recallDialogOpen = true;
+        },
       });
       // Real `[set_menu_item]` entries the scenario's own WML declared --
       // see `GameSession.menuItems`'s own doc comment on why these are
@@ -921,6 +1168,7 @@
     {activeSide}
     {scenarioTurnsLimit}
     {timeOfDay}
+    {gold}
     {economyInfo}
     {menuCommands}
     {actionCommands}
@@ -949,7 +1197,7 @@
         {selectedHex}
         {reachable}
         {attackTargets}
-        {recruitTiles}
+        recruitTiles={boardRecruitTiles}
         {villageOwners}
         {hexVisibility}
         {timeOfDay}
@@ -977,7 +1225,15 @@
   {/if}
 
   {#if recruitDialogOpen}
-    <RecruitDialog options={recruitOptions} {gold} onRecruit={handleConfirmRecruit} onCancel={() => (recruitDialogOpen = false)} />
+    <RecruitDialog
+      options={recruitOptions}
+      {gold}
+      onRecruit={handleConfirmRecruit}
+      onCancel={() => {
+        recruitDialogOpen = false;
+        recruitOriginHex = null;
+      }}
+    />
   {/if}
 
   {#if recallDialogOpen}
@@ -987,7 +1243,10 @@
       onRecall={handleConfirmRecall}
       onDismiss={handleDismissRecall}
       onRename={handleRenameRecall}
-      onCancel={() => (recallDialogOpen = false)}
+      onCancel={() => {
+        recallDialogOpen = false;
+        recruitOriginHex = null;
+      }}
     />
   {/if}
 

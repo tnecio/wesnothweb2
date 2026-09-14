@@ -361,6 +361,16 @@
   export function spawnFloatingNumber(key: string, amount: number, kind: 'damage' | 'heal'): void {
     board?.spawnFloatingNumber(key, amount, kind);
   }
+
+  /** Real, reported bug (bugs4.md #3): a unit that died mid-AI-turn kept a stale sprite on screen until the turn's deferred sync(). See `SnapshotBoard.removeUnitVisual`'s own doc comment. */
+  export function removeUnitVisual(key: string): void {
+    board?.removeUnitVisual(key);
+  }
+
+  /** Real, reported bug (bugs5.md #3): a just-recruited/recalled unit had no visual at all (so its own "recruited" animation cue silently did nothing) until the deferred sync() at the end of a whole turn's animation playback. See `SnapshotBoard.ensureUnitVisual`'s own doc comment. */
+  export async function ensureUnitVisual(unit: SnapshotUnit): Promise<void> {
+    await board?.ensureUnitVisual(unit);
+  }
 </script>
 
 <div class="board-view">

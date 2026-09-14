@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Location, Unit, Direction, getAdjacentTiles, createTypeResolver, type GameBoardSnapshot } from '@wesnothweb2/engine';
+import { Location, Unit, Direction, getAdjacentTiles, ALL_DIRECTIONS, directionBetween, isBackstabActive, createTypeResolver, type GameBoardSnapshot } from '@wesnothweb2/engine';
 import { GameSession } from './gameSession.js';
 
 /**
@@ -293,6 +293,81 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
 
     // The just-filled tile is no longer offered.
     expect(session.recruitTiles.some((t) => t.x === target.x && t.y === target.y)).toBe(false);
+  });
+
+  it('real, reported bug (bugs4.md #4/#6/#8): recruitOptions/recruitTiles/recruiting itself are available WITHOUT the leader being the selected unit -- only requires it being the active side\'s turn and the leader standing on a keep with a vacant connected tile', () => {
+    const session = new GameSession(loadSnapshot());
+    const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
+    expect(session.selectedUnit).toBeNull(); // deliberately never selected anything
+
+    expect(session.recruitTiles.length).toBeGreaterThan(0);
+    expect(session.recruitOptions.length).toBeGreaterThan(0);
+
+    const team = session.board.getTeam(1)!;
+    const typeId = session.recruitOptions[0]!.typeId;
+    const target = session.recruitTiles[0]!;
+    const goldBefore = team.gold;
+
+    session.selectRecruitType(typeId);
+    const message = session.handleHexClick(target.x, target.y);
+
+    expect(message).toContain('Recruited');
+    const placed = session.board.allUnits().find((u) => u.location.x === target.x && u.location.y === target.y);
+    expect(placed?.type.id).toBe(typeId);
+    // The real bug this regresses: `team.gold` (the authoritative figure
+    // the recruit validation itself reads) actually drops here, exactly
+    // like this assertion expects -- the reported symptom ("status bar
+    // still shows the old higher amount") was `TopBar.svelte` reading the
+    // wrong field (`EconomyInfo.startGold`, deliberately frozen at
+    // scenario start) instead of this live `team.gold`, not a bug in the
+    // recruit action itself. See TopBar.svelte's own doc comment on its
+    // `gold` prop.
+    expect(team.gold).toBe(goldBefore - (session.snapshot.unitTypes[typeId]?.cost ?? 0));
+    expect(leader.canRecruit).toBe(true); // unaffected -- just confirms we're still looking at the real leader
+  });
+
+  it('real, reported bug (bugs5.md #1): recruiting/recalling no longer auto-selects the leader afterward -- most noticeable recruiting via the context menu with nothing selected beforehand, where the leader used to become selected as an unwanted side effect', () => {
+    const session = new GameSession(loadSnapshot());
+    expect(session.selectedUnit).toBeNull();
+
+    const typeId = session.recruitOptions[0]!.typeId;
+    const target = session.recruitTiles[0]!;
+    session.selectRecruitType(typeId);
+    session.handleHexClick(target.x, target.y);
+
+    expect(session.selectedUnit).toBeNull(); // still nothing selected -- recruiting must not have changed it
+
+    // Also true starting from a DIFFERENT unit selected (not the leader) --
+    // recruiting must not steal the selection away from it either.
+    const other = session.board.unitsForSide(1).find((u) => !u.canRecruit);
+    if (other) {
+      session.selectUnit(other);
+      const typeId2 = session.recruitOptions[0]?.typeId;
+      const target2 = session.recruitTiles[0];
+      if (typeId2 && target2) {
+        session.selectRecruitType(typeId2);
+        session.handleHexClick(target2.x, target2.y);
+        expect(session.selectedUnit).toBe(other);
+      }
+    }
+  });
+
+  it('real, reported bug (bugs5.md #4): boardRecruitTiles (the board\'s green highlight) stays empty unless the leader itself is the SELECTED unit, unlike recruitTiles (the context-menu/dialog set, deliberately selection-independent -- see its own doc comment)', () => {
+    const session = new GameSession(loadSnapshot());
+    const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
+
+    expect(session.selectedUnit).toBeNull();
+    expect(session.recruitTiles.length).toBeGreaterThan(0); // available regardless of selection
+    expect(session.boardRecruitTiles).toEqual([]); // but nothing to highlight yet -- leader isn't selected
+
+    session.selectUnit(leader);
+    expect(session.boardRecruitTiles.length).toBe(session.recruitTiles.length);
+
+    const other = session.board.allUnits().find((u) => u !== leader);
+    if (other) {
+      session.selectUnit(other);
+      expect(session.boardRecruitTiles).toEqual([]); // a non-leader selection highlights nothing either
+    }
   });
 
   it('real, reported bug: recruiting never played any animation -- sets lastRecruitAnimation to the new unit + the recruiting leader', () => {
@@ -1351,6 +1426,79 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
     expect(preview.defender.weapon).toMatchObject({ name: 'scepter', range: 'melee' });
     expect(preview.defender.numBlows).toBeGreaterThan(0);
   });
+
+  it('real, reported bug (bugs4.md #10): CombatantPreview exposes the real time-of-day/leadership/charge/backstab/chance-to-hit-source inputs the combat dialogs display, not just the final numbers -- all neutral here (no ability/special/ToD-bonus in play), but the fields themselves must exist and be well-formed', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    session.selectUnit(malKevek);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    const staffIndex = malKevek.attacks.findIndex((a) => a.name === 'staff');
+    session.selectAttackerWeapon(staffIndex);
+
+    const preview = session.pendingAttack!.preview;
+    expect(typeof preview.attacker.lawfulBonus).toBe('number');
+    expect(typeof preview.defender.lawfulBonus).toBe('number');
+    expect(preview.attacker.leadershipBonus).toBe(0); // no leader with the leadership ability adjacent
+    expect(preview.defender.leadershipBonus).toBe(0);
+    expect(preview.attacker.chargeActive).toBe(false); // neither staff nor scepter has [damage] id=charge
+    expect(preview.attacker.backstabActive).toBe(false); // no flanking ally behind the defender
+    expect(preview.defender.backstabActive).toBe(false); // never true for a defender's own retaliation
+    expect(preview.attacker.chanceToHitSource).toBeNull(); // plain terrain-defense roll, no magical/marksman
+    expect(preview.defender.chanceToHitSource).toBeNull();
+  });
+
+  it('real, reported bug: a chaotic unit\'s displayed lawfulBonus is its own actual (sign-flipped) damage modifier, not the schedule\'s raw lawful_bonus -- a chaotic unit in daylight actually takes a damage PENALTY, so it must show negative, not the schedule\'s own positive value', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    expect(malKevek.type.alignment).toBe('chaotic'); // Dark Sorcerer
+
+    // Turn 1 is Dawn (lawful_bonus=0, real schedule) -- jump straight to
+    // turn 2 (Morning, lawful_bonus=25) via `turnNumber` directly rather
+    // than a real `endTurn()`, which would also auto-play side 2's (Mal-
+    // Kevek's own) AI turn and disturb the adjacency this test relies on.
+    session.turnNumber = 2;
+    const rawLawfulBonus = session.timeOfDayAt(malKevek.location).lawfulBonus;
+    expect(rawLawfulBonus).toBe(25); // the schedule's own real Morning value -- sanity-checks the setup itself
+
+    session.selectUnit(malKevek);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    const staffIndex = malKevek.attacks.findIndex((a) => a.name === 'staff');
+    session.selectAttackerWeapon(staffIndex);
+
+    const preview = session.pendingAttack!.preview;
+    // The real bug this regresses: before the fix, this read +25 (the raw
+    // schedule value) even though malKevek, being chaotic, actually took
+    // a REAL -25% damage modifier this exchange.
+    expect(preview.attacker.lawfulBonus).toBe(-25);
+  });
+
+  it('real, reported bug (bugs5.md #2): backstabActive stays false when the GEOMETRIC flanking condition holds but the attacker\'s own weapon has no backstab special -- a flanking ally alone does not make backstab "active"', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+
+    // Place a friendly-to-malKevek unit directly on the opposite side of
+    // kaiKrellis from malKevek -- the real geometric backstab condition
+    // (see combat.ts's isBackstabActive), using the same direction-index
+    // logic it uses internally.
+    const dirIndex = ALL_DIRECTIONS.indexOf(directionBetween(malKevek.location, kaiKrellis.location)!);
+    const flankerLoc = getAdjacentTiles(kaiKrellis.location)[dirIndex]!;
+    const flankerType = malKevek.type; // any real type on malKevek's own side works as the "flanker"
+    const flanker = Unit.create(flankerType, malKevek.side, flankerLoc);
+    session.board.addUnit(flanker);
+
+    // Confirms the placement above actually satisfies the real geometric
+    // condition -- otherwise the assertions below would pass VACUOUSLY
+    // (backstabActive would already be false with no flanker at all).
+    expect(isBackstabActive(session.board, malKevek.location, kaiKrellis.location)).toBe(true);
+
+    session.selectUnit(malKevek);
+    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    const staffIndex = malKevek.attacks.findIndex((a) => a.name === 'staff'); // Dark Sorcerer's staff has no backstab special
+    session.selectAttackerWeapon(staffIndex);
+
+    const preview = session.pendingAttack!.preview;
+    // The real bug this regresses: before the fix, this read `true` purely
+    // from the flanker's geometric position, regardless of the weapon.
+    expect(preview.attacker.backstabActive).toBe(false);
+    expect(preview.attacker.damagePerBlow).toBe(malKevek.attacks[staffIndex]!.damage); // no backstab doubling either
+  });
 });
 
 describe('GameSession.lastAttackAnimation hitpoints-before (real, reported bug: the HP bar only ever updated once, at the end of the whole exchange)', () => {
@@ -1399,6 +1547,24 @@ describe('GameSession rest-heal (real, reported bug: units that neither moved no
     session.endTurn();
 
     expect(unit.hitpoints).toBe(unit.maxHitpoints - 3);
+  });
+
+  it('real, reported bug (bugs4.md #7): the rest heal above is exposed via lastHealAnimations, not just silently applied -- so the UI can play a floating HP-change numeral/animation for it', () => {
+    const session = new GameSession(loadSnapshot());
+    const resolveType = createTypeResolver(session.snapshot);
+    const fighterType = resolveType('Merman Fighter');
+    const unit = Unit.create(fighterType, 1, new Location(10, 10), { canRecruit: false });
+    unit.hitpoints = unit.maxHitpoints - 5;
+    session.board.addUnit(unit);
+
+    session.endTurn(); // warm-up.
+    expect(session.lastHealAnimations).toBeNull(); // resting was false yet -- no heal outcome this cycle.
+
+    session.endTurn();
+    expect(session.lastHealAnimations).not.toBeNull();
+    const outcome = session.lastHealAnimations!.find((o) => o.unit === unit);
+    expect(outcome).toMatchObject({ amount: 2, curePoison: false });
+    expect(outcome!.healers).toEqual([]); // a plain rest heal has no contributing healer unit
   });
 
   it('a unit that moves (but does not attack) this turn does NOT get the rest heal next turn', () => {

@@ -3,14 +3,17 @@
    * Phase 13: real Wesnoth's recruit dialog (`gui/dialogs/units_dialog.cpp`'s
    * `build_recruit_dialog`) -- a unit-type list with cost/affordability and
    * a detail pane for the highlighted type, replacing `SidePanel.svelte`'s
-   * old inline recruit section. Interaction stays two-step, matching the
-   * existing engine flow this sits on top of (`GameSession.
-   * selectRecruitType`/`recruitTiles`): choosing a type here and pressing
-   * "Recruit" arms it and closes the dialog, then the player clicks a
-   * green-highlighted castle tile on the map to actually place it -- real
-   * Wesnoth's own dialog similarly just picks the type; a still-ambiguous
-   * placement (more than one vacant tile) is resolved by a further click
-   * there too, not inside the dialog itself.
+   * old inline recruit section.
+   *
+   * Placement: if this dialog was opened by right-clicking a specific
+   * empty castle tile, `GameShell.handleConfirmRecruit` places the chosen
+   * unit there directly the instant "Recruit" is pressed (real, reported
+   * bug, bugs4.md #5: making the player click that same, already-known
+   * tile a SECOND time was pure friction). If opened with no specific
+   * tile in mind (the top bar's Actions menu), it falls back to arming the
+   * choice and waiting for the player to click one of the green-
+   * highlighted castle tiles on the map -- there's no single tile to
+   * prefer in that case.
    */
   import { imageUrl } from '@wesnothweb2/renderer';
   import type { RecruitOption } from './gameSession.js';
@@ -61,7 +64,9 @@
             <div class="attacks">
               <div class="attacks-label">Attacks</div>
               <ul>
-                {#each selected.attacks as atk (atk.name)}
+                <!-- Keyed by index, not atk.name -- see SidePanel.svelte's own comment (bugs4.md #9):
+                     real units can have two same-named attacks (e.g. Peasant's melee + thrown "pitchfork"). -->
+                {#each selected.attacks as atk, i (i)}
                   <li>
                     <span class="atk-name">{atk.name}</span>
                     <span class="atk-stats">{atk.damage}&times;{atk.numAttacks} {rangeType(atk)}</span>

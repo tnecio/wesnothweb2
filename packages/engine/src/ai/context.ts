@@ -360,6 +360,8 @@ export class AiContext {
     const defender = board.unitAt(defenderLoc);
     const attackerHitpointsBefore = attacker?.hitpoints ?? 0;
     const defenderHitpointsBefore = defender?.hitpoints ?? 0;
+    const attackerLocation = attackerLoc;
+    const defenderLocation = defenderLoc;
 
     const result = performAttack(board, this.host.rng, attackerLoc, attackerWeaponIndex, defenderLoc, defenderWeaponIndex, {
       attackerLawfulBonus: this.host.lawfulBonusAt(attackerLoc),
@@ -389,6 +391,8 @@ export class AiContext {
           defenderTypeId: defender.type.id,
           attackerHitpointsBefore,
           defenderHitpointsBefore,
+          attackerLocation,
+          defenderLocation,
         },
       });
     }
@@ -399,12 +403,13 @@ export class AiContext {
   executeRecruit(team: Team, type: UnitType, loc: Location, from: Location): PlaceRecruitResult {
     const leader = this.host.board.unitAt(from);
     const result = recruitUnit(this.host.board, team, type, loc, from, this.host.rng, this.host.raise);
+    const unitLocation = result.unit.location;
     this.bumpGamestateChange();
     this.host.pump();
     this.logAction({
       kind: 'recruit',
       message: `${team.teamName || `Side ${team.side}`} recruited a ${type.name} for ${result.cost}g.`,
-      animation: leader ? { kind: 'recruit', unit: result.unit, leader } : undefined,
+      animation: leader ? { kind: 'recruit', unit: result.unit, leader, unitLocation, leaderLocation: from } : undefined,
     });
     return result;
   }
@@ -414,12 +419,13 @@ export class AiContext {
     const leader = this.host.board.unitAt(from);
     this.host.board.removeFromRecallList(team.side, unit.underlyingId);
     const result = recallUnit(this.host.board, team, unit, loc, from, undefined, this.host.raise);
+    const unitLocation = result.unit.location;
     this.bumpGamestateChange();
     this.host.pump();
     this.logAction({
       kind: 'recruit',
       message: `${team.teamName || `Side ${team.side}`} recalled ${unit.type.name} for ${result.cost}g.`,
-      animation: leader ? { kind: 'recruit', unit: result.unit, leader } : undefined,
+      animation: leader ? { kind: 'recruit', unit: result.unit, leader, unitLocation, leaderLocation: from } : undefined,
     });
     return result;
   }

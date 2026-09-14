@@ -56,6 +56,8 @@ import {
   buildBattleContext,
   chooseDefenderWeaponIndex,
   simulateCombat,
+  hasSpecialId,
+  combatModifier,
   RngDeterministic,
   MtRng,
   gameBoardFromSnapshot,
@@ -76,6 +78,7 @@ import {
   unitCanAct,
   checkVictory,
   applySideHealing,
+  type HealOutcome,
   computeGoldCarryover,
   findVictoryEndlevelGoldConfig,
   computeCarryoverRecruits,
@@ -183,6 +186,46 @@ export interface CombatantPreview {
    * unscathed").
    */
   hpDist: readonly number[];
+  /**
+   * Real, reported bug (bugs4.md #10): the attack/damage-calculation
+   * dialogs already computed a fully correct final `chanceToHit`/
+   * `damagePerBlow`, but never showed WHY -- no indication of a time-of-day
+   * bonus/penalty, a leadership bonus, an active charge, or WHICH weapon
+   * special (`magical`/`marksman`) set the flat chance-to-hit override.
+   * These mirror the exact same inputs `buildPreview` already computes and
+   * feeds to `buildBattleContext` -- a display-only breakdown, no new
+   * combat math.
+   *
+   * `lawfulBonus` is THIS COMBATANT's own actual damage modifier from the
+   * current time of day -- i.e. already run through `combatModifier`
+   * (alignment-aware: a chaotic unit's sign is FLIPPED from the
+   * schedule's raw `lawful_bonus`, neutral is always 0, liminal is a
+   * different figure entirely), NOT the schedule's raw value. Real,
+   * reported bug: this used to display the raw schedule value directly,
+   * so a chaotic unit in daylight showed "+25%" even though it was
+   * actually taking a real 25% damage PENALTY that turn (the damage
+   * number itself was always correct; only this label had the wrong
+   * sign/magnitude).
+   */
+  lawfulBonus: number;
+  /** This combatant's own active leadership-ability damage bonus (percentage points added to the multiplier), 0 if none. */
+  leadershipBonus: number;
+  /** Whether this exchange's `[damage] id=charge` special is active for this weapon (doubles both combatants' damage this exchange). `undefined` when there's no weapon. */
+  chargeActive?: boolean;
+  /**
+   * Whether this blow ACTUALLY gets a real backstab bonus -- requires
+   * BOTH the real geometric condition (a flanking ally-of-attacker on the
+   * defender's far side) AND the attacker's own weapon having the
+   * `backstab` special (real, reported bug bugs5.md #2: this used to be
+   * just the geometric condition, so the badge showed even for a weapon
+   * with no backstab special at all, whenever a friendly unit merely
+   * happened to stand on the opposite side of the target). Always
+   * `false` for a defender's retaliation -- backstab only ever applies to
+   * the one currently attacking.
+   */
+  backstabActive: boolean;
+  /** Which weapon special set `chanceToHit` to a flat override, if any (`magical` always wins over `marksman` when both are present -- mirrors `computeUnitStats`'s own precedence). `null` for an ordinary terrain-defense-based chance to hit. */
+  chanceToHitSource: 'magical' | 'marksman' | null;
 }
 
 export interface CombatPreview {
@@ -433,6 +476,18 @@ export interface LastAttackAnimation {
    */
   readonly attackerHitpointsBefore: number;
   readonly defenderHitpointsBefore: number;
+  /**
+   * `attacker`/`defender`'s real location AS OF THIS EXCHANGE -- see
+   * `AiAnimationEvent`'s attack variant (`packages/engine/src/ai/
+   * simpleAi.ts`) for the full rationale (bugs4.md #2/#3): this project's
+   * human-confirmed-attack path always builds/plays its animation cue
+   * immediately (no interleaving risk), but carries the same frozen
+   * fields for consistency with the AI path, so `buildBlowAnimationCues`
+   * (GameShell.svelte) can read ONE shape regardless of which side threw
+   * the punch.
+   */
+  readonly attackerLocation: Location;
+  readonly defenderLocation: Location;
 }
 
 /** Everything a caller needs to animate the move `handleHexClick`'s move branch just resolved -- see `GameSession.lastMoveAnimation`. Same rationale as `LastAttackAnimation`: raw engine data only, no renderer dependency here. */
@@ -453,6 +508,9 @@ export interface LastMoveAnimation {
 export interface LastRecruitAnimation {
   readonly unit: Unit;
   readonly leader: Unit;
+  /** Same rationale as `LastAttackAnimation.attackerLocation`/`defenderLocation` above (bugs4.md #2/#3). */
+  readonly unitLocation: Location;
+  readonly leaderLocation: Location;
 }
 
 /**
@@ -667,8 +725,6 @@ export class GameSession {
   reachable: ReachableHexPoint[] = [];
   /** Adjacent enemy units `selectedUnit` could attack (empty if it has no attacks left). */
   attackCandidates: Unit[] = [];
-  /** Vacant castle tiles `selectedUnit` (a leader on its keep) could recruit onto -- empty otherwise. */
-  recruitTiles: HexPoint[] = [];
   pendingAttack: PendingAttack | null = null;
   /**
    * Set by `confirmAttack` every time a HUMAN-confirmed attack resolves --
@@ -740,6 +796,26 @@ export class GameSession {
    * played this call.
    */
   lastAiAnimations: readonly AiAnimationEvent[] | null = null;
+
+  /**
+   * Real, reported bug (bugs4.md #7): turn-start rest/village healing,
+   * poison damage, and real `[heals]`/`[regenerate]` ability healing
+   * (`applySideHealing`, called from `advanceOneTurn` below) already
+   * applied the real HP change to every affected unit, but nothing ever
+   * showed it happening -- no floating HP-change numeral (unlike a
+   * combat blow, see `makeBlowPreview`'s doc comment) and no `healed`/
+   * `poisoned`/`healing` unit animation (despite `parseUnitAnimations`
+   * already fully supporting those three real WML animation tags -- they
+   * were simply never invoked). Accumulates every `HealOutcome` across
+   * however many side-transitions one `endTurn()` call makes (human and
+   * AI sides alike), in chronological order; `null` (not `[]`) when
+   * nothing changed. Known simplification: played back as one batch
+   * BEFORE any AI-turn animations from the same `endTurn()` call (see
+   * `GameShell.handleEndTurn`), not fully interleaved turn-by-turn with
+   * them -- an acceptable rough edge shared with `lastAiAnimations`'s own
+   * "no incremental sync() between events" simplification.
+   */
+  lastHealAnimations: readonly HealOutcome[] | null = null;
 
   /**
    * The real terrain defense `selectedUnit` would have at `(x, y)` (the
@@ -1110,6 +1186,17 @@ export class GameSession {
   }
 
   /**
+   * `toSnapshotUnit` for exactly one live unit, at its own current
+   * position/hp -- for `GameBoardView.ensureUnitVisual` (bugs5.md #3):
+   * creating a just-recruited/recalled unit's visual on demand, ahead of
+   * the next full `renderUnits`-driven sync, needs the same real
+   * `SnapshotUnit` shape `renderUnits` itself builds for every unit.
+   */
+  snapshotUnitFor(unit: Unit): SnapshotUnit {
+    return this.toSnapshotUnit(unit, unit.location.x, unit.location.y, unit.hitpoints);
+  }
+
+  /**
    * Shared by `renderUnits` (live position/hp) and `messageUnitSnapshot` (a
    * checkpoint's captured position/hp) -- every OTHER field (type, side,
    * abilities, etc.) is read straight off `unit` since none of them change
@@ -1234,7 +1321,6 @@ export class GameSession {
       this.reachable = [];
     }
     this.attackCandidates = this.computeAttackCandidates(unit);
-    this.recruitTiles = this.computeRecruitTiles(unit);
   }
 
   clearSelection(): void {
@@ -1242,7 +1328,6 @@ export class GameSession {
     this.inspectedUnit = null;
     this.reachable = [];
     this.attackCandidates = [];
-    this.recruitTiles = [];
     this.pendingAttack = null;
     this.pendingRecruitTypeId = null;
     this.pendingRecallIndex = null;
@@ -1256,10 +1341,54 @@ export class GameSession {
       .map((loc) => ({ x: loc.x, y: loc.y }));
   }
 
-  /** The selected leader's side's real recruitable types (cost/name/image from `snapshot.unitTypes`), if it's currently able to recruit. Empty otherwise. */
+  /**
+   * The active side's own recruiting leader -- on a keep, with at least
+   * one vacant connected castle tile -- independent of `selectedUnit`.
+   * Real, reported bug (bugs4.md #4/#5/#6/#8): recruiting/recalling (and
+   * even the "Recruit"/"Recall" UI showing up at all) used to require the
+   * leader to be the CURRENTLY SELECTED unit, which doesn't match real
+   * Wesnoth -- recruiting is a side-level action available any time it's
+   * your turn and your leader is correctly positioned, regardless of
+   * what's selected on screen right now. If more than one of the side's
+   * units can recruit, the first one found wins (real content this
+   * project targets has exactly one leader per side per scenario).
+   */
+  private get recruitingLeader(): Unit | null {
+    return (
+      this.board
+        .allUnits()
+        .find((u) => u.side === this.activeSide && u.canRecruit && this.computeRecruitTiles(u).length > 0) ?? null
+    );
+  }
+
+  /** Vacant castle tiles the active side's recruiting leader (see `recruitingLeader`) could recruit/recall onto -- empty if there's no such leader right now. Deliberately NOT tied to `selectedUnit` -- see `recruitingLeader`'s own doc comment. Feeds the context menu's "is this hex a valid recruit/recall target" check and `tryRecruitAt`/`tryRecallAt`'s own validation -- NOT the board's visual highlight, see `boardRecruitTiles` below. */
+  get recruitTiles(): HexPoint[] {
+    const leader = this.recruitingLeader;
+    return leader ? this.computeRecruitTiles(leader) : [];
+  }
+
+  /**
+   * Vacant castle tiles to highlight green on the BOARD -- unlike
+   * `recruitTiles` above, this IS tied to `selectedUnit`: real, reported
+   * bug (bugs5.md #4): after `recruitTiles` itself stopped depending on
+   * selection (bugs4.md #4, so the Recruit context-menu entry/dialog work
+   * without the leader being selected), the board's green highlight
+   * started showing constantly too, any time the active side merely HAD a
+   * recruiting leader somewhere -- distracting clutter real Wesnoth
+   * doesn't have (it only highlights recruit tiles once you've actually
+   * selected your leader). Empty unless `selectedUnit` itself is a valid
+   * recruiting leader.
+   */
+  get boardRecruitTiles(): HexPoint[] {
+    const sel = this.selectedUnit;
+    if (!sel || sel.side !== this.activeSide || !sel.canRecruit) return [];
+    return this.computeRecruitTiles(sel);
+  }
+
+  /** The active side's real recruitable types (cost/name/image from `snapshot.unitTypes`), if it currently has a leader able to recruit. Empty otherwise. */
   get recruitOptions(): RecruitOption[] {
-    const leader = this.selectedUnit;
-    if (!leader || this.recruitTiles.length === 0) return [];
+    const leader = this.recruitingLeader;
+    if (!leader) return [];
     const team = this.board.getTeam(leader.side);
     if (!team) return [];
     return [...team.canRecruit].map((typeId) => {
@@ -1290,15 +1419,15 @@ export class GameSession {
   }
 
   /**
-   * The selected leader's side's current recall list, if it's currently
-   * able to recruit/recall (same gating as `recruitOptions` -- a leader on
-   * its keep with at least one vacant, keep-connected castle tile). See
-   * `RecallOption`'s own doc comment for why `index` (not `underlyingId`)
-   * is the selection key.
+   * The active side's current recall list, if it currently has a leader
+   * able to recruit/recall (same gating as `recruitOptions` -- see
+   * `recruitingLeader`'s own doc comment on why this is independent of
+   * `selectedUnit`). See `RecallOption`'s own doc comment for why `index`
+   * (not `underlyingId`) is the selection key.
    */
   get recallOptions(): RecallOption[] {
-    const leader = this.selectedUnit;
-    if (!leader || this.recruitTiles.length === 0) return [];
+    const leader = this.recruitingLeader;
+    if (!leader) return [];
     const team = this.board.getTeam(leader.side);
     if (!team) return [];
     return this.board.recallList(leader.side).map((u, index) => {
@@ -1341,7 +1470,7 @@ export class GameSession {
    * unit you were about to place makes that armed state meaningless).
    */
   dismissRecallUnit(index: number): void {
-    const leader = this.selectedUnit;
+    const leader = this.recruitingLeader;
     if (!leader) return;
     const removed = dismissUnitAt(this.board, leader.side, index);
     if (removed && this.pendingRecallIndex === index) this.pendingRecallIndex = null;
@@ -1349,7 +1478,7 @@ export class GameSession {
 
   /** Real Wesnoth's recall-dialog "Rename" action: sets a recall-list unit's display name directly (`Unit.name` is plain mutable data -- no engine action needed). No-op if `name` is empty (a blank name isn't a real rename, just noise). */
   renameRecallUnit(index: number, name: string): void {
-    const leader = this.selectedUnit;
+    const leader = this.recruitingLeader;
     if (!leader) return;
     const trimmed = name.trim();
     if (!trimmed) return;
@@ -1358,8 +1487,16 @@ export class GameSession {
   }
 
   /**
-   * Places `typeId` at `loc` for the selected leader's side, mirroring
-   * `actions::recruit_unit` (`recruitUnit`) after validating the click.
+   * Places `typeId` at `loc` for the active side's recruiting leader (see
+   * `recruitingLeader`), mirroring `actions::recruit_unit` (`recruitUnit`)
+   * after validating the click. Deliberately does NOT change
+   * `selectedUnit` (real, reported bug bugs5.md #1: this used to
+   * re-select the leader afterward "to refresh recruitTiles/
+   * attackCandidates", a rationale that stopped applying once those
+   * became selection-independent getters -- see `recruitingLeader`'s own
+   * doc comment -- so it was just an unwanted, un-asked-for selection
+   * change, most noticeable recruiting via the context menu with nothing
+   * selected beforehand).
    *
    * Deliberately does NOT use `checkRecruitLocation` here, despite it
    * being the closer upstream analogue (`check_recruit_location`) --
@@ -1376,7 +1513,7 @@ export class GameSession {
    * matches exactly what the player clicked, or is rejected outright.
    */
   private tryRecruitAt(typeId: string, loc: Location): string | null {
-    const leader = this.selectedUnit;
+    const leader = this.recruitingLeader;
     if (!leader) return null;
     const team = this.board.getTeam(leader.side);
     if (!team) return null;
@@ -1391,22 +1528,19 @@ export class GameSession {
       return `Not enough gold to recruit ${name} (needs ${cost}, have ${team.gold}).`;
     }
     const type = this.resolveType(typeId);
-    const result = recruitUnit(this.board, team, type, loc, leader.location, this.rng, this.raiseEvent);
-    this.lastRecruitAnimation = { unit: result.unit, leader };
+    const leaderLocation = leader.location;
+    const result = recruitUnit(this.board, team, type, loc, leaderLocation, this.rng, this.raiseEvent);
+    this.lastRecruitAnimation = { unit: result.unit, leader, unitLocation: result.unit.location, leaderLocation };
     const message = `Recruited ${name} for ${result.cost} gold.`;
     this.log.unshift(message);
     this.eventPump.raise('recruit', loc, leader.location);
     this.pumpEvents();
-    // Re-select the leader so recruitTiles/attackCandidates refresh (the
-    // just-filled tile is no longer vacant) -- the leader's own moves/
-    // attacks are untouched by recruiting.
-    this.selectUnit(leader);
     return message;
   }
 
   /**
    * Places recall-list entry `index` (see `RecallOption.index`) at `loc`
-   * for the selected leader's side, mirroring `tryRecruitAt` but for an
+   * for the active side's recruiting leader, mirroring `tryRecruitAt` but for an
    * already-existing `Unit` pulled off `board.recallList` (via the real
    * `recallUnit`, which keeps its saved hp/level rather than healing it to
    * full -- see `recruit.ts`'s `placeRecruit`'s own doc comment). Same
@@ -1414,7 +1548,7 @@ export class GameSession {
    * as `tryRecruitAt` -- see that method's own doc comment.
    */
   private tryRecallAt(index: number, loc: Location): string | null {
-    const leader = this.selectedUnit;
+    const leader = this.recruitingLeader;
     if (!leader) return null;
     const team = this.board.getTeam(leader.side);
     if (!team) return null;
@@ -1436,13 +1570,13 @@ export class GameSession {
     // `underlyingId` lookup, which is unsafe here (see `RecallOption.index`'s
     // own doc comment on why: most recall-list units share `underlyingId=0`).
     list.splice(index, 1);
-    const result = recallUnit(this.board, team, unit, loc, leader.location, undefined, this.raiseEvent);
-    this.lastRecruitAnimation = { unit: result.unit, leader };
+    const leaderLocation = leader.location;
+    const result = recallUnit(this.board, team, unit, loc, leaderLocation, undefined, this.raiseEvent);
+    this.lastRecruitAnimation = { unit: result.unit, leader, unitLocation: result.unit.location, leaderLocation };
     const message = `Recalled ${name} for ${result.cost} gold.`;
     this.log.unshift(message);
     this.eventPump.raise('recall', loc, leader.location);
     this.pumpEvents();
-    this.selectUnit(leader);
     return message;
   }
 
@@ -1468,7 +1602,8 @@ export class GameSession {
    */
   endTurn(maxAiSideTurns = 1000): string {
     const aiAnimations: AiAnimationEvent[] = [];
-    let message = this.advanceOneTurn();
+    const healOutcomes: HealOutcome[] = [];
+    let message = this.advanceOneTurn(healOutcomes);
     if (!message) return '';
     // Auto-play consecutive AI-controlled sides. Bounded by `sides.length`
     // guard-multiples rather than true unbounded recursion, so a
@@ -1485,11 +1620,12 @@ export class GameSession {
       if (!team || (team.controller !== 'ai' && team.controller !== 'network_ai')) break;
       this.playAiSide(this.activeSide, aiAnimations);
       if (this.scenarioResult) break;
-      const next = this.advanceOneTurn();
+      const next = this.advanceOneTurn(healOutcomes);
       if (!next) break;
       message = next;
     }
     this.lastAiAnimations = aiAnimations.length > 0 ? aiAnimations : null;
+    this.lastHealAnimations = healOutcomes.length > 0 ? healOutcomes : null;
     return message;
   }
 
@@ -1522,9 +1658,12 @@ export class GameSession {
    * upkeep and the real healing pass, and logging/returning the new
    * turn's banner message. Pulled out of `endTurn` so it can be called
    * once per side-turn, including once per AI side `endTurn` auto-plays
-   * through -- see `endTurn`'s own doc comment.
+   * through -- see `endTurn`'s own doc comment. Any real heal/poison
+   * outcomes this side-transition's turn-start healing pass produced are
+   * appended to `outHealOutcomes` (see `lastHealAnimations`'s own doc
+   * comment), mirroring `playAiSide`'s identical `outAnimations` pattern.
    */
-  private advanceOneTurn(): string | null {
+  private advanceOneTurn(outHealOutcomes: HealOutcome[]): string | null {
     if (this.scenarioResult) return null;
     this.clearSelection();
     this.fireSideTurnEndEvents(this.activeSide);
@@ -1599,6 +1738,7 @@ export class GameSession {
       }
       if (outcome.curePoison) this.log.unshift(`${name}'s poison is cured.`);
     }
+    outHealOutcomes.push(...healOutcomes);
     // "Set resting now after the healing has been done" (play_controller.cpp):
     // each unit's `resting` flag reflects whether it moved/attacked during
     // its OWN just-finished turn (moving sets it false in executeMove,
@@ -1747,6 +1887,50 @@ export class GameSession {
     );
     const defenderWeapon = defenderWeaponIndex >= 0 ? defender.attacks[defenderWeaponIndex] : undefined;
 
+    const attackerLawfulBonus = this.timeOfDayAt(attacker.location).lawfulBonus;
+    const defenderLawfulBonus = this.timeOfDayAt(defender.location).lawfulBonus;
+    // Real, reported bug: the schedule's raw `lawful_bonus` (e.g. +25% by
+    // day) is NOT what a chaotic unit actually gets -- `combatModifier`
+    // (the same real per-unit computation `computeUnitStats` itself
+    // applies to `damageMultiplier`) flips its sign for chaotic units,
+    // zeroes it for neutral, and derives a different figure entirely for
+    // liminal. Displaying the raw schedule value unconditionally (as if
+    // it were the applied bonus) showed "+25%" for a chaotic unit in
+    // daylight even though it was actually taking a REAL 25% damage
+    // PENALTY that turn -- the damage number itself was always correct;
+    // only this label read the wrong sign/magnitude. `weapon.alignment ??
+    // unit.type.alignment` and the hardcoded `false` (isFearless) mirror
+    // `computeUnitStats`'s own call exactly, so this is always the same
+    // number that's actually folded into `damagePerBlow` above.
+    const attackerToDModifier = combatModifier(
+      attackerLawfulBonus,
+      attackerWeapon.alignment ?? attacker.type.alignment,
+      false,
+      this.schedule.maxLiminalBonus,
+    );
+    const defenderToDModifier = defenderWeapon
+      ? combatModifier(defenderLawfulBonus, defenderWeapon.alignment ?? defender.type.alignment, false, this.schedule.maxLiminalBonus)
+      : 0;
+    // The real GEOMETRIC condition (a flanking ally-of-attacker on the far
+    // side of the defender) -- feeds `buildBattleContext`'s own
+    // `hasSpecialId(weapon, 'backstab')`-gated damage doubling below, same
+    // as before. Real, reported bug (bugs5.md #2): this alone is NOT
+    // "backstab is happening" -- the geometric condition can hold with any
+    // weapon, backstab-capable or not (upstream's own combat math only
+    // ever doubles damage when BOTH this AND the weapon's own special are
+    // present) -- so the DISPLAYED badge (`attackerBackstabActive` below)
+    // additionally requires the attacker's actual weapon to have the
+    // special, matching what real Wesnoth actually applies rather than
+    // just this geometric precondition for it.
+    const backstabGeometry = isBackstabActive(this.board, attacker.location, defender.location);
+    const attackerBackstabActive = backstabGeometry && hasSpecialId(attackerWeapon, 'backstab');
+    const attackerLeadershipBonus = computeLeadershipBonus(this.board, attacker);
+    const defenderLeadershipBonus = computeLeadershipBonus(this.board, defender);
+    // Charge is only ever active "when used offensively" -- upstream's `active_on=offense` -- so it's
+    // the ATTACKER's weapon specifically that gates it for this whole exchange (see combatStats.ts's
+    // own `hasCharge` doc comment); both combatants' damage doubles when it is.
+    const chargeActive = hasSpecialId(attackerWeapon, 'charge');
+
     const { attacker: aStats, defender: dStats } = buildBattleContext({
       attacker,
       attackerWeapon,
@@ -1756,12 +1940,12 @@ export class GameSession {
       attackerTerrainDefense,
       defenderTerrainDefense,
       options: {
-        attackerLawfulBonus: this.timeOfDayAt(attacker.location).lawfulBonus,
-        defenderLawfulBonus: this.timeOfDayAt(defender.location).lawfulBonus,
+        attackerLawfulBonus,
+        defenderLawfulBonus,
         maxLiminalBonus: this.schedule.maxLiminalBonus,
-        backstabActive: isBackstabActive(this.board, attacker.location, defender.location),
-        attackerLeadershipBonus: computeLeadershipBonus(this.board, attacker),
-        defenderLeadershipBonus: computeLeadershipBonus(this.board, defender),
+        backstabActive: backstabGeometry,
+        attackerLeadershipBonus,
+        defenderLeadershipBonus,
         attackerResistanceModifier: computeResistanceModifier(this.board, defender, attackerWeapon.type, false, defender.location),
         defenderResistanceModifier: defenderWeapon
           ? computeResistanceModifier(this.board, attacker, defenderWeapon.type, true, attacker.location)
@@ -1769,6 +1953,14 @@ export class GameSession {
       },
     });
     const { attacker: aCombatant, defender: dCombatant } = simulateCombat(aStats, dStats);
+
+    /** Mirrors `computeUnitStats`'s own cth-override precedence (magical wins over marksman). */
+    const chanceToHitSourceFor = (weapon: AttackType | undefined): 'magical' | 'marksman' | null => {
+      if (!weapon) return null;
+      if (hasSpecialId(weapon, 'magical')) return 'magical';
+      if (hasSpecialId(weapon, 'marksman')) return 'marksman';
+      return null;
+    };
 
     const preview: CombatPreview = {
       attacker: {
@@ -1790,6 +1982,11 @@ export class GameSession {
         resistanceModifier: computeResistanceModifier(this.board, defender, attackerWeapon.type, false, defender.location),
         baseDamage: attackerWeapon.damage,
         hpDist: aCombatant.hpDist,
+        lawfulBonus: attackerToDModifier,
+        leadershipBonus: attackerLeadershipBonus,
+        chargeActive,
+        backstabActive: attackerBackstabActive,
+        chanceToHitSource: chanceToHitSourceFor(attackerWeapon),
       },
       defender: {
         name: this.unitDisplayName(defender),
@@ -1810,6 +2007,14 @@ export class GameSession {
         resistanceModifier: defenderWeapon ? computeResistanceModifier(this.board, attacker, defenderWeapon.type, true, attacker.location) : undefined,
         baseDamage: defenderWeapon?.damage,
         hpDist: dCombatant.hpDist,
+        lawfulBonus: defenderToDModifier,
+        leadershipBonus: defenderLeadershipBonus,
+        // Charge only ever applies "when used offensively" -- the ATTACKER's own weapon gates it for
+        // the whole exchange (see the comment above `chargeActive`'s computation), so the defender's
+        // retaliation shares the exact same flag, not one keyed off its own weapon.
+        chargeActive: defenderWeapon ? chargeActive : undefined,
+        backstabActive: false, // never applies to a defender's own retaliation blow
+        chanceToHitSource: chanceToHitSourceFor(defenderWeapon),
       },
     };
 
@@ -2014,6 +2219,8 @@ export class GameSession {
       // `.type` -- see LastAttackAnimation.attackerTypeId's own doc comment.
       attackerTypeId: pending.attacker.type.id,
       defenderTypeId: pending.defender.type.id,
+      attackerLocation: attackerLoc,
+      defenderLocation: defenderLoc,
     };
 
     const attackerName = pending.preview.attacker.name;

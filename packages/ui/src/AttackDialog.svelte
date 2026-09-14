@@ -8,7 +8,7 @@
    * matching real Wesnoth's own "Damage Calculations" button.
    */
   import { imageUrl } from '@wesnothweb2/renderer';
-  import type { CombatPreview, AttackerWeaponOption } from './gameSession.js';
+  import type { CombatPreview, CombatantPreview, AttackerWeaponOption } from './gameSession.js';
   import { raceDisplayName } from './gameSession.js';
   import Modal from './Modal.svelte';
   import CombatSimulationDialog from './CombatSimulationDialog.svelte';
@@ -31,6 +31,31 @@
 
   function rangeType(w: { range: string; type: string }): string {
     return `${w.range}, ${w.type}`;
+  }
+
+  /**
+   * Real, reported bug (bugs4.md #10): the confirmation dialog showed a
+   * final chance-to-hit/damage with no indication of WHY -- no sign of a
+   * time-of-day bonus/penalty, an active leadership bonus, a charge, or a
+   * backstab, even though `buildPreview` (gameSession.ts) already computed
+   * every one of these as a real input to the combat math it displays.
+   * Short labels, not full detail -- `CombatSimulationDialog`'s "Damage
+   * Calculations" breakdown is where a player goes for the full picture.
+   */
+  function modifierBadges(c: CombatantPreview): string[] {
+    const badges: string[] = [];
+    if (c.lawfulBonus !== 0) badges.push(`Time of day ${c.lawfulBonus > 0 ? '+' : ''}${c.lawfulBonus}%`);
+    if (c.leadershipBonus !== 0) badges.push(`Leadership +${c.leadershipBonus}%`);
+    if (c.chargeActive) badges.push('Charge ×2');
+    if (c.backstabActive) badges.push('Backstab ×2');
+    return badges;
+  }
+
+  /** Real, reported bug (bugs4.md #10): `magical`/`marksman` set a FLAT chance-to-hit override, but the dialog only ever showed the resulting number, with nothing distinguishing it from an ordinary terrain-defense roll. */
+  function chanceToHitSuffix(c: CombatantPreview): string {
+    if (c.chanceToHitSource === 'magical') return ' (magical)';
+    if (c.chanceToHitSource === 'marksman') return ' (marksman)';
+    return '';
   }
 </script>
 
@@ -79,7 +104,13 @@
         {#if preview.attacker.weapon}
           <div class="wname">{preview.attacker.weapon.name}</div>
           <div class="wstats">{preview.attacker.damagePerBlow}&times;{preview.attacker.numBlows} {rangeType(preview.attacker.weapon)}</div>
-          <div class="wchance">{preview.attacker.chanceToHit}%</div>
+          <div class="wchance">{preview.attacker.chanceToHit}%{chanceToHitSuffix(preview.attacker)}</div>
+          {#if preview.attacker.weapon.specials.length > 0}
+            <div class="specials">{preview.attacker.weapon.specials.map((s) => s.name).join(', ')}</div>
+          {/if}
+          {#each modifierBadges(preview.attacker) as badge (badge)}
+            <div class="modifier-badge">{badge}</div>
+          {/each}
         {/if}
       </div>
       <div class="range-label">
@@ -89,7 +120,13 @@
         {#if preview.defender.weapon}
           <div class="wname">{preview.defender.weapon.name}</div>
           <div class="wstats">{preview.defender.damagePerBlow}&times;{preview.defender.numBlows} {rangeType(preview.defender.weapon)}</div>
-          <div class="wchance">{preview.defender.chanceToHit}%</div>
+          <div class="wchance">{preview.defender.chanceToHit}%{chanceToHitSuffix(preview.defender)}</div>
+          {#if preview.defender.weapon.specials.length > 0}
+            <div class="specials">{preview.defender.weapon.specials.map((s) => s.name).join(', ')}</div>
+          {/if}
+          {#each modifierBadges(preview.defender) as badge (badge)}
+            <div class="modifier-badge">{badge}</div>
+          {/each}
         {:else}
           <div class="hint">No counter-attack</div>
         {/if}
@@ -219,6 +256,17 @@
   .hint {
     opacity: 0.7;
     font-size: 0.85rem;
+  }
+  .specials {
+    font-size: 0.75rem;
+    font-style: italic;
+    opacity: 0.8;
+    color: #c9a84a;
+  }
+  .modifier-badge {
+    font-size: 0.72rem;
+    opacity: 0.85;
+    color: #8ec9e8;
   }
   .footer {
     display: flex;

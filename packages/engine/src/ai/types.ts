@@ -34,8 +34,23 @@ export type AiAnimationEvent =
       readonly defenderTypeId: string;
       readonly attackerHitpointsBefore: number;
       readonly defenderHitpointsBefore: number;
+      /**
+       * Where each combatant stood AS OF THIS EXCHANGE (bugs4.md #2/#3). The
+       * whole side turn resolves before any animation plays back, so a unit
+       * that acts again later in the same turn would otherwise animate at
+       * its final hex -- frozen here, like `move`'s own `path`.
+       */
+      readonly attackerLocation: Location;
+      readonly defenderLocation: Location;
     }
-  | { readonly kind: 'recruit'; readonly unit: Unit; readonly leader: Unit };
+  | {
+      readonly kind: 'recruit';
+      readonly unit: Unit;
+      readonly leader: Unit;
+      /** Frozen at recruit time, same rationale as the attack variant -- a recruiting leader routinely moves off its keep later that turn. */
+      readonly unitLocation: Location;
+      readonly leaderLocation: Location;
+    };
 
 export interface AiAction {
   readonly kind: AiActionKind;
