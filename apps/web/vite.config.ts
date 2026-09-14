@@ -9,7 +9,8 @@ export default defineConfig({
     fs: {
       // allow serving Wesnoth assets (images/audio/WML) from the submodule,
       // which lives outside apps/web
-      allow: ['..', '../../wesnoth'],
+      // plus workspace packages' own static assets (e.g. packages/ui's story font)
+      allow: ['..', '../../wesnoth', '../../packages'],
     },
   },
   resolve: {

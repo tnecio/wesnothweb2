@@ -156,6 +156,19 @@
       return;
     }
     alpha = Math.min(Math.max(fadeStep * 25.5, 0), 255) / 255;
+    // End the fade on the step that reaches full/zero alpha instead of one tick later (upstream's
+    // extra 20 ms tick). While the main thread is busy -- the board is built behind the story -- that
+    // tick can be delayed by seconds, and a Next pressed meanwhile would only "finish" an already
+    // finished fade and be swallowed.
+    if (fadeState === 'in' && fadeStep >= 10) {
+      haltFade();
+      return;
+    }
+    if (fadeState === 'out' && fadeStep <= 0) {
+      haltFade();
+      displayPart();
+      return;
+    }
     fadeStep += fadeState === 'in' ? 1 : -1;
     scheduleFadeTick();
   }

@@ -37,6 +37,8 @@
     buildMovementAnimationContexts,
     terrainLookup,
     spriteKey,
+    setImageBaseUrl,
+    setEngineImageBaseUrl,
   } from '@wesnothweb2/renderer';
   import {
     GameSession,
@@ -72,6 +74,11 @@
   import RecruitDialog from './RecruitDialog.svelte';
   import RecallDialog from './RecallDialog.svelte';
   import AttackDialog from './AttackDialog.svelte';
+
+  // Every `imageUrl()` user (time-of-day images, portraits), not only the board, needs the served
+  // image roots -- until the board mounted, they defaulted to a non-existent `/data/data` (Phase 16 N0 finding).
+  setImageBaseUrl('/game-images');
+  setEngineImageBaseUrl('/game-images-engine');
 
   let {
     snapshot,
@@ -1219,6 +1226,7 @@
         onHexRightClick={handleHexRightClick}
         onHexHoverChange={handleHexHoverChange}
         hoverDefensePercent={(x, y) => session.defensePercentAt(x, y)}
+        paused={phase === 'story'}
       />
     {/key}
     <SidePanel {selected} {inspected} {statusMessage} {log} {recruitOptions} {recallOptions} {hoveredHexInfo} onEndTurn={handleEndTurn} />

@@ -61,7 +61,15 @@
     onHexRightClick,
     onHexHoverChange,
     hoverDefensePercent,
+    paused = false,
   }: {
+    /**
+     * Phase 16: stop rendering while something covers the whole board (the
+     * story screen), like upstream's `display::set_prevent_draw` in
+     * `story_viewer::pre_show`. The render loop otherwise redraws the full
+     * map every frame and starves the overlay's own timers and input.
+     */
+    paused?: boolean;
     /** Static parts (terrain/teams/scenario/map) -- read once at mount, never re-applied after. */
     snapshot: ScenarioSnapshot;
     /** Live unit positions/HP -- re-applied to the board whenever this changes. */
@@ -119,6 +127,8 @@
    * moment it becomes available, regardless of what else changed when.
    */
   let board: SnapshotBoard | undefined = $state();
+  /** The mounted PixiJS app, reactive so the `paused` effect below runs once it exists. */
+  let pixiApp: PIXI.Application | undefined = $state.raw();
   const readyLabel = $derived(`${snapshot.scenario.name} -- ${units.length} units, ${snapshot.map.width}x${snapshot.map.height} hexes`);
 
   $effect(() => {
@@ -237,6 +247,7 @@
         return;
       }
       host.appendChild(app.canvas);
+      pixiApp = app;
       // Real, reported bug (bugs3.md #3): unit sprites always rendered in
       // their raw reference palette (magenta) instead of the unit's side
       // color -- `ImageCache` needs real palette/range data before it can
@@ -294,8 +305,16 @@
       host.removeEventListener('wheel', onWheel);
       host.removeEventListener('pointerleave', onPointerLeave);
       host.removeEventListener('contextmenu', onContextMenu);
+      pixiApp = undefined;
       app?.destroy(true);
     };
+  });
+
+  $effect(() => {
+    const app = pixiApp;
+    if (!app) return;
+    if (paused) app.ticker.stop();
+    else app.ticker.start();
   });
 
   $effect(() => {
