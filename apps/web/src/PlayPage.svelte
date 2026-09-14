@@ -1,15 +1,16 @@
 <script lang="ts">
   /**
    * The `/play/<campaignId>` route: resolves `campaignId` to its first
-   * scenario (via `campaigns.json`) and fetches THAT scenario's snapshot --
-   * the one and only network fetch this page needs beyond the manifest
-   * itself. Mounts `GameShell`, which owns everything from here on
+   * scenario (via `campaigns.json`) and fetches THAT scenario's snapshot,
+   * plus its story assets (`/story/<id>.json`: story WML and the rooted,
+   * right-sized image table -- see `apps/web/scripts/build-story-assets.mjs`)
+   * in parallel. Mounts `GameShell`, which owns everything from here on
    * (including scenario-to-scenario continuation within this campaign --
    * see `GameShell.svelte`'s `continueToNextScenario`; that's a
    * within-campaign concern, not a page/URL change).
    */
   import type { GameBoardSnapshot } from '@wesnothweb2/engine';
-  import { GameShell } from '@wesnothweb2/ui';
+  import { GameShell, fetchStoryAssets, type StoryAssets } from '@wesnothweb2/ui';
   import { fetchCampaigns } from './campaigns.js';
   import { router } from './router.svelte.js';
 
@@ -18,21 +19,29 @@
   let status = $state<'loading' | 'ready' | 'error'>('loading');
   let errorMessage = $state('');
   let snapshot = $state<GameBoardSnapshot | null>(null);
+  let storyAssets = $state<StoryAssets | null>(null);
 
   $effect(() => {
     let cancelled = false;
     status = 'loading';
     errorMessage = '';
     snapshot = null;
+    storyAssets = null;
     (async () => {
       const campaigns = await fetchCampaigns();
       const campaign = campaigns.find((c) => c.id === campaignId);
       if (!campaign) throw new Error(`Unknown campaign "${campaignId}".`);
-      const res = await fetch(`/scenarios/${campaign.firstScenario}.json`);
-      if (!res.ok) throw new Error(`fetch scenarios/${campaign.firstScenario}.json: ${res.status}`);
-      const data: GameBoardSnapshot = await res.json();
+      const [data, assets] = await Promise.all([
+        (async () => {
+          const res = await fetch(`/scenarios/${campaign.firstScenario}.json`);
+          if (!res.ok) throw new Error(`fetch scenarios/${campaign.firstScenario}.json: ${res.status}`);
+          return (await res.json()) as GameBoardSnapshot;
+        })(),
+        fetchStoryAssets(campaign.firstScenario),
+      ]);
       if (cancelled) return;
       snapshot = data;
+      storyAssets = assets;
       status = 'ready';
     })().catch((err) => {
       if (cancelled) return;
@@ -58,7 +67,7 @@
     <!-- No {#key} needed here: App.svelte already keys PlayPage itself on
          campaignId, so a campaign change always tears down this whole
          component (and GameShell inside it) from scratch. -->
-    <GameShell {snapshot} />
+    <GameShell {snapshot} {storyAssets} />
   {/if}
 </main>
 

@@ -1826,3 +1826,18 @@ describe('GameSession.menuItems / runMenuItem (Phase 14: real WML/Lua-extensible
     expect(session.menuItems).toEqual([]);
   });
 });
+
+describe('GameSession.storyParts (Phase 16)', () => {
+  it("resolves real Dead Water 1's two [story] blocks: five narrated map parts, then the titled journey part", () => {
+    const snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf8')) as GameBoardSnapshot;
+    const session = new GameSession(snapshot);
+
+    const parts = session.storyParts();
+
+    expect(parts).toHaveLength(6);
+    expect(parts.slice(0, 5).every((p) => p.text.length > 0 && p.backgroundLayers.some((l) => l.image === 'maps/dw.webp' && l.baseLayer))).toBe(true);
+    expect(parts[5]!.showTitle).toBe(true);
+    expect(parts[5]!.title).toBe(snapshot.scenario.name);
+    expect(parts[5]!.floatingImages.map((i) => i.delay)).toEqual([500, 500, 500, 500, 500]);
+  });
+});

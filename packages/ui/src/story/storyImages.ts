@@ -38,6 +38,21 @@ export interface PickedImage {
   readonly bytes: number;
 }
 
+/**
+ * Fetches `/story/<scenarioId>.json`. Null when the scenario has no story
+ * (404, or the dev server's HTML fallback page) or the request fails -- the
+ * story still resolves from the snapshot, just without images.
+ */
+export async function fetchStoryAssets(scenarioId: string): Promise<StoryAssets | null> {
+  try {
+    const res = await fetch(`/story/${scenarioId}.json`);
+    if (!res.ok || !(res.headers.get('content-type') ?? '').includes('json')) return null;
+    return (await res.json()) as StoryAssets;
+  } catch {
+    return null;
+  }
+}
+
 export const GAME_IMAGES_BASE = '/game-images';
 export const DERIVED_IMAGES_BASE = '/derived-images';
 

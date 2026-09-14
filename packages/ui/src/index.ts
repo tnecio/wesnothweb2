@@ -18,3 +18,5 @@ export type {
 export { saveGame, loadGame, listSaves, deleteSave, type SaveMeta } from './persistence.js';
 
 export { default as GameShell } from './GameShell.svelte';
+
+export { fetchStoryAssets, pickStoryImage, type StoryAssets, type StoryImageEntry } from './story/storyImages.js';

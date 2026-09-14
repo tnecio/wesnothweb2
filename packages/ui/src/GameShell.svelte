@@ -58,6 +58,7 @@
     type HoveredHexInfo,
   } from './gameSession.js';
   import { saveGame, loadGame } from './persistence.js';
+  import { fetchStoryAssets, type StoryAssets } from './story/storyImages.js';
   import type { Command } from './commands.js';
   import TopBar from './TopBar.svelte';
   import ContextMenu from './ContextMenu.svelte';
@@ -72,7 +73,14 @@
   import RecallDialog from './RecallDialog.svelte';
   import AttackDialog from './AttackDialog.svelte';
 
-  let { snapshot }: { snapshot: GameBoardSnapshot } = $props();
+  let {
+    snapshot,
+    storyAssets: initialStoryAssets = null,
+  }: {
+    snapshot: GameBoardSnapshot;
+    /** `/story/<id>.json` for `snapshot`'s scenario (see `fetchStoryAssets`); null shows the story without images. */
+    storyAssets?: StoryAssets | null;
+  } = $props();
 
   /** The scenario currently being played -- reassigned by `continueToNextScenario`. Everything below that used to read the `snapshot` prop directly now reads this instead. */
   let activeSnapshot = $state(snapshot);
@@ -95,7 +103,9 @@
    * about `GameBoardView.svelte`'s `board` variable).
    */
   let session = $state.raw(new GameSession(activeSnapshot));
-  let storyParts = $derived(activeSnapshot.story ?? []);
+  /** Resolved once per scenario, before its startup events run -- see `GameSession.storyParts`. */
+  let storyParts = $state.raw(session.storyParts());
+  let storyAssets = $state.raw(initialStoryAssets);
   /** Single fixed slot for MVP simplicity -- see persistence.ts's doc comment; keyed by scenario so a future multi-scenario build doesn't collide saves across scenarios. */
   let saveSlot = $derived(`quicksave:${activeSnapshot.scenario.id}`);
   let scenarioTurnsLimit = $derived(parseScenarioTurnsLimit(activeSnapshot.scenarioConfigJson.attrs['turns']));
@@ -104,7 +114,6 @@
   let continueError = $state<string | null>(null);
 
   let phase = $state<'story' | 'objectives' | 'messages' | 'playing' | 'ended'>(storyParts.length > 0 ? 'story' : 'messages');
-  let storyIndex = $state(0);
   let startupMessages = $state<RecordedMessage[]>([]);
   let messageIndex = $state(0);
 
@@ -1001,15 +1010,14 @@
     }
   }
 
-  function advanceStory(): void {
-    storyIndex += 1;
-    if (storyIndex >= storyParts.length) {
-      startupMessages = session.runStartupEvents();
-      messageIndex = 0;
-      sync();
-      phase = decidePostEventsPhase();
-      applyMessagePhaseUnits();
-    }
+  /** The story screen closed (last part passed, or skipped): now run the startup events, as upstream does after `story_viewer`. */
+  function finishStory(): void {
+    if (phase !== 'story') return;
+    startupMessages = session.runStartupEvents();
+    messageIndex = 0;
+    sync();
+    phase = decidePostEventsPhase();
+    applyMessagePhaseUnits();
   }
 
   function advanceMessage(): void {
@@ -1038,16 +1046,22 @@
     continuing = true;
     continueError = null;
     try {
-      const res = await fetch(`/scenarios/${nextId}.json`);
-      if (!res.ok) throw new Error(`fetch scenarios/${nextId}.json: ${res.status}`);
-      const nextSnapshot: GameBoardSnapshot = await res.json();
+      const [nextSnapshot, nextStoryAssets] = await Promise.all([
+        (async () => {
+          const res = await fetch(`/scenarios/${nextId}.json`);
+          if (!res.ok) throw new Error(`fetch scenarios/${nextId}.json: ${res.status}`);
+          return (await res.json()) as GameBoardSnapshot;
+        })(),
+        fetchStoryAssets(nextId),
+      ]);
       const nextSession = GameSession.startNextScenario(session, nextSnapshot);
+      const nextStoryParts = nextSession.storyParts();
 
       activeSnapshot = nextSnapshot;
       session = nextSession;
+      storyParts = nextStoryParts;
+      storyAssets = nextStoryAssets;
 
-      const nextStoryParts = nextSnapshot.story ?? [];
-      storyIndex = 0;
       messageIndex = 0;
       startupMessages = [];
       if (nextStoryParts.length === 0) {
@@ -1262,7 +1276,9 @@
   {/if}
 
   {#if phase === 'story'}
-    <StoryViewer parts={storyParts} index={storyIndex} onNext={advanceStory} />
+    {#key session}
+      <StoryViewer parts={storyParts} assets={storyAssets} onDone={finishStory} />
+    {/key}
   {:else if phase === 'objectives' && session.scenarioObjectives}
     <ObjectivesDialog
       scenarioName={activeSnapshot.scenario.name}

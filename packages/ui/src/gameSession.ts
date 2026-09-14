@@ -66,6 +66,8 @@ import {
   EventPump,
   VariableStore,
   WmlConfig,
+  resolveStory,
+  type ResolvedStoryPart,
   clearShroud,
   recalculateFog,
   getVisibleUnit,
@@ -1084,6 +1086,16 @@ export class GameSession {
     if (raw === undefined || raw === null) return null;
     const id = String(raw).trim();
     return id.length > 0 ? id : null;
+  }
+
+  /**
+   * Phase 16: the scenario's story screen parts, resolved from every
+   * `[story]` against this session's live event context. Call it before
+   * `runStartupEvents`: upstream shows the story before `prestart`, so its
+   * `[if]`/`[switch]` must only see state carried into the scenario.
+   */
+  storyParts(): ResolvedStoryPart[] {
+    return resolveStory(WmlConfig.fromJSON(this.snapshot.scenarioConfigJson), this.snapshot.scenario.name, this.eventPump.ctx);
   }
 
   /**
