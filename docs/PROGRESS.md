@@ -2825,3 +2825,35 @@ recruiting via context menu, new unit visible within ~150ms; real Two
 Brothers scenario 1's AI turn, zero console errors). Engine/renderer/ui
 suites green throughout (418/193/89), typecheck and `svelte-check`
 (0 errors) clean.
+
+## 2026-09-14 — Phase 16 N0: story screen baseline
+
+`apps/web/scripts/measure-story.mjs` (headless Chromium via Playwright,
+1920x1080, against a running dev server) opens each campaign's first
+scenario cold (fresh context) and warm (reload), and reports first story
+paint, scenario JSON cost, per-part image bytes/load time, the largest
+resources and every long task (> 50 ms) while the story is open.
+
+Baseline (Vite dev server, so absolute numbers are pessimistic):
+
+| campaign | run | first story paint | scenario JSON | max long task |
+|---|---|---|---|---|
+| Dead Water | cold / warm | 1339 / 5075 ms | 2303 KB | 2322 / 2280 ms |
+| Liberty | cold / warm | 3070 / 2372 ms | 2345 KB | 1123 / 640 ms |
+| UtBS | cold / warm | 1523 / 2252 ms | 3235 KB | 1020 / 1247 ms |
+
+Findings:
+- **Story art has never actually loaded in the browser.** `StoryViewer`
+  calls `imageUrl()` whose base is still the default `/data/data` (only
+  `SnapshotBoard` gets `/game-images`), so every background request returns
+  the dev server's 369-byte HTML fallback. Paths are also rooted wrongly
+  (`core/images/maps/background.webp` exists but Dead Water's `maps/dw.webp`
+  base layer lives under the campaign). Liberty and UtBS snapshots have no
+  story image at all (`extractStory` reads only `[background_layer]`).
+- Once fixed, Dead Water part 0 alone would download `core/images/maps/
+  background.webp` (**4.5 MB**) plus `maps/dw.webp` (1.49 MB).
+- The long tasks while the story is open are not story work: the 17.5 MB
+  `terrain-graphics-rules.json` and the board build behind the overlay
+  land at ~1.3 s and block the main thread for 0.5–2.3 s at a time, which
+  is what makes "Next" feel stuck. N5 must move that work off the story's
+  critical path (defer or idle-schedule board construction while covered).
