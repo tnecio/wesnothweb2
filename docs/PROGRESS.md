@@ -2983,3 +2983,39 @@ captures each story part with ImageMagick `import` and advances with
 
 Suites at the end of Phase 16: engine 559, renderer 193, ui 126,
 lua-bridge 32 tests; `svelte-check` 0 errors in ui and web.
+
+## 2026-09-14 — Phase 28a P0: image pipeline baseline and pixel harness
+
+Tooling (all run against a running dev server; see the scripts' headers):
+- `npm run check:image-golden` (`apps/web/scripts/image-golden.mjs`):
+  `--record` loads Dead Water 1, Liberty 1 and the debug combat scenario
+  with one attack, and stores SHA-256 over the RGBA pixels of every
+  texture `ImageCache` produced -- 4,872 refs (4,857 hexed terrain, 15
+  unit sprites/animation frames incl. `~RC` and `~BLIT` chains) in
+  `packages/renderer/fixtures/imagecache-golden.json`. Check mode
+  re-resolves every ref from scratch and compares: **4872/4872 match**, so
+  the harness is deterministic and gates P1–P7.
+- `npm run measure:load` (`apps/web/scripts/measure-load.mjs`): board-ready
+  time, the new `board:terrain-images` performance measure, long tasks,
+  image requests/bytes, JS heap per scenario from a cold context, and one
+  attack's `anim:frames` measure (time to resolve an animation's frames
+  before it starts).
+- Dev-only hooks for these scripts: `GameBoardView` sets
+  `[data-board-ready]`, exposes `hexClientPoint` and, in dev builds only,
+  `window.__wesnothDebug`; `SnapshotBoard` adds the two performance
+  measures. `apps/web/scripts/lib/browserFlows.mjs` holds the shared flows.
+- Note: `playwright` is used from the machine's `node_modules` but is not
+  a declared dependency yet; it gets declared with `pngjs` in P5.
+
+Baseline (headless Chromium, software GL, Vite dev server, 2 cold runs):
+
+| scenario | board ready | terrain images | blocked (> 50 ms) | max long task | image requests / KB | heap |
+|---|---|---|---|---|---|---|
+| Dead Water 1 | 13.97 / 9.54 s | 10.00 / 6.73 s | 7.21 / 4.79 s | 1042 / 669 ms | 493 / 7,639 | 307 / 290 MB |
+| Liberty 1 | 5.59 / 5.43 s | 2.79 / 2.65 s | 2.53 / 2.43 s | 602 / 557 ms | 450 / 5,013 | 150 / 159 MB |
+| UtBS 1 | 16.15 / 16.19 s | 13.05 / 12.55 s | 10.03 / 9.54 s | 916 / 937 ms | 462 / 6,148 | 242 MB |
+
+Attack in the debug combat scenario: the first animation waits **2.2 /
+2.4 s** for its frames (9–14 image requests), with 3.1 s of main-thread
+blocked time and 44 long tasks during the exchange -- the latter is more
+than frame resolution alone explains and is to be examined in P4.

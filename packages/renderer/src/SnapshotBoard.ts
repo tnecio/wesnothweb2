@@ -766,7 +766,10 @@ export class SnapshotBoard {
       }
     }
 
+    // Phase 28a P0: measured by apps/web/scripts/measure-load.mjs.
+    performance.mark('board:terrain-images-start');
     await ImageCache.preload(refs);
+    performance.measure('board:terrain-images', 'board:terrain-images-start');
 
     // One container per hex per layer -- a grouping only (a future per-hex
     // ToD retint or terrain-change rebuild can target one hex's sprites).
@@ -1297,6 +1300,8 @@ export class SnapshotBoard {
 
     // Pre-resolve every real texture this playback will need up front, so
     // no frame swap stalls on a still-loading image mid-animation.
+    // Phase 28a P0: the time this takes is an animation's start latency (measure-load.mjs).
+    performance.mark('anim:frames-start');
     for (const { cue, visual } of active) {
       if (!cue.anim) continue;
       const paths = new Set<string>();
@@ -1314,6 +1319,7 @@ export class SnapshotBoard {
       }
       await Promise.all([...paths].map((p) => ImageCache.resolve(this.teamColoredRef(p, visual.lastSide, visual.flagRgb))));
     }
+    performance.measure('anim:frames', 'anim:frames-start');
 
     const totalMs = Math.max(...active.map((a) => a.duration));
     const start = performance.now();

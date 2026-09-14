@@ -392,6 +392,25 @@
     await board?.ensureUnitVisual(unit);
   }
 
+  /**
+   * Phase 28a P0: the viewport (client) coordinates of hex (x, y) (engine
+   * 0-based) at the current pan/zoom, or null before the board exists.
+   * Used by browser measurement/verification scripts to click hexes.
+   */
+  export function hexClientPoint(x: number, y: number): { x: number; y: number } | null {
+    if (!board || !canvasHost) return null;
+    const { x: px, y: py } = hexToPixel({ x: x + 1, y: y + 1 });
+    const rect = canvasHost.getBoundingClientRect();
+    const scale = board.stage.scale.x;
+    return { x: rect.left + board.stage.x + px * scale, y: rect.top + board.stage.y + py * scale };
+  }
+
+  // Dev-only hooks for browser measurement/verification scripts (apps/web/scripts/measure-load.mjs,
+  // image-golden.mjs): the shared ImageCache and hex -> client coordinates. Absent in production builds.
+  if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV && typeof window !== 'undefined') {
+    (window as unknown as { __wesnothDebug?: unknown }).__wesnothDebug = { imageCache: ImageCache, hexClientPoint };
+  }
+
   /** Phase 16: the board's on-screen area, which the `[message]` dialog covers (upstream's `gamemap_*` window variables). */
   export function viewportRect(): DOMRect | null {
     return canvasHost?.getBoundingClientRect() ?? null;
@@ -417,7 +436,7 @@
   }
 </script>
 
-<div class="board-view">
+<div class="board-view" data-board-ready={board ? 'true' : 'false'}>
   <p class="status">
     {status ?? readyLabel} (drag to pan, scroll to zoom)
     {#if hoveredHex}

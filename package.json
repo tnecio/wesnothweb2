@@ -10,7 +10,9 @@
     "dev": "npm run dev --workspace=apps/web",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "measure:load": "node apps/web/scripts/measure-load.mjs",
+    "check:image-golden": "node apps/web/scripts/image-golden.mjs"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
