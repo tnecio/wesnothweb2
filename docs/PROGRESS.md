@@ -2857,3 +2857,55 @@ Findings:
   land at ~1.3 s and block the main thread for 0.5–2.3 s at a time, which
   is what makes "Next" feel stuck. N5 must move that work off the story's
   critical path (defer or idle-schedule board construction while covered).
+
+## 2026-09-14 — Phase 16 N1–N4: real story screen
+
+- **N1 `engine/src/story/storyParser.ts`** ports `storyscreen/controller.cpp`,
+  `parser.cpp`, `part.cpp`: every `[story]` concatenated, the always-present
+  shortcut background layer, `[background_layer]`/`[image]` in order, title
+  defaults, `title_position` decoding, `[if]`/`[elseif]`/`[else]` and
+  `[switch]` (every matching `[case]`) against the live event context,
+  `$variable` substitution. `GameSession.storyParts()` resolves before
+  `prestart`. Real Dead Water 1 now yields its 5 map parts plus the journey
+  part (title + 5 delayed battle markers) the old extractor dropped.
+- **N2 `apps/web/scripts/build-story-assets.mjs`** writes
+  `public/story/<id>.json` (story WML + image table) and q80 WebP copies at
+  960/1920 px and full width into `public/derived-images/`. Images are
+  rooted campaign-first then core. Story art referenced by the built
+  scenarios: 139.5 MB originals → 6.4 MB smallest copies (Dead Water's
+  1280 px map 1.49 MB → 248 KB at full width). `pickStoryImage` serves the
+  narrowest copy covering drawn width × devicePixelRatio.
+- **N3 `ui/src/story/storyLayout.ts`**: `story_viewer.cpp`'s layer, base
+  layer and floating-image formulas as pure functions (WFL integer
+  division), hand-computed tests at 1920×1080 and 390×844.
+- **N4 `StoryViewer.svelte`** rewrite: DOM layers, delayed floating images
+  cancelled on part change, title decor and title, top/middle/bottom text
+  panel with upstream's translucent panel art and ornate arrows, 20 ms fade
+  steps with upstream's skip rules, Back/Next/Skip, Space/Enter/Right,
+  Backspace/Left, Escape. Title font: IM Fell English (SIL OFL, vendored
+  woff2) behind a `--story-script-font` variable -- note the upstream
+  WesScript `.otf` files do exist in `wesnoth/fonts/` (GPL v2+ with font
+  exception), so swapping is a one-line change if preferred.
+- Fixed on the way: `imageUrl()` base URLs are now set by `GameShell` (time
+  of day images also hit `/data/data`); Vite `fs.allow` includes `packages/`.
+
+**Performance** (headless Chromium, software GL, Vite dev server):
+
+| Dead Water cold | N0 baseline | now |
+|---|---|---|
+| max long task during story | 2322 ms | ~700 ms |
+| story art bytes per part | 6 MB (never loaded) | 978 KB |
+| Next → next part fully shown | stuck for seconds | ~450 ms (= the two 220 ms fades) |
+
+The decisive fix was pausing the board's PixiJS render loop while the story
+covers it (`GameBoardView paused`, upstream's `set_prevent_draw`): before
+it, one 220 ms fade took 10+ s and key presses were swallowed. A CPU
+profile shows what remains is one-time board construction behind the
+story: 5.8 s of 8.7 s busy CPU in the first 10 s is `ImageCache` pixel
+compositing (`applyOp`), plus GC. Cooperative yielding inside
+`ImageCache.render` was tried and A/B-measured with no difference
+(single ops and GC dominate the long tasks), so it was reverted. The
+remaining cost is the first part's text needing ~3–4 s after navigation to
+finish fading in and the first Next taking ~0.5–1.5 s. The real fix is
+moving image compositing off the main thread (OffscreenCanvas worker) --
+renderer work beyond this phase, recorded for Phase 28.
