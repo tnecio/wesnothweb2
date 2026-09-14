@@ -1034,27 +1034,57 @@ UI stays in Phase 24 (it lives in the preferences dialog).
 
 ## Phase 16 — Narration & story-telling overhaul
 
-**Status: not started** (`StoryViewer.svelte`/`MessageViewer.svelte` work,
+**Status: planned (2026-09-14)** (`StoryViewer.svelte`/`MessageViewer.svelte` work,
 but don't match upstream visually and load slowly). Spec sources:
-`src/gui/dialogs/story_viewer.cpp`, `storyscreen/`, `wml_message.cpp`,
-`outro.cpp`.
+`src/gui/dialogs/story_viewer.cpp`, `storyscreen/{parser,part}.cpp`,
+`wml_message.cpp`, `outro.cpp`, `data/lua/wml/message.lua`,
+`data/gui/themes/default/{dialogs/story_viewer,widgets/panel_story_viewer,dialogs/wml_message,dialogs/outro}.cfg`.
 
-- `[story]`/`[part]` backgrounds rendered as upstream does: `[background_
-  layer]` scaling/`keep_aspect_ratio=`/`tile_h`/`tile_v`/`base_layer=`,
-  `[image]` overlays with `x,y=`/`centered=`, text layout/`text_layout=`,
-  `title_alignment=`, and `[part]` delay/`show_title=`.
-- Journey tracks (`{..._JOURNEY}`/`[image]` dot-and-cross sequences) with
-  their timed reveal.
-- Fast loading: preload the next part's images while the current one is
-  shown, size images appropriately; where a load can't be made fast, a
-  clear loading indicator so the player knows the game hasn't hung.
-- `[message]` dialog visuals matching upstream (portrait placement left/
-  right by side, `mirror=`, speaker name, scroll-to-speaker, `image=`
-  overrides), and the campaign outro/end-credits screen.
+**Findings that correct the original spec:**
+- Upstream shows the story *before* `prestart` and concatenates **all**
+  `[story]` children (Dead Water 1's journey track is a second `[story]`,
+  dropped today). `[if]`/`[switch]` inside `[story]` (710/30 occurrences in
+  story-bearing scenarios) evaluate against carried-over variables.
+- Message portraits are **not** placed by side: default left; `~RIGHT()`
+  suffix or `image_pos=` puts them right; `mirror=`, `second_image=`.
+- Today's `extractStory` (build time) keeps only text + first background
+  layer of the first `[story]`.
+
+**Performance facts:** scenario JSON ~2.3 MB (87% `unitTypeConfigs`) gates
+story start; story art is served raw and never preloaded (Dead Water
+`maps/dw.webp` 1.49 MB, Liberty 340–490 KB; `The_Rise_Of_Wesnoth/images/story`
+alone is 23 MB); the Pixi board keeps rendering under full-screen overlays.
+
+**Decisions (user, 2026-09-14):**
+1. Title font: a self-hosted, openly licensed web font (bundled via npm,
+   not a runtime CDN) instead of upstream's `WesScript`.
+2. Build-time derived story/portrait images now: re-encoded, lower
+   resolution WebP variants (measured: `dw.webp` at 1024 px wide, q80 →
+   139 KB, 0.45 s with ImageMagick), originals as fallback.
+3. Visual reference: `/usr/games/wesnoth` 1.16.9 under `xvfb-run` is good
+   enough — layout parity, not pixel parity.
+
+| # | Stage | Checkable outcome |
+|---|---|---|
+| N0 | Baseline measurement | perf marks: campaign click → first story paint, part→part, bytes per part (cold/warm) in PROGRESS |
+| N1 | Engine story resolver (`engine/src/story/`, port of `parser.cpp`/`part.cpp`): all `[story]`s, layers, `[image]`, title, layouts, music/sound/voice fields, `[if]`/`[switch]`; resolved in `GameSession` before `runStartupEvents`; `extractStory` removed | tests on Dead Water 1 (5 parts + journey with `base_layer`), `[if]`/`[switch]` with carryover, Liberty/UtBS openings |
+| N2 | Build-time image pipeline: `apps/web/scripts/build-story-images.mjs` walks every story/portrait reference, emits WebP variants (e.g. `w960`, `w1920`, never upscaled) into `public/derived-images/` + `image-manifest.json` (`{w,h,bytes,variants}`); incremental via mtime/hash; `imageUrl` picks the smallest variant ≥ viewport × DPR | manifest covers all references; Dead Water map ≤ 200 KB at 1024 w |
+| N3 | Pure layout functions implementing `story_viewer.cpp:159-226` (base-layer scale drives overlay coords, tiling, `centered`, title/text positions) | hand-computed rects at 1920×1080 and 390×844 |
+| N4 | `StoryViewer` rewrite: absolutely positioned DOM layers, `delay=` overlay timers (cancelled on part change), title + decor in the web font, text panel top/middle/bottom, ~200 ms fade, Back/Next, Space/Enter/Right, Backspace/Left | component tests; old story path gone |
+| N5 | Performance: preload + `img.decode()` next part (current/prev/next LRU); 150 ms loading indicator, 5 s no-art fallback; small story payload fetched in parallel with the snapshot; Pixi ticker paused while fully covered; no `backdrop-filter` blur | budgets below met, numbers in PROGRESS |
+| N6 | Message dialog: `RecordedMessage` enriched via port of `message.lua` `get_image`/`get_caption`; layout per `wml_message.cfg`; portrait preload; camera-focus API for scroll-to-speaker | enrichment tests (`~RIGHT()`, `image_pos`, `image=none`, `second_image`, caption fallbacks) |
+| N7 | Outro/credits: `end_text`, `end_text_duration`, `end_credits`, campaign `[about]` → `campaigns.json`; `outro.cpp` timings | tests + live check |
+| N8 | Verification + docs: Dead Water/Liberty/UtBS openings next to 1.16.9 screenshots; live browser at desktop and phone widths | screenshots + PROGRESS |
+
+**Budgets:** first story text ≤ 500 ms (warm cache); preloaded next part
+within one frame + fade; indicator after 150 ms if art isn't ready; no
+main-thread task > 50 ms while a story is open; board idle while covered.
+Music/sound/voice are parsed and surfaced as hooks only (playback is Phase 19).
+Blocking/in-order messages and `[option]` stay in Phase 17.
+
 - **Milestone**: Dead Water's, Liberty's and UtBS's opening stories render
-  side by side against the real binary's screenshots with matching
-  backgrounds and layout, and no part takes more than a brief, visibly-
-  indicated load.
+  with matching layout next to the reference binary's screenshots, and no
+  part takes more than a brief, visibly-indicated load.
 
 ## Phase 17 — Events: in-order dialogue, cutscenes, `[option]`
 
