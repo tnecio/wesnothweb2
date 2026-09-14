@@ -2962,3 +2962,24 @@ renderer work beyond this phase, recorded for Phase 28.
   for debugging and verification.
 - Verified live: Dead Water's epilogue shows its 4 lines of dialogue, then
   the outro rolls through the campaign's credits; ui suite 126 tests.
+
+## 2026-09-14 — Phase 16 N8: reference comparison
+
+`apps/web/scripts/reference-story-screenshots.mjs` runs the installed
+`/usr/games/wesnoth` (1.16.9) inside Xvfb at 1920×1080 with `--campaign`,
+captures each story part with ImageMagick `import` and advances with
+`xdotool`. Compared with `story-screenshots.mjs` at the same size:
+
+- **Dead Water**: identical background geometry -- wood background
+  stretched to 1920×1080, `dw.webp` base layer 1440×1080 at x=240 -- and
+  the text panel's top edge at y≈812 in both.
+- **Liberty**: `story/frontier.webp` drawn 1542×1080 at x=189 with black
+  sides in both; panel top y≈812.
+- Differences are theme-version ones, not port errors: 1.16's text block
+  spans the full width with small arrow buttons and a Skip button at the
+  bottom right, while this port follows the 1.19.21 theme the data ships
+  (side columns with ornate arrows, centred Skip). The title font is the
+  IM Fell English stand-in.
+
+Suites at the end of Phase 16: engine 559, renderer 193, ui 126,
+lua-bridge 32 tests; `svelte-check` 0 errors in ui and web.

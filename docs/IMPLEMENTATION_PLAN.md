@@ -1034,8 +1034,24 @@ UI stays in Phase 24 (it lives in the preferences dialog).
 
 ## Phase 16 — Narration & story-telling overhaul
 
-**Status: planned (2026-09-14)** (`StoryViewer.svelte`/`MessageViewer.svelte` work,
-but don't match upstream visually and load slowly). Spec sources:
+**Status: delivered N0–N8 (2026-09-14)**, see docs/PROGRESS.md. Story
+screen, `[message]` dialog and campaign outro are ports of upstream; story
+art per part dropped from 6 MB (never actually loaded before) to under
+1 MB, and Next responds in ~450 ms (the two fades) once the board's render
+loop pauses under the story. Verified against 1.16.9 reference captures
+(`apps/web/scripts/reference-story-screenshots.mjs`) and headless
+Chromium (`story-screenshots.mjs`, `measure-story.mjs`). Open follow-ups:
+- first story part can take ~3–4 s to finish fading in on cold load
+  while the board's textures are composited on the main thread -- move
+  `ImageCache` compositing to an OffscreenCanvas worker (Phase 28);
+- `[message]` speaker hex highlight and smooth scrolling; in-order,
+  blocking dialogue and `[option]` (Phase 17); story/outro music, sound
+  and voice playback (Phase 19, fields already parsed);
+- mobile: the in-game layout itself (Phase 23); the dialog falls back to
+  the full window on narrow boards.
+
+Original plan (`StoryViewer.svelte`/`MessageViewer.svelte` worked but didn't
+match upstream visually and loaded slowly). Spec sources:
 `src/gui/dialogs/story_viewer.cpp`, `storyscreen/{parser,part}.cpp`,
 `wml_message.cpp`, `outro.cpp`, `data/lua/wml/message.lua`,
 `data/gui/themes/default/{dialogs/story_viewer,widgets/panel_story_viewer,dialogs/wml_message,dialogs/outro}.cfg`.
