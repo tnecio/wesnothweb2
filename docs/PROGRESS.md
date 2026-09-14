@@ -2940,3 +2940,25 @@ renderer work beyond this phase, recorded for Phase 28.
 - Verified live (headless Chromium): first dialogue of Dead Water (Kai
   Krellis, Cylanna), Liberty (Fal Khag) and Two Brothers (Baran) with the
   right rooted portraits, no console errors or broken images.
+
+## 2026-09-14 — Phase 16 N7: campaign outro
+
+- `[endlevel]` records `end_text_duration` (clamped 0–5000 ms, like
+  `game_classification`) and `end_credits`. On a victory with no next
+  scenario, unless `end_credits=no`, `GameShell` rolls `Outro.svelte`
+  before the end overlay (`playcampaign.cpp`): `end_text` (default "The
+  End"), the campaign name, then each `[about]` section in chunks of 5
+  names with the title on the first chunk (`outro.cpp`); 500 ms CSS
+  opacity fades, 3500 ms default hold, Escape skips. Campaign name and
+  credits come from `_main.cfg` via `build-story-assets.mjs` (plain-text
+  scan of `[campaign][about]`).
+- Two older bugs this surfaced, both fixed: campaigns mark their last
+  scenario with `next_scenario=null`, which `GameSession.nextScenarioId`
+  took as a real id (the epilogue offered "Continue to next scenario",
+  fetching `scenarios/null.json`); and a scenario ending inside its own
+  startup events (an epilogue's `start` `[endlevel]`) jumped straight to
+  the end screen, skipping its objectives and dialogue.
+- `/play/<campaign>?scenario=<id>` starts a campaign at a later scenario,
+  for debugging and verification.
+- Verified live: Dead Water's epilogue shows its 4 lines of dialogue, then
+  the outro rolls through the campaign's credits; ui suite 126 tests.
