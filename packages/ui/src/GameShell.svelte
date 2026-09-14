@@ -249,7 +249,10 @@
     // see `confirmAttack`) sets a result; `phase` only ever moves forward
     // to 'ended' from here, never back (scenarioResult itself never
     // un-latches either -- see GameSession's own doc comment).
-    if (session.scenarioResult && phase !== 'ended') phase = 'ended';
+    // Only from normal play: a scenario that ends during its own startup events (an epilogue's
+    // start-event [endlevel]) must still show its story, objectives and dialogue first --
+    // advanceMessage/advanceObjectives move on to 'ended' once those are done.
+    if (session.scenarioResult && phase === 'playing') phase = 'ended';
   }
 
   /**
@@ -287,7 +290,7 @@
   }
 
   function advanceObjectives(): void {
-    phase = startupMessages.length > 0 ? 'messages' : 'playing';
+    phase = startupMessages.length > 0 ? 'messages' : session.scenarioResult ? 'ended' : 'playing';
     applyMessagePhaseUnits();
   }
 

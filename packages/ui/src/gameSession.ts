@@ -1082,10 +1082,12 @@ export class GameSession {
    * `startNextScenario`.
    */
   get nextScenarioId(): string | null {
-    const raw = this.snapshot.scenarioConfigJson.attrs['next_scenario'];
+    // An [endlevel] next_scenario= overrides the scenario's own (endlevel.lua sets wesnoth.scenario.next).
+    const raw = this.eventPump.ctx.endLevel?.nextScenario ?? this.snapshot.scenarioConfigJson.attrs['next_scenario'];
     if (raw === undefined || raw === null) return null;
     const id = String(raw).trim();
-    return id.length > 0 ? id : null;
+    // `next_scenario=null` is how campaigns mark their last scenario (game_state::has_next_scenario).
+    return id.length > 0 && id !== 'null' ? id : null;
   }
 
   /**

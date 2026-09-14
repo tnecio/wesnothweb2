@@ -33,6 +33,8 @@ const shots = [
   { name: 'liberty-message1', campaign: 'liberty', viewport: { width: 1920, height: 1080 }, message: true },
   { name: 'two_brothers-message1', campaign: 'two_brothers', viewport: { width: 1920, height: 1080 }, message: true },
   { name: 'dead_water-message1-phone', campaign: 'dead_water', viewport: { width: 390, height: 844 }, message: true },
+  // Campaign outro: Dead Water's epilogue ends in victory from its start event with no next scenario.
+  { name: 'dead_water-outro', campaign: 'dead_water', query: '?scenario=13_Epilogue', viewport: { width: 1920, height: 1080 }, outro: true },
 ];
 
 const browser = await chromium.launch();
@@ -51,7 +53,44 @@ try {
       if (res.status() >= 400 || type.includes('html')) problems.push(`${shot.name}: bad image response ${res.status()} ${type} ${url}`);
     });
     page.on('pageerror', (err) => problems.push(`${shot.name}: page error: ${err.stack ?? err.message}`));
-    await page.goto(`${base}/play/${shot.campaign}`);
+    await page.goto(`${base}/play/${shot.campaign}${shot.query ?? ''}`);
+    if (shot.outro) {
+      // Click through any story, objectives and dialogue until the outro starts.
+      const started = Date.now();
+      const log = [];
+      while (!(await page.$('.outro')) && Date.now() - started < 120000) {
+        if (await page.$('.story')) {
+          await page.keyboard.press('Escape');
+          log.push('story');
+        } else if (await page.$('.window[role="dialog"]')) {
+          await page.keyboard.press('Enter');
+          log.push('message');
+        } else {
+          const ok = page.getByRole('button', { name: 'OK', exact: true });
+          if ((await ok.count()) > 0) {
+            await ok.first().click();
+            log.push('objectives');
+          }
+        }
+        await page.waitForTimeout(400);
+      }
+      if (!(await page.$('.outro'))) {
+        problems.push(`${shot.name}: outro never appeared (clicked through: ${log.join(',')})`);
+        await page.screenshot({ path: path.join(outDir, `${shot.name}-FAILED.png`) });
+        await context.close();
+        continue;
+      }
+      await page.waitForTimeout(1500);
+      await page.screenshot({ path: path.join(outDir, `${shot.name}-1.png`) });
+      const first = await page.evaluate(() => document.querySelector('.outro .text')?.textContent?.trim() ?? null);
+      // Next screen: 500 ms fade-in + 3500 ms hold + 500 ms fade-out, then the campaign name fades in.
+      await page.waitForTimeout(4500);
+      await page.screenshot({ path: path.join(outDir, `${shot.name}-2.png`) });
+      const second = await page.evaluate(() => document.querySelector('.outro .text')?.textContent?.trim() ?? null);
+      console.log(`${shot.name}: clicked through ${log.join(',') || 'nothing'}; screens: ${JSON.stringify([first, second])}`);
+      await context.close();
+      continue;
+    }
     try {
       await page.waitForSelector('.story', { timeout: 60000 });
     } catch {

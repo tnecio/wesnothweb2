@@ -1841,3 +1841,19 @@ describe('GameSession.storyParts (Phase 16)', () => {
     expect(parts[5]!.floatingImages.map((i) => i.delay)).toEqual([500, 500, 500, 500, 500]);
   });
 });
+
+describe('GameSession.nextScenarioId: next_scenario=null ends the campaign (Phase 16 outro)', () => {
+  it("real Dead Water epilogue: its start event's [endlevel] wins with no next scenario, while scenario 1 still continues", () => {
+    const epilogue = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/13_Epilogue.json'), 'utf8')) as GameBoardSnapshot;
+    const session = new GameSession(epilogue);
+    const messages = session.runStartupEvents();
+
+    expect(messages.length).toBeGreaterThan(0);
+    expect(session.scenarioResult).toBe('victory');
+    expect(session.nextScenarioId).toBeNull();
+    expect(session.endLevelPresentation).toEqual({ endText: undefined, endTextDuration: undefined, endCredits: undefined });
+
+    const first = new GameSession(JSON.parse(fs.readFileSync(snapshotPath, 'utf8')) as GameBoardSnapshot);
+    expect(first.nextScenarioId).toBe('02_Flight');
+  });
+});

@@ -31,13 +31,15 @@
       const campaigns = await fetchCampaigns();
       const campaign = campaigns.find((c) => c.id === campaignId);
       if (!campaign) throw new Error(`Unknown campaign "${campaignId}".`);
+      // `?scenario=<id>` starts the campaign at a later scenario (debugging/verification, e.g. an epilogue's outro).
+      const scenarioId = new URLSearchParams(window.location.search).get('scenario') || campaign.firstScenario;
       const [data, assets] = await Promise.all([
         (async () => {
-          const res = await fetch(`/scenarios/${campaign.firstScenario}.json`);
-          if (!res.ok) throw new Error(`fetch scenarios/${campaign.firstScenario}.json: ${res.status}`);
+          const res = await fetch(`/scenarios/${scenarioId}.json`);
+          if (!res.ok) throw new Error(`fetch scenarios/${scenarioId}.json: ${res.status}`);
           return (await res.json()) as GameBoardSnapshot;
         })(),
-        fetchStoryAssets(campaign.firstScenario),
+        fetchStoryAssets(scenarioId),
       ]);
       if (cancelled) return;
       snapshot = data;
