@@ -28,6 +28,7 @@ export * from './actions/index.js';
 export * from './ai/index.js';
 export * from './rng/index.js';
 export * from './events/index.js';
+export * from './story/storyParser.js';
 export { WmlConfig, type WmlAttributeValue, type WmlConfigJson } from './wml/config.js';
 
 export * from './snapshot/gameBoardSnapshot.js';
