@@ -941,6 +941,8 @@ function actionEndlevel(cfg: WmlConfig, ctx: EventContext): void {
     carryover,
     ...(cfg.hasAttribute('next_scenario') ? { nextScenario: cfg.getString('next_scenario') } : {}),
     ...(cfg.hasAttribute('end_text') ? { endText: cfg.getString('end_text') } : {}),
+    ...(cfg.hasAttribute('end_text_duration') ? { endTextDuration: Math.min(Math.max(Math.trunc(cfg.getNumber('end_text_duration', 0)), 0), 5000) } : {}),
+    ...(cfg.hasAttribute('end_credits') ? { endCredits: cfg.getBoolean('end_credits', true) } : {}),
   };
 }
 

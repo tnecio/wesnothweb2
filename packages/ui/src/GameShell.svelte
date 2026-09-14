@@ -71,6 +71,8 @@
   import AdvancementDialog from './AdvancementDialog.svelte';
   import ObjectivesDialog from './ObjectivesDialog.svelte';
   import ScenarioEndOverlay from './ScenarioEndOverlay.svelte';
+  import Outro from './Outro.svelte';
+  import { buildOutroScreens, outroHoldMs } from './story/outro.js';
   import RecruitDialog from './RecruitDialog.svelte';
   import RecallDialog from './RecallDialog.svelte';
   import AttackDialog from './AttackDialog.svelte';
@@ -119,8 +121,18 @@
 
   let continuing = $state(false);
   let continueError = $state<string | null>(null);
+  /** Phase 16 N7: set once the campaign outro has played (or was skipped). */
+  let outroDone = $state(false);
 
   let phase = $state<'story' | 'objectives' | 'messages' | 'playing' | 'ended'>(storyParts.length > 0 ? 'story' : 'messages');
+  /** Upstream shows the outro only for a victory with no next scenario, and only when `end_credits` is not turned off. */
+  const showOutro = $derived(
+    phase === 'ended' &&
+      session.scenarioResult === 'victory' &&
+      session.nextScenarioId === null &&
+      session.endLevelPresentation?.endCredits !== false &&
+      !outroDone,
+  );
   let startupMessages = $state<RecordedMessage[]>([]);
   let messageIndex = $state(0);
 
@@ -1321,15 +1333,24 @@
       player unable to ever resolve the pending choice. Once
       chooseAdvancement clears it, this branch shows normally.
     -->
-    <ScenarioEndOverlay
-      result={session.scenarioResult}
-      {turnNumber}
-      {gold}
-      nextScenarioAvailable={session.scenarioResult === 'victory' && session.nextScenarioId !== null}
-      {continuing}
-      {continueError}
-      onContinue={continueToNextScenario}
-    />
+    {#if showOutro}
+      <!-- Phase 16 N7: the campaign's last victory rolls the outro first, as playcampaign.cpp does. -->
+      <Outro
+        screens={buildOutroScreens(session.endLevelPresentation?.endText, true, storyAssets?.campaign)}
+        holdMs={outroHoldMs(session.endLevelPresentation?.endTextDuration)}
+        onDone={() => (outroDone = true)}
+      />
+    {:else}
+      <ScenarioEndOverlay
+        result={session.scenarioResult}
+        {turnNumber}
+        {gold}
+        nextScenarioAvailable={session.scenarioResult === 'victory' && session.nextScenarioId !== null}
+        {continuing}
+        {continueError}
+        onContinue={continueToNextScenario}
+      />
+    {/if}
   {/if}
 
   <AdvancementDialog pending={pendingAdvancement} onChoose={handleChooseAdvancement} />

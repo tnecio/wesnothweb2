@@ -53,4 +53,11 @@ describe('[endlevel]', () => {
     expect(end.carryover.get(1)).toEqual({ carryoverPercentage: 40 });
     expect(end.carryover.get(2)).toEqual({ bonus: false, carryoverPercentage: 0 });
   });
+
+  it('records the outro fields, clamping end_text_duration to 0-5000 ms like game_classification', () => {
+    const end = run('[endlevel]\nend_text="The merfolk were saved."\nend_text_duration=9000\nend_credits=no\n[/endlevel]').ctx.endLevel!;
+    expect([end.endText, end.endTextDuration, end.endCredits]).toEqual(['The merfolk were saved.', 5000, false]);
+    const plain = run('[endlevel]\n[/endlevel]').ctx.endLevel!;
+    expect([plain.endText, plain.endTextDuration, plain.endCredits]).toEqual([undefined, undefined, undefined]);
+  });
 });

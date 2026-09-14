@@ -31,6 +31,13 @@ export interface StoryAssets {
   readonly story: readonly WmlConfigJson[];
   /** Keyed by the image path as written in WML. */
   readonly images: Readonly<Record<string, StoryImageEntry>>;
+  /** The campaign's name and `[about]` credits, for the outro. */
+  readonly campaign?: CampaignCredits;
+}
+
+export interface CampaignCredits {
+  readonly name: string;
+  readonly credits: readonly { readonly title: string; readonly names: readonly string[] }[];
 }
 
 export interface PickedImage {

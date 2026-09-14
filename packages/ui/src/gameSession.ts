@@ -1089,6 +1089,17 @@ export class GameSession {
   }
 
   /**
+   * Phase 16: the `[endlevel]` fields that shape the campaign outro
+   * (`end_text=`, `end_text_duration=`, `end_credits=`) once the scenario
+   * ended through `[endlevel]`; null otherwise (e.g. a leader kill), which
+   * means upstream's defaults.
+   */
+  get endLevelPresentation(): { endText?: string; endTextDuration?: number; endCredits?: boolean } | null {
+    const endLevel = this.eventPump.ctx.endLevel;
+    return endLevel ? { endText: endLevel.endText, endTextDuration: endLevel.endTextDuration, endCredits: endLevel.endCredits } : null;
+  }
+
+  /**
    * Phase 16: the scenario's story screen parts, resolved from every
    * `[story]` against this session's live event context. Call it before
    * `runStartupEvents`: upstream shows the story before `prestart`, so its

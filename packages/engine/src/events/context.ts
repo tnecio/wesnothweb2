@@ -112,7 +112,12 @@ export interface EndLevelState {
   nextScenario?: string;
   /** Per-side carryover overrides from `[endlevel]` or its `[result] side=` children. */
   carryover: Map<number, { bonus?: boolean; carryoverAdd?: boolean; carryoverPercentage?: number }>;
+  /** `end_text=`: the outro's first screen when the campaign ends here (upstream default "The End"). */
   endText?: string;
+  /** `end_text_duration=` in ms, clamped to 0–5000 like `game_classification`; 0/absent means the 3500 ms default. */
+  endTextDuration?: number;
+  /** `end_credits=` (default yes): whether the outro rolls the campaign credits after the end text. */
+  endCredits?: boolean;
 }
 
 export type ActionHandler = (cfg: WmlConfig, ctx: EventContext) => void;
