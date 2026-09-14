@@ -50,7 +50,9 @@
   const area = $derived.by(() => {
     void index;
     const rect = getMapRect?.();
-    return rect && rect.width > 0
+    // Deviation for small screens: when the board is squeezed narrower than a readable dialog
+    // (the in-game layout is not mobile-ready yet, Phase 23), cover the whole window instead.
+    return rect && rect.width >= 600
       ? { x: rect.left, y: rect.top, w: rect.width, h: innerHeight - rect.top }
       : { x: 0, y: 0, w: innerWidth, h: innerHeight };
   });

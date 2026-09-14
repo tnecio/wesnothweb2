@@ -2909,3 +2909,34 @@ remaining cost is the first part's text needing ~3–4 s after navigation to
 finish fading in and the first Next taking ~0.5–1.5 s. The real fix is
 moving image compositing off the main thread (OffscreenCanvas worker) --
 renderer work beyond this phase, recorded for Phase 28.
+
+## 2026-09-14 — Phase 16 N5–N6: preloading, `[message]` dialog
+
+- **N5** `StoryViewer` keeps decoded `Image`s for the previous, shown and
+  next part (everything further dropped) and shows a "Loading…" indicator
+  when the shown part's art has not decoded within 150 ms.
+- **N6 engine**: `actionMessage` ports `data/lua/wml/message.lua`:
+  `[show_if]`; `get_speaker` (narrator / unit / second_unit / id, else the
+  message's own attributes as a unit filter) -- a message whose speaker is
+  not on the map is now **skipped**, as upstream (one Dead Water event test
+  that fired `start` without `prestart` relied on the old behaviour and now
+  fires both); `get_image` (`image=`, else the speaker's portrait only when
+  there is no `second_image=`; `image=none`; `~RIGHT()` and `image_pos=`
+  choose the side -- never the unit's side); `get_caption`; `scroll=`/
+  `highlight=`. `Unit.portrait()` mirrors Lua's `unit.portrait`: `[unit]
+  profile=`, else the type's `profile=`, else the sprite at 144×144.
+- **N6 UI**: `MessageViewer` ports `wml_message_left/_right/_double`: a
+  window over the map area, translucent panel along the bottom, 22 px gold
+  title, 675 px text column, portrait standing on the bottom edge sized by
+  the `__GUI_IMAGE_WIDTH` formulas (`story/messageLayout.ts`, tested),
+  mirroring, double portraits, next message's portraits preloaded,
+  `GameBoardView.scrollToHexIfOffscreen` for the speaker. The asset build
+  now roots every portrait a scenario can show (campaign portraits such as
+  `portraits/cylanna.webp` used to resolve under core and 404); re-encoded
+  portraits are ~3–4× smaller (Gwabbo 161 → 43 KB).
+- Deviations: no hex highlight yet (scroll only, instant); on a board area
+  narrower than 600 px the dialog covers the whole window, since the
+  in-game layout itself is not mobile-ready (Phase 23).
+- Verified live (headless Chromium): first dialogue of Dead Water (Kai
+  Krellis, Cylanna), Liberty (Fal Khag) and Two Brothers (Baran) with the
+  right rooted portraits, no console errors or broken images.

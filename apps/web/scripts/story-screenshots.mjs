@@ -27,6 +27,12 @@ const shots = [
   { name: 'liberty-part1', campaign: 'liberty', viewport: { width: 1920, height: 1080 }, advance: 0 },
   { name: 'two_brothers-part1', campaign: 'two_brothers', viewport: { width: 1920, height: 1080 }, advance: 0 },
   { name: 'utbs-part1', campaign: 'under_the_burning_suns', viewport: { width: 1920, height: 1080 }, advance: 0 },
+  // [message] dialogs: skip the story (Escape), then the first startup message.
+  { name: 'dead_water-message1', campaign: 'dead_water', viewport: { width: 1920, height: 1080 }, message: true },
+  { name: 'dead_water-message2', campaign: 'dead_water', viewport: { width: 1920, height: 1080 }, message: true, messageAdvance: 1 },
+  { name: 'liberty-message1', campaign: 'liberty', viewport: { width: 1920, height: 1080 }, message: true },
+  { name: 'two_brothers-message1', campaign: 'two_brothers', viewport: { width: 1920, height: 1080 }, message: true },
+  { name: 'dead_water-message1-phone', campaign: 'dead_water', viewport: { width: 390, height: 844 }, message: true },
 ];
 
 const browser = await chromium.launch();
@@ -56,6 +62,48 @@ try {
     }
     // Let the first fade-in finish and images decode.
     await page.waitForTimeout(1500);
+    if (shot.message) {
+      await page.keyboard.press('Escape');
+      try {
+        // Scenarios with [objectives] show that dialog first; dismiss it with OK.
+        const okButton = page.getByRole('button', { name: 'OK', exact: true });
+        await page.waitForFunction(
+          () => !!document.querySelector('.window[role="dialog"]') || [...document.querySelectorAll('button')].some((b) => b.textContent?.trim() === 'OK'),
+          undefined,
+          { timeout: 90000 },
+        );
+        if (!(await page.$('.window[role="dialog"]')) && (await okButton.count()) > 0) await okButton.first().click();
+        await page.waitForSelector('.window[role="dialog"]', { timeout: 90000 });
+      } catch {
+        problems.push(`${shot.name}: message dialog never appeared`);
+        await page.screenshot({ path: path.join(outDir, `${shot.name}-FAILED.png`) });
+        await context.close();
+        continue;
+      }
+      for (let i = 0; i < (shot.messageAdvance ?? 0); i++) {
+        await page.keyboard.press('Enter');
+        await page.waitForTimeout(400);
+      }
+      // Let portraits decode and the board scroll to the speaker.
+      await page.waitForTimeout(2500);
+      const file = path.join(outDir, `${shot.name}.png`);
+      await page.screenshot({ path: file });
+      const info = await page.evaluate(() => ({
+        title: document.querySelector('.window .title')?.textContent?.trim() ?? null,
+        text: (document.querySelector('.window .text')?.textContent ?? '').trim().slice(0, 60),
+        portraits: [...document.querySelectorAll('.window img.portrait:not(.probe)')].map((img) => ({
+          src: decodeURIComponent(img.getAttribute('src') ?? ''),
+          loaded: img.complete && img.naturalWidth > 0,
+          left: img.style.left,
+          width: img.style.width,
+          mirror: img.classList.contains('mirror'),
+        })),
+      }));
+      console.log(`${file}: ${JSON.stringify(info)}`);
+      await context.close();
+      continue;
+    }
+
     // A press during a fade only completes it (upstream semantics), so wait for each new part's text to be fully shown.
     const waitForSettledPart = () =>
       page.waitForFunction(() => {
