@@ -42,6 +42,7 @@
     type VillageOwnerPoint,
     type UnitAnimationCue,
     type FogShroudHex,
+    hexToPixel,
   } from '@wesnothweb2/renderer';
   import type { TimeOfDayEntry } from '@wesnothweb2/engine';
   import { fetchTerrainGraphicsRules } from './terrainGraphicsRulesCache.js';
@@ -389,6 +390,30 @@
   /** Real, reported bug (bugs5.md #3): a just-recruited/recalled unit had no visual at all (so its own "recruited" animation cue silently did nothing) until the deferred sync() at the end of a whole turn's animation playback. See `SnapshotBoard.ensureUnitVisual`'s own doc comment. */
   export async function ensureUnitVisual(unit: SnapshotUnit): Promise<void> {
     await board?.ensureUnitVisual(unit);
+  }
+
+  /** Phase 16: the board's on-screen area, which the `[message]` dialog covers (upstream's `gamemap_*` window variables). */
+  export function viewportRect(): DOMRect | null {
+    return canvasHost?.getBoundingClientRect() ?? null;
+  }
+
+  /**
+   * Phase 16: `[message]`'s scroll to the speaker -- `message.lua` calls
+   * `scroll_to_hex(x, y, true, false, true)`, i.e. `ONSCREEN`: move only
+   * when the hex (engine 0-based) is not already comfortably in view.
+   * Centres it instantly (upstream scrolls smoothly).
+   */
+  export function scrollToHexIfOffscreen(x: number, y: number): void {
+    if (!board || !pixiApp) return;
+    const { x: px, y: py } = hexToPixel({ x: x + 1, y: y + 1 });
+    const scale = board.stage.scale.x;
+    const screenX = board.stage.x + px * scale;
+    const screenY = board.stage.y + py * scale;
+    const margin = 72 * scale;
+    const { width, height } = pixiApp.screen;
+    if (screenX >= margin && screenX <= width - margin && screenY >= margin && screenY <= height - margin) return;
+    board.stage.x = width / 2 - px * scale;
+    board.stage.y = height / 2 - py * scale;
   }
 </script>
 

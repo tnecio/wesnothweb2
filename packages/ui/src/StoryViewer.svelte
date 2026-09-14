@@ -498,7 +498,7 @@
     max-height: 40vh;
     overflow-y: auto;
     white-space: pre-wrap;
-    font-size: 16px;
+    font-size: 17px; /* GUI_FONT_SIZE_DEFAULT */
     line-height: 1.45;
     cursor: pointer;
     outline: none;

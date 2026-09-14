@@ -68,6 +68,7 @@ export interface UnitOptions {
   underlyingId?: number;
   modifications?: readonly UnitModification[];
   variables?: WmlConfig;
+  profile?: string;
 }
 
 /**
@@ -113,6 +114,8 @@ export class Unit {
    * sentinel location.
    */
   goto: Location | undefined;
+  /** `[unit] profile=`: this unit's own portrait, overriding its type's; empty when not overridden. */
+  profile: string;
 
   private constructor(type: UnitType, side: number, location: Location, options: UnitOptions) {
     this.type = type;
@@ -140,6 +143,20 @@ export class Unit {
     this.statuses = new Set();
     this.variables = options.variables;
     this.goto = undefined;
+    this.profile = options.profile ?? '';
+  }
+
+  /**
+   * The portrait `[message]` shows for this unit -- Lua's `unit.portrait`
+   * (`lua_unit.cpp`) over `unit::big_profile()`: its own `profile=`, else
+   * its current type's, unless empty or `unit_image`; otherwise the unit's
+   * image scaled to 144x144. (Upstream appends the unit's team-colour image
+   * mods to that fallback; they are left to the renderer here.)
+   */
+  portrait(): string {
+    const profile = this.profile || this.type.profile;
+    if (profile !== '' && profile !== 'unit_image') return profile;
+    return this.type.image === '' ? '' : `${this.type.image}~SCALE_SHARP(144,144)`;
   }
 
   /** A fresh unit of `type`, as if just recruited/created (mirrors `advance_to` applied to a new unit). */
@@ -178,6 +195,7 @@ export class Unit {
       underlyingId: cfg.getNumber('underlying_id', 0),
       modifications,
       variables: cfg.child('variables'),
+      profile: cfg.getString('profile', ''),
     });
 
     // Overrides applied on top of the base type, mirroring unit::init/unit's constructor tail.
@@ -255,6 +273,7 @@ export class Unit {
     cfg.setAttribute('resting', this.resting);
     cfg.setAttribute('hidden', this.hidden);
     cfg.setAttribute('underlying_id', this.underlyingId);
+    if (this.profile !== '') cfg.setAttribute('profile', this.profile);
     if (this.guardian) cfg.setAttribute('ai_special', 'guardian');
     if (this.goto) {
       cfg.setAttribute('goto_x', this.goto.wmlX);

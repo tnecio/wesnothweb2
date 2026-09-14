@@ -5,11 +5,12 @@
  *
  *   node apps/web/scripts/build-story-assets.mjs [scenarioId ...]
  *
- * For every real-campaign scenario with a `[story]`:
- * - `public/story/<id>.json`: the scenario's `[story]` WML (so the story can
- *   start before the multi-MB snapshot finishes loading) plus an image table
- *   keyed by the path as written in WML: rooted source path, pixel size,
- *   bytes, and smaller derived variants.
+ * For every real-campaign scenario:
+ * - `public/story/<id>.json`: the scenario's `[story]` WML (possibly none)
+ *   plus an image table for its story art and every portrait a `[message]`
+ *   can show (Phase 16 N6), keyed by the path as written in WML (portraits:
+ *   without `~` functions): rooted source path, pixel size, bytes, and
+ *   smaller derived variants.
  * - `public/derived-images/<rooted path>.w<width>.webp`: re-encoded, lower
  *   resolution copies (WebP q80) of every story image wider than the
  *   smallest variant width. Never upscaled; rebuilt only when the source is
@@ -62,6 +63,44 @@ function findCampaignDir(scenarioId) {
   const idPattern = new RegExp(`^\\s*id\\s*=\\s*"?${scenarioId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"?\\s*$`, 'm');
   const byId = cfgFiles.find((c) => idPattern.test(fs.readFileSync(c.file, 'utf8')));
   return byId ? path.join(campaignsRoot, byId.campaign) : null;
+}
+
+/** Strips image path functions (`~RIGHT()`, `~SCALE_SHARP(...)`, ...) to the file path. */
+function basePath(ref) {
+  return ref.split('~')[0];
+}
+
+/**
+ * Every portrait a `[message]` in this scenario can show: each unit type's
+ * `profile=` (including gender variants), `profile=` overrides anywhere in
+ * the scenario (`[unit]`, `[side]`), and `[message] image=`/`second_image=`.
+ * Keyed by base path; `unit_image` (use the sprite) and `none` are skipped.
+ */
+function collectPortraitImages(snapshot) {
+  const found = new Set();
+  const add = (value) => {
+    if (typeof value !== 'string') return;
+    const base = basePath(value);
+    if (base === '' || base === 'unit_image' || base === 'none' || base.includes('$')) return;
+    found.add(base);
+  };
+  for (const typeCfg of Object.values(snapshot.unitTypeConfigs ?? {})) {
+    add(typeCfg.attrs?.profile);
+    for (const child of typeCfg.children ?? []) {
+      if (child.tag === 'male' || child.tag === 'female' || child.tag === 'variation') add(child.config.attrs?.profile);
+    }
+  }
+  const visit = (tag, cfg) => {
+    const attrs = cfg.attrs ?? {};
+    add(attrs.profile);
+    if (tag === 'message') {
+      add(attrs.image);
+      add(attrs.second_image);
+    }
+    for (const child of cfg.children ?? []) visit(child.tag, child.config);
+  };
+  visit('scenario', snapshot.scenarioConfigJson);
+  return [...found];
 }
 
 /** Every image path referenced anywhere under the `[story]` configs (all branches). */
@@ -125,6 +164,8 @@ function buildVariants(rooted, size) {
 }
 
 fs.mkdirSync(storyOutDir, { recursive: true });
+/** rooted path -> image table entry, shared by every scenario in this run. */
+const imageInfoCache = new Map();
 let totalOriginal = 0;
 let totalSmallest = 0;
 const summary = [];
@@ -137,14 +178,16 @@ for (const file of fs.readdirSync(scenariosDir).sort()) {
   const scenarioCfg = snapshot.scenarioConfigJson;
   const storyJsons = (scenarioCfg.children ?? []).filter((c) => c.tag === 'story').map((c) => c.config);
   const outFile = path.join(storyOutDir, `${id}.json`);
-  if (storyJsons.length === 0) {
+  const campaignDir = findCampaignDir(id);
+  if (!campaignDir) {
+    // Synthetic scenarios have no campaign art to root.
     if (fs.existsSync(outFile)) fs.rmSync(outFile);
     continue;
   }
 
-  const campaignDir = findCampaignDir(id);
   const images = {};
-  for (const raw of collectStoryImages(storyJsons)) {
+  for (const raw of [...collectStoryImages(storyJsons), ...collectPortraitImages(snapshot)]) {
+    if (images[raw]) continue;
     if (raw.includes('$')) {
       console.warn(`${id}: skipping runtime-variable image path "${raw}"`);
       continue;
@@ -154,10 +197,17 @@ for (const file of fs.readdirSync(scenariosDir).sort()) {
       console.warn(`${id}: image not found in campaign or core: "${raw}"`);
       continue;
     }
-    const size = imageSize(path.join(dataRoot, rooted));
-    const bytes = fs.statSync(path.join(dataRoot, rooted)).size;
-    const variants = buildVariants(rooted, size);
-    images[raw] = { src: rooted, w: size.w, h: size.h, bytes, variants };
+    // Many scenarios share the same core portraits: size and encode each file once per run.
+    let info = imageInfoCache.get(rooted);
+    if (!info) {
+      const size = imageSize(path.join(dataRoot, rooted));
+      const bytes = fs.statSync(path.join(dataRoot, rooted)).size;
+      info = { src: rooted, w: size.w, h: size.h, bytes, variants: buildVariants(rooted, size) };
+      imageInfoCache.set(rooted, info);
+    }
+    const { variants } = info;
+    const bytes = info.bytes;
+    images[raw] = info;
     totalOriginal += bytes;
     totalSmallest += variants.length > 0 ? variants[0].bytes : bytes;
   }

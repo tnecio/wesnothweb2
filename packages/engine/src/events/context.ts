@@ -54,6 +54,27 @@ export interface RecordedMessage {
   image?: string;
   caption?: string;
   /**
+   * Phase 16: the portrait to show, resolved like `message.lua`'s
+   * `get_image`: `image=`, else the speaker unit's portrait (only when no
+   * `second_image=` either); `''` for none or `image=none`. `~RIGHT()` is
+   * stripped into `leftSide`.
+   */
+  portrait: string;
+  /** Portrait side: left by default; `~RIGHT()` or `image_pos=right` puts it right, `image_pos=left` back left. Not decided by the unit's side. */
+  leftSide: boolean;
+  mirror: boolean;
+  /** `second_image=`: a second portrait on the right (upstream's double-portrait dialog); `''` for none. */
+  secondPortrait: string;
+  secondMirror: boolean;
+  /** Dialog title, like `get_caption`: `caption=`, else the speaker's name, else its type name; `''` for none. */
+  title: string;
+  /** Where the speaking unit stood when the message fired (engine 0-based), for scroll-to-speaker; absent for the narrator or no unit. */
+  speakerLocation?: { x: number; y: number };
+  /** `scroll=` (default yes): whether to scroll to the speaker. */
+  scroll: boolean;
+  /** `highlight=` (default yes): whether to highlight the speaker's hex. */
+  highlight: boolean;
+  /**
    * Real, reported bug (bugs2.md "Lua events/narration ... not synced with
    * the narrative messages"): every unit's position/hp exactly as of right
    * before THIS message fired (captured by `actionMessage`) -- e.g. in

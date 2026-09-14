@@ -138,23 +138,73 @@ function noop(): void {
 
 // --- [message] ---
 
+/**
+ * Records a `[message]` for the UI to show -- a port of
+ * `data/lua/wml/message.lua` minus the dialog itself (and `[option]`/
+ * `[text_input]`/`side_for=`, Phase 17): `[show_if]`, `get_speaker` (a
+ * message whose speaker cannot be found is skipped, as upstream), and the
+ * portrait/caption rules of `get_image`/`get_caption`.
+ */
 function actionMessage(cfg: WmlConfig, ctx: EventContext): void {
+  const showIf = cfg.child('show_if');
+  if (showIf && !conditionalPassed(showIf, ctx)) return;
+
   const speakerAttr = cfg.getString('speaker', '');
-  let speaker = '';
-  if (speakerAttr === 'narrator') {
-    speaker = 'narrator';
+  const narrator = speakerAttr === 'narrator';
+  let speakerUnit: ReturnType<typeof findUnits>[number] | undefined;
+  if (narrator) {
+    speakerUnit = undefined;
   } else if (speakerAttr === 'unit') {
-    speaker = ctx.board.unitAt(ctx.loc1)?.id ?? '';
+    speakerUnit = ctx.board.unitAt(ctx.loc1);
   } else if (speakerAttr === 'second_unit') {
-    speaker = ctx.board.unitAt(ctx.loc2)?.id ?? '';
+    speakerUnit = ctx.board.unitAt(ctx.loc2);
   } else if (speakerAttr !== '') {
-    speaker = ctx.board.allUnits().find((u) => u.id === speakerAttr)?.id ?? speakerAttr;
+    speakerUnit = ctx.board.allUnits().find((u) => u.id === speakerAttr);
+  } else {
+    // No speaker=: the message's own attributes act as a unit filter, first match speaks.
+    speakerUnit = findUnits(ctx.board, cfg)[0];
   }
+  if (!narrator && !speakerUnit) {
+    ctx.log('debug', 'No speaker found for [message]');
+    return;
+  }
+
+  // get_image
+  const secondImage = cfg.getString('second_image', '');
+  let image = cfg.hasAttribute('image') ? cfg.getString('image') : '';
+  if (speakerUnit && image === '' && secondImage === '') image = speakerUnit.portrait();
+  let portrait = '';
+  let leftSide = true;
+  if (image !== '' && image !== 'none') {
+    portrait = image;
+    if (portrait.includes('~RIGHT()')) {
+      leftSide = false;
+      portrait = portrait.split('~RIGHT()').join('');
+    }
+    const imagePos = cfg.getString('image_pos', '');
+    if (imagePos === 'left') leftSide = true;
+    else if (imagePos === 'right') leftSide = false;
+    else if (imagePos !== '') ctx.log('error', 'Invalid [message]image_pos - should be left or right');
+  }
+
+  // get_caption
+  let title = cfg.hasAttribute('caption') ? cfg.getString('caption') : '';
+  if (!cfg.hasAttribute('caption') && speakerUnit) title = speakerUnit.name !== '' ? speakerUnit.name : speakerUnit.type.name;
+
   ctx.messages.push({
-    speaker,
+    speaker: narrator ? 'narrator' : (speakerUnit?.id ?? ''),
     message: cfg.getString('message', ''),
     image: cfg.hasAttribute('image') ? cfg.getString('image') : undefined,
     caption: cfg.hasAttribute('caption') ? cfg.getString('caption') : undefined,
+    portrait,
+    leftSide,
+    mirror: cfg.getBoolean('mirror', false),
+    secondPortrait: secondImage === 'none' ? '' : secondImage,
+    secondMirror: cfg.getBoolean('second_mirror', false),
+    title,
+    speakerLocation: speakerUnit ? { x: speakerUnit.location.x, y: speakerUnit.location.y } : undefined,
+    scroll: cfg.getBoolean('scroll', true),
+    highlight: cfg.getBoolean('highlight', true),
     unitsBefore: ctx.board.allUnits().map((unit) => ({
       unit,
       x: unit.location.x,

@@ -187,7 +187,11 @@ describe('EventPump running Dead_Water scenario 1 real [event] blocks', () => {
       },
     });
 
-    // "start" (unlike "prestart") isn't gated behind anything else firing first in this scenario.
+    // "prestart" first, as the game does: it places Cylanna and the citizens. Since Phase 16 a
+    // [message] whose speaker is not on the map is skipped (message.lua's get_speaker), so
+    // firing "start" alone would drop Cylanna's lines.
+    pump.fire('prestart');
+    pump.ctx.messages.splice(0);
     expect(() => pump.fire('start')).not.toThrow();
 
     // The scenario's very first two [message] tags, verbatim.

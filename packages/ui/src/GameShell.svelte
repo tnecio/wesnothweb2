@@ -1017,6 +1017,14 @@
     }
   }
 
+  // Phase 16: [message] scrolls to its speaker (unless scroll=no or highlight=no), like message.lua.
+  $effect(() => {
+    if (phase !== 'messages') return;
+    const message = startupMessages[messageIndex];
+    const at = message?.speakerLocation;
+    if (at && message.scroll && message.highlight) boardView?.scrollToHexIfOffscreen(at.x, at.y);
+  });
+
   /** The story screen closed (last part passed, or skipped): now run the startup events, as upstream does after `story_viewer`. */
   function finishStory(): void {
     if (phase !== 'story') return;
@@ -1296,7 +1304,13 @@
       onClose={advanceObjectives}
     />
   {:else if phase === 'messages'}
-    <MessageViewer messages={startupMessages} index={messageIndex} onNext={advanceMessage} />
+    <MessageViewer
+      messages={startupMessages}
+      index={messageIndex}
+      onNext={advanceMessage}
+      assets={storyAssets}
+      getMapRect={() => boardView?.viewportRect() ?? null}
+    />
   {:else if phase === 'ended' && session.scenarioResult && !pendingAdvancement}
     <!--
       `!pendingAdvancement` guard: a kill that both wins the scenario AND

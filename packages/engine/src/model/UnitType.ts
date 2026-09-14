@@ -206,6 +206,10 @@ export class UnitType {
      * Purely descriptive; the core engine never interprets it itself.
      */
     public readonly usage: string = '',
+    /** `profile=`: the type's portrait (`unit_type::big_profile`), shown in `[message]` dialogs. Empty when the type has none. */
+    public readonly profile: string = '',
+    /** `image=`: the type's base sprite, the portrait fallback when there is no profile. */
+    public readonly image: string = '',
   ) {}
 
   /** Mirrors `unit_type::experience_needed`: the modifier is the game-wide `[game_config] experience_modifier` (default 100 = unchanged). */
@@ -278,6 +282,8 @@ export class UnitType {
       possibleTraits,
       cfg.hasAttribute('vision'),
       cfg.getString('usage', ''),
+      cfg.getString('profile', ''),
+      cfg.getString('image', ''),
     );
   }
 }
