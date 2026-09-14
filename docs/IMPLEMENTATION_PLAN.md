@@ -1367,6 +1367,66 @@ below exist yet.
   stable URL, and a deliberately-broken build fails CI before it can
   deploy.
 
+### Phase 28a — Image pipeline performance (planned 2026-09-14)
+
+**Problem, measured** (Dead Water 1, headless Chromium, Vite dev server):
+- **Jank.** `ImageCache` runs entirely on the main thread: every IPF op
+  (`~MASK`, `~RC`, `~TC`, `~BLEND`, `~HEXED`...) reads pixels back with
+  `getImageData`, loops in JS and writes them with `putImageData`. A CPU
+  profile of the first 10 s showed 5.8 s of 8.7 s busy CPU in
+  `applyOp`/`render`/`ctx2d`, plus ~1 s GC; long tasks up to ~0.7 s.
+  Cooperative yielding inside `render` was tried and made no measurable
+  difference (single ops and GC dominate), so the work must leave the
+  thread. The 17.5 MB `terrain-graphics-rules.json` parse and the terrain
+  builder pass also run on the main thread.
+- **Requests.** One GET per source image, memoised per page (493 image
+  requests, 493 distinct URLs, 0 repeats while loading Dead Water; 479 of
+  them terrain). Unit animation frames are fetched the first time each
+  animation plays (`SnapshotBoard.playAnimations` pre-resolves them). No
+  atlases, no content-hashed names. The dev server adds
+  `Cache-Control: no-cache` (every reload revalidates every file) and
+  HTTP/1.1's ~6-connection limit.
+
+**Non-negotiable:** output stays pixel-identical. `ImageCache` encodes
+weeks of fidelity work against the C++ engine; every stage below is gated
+by a golden hash corpus (P0) that must reproduce exactly.
+
+**Order:** P0–P4 remove the jank first; P5–P7 cut requests. Each stage is
+its own commit(s) with before/after numbers in docs/PROGRESS.md.
+
+| # | Stage | Checkable outcome |
+|---|---|---|
+| P0 | **Baseline + pixel harness.** Extend `measure-story.mjs` into `measure-load.mjs`: board-ready time, total main-thread blocked time (sum of long tasks), max long task, image request count/bytes, JS heap, first-play latency of an attack animation (scripted in `synth_combat_01`). Golden corpus: in headless Chromium, resolve a fixed ref set (every terrain ref of Dead Water 1 and Liberty 1, unit frames with `~RC` for two sides, `~TOD` and `~GS` variants, portraits) through today's `ImageCache` and store SHA-256 of each RGBA buffer in `packages/renderer/fixtures/imagecache-golden.json`. | Baseline table in PROGRESS; `npm run check:image-golden` passes on current code |
+| P1 | **Split compositing from PixiJS.** Move the op implementations, colour mappings and IPF parsing into `images/compositor.ts`: `render(ref) -> ImageBitmap | null` over `OffscreenCanvas`, no PixiJS, no DOM. `ImageCacheImpl` keeps the texture/pending/memo maps and wraps results as `PIXI.Texture` (ImageBitmap source). An in-thread `Compositor` stays for Node tests and as the fallback. | Golden hashes identical; renderer suite green |
+| P2 | **Worker compositor.** `images/compositor.worker.ts` (Vite `new Worker(new URL(...), { type: 'module' })`), a pool of `min(4, hardwareConcurrency - 1)` workers sharded by source path. Protocol: `init` (base URLs, colour data), `render` (batched refs with priority: visible units > terrain > animation preload), results transferred as `ImageBitmap` (`transferToImageBitmap`, zero-copy), `cancel` on board teardown. Feature-detect `OffscreenCanvas` 2D in workers (Firefox 105+, Safari 16.4+), else in-thread. | Golden hashes identical via the worker path; no `applyOp` on the main thread in a profile |
+| P3 | **Rest of the board build off-thread / paced.** Fetch + parse `terrain-graphics-rules.json` and run `getTerrainFramesAt` over the map in a worker (both PixiJS-free), returning per-hex frames and the ref list. On the main thread, create sprites and let PixiJS upload textures in per-frame batches (~8 ms budget via `requestAnimationFrame`) so ~8,700 sprites + thousands of uploads never land in one task. | Board visually identical (screenshot diff = 0 on Dead Water, Liberty, UtBS 1) |
+| P4 | **Measure + tune.** Re-run P0. Budgets: max long task < 100 ms while the story or board loads; first story part fully faded in within 1 s of the story appearing (warm cache); board-ready time no worse than baseline +10%; attack first-play latency < 100 ms once frames are preloaded. | Budget table in PROGRESS; misses documented with profiles |
+| P5 | **Terrain source atlases.** `apps/web/scripts/build-image-atlases.mjs` (run with `tsx`): per scenario, run the real terrain builder against the snapshot map + graphics rules to get the exact source files the board needs; pack them losslessly (maxrects, ≤ 4096², RGBA PNG with no gAMA/iCCP/sRGB chunks) into a few atlases + a JSON rect manifest. The compositor's `loadBitmap(path)` consults the manifest and uses `createImageBitmap(atlasBlob, sx, sy, sw, sh, { colorSpaceConversion: 'none' })`, falling back to the per-file fetch. | Golden hashes identical; Dead Water 1 terrain requests 479 → single digits |
+| P6 | **Unit animation atlases.** Per unit type, pack every frame its animations reference (`parseUnitAnimations` at build time) into one atlas, fetched when that type is first placed on the board (recruitable types lazily, off the critical path). First play of any animation needs no network. | Zero image requests during an attack in `synth_combat_01` after load |
+| P7 | **Delivery.** Content-hashed atlas names (`<name>.<hash>.png`) so production can serve them `immutable`; hosting headers recorded for the Phase 28 deploy work; optional service-worker cache (ties into the offline item above). | Warm reload of Dead Water 1 makes no image revalidations for atlased assets |
+
+**Risks**
+- *Pixel drift in workers:* same Chromium Skia path, but gated by hashes
+  regardless; Firefox/Safari checked manually until CI has them.
+- *Texture upload becomes the new long task:* why P3 paces uploads.
+- *Worker bundle pulling in PixiJS:* the compositor module must stay
+  PixiJS-free (lint rule / import check in P1).
+- *Atlas decode memory:* an atlas is only a network container, cropped
+  into per-ref bitmaps in the worker and released; cap atlas size.
+- *Build time / repo size:* per-scenario terrain atlases for ~38 scenarios
+  could be tens of MB.
+
+**Open decisions (before P5)**
+1. Commit generated atlases (like today's `public/story/` and
+   `public/derived-images/`) or gitignore them and build in `npm run
+   build`/a `predev` hook? Recommendation: gitignore + build.
+2. PNG encode/decode at build time: add `pngjs` (small, pure JS, exact
+   RGBA) or `sharp` (fast, native)? Recommendation: `pngjs`, exactness over
+   speed.
+3. Atlas granularity: per scenario (best locality, duplicated bytes) or
+   shared core-terrain bundles + per-scenario remainder. Decide from P0's
+   byte/request numbers.
+
 ---
 
 ## Phase 29 — Real AI: RCA framework port + Lua CAs/micro-AIs on fengari
