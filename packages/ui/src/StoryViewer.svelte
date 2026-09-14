@@ -73,6 +73,67 @@
 
   const layout = $derived(part && viewportW > 0 ? layoutStoryPart(part, viewport, sizeOf) : null);
 
+  /** Every image URL a part shows at the current viewport size. */
+  function partUrls(index: number): string[] {
+    const p = parts[index];
+    if (!p || viewportW <= 0) return [];
+    const l = layoutStoryPart(p, viewport, sizeOf);
+    const urls = l.layers.map((layer) => urlOf(layer.image, layer.w)).filter((u): u is string => !!u);
+    for (const image of p.floatingImages) {
+      const size = sizeOf(image.file);
+      const url = size ? urlOf(image.file, size.w) : undefined;
+      if (url) urls.push(url);
+    }
+    return urls;
+  }
+
+  /**
+   * Decoded images for the previous, shown and next part. Holding the
+   * `Image` keeps the decoded bitmap alive, so moving to a neighbouring part
+   * paints immediately; anything further away is dropped.
+   */
+  const preloaded = new Map<string, HTMLImageElement>();
+  let decodedUrls = $state<ReadonlySet<string>>(new Set());
+
+  $effect(() => {
+    const wanted = new Set([...partUrls(shownIndex), ...partUrls(partIndex + 1), ...partUrls(shownIndex - 1)]);
+    for (const url of wanted) {
+      if (preloaded.has(url)) continue;
+      const img = new Image();
+      img.src = url;
+      preloaded.set(url, img);
+      img
+        .decode()
+        .catch(() => undefined)
+        .then(() => {
+          if (preloaded.get(url) === img) decodedUrls = new Set([...decodedUrls, url]);
+        });
+    }
+    for (const url of [...preloaded.keys()]) {
+      if (wanted.has(url)) continue;
+      preloaded.delete(url);
+      if (decodedUrls.has(url)) decodedUrls = new Set([...decodedUrls].filter((u) => u !== url));
+    }
+  });
+
+  /** The shown part's background art has not finished decoding. */
+  const artPending = $derived(
+    layout ? layout.layers.some((layer) => {
+      const url = urlOf(layer.image, layer.w);
+      return !!url && !decodedUrls.has(url);
+    }) : false,
+  );
+  /** Only surface the wait once it is long enough to notice. */
+  let showLoading = $state(false);
+  $effect(() => {
+    if (!artPending) {
+      showLoading = false;
+      return;
+    }
+    const timer = setTimeout(() => (showLoading = true), 150);
+    return () => clearTimeout(timer);
+  });
+
   const floating = $derived.by(() => {
     if (!part || !layout) return [];
     const out: { key: number; url: string; x: number; y: number; w: number; h: number }[] = [];
@@ -253,6 +314,10 @@
       {/each}
     {/if}
 
+    {#if showLoading}
+      <div class="loading" role="status">Loading…</div>
+    {/if}
+
     <div class="title-decor" style:background-image="url('{ENGINE_IMAGES}/dialogs/story_title_decor.png')"></div>
 
     {#if showTitle}
@@ -328,6 +393,24 @@
   .floating {
     position: absolute;
     pointer-events: none;
+  }
+
+  .loading {
+    position: absolute;
+    top: 16px;
+    right: 20px;
+    padding: 4px 12px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.6);
+    font-size: 14px;
+    color: rgb(186, 172, 125);
+    pointer-events: none;
+    animation: loading-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes loading-pulse {
+    50% {
+      opacity: 0.45;
+    }
   }
 
   .title-decor {
