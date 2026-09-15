@@ -1352,7 +1352,16 @@ below exist yet.
 - CI pipeline: lint + unit + integration + UI suites on every commit, with
   clear failure reporting.
 - Staging deployment (auto-deploy from `main`) and tagged-release
-  deployment with versioning/rollback.
+  deployment with versioning/rollback. Hosting must send these caching
+  headers (from Phase 28a P7; the dev server already does the first):
+  - `/atlases/**/*.<12 hex>.png` (content-hashed image bundles):
+    `Cache-Control: public, max-age=31536000, immutable`.
+  - `/atlases/**/*.json` (bundle manifests, fixed names that point at the
+    hashed files): `Cache-Control: no-cache`, served with an `ETag`.
+  - `/game-images/**`, `/game-images-engine/**` (per-file fallback,
+    unhashed): `no-cache` + `ETag` until they get versioned URLs.
+  - `npm run build` produces the bundles (`prebuild` runs
+    `build:atlases`); they are not in git.
 - Performance regression tracking: load time, frame rate, memory measured
   in CI against defined budgets (none defined yet).
 - Cross-browser compatibility matrix, offline/service-worker behaviour,
@@ -1369,7 +1378,7 @@ below exist yet.
 
 ### Phase 28a — Image pipeline performance (planned 2026-09-14)
 
-**Status: P0–P4 delivered (2026-09-15)**, see docs/PROGRESS.md. Dead Water 1
+**Status: P0–P7 delivered (2026-09-15)**, see docs/PROGRESS.md. Dead Water 1
 main-thread blocked time while loading 4.8–7.2 s → 0.32 s, longest task
 0.7–1.0 s → 0.16 s, JS heap ~300 → 58 MB, pixel output unchanged (golden
 hashes + rendered-board screenshots). Beyond the plan, profiling also
@@ -1377,7 +1386,10 @@ removed a deep Svelte proxy of the snapshot, a duplicated snapshot context
 build and eager parsing of every unit type. P5 (terrain bundles) delivered:
 Dead Water 1 image requests 555 → 15, pixels unchanged. P6 (unit type
 bundles) delivered: attack animation frames come from bundles (the attack
-dialog's 2 DOM portraits still fetch files). P7 in progress.
+dialog's 2 DOM portraits still fetch files). P7 (delivery): a warm reload
+takes every bundle from the disk cache; production headers are listed under
+Phase 28 above; the optional service worker is deferred to Phase 28's
+offline work.
 
 **Problem, measured** (Dead Water 1, headless Chromium, Vite dev server):
 - **Jank.** `ImageCache` runs entirely on the main thread: every IPF op

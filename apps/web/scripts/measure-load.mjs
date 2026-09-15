@@ -2,7 +2,7 @@
  * Phase 28a P0: board load and animation start metrics in headless Chromium
  * against a running dev server.
  *
- *   node apps/web/scripts/measure-load.mjs [--base http://localhost:5173] [--runs 1]
+ *   node apps/web/scripts/measure-load.mjs [--base http://localhost:5173] [--runs 1] [--warm]
  *
  * Per real scenario (Dead Water 1, Liberty 1, UtBS 1), from a cold context:
  * - boardReadyMs: navigation -> `[data-board-ready]` (terrain rendered)
@@ -16,6 +16,9 @@
  * first/max `anim:frames` measure (time to resolve an animation's frames
  * before it can start), image requests and long tasks during the exchange.
  */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { chromium } from 'playwright';
 import { openScenario, performAttack, skipToPlay, waitBoardReady } from './lib/browserFlows.mjs';
 
@@ -26,6 +29,9 @@ const arg = (name, fallback) => {
 };
 const base = arg('base', 'http://localhost:5173');
 const runs = Number(arg('runs', '1'));
+// --warm: after the cold load, reload the page in the same context and count image requests that still reach
+// the network (Phase 28a P7: content-hashed bundles served `immutable` should come from the HTTP cache).
+const warm = args.includes('--warm');
 
 function installObservers() {
   window.__longTasks = [];
@@ -70,10 +76,14 @@ function countImageRequests(context) {
 }
 
 async function measureScenario(browser, campaign) {
-  const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+  const viewport = { width: 1920, height: 1080 };
+  // Warm mode needs a disk cache like a real profile: a plain context's in-memory cache does not keep
+  // Dead Water 1's ~5 MB terrain bundle, which would show up as a download on reload.
+  const profileDir = warm ? fs.mkdtempSync(path.join(os.tmpdir(), 'measure-load-')) : null;
+  const context = profileDir ? await chromium.launchPersistentContext(profileDir, { viewport }) : await browser.newContext({ viewport });
   await context.addInitScript(installObservers);
   const network = countImageRequests(context);
-  const page = await context.newPage();
+  const page = context.pages()[0] ?? (await context.newPage());
   try {
     await openScenario(page, base, campaign);
     await waitBoardReady(page);
@@ -100,9 +110,28 @@ async function measureScenario(browser, campaign) {
     );
     // Which work actually ran off the main thread (an in-thread fallback would look the same otherwise).
     const workers = [...new Set(page.workers().map((w) => w.url().replace(/^.*\//, '').replace(/[?#].*$/, '')))];
-    return { ...result, imageRequests: network.requests, imageKB: Math.round(network.bytes / 1024), imageCacheHits: network.cacheHits, workers };
+    const cold = { ...result, imageRequests: network.requests, imageKB: Math.round(network.bytes / 1024), imageCacheHits: network.cacheHits, workers };
+    if (!warm) return cold;
+
+    // Playwright's `request.sizes()` reports header sizes for disk-cache hits too, so the counter above cannot
+    // tell a cached bundle from a download. CDP's cache flags can (bundles are fetched by the page itself,
+    // in `CompositorPool`; per-file images fetched inside workers are not seen here).
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Network.enable');
+    const bundles = { network: [], cached: 0 };
+    cdp.on('Network.responseReceived', ({ response }) => {
+      const url = new URL(response.url).pathname;
+      if (!url.startsWith('/atlases/') || !url.endsWith('.png')) return;
+      if (response.fromDiskCache || response.fromMemoryCache) bundles.cached++;
+      else bundles.network.push(`${response.status} ${url}`);
+    });
+    await page.reload();
+    await waitBoardReady(page);
+    await page.waitForTimeout(3000);
+    return { ...cold, warmBundlesCached: bundles.cached, warmBundlesFromNetwork: bundles.network };
   } finally {
     await context.close();
+    if (profileDir) fs.rmSync(profileDir, { recursive: true, force: true });
   }
 }
 

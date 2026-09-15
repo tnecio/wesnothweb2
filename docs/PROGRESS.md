@@ -3299,3 +3299,35 @@ Gates: golden pixel check 4872/4872 via the worker pool with all unit
 bundles registered (5 bundle downloads, 1 individual file, was 13);
 rendered-board screenshots 0 / 0 / 0 differing pixels; renderer 194 and
 ui 126 tests, renderer tsc and svelte-check clean.
+
+## 2026-09-15 — Phase 28a P7: delivery
+
+- Bundle images already have content-hashed names (P5/P6) and the dev
+  server serves them `immutable`. Production headers are recorded in the
+  Phase 28 deploy bullet of docs/IMPLEMENTATION_PLAN.md: hashed bundle PNGs
+  immutable for a year; manifests and the unhashed per-file images
+  `no-cache` + `ETag`.
+- `measure-load.mjs --warm`: after each cold load, reloads the page in a
+  persistent (disk-cache) Chromium profile and reports, from CDP's cache
+  flags, how many bundle images came from the cache vs the network.
+  Two measurement traps found on the way:
+  - Playwright's `request.sizes()` reports header sizes for disk-cache
+    hits too, so it cannot tell a cached response from a download (the
+    first warm run seemed to re-fetch every bundle).
+  - A plain Playwright context has only an in-memory cache, which does not
+    keep Dead Water 1's ~5 MB terrain bundle; only a profile with a disk
+    cache matches a real browser.
+
+Result (warm reload, 1 run):
+
+| scenario | bundle images from cache | from network |
+|---|---|---|
+| Dead Water 1 | 2 | 0 |
+| Liberty 1 | 3 | 0 |
+| UtBS 1 | 2 | 0 |
+
+The plan's gate ("warm reload makes no image revalidations for atlased
+assets") holds. The ~10 per-file images left per scenario (unit sprites
+fetched outside bundles, e.g. dialog portraits, and engine images) are
+still revalidated on reload, as are the manifests. The optional service
+worker was not built; it belongs with Phase 28's offline work.
