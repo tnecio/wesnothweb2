@@ -79,8 +79,10 @@ async function measureScenario(browser, campaign) {
         const tasks = window.__longTasks.filter((t) => t.start <= until);
         const images = window.__imageRequests.filter((r) => r.start <= until);
         const terrain = performance.getEntriesByName('board:terrain-images')[0];
+        const terrainLayout = performance.getEntriesByName('board:terrain-layout')[0];
         return {
           boardReadyMs,
+          terrainLayoutMs: terrainLayout ? Math.round(terrainLayout.duration) : null,
           terrainImagesMs: terrain ? Math.round(terrain.duration) : null,
           tasks,
           pageImageRequests: images.length,
@@ -89,7 +91,9 @@ async function measureScenario(browser, campaign) {
       },
       { boardReadyMs },
     );
-    return { ...result, imageRequests: network.requests, imageKB: Math.round(network.bytes / 1024) };
+    // Which work actually ran off the main thread (an in-thread fallback would look the same otherwise).
+    const workers = [...new Set(page.workers().map((w) => w.url().replace(/^.*\//, '').replace(/[?#].*$/, '')))];
+    return { ...result, imageRequests: network.requests, imageKB: Math.round(network.bytes / 1024), workers };
   } finally {
     await context.close();
   }

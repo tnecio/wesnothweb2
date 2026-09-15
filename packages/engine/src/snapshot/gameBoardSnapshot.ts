@@ -493,6 +493,20 @@ interface SnapshotContext {
  * `snapshot.unitTypes`' scalar fields -- see this module's doc comment.
  */
 function buildSnapshotContext(snapshot: GameBoardSnapshot): SnapshotContext {
+  // Built once per snapshot object: `GameSession` asks for it through both `gameBoardFromSnapshot` and
+  // `createTypeResolver`, and parsing ~330 unit type configs twice cost ~200-400 ms of main-thread time
+  // while loading a scenario (Phase 28a P3 profile). Sharing also means board units and later-resolved
+  // types use the same `UnitType` instances.
+  const cached = snapshotContexts.get(snapshot);
+  if (cached) return cached;
+  const context = buildSnapshotContextUncached(snapshot);
+  snapshotContexts.set(snapshot, context);
+  return context;
+}
+
+const snapshotContexts = new WeakMap<GameBoardSnapshot, SnapshotContext>();
+
+function buildSnapshotContextUncached(snapshot: GameBoardSnapshot): SnapshotContext {
   const terrainData = buildTerrainTypeData(snapshot);
   const typeCache = new Map<string, UnitType>();
 

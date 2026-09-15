@@ -3113,3 +3113,52 @@ process at ~260% CPU) and starved the workers. A dev-only
 `setRenderingPaused` hook now stops the loop for the check, which then
 takes 14 s for all 4,872 refs. The same contention applies to any
 headless measurement with a live, uncovered board.
+
+## 2026-09-15 — Phase 28a P3: terrain layout off the main thread
+
+A CPU profile of Dead Water 1's load after P2 attributed the remaining
+long tasks (6 tasks > 50 ms, 1,474 ms, longest 603 ms) to:
+- the terrain builder matching `[terrain_graphics]` rules against the map
+  on the main thread (`buildTerrainTiles`/`ruleMatches`/`terrainAt`,
+  ~0.4–0.6 s in one task), after the main thread had also parsed the
+  17.5 MB rules JSON;
+- `buildSnapshotContext` running **twice** per `GameSession` (once via
+  `gameBoardFromSnapshot`, once via `createTypeResolver`), each parsing
+  every unit type config (`WmlConfig.fromJSON` ~170 ms self);
+- Svelte proxy traps (~190 ms): `GameShell` held the 2.3 MB snapshot in
+  `$state(snapshot)`, so every engine read went through a deep proxy.
+
+Changes:
+- `GameShell`: `activeSnapshot` is `$state.raw` (only ever replaced whole).
+- `buildSnapshotContext` is memoised per snapshot object (WeakMap); board
+  units and later-resolved types now share `UnitType` instances.
+- `terrain/terrainLayout.ts`: the terrain layout (every hex's layers +
+  the refs to preload) as a pure function, moved out of
+  `SnapshotBoard.renderTerrainReal`. `terrain/terrainLayout.worker.ts`
+  fetches, parses and revives the rules itself (cached per URL) and runs
+  it; `terrain/terrainLayoutClient.ts` keeps one worker for the page and
+  falls back to in-thread (no Worker, a failed worker, or
+  `__wesnothImageWorkers = false`). `SnapshotBoard` takes
+  `terrainGraphicsRulesUrl` (browser) or an in-memory
+  `terrainGraphicsRules` (tests) and adds a `board:terrain-layout` measure.
+  `GameBoardView` no longer fetches or parses the rules;
+  `ui/src/terrainGraphicsRulesCache.ts` is gone.
+- `measure-load.mjs` reports `terrainLayoutMs` and the page's running
+  workers, so a silent in-thread fallback is visible.
+
+Results (2 cold runs each; P2 → P3):
+
+| scenario | blocked (> 50 ms) | max long task | long tasks | board ready | heap |
+|---|---|---|---|---|---|
+| Dead Water 1 | 1.3–1.4 s → **0.57–0.60 s** | 0.56–0.63 → **0.40–0.41 s** | 7–8 → 6 | 8.7–9.8 → 8.7–9.3 s | 117–150 → 82–104 MB |
+| Liberty 1 | 1.1–1.3 s → **0.48–0.51 s** | 0.55–0.65 → **0.40–0.43 s** | 6 → 4 | 5.4–6.0 → 5.1–5.6 s | 111–141 → 82 MB |
+| UtBS 1 | 1.9–2.0 s → **0.80–0.88 s** | 0.79–0.86 → **0.62–0.70 s** | 9–10 → 8 | 12.5–13.1 → 12.8–12.9 s | 150–159 → 125–133 MB |
+
+Against the P0 baseline, Dead Water 1's main-thread blocked time is down
+from 4.8–7.2 s to 0.57–0.60 s. Every run reported both
+`terrainLayout.worker.ts` and `compositor.worker.ts`; terrain layout takes
+~1.0–1.2 s of wall time inside its worker. The attack exchange is
+unchanged (2.1–2.2 s blocked, first frames 0.87–1.0 s) -- that is not
+terrain work and is left to P4. Gates: rendered-board screenshots 0 / 0 / 0
+differing pixels against the pre-worker baseline; golden pixel check
+4872/4872 via the worker pool; engine 559, renderer 194, ui 126 tests.

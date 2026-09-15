@@ -75,7 +75,6 @@ PIXI.extensions.add(PIXI.SubtractBlend);
 import { Direction, Location, getAdjacentTiles } from '@wesnothweb2/engine/src/model/Location.js';
 import { hexOverlayImages, defaultAssetExists, type FogShroudHex } from './fogShroud.js';
 import { splitTodTintColors } from './todTint.js';
-import { parseTerrainCode, NONE_TERRAIN, type TerrainCode } from '@wesnothweb2/engine/src/model/Terrain.js';
 import {
   hexCorners,
   hexToPixel,
@@ -91,9 +90,10 @@ import { joinRef } from './images/ipf.js';
 import { resolveSideColorId } from './images/teamColor.js';
 import { sampleAnimation, animationDurationMs } from './animation/playback.js';
 import type { UnitAnimationDef } from './animation/unitAnimation.js';
-import { makeLayerSprite, type TerrainLayer } from './terrainPositioning.js';
-import { buildTerrainTiles, getTerrainFramesAt, type TerrainMapQuery } from './terrain/terrainBuilder.js';
+import { makeLayerSprite } from './terrainPositioning.js';
 import type { BuildingRule } from './terrain/terrainGraphicsRules.js';
+import { layoutTerrain, type TerrainLayout } from './terrain/terrainLayout.js';
+import { computeTerrainLayout } from './terrain/terrainLayoutClient.js';
 import {
   ENERGY_BAR,
   energyBarHeight,
@@ -356,14 +356,21 @@ export interface SnapshotBoardOptions {
    */
   onHexRightClick?: (x: number, y: number, clientX: number, clientY: number) => void;
   /**
-   * The real, parsed `[terrain_graphics]` rule list (see
-   * `terrain/terrainGraphicsRules.ts` -- typically fetched as JSON built by
-   * `apps/web/scripts/build-terrain-graphics-rules.mjs` and revived via
-   * `reviveBuildingRules`). When omitted, `renderTerrain` falls back to the
-   * flat-coloured placeholder (`colorForTerrain`) -- useful for tests/tools
-   * that don't want to fetch the ~17MB rule set, or haven't built it yet.
+   * An already parsed `[terrain_graphics]` rule list (see
+   * `terrain/terrainGraphicsRules.ts`, revived via `reviveBuildingRules`),
+   * laid out on the calling thread -- for tests and tools. Takes precedence
+   * over `terrainGraphicsRulesUrl`.
    */
   terrainGraphicsRules?: readonly BuildingRule[];
+  /**
+   * Where the rules JSON is served (built by
+   * `apps/web/scripts/build-terrain-graphics-rules.mjs`). Phase 28a P3: the
+   * browser fetches, parses and matches it in a worker
+   * (`terrain/terrainLayoutClient.ts`). With neither option, or no loadable
+   * rules, `renderTerrain` falls back to the flat-coloured placeholder
+   * (`colorForTerrain`).
+   */
+  terrainGraphicsRulesUrl?: string;
 }
 
 /** What `setHighlights` should currently draw, replacing whatever it drew last call. */
@@ -540,6 +547,7 @@ export class SnapshotBoard {
   private renderQueue: Promise<void> = Promise.resolve();
 
   private readonly terrainGraphicsRules?: readonly BuildingRule[];
+  private readonly terrainGraphicsRulesUrl?: string;
 
   constructor(
     private readonly snapshot: ScenarioSnapshot,
@@ -551,6 +559,7 @@ export class SnapshotBoard {
     this.onHexHover = options.onHexHover;
     this.onHexRightClick = options.onHexRightClick;
     this.terrainGraphicsRules = options.terrainGraphicsRules;
+    this.terrainGraphicsRulesUrl = options.terrainGraphicsRulesUrl;
     this.units = snapshot.units;
     this.teamColor = new Map(snapshot.teams.map((t) => [t.side, t.color]));
     this.stage.addChild(
@@ -623,19 +632,6 @@ export class SnapshotBoard {
     await this.queueRenderUnits();
   }
 
-  /** Builds the `TerrainMapQuery` `terrain/terrainBuilder.ts` needs directly from the snapshot's flat hex list -- see that module's own doc comment for why this is a client-side adapter rather than a real `GameMap`. */
-  private buildTerrainMapQuery(): TerrainMapQuery {
-    const byKey = new Map<string, TerrainCode>();
-    for (const hex of this.snapshot.terrain) byKey.set(`${hex.x},${hex.y}`, parseTerrainCode(hex.code));
-    const { width, height } = this.snapshot.map;
-    return {
-      width,
-      height,
-      terrainAt: (x, y) => byKey.get(`${x},${y}`) ?? NONE_TERRAIN,
-      onBoard: (x, y) => byKey.has(`${x},${y}`),
-    };
-  }
-
   /**
    * Click/hover routing for the whole board through ONE interactive
    * object: `terrainLayer` itself, with a rectangular `hitArea` covering the
@@ -703,11 +699,21 @@ export class SnapshotBoard {
 
   private async renderTerrain(): Promise<void> {
     this.installHitArea();
-    if (!this.terrainGraphicsRules || this.terrainGraphicsRules.length === 0) {
+    const { width, height } = this.snapshot.map;
+    // Phase 28a P3: measured by apps/web/scripts/measure-load.mjs.
+    performance.mark('board:terrain-layout-start');
+    const layout =
+      this.terrainGraphicsRules && this.terrainGraphicsRules.length > 0
+        ? layoutTerrain(this.terrainGraphicsRules, this.snapshot.terrain, width, height)
+        : this.terrainGraphicsRulesUrl
+          ? await computeTerrainLayout(this.terrainGraphicsRulesUrl, this.snapshot.terrain, width, height)
+          : null;
+    performance.measure('board:terrain-layout', 'board:terrain-layout-start');
+    if (!layout) {
       this.renderTerrainFlat();
       return;
     }
-    await this.renderTerrainReal(this.terrainGraphicsRules);
+    await this.renderTerrainReal(layout);
   }
 
   /** The pre-Phase-9 flat-coloured placeholder -- see `SnapshotBoardOptions.terrainGraphicsRules`'s own doc comment on when this still applies. */
@@ -723,52 +729,22 @@ export class SnapshotBoard {
   }
 
   /**
-   * Real per-hex `[terrain_graphics]` image compositing (Phase 9): matches
-   * `rules` against the snapshot's map once (`buildTerrainTiles`), resolves
-   * every hex's final layers for a fixed time-of-day (no ToD system yet --
-   * Phase 12; an empty string matches any `tods=`-unfiltered variant, which
-   * is the overwhelming majority of real content), preloads every image
-   * reference those layers need, then builds one `makeLayerSprite` per
-   * layer -- background layers into `terrainLayer` (under units),
-   * foreground layers (rare -- tall structural pieces) into
-   * `terrainForegroundLayer` (over units).
+   * Real per-hex `[terrain_graphics]` image compositing (Phase 9): given the
+   * map's terrain layout (every hex's layers, including the off-map ring --
+   * see `terrain/terrainLayout.ts`), preloads every image reference those
+   * layers need, then builds one `makeLayerSprite` per layer -- background
+   * layers into `terrainLayer` (under units), foreground layers (rare -- tall
+   * structural pieces) into `terrainForegroundLayer` (over units).
    */
-  private async renderTerrainReal(rules: readonly BuildingRule[]): Promise<void> {
-    const query = this.buildTerrainMapQuery();
-    const offMapCode = parseTerrainCode('_off^_usr');
-    const tiles = buildTerrainTiles(rules as BuildingRule[], query, {
-      offMapCode,
+  private async renderTerrainReal(layout: TerrainLayout): Promise<void> {
+    const perHex = layout.hexes.map((hex) => {
+      const { x: cx, y: cy } = hexToPixel(toHexCoord(hex.x, hex.y));
+      return { ...hex, cx, cy };
     });
-
-    // Every board hex PLUS the one-hex off-map ring around it: upstream draws
-    // that ring too (`display::draw_hex` runs over the border when
-    // `draw_border` is set), which is where the `_off^_usr` background and
-    // the `off-map/border.png` edge fades come from -- without it the map
-    // ends in a hard black sawtooth instead of the real game's soft edge.
-    const { width, height } = this.snapshot.map;
-    const perHex: Array<{
-      x: number;
-      y: number;
-      cx: number;
-      cy: number;
-      bg: TerrainLayer[];
-      fg: TerrainLayer[];
-    }> = [];
-    const refs = new Set<string>();
-    for (let x = -1; x <= width; x++) {
-      for (let y = -1; y <= height; y++) {
-        const { background, foreground } = getTerrainFramesAt(tiles, x, y, '');
-        const { x: cx, y: cy } = hexToPixel(toHexCoord(x, y));
-        perHex.push({ x, y, cx, cy, bg: [...background], fg: [...foreground] });
-        for (const layer of [...background, ...foreground]) {
-          for (const frame of layer.frames) refs.add(hexedRef(joinRef(frame.path, frame.mods)));
-        }
-      }
-    }
 
     // Phase 28a P0: measured by apps/web/scripts/measure-load.mjs.
     performance.mark('board:terrain-images-start');
-    await ImageCache.preload(refs);
+    await ImageCache.preload(layout.refs);
     performance.measure('board:terrain-images', 'board:terrain-images-start');
 
     // One container per hex per layer -- a grouping only (a future per-hex

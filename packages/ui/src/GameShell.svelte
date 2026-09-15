@@ -92,7 +92,10 @@
   } = $props();
 
   /** The scenario currently being played -- reassigned by `continueToNextScenario`. Everything below that used to read the `snapshot` prop directly now reads this instead. */
-  let activeSnapshot = $state(snapshot);
+  // `$state.raw`, not `$state`: the snapshot (~2.3 MB of JSON) is only ever replaced whole (continueToNextScenario),
+  // and a deep proxy made every engine read of it go through Svelte proxy traps -- ~190 ms of main-thread time
+  // plus GC while loading Dead Water 1 (Phase 28a P3 profile).
+  let activeSnapshot = $state.raw(snapshot);
   /** Bound `GameBoardView` instance, so `handleConfirmAttack`/`handleHexClick` can await its imperative `playAnimationSequence` before applying a resolved attack's/move's final state -- see that method's own doc comment. Reassigned across a scenario transition (the `{#key}` block around `<GameBoardView>` remounts it), so `$state`, not a plain `let`, same reasoning as `board` in `GameBoardView.svelte` itself. */
   let boardView: GameBoardView | undefined = $state();
   /**

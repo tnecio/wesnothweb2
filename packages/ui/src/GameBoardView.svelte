@@ -45,7 +45,6 @@
     hexToPixel,
   } from '@wesnothweb2/renderer';
   import type { TimeOfDayEntry } from '@wesnothweb2/engine';
-  import { fetchTerrainGraphicsRules } from './terrainGraphicsRulesCache.js';
   import { fetchTeamColors } from './teamColorsCache.js';
 
   let {
@@ -229,7 +228,7 @@
       // Sprite count is not the bottleneck; see SnapshotBoard's
       // `installHitArea` for what actually was.
       app = new PIXI.Application();
-      const [, terrainGraphicsRules, teamColors] = await Promise.all([
+      const [, teamColors] = await Promise.all([
         app.init({
           backgroundColor: 0x111111,
           resizeTo: host,
@@ -240,7 +239,6 @@
           // from and renders solid black wherever it's applied.
           useBackBuffer: true,
         }),
-        fetchTerrainGraphicsRules(),
         fetchTeamColors(),
       ]);
       if (cancelled) {
@@ -268,7 +266,8 @@
           hoveredHex = { x, y };
           onHexHoverChange?.({ x, y });
         },
-        terrainGraphicsRules,
+        // Phase 28a P3: the rules (~17.5 MB JSON) are fetched, parsed and matched in a worker.
+        terrainGraphicsRulesUrl: '/terrain-graphics-rules.json',
       });
       await newBoard.render();
       if (cancelled) {
