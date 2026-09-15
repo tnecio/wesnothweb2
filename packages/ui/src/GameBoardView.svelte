@@ -405,10 +405,46 @@
     return { x: rect.left + board.stage.x + px * scale, y: rect.top + board.stage.y + py * scale };
   }
 
+  /**
+   * Phase 28a: for rendered-board screenshot comparisons only. Animated
+   * terrain (water, lava...) is a ticker-driven `AnimatedSprite`, so two
+   * captures of the same board otherwise land on different frames. Stops
+   * every animated sprite at frame 0 and renders once.
+   */
+  export function freezeAnimationsForCapture(): boolean {
+    if (!board || !pixiApp) return false;
+    const visit = (node: PIXI.Container): void => {
+      if (node instanceof PIXI.AnimatedSprite) node.gotoAndStop(0);
+      for (const child of node.children) visit(child as PIXI.Container);
+    };
+    visit(board.stage);
+    pixiApp.render();
+    return true;
+  }
+
+  /**
+   * Phase 28a: stops/starts the render loop for verification scripts that
+   * do not need the board drawn (the golden pixel check). Under headless
+   * Chromium's software GL a live full-map render loop takes several CPU
+   * cores and starves the compositor workers.
+   */
+  export function setRenderingPaused(paused: boolean): boolean {
+    if (!pixiApp) return false;
+    if (paused) pixiApp.ticker.stop();
+    else pixiApp.ticker.start();
+    return true;
+  }
+
   // Dev-only hooks for browser measurement/verification scripts (apps/web/scripts/measure-load.mjs,
-  // image-golden.mjs): the shared ImageCache and hex -> client coordinates. Absent in production builds.
+  // image-golden.mjs, board-screenshots.mjs): the shared ImageCache, hex -> client coordinates,
+  // animation freezing and pausing the render loop. Absent in production builds.
   if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV && typeof window !== 'undefined') {
-    (window as unknown as { __wesnothDebug?: unknown }).__wesnothDebug = { imageCache: ImageCache, hexClientPoint };
+    (window as unknown as { __wesnothDebug?: unknown }).__wesnothDebug = {
+      imageCache: ImageCache,
+      hexClientPoint,
+      freezeAnimationsForCapture,
+      setRenderingPaused,
+    };
   }
 
   /** Phase 16: the board's on-screen area, which the `[message]` dialog covers (upstream's `gamemap_*` window variables). */

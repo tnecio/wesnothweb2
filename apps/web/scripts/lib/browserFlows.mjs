@@ -18,20 +18,26 @@ export async function waitBoardReady(page, timeout = 180000) {
 }
 
 /** Clicks through story, objectives and startup dialogue until none is showing. */
-export async function skipToPlay(page, timeout = 120000) {
+// Generous: in Dead Water each startup message re-syncs the board's units, and while
+// ImageCache work runs on the main thread a single advance can take several seconds.
+export async function skipToPlay(page, timeout = 360000) {
   const started = Date.now();
+  const actions = { story: 0, message: 0, ok: 0 };
   let quietRounds = 0;
   while (Date.now() - started < timeout) {
     if (await page.$('.story')) {
       await page.keyboard.press('Escape');
+      actions.story++;
       quietRounds = 0;
     } else if (await page.$('.window[role="dialog"]')) {
       await page.keyboard.press('Enter');
+      actions.message++;
       quietRounds = 0;
     } else {
       const ok = page.getByRole('button', { name: 'OK', exact: true });
       if ((await ok.count()) > 0) {
         await ok.first().click();
+        actions.ok++;
         quietRounds = 0;
       } else if (++quietRounds >= 3) {
         return;
@@ -39,7 +45,7 @@ export async function skipToPlay(page, timeout = 120000) {
     }
     await page.waitForTimeout(300);
   }
-  throw new Error('skipToPlay: still in a pre-play screen after timeout');
+  throw new Error(`skipToPlay: still in a pre-play screen after timeout (pressed ${JSON.stringify(actions)})`);
 }
 
 /** Viewport coordinates of hex (x, y), engine 0-based. */

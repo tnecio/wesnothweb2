@@ -3031,3 +3031,85 @@ in-flight de-duplication, canvas -> texture) and re-exports the moved
 helpers, so no import site changed. `test/compositorIsolation.test.ts`
 walks the compositor's local imports and fails if any imports `pixi.js`.
 Golden check 4872/4872; renderer 194 tests, typecheck clean.
+
+**Second gate: rendered-board screenshots.** Pixel hashes pin each
+texture's own pixels but not what reaches the screen (texture upload,
+alpha handling, layering), and P2 changes texture sources from canvases to
+`ImageBitmap`s. `apps/web/scripts/board-screenshots.mjs` captures the board
+area of Dead Water 1, Liberty 1 and the debug combat scenario after
+skipping to play, and `--compare <dir>` counts differing pixels with
+ImageMagick. Two captures of identical code first differed by 1.33 M
+(Dead Water) and 113 K (Liberty) pixels -- the difference maps covered only
+water: animated terrain is a ticker-driven `AnimatedSprite`, so each
+capture caught a different wave frame. A dev-only
+`freezeAnimationsForCapture()` hook (stops every animated sprite at frame
+0 and renders once) makes captures deterministic: 0 / 0 / 0 differing
+pixels across two runs.
+
+Side finding while building it: in headless Chromium, each of Dead
+Water 1's startup messages takes ~9–11 s to advance. A CPU profile of
+three advances sampled only ~450 ms of page JavaScript, almost all PixiJS
+rendering (including the advanced-blend backbuffer pass for the
+time-of-day tint), so the time is spent outside page script, most likely
+in software GL. Not yet confirmed as a real-browser problem; to be
+measured as frame time in P4.
+
+## 2026-09-15 — Phase 28a P2: compositor workers
+
+- `images/compositor.worker.ts` runs the compositor in a Web Worker: it
+  checks it can composite (OffscreenCanvas 2D + `createImageBitmap` in a
+  worker), receives base URLs and team colour data, renders refs and
+  transfers results back as `ImageBitmap`s (zero-copy).
+- `images/compositorPool.ts` schedules `min(4, cores - 1)` workers from the
+  main thread: per-worker high (single `resolve`: units, animation frames)
+  and low (bulk terrain `preload`) queues, at most 8 jobs in flight per
+  worker so urgent work never waits behind thousands of posted tiles,
+  cancellation on `ImageCache.clear()`, and config re-sent whenever URLs or
+  colours change.
+- **Sharding by source path matters.** The first version dispatched to the
+  least-loaded worker: each worker decodes its own source images, so the
+  same files were downloaded several times -- Dead Water 1 went from 493
+  image requests / 7.6 MB to 991 / 17.9 MB. Routing every ref to the worker
+  owning its source file brought it back to 555 / 7.7 MB (the remainder:
+  hex masks, fetched once per worker).
+- `ImageCache` uses the pool when workers, OffscreenCanvas and a
+  successful readiness check are all present, else composites in-thread
+  (Node tests, older browsers, or `globalThis.__wesnothImageWorkers = false`
+  for A/B runs). Worker results become `PIXI.ImageSource` textures; PixiJS
+  applies the same `premultiply-alpha-on-upload` default as for canvases.
+- `apps/web/vite.config.ts`: `worker.format: 'es'`.
+- `measure-load.mjs` now counts image requests at the network level: the
+  page's resource timing does not see fetches made inside workers (the
+  first worker run reported 10 "requests").
+
+Results (headless Chromium, software GL, dev server; P0 baseline → P2):
+
+| scenario | blocked (> 50 ms) | long tasks | max long task | board ready | image requests / KB | heap |
+|---|---|---|---|---|---|---|
+| Dead Water 1 | 4.8–7.2 s → **1.3–1.4 s** | 31–36 → **7–8** | 0.67–1.04 → 0.56–0.63 s | 9.5–14.0 → 8.7–9.8 s | 493 / 7,639 → 555 / 7,679 | 290–307 → 117–150 MB |
+| Liberty 1 | 2.4–2.5 s → **1.1–1.3 s** | 13–14 → **6** | 0.56–0.60 → 0.55–0.65 s | 5.4–5.6 → 5.4–6.0 s | 450 / 5,013 → 470 / 5,025 | 150–159 → 111–141 MB |
+| UtBS 1 | 9.5–10.0 s → **1.9–2.0 s** | 55–57 → **9–10** | 0.92–0.94 → 0.79–0.86 s | 16.2 → 12.5–13.1 s | 462 / 6,148 → 530 / 6,196 | 242 → 150–159 MB |
+
+Attack in the debug combat scenario: first animation's frames ready in
+**0.76–0.89 s** (was 2.2–2.4 s); blocked time during the exchange 2.0–2.1 s
+(was 3.1 s). The remaining long tasks (up to ~0.6–0.9 s) and the attack's
+blocked time are no longer image compositing -- P3/P4 look at what they
+are (texture upload, sprite creation, terrain building, unit sync).
+
+Gates: rendered-board screenshots **0 / 0 / 0 differing pixels** against
+the pre-worker baseline (Dead Water 1, Liberty 1, debug combat), captured
+on their own -- a run made concurrently with the golden check failed to
+reach play in time, so these gates must not run in parallel on this
+machine. The golden check now processes refs in a fixed shuffled order:
+sorted, a batch holds hundreds of tiles cut from one source file, which
+sharding routes to a single worker.
+
+Golden pixel check on the worker path: **4872/4872 refs match**, reported
+as produced by the worker pool (3 workers) -- the check now prints which
+compositor ran, since a silent in-thread fallback would also match. It
+first crawled at ~0.3 s per ref: the debug scenario has no story, so the
+board's render loop ran at full rate under software GL (Chromium's GPU
+process at ~260% CPU) and starved the workers. A dev-only
+`setRenderingPaused` hook now stops the loop for the check, which then
+takes 14 s for all 4,872 refs. The same contention applies to any
+headless measurement with a live, uncovered board.

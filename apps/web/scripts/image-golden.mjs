@@ -32,14 +32,25 @@ const base = arg('base', 'http://localhost:5173');
 const record = args.includes('--record');
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const fixture = path.join(repoRoot, 'packages/renderer/fixtures/imagecache-golden.json');
+/** `--log <file>`: progress written synchronously, so it survives the process being killed. */
+const logFile = arg('log', null);
+const progress = (line) => {
+  if (logFile) fs.appendFileSync(logFile, `${new Date().toISOString()} ${line}\n`);
+};
 
 /** Runs in the page: SHA-256 of a texture's RGBA pixels, prefixed with its size. */
 const hashInPage = async ({ refs, fresh }) => {
   const cache = window.__wesnothDebug.imageCache;
   const toHex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
   const out = {};
-  for (const ref of refs) {
-    const texture = fresh ? await cache.resolveRefForTest(ref) : cache.getRef(ref);
+  // Resolve the whole batch concurrently (as the board does), then read pixels back one by one.
+  const t0 = performance.now();
+  const textures = fresh ? await Promise.all(refs.map((ref) => cache.resolveRefForTest(ref))) : refs.map((ref) => cache.getRef(ref));
+  const resolveMs = performance.now() - t0;
+  let readbackMs = 0;
+  for (const [index, ref] of refs.entries()) {
+    const texture = textures[index];
+    const t1 = performance.now();
     const source = texture?.source?.resource;
     if (!source) {
       out[ref] = null;
@@ -51,8 +62,10 @@ const hashInPage = async ({ refs, fresh }) => {
     const g = canvas.getContext('2d', { willReadFrequently: true });
     g.drawImage(source, 0, 0);
     const pixels = g.getImageData(0, 0, w, h).data;
+    readbackMs += performance.now() - t1;
     out[ref] = `${w}x${h}:${toHex(await crypto.subtle.digest('SHA-256', pixels))}`;
   }
+  out.__timing = { resolveMs: Math.round(resolveMs), readbackMs: Math.round(readbackMs) };
   return out;
 };
 
@@ -60,9 +73,14 @@ async function withScenario(browser, campaign, scenario, fn) {
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
   const page = await context.newPage();
   page.on('pageerror', (e) => console.error(`[${campaign}] page error: ${e.message}`));
+  page.on('console', (m) => {
+    if (m.type() === 'warning' || m.type() === 'error') progress(`[${campaign}] console ${m.type()}: ${m.text().slice(0, 300)}`);
+  });
   try {
+    progress(`[${campaign}] opening`);
     await openScenario(page, base, campaign, scenario);
     await waitBoardReady(page);
+    progress(`[${campaign}] board ready`);
     return await fn(page);
   } finally {
     await context.close();
@@ -98,10 +116,53 @@ try {
     console.log(`recorded ${Object.keys(sorted).length} refs to ${path.relative(repoRoot, fixture)}${missing.length ? ` (${missing.length} unresolvable, skipped)` : ''}`);
   } else {
     const golden = JSON.parse(fs.readFileSync(fixture, 'utf8')).refs;
-    const refs = Object.keys(golden);
+    // A fixed shuffle, not the fixture's sorted order: sorted refs put hundreds of tiles cut from the
+    // same source file into one batch, which the compositor pool (sharded by source path) would route
+    // to a single worker. A real board's refs are spread out, so this keeps the check representative.
+    const refs = Object.keys(golden)
+      .map((ref, i) => ({ ref, key: Math.imul(i + 1, 2654435761) >>> 0 }))
+      .sort((a, b) => a.key - b.key)
+      .map((e) => e.ref);
     const actual = await withScenario(browser, 'synthetic_combat', undefined, async (page) => {
+      // The check never looks at the board; a live render loop under software GL starves the workers.
+      const paused = await page.evaluate(() => window.__wesnothDebug.setRenderingPaused?.(true) ?? false);
+      progress(`render loop paused: ${paused}`);
       const out = {};
-      for (let i = 0; i < refs.length; i += 200) Object.assign(out, await page.evaluate(hashInPage, { refs: refs.slice(i, i + 200), fresh: true }));
+      const t0 = Date.now();
+      for (let i = 0; i < refs.length; i += 200) {
+        progress(`batch ${i}-${i + 200} start`);
+        const batch = await page.evaluate(hashInPage, { refs: refs.slice(i, i + 200), fresh: true });
+        const timing = batch.__timing;
+        delete batch.__timing;
+        Object.assign(out, batch);
+        progress(`batch ${i}-${i + 200} done after ${Math.round((Date.now() - t0) / 1000)} s (resolve ${timing?.resolveMs} ms, readback ${timing?.readbackMs} ms)`);
+        if (args.includes('--verbose') || logFile) {
+          const state = await page.evaluate(() => {
+            const cache = window.__wesnothDebug.imageCache;
+            const pool = cache.pool;
+            return pool
+              ? {
+                  workers: pool.slots.length,
+                  inFlight: pool.slots.map((s) => s.inFlight),
+                  high: pool.slots.map((s) => s.high.length),
+                  low: pool.slots.map((s) => s.low.length),
+                  waiting: pool.waiting.size,
+                  pending: cache.pending.size,
+                }
+              : { pool: String(pool), pending: cache.pending.size };
+          });
+          const line = `${Math.min(i + 200, refs.length)}/${refs.length} after ${Math.round((Date.now() - t0) / 1000)} s ${JSON.stringify(state)}`;
+          progress(line);
+          if (args.includes('--verbose')) console.log(line);
+        }
+      }
+      // Which compositor produced these: a silent fallback to in-thread would also match.
+      const path = await page.evaluate(async () => {
+        const cache = window.__wesnothDebug.imageCache;
+        const usable = cache.poolUsable ? await cache.poolUsable : false;
+        return cache.pool && usable ? `worker pool (${cache.pool.slots.length} workers)` : 'in-thread';
+      });
+      console.log(`compositor: ${path}`);
       return out;
     });
     const diffs = refs.filter((r) => actual[r] !== golden[r]);

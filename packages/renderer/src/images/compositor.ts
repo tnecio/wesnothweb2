@@ -108,6 +108,11 @@ export function setEngineImageBaseUrl(base: string): void {
   engineImageBaseUrl = base.replace(/\/+$/, '')
 }
 
+/** The current base URLs, for handing to a worker compositor (each worker has its own copy of this module). */
+export function getImageBaseUrls(): { image: string; engine: string } {
+  return { image: imageBaseUrl, engine: engineImageBaseUrl }
+}
+
 /**
  * Turn an engine image reference into a fetchable URL.
  *

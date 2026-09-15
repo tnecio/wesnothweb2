@@ -46,16 +46,34 @@ const summarise = (tasks) => ({
   blockedMs: Math.round(tasks.reduce((s, t) => s + Math.max(0, t.ms - 50), 0)),
 });
 
+/**
+ * Counts image requests at the network level. The page's own resource timing
+ * does not see fetches made inside Web Workers (the compositor pool), so it
+ * would undercount once compositing moved off the main thread.
+ */
+function countImageRequests(context) {
+  const counter = { requests: 0, bytes: 0, frozen: false };
+  context.on('response', async (response) => {
+    if (counter.frozen || !/\.(png|webp|jpe?g)(\?|$)/.test(response.url())) return;
+    counter.requests++;
+    const length = Number(response.headers()['content-length']);
+    if (Number.isFinite(length)) counter.bytes += length;
+  });
+  return counter;
+}
+
 async function measureScenario(browser, campaign) {
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
   await context.addInitScript(installObservers);
+  const network = countImageRequests(context);
   const page = await context.newPage();
   try {
     await openScenario(page, base, campaign);
     await waitBoardReady(page);
     const boardReadyMs = Math.round(await page.evaluate(() => performance.now()));
     await page.waitForTimeout(3000);
-    return await page.evaluate(
+    network.frozen = true;
+    const result = await page.evaluate(
       ({ boardReadyMs }) => {
         const until = boardReadyMs + 3000;
         const tasks = window.__longTasks.filter((t) => t.start <= until);
@@ -65,13 +83,13 @@ async function measureScenario(browser, campaign) {
           boardReadyMs,
           terrainImagesMs: terrain ? Math.round(terrain.duration) : null,
           tasks,
-          imageRequests: images.length,
-          imageKB: Math.round(images.reduce((s, r) => s + r.bytes, 0) / 1024),
+          pageImageRequests: images.length,
           heapMB: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null,
         };
       },
       { boardReadyMs },
     );
+    return { ...result, imageRequests: network.requests, imageKB: Math.round(network.bytes / 1024) };
   } finally {
     await context.close();
   }
@@ -80,24 +98,26 @@ async function measureScenario(browser, campaign) {
 async function measureAttack(browser) {
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
   await context.addInitScript(installObservers);
+  const network = countImageRequests(context);
   const page = await context.newPage();
   try {
     await openScenario(page, base, 'synthetic_combat');
     await waitBoardReady(page);
     await skipToPlay(page);
     await page.waitForTimeout(2000);
-    const before = await page.evaluate(() => ({ at: performance.now(), images: window.__imageRequests.length }));
+    const requestsBefore = network.requests;
+    const before = await page.evaluate(() => ({ at: performance.now() }));
     await performAttack(page, { x: 1, y: 2 }, { x: 2, y: 2 });
-    return await page.evaluate((before) => {
+    const result = await page.evaluate((before) => {
       const frames = performance.getEntriesByName('anim:frames').map((e) => e.duration);
       return {
         animations: frames.length,
         firstFramesMs: frames.length ? Math.round(frames[0]) : null,
         maxFramesMs: Math.round(Math.max(0, ...frames)),
-        imageRequests: window.__imageRequests.length - before.images,
         tasks: window.__longTasks.filter((t) => t.start >= before.at),
       };
     }, before);
+    return { ...result, imageRequests: network.requests - requestsBefore };
   } finally {
     await context.close();
   }
