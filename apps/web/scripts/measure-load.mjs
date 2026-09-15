@@ -54,7 +54,7 @@ const summarise = (tasks) => ({
 function countImageRequests(context) {
   // `requests`/`bytes` count what actually crossed the network; responses served from the HTTP cache
   // (e.g. a second compositor worker asking for the same immutable bundle) are counted in `cacheHits`.
-  const counter = { requests: 0, bytes: 0, cacheHits: 0, frozen: false };
+  const counter = { requests: 0, bytes: 0, cacheHits: 0, urls: [], frozen: false };
   context.on('requestfinished', async (request) => {
     if (counter.frozen || !/\.(png|webp|jpe?g)(\?|$)/.test(request.url())) return;
     const sizes = await request.sizes().catch(() => null);
@@ -63,6 +63,7 @@ function countImageRequests(context) {
       return;
     }
     counter.requests++;
+    counter.urls.push(new URL(request.url()).pathname);
     counter.bytes += Math.max(0, sizes.responseBodySize);
   });
   return counter;
@@ -127,7 +128,7 @@ async function measureAttack(browser) {
         tasks: window.__longTasks.filter((t) => t.start >= before.at),
       };
     }, before);
-    return { ...result, imageRequests: network.requests - requestsBefore };
+    return { ...result, imageRequests: network.requests - requestsBefore, imageUrls: network.urls.slice(requestsBefore) };
   } finally {
     await context.close();
   }

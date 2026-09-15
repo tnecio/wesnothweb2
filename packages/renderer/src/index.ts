@@ -20,6 +20,7 @@ export {
   setImageBaseUrl,
   setEngineImageBaseUrl,
 } from './images/ImageCache'
+export { unitBundleManifestUrl } from './images/compositor'
 
 // ── Unit HP/XP bar, moves orb, status tint ──────────────────────────────────
 export {

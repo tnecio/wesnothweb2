@@ -3255,3 +3255,47 @@ baseline: 0 differing pixels on Dead Water 1, Liberty 1 and debug combat.
 animations (Dead Water 1's capture otherwise timed out under software GL);
 it keeps element screenshots, since a page clip of the same fractional box
 resampled the bottom row (1,592 false differences).
+
+## 2026-09-15 — Phase 28a P6: unit type bundles
+
+- `build-image-atlases.mjs` also builds one bundle per unit type into
+  `public/atlases/units/<stem>.json` + `<stem>-<n>.<hash>.png` (stem =
+  `unitBundleStem(typeId)`, e.g. `Elvish_0020Fighter`) and an `index.json`
+  for tools. Sources: every `image=`/`image_diagonal=` (step syntax
+  expanded with `parseStepSequence`) and `image_mod=` anywhere in the
+  flattened type config -- base sprite, variations, genders, every
+  animation and missile frame -- minus `[advancement]` icons; portraits
+  and halos are not drawn by the board and stay out. A type id found in
+  several snapshots gets the union of their images, so one bundle serves
+  every scenario. 444 types, 30 MB, 26 s; a type is only re-encoded when
+  its image list changes, and an unchanged run is a 1 s no-op.
+- Runtime: `GameBoardView` registers the bundles of recruitable types
+  (downloaded on first use) and of every type on the board, downloaded
+  immediately (`ImageCache.addAtlasManifests(urls, { prefetch: true })`
+  → `CompositorPool.prefetchAtlasBundle`), again whenever the unit list
+  changes (recruits, spawns, advancement). Manifests now also go through
+  the pool's shared download, and a lookup loads all registered manifests
+  in parallel.
+
+Results (1 cold run; P5 → P6):
+
+| | image requests / KB | board ready |
+|---|---|---|
+| Dead Water 1 | 15 / 8,354 → 15 / 8,485 | 8.0 → 8.0 s |
+| Liberty 1 | 15 / 5,260 → 13 / 5,379 | 4.3 → 4.4 s |
+| UtBS 1 | 9 / 6,926 → 10 / 6,928 | 11.0 → 11.4 s |
+| attack, `synth_combat_01` | image requests during the exchange: 2 | first frames 1.13 s |
+
+Load request counts barely move: unit base sprites were already few, and
+each on-board type is now one bundle instead of one file. The attack's
+animation frames all come from bundles; the 2 remaining requests are the
+attack dialog's DOM `<img>` unit images (`AttackDialog.svelte`), which do
+not go through the compositor, so the plan's "zero image requests during
+an attack" holds for the board but not for the dialog. First frames took
+1.13 s in this run (P4: 0.76–0.87 s over 2 runs); not investigated yet,
+and headless software GL makes single runs noisy.
+
+Gates: golden pixel check 4872/4872 via the worker pool with all unit
+bundles registered (5 bundle downloads, 1 individual file, was 13);
+rendered-board screenshots 0 / 0 / 0 differing pixels; renderer 194 and
+ui 126 tests, renderer tsc and svelte-check clean.

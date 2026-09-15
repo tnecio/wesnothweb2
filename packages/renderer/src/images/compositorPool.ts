@@ -137,6 +137,19 @@ export class CompositorPool {
     return blob
   }
 
+  /**
+   * Phase 28a P6: downloads a manifest and every bundle image it lists into the shared cache now, so the
+   * first use (e.g. an attack animation) needs no network. Workers still decode on first use.
+   */
+  prefetchAtlasBundle(manifestUrl: string): void {
+    void this.atlasBlob(manifestUrl).then(async (blob) => {
+      if (!blob || !blob.type.includes('json')) return
+      const manifest = JSON.parse(await blob.text()) as { atlases?: { file: string }[] }
+      const dir = manifestUrl.slice(0, manifestUrl.lastIndexOf('/') + 1)
+      for (const atlas of manifest.atlases ?? []) void this.atlasBlob(`${dir}${atlas.file}`)
+    }).catch(() => undefined)
+  }
+
   render(ref: string, priority: RenderPriority): Promise<ImageBitmap | null> {
     return new Promise((resolve) => {
       const job: Job = { id: this.nextId++, ref, resolve }

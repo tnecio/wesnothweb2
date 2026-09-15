@@ -43,6 +43,7 @@
     type UnitAnimationCue,
     type FogShroudHex,
     hexToPixel,
+    unitBundleManifestUrl,
   } from '@wesnothweb2/renderer';
   import type { TimeOfDayEntry } from '@wesnothweb2/engine';
   import { fetchTeamColors } from './teamColorsCache.js';
@@ -259,6 +260,10 @@
       // Phase 28a P5: this scenario's terrain bundle (built by apps/web/scripts/build-image-atlases.mjs).
       // Images not in it are fetched on their own, so a missing bundle only costs requests.
       ImageCache.setAtlasManifests([`/atlases/${snapshot.scenario.id}/terrain.json`]);
+      // Phase 28a P6: recruitable types' bundles are registered (downloaded on first use)...
+      ImageCache.addAtlasManifests(snapshot.teams.flatMap((team) => team.recruit ?? []).map(unitBundleManifestUrl));
+      // ...and types on the board are downloaded now, so their first animation needs no network.
+      registerUnitBundles(units);
 
       const newBoard = new SnapshotBoard(snapshot, {
         imageBaseUrl: '/game-images',
@@ -320,9 +325,20 @@
     else app.ticker.start();
   });
 
+  /**
+   * Phase 28a P6: registers and prefetches the image bundle of every unit
+   * type in `list` (spawns, recruits, advancements appear here as they
+   * happen). Bundles are only a cache: a type without one fetches files.
+   */
+  function registerUnitBundles(list: readonly SnapshotUnit[]): void {
+    ImageCache.addAtlasManifests(new Set(list.map((unit) => unitBundleManifestUrl(unit.typeId))), { prefetch: true });
+  }
+
   $effect(() => {
     const liveUnits = units;
-    void board?.updateUnits(liveUnits);
+    if (!board) return;
+    registerUnitBundles(liveUnits);
+    void board.updateUnits(liveUnits);
   });
 
   $effect(() => {

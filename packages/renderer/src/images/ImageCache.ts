@@ -67,6 +67,26 @@ class ImageCacheImpl {
     this.pool?.setAtlasManifests(this.atlasManifests)
   }
 
+  /**
+   * Phase 28a P6: appends bundle manifests not already registered (unit
+   * type bundles as types appear). With `prefetch`, their bundle images are
+   * downloaded right away (worker pool only) so first use needs no network.
+   */
+  addAtlasManifests(urls: Iterable<string>, options: { prefetch?: boolean } = {}): void {
+    const added = [...new Set(urls)].filter((url) => !this.atlasManifests.includes(url))
+    if (added.length > 0) this.setAtlasManifests([...this.atlasManifests, ...added])
+    if (options.prefetch) {
+      this.ensurePool()
+      for (const url of urls) {
+        if (this.prefetched.has(url)) continue
+        this.prefetched.add(url)
+        this.pool?.prefetchAtlasBundle(url)
+      }
+    }
+  }
+
+  private readonly prefetched = new Set<string>()
+
   /** The palettes/ranges/defaultColors supplied via `setColorData`, or `null` if none has been set yet. */
   getColorData(): ColorData | null {
     return this.compositor.getColorData()
@@ -122,12 +142,15 @@ class ImageCacheImpl {
   }
 
   /** Composites `ref` in a worker when the pool is usable, else in-thread. */
+  private ensurePool(): void {
+    if (this.pool !== undefined) return
+    this.pool = workersWanted() ? CompositorPool.create(defaultPoolSize(), this.compositor.getColorData()) : null
+    this.pool?.setAtlasManifests(this.atlasManifests)
+    this.poolUsable = this.pool ? this.pool.ready : Promise.resolve(false)
+  }
+
   private async render(ref: string, priority: RenderPriority): Promise<CompositedImage | ImageBitmap | null> {
-    if (this.pool === undefined) {
-      this.pool = workersWanted() ? CompositorPool.create(defaultPoolSize(), this.compositor.getColorData()) : null
-      this.pool?.setAtlasManifests(this.atlasManifests)
-      this.poolUsable = this.pool ? this.pool.ready : Promise.resolve(false)
-    }
+    this.ensurePool()
     if (this.pool && (await this.poolUsable)) return this.pool.render(ref, priority)
     if (this.pool) {
       // A worker could not composite: fall back for good.

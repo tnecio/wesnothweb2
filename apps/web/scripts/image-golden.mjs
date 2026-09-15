@@ -133,6 +133,9 @@ try {
       // Take source images from the terrain bundles of every scenario the corpus came from (when built), so
       // the check covers cropping from bundles; anything not bundled is fetched on its own as usual.
       const manifests = ['01_Invasion', '01_The_Raid', 'synth_combat_01'].map((id) => `/atlases/${id}/terrain.json`);
+      // ...and every unit type bundle (P6), so unit frames are cropped from bundles too.
+      const unitIndex = await page.evaluate(() => fetch('/atlases/units/index.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({})));
+      for (const stem of Object.values(unitIndex)) manifests.push(`/atlases/units/${stem}.json`);
       await page.evaluate((urls) => window.__wesnothDebug.imageCache.setAtlasManifests(urls), manifests);
       const fetched = { bundle: 0, file: 0 };
       page.context().on('response', (res) => {

@@ -1375,7 +1375,9 @@ main-thread blocked time while loading 4.8–7.2 s → 0.32 s, longest task
 hashes + rendered-board screenshots). Beyond the plan, profiling also
 removed a deep Svelte proxy of the snapshot, a duplicated snapshot context
 build and eager parsing of every unit type. P5 (terrain bundles) delivered:
-Dead Water 1 image requests 555 → 15, pixels unchanged. P6–P7 in progress.
+Dead Water 1 image requests 555 → 15, pixels unchanged. P6 (unit type
+bundles) delivered: attack animation frames come from bundles (the attack
+dialog's 2 DOM portraits still fetch files). P7 in progress.
 
 **Problem, measured** (Dead Water 1, headless Chromium, Vite dev server):
 - **Jank.** `ImageCache` runs entirely on the main thread: every IPF op

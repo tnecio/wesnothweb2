@@ -143,7 +143,21 @@ export function rootedImagePath(path: string): string {
   return `core/images/${clean}`
 }
 
-/** One image bundle manifest (`public/atlases/<scenario>/terrain.json`). */
+/**
+ * Phase 28a P6: file-name stem of a unit type's bundle -- the type id with
+ * everything but letters, digits and `-` escaped as `_` + 4 hex digits
+ * ("Elvish Fighter" -> "Elvish_0020Fighter"), so ids map to distinct, URL-safe names.
+ */
+export function unitBundleStem(typeId: string): string {
+  return typeId.replace(/[^A-Za-z0-9-]/g, (c) => `_${c.charCodeAt(0).toString(16).padStart(4, '0')}`)
+}
+
+/** Manifest URL of a unit type's bundle (built by `apps/web/scripts/build-image-atlases.mjs`). */
+export function unitBundleManifestUrl(typeId: string): string {
+  return `/atlases/units/${unitBundleStem(typeId)}.json`
+}
+
+/** One image bundle manifest (`public/atlases/<scenario>/terrain.json`, `public/atlases/units/<type>.json`). */
 export interface AtlasManifest {
   atlases: { file: string; width: number; height: number }[]
   /** Rooted image path -> [atlas index, x, y, width, height]. */
@@ -223,11 +237,10 @@ export class Compositor {
   private loadManifest(url: string): Promise<AtlasManifest | null> {
     let manifest = this.manifests.get(url)
     if (!manifest) {
-      manifest = fetch(url)
-        .then(async (res) => {
-          if (!res.ok || !(res.headers.get('content-type') ?? '').includes('json')) return null
-          return (await res.json()) as AtlasManifest
-        })
+      // Through the atlas fetcher too, so workers share one download. A missing file may come back as the
+      // dev server's HTML page, hence the type check.
+      manifest = this.atlasFetcher(url)
+        .then(async (blob) => (blob && blob.type.includes('json') ? (JSON.parse(await blob.text()) as AtlasManifest) : null))
         .catch(() => null)
       this.manifests.set(url, manifest)
     }
@@ -263,8 +276,12 @@ export class Compositor {
   /** The image from a bundle, or undefined when no loaded manifest has it. */
   private async fromAtlas(path: string): Promise<ImageBitmap | null | undefined> {
     const rooted = rootedImagePath(path)
-    for (const manifestUrl of this.atlasManifestUrls) {
-      const manifest = await this.loadManifest(manifestUrl)
+    const urls = this.atlasManifestUrls
+    // Manifests load in parallel (a board can register dozens of unit type bundles); first match in list order wins.
+    const manifests = await Promise.all(urls.map((url) => this.loadManifest(url)))
+    for (let i = 0; i < urls.length; i++) {
+      const manifestUrl = urls[i]!
+      const manifest = manifests[i]
       const rect = manifest?.images[rooted]
       if (!manifest || !rect) continue
       const [index, x, y, w, h] = rect

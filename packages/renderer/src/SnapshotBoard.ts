@@ -208,6 +208,8 @@ export interface SnapshotTeam {
   gold: number;
   teamName: string;
   color: string;
+  /** Recruitable unit type ids (engine `SnapshotTeam.recruit`); their image bundles are registered up front. */
+  recruit?: string[];
 }
 
 export interface ScenarioSnapshot {
