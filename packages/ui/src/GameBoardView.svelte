@@ -256,6 +256,9 @@
       // `defaultColors`) rather than relying on `ImageCache`'s own
       // side-number fallback.
       ImageCache.setColorData(teamColors ? { ...teamColors, sideRanges: {} } : null);
+      // Phase 28a P5: this scenario's terrain bundle (built by apps/web/scripts/build-image-atlases.mjs).
+      // Images not in it are fetched on their own, so a missing bundle only costs requests.
+      ImageCache.setAtlasManifests([`/atlases/${snapshot.scenario.id}/terrain.json`]);
 
       const newBoard = new SnapshotBoard(snapshot, {
         imageBaseUrl: '/game-images',

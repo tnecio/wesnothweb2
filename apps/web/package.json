@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:atlases": "tsx scripts/build-image-atlases.mjs",
+    "predev": "npm run build:atlases",
     "dev": "vite",
+    "prebuild": "npm run build:atlases",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "svelte-check --tsconfig ./tsconfig.json"
@@ -18,8 +21,10 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.1",
     "playwright": "^1.63.0",
+    "pngjs": "^7.0.0",
     "svelte": "^5.43.8",
     "svelte-check": "^4.4.5",
+    "tsx": "^4.23.13",
     "typescript": "^5.9.3",
     "vite": "^6.4.3"
   }

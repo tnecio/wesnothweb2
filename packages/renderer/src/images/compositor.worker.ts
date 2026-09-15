@@ -6,18 +6,24 @@
  * createImageBitmap inside a worker: Chromium, Firefox 105+, Safari 16.4+)
  * and reports `ready`; the pool falls back to in-thread compositing if any
  * worker cannot. Results are transferred as `ImageBitmap`s (zero-copy).
+ *
+ * Image bundles (P5) are not fetched here: the worker asks the pool
+ * (`needAtlas`), which downloads each bundle once and hands every worker the
+ * same `Blob` (`atlas`) -- Blobs cross to workers without copying bytes.
  */
 import { Compositor, setEngineImageBaseUrl, setImageBaseUrl } from './compositor'
 import type { ColorData } from './teamColor'
 
 export type ToCompositorWorker =
-  | { type: 'config'; imageBaseUrl: string; engineImageBaseUrl: string; colors: ColorData | null }
+  | { type: 'config'; imageBaseUrl: string; engineImageBaseUrl: string; colors: ColorData | null; atlasManifests: string[] }
   | { type: 'render'; id: number; ref: string }
+  | { type: 'atlas'; url: string; blob: Blob | null }
   | { type: 'clear' }
 
 export type FromCompositorWorker =
   | { type: 'ready'; ok: boolean; reason?: string }
   | { type: 'result'; id: number; bitmap: ImageBitmap | null; error?: string }
+  | { type: 'needAtlas'; url: string }
 
 interface WorkerScope {
   postMessage(message: FromCompositorWorker, transfer?: Transferable[]): void
@@ -26,6 +32,21 @@ interface WorkerScope {
 
 const scope = self as unknown as WorkerScope
 const compositor = new Compositor()
+
+/** Bundle requests waiting for the pool's answer, by URL. */
+const atlasWaiters = new Map<string, ((blob: Blob | null) => void)[]>()
+compositor.setAtlasFetcher(
+  (url) =>
+    new Promise((resolve) => {
+      const waiters = atlasWaiters.get(url)
+      if (waiters) {
+        waiters.push(resolve)
+        return
+      }
+      atlasWaiters.set(url, [resolve])
+      scope.postMessage({ type: 'needAtlas', url })
+    }),
+)
 
 function compositingProblem(): string | null {
   try {
@@ -45,7 +66,14 @@ scope.onmessage = (event) => {
       setImageBaseUrl(message.imageBaseUrl)
       setEngineImageBaseUrl(message.engineImageBaseUrl)
       compositor.setColorData(message.colors)
+      compositor.setAtlasManifests(message.atlasManifests)
       return
+    case 'atlas': {
+      const waiters = atlasWaiters.get(message.url) ?? []
+      atlasWaiters.delete(message.url)
+      for (const resolve of waiters) resolve(message.blob)
+      return
+    }
     case 'clear':
       compositor.clear()
       return

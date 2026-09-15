@@ -38,6 +38,7 @@ class ImageCacheImpl {
   private readonly compositor = new Compositor()
   /** Worker pool; `undefined` until first needed, `null` when unavailable. */
   private pool: CompositorPool | null | undefined
+  private atlasManifests: readonly string[] = []
   private poolUsable: Promise<boolean> | undefined
 
   /** Fully resolved textures, keyed by `path~mods`. (Read by apps/web/scripts/image-golden.mjs.) */
@@ -53,6 +54,17 @@ class ImageCacheImpl {
   setColorData(colors: ColorData | null): void {
     this.compositor.setColorData(colors)
     this.pool?.setColorData(colors)
+  }
+
+  /**
+   * Phase 28a P5: image bundle manifests (e.g. a scenario's
+   * `/atlases/<id>/terrain.json`) to take source images from; see
+   * `Compositor.setAtlasManifests`. Replaces the previous list.
+   */
+  setAtlasManifests(urls: readonly string[]): void {
+    this.atlasManifests = [...urls]
+    this.compositor.setAtlasManifests(this.atlasManifests)
+    this.pool?.setAtlasManifests(this.atlasManifests)
   }
 
   /** The palettes/ranges/defaultColors supplied via `setColorData`, or `null` if none has been set yet. */
@@ -113,6 +125,7 @@ class ImageCacheImpl {
   private async render(ref: string, priority: RenderPriority): Promise<CompositedImage | ImageBitmap | null> {
     if (this.pool === undefined) {
       this.pool = workersWanted() ? CompositorPool.create(defaultPoolSize(), this.compositor.getColorData()) : null
+      this.pool?.setAtlasManifests(this.atlasManifests)
       this.poolUsable = this.pool ? this.pool.ready : Promise.resolve(false)
     }
     if (this.pool && (await this.poolUsable)) return this.pool.render(ref, priority)

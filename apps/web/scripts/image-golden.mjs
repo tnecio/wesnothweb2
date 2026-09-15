@@ -91,6 +91,9 @@ async function cachedRefs(page) {
   return page.evaluate(() => [...window.__wesnothDebug.imageCache.textures.keys()]);
 }
 
+/** Check mode: image requests seen while re-resolving the corpus (bundle images vs individual files). */
+let checkFetches = null;
+
 const browser = await chromium.launch();
 try {
   if (record) {
@@ -127,6 +130,17 @@ try {
       // The check never looks at the board; a live render loop under software GL starves the workers.
       const paused = await page.evaluate(() => window.__wesnothDebug.setRenderingPaused?.(true) ?? false);
       progress(`render loop paused: ${paused}`);
+      // Take source images from the terrain bundles of every scenario the corpus came from (when built), so
+      // the check covers cropping from bundles; anything not bundled is fetched on its own as usual.
+      const manifests = ['01_Invasion', '01_The_Raid', 'synth_combat_01'].map((id) => `/atlases/${id}/terrain.json`);
+      await page.evaluate((urls) => window.__wesnothDebug.imageCache.setAtlasManifests(urls), manifests);
+      const fetched = { bundle: 0, file: 0 };
+      page.context().on('response', (res) => {
+        const url = res.url();
+        if (url.includes('/atlases/') && url.endsWith('.png')) fetched.bundle++;
+        else if (/\/game-images(-engine)?\/.*\.(png|webp|jpe?g)$/.test(url)) fetched.file++;
+      });
+      checkFetches = fetched;
       const out = {};
       const t0 = Date.now();
       for (let i = 0; i < refs.length; i += 200) {
@@ -165,6 +179,7 @@ try {
       console.log(`compositor: ${path}`);
       return out;
     });
+    if (checkFetches) console.log(`image fetches during the check: ${checkFetches.bundle} bundle images, ${checkFetches.file} individual files`);
     const diffs = refs.filter((r) => actual[r] !== golden[r]);
     for (const r of diffs.slice(0, 20)) console.log(`DIFF ${r}\n  golden ${golden[r]}\n  actual ${actual[r]}`);
     console.log(`${refs.length - diffs.length}/${refs.length} refs match`);

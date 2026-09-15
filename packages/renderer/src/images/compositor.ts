@@ -38,7 +38,7 @@ import { applyTodTint, type TodColor } from '../animation/timeOfDay'
 
 /** Hex tile size, and the alpha mask every terrain image is clipped by. */
 const TILE = 72
-const HEX_MASK = 'terrain/alphamask.png'
+export const HEX_MASK = 'terrain/alphamask.png'
 
 /**
  * Wrap a reference so it rasterises the way the engine draws terrain.
@@ -125,14 +125,29 @@ export function getImageBaseUrls(): { image: string; engine: string } {
  * don't exist under `core/images/` at all.
  */
 export function imageUrl(path: string): string {
+  const rooted = rootedImagePath(path)
+  return rooted.startsWith('engine/')
+    ? `${engineImageBaseUrl}/${rooted.slice('engine/'.length)}`
+    : `${imageBaseUrl}/${rooted}`
+}
+
+/**
+ * The base-URL-independent identity of an image file: `core/...` or
+ * `campaigns/...` (relative to `wesnoth/data`), or `engine/...` (relative to
+ * `wesnoth/images`). Image bundle manifests are keyed by it (Phase 28a P5,
+ * `apps/web/scripts/build-image-atlases.mjs`).
+ */
+export function rootedImagePath(path: string): string {
   const clean = path.replace(/^\/+/, '')
-  if (clean.startsWith('engine/')) {
-    return `${engineImageBaseUrl}/${clean.slice('engine/'.length)}`
-  }
-  const rooted = clean.startsWith('core/') || clean.startsWith('campaigns/')
-    ? clean
-    : `core/images/${clean}`
-  return `${imageBaseUrl}/${rooted}`
+  if (clean.startsWith('engine/') || clean.startsWith('core/') || clean.startsWith('campaigns/')) return clean
+  return `core/images/${clean}`
+}
+
+/** One image bundle manifest (`public/atlases/<scenario>/terrain.json`). */
+export interface AtlasManifest {
+  atlases: { file: string; width: number; height: number }[]
+  /** Rooted image path -> [atlas index, x, y, width, height]. */
+  images: Record<string, [number, number, number, number, number]>
 }
 
 type Bitmap = ImageBitmap | HTMLImageElement
@@ -163,6 +178,13 @@ export class Compositor {
   /** Decoded source images, keyed by URL. */
   private readonly bitmaps = new Map<string, Promise<Bitmap | null>>()
 
+  /** Bundle manifests to consult before fetching a file on its own (see `setAtlasManifests`). */
+  private atlasManifestUrls: readonly string[] = []
+  private readonly manifests = new Map<string, Promise<AtlasManifest | null>>()
+  /** Decoded bundle images, keyed by URL. */
+  private readonly atlasBitmaps = new Map<string, Promise<ImageBitmap | null>>()
+  private readonly warnedFallbacks = new Set<string>()
+
   /** Cumulative time in the pixel-readback path, to attribute cost honestly. */
   recolorMs = 0
   recolorCount = 0
@@ -185,6 +207,78 @@ export class Compositor {
   /** Drop every decoded source image. */
   clear(): void {
     this.bitmaps.clear()
+    this.atlasBitmaps.clear()
+  }
+
+  /**
+   * Phase 28a P5: image bundles to use. A source image listed in one of
+   * these manifests is cropped out of its (once-decoded) bundle image;
+   * anything else is fetched on its own, exactly as without bundles. A
+   * missing or broken manifest is ignored.
+   */
+  setAtlasManifests(urls: readonly string[]): void {
+    this.atlasManifestUrls = [...urls]
+  }
+
+  private loadManifest(url: string): Promise<AtlasManifest | null> {
+    let manifest = this.manifests.get(url)
+    if (!manifest) {
+      manifest = fetch(url)
+        .then(async (res) => {
+          if (!res.ok || !(res.headers.get('content-type') ?? '').includes('json')) return null
+          return (await res.json()) as AtlasManifest
+        })
+        .catch(() => null)
+      this.manifests.set(url, manifest)
+    }
+    return manifest
+  }
+
+  /**
+   * How bundle image bytes are obtained. Defaults to a plain fetch; the
+   * worker pool replaces it so all workers share ONE download per bundle
+   * (a whole-bundle fetch per worker tripled Dead Water 1's terrain bytes,
+   * and the HTTP cache did not reliably de-duplicate the concurrent requests).
+   */
+  setAtlasFetcher(fetcher: (url: string) => Promise<Blob | null>): void {
+    this.atlasFetcher = fetcher
+  }
+
+  private atlasFetcher: (url: string) => Promise<Blob | null> = (url) =>
+    fetch(url)
+      .then((res) => (res.ok ? res.blob() : null))
+      .catch(() => null)
+
+  private loadAtlas(url: string): Promise<ImageBitmap | null> {
+    let atlas = this.atlasBitmaps.get(url)
+    if (!atlas) {
+      atlas = this.atlasFetcher(url)
+        .then((blob) => (blob ? createImageBitmap(blob, { colorSpaceConversion: 'none' }) : null))
+        .catch(() => null)
+      this.atlasBitmaps.set(url, atlas)
+    }
+    return atlas
+  }
+
+  /** The image from a bundle, or undefined when no loaded manifest has it. */
+  private async fromAtlas(path: string): Promise<ImageBitmap | null | undefined> {
+    const rooted = rootedImagePath(path)
+    for (const manifestUrl of this.atlasManifestUrls) {
+      const manifest = await this.loadManifest(manifestUrl)
+      const rect = manifest?.images[rooted]
+      if (!manifest || !rect) continue
+      const [index, x, y, w, h] = rect
+      const entry = manifest.atlases[index]
+      if (!entry) continue
+      const atlas = await this.loadAtlas(`${manifestUrl.slice(0, manifestUrl.lastIndexOf('/') + 1)}${entry.file}`)
+      if (!atlas) continue
+      return createImageBitmap(atlas, x, y, w, h)
+    }
+    if (this.atlasManifestUrls.length > 0 && !this.warnedFallbacks.has(rooted)) {
+      this.warnedFallbacks.add(rooted)
+      console.debug(`[ImageCache] not in any image bundle, fetching on its own: ${rooted}`)
+    }
+    return undefined
   }
 
   private tcMapping(side: number, paletteName: string): Map<number, number> | null {
@@ -233,6 +327,8 @@ export class Compositor {
 
     p = (async () => {
       try {
+        const bundled = await this.fromAtlas(path)
+        if (bundled !== undefined) return bundled
         const resp = await fetch(url)
         if (!resp.ok) {
           console.warn(`[ImageCache] missing image ${url} (${resp.status})`)

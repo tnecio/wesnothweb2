@@ -66,7 +66,8 @@ export class CompositorPool {
   private readonly waiting = new Map<number, Job>()
   private nextId = 1
   private colors: ColorData | null = null
-  private sent: { image: string; engine: string; colors: ColorData | null } | null = null
+  private atlasManifests: readonly string[] = []
+  private sent: { image: string; engine: string; colors: ColorData | null; atlasManifests: readonly string[] } | null = null
 
   private constructor(size: number, colors: ColorData | null) {
     this.colors = colors
@@ -88,6 +89,10 @@ export class CompositorPool {
               clearTimeout(timer)
               if (!message.ok) console.warn(`[ImageCache] compositor worker unavailable: ${message.reason}`)
               resolve(message.ok)
+            } else if (message.type === 'needAtlas') {
+              void this.atlasBlob(message.url).then((blob) =>
+                slot.worker.postMessage({ type: 'atlas', url: message.url, blob } satisfies ToCompositorWorker),
+              )
             } else {
               this.onResult(slot, message)
             }
@@ -112,6 +117,24 @@ export class CompositorPool {
 
   setColorData(colors: ColorData | null): void {
     this.colors = colors
+  }
+
+  setAtlasManifests(urls: readonly string[]): void {
+    this.atlasManifests = [...urls]
+  }
+
+  /** Bundle image bytes, downloaded once per URL for all workers (see compositor.worker.ts). */
+  private readonly atlasBlobs = new Map<string, Promise<Blob | null>>()
+
+  private atlasBlob(url: string): Promise<Blob | null> {
+    let blob = this.atlasBlobs.get(url)
+    if (!blob) {
+      blob = fetch(url)
+        .then((res) => (res.ok ? res.blob() : null))
+        .catch(() => null)
+      this.atlasBlobs.set(url, blob)
+    }
+    return blob
   }
 
   render(ref: string, priority: RenderPriority): Promise<ImageBitmap | null> {
@@ -144,9 +167,22 @@ export class CompositorPool {
   private syncConfig(): void {
     const urls = getImageBaseUrls()
     const sent = this.sent
-    if (sent && sent.image === urls.image && sent.engine === urls.engine && sent.colors === this.colors) return
-    this.sent = { ...urls, colors: this.colors }
-    const message: ToCompositorWorker = { type: 'config', imageBaseUrl: urls.image, engineImageBaseUrl: urls.engine, colors: this.colors }
+    if (
+      sent &&
+      sent.image === urls.image &&
+      sent.engine === urls.engine &&
+      sent.colors === this.colors &&
+      sent.atlasManifests === this.atlasManifests
+    )
+      return
+    this.sent = { ...urls, colors: this.colors, atlasManifests: this.atlasManifests }
+    const message: ToCompositorWorker = {
+      type: 'config',
+      imageBaseUrl: urls.image,
+      engineImageBaseUrl: urls.engine,
+      colors: this.colors,
+      atlasManifests: [...this.atlasManifests],
+    }
     for (const slot of this.slots) slot.worker.postMessage(message)
   }
 

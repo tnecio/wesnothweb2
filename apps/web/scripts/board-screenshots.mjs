@@ -44,7 +44,12 @@ try {
       // Animated terrain would otherwise be captured on an arbitrary frame.
       const frozen = await page.evaluate(() => window.__wesnothDebug?.freezeAnimationsForCapture() ?? false);
       if (!frozen) throw new Error('freezeAnimationsForCapture dev hook unavailable');
+      // The frozen frame is already rendered; stop the render loop so software GL is not redrawing the whole
+      // map every frame while Playwright captures (Dead Water 1's capture otherwise timed out waiting for frames).
+      await page.evaluate(() => window.__wesnothDebug?.setRenderingPaused?.(true));
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      // An element screenshot, as for the saved baselines: a page clip of the same (fractional) box samples
+      // the bottom pixel row differently (1,592 "differing" pixels, all on one edge row).
       const board = await page.$('.board-view .canvas-host');
       await board.screenshot({ path: path.join(outDir, `${campaign}.png`) });
       console.log(`captured ${path.join(outDir, `${campaign}.png`)}`);
@@ -65,6 +70,11 @@ if (baselineDir) {
   for (const campaign of scenarios) {
     const a = path.join(baselineDir, `${campaign}.png`);
     const b = path.join(outDir, `${campaign}.png`);
+    if (!fs.existsSync(a) || !fs.existsSync(b)) {
+      console.log(`${campaign}: no comparison -- ${fs.existsSync(a) ? 'capture' : 'baseline'} missing`);
+      failed = true;
+      continue;
+    }
     let differing;
     try {
       // `compare` exits 1 when images differ; the metric is printed on stderr either way.

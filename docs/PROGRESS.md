@@ -3200,3 +3200,58 @@ the per-unit-type bundles of P6 remove the network part.
 
 Gates: rendered-board screenshots 0 / 0 / 0 differing pixels; golden
 pixel check 4872/4872 via the worker pool; engine 559, ui 126 tests.
+
+## 2026-09-15 — Phase 28a P5: scenario terrain bundles
+
+Dependencies (worktree install, lockfile committed): `playwright` 1.63.0
+(separate commit -- the browser scripts used it undeclared), `pngjs` 7 and
+`tsx` 4 as dev dependencies of `apps/web`.
+
+- `apps/web/scripts/build-image-atlases.mjs` (`npm run build:atlases
+  --workspace=apps/web`, also run by `predev`/`prebuild`): per scenario
+  snapshot, runs the real terrain layout, expands every ref into the source
+  files the compositor fetches (the ref's file, `~MASK`/`~BLIT` image
+  arguments recursively, the hex alpha mask for `~HEXED`), decodes them with
+  pngjs and shelf-packs them into RGBA PNG bundles of at most 4096×4096 with
+  content-hashed names, plus `public/atlases/<scenario>/terrain.json` keyed
+  by `rootedImagePath` (the key the runtime computes). Incremental (skips
+  scenarios whose manifest is newer than snapshot, rules and script).
+  Output is gitignored: 38 scenarios build in 61 s into 173 MB; an
+  unchanged rebuild is a no-op.
+- Runtime: `GameBoardView` registers `/atlases/<scenario>/terrain.json`
+  through `ImageCache.setAtlasManifests`; the compositor decodes each
+  bundle once and crops images out of it with `createImageBitmap`. Anything
+  not in the manifest is fetched on its own, so a missing or stale bundle
+  only costs requests.
+- Two download fixes found by measuring bytes at the network level:
+  - every compositor worker fetched its own copy of the scenario's bundle,
+    tripling Dead Water 1's terrain bytes (22.6 MB); serving hashed bundles
+    `immutable` did not reliably make Chrome share the concurrent
+    downloads. Workers now ask the pool (`needAtlas`), which downloads each
+    bundle once and hands every worker the same `Blob` (no byte copies).
+  - the dev server now sends `Cache-Control: public, max-age=31536000,
+    immutable` for `/atlases/**/<name>.<hash>.png` (Vite plugin in
+    `apps/web/vite.config.ts`); production hosting must do the same.
+- `measure-load.mjs` counts bytes that crossed the network
+  (`request.sizes()`), with cache-served responses reported separately.
+
+Results (1 cold run; P4 → P5):
+
+| scenario | image requests / KB | board ready | terrain images | blocked |
+|---|---|---|---|---|
+| Dead Water 1 | 555 / 7,679 → **15 / 8,354** | 8.3–8.4 → **8.0 s** | 6.1 → 5.2 s | 0.33 s |
+| Liberty 1 | 470 / 5,025 → **15 / 5,260** | 5.3 → **4.3 s** | 3.1 → 2.1 s | 0.15 s |
+| UtBS 1 | 530 / 6,196 → **9 / 6,926** | 11.9–12.5 → **11.0 s** | 9.4–9.6 → 8.5 s | 0.29 s |
+
+Bundles cost 5–12% more bytes than the individual files (pngjs compresses a
+whole bundle a little worse than the per-file PNGs). The remaining
+requests are unit sprites (P6) and a few engine images.
+
+Gates: golden pixel check 4872/4872 via the worker pool with Dead Water 1,
+Liberty 1 and debug-combat bundles registered (2 bundle downloads, 13
+individual files during the check). Rendered-board screenshots vs the P1
+baseline: 0 differing pixels on Dead Water 1, Liberty 1 and debug combat.
+`board-screenshots.mjs` now pauses the render loop after freezing
+animations (Dead Water 1's capture otherwise timed out under software GL);
+it keeps element screenshots, since a page clip of the same fractional box
+resampled the bottom row (1,592 false differences).

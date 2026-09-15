@@ -1374,8 +1374,8 @@ main-thread blocked time while loading 4.8–7.2 s → 0.32 s, longest task
 0.7–1.0 s → 0.16 s, JS heap ~300 → 58 MB, pixel output unchanged (golden
 hashes + rendered-board screenshots). Beyond the plan, profiling also
 removed a deep Svelte proxy of the snapshot, a duplicated snapshot context
-build and eager parsing of every unit type. P5–P7 (bundles) not started;
-they need `pngjs` and `playwright` declared as dependencies first.
+build and eager parsing of every unit type. P5 (terrain bundles) delivered:
+Dead Water 1 image requests 555 → 15, pixels unchanged. P6–P7 in progress.
 
 **Problem, measured** (Dead Water 1, headless Chromium, Vite dev server):
 - **Jank.** `ImageCache` runs entirely on the main thread: every IPF op

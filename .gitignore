@@ -5,3 +5,5 @@ build/
 *.log
 .env
 .vite/
+# Generated image bundles (Phase 28a P5+; npm run build:atlases --workspace=apps/web)
+apps/web/public/atlases/

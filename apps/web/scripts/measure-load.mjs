@@ -52,12 +52,18 @@ const summarise = (tasks) => ({
  * would undercount once compositing moved off the main thread.
  */
 function countImageRequests(context) {
-  const counter = { requests: 0, bytes: 0, frozen: false };
-  context.on('response', async (response) => {
-    if (counter.frozen || !/\.(png|webp|jpe?g)(\?|$)/.test(response.url())) return;
+  // `requests`/`bytes` count what actually crossed the network; responses served from the HTTP cache
+  // (e.g. a second compositor worker asking for the same immutable bundle) are counted in `cacheHits`.
+  const counter = { requests: 0, bytes: 0, cacheHits: 0, frozen: false };
+  context.on('requestfinished', async (request) => {
+    if (counter.frozen || !/\.(png|webp|jpe?g)(\?|$)/.test(request.url())) return;
+    const sizes = await request.sizes().catch(() => null);
+    if (!sizes || sizes.responseHeadersSize <= 0) {
+      counter.cacheHits++;
+      return;
+    }
     counter.requests++;
-    const length = Number(response.headers()['content-length']);
-    if (Number.isFinite(length)) counter.bytes += length;
+    counter.bytes += Math.max(0, sizes.responseBodySize);
   });
   return counter;
 }
@@ -93,7 +99,7 @@ async function measureScenario(browser, campaign) {
     );
     // Which work actually ran off the main thread (an in-thread fallback would look the same otherwise).
     const workers = [...new Set(page.workers().map((w) => w.url().replace(/^.*\//, '').replace(/[?#].*$/, '')))];
-    return { ...result, imageRequests: network.requests, imageKB: Math.round(network.bytes / 1024), workers };
+    return { ...result, imageRequests: network.requests, imageKB: Math.round(network.bytes / 1024), imageCacheHits: network.cacheHits, workers };
   } finally {
     await context.close();
   }
