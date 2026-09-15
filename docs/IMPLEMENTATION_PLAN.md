@@ -1369,6 +1369,14 @@ below exist yet.
 
 ### Phase 28a — Image pipeline performance (planned 2026-09-14)
 
+**Status: P0–P4 delivered (2026-09-15)**, see docs/PROGRESS.md. Dead Water 1
+main-thread blocked time while loading 4.8–7.2 s → 0.32 s, longest task
+0.7–1.0 s → 0.16 s, JS heap ~300 → 58 MB, pixel output unchanged (golden
+hashes + rendered-board screenshots). Beyond the plan, profiling also
+removed a deep Svelte proxy of the snapshot, a duplicated snapshot context
+build and eager parsing of every unit type. P5–P7 (bundles) not started;
+they need `pngjs` and `playwright` declared as dependencies first.
+
 **Problem, measured** (Dead Water 1, headless Chromium, Vite dev server):
 - **Jank.** `ImageCache` runs entirely on the main thread: every IPF op
   (`~MASK`, `~RC`, `~TC`, `~BLEND`, `~HEXED`...) reads pixels back with
