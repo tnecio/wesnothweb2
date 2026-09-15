@@ -480,7 +480,8 @@ function buildTerrainTypeData(snapshot: GameBoardSnapshot): TerrainTypeData {
 /** The `TerrainTypeData` and per-id `UnitType` cache shared by `createTypeResolver`/`gameBoardFromSnapshot` -- see `buildSnapshotContext`. */
 interface SnapshotContext {
   readonly terrainData: TerrainTypeData;
-  readonly typeCache: ReadonlyMap<string, UnitType>;
+  /** Per-id unit types; with `unitTypeConfigs` each type is built on first lookup (see `buildSnapshotContextUncached`). */
+  readonly typeCache: { get(id: string): UnitType | undefined };
 }
 
 /**
@@ -508,9 +509,8 @@ const snapshotContexts = new WeakMap<GameBoardSnapshot, SnapshotContext>();
 
 function buildSnapshotContextUncached(snapshot: GameBoardSnapshot): SnapshotContext {
   const terrainData = buildTerrainTypeData(snapshot);
-  const typeCache = new Map<string, UnitType>();
-
   if (snapshot.unitTypeConfigs) {
+    const unitTypeConfigs = snapshot.unitTypeConfigs;
     const movementTypes = new Map<string, WmlConfig>();
     if (snapshot.movementTypeConfigs) {
       for (const [name, json] of Object.entries(snapshot.movementTypeConfigs)) {
@@ -529,16 +529,28 @@ function buildSnapshotContextUncached(snapshot: GameBoardSnapshot): SnapshotCont
         abilities.set(id, { tag: entry.tag, config: WmlConfig.fromJSON(entry.config) });
       }
     }
-    for (const [id, json] of Object.entries(snapshot.unitTypeConfigs)) {
-      typeCache.set(id, UnitType.fromConfig(WmlConfig.fromJSON(json), movementTypes, terrainData, { weaponSpecials, abilities }));
-    }
-  } else {
-    const moveType = buildFlatMoveType(terrainCodesInUse(snapshot), terrainData);
-    for (const [id, snap] of Object.entries(snapshot.unitTypes)) {
-      typeCache.set(id, unitTypeFromSnapshot(snap, moveType));
-    }
+    // Built on first lookup: a snapshot carries every type a scenario could ever need (~330), but a game
+    // resolves only a handful, and parsing all of them up front was ~250 ms in one main-thread task while
+    // loading Dead Water 1 (Phase 28a P4 profile).
+    const built = new Map<string, UnitType>();
+    const typeCache = {
+      get(id: string): UnitType | undefined {
+        let type = built.get(id);
+        if (type) return type;
+        if (!Object.prototype.hasOwnProperty.call(unitTypeConfigs, id)) return undefined;
+        type = UnitType.fromConfig(WmlConfig.fromJSON(unitTypeConfigs[id]!), movementTypes, terrainData, { weaponSpecials, abilities });
+        built.set(id, type);
+        return type;
+      },
+    };
+    return { terrainData, typeCache };
   }
 
+  const typeCache = new Map<string, UnitType>();
+  const moveType = buildFlatMoveType(terrainCodesInUse(snapshot), terrainData);
+  for (const [id, snap] of Object.entries(snapshot.unitTypes)) {
+    typeCache.set(id, unitTypeFromSnapshot(snap, moveType));
+  }
   return { terrainData, typeCache };
 }
 

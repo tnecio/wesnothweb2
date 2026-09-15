@@ -3162,3 +3162,41 @@ unchanged (2.1–2.2 s blocked, first frames 0.87–1.0 s) -- that is not
 terrain work and is left to P4. Gates: rendered-board screenshots 0 / 0 / 0
 differing pixels against the pre-worker baseline; golden pixel check
 4872/4872 via the worker pool; engine 559, renderer 194, ui 126 tests.
+
+## 2026-09-15 — Phase 28a P4: measure and tune
+
+Profiles after P3:
+- **Load** (Dead Water 1: 6 tasks > 50 ms, 871 ms, longest 319 ms): the
+  longest task was `GameSession` construction, 253 ms of it parsing every
+  unit type config in the snapshot (~330) although a game resolves only a
+  handful. The rest: GC (~180 ms), remaining Svelte proxy traps (~110 ms,
+  other `$state` data), terrain sprite creation (`makeLayerSprite` ~90 ms),
+  and receiving the terrain layout from its worker (~50 ms).
+- **Attack exchange**: 3.7 s wall, only 146 ms of page JavaScript and no
+  JavaScript task over 50 ms. The 2.0–2.3 s of "blocked" time
+  `measure-load.mjs` reports is Chromium producing frames under software
+  GL (the long-task API counts rendering too). Same pattern as the slow
+  message advances seen in P1; it is not script cost and cannot be tuned
+  meaningfully in headless Chromium -- it needs a real-GPU measurement.
+
+Change: snapshot unit types are built on first lookup
+(`buildSnapshotContextUncached` returns a lazy `get(id)` cache; movement
+types, weapon specials and abilities stay eager, being small).
+
+Results (2 cold runs each; P3 → P4, and the P0 baseline):
+
+| scenario | blocked (> 50 ms) | max long task | board ready | heap |
+|---|---|---|---|---|
+| Dead Water 1 | 0.57–0.60 → **0.32–0.33 s** (P0 4.8–7.2 s) | 0.40–0.41 → **0.15–0.16 s** (P0 0.67–1.04 s) | 8.7–9.3 → **8.3–8.4 s** (P0 9.5–14.0 s) | 82–104 → **58 MB** (P0 ~300 MB) |
+| Liberty 1 | 0.48–0.51 → **0.12–0.14 s** (P0 2.4–2.5 s) | 0.40–0.43 → **0.09–0.11 s** (P0 0.56–0.60 s) | 5.1–5.6 → 5.3 s | 82 → **32 MB** (P0 ~155 MB) |
+| UtBS 1 | 0.80–0.88 → **0.24–0.38 s** (P0 9.5–10.0 s) | 0.62–0.70 → **0.14–0.17 s** (P0 0.92–0.94 s) | 12.8–12.9 → **11.9–12.5 s** (P0 16.2 s) | 125–133 → **69 MB** (P0 242 MB) |
+
+Budgets (plan): max long task < 100 ms while loading -- met for Liberty
+1, ~150 ms for Dead Water 1 and UtBS 1 (remaining: GC, sprite creation,
+Svelte state); board ready no worse than baseline +10% -- better
+everywhere; attack first-play latency < 100 ms once frames are preloaded
+-- first frames are ready in 0.76–0.87 s from a cold cache (P0 2.2–2.4 s),
+the per-unit-type bundles of P6 remove the network part.
+
+Gates: rendered-board screenshots 0 / 0 / 0 differing pixels; golden
+pixel check 4872/4872 via the worker pool; engine 559, ui 126 tests.
