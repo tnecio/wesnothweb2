@@ -707,6 +707,16 @@ export interface SaveGameData {
    * config, matching this field's absence).
    */
   schedule?: ScheduleState;
+  /**
+   * The scenario's WML variables (`[set_variable]` and friends), as the
+   * `[variables]` config upstream writes into its own saves. Phase 17:
+   * without these a reloaded game forgot everything its events had
+   * decided -- including choices the player had already made. Optional
+   * on read, like every field added after version 1.
+   */
+  variables?: WmlConfigJson;
+  /** Every `[option]`/`[text_input]` answer taken so far, for Phase 25's replay log. */
+  choices?: readonly { value?: number; text?: string; side: number }[];
 }
 
 /**
@@ -1055,6 +1065,7 @@ export class GameSession {
       variables: new VariableStore(),
       resolveType: this.resolveType,
       schedule: this.schedule,
+      rng: this.rng,
     });
     this.board.lawfulBonusAt = (loc) => this.timeOfDayAt(loc).lawfulBonus;
 
@@ -1190,6 +1201,16 @@ export class GameSession {
   /** Every `[option]`/`[text_input]` answer this scenario has taken, oldest first (Phase 25's replay log consumes these). */
   get choices(): readonly ChoiceRecord[] {
     return this.eventPump.ctx.choices;
+  }
+
+  /** Reads one WML variable by its dotted path (`rescued[0].name`), as `$var` would. */
+  getVariable(path: string): WmlAttributeValue | undefined {
+    return this.eventPump.ctx.variables.get(path);
+  }
+
+  /** Sets one WML variable -- for a caller standing in for an event (a test, a debug tool). */
+  setVariable(path: string, value: WmlAttributeValue): void {
+    this.eventPump.ctx.variables.set(path, value);
   }
 
   /**
@@ -2459,12 +2480,15 @@ export class GameSession {
 
   /** Captures every mutable bit of live state -- see `SaveGameData`'s own doc comment. */
   toSaveData(): SaveGameData {
+    const variables = this.eventPump.ctx.variables.toConfig().toJSON();
     return {
       version: 1,
       turnNumber: this.turnNumber,
       activeSide: this.activeSide,
       scenarioResult: this.scenarioResult,
       schedule: this.schedule.exportState(),
+      variables,
+      choices: this.eventPump.ctx.choices.map((c) => ({ ...c })),
       startupEventsRun: this.startupEventsRun,
       teams: this.board.teams().map((t) => ({ side: t.side, gold: t.gold, shroudData: t.shroud.write(), fogData: t.fog.write() })),
       units: this.board.allUnits().map((u) => ({
@@ -2504,6 +2528,8 @@ export class GameSession {
    * static factory below (a fresh session, pre-loaded).
    */
   loadSaveData(data: SaveGameData): void {
+    if (data.variables) this.eventPump.ctx.variables.replaceAll(WmlConfig.fromJSON(data.variables));
+    this.eventPump.ctx.choices.splice(0, this.eventPump.ctx.choices.length, ...(data.choices ?? []).map((c) => ({ ...c })));
     for (const unit of [...this.board.allUnits()]) {
       this.board.removeUnitAt(unit.location);
     }
@@ -2626,6 +2652,12 @@ export class GameSession {
     for (const unit of carriedOverUnits) {
       session.board.addToRecallList(session.playerSide, unit);
     }
+    // Phase 17: WML variables cross the scenario boundary, as upstream's
+    // carryover does -- Two Brothers 2 picks the castle passwords and
+    // scenario 3 asks the player for them, and until now that variable
+    // simply vanished in between (so the puzzle could only ever take its
+    // "wrong password" branch).
+    session.eventPump.ctx.variables.replaceAll(finished.eventPump.ctx.variables.toConfig());
     return session;
   }
 

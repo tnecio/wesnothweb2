@@ -52,6 +52,7 @@ import type { GameBoard } from '../model/GameBoard.js';
 import { Location } from '../model/Location.js';
 import { Schedule, DEFAULT_MAX_LIMINAL_BONUS } from '../model/Schedule.js';
 import type { UnitType } from '../model/UnitType.js';
+import type { Rng } from '../rng/Rng.js';
 import { WmlConfig } from '../wml/config.js';
 import { createDefaultActionRegistry, runActionFlow } from './actionWml.js';
 import { ActionRegistry, type EventContext, type RecordedMessage } from './context.js';
@@ -135,6 +136,8 @@ export interface EventPumpOptions {
   log?: EventContext['log'];
   /** Defaults to a fresh, empty (permanently neutral) `Schedule` -- pass the session's real one so `[time_area]`/`[replace_schedule]`/`[store_time_of_day]` have somewhere to act. */
   schedule?: Schedule;
+  /** The session's synced RNG, for `[set_variable] rand=`. */
+  rng?: Rng;
 }
 
 /** TS port of `wml_event_pump`: queues and dispatches events to registered `[event]` handlers. */
@@ -154,6 +157,7 @@ export class EventPump {
       variables: options.variables,
       registry: options.registry ?? createDefaultActionRegistry(),
       resolveType: options.resolveType,
+      rng: options.rng,
       messages: [] as RecordedMessage[],
       choices: [],
       objectivesBySide: new Map(),

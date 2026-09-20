@@ -14,6 +14,7 @@ import type { Location } from '../model/Location.js';
 import type { Schedule } from '../model/Schedule.js';
 import type { UnitType } from '../model/UnitType.js';
 import type { WmlConfig } from '../wml/config.js';
+import type { Rng } from '../rng/Rng.js';
 import type { VariableStore } from './variables.js';
 import type { ScenarioObjectives } from './objectives.js';
 import type { Flow } from './interaction.js';
@@ -158,6 +159,15 @@ export interface EventContext {
   registry: ActionRegistry;
   /** Looks up a `UnitType` by WML `type=` id, e.g. for `[unit]`/`[modify_unit] type=`. */
   resolveType: (id: string) => UnitType;
+  /**
+   * The scenario's own synced RNG, where there is one -- `[set_variable]
+   * rand=` draws from it, so a scenario that randomises something (Two
+   * Brothers picks its guards' passwords this way) stays reproducible
+   * and, later, replayable. Undefined in a context with no game behind
+   * it, where `rand=` logs and does nothing rather than inventing an
+   * unsynced number.
+   */
+  rng?: Rng;
   /**
    * Every `[message]` that has been shown, oldest first. Before Phase 17
    * this was the whole of `[message]` -- events ran to completion and the

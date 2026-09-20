@@ -532,6 +532,35 @@ describe('GameSession.toSaveData / loadSaveData (round-trip, see persistence.ts 
   });
 });
 
+describe('WML variables across a save and a scenario boundary (Phase 17)', () => {
+  it('round-trips the scenario\'s variables and the choices made so far', async () => {
+    const session = new GameSession(loadSnapshot());
+    await session.runStartupEvents();
+    // Stand-ins for whatever the scenario's own events recorded.
+    session.setVariable('first_password', 3);
+    session.setVariable('rescued.0.name', 'Nym');
+
+    const restored = GameSession.fromSaveData(loadSnapshot(), session.toSaveData());
+
+    expect(restored.getVariable('first_password')).toBe(3);
+    expect(restored.getVariable('rescued.0.name')).toBe('Nym');
+  });
+
+  it('carries variables into the next scenario -- what the Two Brothers password puzzle needs', async () => {
+    const finished = new GameSession(loadSnapshot());
+    await finished.runStartupEvents();
+    finished.setVariable('first_password', 2);
+    const enemyLeader = finished.board.unitsForSide(2).find((u) => u.canRecruit)!;
+    finished.board.removeUnitAt(enemyLeader.location);
+    // @ts-expect-error -- private, called directly as the other carryover tests do.
+    finished.checkForGameEnd();
+
+    const next = GameSession.startNextScenario(finished, loadNextSnapshot());
+
+    expect(next.getVariable('first_password')).toBe(2);
+  });
+});
+
 describe('GameSession victory/defeat (real leader-death check, see checkVictory)', () => {
   it('sets scenarioResult to "defeat" when the player-side leader dies, and blocks further input', async () => {
     const session = new GameSession(loadSnapshot());

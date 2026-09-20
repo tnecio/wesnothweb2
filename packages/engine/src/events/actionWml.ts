@@ -83,6 +83,7 @@ import { Unit } from '../model/Unit.js';
 import { WmlConfig } from '../wml/config.js';
 import { checkRecruitLocation, recallUnit } from '../actions/recruit.js';
 import { findPath, findVacantTile } from '../pathfind/pathfind.js';
+import type { Rng } from '../rng/Rng.js';
 import type { ActionHandler, EventContext, RecordedMessage } from './context.js';
 import { ActionRegistry } from './context.js';
 import { isFlow, runFlow, type Flow, type MessageOption, type Responder, type TextInputSpec } from './interaction.js';
@@ -490,12 +491,71 @@ export function applySetVariable(cfg: WmlConfig, variables: VariableStore, log: 
     variables.set(name, parts.join(separator));
   }
 
-  // NOT ported: `rand=` (needs the shared RNG, owned by packages/engine/src/rng/, out of
+  // `rand=` is handled by `actionSetVariable` above, which has the
+  // context (and so the RNG) this shared helper deliberately does not.
+  // NOT ported: `rand=` here (needs the shared RNG, owned by packages/engine/src/rng/, out of
   // scope here), `formula=` (would need a `value`-bound WFL context; skipped for now),
   // `time=stamp` (no wall-clock concept in a deterministic headless engine).
 }
 
+/**
+ * `rand=`'s own little grammar (`mathx.random_choice`): a comma-separated
+ * list whose entries are either literal values or `A..B` numeric ranges,
+ * picked from uniformly over every possibility -- so `rand="1..4"` is one
+ * of four numbers and `rand="a,1..3"` is one of four choices, not two.
+ */
+function randomChoice(spec: string, rng: Rng): string {
+  const entries: Array<{ from: number; to: number } | string> = [];
+  let total = 0;
+  for (const raw of spec.split(',')) {
+    const token = raw.trim();
+    const range = /^(-?\d+)\.\.(-?\d+)$/.exec(token);
+    if (range) {
+      const from = Number(range[1]);
+      const to = Number(range[2]);
+      const lo = Math.min(from, to);
+      const hi = Math.max(from, to);
+      entries.push({ from: lo, to: hi });
+      total += hi - lo + 1;
+    } else {
+      entries.push(token);
+      total += 1;
+    }
+  }
+  if (total === 0) return '';
+
+  let pick = rng.getRandomInt(0, total - 1);
+  for (const entry of entries) {
+    if (typeof entry === 'string') {
+      if (pick === 0) return entry;
+      pick -= 1;
+    } else {
+      const size = entry.to - entry.from + 1;
+      if (pick < size) return String(entry.from + pick);
+      pick -= size;
+    }
+  }
+  return '';
+}
+
 function actionSetVariable(cfg: WmlConfig, ctx: EventContext): void {
+  // `rand=` needs the session RNG, which `applySetVariable` (shared with
+  // `[modify_unit]`'s per-unit variable bag) has no access to.
+  if (cfg.hasAttribute('rand')) {
+    const name = cfg.getString('name', '');
+    if (name === '') {
+      ctx.log('error', '[set_variable] with rand= but no name=');
+      return;
+    }
+    if (!ctx.rng) {
+      ctx.log('warn', '[set_variable] rand= needs a game RNG -- ignored');
+      return;
+    }
+    const chosen = randomChoice(cfg.getString('rand'), ctx.rng);
+    const asNumber = Number(chosen);
+    ctx.variables.set(name, chosen !== '' && !Number.isNaN(asNumber) ? asNumber : chosen);
+    return;
+  }
   applySetVariable(cfg, ctx.variables, ctx.log);
 }
 

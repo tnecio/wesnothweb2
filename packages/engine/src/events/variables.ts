@@ -285,6 +285,16 @@ export class VariableStore {
     return varNodeToConfig(this.root);
   }
 
+  /**
+   * Replaces every variable with `cfg`'s contents -- the read side of
+   * `toConfig()`. Used to carry a scenario's variables into the next one
+   * and to restore them from a save (Phase 17), mirroring upstream's own
+   * `[variables]` block in a saved game.
+   */
+  replaceAll(cfg: WmlConfig): void {
+    this.root = varNodeFromConfig(cfg);
+  }
+
   /** Reads the container at `path` (see `getContainerNode`) as a fresh `WmlConfig` snapshot. */
   getConfig(path: string): WmlConfig | undefined {
     const node = this.getContainerNode(path, false);
