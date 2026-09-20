@@ -70,11 +70,10 @@
  * `[effect]` support (needs the effects/WFL machinery `Unit.ts` itself
  * defers, see its module doc comment).
  *
- * Loop tags (`[while]`/`[for]`/`[foreach]`/`[repeat]`/`[switch]`,
- * `data/lua/wml-flow.lua`) are NOT ported -- only `[if]` is, since that
- * covers everything Dead_Water scenario 1's real event bodies use. The
- * `ExitState`/`ActionRegistry` plumbing (see `context.ts`) is generic
- * enough that adding them later doesn't require restructuring this file.
+ * The rest of `data/lua/wml-flow.lua` -- `[while]`/`[for]`/`[foreach]`/
+ * `[repeat]`/`[switch]`/`[command]` and the `[break]`/`[continue]`/
+ * `[return]` signals -- lives in `flowWml.ts` (Phase 17), registered from
+ * here; only `[if]` stayed in this file, next to the other tags.
  */
 
 import type { EndLevelState } from './context.js';
@@ -92,6 +91,7 @@ import { actionLiftFog, actionPlaceShroud, actionRemoveShroud, actionResetFog } 
 import { actionTimeArea, actionRemoveTimeArea, actionReplaceSchedule, actionStoreTimeOfDay } from './todWml.js';
 import { newVarNode, varNodeFromConfig, varNodeToConfig, VariableStore, type VarNode } from './variables.js';
 import { parseScenarioObjectives } from './objectives.js';
+import { registerFlowActions } from './flowWml.js';
 
 // --- shared helpers ---
 
@@ -1259,6 +1259,7 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('set_menu_item', actionSetMenuItem);
   registry.register('clear_menu_item', actionClearMenuItem);
   registry.register('fire_event', actionFireEvent);
+  registerFlowActions((tag, handler) => registry.register(tag, handler));
 
   for (const tag of [
     'music',
