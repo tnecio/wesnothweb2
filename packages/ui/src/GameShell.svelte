@@ -26,7 +26,7 @@
    * event-spawned unit by the time the player gets control.
    */
   import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage, TimeOfDayEntry, Unit, AiAnimationEvent, ScenarioObjectives, HealOutcome } from '@wesnothweb2/engine';
-  import { WmlConfig, directionBetween, Location } from '@wesnothweb2/engine';
+  import { WmlConfig, directionBetween, Location, unitCanAct } from '@wesnothweb2/engine';
   import {
     type HexPoint,
     type UnitAnimationCue,
@@ -1218,12 +1218,78 @@
   });
 
   /**
-   * Phase 15: the commands a keypress can reach right now. Only the menu
-   * bar's and Actions menu's commands -- the context menu's are per-hex
-   * and reached by right-clicking that hex, exactly as upstream (its
-   * entries have no hotkeys of their own).
+   * Phase 15 H2: the player's own units that can still do something this
+   * turn, in the order `n`/`shift+n` walk them. Upstream cycles in unit
+   * order; this sorts by hex (top-left to bottom-right) so the order is
+   * stable and predictable rather than depending on spawn order.
    */
-  let hotkeyCommands = $derived<Command[]>([...menuCommands, ...actionCommands]);
+  function cyclableUnits(): Unit[] {
+    return session.board
+      .unitsForSide(activeSide)
+      .filter((u) => {
+        const { canMove, canAttackHere } = unitCanAct(session.board, u);
+        return canMove || canAttackHere;
+      })
+      .sort((a, b) => a.location.y - b.location.y || a.location.x - b.location.x);
+  }
+
+  /** `n` / `shift+n` (upstream `cycle`/`cycleback`): select the next unit that can act and bring it into view. */
+  function cycleUnit(step: 1 | -1): void {
+    const candidates = cyclableUnits();
+    if (candidates.length === 0) return;
+    const current = session.selectedUnit;
+    const currentIndex = current ? candidates.indexOf(current) : -1;
+    // From no selection, `n` starts at the first unit and `shift+n` at the last.
+    const nextIndex =
+      currentIndex === -1
+        ? step === 1
+          ? 0
+          : candidates.length - 1
+        : (currentIndex + step + candidates.length) % candidates.length;
+    const unit = candidates[nextIndex]!;
+    session.selectUnit(unit);
+    boardView?.centerOnHex(unit.location.x, unit.location.y);
+    sync();
+  }
+
+  /** `l` (upstream `leader`): centre the view on this side's leader, without changing the selection. */
+  function scrollToLeader(): void {
+    const leader = session.board.unitsForSide(activeSide).find((u) => u.canRecruit);
+    if (leader) boardView?.centerOnHex(leader.location.x, leader.location.y);
+  }
+
+  /**
+   * Phase 15: commands with no menu entry -- upstream has no menu entry
+   * for these either (`data/themes/default.cfg` lists none of them),
+   * they exist purely as hotkeys.
+   */
+  let hotkeyOnlyCommands = $derived<Command[]>([
+    { id: 'next-unit', label: 'Next Unit', enabled: phase === 'playing', hotkey: { key: 'n' }, handler: () => cycleUnit(1) },
+    { id: 'previous-unit', label: 'Previous Unit', enabled: phase === 'playing', hotkey: { key: 'n', shift: true }, handler: () => cycleUnit(-1) },
+    { id: 'leader', label: 'Scroll to Leader', enabled: phase === 'playing', hotkey: { key: 'l' }, handler: scrollToLeader },
+    { id: 'zoom-in', label: 'Zoom In', enabled: true, hotkey: { key: '=' }, handler: () => boardView?.zoomBy(1.25) },
+    // Upstream binds zoomin twice, to both `=` and `+` (the shifted key on most layouts).
+    { id: 'zoom-in-shifted', label: 'Zoom In', enabled: true, hotkey: { key: '+', shift: true }, handler: () => boardView?.zoomBy(1.25) },
+    { id: 'zoom-out', label: 'Zoom Out', enabled: true, hotkey: { key: '-' }, handler: () => boardView?.zoomBy(0.8) },
+    { id: 'zoom-default', label: 'Reset Zoom', enabled: true, hotkey: { key: '0' }, handler: () => boardView?.zoomDefault() },
+    {
+      id: 'deselect',
+      label: 'Deselect',
+      enabled: phase === 'playing',
+      hotkey: { key: 'Escape' },
+      handler: () => {
+        session.clearSelection();
+        sync();
+      },
+    },
+  ]);
+
+  /**
+   * Phase 15: the commands a keypress can reach right now. The context
+   * menu's are left out: they are per-hex and reached by right-clicking
+   * that hex, exactly as upstream (its entries have no hotkeys either).
+   */
+  let hotkeyCommands = $derived<Command[]>([...menuCommands, ...actionCommands, ...hotkeyOnlyCommands]);
 
   /** A dialog owns the keyboard while it's open (`Modal` handles Escape/Tab/focus itself). */
   function dialogOpen(): boolean {

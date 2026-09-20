@@ -471,6 +471,42 @@
   }
 
   /**
+   * Phase 15: the zoom hotkeys (`=`/`-`/`0`, upstream `zoomin`/`zoomout`/
+   * `zoomdefault`). Scales about the viewport centre -- the wheel zoom
+   * keeps the point under the cursor fixed instead, which a keypress has
+   * no cursor for. Clamped to the same limits the wheel uses.
+   */
+  export function zoomBy(factor: number): void {
+    if (!board || !pixiApp) return;
+    const oldScale = board.stage.scale.x;
+    const newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, oldScale * factor));
+    const actualFactor = newScale / oldScale;
+    const cx = pixiApp.screen.width / 2;
+    const cy = pixiApp.screen.height / 2;
+    board.stage.x = cx - (cx - board.stage.x) * actualFactor;
+    board.stage.y = cy - (cy - board.stage.y) * actualFactor;
+    board.stage.scale.set(newScale);
+  }
+
+  /** Phase 15: `zoomdefault` -- back to 1:1, re-centring the board as the initial mount does. */
+  export function zoomDefault(): void {
+    if (!board || !pixiApp) return;
+    board.stage.scale.set(1);
+    const bounds = board.stage.getLocalBounds();
+    board.stage.x = (pixiApp.screen.width - bounds.width) / 2 - bounds.x;
+    board.stage.y = (pixiApp.screen.height - bounds.height) / 2 - bounds.y;
+  }
+
+  /** Phase 15: centre `(x, y)` (engine 0-based) unconditionally -- the keyboard cursor and "scroll to leader". */
+  export function centerOnHex(x: number, y: number): void {
+    if (!board || !pixiApp) return;
+    const { x: px, y: py } = hexToPixel({ x: x + 1, y: y + 1 });
+    const scale = board.stage.scale.x;
+    board.stage.x = pixiApp.screen.width / 2 - px * scale;
+    board.stage.y = pixiApp.screen.height / 2 - py * scale;
+  }
+
+  /**
    * Phase 16: `[message]`'s scroll to the speaker -- `message.lua` calls
    * `scroll_to_hex(x, y, true, false, true)`, i.e. `ONSCREEN`: move only
    * when the hex (engine 0-based) is not already comfortably in view.
