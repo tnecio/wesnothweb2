@@ -1022,8 +1022,9 @@ matches the real Wesnoth default theme closely. Spec source: `data/themes/defaul
 
 ## Phase 15 — Keyboard shortcuts (core)
 
-**Status: not started.** Brought forward from the old Phase 17
-(2026-09-12). Two reasons: Phase 14's command registry makes this cheap
+**Status: in progress (started 2026-09-20)**, branch
+`phase-15-hotkeys`; staged breakdown below. Brought forward from the old
+Phase 17 (2026-09-12). Two reasons: Phase 14's command registry makes this cheap
 immediately afterwards, and Playwright tests become shorter and less
 coordinate-fragile when actions like end turn, undo, recruit, next unit
 and zoom are one keypress instead of a pixel click on a menu. Rebinding
@@ -1040,6 +1041,21 @@ UI stays in Phase 24 (it lives in the preferences dialog).
 - **Milestone**: a scripted Playwright playthrough of the synthetic
   economy campaign's recruit→move→attack→end turn loop drives every
   non-hex-choice action via keyboard only.
+
+**Scope note (2026-09-20).** Three of the bullet list's example bindings
+have no feature behind them yet and are therefore *not* in this phase:
+`undo`/`redo` (no undo stack exists in `GameSession`; the coverage map
+puts undo in Phase 2, still unbuilt), `togglegrid` and `statistics`/
+`unitlist` (no such views). They get their upstream bindings when the
+features land. Everything else below is wired to something real.
+
+| # | Stage | Checkable outcome |
+|---|---|---|
+| H0 | **Hotkey model.** `commands.ts` gains `Hotkey` (`key` + ctrl/shift/alt, with ctrl meaning cmd on macOS), `matchesHotkey(event, hotkey)` and `formatHotkey(hotkey)` for display; `Command` gains an optional `hotkey`. Dependency-free, so it unit-tests headlessly. | Unit tests over key matching (modifier exactness, case, macOS cmd) and label formatting |
+| H1 | **Global dispatcher + existing commands.** A `svelte:window` keydown handler in `GameShell` dispatches to the active command list, ignoring repeats, typing targets (`input`/`textarea`/`contenteditable`) and any open modal. Upstream bindings for what exists today: end turn `ctrl+space`, recruit `ctrl+r`, recall `alt+r`, objectives `ctrl+j`, save `ctrl+s`, load `ctrl+o`. | Each binding fires its command in a ui test; none fire while a dialog is open |
+| H2 | **Commands the play loop needs.** Next/previous unit (`n`/`shift+n`, cycling own units that can still act, scrolling each into view), scroll to leader (`l`), zoom in/out/default (`=`/`-`/`0`, reusing `GameBoardView`'s existing pan/zoom state), deselect (`Escape`). | Cycling order matches "can still act", zoom clamps to the existing limits |
+| H3 | **Keyboard hex cursor.** Arrow keys move a cursor hex (hex-grid directions, not a square grid), `Enter` acts on it exactly as a left click does (select / move / attack), `Escape` deselects; the cursor is drawn and scrolled into view. | Move + attack completed from the keyboard alone in a ui test |
+| H4 | **Modal nav, hints, milestone.** Arrow/Enter selection inside the recruit, recall and attack dialogs (on top of `Modal`'s existing Escape/Tab/focus handling); hotkey hints rendered in menu entries; the Playwright milestone run. | The milestone playthrough above, plus hints visible in the menus |
 
 ## Phase 16 — Narration & story-telling overhaul
 
