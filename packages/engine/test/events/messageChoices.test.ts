@@ -10,7 +10,7 @@ import { MoveType } from '../../src/model/MoveType.js';
 import { EventManager, EventPump } from '../../src/events/pump.js';
 import { VariableStore } from '../../src/events/variables.js';
 import { parseWml } from '../../src/wml/index.js';
-import { runFlow, type Interaction, type InteractionResult, type Responder } from '../../src/events/interaction.js';
+import { runFlow, type MessageInteraction, type InteractionResult, type Responder } from '../../src/events/interaction.js';
 
 /**
  * Phase 17 E1: `[message]` blocks its event, and `[option]`/`[text_input]`
@@ -54,11 +54,11 @@ function addEvent(manager: EventManager, wml: string): void {
   manager.addFromWml(parseWml(wml).child('event')!);
 }
 
-/** Runs the event, answering every message the same way, and returns what was shown. */
-function fireAnswering(pump: EventPump, name: string, respond: Responder): Interaction[] {
-  const shown: Interaction[] = [];
+/** Runs the event, answering every message the same way, and returns the messages it showed. */
+function fireAnswering(pump: EventPump, name: string, respond: Responder): MessageInteraction[] {
+  const shown: MessageInteraction[] = [];
   runFlow(pump.fireFlow(name), (interaction) => {
-    shown.push(interaction);
+    if (interaction.kind === 'message') shown.push(interaction);
     return respond(interaction);
   });
   return shown;
@@ -296,7 +296,7 @@ describe('[message] with [option] (Phase 17 E1)', () => {
     );
 
     runFlow(pump.fireFlow('ask'), (interaction): InteractionResult => {
-      return interaction.textInput ? { text: 'Baran' } : { value: 2 };
+      return interaction.kind === 'message' && interaction.textInput ? { text: 'Baran' } : { value: 2 };
     });
 
     expect(pump.ctx.variables.getString('hero_name')).toBe('Baran');
@@ -397,7 +397,7 @@ describe('[message] skipping and side_for (Phase 17 E1)', () => {
 
     const shown: string[] = [];
     const escapeOnFirst: Responder = (interaction) => {
-      shown.push(interaction.message.message);
+      if (interaction.kind === 'message') shown.push(interaction.message.message);
       return { skip: true };
     };
     runFlow(pump.fireFlow('speech'), escapeOnFirst);
@@ -435,7 +435,7 @@ describe('[message] skipping and side_for (Phase 17 E1)', () => {
 
     const shown: string[] = [];
     runFlow(pump.fireFlow('speech'), (interaction) => {
-      shown.push(interaction.message.message);
+      if (interaction.kind === 'message') shown.push(interaction.message.message);
       return { skip: true, value: 1 };
     });
 

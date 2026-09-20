@@ -240,6 +240,15 @@ export interface EventContext {
    * top-level event, exactly like `context::scoped`.
    */
   skipMessages: boolean;
+  /**
+   * False while the scenario's `prestart` (and anything before it) runs,
+   * true once `start` has fired. Only `[delay]` reads it, mirroring
+   * `intf_delay`'s own "do nothing during PRELOAD/PRESTART/INITIAL" guard
+   * (`game_lua_kernel.cpp:4491`), so a scenario that opens with scripted
+   * pauses doesn't stall before its board is up. Defaults to true; the
+   * scenario host (`GameSession`) clears it around startup.
+   */
+  gameStarted: boolean;
   log: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
   /** Set by a host with a real AI engine (`packages/ui`'s `GameSession`, Phase 29 S5) -- backs the `[modify_ai]`/`[modify_side]`/`[micro_ai]` action tags (`ai/wmlActions.ts`). Undefined (rather than a no-op stub) in any context without one, e.g. a headless test that never constructs an `AiManager`, so those tags log a clear "not loaded" warning instead of silently doing nothing. */
   ai?: import('../ai/wmlActions.js').AiWmlHooks;

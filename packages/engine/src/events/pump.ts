@@ -168,6 +168,7 @@ export class EventPump {
       fireNow: (name, loc1 = Location.NULL, loc2 = Location.NULL, data = new WmlConfig(), id = '') =>
         this.fireNowFlow(name, loc1, loc2, data, id),
       skipMessages: false,
+      gameStarted: true,
       log: options.log ?? (() => {}),
     };
   }

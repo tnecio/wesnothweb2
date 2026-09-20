@@ -26,6 +26,8 @@
  *   parks on a real dialog between steps.
  */
 
+import type { Location } from '../model/Location.js';
+import type { Unit } from '../model/Unit.js';
 import type { RecordedMessage } from './context.js';
 
 /** One `[option]` of a `[message]`, after `[show_if]` filtering (see `message.lua`'s `wml_actions.message`). */
@@ -58,8 +60,88 @@ export interface MessageInteraction {
   readonly textInput?: TextInputSpec;
 }
 
-/** Everything a running event can stop for. Cutscene/camera beats join this union in E3. */
-export type Interaction = MessageInteraction;
+/**
+ * A unit that only exists for the length of an animation
+ * (`[move_unit_fake]`'s `create_fake_unit`): it is never added to the
+ * board, so it is described rather than referenced.
+ */
+export interface FakeUnitSpec {
+  readonly typeId: string;
+  readonly side: number;
+  readonly variation: string;
+  readonly imageMods: string;
+  readonly gender: string;
+}
+
+/** One fake unit and the hexes it walks, in order. */
+export interface FakeUnitWalk {
+  readonly spec: FakeUnitSpec;
+  readonly path: readonly Location[];
+}
+
+/**
+ * Something for the display to play out before the event continues --
+ * upstream's cutscene and camera tags, each of which blocks its event on
+ * the C++ side simply by running a nested animation/pump loop. A headless
+ * caller completes them instantly (`autoRespond`), which is why every
+ * beat carries the *state change* it stands for, never a duration the
+ * engine would have to wait out itself.
+ */
+export type CutsceneBeat =
+  /** `[delay]`: time= in ms, `accelerate=` letting the display cut it short. */
+  | { readonly kind: 'delay'; readonly ms: number; readonly accelerate: boolean }
+  /** `[scroll_to]`/`[scroll_to_unit]`: centre a hex. */
+  | {
+      readonly kind: 'scrollTo';
+      readonly location: Location;
+      readonly immediate: boolean;
+      readonly onlyIfNeeded: boolean;
+      readonly highlight: boolean;
+    }
+  /** `[scroll]`: shift the view by a pixel delta. */
+  | { readonly kind: 'scrollBy'; readonly dx: number; readonly dy: number }
+  /** `[lock_view]`/`[unlock_view]`: pin the camera where it is. */
+  | { readonly kind: 'lockView'; readonly locked: boolean }
+  /** `[zoom]`: `factor=`, absolute unless `relative=yes`. */
+  | { readonly kind: 'zoom'; readonly factor: number; readonly relative: boolean }
+  /** `[color_adjust]`: an instant tint over the map, cleared by setting it back to 0,0,0. */
+  | { readonly kind: 'colorAdjust'; readonly red: number; readonly green: number; readonly blue: number }
+  /** `[screen_fade]`: fade the whole screen to a colour over `duration` ms. */
+  | {
+      readonly kind: 'screenFade';
+      readonly red: number;
+      readonly green: number;
+      readonly blue: number;
+      readonly alpha: number;
+      readonly durationMs: number;
+    }
+  /** `[move_unit]`: a real unit walking its route; the board is updated when the beat finishes. */
+  | { readonly kind: 'moveUnit'; readonly unit: Unit; readonly path: readonly Location[] }
+  /** `[move_unit_fake]`/`[move_units_fake]`: sprites that exist only for this animation. */
+  | { readonly kind: 'moveFakeUnits'; readonly walks: readonly FakeUnitWalk[] }
+  /** `[animate_unit]`: play one named animation on a unit. */
+  | {
+      readonly kind: 'animateUnit';
+      readonly unit: Unit;
+      /** `flag=`: which animation (`recruited`, `idle`, `levelout`, ...). */
+      readonly flag: string;
+      /** `text=`: floating text over the unit; `''` for none. */
+      readonly text: string;
+      readonly withBars: boolean;
+    }
+  /** `[kill] animate=yes`: a unit's death animation, played before it leaves the board. */
+  | { readonly kind: 'unitDeath'; readonly unit: Unit; readonly scroll: boolean }
+  /** `[unit] animate=yes`: a freshly placed unit appearing. */
+  | { readonly kind: 'unitAppear'; readonly unit: Unit };
+
+/** A cutscene beat waiting to be played out. */
+export interface BeatInteraction {
+  readonly kind: 'beat';
+  readonly beat: CutsceneBeat;
+}
+
+/** Everything a running event can stop for. */
+export type Interaction = MessageInteraction | BeatInteraction;
 
 /**
  * What the player (or `autoRespond`) answered with -- deliberately the
@@ -100,6 +182,8 @@ const EMPTY_RESULT: InteractionResult = {};
  * suspend.
  */
 export const autoRespond: Responder = (interaction) => {
+  // A beat has nothing to answer: headless, it has simply happened.
+  if (interaction.kind === 'beat') return {};
   const options = interaction.options;
   const preferred = options.findIndex((o) => o.isDefault);
   return {

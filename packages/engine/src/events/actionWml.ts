@@ -40,12 +40,13 @@
  * entries -- see their own doc comments and `GameSession.menuItems`/
  * `runMenuItem`, packages/ui, for how the UI surfaces and executes them).
  *
- * Presentation-only tags that have no headless effect are registered as
- * explicit no-ops (not silently dropped) so real content doesn't spam
- * "unsupported tag" warnings: `music`, `sound`, `scroll_to`,
- * `scroll_to_unit`, `delay`, `redraw`, `highlight`, `floating_text`,
- * `label`, `move_unit_fake` (a pure animation of a move `move_unit`
- * already performed for real).
+ * Presentation-only tags with nothing to show for them headlessly are
+ * registered as explicit no-ops (not silently dropped) so real content
+ * doesn't spam "unsupported tag" warnings: `music`, `sound`, `redraw`,
+ * `highlight`, `floating_text`, `label`, `select_unit`, `unit_overlay`,
+ * `remove_unit_overlay`. The cutscene and camera tags that used to be in
+ * that list -- `[delay]`, `[scroll_to]`, `[move_unit_fake]`, ... -- are
+ * real as of Phase 17 and live in `cutsceneWml.ts`, registered from here.
  *
  * ## Extension points (NOT implemented here, on purpose)
  * `[attack]`, `[recruit]` (need `packages/engine/src/actions/`'s
@@ -81,7 +82,7 @@ import { Direction, Location, parseDirection } from '../model/Location.js';
 import { Unit } from '../model/Unit.js';
 import { WmlConfig } from '../wml/config.js';
 import { checkRecruitLocation, recallUnit } from '../actions/recruit.js';
-import { findVacantTile } from '../pathfind/pathfind.js';
+import { findPath, findVacantTile } from '../pathfind/pathfind.js';
 import type { ActionHandler, EventContext, RecordedMessage } from './context.js';
 import { ActionRegistry } from './context.js';
 import { isFlow, runFlow, type Flow, type MessageOption, type Responder, type TextInputSpec } from './interaction.js';
@@ -92,6 +93,7 @@ import { actionTimeArea, actionRemoveTimeArea, actionReplaceSchedule, actionStor
 import { newVarNode, varNodeFromConfig, varNodeToConfig, VariableStore, type VarNode } from './variables.js';
 import { parseScenarioObjectives } from './objectives.js';
 import { registerFlowActions } from './flowWml.js';
+import { playBeat, registerCutsceneActions } from './cutsceneWml.js';
 
 // --- shared helpers ---
 
@@ -686,6 +688,7 @@ function* actionKill(cfg: WmlConfig, ctx: EventContext): Flow {
     return;
   }
   const fireEvent = cfg.getBoolean('fire_event', false);
+  const animate = cfg.getBoolean('animate', false);
   const secondaryCfg = cfg.child('secondary_unit');
   const secondary = secondaryCfg ? findUnits(ctx.board, ctx.variables.expandConfig(secondaryCfg))[0] : undefined;
 
@@ -702,6 +705,9 @@ function* actionKill(cfg: WmlConfig, ctx: EventContext): Flow {
     // (draining after the whole action sequence), so a 'die' handler saw
     // the unit already gone from the board.
     if (fireEvent) yield* ctx.fireNow('last breath', deathLoc, killerLoc);
+    if (animate && deathLoc.valid() && ctx.board.unitAt(deathLoc) === unit) {
+      yield* playBeat({ kind: 'unitDeath', unit, scroll: cfg.getBoolean('scroll', true) });
+    }
     if (fireEvent) yield* ctx.fireNow('die', deathLoc, killerLoc);
     // "if it's still on the map" -- an event above may have erased or
     // moved it (`unit.valid == "map"` upstream).
@@ -770,7 +776,7 @@ function actionModifyUnit(cfg: WmlConfig, ctx: EventContext): void {
 
 // --- [unit] ---
 
-function actionUnit(cfg: WmlConfig, ctx: EventContext): void {
+function* actionUnit(cfg: WmlConfig, ctx: EventContext): Flow {
   const side = cfg.getNumber('side', 1);
   const team = ctx.board.getTeam(side);
   if (!team) {
@@ -794,6 +800,9 @@ function actionUnit(cfg: WmlConfig, ctx: EventContext): void {
     // same as a `[side]`/scenario-level `[unit]` present at scenario
     // start (see `GameBoard.fromConfig`'s own capture calls).
     ctx.board.captureVillage(unit.location, side);
+    // `animate=yes`: the unit fades in where it lands, as
+    // `unit_creator::post_create` does via `unit_display::unit_recruited`.
+    if (cfg.getBoolean('animate', false)) yield* playBeat({ kind: 'unitAppear', unit });
   } else {
     ctx.log('error', '[unit] has no valid location and no starting position to fall back to');
   }
@@ -966,7 +975,7 @@ function actionRecall(cfg: WmlConfig, ctx: EventContext): void {
  * queued for the next pump pass like every other `raise` call in this
  * file -- see that field's own doc comment on the batching this implies).
  */
-function actionMoveUnit(cfg: WmlConfig, ctx: EventContext): void {
+function* actionMoveUnit(cfg: WmlConfig, ctx: EventContext): Flow {
   if (cfg.hasAttribute('to_location') || cfg.hasAttribute('dir')) {
     ctx.log('warn', '[move_unit]: to_location=/dir= path specs are not supported (only to_x=/to_y=) -- ignored');
   }
@@ -1013,6 +1022,17 @@ function actionMoveUnit(cfg: WmlConfig, ctx: EventContext): void {
     // to the FINAL one -- not `directionTo`'s full 6-direction geometry.
     if (fromLoc.x < target.x) unit.facing = Direction.SouthEast;
     else if (fromLoc.x > target.x) unit.facing = Direction.SouthWest;
+
+    // Phase 17: `move_unit.lua:103` hands the *visible* move to
+    // `[move_unit_fake]` before relocating the unit for real, so the
+    // walk plays out before whatever the event does next (a line of
+    // dialogue, usually). Headless this resolves instantly and the
+    // teleport below is all that happens, exactly as before.
+    if (!alreadyThere) {
+      const route = findPath(ctx.board, unit, target, { seeAll: true, ignoreUnit: true }).steps;
+      const path = route.length > 0 ? route : [fromLoc, target];
+      yield* playBeat({ kind: 'moveUnit', unit, path });
+    }
 
     ctx.board.moveUnit(fromLoc, target);
     if (fireEvent) ctx.raise('moveto', target, fromLoc);
@@ -1261,27 +1281,10 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('fire_event', actionFireEvent);
   registerFlowActions((tag, handler) => registry.register(tag, handler));
 
-  for (const tag of [
-    'music',
-    'sound',
-    'scroll_to',
-    'scroll_to_unit',
-    'delay',
-    'redraw',
-    'highlight',
-    'floating_text',
-    'label',
-    'select_unit',
-    'unit_overlay',
-    'remove_unit_overlay',
-    // Purely a cosmetic animation of a move `[move_unit]` (above) already
-    // performed for real -- upstream's own `move_unit.lua` calls this
-    // itself right before setting the unit's real x/y. Headless, so
-    // there's nothing to implement, unlike `move_unit` itself.
-    'move_unit_fake',
-  ]) {
+  for (const tag of ['music', 'sound', 'redraw', 'highlight', 'floating_text', 'label', 'select_unit', 'unit_overlay', 'remove_unit_overlay']) {
     registry.register(tag, noop);
   }
+  registerCutsceneActions((tag, handler) => registry.register(tag, handler));
 
   registry.register('attack', extensionPoint('attack', 'packages/engine/src/actions/'));
   registry.register('recruit', extensionPoint('recruit', 'packages/engine/src/actions/'));

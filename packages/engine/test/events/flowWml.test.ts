@@ -8,7 +8,7 @@ import { MoveType } from '../../src/model/MoveType.js';
 import { EventManager, EventPump } from '../../src/events/pump.js';
 import { VariableStore } from '../../src/events/variables.js';
 import { parseWml } from '../../src/wml/index.js';
-import { runFlow, type Interaction } from '../../src/events/interaction.js';
+import { runFlow, type MessageInteraction } from '../../src/events/interaction.js';
 
 /**
  * Phase 17 E2: the loop and flow-control tags (`flowWml.ts`, a port of
@@ -408,9 +408,9 @@ describe('loops are suspendable (Phase 17 E2)', () => {
     `).child('event')!,
     );
 
-    const shown: Interaction[] = [];
+    const shown: MessageInteraction[] = [];
     runFlow(pump.fireFlow('go'), (interaction) => {
-      shown.push(interaction);
+      if (interaction.kind === 'message') shown.push(interaction);
       return {};
     });
 
