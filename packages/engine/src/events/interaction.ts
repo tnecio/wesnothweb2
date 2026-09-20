@@ -61,12 +61,23 @@ export interface MessageInteraction {
 /** Everything a running event can stop for. Cutscene/camera beats join this union in E3. */
 export type Interaction = MessageInteraction;
 
-/** What the player (or `autoRespond`) answered with -- mirrors upstream's replayed `[input] value=/text=`. */
+/**
+ * What the player (or `autoRespond`) answered with -- deliberately the
+ * shape upstream records for replay (`[input] value=/text=`, see
+ * `synced_user_choice.cpp`'s `ask_local_choice`), so Phase 25 can log
+ * these verbatim.
+ */
 export interface InteractionResult {
-  /** The 1-based index of the chosen `[option]`, or its `value=` when it has one. */
-  readonly value?: number | string;
+  /** The 1-based index of the chosen `[option]` (never the option's `value=` -- that mapping happens in `[message]` itself, as upstream). */
+  readonly value?: number;
   /** What was typed into `[text_input]`. */
   readonly text?: string;
+  /**
+   * Escape on a message with no input: skip the rest of *this event's*
+   * input-less messages (`wesnoth.interface.skip_messages()`). Not part
+   * of the replayed choice -- it's a local display preference.
+   */
+  readonly skip?: boolean;
 }
 
 /**

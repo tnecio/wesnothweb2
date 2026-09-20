@@ -83,9 +83,9 @@ import { Unit } from '../model/Unit.js';
 import { WmlConfig } from '../wml/config.js';
 import { checkRecruitLocation, recallUnit } from '../actions/recruit.js';
 import { findVacantTile } from '../pathfind/pathfind.js';
-import type { ActionHandler, EventContext } from './context.js';
+import type { ActionHandler, EventContext, RecordedMessage } from './context.js';
 import { ActionRegistry } from './context.js';
-import { isFlow, runFlow, type Flow, type Responder } from './interaction.js';
+import { isFlow, runFlow, type Flow, type MessageOption, type Responder, type TextInputSpec } from './interaction.js';
 import { conditionalPassed } from './conditionalWml.js';
 import { findUnits, locationMatchesFilter, unitMatchesFilter } from './filter.js';
 import { actionLiftFog, actionPlaceShroud, actionRemoveShroud, actionResetFog } from './shroudWml.js';
@@ -154,15 +154,103 @@ function noop(): void {
 // --- [message] ---
 
 /**
- * Records a `[message]` for the UI to show -- a port of
- * `data/lua/wml/message.lua` minus the dialog itself (and `[option]`/
- * `[text_input]`/`side_for=`, Phase 17): `[show_if]`, `get_speaker` (a
- * message whose speaker cannot be found is skipped, as upstream), and the
- * portrait/caption rules of `get_image`/`get_caption`.
+ * Port of `data/lua/wml/message.lua`'s `wml_actions.message`: shows one
+ * line of dialogue and, as of Phase 17, **blocks its event** until the
+ * player dismisses it or answers its `[option]`/`[text_input]`.
+ *
+ * Ported: `[show_if]`; `get_speaker` (a message whose speaker cannot be
+ * found is skipped, as upstream); `get_image`/`get_caption`'s portrait
+ * and caption rules; `[option]` with `[show_if]`/`label=`/`message=`/
+ * `description=`/`image=`/`default=`/`value=`/`[command]`; `[text_input]`
+ * (first one only); `variable=`; `side_for=` gating for messages with no
+ * input; Escape-skips-the-rest-of-this-event.
+ *
+ * NOT ported: `male_message=`/`female_message=` pick nothing, because
+ * this port's `Unit` has no gender yet (Phase 1 deferred gender with
+ * `[variation]`) -- the plain `message=` is used, and a message that
+ * *only* has gendered text falls back to the male form, upstream's own
+ * default gender. Unused by any campaign ported so far. The Pango
+ * formatting attributes (`font=`, `color=`, `underline=`, ...) are not
+ * applied either; `sound=`/`voice=` are carried on the recorded message
+ * for Phase 19 rather than played.
  */
-function actionMessage(cfg: WmlConfig, ctx: EventContext): void {
+function* actionMessage(cfg: WmlConfig, ctx: EventContext): Flow {
   const showIf = cfg.child('show_if');
   if (showIf && !conditionalPassed(showIf, ctx)) return;
+
+  // Only the first [text_input] is considered, as upstream.
+  const textInputCfgs = cfg.children('text_input');
+  if (textInputCfgs.length > 1) ctx.log('warn', 'Too many [text_input] tags, only first one accepted');
+  const textInputCfg = textInputCfgs[0];
+  let textInput: TextInputSpec | undefined;
+  if (textInputCfg) {
+    let maxLength = textInputCfg.getNumber('max_length', 256);
+    if (maxLength > 1024 || maxLength < 1) {
+      ctx.log('warn', `Invalid maximum size for input ${maxLength}`);
+      maxLength = 256;
+    }
+    textInput = {
+      label: textInputCfg.getString('label', ''),
+      text: textInputCfg.getString('text', ''),
+      maxLength,
+    };
+  }
+
+  // [option]s that fail their own [show_if] are dropped entirely, so the
+  // 1-based index a `variable=` receives counts only the shown ones.
+  const options: MessageOption[] = [];
+  const optionValues: Array<string | undefined> = [];
+  const optionCommands: WmlConfig[][] = [];
+  for (const optionCfg of cfg.children('option')) {
+    const optionShowIf = optionCfg.child('show_if');
+    if (optionShowIf && !conditionalPassed(optionShowIf, ctx)) continue;
+
+    // message= and description= are synonyms (backwards compatibility upstream).
+    const hasMessage = optionCfg.hasAttribute('message');
+    const hasDescription = optionCfg.hasAttribute('description');
+    let description = '';
+    if (hasMessage && hasDescription) {
+      ctx.log('warn', '[option] uses both message= and description= which is invalid.');
+      description = 'Invalid use of both message and description attributes on this option!';
+    } else if (hasMessage) {
+      description = optionCfg.getString('message');
+    } else if (hasDescription) {
+      description = optionCfg.getString('description');
+    }
+
+    options.push({
+      label: optionCfg.getString('label', ''),
+      description,
+      image: optionCfg.getString('image', ''),
+      isDefault: optionCfg.getBoolean('default', false),
+    });
+    optionValues.push(optionCfg.hasAttribute('value') ? optionCfg.getString('value') : undefined);
+    optionCommands.push(optionCfg.children('command'));
+  }
+
+  const hasInput = textInput !== undefined || options.length > 0;
+
+  // Nothing to ask and the player has already pressed Escape this event.
+  if (!hasInput && ctx.skipMessages) {
+    ctx.log('debug', 'Skipping [message] because user not interested');
+    return;
+  }
+
+  // side_for= only gates messages with no input; one that asks something
+  // is always put to whoever is playing (upstream routes it through the
+  // synced-choice machinery instead).
+  if (!hasInput && cfg.hasAttribute('side_for')) {
+    const wanted = cfg
+      .getString('side_for')
+      .split(/[\s,]+/)
+      .map((s) => Number(s))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    const shown = wanted.some((side) => ctx.board.teams().find((t) => t.side === side)?.controller === 'human');
+    if (!shown) {
+      ctx.log('debug', "Player isn't controlling side that should see [message]");
+      return;
+    }
+  }
 
   const speakerAttr = cfg.getString('speaker', '');
   const narrator = speakerAttr === 'narrator';
@@ -206,9 +294,17 @@ function actionMessage(cfg: WmlConfig, ctx: EventContext): void {
   let title = cfg.hasAttribute('caption') ? cfg.getString('caption') : '';
   if (!cfg.hasAttribute('caption') && speakerUnit) title = speakerUnit.name !== '' ? speakerUnit.name : speakerUnit.type.name;
 
-  ctx.messages.push({
+  // No gender in this port's model yet, so a message that only has
+  // gendered text falls back to the male form (upstream's default).
+  const body = cfg.hasAttribute('message')
+    ? cfg.getString('message')
+    : cfg.hasAttribute('male_message')
+      ? cfg.getString('male_message')
+      : cfg.getString('female_message', '');
+
+  const message: RecordedMessage = {
     speaker: narrator ? 'narrator' : (speakerUnit?.id ?? ''),
-    message: cfg.getString('message', ''),
+    message: body,
     image: cfg.hasAttribute('image') ? cfg.getString('image') : undefined,
     caption: cfg.hasAttribute('caption') ? cfg.getString('caption') : undefined,
     portrait,
@@ -220,13 +316,54 @@ function actionMessage(cfg: WmlConfig, ctx: EventContext): void {
     speakerLocation: speakerUnit ? { x: speakerUnit.location.x, y: speakerUnit.location.y } : undefined,
     scroll: cfg.getBoolean('scroll', true),
     highlight: cfg.getBoolean('highlight', true),
+    sound: cfg.getString('sound', ''),
+    voice: cfg.getString('voice', ''),
     unitsBefore: ctx.board.allUnits().map((unit) => ({
       unit,
       x: unit.location.x,
       y: unit.location.y,
       hitpoints: unit.hitpoints,
     })),
+  };
+  ctx.messages.push(message);
+
+  const answer = yield { kind: 'message', message, options, textInput };
+
+  // Escape on a message with nothing to answer: drop the rest of this
+  // event's plain messages (`wesnoth.interface.skip_messages()`).
+  if (answer.skip && !hasInput) ctx.skipMessages = true;
+
+  if (!hasInput) return;
+
+  ctx.choices.push({
+    value: options.length > 0 ? (answer.value ?? 1) : undefined,
+    text: textInput ? (answer.text ?? textInput.text) : undefined,
+    side: ctx.variables.getNumber('side_number', 0),
   });
+
+  if (textInputCfg && textInput) {
+    ctx.variables.set(textInputCfg.getString('variable', 'input'), answer.text ?? textInput.text);
+  }
+
+  if (options.length === 0) return;
+
+  const chosen = answer.value ?? 1;
+  if (chosen < 1 || chosen > options.length) {
+    ctx.log('debug', `invalid choice (${chosen}) was specified, choice 1 to ${options.length} was expected`);
+    return;
+  }
+  const index = chosen - 1;
+
+  const variableName = cfg.getString('variable', '');
+  if (variableName !== '') {
+    const value = optionValues[index];
+    ctx.variables.set(variableName, value ?? chosen);
+  }
+
+  for (const command of optionCommands[index]!) {
+    yield* runActionFlow(command, ctx);
+    if (ctx.exit.type !== 'none') break;
+  }
 }
 
 // --- [if] ---

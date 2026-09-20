@@ -155,6 +155,7 @@ export class EventPump {
       registry: options.registry ?? createDefaultActionRegistry(),
       resolveType: options.resolveType,
       messages: [] as RecordedMessage[],
+      choices: [],
       objectivesBySide: new Map(),
       menuItems: new Map(),
       loc1: Location.NULL,

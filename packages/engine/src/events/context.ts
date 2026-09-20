@@ -75,6 +75,10 @@ export interface RecordedMessage {
   scroll: boolean;
   /** `highlight=` (default yes): whether to highlight the speaker's hex. */
   highlight: boolean;
+  /** `sound=`: a one-off effect to play with the line; carried for Phase 19, not played here. */
+  sound: string;
+  /** `voice=`: the speaker's recorded line; carried for Phase 19, not played here. */
+  voice: string;
   /**
    * Real, reported bug (bugs2.md "Lua events/narration ... not synced with
    * the narrative messages"): every unit's position/hp exactly as of right
@@ -102,6 +106,22 @@ export interface RecordedMessage {
  * signalling `return` correctly stop every enclosing sequence, not just
  * their own immediate scope.
  */
+/**
+ * One answered `[message]` choice, in the shape upstream records for
+ * replay: an `[input]` child carrying `value=` and/or `text=` plus the
+ * side that answered (`synced_user_choice.cpp:354-378`). Phase 25's
+ * replay log is the eventual consumer; recording the shape now means it
+ * won't have to be reconstructed later.
+ */
+export interface ChoiceRecord {
+  /** The 1-based index of the chosen `[option]`. */
+  readonly value?: number;
+  /** The `[text_input]` contents. */
+  readonly text?: string;
+  /** Which side was asked -- upstream's `from_side`; 0 during startup events, when no side is active yet. */
+  readonly side: number;
+}
+
 export interface ExitState {
   type: 'none' | 'break' | 'continue' | 'return';
 }
@@ -171,8 +191,16 @@ export interface EventContext {
   registry: ActionRegistry;
   /** Looks up a `UnitType` by WML `type=` id, e.g. for `[unit]`/`[modify_unit] type=`. */
   resolveType: (id: string) => UnitType;
-  /** `[message]`'s headless stand-in for "show a dialog" -- see `RecordedMessage`. */
+  /**
+   * Every `[message]` that has been shown, oldest first. Before Phase 17
+   * this was the whole of `[message]` -- events ran to completion and the
+   * UI replayed the array afterwards. Now a message blocks its event and
+   * is shown as it happens, so this is a log rather than a work queue,
+   * kept for headless callers and tests that assert what was said.
+   */
   messages: RecordedMessage[];
+  /** Every `[option]`/`[text_input]` answer, oldest first -- see `ChoiceRecord`. */
+  choices: ChoiceRecord[];
   /**
    * Real, reported bug (bugs3.md "objectives dialog"): `[objectives]` used
    * to be a plain no-op. Mirrors Lua's own `scenario_objectives` table
