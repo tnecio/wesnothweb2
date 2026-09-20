@@ -1259,6 +1259,43 @@
   }
 
   /**
+   * Phase 15 H3: the keyboard hex cursor -- `null` until an arrow key
+   * first summons it, so a mouse-only player never sees it. Arrow keys
+   * move it, Enter does exactly what a left click on that hex does, and
+   * Escape puts it away again.
+   *
+   * Arrows map to the storage grid, not to hex directions: left/right
+   * step one column (which zig-zags half a hex vertically on screen, as
+   * offset coordinates do), up/down step one row. That keeps four keys
+   * enough to reach every hex, which six hex directions on four arrows
+   * could not.
+   */
+  let cursorHex = $state<HexPoint | null>(null);
+
+  /** Where the cursor appears when summoned: the selected unit, else this side's leader, else the map's top-left. */
+  function cursorAnchor(): HexPoint {
+    const unit = session.selectedUnit ?? session.board.unitsForSide(activeSide).find((u) => u.canRecruit);
+    return unit ? { x: unit.location.x, y: unit.location.y } : { x: 0, y: 0 };
+  }
+
+  function moveCursor(dx: number, dy: number): void {
+    const width = session.board.map.w();
+    const height = session.board.map.h();
+    if (!cursorHex) {
+      // First press only summons it, at the anchor -- jumping a hex away from
+      // where the player is looking would be disorienting.
+      cursorHex = cursorAnchor();
+    } else {
+      cursorHex = {
+        x: Math.min(width - 1, Math.max(0, cursorHex.x + dx)),
+        y: Math.min(height - 1, Math.max(0, cursorHex.y + dy)),
+      };
+    }
+    hoveredHexInfo = session.hoveredHexInfo(cursorHex.x, cursorHex.y);
+    boardView?.scrollToHexIfOffscreen(cursorHex.x, cursorHex.y);
+  }
+
+  /**
    * Phase 15: commands with no menu entry -- upstream has no menu entry
    * for these either (`data/themes/default.cfg` lists none of them),
    * they exist purely as hotkeys.
@@ -1272,6 +1309,20 @@
     { id: 'zoom-in-shifted', label: 'Zoom In', enabled: true, hotkey: { key: '+', shift: true }, handler: () => boardView?.zoomBy(1.25) },
     { id: 'zoom-out', label: 'Zoom Out', enabled: true, hotkey: { key: '-' }, handler: () => boardView?.zoomBy(0.8) },
     { id: 'zoom-default', label: 'Reset Zoom', enabled: true, hotkey: { key: '0' }, handler: () => boardView?.zoomDefault() },
+    { id: 'cursor-left', label: 'Cursor Left', enabled: phase === 'playing', hotkey: { key: 'ArrowLeft' }, handler: () => moveCursor(-1, 0) },
+    { id: 'cursor-right', label: 'Cursor Right', enabled: phase === 'playing', hotkey: { key: 'ArrowRight' }, handler: () => moveCursor(1, 0) },
+    { id: 'cursor-up', label: 'Cursor Up', enabled: phase === 'playing', hotkey: { key: 'ArrowUp' }, handler: () => moveCursor(0, -1) },
+    { id: 'cursor-down', label: 'Cursor Down', enabled: phase === 'playing', hotkey: { key: 'ArrowDown' }, handler: () => moveCursor(0, 1) },
+    {
+      id: 'cursor-act',
+      label: 'Select / Move / Attack',
+      enabled: phase === 'playing' && cursorHex !== null,
+      hotkey: { key: 'Enter' },
+      // The same path a left click takes, so keyboard and mouse can never diverge.
+      handler: () => {
+        if (cursorHex) void handleHexClick(cursorHex.x, cursorHex.y);
+      },
+    },
     {
       id: 'deselect',
       label: 'Deselect',
@@ -1279,6 +1330,8 @@
       hotkey: { key: 'Escape' },
       handler: () => {
         session.clearSelection();
+        cursorHex = null;
+        hoveredHexInfo = null;
         sync();
       },
     },
@@ -1367,6 +1420,7 @@
         snapshot={activeSnapshot}
         {units}
         {selectedHex}
+        {cursorHex}
         {reachable}
         {attackTargets}
         recruitTiles={boardRecruitTiles}

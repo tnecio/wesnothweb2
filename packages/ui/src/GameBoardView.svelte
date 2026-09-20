@@ -52,6 +52,7 @@
     snapshot,
     units,
     selectedHex = null,
+    cursorHex = null,
     reachable = [],
     attackTargets = [],
     recruitTiles = [],
@@ -76,6 +77,8 @@
     /** Live unit positions/HP -- re-applied to the board whenever this changes. */
     units: SnapshotUnit[];
     selectedHex?: HexPoint | null;
+    /** Phase 15: the keyboard cursor's hex (`GameShell` owns it), drawn as its own ring. */
+    cursorHex?: HexPoint | null;
     reachable?: readonly (HexPoint & { defensePercent?: number })[];
     attackTargets?: readonly HexPoint[];
     recruitTiles?: readonly HexPoint[];
@@ -295,7 +298,7 @@
       // settled before this async init finished) -- the effects below only
       // fire again on a *subsequent* change.
       await newBoard.updateUnits(units);
-      newBoard.setHighlights({ selected: selectedHex, reachable, attackTargets, recruitTiles });
+      newBoard.setHighlights({ selected: selectedHex, cursor: cursorHex, reachable, attackTargets, recruitTiles });
       newBoard.updateVillageOwnership(villageOwners);
       newBoard.updateFogShroud(hexVisibility);
       if (timeOfDay) newBoard.updateTimeOfDayTint(timeOfDay);
@@ -342,7 +345,7 @@
   });
 
   $effect(() => {
-    board?.setHighlights({ selected: selectedHex, reachable, attackTargets, recruitTiles });
+    board?.setHighlights({ selected: selectedHex, cursor: cursorHex, reachable, attackTargets, recruitTiles });
   });
 
   $effect(() => {

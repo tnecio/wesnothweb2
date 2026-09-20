@@ -389,6 +389,12 @@ export interface HighlightState {
   reachable?: readonly (HexPoint & { defensePercent?: number })[];
   /** Adjacent enemy hexes the selected unit could attack. */
   attackTargets?: readonly HexPoint[];
+  /**
+   * Phase 15: the keyboard cursor's hex -- a dashed-looking double ring,
+   * deliberately unlike `selected`'s solid one, since both can be shown
+   * at once (a unit selected while the cursor is over its destination).
+   */
+  cursor?: HexPoint | null;
   /** Vacant castle tiles the selected leader could recruit onto. */
   recruitTiles?: readonly HexPoint[];
 }
@@ -1572,6 +1578,24 @@ export class SnapshotBoard {
       const inner = new PIXI.Graphics();
       inner.poly(points);
       inner.stroke({ width: 3, color: 0xffffff, alpha: 1 });
+      this.selectionLayer.addChild(inner);
+    }
+
+    // Phase 15: the keyboard cursor. Drawn last so it stays visible on top of a
+    // selection ring on the same hex; cyan, a hue no other highlight here uses.
+    if (state.cursor) {
+      const coord = toHexCoord(state.cursor.x, state.cursor.y);
+      const { x: cx, y: cy } = hexToPixel(coord);
+      const points = hexCorners(cx, cy).flatMap((p) => [p.x, p.y]);
+
+      const outer = new PIXI.Graphics();
+      outer.poly(points);
+      outer.stroke({ width: 7, color: 0x000000, alpha: 0.7 });
+      this.selectionLayer.addChild(outer);
+
+      const inner = new PIXI.Graphics();
+      inner.poly(points);
+      inner.stroke({ width: 3, color: 0x36e0ff, alpha: 1 });
       this.selectionLayer.addChild(inner);
     }
   }
