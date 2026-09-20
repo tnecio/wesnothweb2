@@ -85,6 +85,7 @@ import { checkRecruitLocation, recallUnit } from '../actions/recruit.js';
 import { findVacantTile } from '../pathfind/pathfind.js';
 import type { ActionHandler, EventContext } from './context.js';
 import { ActionRegistry } from './context.js';
+import { isFlow, runFlow, type Flow, type Responder } from './interaction.js';
 import { conditionalPassed } from './conditionalWml.js';
 import { findUnits, locationMatchesFilter, unitMatchesFilter } from './filter.js';
 import { actionLiftFog, actionPlaceShroud, actionRemoveShroud, actionResetFog } from './shroudWml.js';
@@ -105,7 +106,7 @@ import { parseScenarioObjectives } from './objectives.js';
  * not to the action sequence), and iteration stops as soon as
  * `ctx.exit.type` becomes non-`'none'`.
  */
-export function runActionSequence(body: WmlConfig, ctx: EventContext): void {
+export function* runActionFlow(body: WmlConfig, ctx: EventContext): Flow {
   for (const { tag, config } of body.allChildren()) {
     if (tag.startsWith('filter')) continue;
     const handler = ctx.registry.get(tag);
@@ -114,12 +115,26 @@ export function runActionSequence(body: WmlConfig, ctx: EventContext): void {
       continue;
     }
     try {
-      handler(ctx.variables.expandConfig(config), ctx);
+      const result = handler(ctx.variables.expandConfig(config), ctx);
+      // A handler that needs to block returns a generator (see
+      // interaction.ts); delegating rather than driving it here is what
+      // lets the suspension travel out to whoever is pumping.
+      if (isFlow(result)) yield* result;
     } catch (e) {
       ctx.log('error', `Error occurred inside [${tag}]: ${e instanceof Error ? e.message : String(e)}`);
     }
     if (ctx.exit.type !== 'none') break;
   }
+}
+
+/**
+ * `runActionFlow` for a caller with nothing to show: runs the body to
+ * completion, answering any interaction inline with `autoRespond`. This
+ * is the shape every pre-Phase-17 caller already used, kept so that
+ * headless callers (`GameSession.runMenuItem`, tests) need no changes.
+ */
+export function runActionSequence(body: WmlConfig, ctx: EventContext, respond?: Responder): void {
+  runFlow(runActionFlow(body, ctx), respond);
 }
 
 function extensionPoint(tag: string, owner: string): ActionHandler {
@@ -216,7 +231,7 @@ function actionMessage(cfg: WmlConfig, ctx: EventContext): void {
 
 // --- [if] ---
 
-function actionIf(cfg: WmlConfig, ctx: EventContext): void {
+function* actionIf(cfg: WmlConfig, ctx: EventContext): Flow {
   const hasBranches = cfg.hasChild('then') || cfg.hasChild('elseif') || cfg.hasChild('else');
   if (!hasBranches) {
     ctx.log('error', "[if] didn't find any [then], [elseif], or [else] children.");
@@ -225,7 +240,7 @@ function actionIf(cfg: WmlConfig, ctx: EventContext): void {
 
   if (conditionalPassed(cfg, ctx)) {
     for (const thenCfg of cfg.children('then')) {
-      runActionSequence(thenCfg, ctx);
+      yield* runActionFlow(thenCfg, ctx);
       if (ctx.exit.type !== 'none') break;
     }
     return;
@@ -234,7 +249,7 @@ function actionIf(cfg: WmlConfig, ctx: EventContext): void {
   for (const elseifCfg of cfg.children('elseif')) {
     if (conditionalPassed(elseifCfg, ctx)) {
       for (const thenCfg of elseifCfg.children('then')) {
-        runActionSequence(thenCfg, ctx);
+        yield* runActionFlow(thenCfg, ctx);
         if (ctx.exit.type !== 'none') break;
       }
       return;
@@ -242,7 +257,7 @@ function actionIf(cfg: WmlConfig, ctx: EventContext): void {
   }
 
   for (const elseCfg of cfg.children('else')) {
-    runActionSequence(elseCfg, ctx);
+    yield* runActionFlow(elseCfg, ctx);
     if (ctx.exit.type !== 'none') break;
   }
 }
@@ -528,7 +543,7 @@ function actionUnstoreUnit(cfg: WmlConfig, ctx: EventContext): void {
 
 // --- [kill] ---
 
-function actionKill(cfg: WmlConfig, ctx: EventContext): void {
+function* actionKill(cfg: WmlConfig, ctx: EventContext): Flow {
   if (cfg.hasChild('filter')) {
     ctx.log('error', 'Tag [filter] may not be used in [kill]');
     return;
@@ -543,17 +558,17 @@ function actionKill(cfg: WmlConfig, ctx: EventContext): void {
     const deathLoc = unit.location;
     const killerLoc = secondary ? secondary.location : deathLoc;
     unit.hitpoints = 0;
-    // NOTE: upstream fires 'last breath'/'die' *before* erasing the unit, synchronously
-    // (recursive pump). This port's pump only drains queued events after the current
-    // action sequence finishes (see pump.ts's module doc comment), so a raised 'die'
-    // event here will see the unit already removed from the board -- a known ordering
-    // divergence, harmless for content that doesn't inspect the dying unit from its own
-    // 'die' handler via $x1/$y1, but a real gap for content that does.
-    if (fireEvent) {
-      ctx.raise('last breath', deathLoc, killerLoc);
-      ctx.raise('die', deathLoc, killerLoc);
-    }
-    if (deathLoc.valid()) ctx.board.removeUnitAt(deathLoc);
+    // Phase 17: upstream's own order (`data/lua/wml/kill.lua`) -- 'last
+    // breath', then the death animation, then 'die', and only then the
+    // unit is erased, each event drained completely before the next step.
+    // Until the pump could suspend, this port could only `raise` both
+    // (draining after the whole action sequence), so a 'die' handler saw
+    // the unit already gone from the board.
+    if (fireEvent) yield* ctx.fireNow('last breath', deathLoc, killerLoc);
+    if (fireEvent) yield* ctx.fireNow('die', deathLoc, killerLoc);
+    // "if it's still on the map" -- an event above may have erased or
+    // moved it (`unit.valid == "map"` upstream).
+    if (deathLoc.valid() && ctx.board.unitAt(deathLoc) === unit) ctx.board.removeUnitAt(deathLoc);
     killedCount++;
   }
 
@@ -1033,6 +1048,41 @@ function actionClearMenuItem(cfg: WmlConfig, ctx: EventContext): void {
   else ctx.menuItems.delete(id);
 }
 
+// --- [fire_event] ---
+
+/**
+ * Port of `wml-tags.lua`'s `fire_event`: fires an event *immediately*,
+ * draining it (and anything it raises) before the rest of this action
+ * sequence continues. `[primary_unit]`/`[secondary_unit]` are unit
+ * filters supplying `$x1|$y1`/`$x2|$y2`; `[data]` is passed through as
+ * the event's own data, with `[primary_attack]`/`[secondary_attack]`
+ * folded into it as `[first]`/`[second]` (upstream's own shuffling, so
+ * weapon-filtered handlers see what they expect).
+ */
+function* actionFireEvent(cfg: WmlConfig, ctx: EventContext): Flow {
+  const name = cfg.getString('name', '');
+  const id = cfg.getString('id', '');
+  if (name === '' && id === '') {
+    ctx.log('error', '[fire_event] missing required name= or id=');
+    return;
+  }
+
+  const filterLoc = (tag: string): Location => {
+    const filterCfg = cfg.child(tag);
+    if (!filterCfg) return Location.NULL;
+    const unit = findUnits(ctx.board, ctx.variables.expandConfig(filterCfg))[0];
+    return unit ? unit.location : Location.NULL;
+  };
+
+  const data = cfg.child('data') ?? new WmlConfig();
+  const primaryAttack = cfg.child('primary_attack');
+  const secondaryAttack = cfg.child('secondary_attack');
+  if (primaryAttack) data.addChild('first', primaryAttack);
+  if (secondaryAttack) data.addChild('second', secondaryAttack);
+
+  yield* ctx.fireNow(name, filterLoc('primary_unit'), filterLoc('secondary_unit'), data, id);
+}
+
 /**
  * Builds a fresh registry with every action tag this module implements
  * (plus the presentation no-ops and extension-point placeholders)
@@ -1071,6 +1121,7 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('heal_unit', actionHealUnit);
   registry.register('set_menu_item', actionSetMenuItem);
   registry.register('clear_menu_item', actionClearMenuItem);
+  registry.register('fire_event', actionFireEvent);
 
   for (const tag of [
     'music',

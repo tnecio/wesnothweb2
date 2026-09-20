@@ -33,13 +33,19 @@
  *   with `might_contain_variables` deferred re-evaluation
  *   (`dynamic_`/`by_name_` split in `manager_impl.cpp`): all handlers are
  *   matched by their name(s) as computed once at registration time.
- * - Batching semantics around *recursive* firing (an action handler itself
- *   causing a nested `pump()` call) are simplified -- see `EventPump.pump`'s
- *   doc comment for the specific, documented divergence.
  * - `undo_disabled`/`action_canceled` context-stack tracking
  *   (`context::scoped`, `[allow_undo]`) and WML message/error de-duplicated
  *   chat display (`show_wml_messages`) are not modeled -- this port has no
- *   undo stack or chat log to hook them into yet.
+ *   undo stack or chat log to hook them into yet. The third flag of
+ *   upstream's `context::state`, `skip_messages`, IS modeled as of
+ *   Phase 17 -- see `processEvent`.
+ *
+ * ## Suspension (Phase 17)
+ * `pumpFlow`/`fireFlow` are the real implementations: generators that
+ * suspend whenever a handler needs the player or the display (see
+ * `interaction.ts`). `pump`/`fire` keep their old synchronous signatures
+ * by driving those with `autoRespond`, so every headless caller is
+ * unaffected.
  */
 
 import type { GameBoard } from '../model/GameBoard.js';
@@ -47,8 +53,9 @@ import { Location } from '../model/Location.js';
 import { Schedule, DEFAULT_MAX_LIMINAL_BONUS } from '../model/Schedule.js';
 import type { UnitType } from '../model/UnitType.js';
 import { WmlConfig } from '../wml/config.js';
-import { createDefaultActionRegistry, runActionSequence } from './actionWml.js';
+import { createDefaultActionRegistry, runActionFlow } from './actionWml.js';
 import { ActionRegistry, type EventContext, type RecordedMessage } from './context.js';
+import { runFlow, type Flow, type Responder } from './interaction.js';
 import { conditionalPassed } from './conditionalWml.js';
 import { unitMatchesFilter } from './filter.js';
 import type { VariableStore } from './variables.js';
@@ -133,6 +140,8 @@ export interface EventPumpOptions {
 /** TS port of `wml_event_pump`: queues and dispatches events to registered `[event]` handlers. */
 export class EventPump {
   private queue: QueuedEvent[] = [];
+  /** How many `pumpFlow` calls are on the stack: 1 is a top-level drain, more means `fireNow` nested into one. */
+  private nesting = 0;
   readonly ctx: EventContext;
 
   constructor(
@@ -155,6 +164,9 @@ export class EventPump {
       raise: (name, loc1 = Location.NULL, loc2 = Location.NULL, data = new WmlConfig()) => {
         this.queue.push({ name: standardizeEventName(name), id: '', loc1, loc2, data });
       },
+      fireNow: (name, loc1 = Location.NULL, loc2 = Location.NULL, data = new WmlConfig(), id = '') =>
+        this.fireNowFlow(name, loc1, loc2, data, id),
+      skipMessages: false,
       log: options.log ?? (() => {}),
     };
   }
@@ -167,59 +179,91 @@ export class EventPump {
     this.queue.push({ name: standardizeEventName(name), id, loc1, loc2, data });
   }
 
-  /** Raises then immediately drains the queue. Mirrors `wml_event_pump::fire`. */
-  fire(name: string, loc1?: Location, loc2?: Location, data?: WmlConfig): void {
+  /**
+   * Raises then immediately drains the queue, answering any interaction
+   * inline (`autoRespond` unless a caller supplies its own). Mirrors
+   * `wml_event_pump::fire`, and is the form every headless caller uses.
+   */
+  fire(name: string, loc1?: Location, loc2?: Location, data?: WmlConfig, respond?: Responder): void {
+    runFlow(this.fireFlow(name, loc1, loc2, data), respond);
+  }
+
+  /** `fire`, suspendably: the caller drives the generator and answers each interaction itself. */
+  *fireFlow(name: string, loc1?: Location, loc2?: Location, data?: WmlConfig): Flow {
     this.raise(name, loc1, loc2, data);
-    this.pump();
+    yield* this.pumpFlow();
   }
 
   /**
-   * Drains the event queue. Mirrors `wml_event_pump::operator()()` +
-   * `pump_manager`'s swap-based batching, simplified: each iteration of
-   * this loop snapshots and clears the current queue, processes every
-   * event in that snapshot (running to completion, including any
-   * newly-`raise()`d events those handlers add to the NEXT snapshot), and
-   * repeats until nothing is left. Upstream instead gives a *recursive*
-   * `operator()()` call (triggered from inside a handler, e.g. via
-   * `wesnoth.game_events.fire`) its own nested `pump_manager` that drains
-   * immediately, synchronously, before the outer call's handler resumes.
-   * This port's batching is observably different only for handlers that
-   * depend on a nested event completing strictly before their own next
-   * action runs -- see `actionWml.ts`'s `kill` handler for the one place
-   * this is a real, documented gap (`fire_event=yes`'s die/last-breath
-   * ordering relative to the unit's removal).
+   * Fires one event *now*, on top of whatever is already queued, and
+   * drains it completely before returning -- upstream's recursive
+   * `wml_event_pump::operator()()` with its own nested `pump_manager`.
+   * Backs `ctx.fireNow` (`[fire_event]`, `[kill] fire_event=yes`).
    */
-  pump(): void {
-    let iterations = 0;
-    while (this.queue.length > 0) {
-      if (++iterations > 10000) {
-        throw new Error('game_events pump exceeded max iterations (possible runaway event loop)');
-      }
-      const batch = this.queue;
-      this.queue = [];
-      for (const ev of batch) {
-        if (ev.name === '' && ev.id === '') continue;
+  *fireNowFlow(name: string, loc1: Location, loc2: Location, data: WmlConfig, id: string): Flow {
+    const outer = this.queue;
+    this.queue = [{ name: standardizeEventName(name), id, loc1, loc2, data }];
+    try {
+      yield* this.pumpFlow();
+    } finally {
+      this.queue = outer;
+    }
+  }
 
-        this.ctx.variables.set('x1', ev.loc1.valid() ? ev.loc1.wmlX : 0);
-        this.ctx.variables.set('y1', ev.loc1.valid() ? ev.loc1.wmlY : 0);
-        this.ctx.variables.set('x2', ev.loc2.valid() ? ev.loc2.wmlX : 0);
-        this.ctx.variables.set('y2', ev.loc2.valid() ? ev.loc2.wmlY : 0);
+  /**
+   * Drains the event queue, answering any interaction inline. The
+   * pre-Phase-17 shape, kept for every headless caller (tests, the
+   * snapshot builder, the AI host).
+   */
+  pump(respond?: Responder): void {
+    runFlow(this.pumpFlow(), respond);
+  }
 
-        const handlers =
-          ev.id !== ''
-            ? ([this.manager.handlerById(ev.id)].filter(Boolean) as WmlEventHandler[])
-            : this.manager.handlersForName(ev.name);
+  /**
+   * Drains the event queue, suspending whenever a handler needs the
+   * player or the display (see interaction.ts). Mirrors
+   * `wml_event_pump::operator()()` + `pump_manager`'s swap-based
+   * batching: each iteration snapshots and clears the current queue and
+   * processes every event in it, with anything those handlers `raise()`
+   * landing in the NEXT snapshot; `ctx.fireNow` is the other half of
+   * upstream's model, running a nested pump immediately.
+   */
+  *pumpFlow(): Flow {
+    this.nesting++;
+    try {
+      let iterations = 0;
+      while (this.queue.length > 0) {
+        if (++iterations > 10000) {
+          throw new Error('game_events pump exceeded max iterations (possible runaway event loop)');
+        }
+        const batch = this.queue;
+        this.queue = [];
+        for (const ev of batch) {
+          if (ev.name === '' && ev.id === '') continue;
 
-        for (const handler of handlers) {
-          if (handler.disabled) continue;
-          this.processEvent(handler, ev);
+          this.ctx.variables.set('x1', ev.loc1.valid() ? ev.loc1.wmlX : 0);
+          this.ctx.variables.set('y1', ev.loc1.valid() ? ev.loc1.wmlY : 0);
+          this.ctx.variables.set('x2', ev.loc2.valid() ? ev.loc2.wmlX : 0);
+          this.ctx.variables.set('y2', ev.loc2.valid() ? ev.loc2.wmlY : 0);
+
+          const handlers =
+            ev.id !== ''
+              ? ([this.manager.handlerById(ev.id)].filter(Boolean) as WmlEventHandler[])
+              : this.manager.handlersForName(ev.name);
+
+          for (const handler of handlers) {
+            if (handler.disabled) continue;
+            yield* this.processEvent(handler, ev);
+          }
         }
       }
+    } finally {
+      this.nesting--;
     }
   }
 
   /** Mirrors `wml_event_pump::process_event`: filter, then (if first-time-only) disable, then run the body. */
-  private processEvent(handler: WmlEventHandler, ev: QueuedEvent): void {
+  private *processEvent(handler: WmlEventHandler, ev: QueuedEvent): Flow {
     if (!this.filterEvent(handler, ev)) return;
     if (!handler.repeatable) handler.disabled = true;
 
@@ -228,7 +272,17 @@ export class EventPump {
     this.ctx.eventData = ev.data;
     this.ctx.exit = { type: 'none' };
 
-    runActionSequence(handler.rawCfg, this.ctx);
+    // `context::scoped` (pump.cpp:324-343): a nested event inherits the
+    // enclosing one's skip-messages flag, a fresh top-level one starts
+    // without it. `nesting === 1` is the top-level pump; anything deeper
+    // got there through `fireNow`.
+    const outerSkip = this.ctx.skipMessages;
+    if (this.nesting <= 1) this.ctx.skipMessages = false;
+    try {
+      yield* runActionFlow(handler.rawCfg, this.ctx);
+    } finally {
+      this.ctx.skipMessages = outerSkip;
+    }
   }
 
   /** Mirrors `event_handler::filter_event`, for the filter kinds this port implements -- see module doc comment. */

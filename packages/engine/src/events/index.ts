@@ -16,7 +16,10 @@ export type { ActionHandler, EventContext, EndLevelState, ExitState, RecordedMes
 export { parseScenarioObjectives, turnCounterSuffix, OBJECTIVE_COLOR } from './objectives.js';
 export type { ScenarioObjectives, ScenarioObjectiveEntry, GoldCarryoverEntry, ObjectiveCondition } from './objectives.js';
 
-export { createDefaultActionRegistry, runActionSequence, applySetVariable } from './actionWml.js';
+export { createDefaultActionRegistry, runActionSequence, runActionFlow, applySetVariable } from './actionWml.js';
+
+export { runFlow, autoRespond, isFlow } from './interaction.js';
+export type { Interaction, MessageInteraction, InteractionResult, MessageOption, TextInputSpec, Flow, Responder } from './interaction.js';
 
 export { EventManager, EventPump, standardizeEventName } from './pump.js';
 export type { WmlEventHandler, QueuedEvent, EventPumpOptions } from './pump.js';

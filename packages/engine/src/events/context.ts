@@ -17,6 +17,7 @@ import type { UnitType } from '../model/UnitType.js';
 import type { WmlConfig } from '../wml/config.js';
 import type { VariableStore } from './variables.js';
 import type { ScenarioObjectives } from './objectives.js';
+import type { Flow } from './interaction.js';
 
 /**
  * One real `[set_menu_item]` declaration -- see `actionWml.ts`'s
@@ -120,7 +121,15 @@ export interface EndLevelState {
   endCredits?: boolean;
 }
 
-export type ActionHandler = (cfg: WmlConfig, ctx: EventContext) => void;
+/**
+ * A WML action tag's implementation. Most run to completion and return
+ * nothing; one that has to stop mid-way (a `[message]` waiting to be
+ * dismissed, a cutscene beat waiting to finish playing) returns the
+ * generator described in `interaction.ts` instead, and whoever drives the
+ * pump decides how to answer it. `runActionFlow` delegates into either
+ * shape, so a handler only opts in when it actually needs to block.
+ */
+export type ActionHandler = (cfg: WmlConfig, ctx: EventContext) => void | Flow;
 
 /**
  * The `[tag] -> handler` lookup action-tag execution consults, mirroring
@@ -186,6 +195,23 @@ export interface EventContext {
   endLevel?: EndLevelState;
   /** Queues a new event, processed once the current pump pass finishes (see pump.ts's module doc comment on batching). */
   raise: (name: string, loc1?: Location, loc2?: Location, data?: WmlConfig) => void;
+  /**
+   * Phase 17: fires an event *now*, draining it (and anything it raises)
+   * completely before the caller's next action runs -- upstream's own
+   * recursive `wml_event_pump::operator()()`. `[fire_event]` and
+   * `[kill] fire_event=yes` use it; `raise` remains the "queue it for
+   * after this event body" form. Must be delegated to with `yield*`, so
+   * a `[message]` inside the nested event can still suspend.
+   */
+  fireNow: (name: string, loc1?: Location, loc2?: Location, data?: WmlConfig, id?: string) => Flow;
+  /**
+   * Upstream's per-context `skip_messages` flag (`pump.cpp`'s
+   * `context::state`): set when the player pressed Escape on a message
+   * with no input, which drops the *rest of this event's* input-less
+   * messages. Inherited by nested events, and reset for each new
+   * top-level event, exactly like `context::scoped`.
+   */
+  skipMessages: boolean;
   log: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
   /** Set by a host with a real AI engine (`packages/ui`'s `GameSession`, Phase 29 S5) -- backs the `[modify_ai]`/`[modify_side]`/`[micro_ai]` action tags (`ai/wmlActions.ts`). Undefined (rather than a no-op stub) in any context without one, e.g. a headless test that never constructs an `AiManager`, so those tags log a clear "not loaded" warning instead of silently doing nothing. */
   ai?: import('../ai/wmlActions.js').AiWmlHooks;
