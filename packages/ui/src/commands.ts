@@ -68,6 +68,20 @@ export function matchesHotkey(event: KeyboardEvent, hotkey: Hotkey): boolean {
   );
 }
 
+/**
+ * Phase 15 H4: whether an Enter keypress belongs to the focused control
+ * rather than to the dialog's primary action.
+ *
+ * `Modal` focuses the first focusable element, which in a list dialog is
+ * the first list option -- Enter there should confirm the dialog, not
+ * merely re-pick the option already highlighted. Buttons that do their
+ * own thing (Cancel, Rename, Damage Calculations) carry no
+ * `data-list-option`, so Enter is left to them.
+ */
+export function onPlainButton(target: EventTarget | null): boolean {
+  return target instanceof HTMLButtonElement && !target.hasAttribute('data-list-option');
+}
+
 /** Display names for keys whose `KeyboardEvent.key` reads badly in a menu. */
 const KEY_LABELS: Record<string, string> = {
   ' ': 'Space',

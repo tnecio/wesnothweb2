@@ -10,6 +10,7 @@
   import { imageUrl } from '@wesnothweb2/renderer';
   import type { CombatPreview, CombatantPreview, AttackerWeaponOption } from './gameSession.js';
   import { raceDisplayName } from './gameSession.js';
+  import { onPlainButton } from './commands.js';
   import Modal from './Modal.svelte';
   import CombatSimulationDialog from './CombatSimulationDialog.svelte';
 
@@ -57,7 +58,30 @@
     if (c.chanceToHitSource === 'marksman') return ' (marksman)';
     return '';
   }
+
+  /**
+   * Phase 15 H4: arrow keys pick the attacker's weapon and Enter confirms
+   * the attack (`Modal` owns Escape/Tab/focus). Enter is left alone while
+   * a button has focus, so Cancel and "Damage Calculations" still do
+   * their own thing.
+   */
+  function handleKeydown(e: KeyboardEvent): void {
+    if (showSimulation) return; // the simulation view is its own dialog on top
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (attackerWeaponOptions.length < 2) return;
+      e.preventDefault();
+      const current = attackerWeaponOptions.findIndex((o) => o.selected);
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      const next = (Math.max(0, current) + step + attackerWeaponOptions.length) % attackerWeaponOptions.length;
+      onSelectAttackerWeapon(attackerWeaponOptions[next]!.index);
+    } else if (e.key === 'Enter' && !onPlainButton(e.target)) {
+      e.preventDefault();
+      onConfirm();
+    }
+  }
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <Modal width="46rem" labelledBy="Attack" onClose={onCancel}>
   {#snippet children()}
@@ -88,6 +112,7 @@
         {#each attackerWeaponOptions as opt (opt.index)}
           <button
             class="weapon-option"
+            data-list-option
             class:selected={opt.selected}
             onclick={() => onSelectAttackerWeapon(opt.index)}
             title={opt.specials.length > 0 ? opt.specials.map((s) => s.name).join(', ') : undefined}

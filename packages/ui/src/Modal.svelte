@@ -64,7 +64,11 @@
   }
 
   $effect(() => {
-    const target = focusableElements()[0] ?? boxEl;
+    // Phase 15: a dialog whose first focusable element isn't the one a
+    // keyboard user wants (the recall list's first button is "Rename")
+    // marks the right one with `data-autofocus`.
+    const preferred = boxEl?.querySelector<HTMLElement>('[data-autofocus]');
+    const target = preferred ?? focusableElements()[0] ?? boxEl;
     target?.focus();
   });
 </script>

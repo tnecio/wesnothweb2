@@ -18,6 +18,7 @@
   import { imageUrl } from '@wesnothweb2/renderer';
   import type { RecruitOption } from './gameSession.js';
   import { raceDisplayName } from './gameSession.js';
+  import { onPlainButton } from './commands.js';
   import Modal from './Modal.svelte';
 
   let {
@@ -38,7 +39,34 @@
   function rangeType(w: { range: string; type: string }): string {
     return `${w.range}, ${w.type}`;
   }
+
+  /**
+   * Phase 15 H4: arrow keys walk the type list and Enter recruits the
+   * highlighted type, so the dialog needs no mouse. `Modal` already owns
+   * Escape, Tab and the initial focus.
+   *
+   * Enter is ignored while a button has focus: that button's own
+   * activation is what the player means (Cancel must cancel, not
+   * recruit).
+   */
+  function handleKeydown(e: KeyboardEvent): void {
+    if (options.length === 0) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const current = options.findIndex((o) => o.typeId === selectedTypeId);
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      const next = (Math.max(0, current) + step + options.length) % options.length;
+      selectedTypeId = options[next]!.typeId;
+    } else if (e.key === 'Enter' && !onPlainButton(e.target)) {
+      if (selected?.affordable) {
+        e.preventDefault();
+        onRecruit(selected.typeId);
+      }
+    }
+  }
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <Modal width="34rem" labelledBy="Recruit unit" onClose={onCancel}>
   {#snippet children()}
@@ -92,6 +120,7 @@
           <li>
             <button
               class="type-option"
+              data-list-option
               class:selected={selectedTypeId === opt.typeId}
               class:unaffordable={!opt.affordable}
               title={opt.affordable ? undefined : `Not enough gold (needs ${opt.cost}, have ${gold})`}

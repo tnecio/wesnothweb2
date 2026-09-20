@@ -1022,8 +1022,10 @@ matches the real Wesnoth default theme closely. Spec source: `data/themes/defaul
 
 ## Phase 15 — Keyboard shortcuts (core)
 
-**Status: in progress (started 2026-09-20)**, branch
-`phase-15-hotkeys`; staged breakdown below. Brought forward from the old
+**Status: delivered (2026-09-20)**, branch `phase-15-hotkeys`, stages
+H0-H4; see docs/PROGRESS.md. The milestone playthrough
+(`apps/web/scripts/keyboard-playthrough.mjs`) drives recruit, move,
+attack and end turn with no clicks at all. Brought forward from the old
 Phase 17 (2026-09-12). Two reasons: Phase 14's command registry makes this cheap
 immediately afterwards, and Playwright tests become shorter and less
 coordinate-fragile when actions like end turn, undo, recruit, next unit
@@ -1575,9 +1577,10 @@ pulls in real content, rather than as the headline focus. Phases 11 and
 against the Under the Burning Suns testbed as planned.
 
 1. **Phase 13** (recruit/recall/combat modals) and **Phase 14** (main game
-   UI overhaul) delivered 2026-09-13; **Phase 15** (core keyboard
-   shortcuts) ← **current focus**
-2. **Phase 16** (narration), **Phase 17** (events/`[option]`/cutscenes).
+   UI overhaul) delivered 2026-09-13, **Phase 15** (core keyboard
+   shortcuts) 2026-09-20 — this group is done
+2. **Phase 16** (narration) delivered 2026-09-14; **Phase 17**
+   (events/`[option]`/cutscenes) ← **current focus**
 3. **Phase 18** (labels/items), **Phase 19** (audio/music).
 4. **Phase 20** (localization/accessibility).
 5. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).

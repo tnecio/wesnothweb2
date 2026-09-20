@@ -3331,3 +3331,62 @@ assets") holds. The ~10 per-file images left per scenario (unit sprites
 fetched outside bundles, e.g. dialog portraits, and engine images) are
 still revalidated on reload, as are the manifests. The optional service
 worker was not built; it belongs with Phase 28's offline work.
+
+## 2026-09-20 — Phase 15: keyboard shortcuts (core)
+
+Branch `phase-15-hotkeys`, stages H0-H4 (plan: docs/IMPLEMENTATION_PLAN.md).
+
+- **H0 hotkey model** (`packages/ui/src/commands.ts`): `Hotkey` mirrors
+  upstream's `[hotkey]` shape (`key=` plus `ctrl=`/`shift=`/`alt=`);
+  `matchesHotkey` requires the modifier set to match exactly (so `ctrl+r`
+  never fires on the browser's `ctrl+shift+r`) and treats `ctrl` as
+  Command on macOS, as `{IF_APPLE_CMD_ELSE_CTRL}` does upstream;
+  `formatHotkey` renders the menu hint. 10 unit tests.
+- **H1 dispatcher**: one `svelte:window` keydown handler in `GameShell`
+  routes through the same `Command` objects the menus use, so a binding
+  cannot drift from its menu entry. It ignores auto-repeat, typing
+  targets, open dialogs, the context menu, and any phase but `playing`;
+  a disabled command still swallows its key so the browser does not act
+  on it. Bindings, all upstream's own: save `ctrl+s`, load `ctrl+o`,
+  recruit `ctrl+r`, recall `alt+r`, objectives `ctrl+j`, end turn
+  `ctrl+space`.
+- **H2 play-loop commands** (no menu entry, as upstream): `n`/`shift+n`
+  cycle this side's units that can still act (sorted by hex, centred as
+  selected), `l` centres on the leader, `=`/`+`/`-`/`0` drive the board's
+  existing pan/zoom, `Escape` deselects. `GameBoardView` gained
+  `zoomBy`/`zoomDefault`/`centerOnHex`.
+- **H3 keyboard hex cursor**: arrows summon and move a cursor hex
+  (clamped to the map, scrolled into view, the infobox's terrain line
+  following it), `Enter` runs the same `handleHexClick` a left click
+  does, `Escape` puts it away. Drawn by `SnapshotBoard` as a cyan ring,
+  distinct from the white selection ring since both show at once.
+  Arrows map to the storage grid (left/right one column, up/down one
+  row), the only way four keys reach every hex.
+- **H4 modals and hints**: arrow keys walk the recruit/recall/attack
+  lists and Enter confirms. Two real problems surfaced here: `Modal`
+  focuses the first focusable element, which is a list option, so Enter
+  was activating that button instead of confirming (fixed with a
+  `data-list-option` marker plus `onPlainButton`, leaving Cancel/Rename/
+  Damage Calculations to act normally), and the recall dialog's first
+  focusable is "Rename", so `Modal` now prefers an element marked
+  `data-autofocus`. Menu entries show their hint (`Recruit... Ctrl+R`).
+
+**Milestone** (`apps/web/scripts/keyboard-playthrough.mjs`, 12 checks,
+all passing): the loop driven with no clicks at all. Split across two
+debug campaigns because neither offers all four actions in one turn --
+`synthetic_economy` has a keep and castle ring but its enemy leader is
+six hexes away, `synthetic_combat` has adjacent leaders but no castle:
+
+| scenario | keyboard-only actions | observed |
+|---|---|---|
+| synthetic_economy | recruit, move, end turn | units 1 -> 2, gold 40 -> 26, leader moved to (2, 3), `Turn 1/30 (side 1)` -> `(side 2)` |
+| synthetic_combat | attack | "Debug Hero attacked Debug Villain: 4/5 blows landed" |
+
+**Not in this phase** (no feature behind the binding yet, recorded in the
+plan): `undo`/`redo` -- `GameSession` has no undo stack at all; and
+`togglegrid`/`statistics`/`unitlist` -- no such views exist. They get
+their upstream bindings when those land.
+
+Gates: engine 559, ui 136 (10 new), renderer 194 tests; svelte-check 0
+errors; the milestone playthrough above; console clean in every browser
+run.

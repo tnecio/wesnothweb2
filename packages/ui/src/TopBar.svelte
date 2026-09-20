@@ -18,7 +18,7 @@
   import { imageUrl } from '@wesnothweb2/renderer';
   import type { TimeOfDayEntry } from '@wesnothweb2/engine';
   import type { EconomyInfo } from './gameSession.js';
-  import type { Command } from './commands.js';
+  import { formatHotkey, type Command } from './commands.js';
 
   let {
     scenarioName,
@@ -83,7 +83,10 @@
       {#if openMenu === 'menu'}
         <div class="dropdown">
           {#each menuCommands as cmd (cmd.id)}
-            <button disabled={!cmd.enabled} onclick={() => run(cmd.handler)}>{cmd.label}</button>
+            <button disabled={!cmd.enabled} onclick={() => run(cmd.handler)}>
+              <span class="entry-label">{cmd.label}</span>
+              {#if cmd.hotkey}<span class="entry-hotkey">{formatHotkey(cmd.hotkey)}</span>{/if}
+            </button>
           {/each}
         </div>
       {/if}
@@ -93,7 +96,10 @@
       {#if openMenu === 'actions'}
         <div class="dropdown">
           {#each actionCommands as cmd (cmd.id)}
-            <button disabled={!cmd.enabled} onclick={() => run(cmd.handler)}>{cmd.label}</button>
+            <button disabled={!cmd.enabled} onclick={() => run(cmd.handler)}>
+              <span class="entry-label">{cmd.label}</span>
+              {#if cmd.hotkey}<span class="entry-hotkey">{formatHotkey(cmd.hotkey)}</span>{/if}
+            </button>
           {/each}
         </div>
       {/if}
@@ -195,6 +201,18 @@
   }
   .dropdown button:hover:not(:disabled) {
     background: #35301f;
+  }
+  /* Phase 15: label left, hotkey hint right, as real Wesnoth's menus show them. */
+  .dropdown button {
+    display: flex;
+    gap: 1.5rem;
+    align-items: baseline;
+    justify-content: space-between;
+    white-space: nowrap;
+  }
+  .entry-hotkey {
+    color: #b8a066;
+    font-size: 0.85em;
   }
   .dropdown button:disabled {
     opacity: 0.4;

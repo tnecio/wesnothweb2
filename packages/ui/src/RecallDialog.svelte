@@ -9,6 +9,7 @@
   import { imageUrl } from '@wesnothweb2/renderer';
   import type { RecallOption } from './gameSession.js';
   import { raceDisplayName } from './gameSession.js';
+  import { onPlainButton } from './commands.js';
   import Modal from './Modal.svelte';
 
   let {
@@ -55,7 +56,33 @@
     // on whatever now occupies this same position, or the new last entry.
     selectedIndex = null;
   }
+
+  /**
+   * Phase 15 H4: arrow keys walk the recall list, Enter recalls the
+   * highlighted unit (`Modal` owns Escape/Tab/focus). Skipped while the
+   * rename field has focus -- it has its own Enter/Escape handling --
+   * and while a button has focus, whose own activation is what Enter
+   * should do there.
+   */
+  function handleKeydown(e: KeyboardEvent): void {
+    if (options.length === 0 || renaming) return;
+    if (e.target instanceof HTMLInputElement) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const current = options.findIndex((o) => o.index === selectedIndex);
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      const next = (Math.max(0, current) + step + options.length) % options.length;
+      selectedIndex = options[next]!.index;
+    } else if (e.key === 'Enter' && !onPlainButton(e.target)) {
+      if (selected?.affordable) {
+        e.preventDefault();
+        onRecall(selected.index);
+      }
+    }
+  }
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <Modal width="42rem" labelledBy="Recall unit" onClose={onCancel}>
   {#snippet children()}
@@ -153,6 +180,7 @@
       <div class="spacer"></div>
       <button
         class="primary"
+        data-autofocus
         disabled={!selected || !selected.affordable}
         onclick={() => selected && onRecall(selected.index)}
       >
