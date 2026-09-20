@@ -278,7 +278,7 @@
     // un-latches either -- see GameSession's own doc comment).
     // Only from normal play: a scenario that ends during its own startup events (an epilogue's
     // start-event [endlevel]) must still show its story, objectives and dialogue first --
-    // advanceMessage/advanceObjectives move on to 'ended' once those are done.
+    // `runStartupEvents`/`advanceObjectives` move on to 'ended' once those are done.
     if (session.scenarioResult && phase === 'playing') phase = 'ended';
   }
 
@@ -292,11 +292,16 @@
    */
   const interactionHost: InteractionHost = {
     handle(interaction) {
-      // The board must show the state the event has reached *now*, not
-      // the state it will have when the event finishes -- the whole
-      // point of blocking dialogue (bugs2.md, fixed properly here).
-      sync();
+      // A beat is animated FROM the board as it currently stands, so it
+      // must not be re-synced first: `SnapshotBoard.updateUnits` snaps
+      // every sprite straight to its target hex, which would both cut the
+      // animation short and race the frame loop driving it (see that
+      // method's own doc comment). `playCutsceneBeat` syncs when it's done.
       if (interaction.kind === 'beat') return playCutsceneBeat(interaction.beat);
+      // A message, though, must show the state the event has reached
+      // *now*, not the state it will have when the event finishes -- the
+      // whole point of blocking dialogue (bugs2.md, fixed properly here).
+      sync();
       return new Promise<InteractionResult>((resolve) => {
         currentMessage = interaction;
         answerInteraction = resolve;
@@ -313,8 +318,52 @@
     resolve?.(result);
   }
 
-  /** Plays one cutscene beat, resolving when the display is done with it. */
+  /**
+   * Plays one cutscene beat, resolving when the display is done with it.
+   *
+   * Everything here is guarded, because the event that yielded the beat
+   * is suspended until this resolves: a renderer error, or an animation
+   * whose frames never finish resolving, would otherwise wedge the
+   * scenario with no dialogue and no way forward. A beat that overruns
+   * is abandoned (the state it stands for has already been applied) and
+   * the event carries on.
+   */
   async function playCutsceneBeat(beat: CutsceneBeat): Promise<InteractionResult> {
+    const started = performance.now();
+    try {
+      await capped(playBeatBody(beat));
+    } catch (err) {
+      console.error('[cutscene] beat failed, continuing:', beat.kind, err);
+    }
+    // Dev-only timing (same `import.meta.env` cast as the `__wesnoth`
+    // debug hook below -- this package has no `vite/client` types): a
+    // beat that blocks for seconds on a cold image cache is the single
+    // most useful number when a cutscene feels stuck.
+    if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
+      console.info(`[cutscene] ${beat.kind} took ${Math.round(performance.now() - started)}ms`);
+    }
+    sync();
+    return {};
+  }
+
+  /** Resolves when `work` does, or after `MAX_BEAT_MS` -- whichever comes first. */
+  function capped(work: Promise<void>): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(resolve, MAX_BEAT_MS);
+      work.then(
+        () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        (err) => {
+          clearTimeout(timer);
+          reject(err instanceof Error ? err : new Error(String(err)));
+        },
+      );
+    });
+  }
+
+  async function playBeatBody(beat: CutsceneBeat): Promise<void> {
     switch (beat.kind) {
       case 'delay':
         await new Promise((r) => setTimeout(r, Math.min(beat.ms, MAX_BEAT_MS)));
@@ -372,8 +421,6 @@
         }
         break;
     }
-    sync();
-    return {};
   }
 
   /**

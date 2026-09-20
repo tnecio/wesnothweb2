@@ -3390,3 +3390,169 @@ their upstream bindings when those land.
 Gates: engine 559, ui 136 (10 new), renderer 194 tests; svelte-check 0
 errors; the milestone playthrough above; console clean in every browser
 run.
+
+## 2026-09-20 — Phase 17: events, in-order dialogue and `[option]`
+
+Branch `phase-17-events`, stages E0–E7. The event pump can stop
+mid-event now, so dialogue and action finally interleave the way they do
+upstream, and a `[message]` can ask the player something and use the
+answer.
+
+**The mechanism (E0).** `packages/engine` has no `async`/`Promise`
+anywhere and ~30 synchronous call sites fire events (vision, the AI, the
+snapshot builder, `GameSession`), so suspension is done with
+**generators**, not promises: an action handler that needs to block
+returns a generator that `yield`s an `Interaction` and is resumed with
+its result (`events/interaction.ts`), and `runActionFlow` delegates into
+it with `yield*` so the suspension travels out through `[if]`/loop
+bodies and nested fires. `pump()`/`fire()`/`runActionSequence()` keep
+their old synchronous signatures by driving the same generators with
+`autoRespond`, a pure deterministic responder — which is why every
+pre-existing engine caller and test needed no change at all. Only
+`packages/ui` (already async for animations) steps the generator itself
+and parks on a real dialog.
+
+Landing that also closed the batching divergence `pump.ts` had
+documented since Phase 2: `ctx.fireNow` runs a nested pump immediately
+(upstream's recursive `operator()`), so `[kill] fire_event=yes` fires
+`last breath`/`die` while the unit is still on the board, and a real
+`[fire_event]` tag exists.
+
+**What became real**
+
+- **`[option]`/`[text_input]` (E1)**, finishing the port of
+  `data/lua/wml/message.lua`: options with `[show_if]`/`label=`/
+  `message=`/`description=`/`image=`/`default=`/`value=`/`[command]`;
+  `variable=` receiving the 1-based index of the *shown* options when no
+  `value=` is given; `[text_input]` with `variable=`/`label=`/`text=`/
+  `max_length=`; `side_for=` gating; Escape skipping the rest of the
+  current event's plain messages (upstream's per-context
+  `skip_messages`). Every answer is recorded in the `[input]
+  value=/text=/from_side=` shape upstream replays, for Phase 25.
+- **Flow control (E2)**, `events/flowWml.ts`: `[while]`, `[for]`
+  (counter and array forms), `[foreach]`, `[repeat]`, `[switch]`,
+  `[command]` and the `[break]`/`[continue]`/`[return]` signals, on top
+  of the `ExitState` box `context.ts` had carried unused since Phase 2.
+  They land here because a `[message]` inside a loop has to block the
+  loop, and because real content needs them (UtBS 1's prestart).
+- **Cutscene and camera tags (E3)**, `events/cutsceneWml.ts`: the ten
+  tags that were registered as headless no-ops — `[delay]`,
+  `[scroll_to]`, `[scroll_to_unit]`, `[scroll]`, `[lock_view]`/
+  `[unlock_view]`, `[zoom]`, `[color_adjust]`, `[screen_fade]`,
+  `[move_unit_fake]`/`[move_units_fake]`, `[animate_unit]` — plus
+  `[kill] animate=` and `[unit] animate=`. Each yields a beat the
+  display plays out; headless they complete instantly, so `pump()` still
+  runs a whole cutscene by itself. `[move_unit]` hands its walk to the
+  same beat before relocating the unit, as `move_unit.lua` does, and
+  fake-unit paths are A*-routed between their `x=`/`y=` waypoints.
+- **`rand=` and variable persistence (E6).** `[set_variable] rand=`
+  (a port of `mathx.random_choice`) draws from the session's synced RNG,
+  and the variable store now crosses a scenario boundary and a save.
+
+**What it fixed, on real content.** Phase 16 had worked around the
+ordering problem with `RecordedMessage.unitsBefore` — a snapshot of every
+unit's position taken at each message so the UI could *fake* a board in
+sync with the story. That is deleted: the live board is simply correct
+at each line now. On Dead Water 1, Gwabbo stands at his spawn hex facing
+the fiend while he says "Back, you fiend!", and only afterwards retreats
+to the keep (`packages/engine/test/events/deadWaterPrestartEvent.test.ts`
+and the ui test both assert the live board at that moment, rather than a
+snapshot).
+
+**Milestones** (`packages/ui/src/phase17Milestone.test.ts`, on real
+campaign snapshots):
+
+| scenario | what it proves |
+|---|---|
+| Two Brothers 3 | the guards offer `["Sithrak!","Eleben!","Jarlom!","Hamik!"]`; answering 2 against `$first_password=2` reaches "Pass, friend.", answering 3 reaches "Wrong! Die!" — the branch the player actually chose |
+| Dead Water 5 | `[move_unit_fake]` flies the ghost in, it is on the board by the time "Found. Them." is shown, and its path is routed (not a teleport) |
+| UtBS 1 | `[foreach] array=elf_pool` runs in prestart instead of being skipped wholesale |
+
+plus `apps/web/scripts/dialogue-playthrough.mjs` in a real browser: an
+`[option]` prompt answered from the keyboard (arrows move the highlight,
+Enter answers, the event resumes down the chosen branch), a
+`[text_input]` typed into and echoed back through its WML variable, Dead
+Water 5's cutscene reaching play with its dialogue in order, and Dead
+Water 1's opening interleaved with the units its own event spawns.
+
+The browser's choice half runs on a new synthetic debug campaign
+(`synthetic-campaigns/dialogue/`, "[Debug] Dialogue & Choices"), for a
+reason worth recording: Two Brothers 3's password prompt is spoken by
+Arvith, who arrives on the recall list from scenario 2, so a browser
+opening scenario 3 cold has no speaker and `message.lua`'s own
+`get_speaker` rule (rightly) skips the whole message. The real
+scenario's branch-taking is covered headlessly, where the carried-over
+variable can be set up properly.
+
+**Real, reported bug fixed alongside (Under the Burning Suns 1).**
+Entering a village there rescues a random elf with `[unit] x,y=$x1,$y1`
+-- onto the very hex the rescuer is standing on. This port placed the
+new unit straight there, and `GameBoard.addUnit` overwrites, so Kaleh
+was silently deleted and replaced by the rescued Tauroch Rider.
+`[unit]` now ports `unit_creator::find_location`: `overwrite=` defaults
+to no, so an occupied hex sends the newcomer to the nearest vacant tile;
+`placement=`/`passable=` are honoured; and a `[unit]` with nowhere to go
+(`x=recall`) joins the side's recall list instead of being dropped onto
+the side's starting position. Pre-existing rather than new -- the
+placement rule dates from Phase 2 -- but Phase 17 is what made those
+village events run far enough to show it.
+
+**Deliberate deviations, recorded rather than hidden**
+
+- An AI side resolves its whole turn before any of it is animated
+  (`AiAnimationEvent`), so events raised during an AI turn cannot stop
+  for the player: they are answered inline and their dialogue shown
+  after that side's animations — which is what happened to *all*
+  dialogue before this phase. Same for `last breath`/`die`, which
+  `performAttack` fires from inside a plain callback. Revisit with
+  Phase 29.
+- `[message] duration=` is in the phase plan but does not exist in
+  current mainline (nothing in `message.lua` or `wml_message.cpp` reads
+  it); not implemented.
+- `male_message=`/`female_message=` fall back to the plain text: this
+  port's `Unit` has no gender yet (Phase 1 deferred it with
+  `[variation]`). Unused by any campaign ported so far.
+- `[animate_unit]`'s `[primary_attack]`/`hits=`/`[facing]`/nested
+  `[animate]` are not ported — the renderer plays one named animation
+  per cue, with no animator object to drive frame by frame.
+- UtBS 1's `[foreach]` body still asks for `[store_unit_type]`, which
+  this port does not have, so the total it accumulates stays 0. The loop
+  itself runs; the milestone test asserts both halves of that honestly.
+
+**Two things the browser found that the test suite could not.** Both
+worth recording, because a suspended event trusts the display to come
+back:
+
+1. *A cutscene beat could wedge a scenario permanently.* The interaction
+   host re-synced the board before **every** interaction, beats included
+   -- and `SnapshotBoard.updateUnits` snaps every sprite straight to its
+   target hex, which its own doc comment warns must not run concurrently
+   with `playAnimations`. On Dead Water 1 the fiend's `[move_unit]` beat
+   then never resolved: the event stayed suspended, the third line never
+   came, and the scenario sat there with no dialogue and no way forward
+   (measured: no dialog from 48 s to the end of a 119 s probe). A beat is
+   animated *from* the board as it stands, so the pre-sync is now only
+   done for messages; `playCutsceneBeat` syncs when it is finished.
+2. *Nothing capped the display.* Every beat is now wrapped in a
+   try/catch and a 4 s cap, so a renderer error or a stalled animation
+   abandons the beat and lets the event carry on rather than ending the
+   scenario. This was in the phase plan's own risk table ("host calls are
+   time-capped") and had not actually been implemented.
+
+**Cold-cache cutscene cost, measured.** Dead Water 1's opening is a real
+cutscene -- its WML genuinely says `[unit] animate=yes`, `[move_unit]`,
+`[scroll_to]`, `[delay] time=200` -- and this port now plays it. On a
+cold image cache each *newly spawned type's* first animation spends
+seconds compositing its sprites on the main thread: `scrollTo` 1 ms,
+`moveUnit` (warm) 9 ms, but `unitAppear` 6,488 ms and 5,164 ms, and a
+`[delay] time=200` overshooting to 2,639 ms because the blocked main
+thread could not fire its timer. That is Phase 28a's known
+main-thread-compositing follow-up (move `ImageCache` compositing to an
+OffscreenCanvas worker), now simply visible: the same work used to
+happen after the dialogue rather than between its lines. Phase 28a's
+bundles cover units on the board at mount and recruit lists, but not
+event-spawned types -- the natural next step.
+
+Gates: engine 607, ui 144, renderer 194, lua-bridge 32 tests; 0
+typecheck/svelte-check errors; `dialogue-playthrough.mjs` green; console
+clean in every browser run.

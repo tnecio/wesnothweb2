@@ -1131,34 +1131,64 @@ Blocking/in-order messages and `[option]` stay in Phase 17.
 
 ## Phase 17 — Events: in-order dialogue, cutscenes, `[option]`
 
-**Status: not started; a known architecture gap.** The event pump
-(`packages/engine/src/events/pump.ts`, `actionWml.ts`) is fully
-synchronous: events run to completion and their `[message]`s are replayed
-to the player afterwards, so dialogue and unit movement don't interleave
-the way they do upstream, and `[option]`/`[text_input]` can't feed a
-choice back into the running event (Two Brothers scenario 3's password
-puzzle; UtBS 2/4/5).
+**Status: delivered E0–E7 (2026-09-20)**, branch `phase-17-events`; see
+docs/PROGRESS.md. The event pump suspends now, so dialogue and action
+interleave as upstream's do and a `[message]` can ask the player
+something and use the answer.
 
-- Make the event pump suspendable (async actions or an explicit
-  continuation/replay-of-choices model — pick the one that keeps headless
-  tests deterministic), so a `[message]` blocks the event until
-  dismissed and later actions render in order.
-- `[option]` (with `[show_if]`, `[command]`, `variable=`/`value=`) and
-  `[text_input]`; choices recorded as synced choices so Phase 25's replay
-  reproduces them.
-- Cutscene actions rendered in sequence: `[move_unit_fake]`,
-  `[move_unit]`, `[animate_unit]`, `[delay]`, unit appear/disappear on
-  `[unit]`/`[kill]` `animate=`.
-- Camera scripting moved here from the old Phase 16 (it's event
-  sequencing, not map rendering): `[scroll_to]`/`[scroll_to_unit]`/
-  `[scroll]`, `[lock_view]`/`[unlock_view]`, `[zoom]`, `[screen_fade]`/
-  `[color_adjust]` (always cleaned up afterwards).
-- Message `duration=`/`side_for=`, skip-dialogue (Escape skips the rest of
-  an event's messages as upstream does).
-- **Milestone**: Two Brothers scenario 3's password puzzle takes the
-  branch the player actually chooses, and a UtBS scenario 1 cutscene
-  shows its messages, unit movements and scrolls interleaved in source
-  order.
+The gap this closed: the pump was fully synchronous, so events ran to
+completion and their `[message]`s were replayed to the player
+afterwards. Phase 16 had worked around the resulting mismatch with
+`RecordedMessage.unitsBefore` (a per-message snapshot of every unit's
+position, so the UI could fake a board in sync with the story) — deleted
+here, because the live board is now simply correct at each line.
+
+**Approach: generators, not promises.** `packages/engine` has no
+`async`/`Promise` anywhere and ~30 synchronous call sites fire events, so
+a blocking handler returns a generator that yields an `Interaction` and
+is resumed with its result (`events/interaction.ts`); `pump()`/`fire()`
+keep their synchronous signatures by driving those with a pure
+`autoRespond`, leaving every headless caller and test unchanged. Only
+`packages/ui`'s `GameSession` steps the generator itself and parks on a
+real dialog. This also closed the nested-fire divergence `pump.ts` had
+documented since Phase 2 (`ctx.fireNow`, and a real `[fire_event]`).
+
+| # | Stage | Delivered |
+|---|---|---|
+| E0 | Suspendable pump: `Interaction`/`Flow`/`runFlow`, `runActionFlow`, `ctx.fireNow`, `[fire_event]`, per-context skip flag | mechanism only, zero behaviour change, full suite green |
+| E1 | Blocking `[message]`: `[option]` (`[show_if]`/`label=`/`message=`/`description=`/`image=`/`default=`/`value=`/`[command]`), `[text_input]`, `variable=`, `side_for=`, Escape-skip, choices recorded in upstream's `[input]` shape | 13 tests |
+| E2 | Flow control (`flowWml.ts`): `[while]`/`[for]`/`[foreach]`/`[repeat]`/`[switch]`/`[command]` + `[break]`/`[continue]`/`[return]` | 12 tests |
+| E3 | Cutscene and camera beats (`cutsceneWml.ts`): `[delay]`, `[scroll_to]`/`[scroll_to_unit]`/`[scroll]`, `[lock_view]`/`[unlock_view]`, `[zoom]`, `[color_adjust]`/`[screen_fade]`, `[move_unit_fake]`/`[move_units_fake]`, `[animate_unit]`, `[kill]`/`[unit]` `animate=`, `[move_unit]`'s walk | 7 ordering tests |
+| E4–E5 | `GameSession` drives the pump through an `InteractionHost`; `MessageViewer` shows one line at a time with options and a text field; `unitsBefore` deleted | ui suite green, live browser |
+| E6 | `[set_variable] rand=` on the synced RNG; WML variables across a scenario boundary and a save | 6 tests |
+| E7 | Milestones, browser script, docs | below |
+
+- **Milestone (met)**: Two Brothers scenario 3's password puzzle takes
+  the branch the player actually chooses (`phase17Milestone.test.ts`),
+  and Dead Water 5's opening cutscene shows its `[move_unit_fake]` ghost
+  flight, spawn and dialogue in source order (same test, and
+  `apps/web/scripts/dialogue-playthrough.mjs` in a real browser). The
+  browser script answers its `[option]`/`[text_input]` prompts on a new
+  synthetic debug campaign rather than on Two Brothers 3, which cannot
+  be entered cold: its prompt is spoken by Arvith, who arrives on the
+  recall list from scenario 2, so `message.lua`'s own `get_speaker` rule
+  skips the message when the scenario is opened directly. The cutscene half moved from UtBS 1 (user's call, 2026-09-20):
+  UtBS 1's events are near-pure dialogue — it has no `[move_unit_fake]`
+  and no scrolls — so it verifies `[foreach]` and message ordering
+  instead.
+
+**Deviations, recorded rather than hidden.** `[message] duration=` is
+named in this plan but does not exist in current mainline (nothing in
+`message.lua` or `wml_message.cpp` reads it), so it is not implemented.
+An AI side resolves its whole turn before any of it is animated, so
+events raised during an AI turn (and the `last breath`/`die` events
+`performAttack` fires from a plain callback) cannot stop for the player:
+they are answered inline and their dialogue shown after the animations,
+as *all* dialogue was before this phase — revisit with Phase 29.
+`male_message=`/`female_message=` fall back to the plain text (no gender
+in this port's `Unit` yet), and `[animate_unit]`'s
+`[primary_attack]`/`hits=`/`[facing]`/nested `[animate]` are out (the
+renderer plays one named animation per cue).
 
 ## Phase 18 — Map labels & items
 
@@ -1580,8 +1610,9 @@ against the Under the Burning Suns testbed as planned.
    UI overhaul) delivered 2026-09-13, **Phase 15** (core keyboard
    shortcuts) 2026-09-20 — this group is done
 2. **Phase 16** (narration) delivered 2026-09-14; **Phase 17**
-   (events/`[option]`/cutscenes) ← **current focus**
-3. **Phase 18** (labels/items), **Phase 19** (audio/music).
+   (events/`[option]`/cutscenes) 2026-09-20 — this group is done
+3. **Phase 18** (labels/items) ← **current focus**, then **Phase 19**
+   (audio/music).
 4. **Phase 20** (localization/accessibility).
 5. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).
 6. **Phase 25** (replay/statistics/achievements).

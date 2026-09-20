@@ -653,6 +653,13 @@ export interface GameSessionOptions {
    * from a previous one.
    */
   goldCarryover?: GoldCarryoverResult | null;
+  /**
+   * Receives the event pump's own diagnostics -- notably the
+   * "[tag] not supported (skipped)" warnings real content produces where
+   * this port is still incomplete. Unset by default (the pump's own
+   * no-op), so nothing in the browser console depends on it.
+   */
+  onLog?: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
 }
 
 /**
@@ -1066,6 +1073,7 @@ export class GameSession {
       resolveType: this.resolveType,
       schedule: this.schedule,
       rng: this.rng,
+      log: options.onLog,
     });
     this.board.lawfulBonusAt = (loc) => this.timeOfDayAt(loc).lawfulBonus;
 

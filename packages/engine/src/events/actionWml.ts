@@ -830,6 +830,55 @@ function actionModifyUnit(cfg: WmlConfig, ctx: EventContext): void {
 
 // --- [unit] ---
 
+/**
+ * Port of `unit_creator::find_location` (`actions/unit_creator.cpp:100-163`):
+ * where a `[unit]` actually lands.
+ *
+ * The important part is the default: `overwrite=` is **no**, so a hex
+ * that already has someone on it sends the new unit to the nearest
+ * vacant tile instead of replacing the occupant. Real, reported bug:
+ * this port used to place the unit straight onto the requested hex, so
+ * Under the Burning Suns 1 -- whose village events rescue a random elf
+ * with `[unit] x,y=$x1,$y1`, i.e. onto the very hex the rescuer is
+ * standing on -- deleted the unit that had just entered the village
+ * (Kaleh, usually) and left the rescued elf in his place.
+ *
+ * `placement=` is walked in order and always falls back to `map` then
+ * `recall`, as upstream; `passable=yes` makes the vacant-tile search
+ * avoid terrain this unit cannot enter. Not ported: `location_id=`
+ * (this port's `GameMap` has no named special locations yet).
+ */
+function placeNewUnit(cfg: WmlConfig, ctx: EventContext, unit: Unit, side: number): Location | undefined {
+  const passable = cfg.getBoolean('passable', false);
+  const vacant = !cfg.getBoolean('overwrite', false);
+  const placements = cfg
+    .getString('placement', '')
+    .split(/[\s,]+/)
+    .filter((p) => p !== '');
+
+  for (const place of [...placements, 'map', 'recall']) {
+    if (place === 'recall') return undefined;
+
+    let loc = Location.NULL;
+    if (place === 'leader' || place === 'leader_passable') {
+      const leader = ctx.board.unitsForSide(side).find((u) => u.canRecruit);
+      loc = leader ? leader.location : ctx.board.map.startingPosition(side);
+    } else if (place === 'map' || place === 'map_passable' || place === 'map_overwrite') {
+      loc = unit.location;
+    } else {
+      continue; // an unknown placement is simply skipped, as upstream's own loop does
+    }
+
+    const passCheck = passable || place === 'leader_passable' || place === 'map_passable' ? unit : undefined;
+    const mustBeVacant = vacant && place !== 'map_overwrite';
+    if (loc.valid() && ctx.board.map.onBoard(loc)) {
+      const placed = mustBeVacant ? findVacantTile(ctx.board, loc, { passCheck }) : loc;
+      if (placed && placed.valid() && ctx.board.map.onBoard(placed)) return placed;
+    }
+  }
+  return undefined;
+}
+
 function* actionUnit(cfg: WmlConfig, ctx: EventContext): Flow {
   const side = cfg.getNumber('side', 1);
   const team = ctx.board.getTeam(side);
@@ -844,10 +893,9 @@ function* actionUnit(cfg: WmlConfig, ctx: EventContext): Flow {
     ctx.log('error', `Error occurred inside [unit]: ${e instanceof Error ? e.message : String(e)}`);
     return;
   }
-  if (!unit.location.valid()) {
-    unit.location = ctx.board.map.startingPosition(side);
-  }
-  if (unit.location.valid()) {
+  const placed = placeNewUnit(cfg, ctx, unit, side);
+  if (placed) {
+    unit.location = placed;
     ctx.board.addUnit(unit);
     // Mirrors real `unit_creator`'s default `allow_get_village=true` --
     // an event-spawned unit placed directly onto a village captures it,
@@ -858,7 +906,10 @@ function* actionUnit(cfg: WmlConfig, ctx: EventContext): Flow {
     // `unit_creator::post_create` does via `unit_display::unit_recruited`.
     if (cfg.getBoolean('animate', false)) yield* playBeat({ kind: 'unitAppear', unit });
   } else {
-    ctx.log('error', '[unit] has no valid location and no starting position to fall back to');
+    // No hex to place it on: onto the side's recall list, as
+    // `unit_creator::add_unit`'s `allow_add_to_recall(true)` path does.
+    // This is also what `[unit] x=recall y=recall` asks for outright.
+    ctx.board.addToRecallList(side, unit);
   }
 }
 

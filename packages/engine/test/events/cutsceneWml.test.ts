@@ -74,6 +74,102 @@ function addEvent(manager: EventManager, wml: string): void {
   manager.addFromWml(parseWml(wml).child('event')!);
 }
 
+/**
+ * Real, reported bug (Under the Burning Suns 1, 2026-09-20): entering a
+ * village there rescues a random elf with `[unit] x,y=$x1,$y1` -- onto
+ * the very hex the rescuer is standing on. This port placed the new unit
+ * straight onto that hex, which silently deleted whoever was there
+ * (Kaleh, usually, replaced by a Tauroch Rider).
+ *
+ * Upstream's `unit_creator::find_location` defaults `overwrite=` to no
+ * and sends the newcomer to the nearest vacant tile instead.
+ */
+describe('[unit] placement (unit_creator::find_location)', () => {
+  it('does not replace the unit already standing on the target hex', () => {
+    const board = makeBoard();
+    const { manager, pump } = makePump(board);
+    const resolve = makeResolveType();
+    const kaleh = Unit.create(resolve('Kaleh'), 1, Location.fromWml(3, 3), { id: 'Kaleh' });
+    board.addUnit(kaleh);
+
+    addEvent(
+      manager,
+      `
+      [event]
+        name=rescue
+        [unit]
+          side=1
+          type=Rescued
+          id=Rescued
+          x,y=3,3
+        [/unit]
+      [/event]
+    `,
+    );
+
+    pump.fire('rescue');
+
+    expect(board.unitAt(Location.fromWml(3, 3))).toBe(kaleh);
+    const rescued = board.allUnits().find((u) => u.id === 'Rescued');
+    expect(rescued).toBeDefined();
+    expect(rescued!.location.equals(kaleh.location)).toBe(false);
+    expect(board.allUnits()).toHaveLength(2);
+  });
+
+  it('overwrite=yes still replaces, as upstream', () => {
+    const board = makeBoard();
+    const { manager, pump } = makePump(board);
+    const resolve = makeResolveType();
+    board.addUnit(Unit.create(resolve('Doomed'), 1, Location.fromWml(3, 3), { id: 'Doomed' }));
+
+    addEvent(
+      manager,
+      `
+      [event]
+        name=replace
+        [unit]
+          side=1
+          type=Usurper
+          id=Usurper
+          x,y=3,3
+          overwrite=yes
+        [/unit]
+      [/event]
+    `,
+    );
+
+    pump.fire('replace');
+
+    expect(board.allUnits().map((u) => u.id)).toEqual(['Usurper']);
+  });
+
+  it('x=recall puts the unit on the side\'s recall list rather than the map', () => {
+    const board = makeBoard();
+    const { manager, pump } = makePump(board);
+
+    addEvent(
+      manager,
+      `
+      [event]
+        name=reserve
+        [unit]
+          side=1
+          type=Reserve
+          id=Reserve
+          x=recall
+          y=recall
+        [/unit]
+      [/event]
+    `,
+    );
+
+    pump.fire('reserve');
+
+    expect(board.allUnits()).toEqual([]);
+    expect(board.recallList(1).map((u) => u.id)).toEqual(['Reserve']);
+  });
+});
+
 describe('cutscene ordering (Phase 17 E3)', () => {
   it('a fake move, a spawn and a line of dialogue arrive in source order -- the Dead Water 5 shape', () => {
     const board = makeBoard();

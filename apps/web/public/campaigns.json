@@ -59,6 +59,12 @@
       "name": "[Debug] Fog of War",
       "description": "Two leaders on opposite corners of an empty board, each with fog=yes/shroud=yes, and two unexplored villages in the middle -- for fast shroud/fog debugging, no story setup needed.",
       "firstScenario": "synth_fog_01"
+    },
+    {
+      "id": "synthetic_dialogue",
+      "name": "[Debug] Dialogue & Choices",
+      "description": "A blocking [message], a [move_unit_fake] flight, an [option] prompt that branches the scenario, a [text_input] and a [foreach] -- for fast Phase 17 event/dialogue debugging.",
+      "firstScenario": "synth_dialogue_01"
     }
   ]
 }
