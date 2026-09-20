@@ -25,8 +25,20 @@
    * before entering 'messages', so the board already reflects every real
    * event-spawned unit by the time the player gets control.
    */
-  import type { GameBoardSnapshot, SnapshotUnit, RecordedMessage, TimeOfDayEntry, Unit, AiAnimationEvent, ScenarioObjectives, HealOutcome } from '@wesnothweb2/engine';
-  import { WmlConfig, directionBetween, Location, unitCanAct } from '@wesnothweb2/engine';
+  import type {
+    GameBoardSnapshot,
+    SnapshotUnit,
+    TimeOfDayEntry,
+    Unit,
+    AiAnimationEvent,
+    ScenarioObjectives,
+    HealOutcome,
+    MessageInteraction,
+    InteractionResult,
+    CutsceneBeat,
+    FakeUnitWalk,
+  } from '@wesnothweb2/engine';
+  import { WmlConfig, directionBetween, Direction, Location, unitCanAct } from '@wesnothweb2/engine';
   import {
     type HexPoint,
     type UnitAnimationCue,
@@ -35,6 +47,7 @@
     chooseAnimation,
     buildAttackAnimationContexts,
     buildMovementAnimationContexts,
+    buildMovementAnimationContext,
     terrainLookup,
     spriteKey,
     setImageBaseUrl,
@@ -58,6 +71,7 @@
     type LastRecruitAnimation,
     type PendingAdvancement,
     type HoveredHexInfo,
+    type InteractionHost,
   } from './gameSession.js';
   import { saveGame, loadGame } from './persistence.js';
   import { fetchStoryAssets, type StoryAssets } from './story/storyImages.js';
@@ -127,7 +141,7 @@
   /** Phase 16 N7: set once the campaign outro has played (or was skipped). */
   let outroDone = $state(false);
 
-  let phase = $state<'story' | 'objectives' | 'messages' | 'playing' | 'ended'>(storyParts.length > 0 ? 'story' : 'messages');
+  let phase = $state<'story' | 'objectives' | 'playing' | 'ended'>(storyParts.length > 0 ? 'story' : 'playing');
   /** Upstream shows the outro only for a victory with no next scenario, and only when `end_credits` is not turned off. */
   const showOutro = $derived(
     phase === 'ended' &&
@@ -136,8 +150,18 @@
       session.endLevelPresentation?.endCredits !== false &&
       !outroDone,
   );
-  let startupMessages = $state<RecordedMessage[]>([]);
-  let messageIndex = $state(0);
+  /**
+   * Phase 17: the one `[message]` a suspended event is waiting on, if
+   * any. Nothing else about the game advances while this is set -- the
+   * event itself is parked inside `GameSession`, holding the promise
+   * `answerInteraction` resolves.
+   */
+  let currentMessage = $state<MessageInteraction | null>(null);
+  let answerInteraction: ((result: InteractionResult) => void) | null = null;
+  /** True while a WML flow is being driven (dialogue, a cutscene, an AI turn): the board is the engine's, not the player's. */
+  let eventsRunning = $state(false);
+  /** `[color_adjust]`/`[screen_fade]`: a CSS overlay over the whole shell. */
+  let screenTint = $state<{ r: number; g: number; b: number; a: number; ms: number } | null>(null);
 
   let units = $state<SnapshotUnit[]>(session.renderUnits);
   let selected = $state<SelectedUnitInfo | null>(null);
@@ -259,90 +283,269 @@
   }
 
   /**
-   * Real, reported bug (bugs2.md "Lua events/narration ... not synced
-   * with the narrative messages"): while `phase === 'messages'`, `units`
-   * should reflect `startupMessages[messageIndex]`'s own checkpoint (see
-   * `GameSession.messageUnitSnapshot`'s doc comment) -- e.g. Gwabbo only
-   * appears from the message where his `[unit]` spawn already precedes
-   * it, not from message 0. `sync()` itself always sets the board's
-   * fully-resolved final state (needed for every OTHER phase and for
-   * every non-`units` field `sync()` touches), so this runs right after
-   * it to override just `units`, specifically for this phase.
+   * Phase 17: `GameSession`'s window onto the display. A `[message]`
+   * parks here until the player dismisses it (or picks an option); a
+   * cutscene beat is played out and the event resumes when the animation
+   * finishes. Either way the WML event is genuinely suspended in the
+   * meantime, which is what upstream gets for free by running its dialog
+   * on the same stack as the event pump.
    */
-  function applyMessagePhaseUnits(): void {
-    if (phase !== 'messages') return;
-    const message = startupMessages[messageIndex];
-    units = message ? session.messageUnitSnapshot(message) : session.renderUnits;
+  const interactionHost: InteractionHost = {
+    handle(interaction) {
+      // The board must show the state the event has reached *now*, not
+      // the state it will have when the event finishes -- the whole
+      // point of blocking dialogue (bugs2.md, fixed properly here).
+      sync();
+      if (interaction.kind === 'beat') return playCutsceneBeat(interaction.beat);
+      return new Promise<InteractionResult>((resolve) => {
+        currentMessage = interaction;
+        answerInteraction = resolve;
+      });
+    },
+  };
+  session.interactionHost = interactionHost;
+
+  /** The player answered the message on screen (dismissed it, chose an option, typed something). */
+  function answerMessage(result: InteractionResult): void {
+    const resolve = answerInteraction;
+    currentMessage = null;
+    answerInteraction = null;
+    resolve?.(result);
+  }
+
+  /** Plays one cutscene beat, resolving when the display is done with it. */
+  async function playCutsceneBeat(beat: CutsceneBeat): Promise<InteractionResult> {
+    switch (beat.kind) {
+      case 'delay':
+        await new Promise((r) => setTimeout(r, Math.min(beat.ms, MAX_BEAT_MS)));
+        break;
+      case 'scrollTo':
+        if (beat.onlyIfNeeded) boardView?.scrollToHexIfOffscreen(beat.location.x, beat.location.y);
+        else boardView?.centerOnHex(beat.location.x, beat.location.y);
+        break;
+      case 'scrollBy':
+        boardView?.scrollByPixels(beat.dx, beat.dy);
+        break;
+      case 'lockView':
+        boardView?.setViewLocked(beat.locked);
+        break;
+      case 'zoom':
+        if (beat.relative) boardView?.zoomBy(beat.factor);
+        else boardView?.zoomTo(beat.factor);
+        break;
+      case 'colorAdjust':
+        // An instant tint, held until something sets it back to 0,0,0.
+        screenTint =
+          beat.red === 0 && beat.green === 0 && beat.blue === 0
+            ? null
+            : { r: Math.max(0, beat.red), g: Math.max(0, beat.green), b: Math.max(0, beat.blue), a: Math.min(1, Math.abs(beat.red + beat.green + beat.blue) / 765), ms: 0 };
+        break;
+      case 'screenFade':
+        screenTint = beat.alpha <= 0 ? null : { r: beat.red, g: beat.green, b: beat.blue, a: beat.alpha / 255, ms: Math.min(beat.durationMs, MAX_BEAT_MS) };
+        await new Promise((r) => setTimeout(r, Math.min(beat.durationMs, MAX_BEAT_MS)));
+        break;
+      case 'moveUnit':
+        if (boardView) await boardView.playAnimationSequence(buildMoveAnimationCues({ unit: beat.unit, path: beat.path }), 2);
+        break;
+      case 'moveFakeUnits':
+        await playFakeWalks(beat.walks);
+        break;
+      case 'animateUnit':
+        if (boardView) await boardView.playAnimationSequence(buildFlagAnimationCues(beat.unit, beat.flag), 1);
+        break;
+      case 'unitDeath':
+        if (boardView) {
+          if (beat.scroll) boardView.scrollToHexIfOffscreen(beat.unit.location.x, beat.unit.location.y);
+          await boardView.playAnimationSequence(buildFlagAnimationCues(beat.unit, 'death'), 1);
+        }
+        break;
+      case 'unitAppear':
+        if (boardView) {
+          // The new unit has no visual until the next sync(), so give it
+          // one first (bugs5.md #3) -- otherwise its own cue does nothing.
+          await boardView.ensureUnitVisual(session.snapshotUnitFor(beat.unit));
+          await boardView.playAnimationSequence(
+            beat.by
+              ? buildRecruitAnimationCues({ unit: beat.unit, leader: beat.by, unitLocation: beat.unit.location, leaderLocation: beat.by.location })
+              : buildFlagAnimationCues(beat.unit, 'recruited'),
+          );
+        }
+        break;
+    }
+    sync();
+    return {};
+  }
+
+  /**
+   * A cap on how long one beat may hold the game: real content asks for
+   * pauses of a few hundred ms, but a scenario with a badly-tuned
+   * `[delay]` (or a long `[screen_fade]`) should not be able to lock the
+   * UI for minutes on end.
+   */
+  const MAX_BEAT_MS = 4000;
+
+  /** One unit, one named animation, in place -- `[animate_unit] flag=`, a death, a plain appearance. */
+  function buildFlagAnimationCues(unit: Unit, flag: string): UnitAnimationCue[][] {
+    const context: AnimationContext = {
+      loc: unit.location,
+      secondLoc: unit.location,
+      myUnit: unit,
+      event: flag,
+      value: 0,
+      value2: 0,
+      hit: 'invalid',
+      terrainAtLoc: terrainLookup(session.board)(unit.location),
+    };
+    return [
+      [
+        {
+          key: spriteKey({ underlyingId: session.renderKeyFor(unit), typeId: unit.type.id, x: unit.location.x, y: unit.location.y }),
+          anim: chooseAnimation(animationsFor(unit.type.id), context),
+          direction: unit.facing,
+          srcHex: { x: unit.location.x, y: unit.location.y },
+          dstHex: { x: unit.location.x, y: unit.location.y },
+        },
+      ],
+    ];
+  }
+
+  /**
+   * The throwaway sprite a `[move_unit_fake]` walks. Negative
+   * `underlyingId`s keep its `spriteKey` clear of every real unit's (see
+   * `spriteKey`), so removing it afterwards can't take a real unit's
+   * visual with it.
+   */
+  function fakeUnitSnapshot(walk: FakeUnitWalk, index: number): SnapshotUnit {
+    const start = walk.path[0]!;
+    const typeSnapshot = activeSnapshot.unitTypes[walk.spec.typeId];
+    return {
+      id: null,
+      name: null,
+      typeId: walk.spec.typeId,
+      image: typeSnapshot?.image ?? null,
+      side: walk.spec.side,
+      x: start.x,
+      y: start.y,
+      canRecruit: false,
+      hitpoints: 1,
+      maxHitpoints: 1,
+      flagRgb: typeSnapshot?.flagRgb,
+      underlyingId: -1 - index,
+    };
+  }
+
+  /**
+   * `[move_unit_fake]`: sprites that exist only for the animation. Each
+   * is added to the board as a throwaway visual, walked along its path,
+   * and removed again -- upstream's `create_fake_unit`/`fake_unit_ptr`.
+   */
+  async function playFakeWalks(walks: readonly FakeUnitWalk[]): Promise<void> {
+    if (!boardView) return;
+    const visuals = walks.map((walk, i) => ({ walk, snapshot: fakeUnitSnapshot(walk, i) }));
+    for (const { snapshot } of visuals) await boardView.ensureUnitVisual(snapshot);
+    // Lock-step, one hex at a time, so several fake units travel together
+    // (`[move_units_fake]`); a shorter path simply has nothing to do on
+    // the later steps.
+    const longest = Math.max(...visuals.map((v) => v.walk.path.length));
+    for (let step = 1; step < longest; step++) {
+      const cues: UnitAnimationCue[] = [];
+      for (const { walk, snapshot } of visuals) {
+        const from = walk.path[step - 1];
+        const to = walk.path[step];
+        if (!from || !to) continue;
+        const context = buildMovementAnimationContext(walk.unit, from, to, terrainLookup(session.board));
+        cues.push({
+          key: spriteKey(snapshot),
+          anim: chooseAnimation(animationsFor(walk.spec.typeId), context),
+          direction: directionBetween(from, to) ?? Direction.SouthEast,
+          srcHex: { x: from.x, y: from.y },
+          dstHex: { x: to.x, y: to.y },
+          restAt: 'dst' as const,
+        });
+      }
+      if (cues.length > 0) await boardView.playAnimationSequence([cues], 2);
+    }
+    for (const { snapshot } of visuals) boardView.removeUnitVisual(spriteKey(snapshot));
   }
 
   /**
    * Real, reported bug (bugs3.md "objectives dialog"): a scenario's real
    * `[objectives]` (see `GameSession.scenarioObjectives`'s own doc
-   * comment) used to have no dialog to show it in at all. Ordered before
-   * 'messages': real Wesnoth's own event order fires `[objectives]`
-   * (usually in `prestart`) before the dialogue that follows it (usually
-   * in `start`), so this reads chronologically first here too, even
-   * though both already fully ran by the time either phase shows
-   * anything (`runStartupEvents` is synchronous -- see that method's own
-   * doc comment).
+   * comment) used to have no dialog to show it in at all. It comes after
+   * the startup events now, because those show their own dialogue as
+   * they run rather than afterwards.
    */
-  function decidePostEventsPhase(): 'objectives' | 'messages' | 'playing' {
-    if (session.scenarioObjectives) return 'objectives';
-    if (startupMessages.length > 0) return 'messages';
-    return 'playing';
-  }
-
   function advanceObjectives(): void {
-    phase = startupMessages.length > 0 ? 'messages' : session.scenarioResult ? 'ended' : 'playing';
-    applyMessagePhaseUnits();
+    phase = session.scenarioResult ? 'ended' : 'playing';
   }
 
-  // No story: run the startup events immediately so the board/side panel
-  // reflect the real event-spawned units from the very first render, and
-  // go straight to 'objectives' (if the events set any), else 'messages',
-  // else 'playing'.
+  // No story: run the startup events immediately, so the board and side
+  // panel reflect the real event-spawned units from the first render.
   if (storyParts.length === 0) {
-    startupMessages = session.runStartupEvents();
-    phase = decidePostEventsPhase();
-    sync();
-    applyMessagePhaseUnits();
+    void runStartupEvents();
   }
 
-  /** Shows `[message]`s that in-play events (moveto, sighted, turn N, ...) recorded during the last action. */
-  function showEventMessages(): void {
-    const pending = session.takeEventMessages();
-    if (pending.length === 0) return;
-    startupMessages = pending;
-    messageIndex = 0;
-    phase = 'messages';
-    applyMessagePhaseUnits();
+  /** Runs the scenario's `prestart`/`start` events, showing their dialogue and cutscenes as they happen. */
+  async function runStartupEvents(): Promise<void> {
+    eventsRunning = true;
+    try {
+      await session.runStartupEvents();
+    } finally {
+      eventsRunning = false;
+    }
+    sync();
+    await showDeferredInteractions();
+    if (phase !== 'ended') phase = session.scenarioObjectives ? 'objectives' : session.scenarioResult ? 'ended' : 'playing';
+  }
+
+  /**
+   * Shows whatever an AI side's own events (or the attack choreography's
+   * nested `last breath`/`die`) had to say. Those run where the flow
+   * cannot stop for the player -- see
+   * `GameSession.takeDeferredInteractions` -- so their dialogue lands
+   * here, after the animations, exactly as all dialogue did before
+   * Phase 17.
+   */
+  async function showDeferredInteractions(): Promise<void> {
+    for (const interaction of session.takeDeferredInteractions()) {
+      if (interaction.kind !== 'message') continue;
+      await new Promise<void>((resolve) => {
+        currentMessage = interaction;
+        answerInteraction = () => resolve();
+      });
+    }
+    sync();
   }
 
   async function handleHexClick(x: number, y: number): Promise<void> {
-    if (phase !== 'playing') return;
-    const message = session.handleHexClick(x, y);
-    const move = session.lastMoveAnimation;
-    session.lastMoveAnimation = null;
-    if (move && boardView) {
-      // 2x speed: real authored movement_anim timing (e.g. a 600ms walk
-      // cycle per hex) reads as sluggish for a UI where the player is
-      // routinely moving units several hexes at once -- unlike an
-      // attack blow, there's no real per-frame content (damage numbers,
-      // hit/miss) worth lingering on here.
-      await boardView.playAnimationSequence(buildMoveAnimationCues(move), 2);
-    }
-    const recruit = session.lastRecruitAnimation;
-    session.lastRecruitAnimation = null;
-    if (recruit && boardView) {
-      // Real, reported bug (bugs5.md #3): the new unit has no visual at
-      // all until the `sync(message)` below runs -- without this, its own
-      // "recruited" half of the cue pair silently does nothing (see
-      // `SnapshotBoard.ensureUnitVisual`'s own doc comment).
-      await boardView.ensureUnitVisual(session.snapshotUnitFor(recruit.unit));
-      await boardView.playAnimationSequence(buildRecruitAnimationCues(recruit));
-    }
+    if (!canAct()) return;
+    // Phase 17: the walk and the new recruit's appearance are cutscene
+    // beats yielded by the click's own flow (see
+    // `GameSession.moveSelectedTo`), so they play at the point the WML
+    // reaches them -- before whatever the `moveto`/`recruit` events they
+    // trigger have to say, not after the click has fully resolved.
+    const message = await runPlayerAction(() => session.handleHexClick(x, y));
     sync(message);
-    showEventMessages();
+  }
+
+  /**
+   * Runs one player-initiated action, keeping the board's own input out
+   * of the way while the events it triggers play out, and showing
+   * anything they deferred (an AI reply's dialogue, a death's) once the
+   * animations are done.
+   */
+  async function runPlayerAction<T>(action: () => Promise<T>): Promise<T> {
+    eventsRunning = true;
+    try {
+      return await action();
+    } finally {
+      eventsRunning = false;
+    }
+  }
+
+  /** True when the player may act: their own turn, no dialog up, no event mid-flight. */
+  function canAct(): boolean {
+    return phase === 'playing' && !eventsRunning && currentMessage === null;
   }
 
   /** `GameBoardView`'s `onHexHoverChange` -- keeps the infobox's hovered-hex terrain section live. */
@@ -823,17 +1026,23 @@
    * post-combat state and the animation would have nothing left to show).
    */
   async function handleConfirmAttack(): Promise<void> {
-    if (phase !== 'playing') return;
-    const message = session.confirmAttack();
-    pendingPreview = null;
-    attackerWeaponOptions = [];
-    const anim = session.lastAttackAnimation;
-    session.lastAttackAnimation = null;
-    if (anim && boardView) {
-      await boardView.playAnimationSequence(buildBlowAnimationCues(anim), 1, makeBlowPreview(anim));
-    }
+    if (!canAct()) return;
+    const message = await runPlayerAction(async () => {
+      const result = await session.confirmAttack();
+      pendingPreview = null;
+      attackerWeaponOptions = [];
+      const anim = session.lastAttackAnimation;
+      session.lastAttackAnimation = null;
+      if (anim && boardView) {
+        await boardView.playAnimationSequence(buildBlowAnimationCues(anim), 1, makeBlowPreview(anim));
+      }
+      return result;
+    });
     sync(message);
-    showEventMessages();
+    // `last breath`/`die` fire from inside the attack choreography, where
+    // nothing can stop for the player -- their dialogue waits until the
+    // blows have been shown.
+    await showDeferredInteractions();
   }
 
   function handleCancelAttack(): void {
@@ -993,20 +1202,23 @@
   }
 
   async function handleEndTurn(): Promise<void> {
-    if (phase !== 'playing') return;
-    const message = session.endTurn();
-    const healOutcomes = session.lastHealAnimations;
-    session.lastHealAnimations = null;
-    // Heals/poison happen at the START of each side's turn, before that
-    // side's own actions -- played first, ahead of aiAnimations below (see
-    // `lastHealAnimations`'s own doc comment on why this isn't fully
-    // interleaved turn-by-turn across multiple AI sides).
-    if (healOutcomes) await playHealAnimations(healOutcomes);
-    const aiAnimations = session.lastAiAnimations;
-    session.lastAiAnimations = null;
-    if (aiAnimations) await playAiAnimations(aiAnimations);
+    if (!canAct()) return;
+    const message = await runPlayerAction(async () => {
+      const result = await session.endTurn();
+      const healOutcomes = session.lastHealAnimations;
+      session.lastHealAnimations = null;
+      // Heals/poison happen at the START of each side's turn, before that
+      // side's own actions -- played first, ahead of aiAnimations below (see
+      // `lastHealAnimations`'s own doc comment on why this isn't fully
+      // interleaved turn-by-turn across multiple AI sides).
+      if (healOutcomes) await playHealAnimations(healOutcomes);
+      const aiAnimations = session.lastAiAnimations;
+      session.lastAiAnimations = null;
+      if (aiAnimations) await playAiAnimations(aiAnimations);
+      return result;
+    });
     sync(message);
-    showEventMessages();
+    await showDeferredInteractions();
   }
 
   async function handleSave(): Promise<void> {
@@ -1037,30 +1249,15 @@
 
   // Phase 16: [message] scrolls to its speaker (unless scroll=no or highlight=no), like message.lua.
   $effect(() => {
-    if (phase !== 'messages') return;
-    const message = startupMessages[messageIndex];
-    const at = message?.speakerLocation;
-    if (at && message.scroll && message.highlight) boardView?.scrollToHexIfOffscreen(at.x, at.y);
+    const at = currentMessage?.message.speakerLocation;
+    if (at && currentMessage!.message.scroll && currentMessage!.message.highlight) boardView?.scrollToHexIfOffscreen(at.x, at.y);
   });
 
   /** The story screen closed (last part passed, or skipped): now run the startup events, as upstream does after `story_viewer`. */
   function finishStory(): void {
     if (phase !== 'story') return;
-    startupMessages = session.runStartupEvents();
-    messageIndex = 0;
-    sync();
-    phase = decidePostEventsPhase();
-    applyMessagePhaseUnits();
-  }
-
-  function advanceMessage(): void {
-    messageIndex += 1;
-    if (messageIndex >= startupMessages.length) {
-      phase = session.scenarioResult ? 'ended' : 'playing';
-      units = session.renderUnits;
-    } else {
-      units = session.messageUnitSnapshot(startupMessages[messageIndex]!);
-    }
+    phase = 'playing';
+    void runStartupEvents();
   }
 
   /**
@@ -1095,16 +1292,18 @@
       storyParts = nextStoryParts;
       storyAssets = nextStoryAssets;
 
-      messageIndex = 0;
-      startupMessages = [];
+      session.interactionHost = interactionHost;
+      currentMessage = null;
+      answerInteraction = null;
+      screenTint = null;
       if (nextStoryParts.length === 0) {
-        startupMessages = session.runStartupEvents();
-        phase = decidePostEventsPhase();
+        phase = 'playing';
+        sync();
+        void runStartupEvents();
       } else {
         phase = 'story';
+        sync();
       }
-      sync();
-      applyMessagePhaseUnits();
     } catch (err) {
       continueError = err instanceof Error ? err.message : String(err);
     } finally {
@@ -1210,7 +1409,7 @@
           id: `wml-${item.id}`,
           label: item.label,
           enabled: true,
-          handler: () => sync(session.runMenuItem(item.id, x, y)),
+          handler: () => void runPlayerAction(() => session.runMenuItem(item.id, x, y)).then((m) => sync(m)),
         });
       }
     }
@@ -1351,11 +1550,14 @@
       recallDialogOpen ||
       objectivesDialogOpen ||
       pendingAdvancement !== null ||
-      pendingPreview !== null
+      pendingPreview !== null ||
+      // Phase 17: a suspended event's own dialogue owns the keyboard
+      // while it is up (`MessageViewer` handles arrows/Enter/Escape).
+      currentMessage !== null
     );
   }
 
-  /** Typing in a field must never trigger a game hotkey (no such field exists yet; Phase 17's `[text_input]` will bring one). */
+  /** Typing in a field must never trigger a game hotkey -- Phase 17's `[text_input]` is the first one. */
   function isTypingTarget(target: EventTarget | null): boolean {
     const el = target as HTMLElement | null;
     if (!el || typeof el.tagName !== 'string') return false;
@@ -1374,8 +1576,9 @@
    */
   function handleGlobalKeydown(e: KeyboardEvent): void {
     if (e.repeat || e.defaultPrevented) return;
-    // 'story'/'messages'/'ended' have their own keyboard handling (StoryViewer, MessageViewer, Outro).
-    if (phase !== 'playing') return;
+    // 'story'/'ended' have their own keyboard handling (StoryViewer, Outro);
+    // a suspended event's dialogue is handled by MessageViewer.
+    if (phase !== 'playing' || eventsRunning) return;
     if (dialogOpen() || contextMenuAt !== null || isTypingTarget(e.target)) return;
     const command = hotkeyCommands.find((c) => c.hotkey && matchesHotkey(e, c.hotkey));
     if (!command) return;
@@ -1477,6 +1680,26 @@
     />
   {/if}
 
+  {#if currentMessage}
+    <!-- Phase 17: one line at a time, with the event that raised it suspended behind it. -->
+    <MessageViewer
+      interaction={currentMessage}
+      onAnswer={answerMessage}
+      assets={storyAssets}
+      getMapRect={() => boardView?.viewportRect() ?? null}
+    />
+  {/if}
+
+  {#if screenTint}
+    <!-- [color_adjust]/[screen_fade]: a plain overlay, transitioned over the fade's own duration. -->
+    <div
+      class="screen-tint"
+      style:background="rgb({screenTint.r}, {screenTint.g}, {screenTint.b})"
+      style:opacity={screenTint.a}
+      style:transition-duration="{screenTint.ms}ms"
+    ></div>
+  {/if}
+
   {#if objectivesDialogOpen && session.scenarioObjectives}
     <!-- Phase 14: reopened on demand from the top bar's Actions menu, independent of the `phase` state machine's own one-time automatic showing (below). -->
     <ObjectivesDialog
@@ -1499,14 +1722,6 @@
       currentTurn={turnNumber}
       turnsLimit={scenarioTurnsLimit}
       onClose={advanceObjectives}
-    />
-  {:else if phase === 'messages'}
-    <MessageViewer
-      messages={startupMessages}
-      index={messageIndex}
-      onNext={advanceMessage}
-      assets={storyAssets}
-      getMapRect={() => boardView?.viewportRect() ?? null}
     />
   {:else if phase === 'ended' && session.scenarioResult && !pendingAdvancement}
     <!--
@@ -1542,6 +1757,16 @@
 </div>
 
 <style>
+  /* Phase 17: [color_adjust]/[screen_fade] over the whole shell. */
+  .screen-tint {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    pointer-events: none;
+    transition-property: opacity;
+    transition-timing-function: linear;
+  }
+
   .game-shell {
     height: 100%;
     display: flex;

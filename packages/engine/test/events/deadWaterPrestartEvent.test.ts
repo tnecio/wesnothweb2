@@ -10,6 +10,7 @@ import { UnitType, AttackType } from '../../src/model/UnitType.js';
 import { MoveType } from '../../src/model/MoveType.js';
 import { EventManager, EventPump } from '../../src/events/pump.js';
 import { VariableStore } from '../../src/events/variables.js';
+import { runFlow } from '../../src/events/interaction.js';
 
 /**
  * Real-content, end-to-end test: registers Dead_Water scenario 1's actual
@@ -172,6 +173,43 @@ describe('EventPump running Dead_Water scenario 1 real [event] blocks', () => {
     expect(pump.ctx.objectivesBySide.has(2)).toBe(false);
   });
 
+  /**
+   * Real, reported bug (bugs2.md "Lua events/narration ... not synced
+   * with the narrative messages"): Gwabbo's first line ("Back, you
+   * fiend!...") comes right after his `[unit]` spawn but BEFORE
+   * `{MOVE_UNIT id=Gwabbo 20 10}`, all in the same event body. Until the
+   * pump could suspend, the whole event ran to completion before a word
+   * was shown, so he was already standing at the keep as he spoke. Now
+   * the event really is stopped at each line and the live board is
+   * simply correct at that moment -- which is why `RecordedMessage` no
+   * longer carries a per-message snapshot of every unit.
+   */
+  it('stops at each line of the "start" event with the board as it stands at that moment (Phase 17)', () => {
+    const board = freshBoard();
+    const manager = new EventManager();
+    manager.loadScenarioEvents(scenario);
+    const pump = new EventPump(manager, { board, variables: new VariableStore(), resolveType });
+
+    pump.fire('prestart');
+    pump.ctx.messages.splice(0);
+
+    const gwabboAt: Array<string | null> = [];
+    runFlow(pump.fireFlow('start'), (interaction) => {
+      if (interaction.kind === 'message') {
+        const gwabbo = board.allUnits().find((u) => u.id === 'Gwabbo');
+        gwabboAt.push(gwabbo ? `${gwabbo.location.wmlX},${gwabbo.location.wmlY}` : null);
+      }
+      return {};
+    });
+
+    // Not on the board for the first two lines (Kai Krellis, Cylanna);
+    // at his spawn hex for his own line; only afterwards does he retreat.
+    expect(gwabboAt[0]).toBeNull();
+    expect(gwabboAt[1]).toBeNull();
+    expect(gwabboAt[2]).toBe('34,20');
+    expect(board.allUnits().find((u) => u.id === 'Gwabbo')!.location.wmlX).toBe(20);
+  });
+
   it('firing "start" records real [message] dialogue and spawns Gwabbo/the fiend via [unit]', () => {
     const board = freshBoard();
     const manager = new EventManager();
@@ -238,21 +276,7 @@ describe('EventPump running Dead_Water scenario 1 real [event] blocks', () => {
     expect(fiend!.location.wmlX).toBe(35);
     expect(fiend!.location.wmlY).toBe(20);
 
-    // Real, reported bug (bugs2.md "Lua events/narration ... not synced
-    // with the narrative messages"): Gwabbo's own first line ("Back, you
-    // fiend!...") is messages[2] -- fired right after his [unit] spawn but
-    // BEFORE {MOVE_UNIT id=Gwabbo 20 10}, both in the same event body (see
-    // the real scenario source). His checkpoint at THAT message should
-    // show him at his real spawn position (34, 20), not the post-move
-    // (20, 10) the live board now has -- and he shouldn't exist at all in
-    // the two earlier messages' checkpoints, since he hadn't spawned yet.
     expect(pump.ctx.messages[2]).toMatchObject({ speaker: 'Gwabbo', message: expect.stringContaining('Back, you fiend') });
-    const gwabboAtOwnMessage = pump.ctx.messages[2]!.unitsBefore.find((c) => c.unit === gwabbo);
-    expect(gwabboAtOwnMessage).toBeDefined();
-    expect(gwabboAtOwnMessage!.x).toBe(33); // wml (34,20) -> engine 0-based (33,19)... see below
-    expect(gwabboAtOwnMessage!.y).toBe(19);
-    expect(pump.ctx.messages[0]!.unitsBefore.some((c) => c.unit === gwabbo)).toBe(false);
-    expect(pump.ctx.messages[1]!.unitsBefore.some((c) => c.unit === gwabbo)).toBe(false);
 
     // [attack]/[recruit]/[lua] remain extension-point placeholders (see
     // actionWml.ts) -- none of them appear in this specific event body, so

@@ -77,6 +77,12 @@ export interface FakeUnitSpec {
 export interface FakeUnitWalk {
   readonly spec: FakeUnitSpec;
   readonly path: readonly Location[];
+  /**
+   * A throwaway `Unit` of the right type, never added to the board --
+   * upstream's `create_fake_unit`. The display needs one to pick the
+   * walk animation the same way it would for a real unit.
+   */
+  readonly unit: Unit;
 }
 
 /**
@@ -131,8 +137,13 @@ export type CutsceneBeat =
     }
   /** `[kill] animate=yes`: a unit's death animation, played before it leaves the board. */
   | { readonly kind: 'unitDeath'; readonly unit: Unit; readonly scroll: boolean }
-  /** `[unit] animate=yes`: a freshly placed unit appearing. */
-  | { readonly kind: 'unitAppear'; readonly unit: Unit };
+  /**
+   * A unit appearing where it was just placed: `[unit] animate=yes`, or
+   * a recruit/recall, in which case `by` is the leader who called it and
+   * plays the matching "recruiting" animation (`unit_display::
+   * unit_recruited`).
+   */
+  | { readonly kind: 'unitAppear'; readonly unit: Unit; readonly by?: Unit };
 
 /** A cutscene beat waiting to be played out. */
 export interface BeatInteraction {

@@ -11,7 +11,7 @@ export { unitMatchesFilter, findUnits, locationMatchesFilter, locationMatchesFil
 export { conditionalPassed, builtinConditions } from './conditionalWml.js';
 
 export { ActionRegistry } from './context.js';
-export type { ActionHandler, EventContext, EndLevelState, ExitState, RecordedMessage, MenuItemDef } from './context.js';
+export type { ActionHandler, EventContext, EndLevelState, ExitState, RecordedMessage, MenuItemDef, ChoiceRecord } from './context.js';
 
 export { parseScenarioObjectives, turnCounterSuffix, OBJECTIVE_COLOR } from './objectives.js';
 export type { ScenarioObjectives, ScenarioObjectiveEntry, GoldCarryoverEntry, ObjectiveCondition } from './objectives.js';
@@ -19,7 +19,7 @@ export type { ScenarioObjectives, ScenarioObjectiveEntry, GoldCarryoverEntry, Ob
 export { createDefaultActionRegistry, runActionSequence, runActionFlow, applySetVariable } from './actionWml.js';
 
 export { runFlow, autoRespond, isFlow } from './interaction.js';
-export type { Interaction, MessageInteraction, InteractionResult, MessageOption, TextInputSpec, Flow, Responder } from './interaction.js';
+export type { Interaction, MessageInteraction, BeatInteraction, CutsceneBeat, FakeUnitSpec, FakeUnitWalk, InteractionResult, MessageOption, TextInputSpec, Flow, Responder } from './interaction.js';
 
 export { EventManager, EventPump, standardizeEventName } from './pump.js';
 export type { WmlEventHandler, QueuedEvent, EventPumpOptions } from './pump.js';

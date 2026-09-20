@@ -320,12 +320,6 @@ function* actionMessage(cfg: WmlConfig, ctx: EventContext): Flow {
     highlight: cfg.getBoolean('highlight', true),
     sound: cfg.getString('sound', ''),
     voice: cfg.getString('voice', ''),
-    unitsBefore: ctx.board.allUnits().map((unit) => ({
-      unit,
-      x: unit.location.x,
-      y: unit.location.y,
-      hitpoints: unit.hitpoints,
-    })),
   };
   ctx.messages.push(message);
 

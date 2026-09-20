@@ -8,9 +8,9 @@ const GAME_TIMEOUT_MS = 30_000;
 describe('ai-benchmark', () => {
   it(
     'plays synth_combat_02 (both sides AI) to completion within a generous turn/time budget',
-    () => {
+    async () => {
       const snapshot = loadSnapshot('synth_combat_02');
-      const result = playGame(snapshot, 1, 30);
+      const result = await playGame(snapshot, 1, 30);
 
       expect(result.winner).not.toBe('timeout'); // a leader dies well before turn 30 on this small map
       expect(result.turns).toBeGreaterThan(0);
@@ -25,10 +25,10 @@ describe('ai-benchmark', () => {
 
   it(
     'is fully deterministic: the same seed produces an identical result every time',
-    () => {
+    async () => {
       const snapshot = loadSnapshot('synth_combat_02');
-      const a = playGame(snapshot, 42, 30);
-      const b = playGame(snapshot, 42, 30);
+      const a = await playGame(snapshot, 42, 30);
+      const b = await playGame(snapshot, 42, 30);
 
       expect(a.winner).toBe(b.winner);
       expect(a.turns).toBe(b.turns);
@@ -39,9 +39,9 @@ describe('ai-benchmark', () => {
 
   it(
     'two independent games both complete (mirrors the plan\'s own "2 games x N turns" smoke test)',
-    () => {
+    async () => {
       const snapshot = loadSnapshot('synth_combat_02');
-      const results = [1, 2].map((seed) => playGame(snapshot, seed, 30));
+      const results = await Promise.all([1, 2].map((seed) => playGame(snapshot, seed, 30)));
       for (const r of results) {
         expect(r.winner).not.toBe('timeout');
         expect(r.turns).toBeGreaterThan(0);

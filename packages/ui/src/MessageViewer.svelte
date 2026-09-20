@@ -14,26 +14,29 @@
    * the next message's portraits are preloaded. Click anywhere, Enter,
    * Space or Escape continues (`click_dismiss`).
    *
-   * Still shown one after another once the events have run; in-order,
-   * blocking dialogue and `[option]` are Phase 17.
+   * Phase 17: one line at a time, with the event that raised it
+   * genuinely suspended behind it -- so `[option]`/`[text_input]` can
+   * feed an answer back into the running WML. The option list and the
+   * text field follow Phase 15's keyboard conventions (arrows move,
+   * Enter confirms); Escape on a plain line skips the rest of the
+   * event's dialogue, as upstream's own `skip_messages` does.
    */
-  import type { RecordedMessage } from '@wesnothweb2/engine';
+  import type { MessageInteraction, InteractionResult } from '@wesnothweb2/engine';
   import { imageUrl } from '@wesnothweb2/renderer';
   import { pickStoryImage, type StoryAssets } from './story/storyImages.js';
   import { layoutMessage, scaledSizeFromPath, type Size } from './story/messageLayout.js';
 
   let {
-    messages,
-    index,
-    onNext,
+    interaction,
+    onAnswer,
     assets = null,
     getMapRect,
   }: {
-    messages: readonly RecordedMessage[];
-    index: number;
-    onNext: () => void;
+    interaction: MessageInteraction;
+    /** Hands the player's answer back to the suspended event. */
+    onAnswer: (result: InteractionResult) => void;
     assets?: StoryAssets | null;
-    /** The board's on-screen rectangle; the dialog covers it. Falls back to the whole window. */
+    /** The board's on-screen rectangle; the dialog covers it. Falls back to the full window. */
     getMapRect?: () => DOMRect | null;
   } = $props();
 
@@ -45,10 +48,32 @@
   /** Natural sizes of portraits missing from the asset table, learned when they load. */
   let learnedSizes = $state<Record<string, Size>>({});
 
-  const msg = $derived(messages[index]);
+  const msg = $derived(interaction.message);
+  const options = $derived(interaction.options);
+  const textInput = $derived(interaction.textInput);
+  const hasInput = $derived(options.length > 0 || textInput !== undefined);
+
+  /** Which option row is highlighted; starts on `default=yes` if one asked for it. */
+  let optionIndex = $state(0);
+  let typed = $state('');
+  let inputEl: HTMLInputElement | undefined = $state();
+
+  $effect(() => {
+    const preferred = interaction.options.findIndex((o) => o.isDefault);
+    optionIndex = preferred >= 0 ? preferred : 0;
+    typed = interaction.textInput?.text ?? '';
+    if (interaction.textInput) inputEl?.focus();
+  });
+
+  function confirm(): void {
+    onAnswer({
+      value: options.length > 0 ? optionIndex + 1 : undefined,
+      text: textInput ? typed : undefined,
+    });
+  }
 
   const area = $derived.by(() => {
-    void index;
+    void interaction;
     const rect = getMapRect?.();
     // Deviation for small screens: when the board is squeezed narrower than a readable dialog
     // (the in-game layout is not mobile-ready yet, Phase 23), cover the whole window instead.
@@ -89,26 +114,30 @@
     learnedSizes = { ...learnedSizes, [ref]: { w: img.naturalWidth, h: img.naturalHeight } };
   }
 
-  /** Keep the next message's portraits warm so it paints at once. */
-  const preloaded = new Map<string, HTMLImageElement>();
-  $effect(() => {
-    const next = messages[index + 1];
-    const refs = next ? [next.portrait, next.secondPortrait].filter((r) => r !== '') : [];
-    for (const ref of refs) {
-      const size = portraitSize(ref);
-      const url = portraitUrl(ref, size?.w ?? 500);
-      if (preloaded.has(url)) continue;
-      const img = new Image();
-      img.src = url;
-      preloaded.set(url, img);
-      img.decode().catch(() => undefined);
-    }
-  });
-
   function onKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
+    if (options.length > 0 && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
       e.preventDefault();
-      onNext();
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      optionIndex = (optionIndex + step + options.length) % options.length;
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      confirm();
+      return;
+    }
+    // Space scrolls a text field, so it only dismisses a plain line.
+    if (e.key === ' ' && !hasInput) {
+      e.preventDefault();
+      confirm();
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      // A message that asks something cannot be escaped -- upstream
+      // disables Escape for exactly that case; a plain line skips the
+      // rest of its event's dialogue.
+      if (!hasInput) onAnswer({ skip: true });
     }
   }
 </script>
@@ -117,7 +146,7 @@
 
 {#if msg && layout}
   <!-- svelte-ignore a11y_click_events_have_key_events -- keys are handled window-wide above -->
-  <div class="dismiss" role="presentation" onclick={onNext}>
+  <div class="dismiss" role="presentation" onclick={() => !hasInput && confirm()}>
     <div
       class="window"
       role="dialog"
@@ -134,6 +163,45 @@
             <div class="title">{msg.title}</div>
           {/if}
           <div class="text">{msg.message}</div>
+
+          {#if textInput}
+            <div class="text-input">
+              {#if textInput.label}<label for="wml-text-input">{textInput.label}</label>{/if}
+              <input
+                id="wml-text-input"
+                type="text"
+                bind:this={inputEl}
+                bind:value={typed}
+                maxlength={textInput.maxLength}
+                onclick={(e) => e.stopPropagation()}
+              />
+            </div>
+          {/if}
+
+          {#if options.length > 0}
+            <ul class="options" role="listbox" aria-label="Choices" tabindex="-1">
+              {#each options as option, i (i)}
+                <li>
+                  <button
+                    type="button"
+                    class="option"
+                    class:selected={i === optionIndex}
+                    role="option"
+                    aria-selected={i === optionIndex}
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      optionIndex = i;
+                      confirm();
+                    }}
+                  >
+                    {#if option.image}<img class="option-icon" src={imageUrl(option.image)} alt="" />{/if}
+                    <span class="option-label">{option.label}</span>
+                    {#if option.description}<span class="option-description">{option.description}</span>{/if}
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
         </div>
       </div>
 
@@ -172,6 +240,59 @@
 {/if}
 
 <style>
+  .text-input {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.6rem;
+  }
+  .text-input input {
+    flex: 1 1 auto;
+    font: inherit;
+    background: rgba(8, 12, 20, 0.85);
+    border: 1px solid #6b5a2e;
+    border-radius: 3px;
+    color: #f1e6c8;
+    padding: 0.25rem 0.4rem;
+  }
+  .options {
+    list-style: none;
+    margin: 0.6rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+  .option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: #e8dcc0;
+    background: rgba(8, 12, 20, 0.5);
+    border: 1px solid transparent;
+    border-radius: 3px;
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
+  }
+  .option:hover {
+    background: rgba(40, 56, 82, 0.8);
+  }
+  .option.selected {
+    background: #35411f;
+    border-color: #8a6a2e;
+  }
+  .option-icon {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+  }
+  .option-description {
+    opacity: 0.8;
+    font-size: 0.9em;
+  }
   .dismiss {
     position: fixed;
     inset: 0;

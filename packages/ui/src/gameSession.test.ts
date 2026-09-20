@@ -2,7 +2,18 @@ import { describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Location, Unit, Direction, getAdjacentTiles, ALL_DIRECTIONS, directionBetween, isBackstabActive, createTypeResolver, type GameBoardSnapshot } from '@wesnothweb2/engine';
+import {
+  Location,
+  Unit,
+  Direction,
+  getAdjacentTiles,
+  ALL_DIRECTIONS,
+  directionBetween,
+  isBackstabActive,
+  createTypeResolver,
+  type GameBoardSnapshot,
+  type CutsceneBeat,
+} from '@wesnothweb2/engine';
 import { GameSession } from './gameSession.js';
 
 /**
@@ -90,12 +101,28 @@ function withAdjacentLeaders(): { session: GameSession; malKevek: import('@wesno
   return { session, malKevek, kaiKrellis };
 }
 
+/**
+ * Phase 17: collects every cutscene beat the session hands to the
+ * display (and answers each one immediately, as a display that had
+ * finished playing it would).
+ */
+function recordBeats(session: GameSession): CutsceneBeat[] {
+  const beats: CutsceneBeat[] = [];
+  session.interactionHost = {
+    async handle(interaction) {
+      if (interaction.kind === 'beat') beats.push(interaction.beat);
+      return {};
+    },
+  };
+  return beats;
+}
+
 describe('GameSession.runStartupEvents (real Dead_Water scenario 1)', () => {
-  it('spawns the real event-placed units and records real dialogue, and renderUnits reflects them', () => {
+  it('spawns the real event-placed units and records real dialogue, and renderUnits reflects them', async () => {
     const session = new GameSession(loadSnapshot());
     expect(session.board.allUnits()).toHaveLength(2); // just the two leaders, pre-events
 
-    const messages = session.runStartupEvents();
+    const messages = await session.runStartupEvents();
     expect(messages.length).toBeGreaterThan(0);
     expect(messages.map((m) => m.message).join(' | ')).toContain('Is something wrong, priestess?');
 
@@ -110,20 +137,20 @@ describe('GameSession.runStartupEvents (real Dead_Water scenario 1)', () => {
 
     // Calling it again is a documented no-op (doesn't double-spawn or re-record).
     const unitCountAfterFirst = session.board.allUnits().length;
-    const messagesAgain = session.runStartupEvents();
+    const messagesAgain = await session.runStartupEvents();
     expect(messagesAgain).toHaveLength(0);
     expect(session.board.allUnits()).toHaveLength(unitCountAfterFirst);
   });
 
-  it('real, reported bug: unit sprites always rendered in raw magenta instead of the unit\'s side color -- renderUnits now carries each unit\'s real flag_rgb (defaulting to "magenta") for SnapshotBoard to recolor with', () => {
+  it('real, reported bug: unit sprites always rendered in raw magenta instead of the unit\'s side color -- renderUnits now carries each unit\'s real flag_rgb (defaulting to "magenta") for SnapshotBoard to recolor with', async () => {
     const session = new GameSession(loadSnapshot());
     const kaiKrellis = session.renderUnits.find((u) => u.id === 'Kai Krellis')!;
     expect(kaiKrellis.flagRgb).toBe('magenta'); // real Merman Child King unit_type sets no flag_rgb= override
   });
 
-  it("real, reported bug: Gwabbo's scripted retreat ({MOVE_UNIT id=Gwabbo 20 10}, a [move_unit] action) actually relocates him, using his real Merman Netcaster movement stats end-to-end", () => {
+  it("real, reported bug: Gwabbo's scripted retreat ({MOVE_UNIT id=Gwabbo 20 10}, a [move_unit] action) actually relocates him, using his real Merman Netcaster movement stats end-to-end", async () => {
     const session = new GameSession(loadSnapshot());
-    session.runStartupEvents();
+    await session.runStartupEvents();
     const gwabbo = session.board.allUnits().find((u) => u.id === 'Gwabbo')!;
     expect(gwabbo).toBeDefined();
     expect(gwabbo.location.wmlX).toBe(20);
@@ -132,10 +159,10 @@ describe('GameSession.runStartupEvents (real Dead_Water scenario 1)', () => {
     expect(gwabbo.movesLeft).toBe(gwabbo.maxMoves);
   });
 
-  it('real, reported bug: no in-game dialog ever showed the scenario objectives -- runStartupEvents now sets scenarioObjectives from the real [objectives] in the scenario', () => {
+  it('real, reported bug: no in-game dialog ever showed the scenario objectives -- runStartupEvents now sets scenarioObjectives from the real [objectives] in the scenario', async () => {
     const session = new GameSession(loadSnapshot());
     expect(session.scenarioObjectives).toBeNull();
-    session.runStartupEvents();
+    await session.runStartupEvents();
 
     const objectives = session.scenarioObjectives;
     expect(objectives).not.toBeNull();
@@ -144,42 +171,43 @@ describe('GameSession.runStartupEvents (real Dead_Water scenario 1)', () => {
     expect(objectives!.goldCarryover).toEqual([{ bonus: true, carryoverPercentage: 40 }]);
   });
 
-  it("real, reported bug: Gwabbo's first message showed him already at the keep -- messageUnitSnapshot now reflects his real spawn position at that point in the story, not the fully-resolved final board", () => {
+  it("real, reported bug: Gwabbo's first message showed him already at the keep -- the event now stops at each line, so the live board is simply right at that moment", async () => {
     const session = new GameSession(loadSnapshot());
-    const messages = session.runStartupEvents();
+    const boardAtEachLine: Array<{ speaker: string; gwabboAt: string | null }> = [];
+    // Phase 17: standing in for the player, answering each line as it is
+    // reached -- exactly how `GameShell` drives it.
+    session.interactionHost = {
+      async handle(interaction) {
+        if (interaction.kind === 'message') {
+          const gwabbo = session.board.allUnits().find((u) => u.id === 'Gwabbo');
+          boardAtEachLine.push({
+            speaker: interaction.message.speaker,
+            gwabboAt: gwabbo ? `${gwabbo.location.wmlX},${gwabbo.location.wmlY}` : null,
+          });
+        }
+        return {};
+      },
+    };
+
+    await session.runStartupEvents();
+
+    // Fully resolved, Gwabbo has retreated to the keep...
     const gwabbo = session.board.allUnits().find((u) => u.id === 'Gwabbo')!;
-    // Fully resolved: Gwabbo has already retreated to the keep.
     expect(gwabbo.location.wmlX).toBe(20);
     expect(gwabbo.location.wmlY).toBe(10);
 
-    const gwabboMessageIndex = messages.findIndex((m) => m.speaker === 'Gwabbo');
-    expect(gwabboMessageIndex).toBeGreaterThan(0);
-
-    // At his OWN message, he's present (his [unit] already ran) but still
-    // at his real spawn hex -- the retreat is scripted to happen only
-    // after this message, in the same real event body.
-    const atOwnMessage = session.messageUnitSnapshot(messages[gwabboMessageIndex]!);
-    const gwabboSnapshot = atOwnMessage.find((u) => u.id === 'Gwabbo');
-    expect(gwabboSnapshot).toBeDefined();
-    expect(gwabboSnapshot!.x).not.toBe(gwabbo.location.x);
-    expect(gwabboSnapshot!.y).not.toBe(gwabbo.location.y);
-
-    // Before his own message, he doesn't exist yet at all.
-    const beforeHisSpawn = session.messageUnitSnapshot(messages[0]!);
-    expect(beforeHisSpawn.some((u) => u.id === 'Gwabbo')).toBe(false);
-
-    // A checkpoint's snapshot carries the same real per-unit fields
-    // `renderUnits` does (type/side/abilities/etc are all read straight
-    // off the live unit, only position/hp are the captured-at-the-time
-    // values) -- not just a bare position.
-    expect(gwabboSnapshot!.typeId).toBe('Merman Netcaster');
-    expect(gwabboSnapshot!.side).toBe(1);
-    expect(gwabboSnapshot!.loyal).toBe(true);
+    // ...but at his own line he was still at his spawn hex, and before
+    // that he was not on the board at all. (His retreat is scripted to
+    // happen after the line, in the same real event body.)
+    const own = boardAtEachLine.findIndex((l) => l.speaker === 'Gwabbo');
+    expect(own).toBeGreaterThan(0);
+    expect(boardAtEachLine[own]!.gwabboAt).toBe('34,20');
+    expect(boardAtEachLine[0]!.gwabboAt).toBeNull();
   });
 });
 
 describe('GameSession.endTurn (hotseat cycling)', () => {
-  it('cycles active side, increments turnNumber only on wraparound, and refreshes the incoming side\'s moves/attacks', () => {
+  it('cycles active side, increments turnNumber only on wraparound, and refreshes the incoming side\'s moves/attacks', async () => {
     const session = new GameSession(loadSnapshot());
     // Real Dead_Water scenario 1's side 2 is controller=ai, which -- since
     // this session's AI now really plays automatically (endTurn's own doc
@@ -197,7 +225,7 @@ describe('GameSession.endTurn (hotseat cycling)', () => {
     leader1.movesLeft = 0;
     leader1.attacksLeft = 0;
 
-    session.endTurn();
+    await session.endTurn();
     expect(session.activeSide).toBe(2); // Dead_Water scenario 1 has sides 1 and 2 -- no wrap yet.
     expect(session.turnNumber).toBe(1);
     for (const unit of session.board.unitsForSide(2)) {
@@ -207,29 +235,29 @@ describe('GameSession.endTurn (hotseat cycling)', () => {
     // Side 1's leader was NOT refreshed by side 2's turn starting.
     expect(leader1.movesLeft).toBe(0);
 
-    session.endTurn();
+    await session.endTurn();
     expect(session.activeSide).toBe(1); // wrapped past the highest side number (2) back to 1.
     expect(session.turnNumber).toBe(2); // ...which is exactly when the turn counter increments.
     expect(leader1.movesLeft).toBe(leader1.maxMoves);
     expect(leader1.attacksLeft).toBe(leader1.maxAttacksPerTurn);
   });
 
-  it('clears any selection/pending state', () => {
+  it('clears any selection/pending state', async () => {
     const session = new GameSession(loadSnapshot());
     const leader1 = session.board.unitsForSide(1)[0]!;
     session.selectUnit(leader1);
     expect(session.selectedUnit).not.toBeNull();
-    session.endTurn();
+    await session.endTurn();
     expect(session.selectedUnit).toBeNull();
   });
 });
 
 describe('GameSession auto-plays controller=ai sides (real Dead_Water scenario 1, side 2 is controller=ai)', () => {
-  it('a single endTurn() call from side 1 auto-plays the whole of side 2\'s AI turn and lands back on side 1, turn 2', () => {
+  it('a single endTurn() call from side 1 auto-plays the whole of side 2\'s AI turn and lands back on side 1, turn 2', async () => {
     const session = new GameSession(loadSnapshot());
     expect(session.board.getTeam(2)!.controller).toBe('ai'); // sanity: this scenario really does mark side 2 as AI.
 
-    const message = session.endTurn();
+    const message = await session.endTurn();
 
     // One endTurn() call skipped straight past side 2 (auto-played) to
     // side 1's next turn, not just to side 2 as the old hotseat-only
@@ -242,11 +270,11 @@ describe('GameSession auto-plays controller=ai sides (real Dead_Water scenario 1
     expect(session.log.some((l) => l.includes('Turn 1') && l.includes('side 2'))).toBe(true);
   });
 
-  it("real, reported bug: AI turns played no animation at all -- endTurn() now sets lastAiAnimations to every real AiAnimationEvent side 2's turn produced", () => {
+  it("real, reported bug: AI turns played no animation at all -- endTurn() now sets lastAiAnimations to every real AiAnimationEvent side 2's turn produced", async () => {
     const session = new GameSession(loadSnapshot());
     expect(session.lastAiAnimations).toBeNull();
 
-    session.endTurn();
+    await session.endTurn();
 
     // Real Dead_Water scenario 1's side 2 leader (Mal-Kevek) starts with
     // real movement and no reachable target turn 1 -- the movement
@@ -263,7 +291,7 @@ describe('GameSession auto-plays controller=ai sides (real Dead_Water scenario 1
 });
 
 describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)', () => {
-  it('lists the real recruitable types for a leader standing on its keep with a vacant castle tile, and places a real unit there on click', () => {
+  it('lists the real recruitable types for a leader standing on its keep with a vacant castle tile, and places a real unit there on click', async () => {
     const session = new GameSession(loadSnapshot());
     const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
     expect(leader).toBeDefined();
@@ -283,7 +311,7 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
     const unitCountBefore = session.board.allUnits().length;
 
     session.selectRecruitType(typeId);
-    const message = session.handleHexClick(target.x, target.y);
+    const message = await session.handleHexClick(target.x, target.y);
 
     expect(message).toContain('Recruited');
     expect(session.board.allUnits()).toHaveLength(unitCountBefore + 1);
@@ -295,7 +323,7 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
     expect(session.recruitTiles.some((t) => t.x === target.x && t.y === target.y)).toBe(false);
   });
 
-  it('real, reported bug (bugs4.md #4/#6/#8): recruitOptions/recruitTiles/recruiting itself are available WITHOUT the leader being the selected unit -- only requires it being the active side\'s turn and the leader standing on a keep with a vacant connected tile', () => {
+  it('real, reported bug (bugs4.md #4/#6/#8): recruitOptions/recruitTiles/recruiting itself are available WITHOUT the leader being the selected unit -- only requires it being the active side\'s turn and the leader standing on a keep with a vacant connected tile', async () => {
     const session = new GameSession(loadSnapshot());
     const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
     expect(session.selectedUnit).toBeNull(); // deliberately never selected anything
@@ -309,7 +337,7 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
     const goldBefore = team.gold;
 
     session.selectRecruitType(typeId);
-    const message = session.handleHexClick(target.x, target.y);
+    const message = await session.handleHexClick(target.x, target.y);
 
     expect(message).toContain('Recruited');
     const placed = session.board.allUnits().find((u) => u.location.x === target.x && u.location.y === target.y);
@@ -326,14 +354,14 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
     expect(leader.canRecruit).toBe(true); // unaffected -- just confirms we're still looking at the real leader
   });
 
-  it('real, reported bug (bugs5.md #1): recruiting/recalling no longer auto-selects the leader afterward -- most noticeable recruiting via the context menu with nothing selected beforehand, where the leader used to become selected as an unwanted side effect', () => {
+  it('real, reported bug (bugs5.md #1): recruiting/recalling no longer auto-selects the leader afterward -- most noticeable recruiting via the context menu with nothing selected beforehand, where the leader used to become selected as an unwanted side effect', async () => {
     const session = new GameSession(loadSnapshot());
     expect(session.selectedUnit).toBeNull();
 
     const typeId = session.recruitOptions[0]!.typeId;
     const target = session.recruitTiles[0]!;
     session.selectRecruitType(typeId);
-    session.handleHexClick(target.x, target.y);
+    await session.handleHexClick(target.x, target.y);
 
     expect(session.selectedUnit).toBeNull(); // still nothing selected -- recruiting must not have changed it
 
@@ -346,13 +374,13 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
       const target2 = session.recruitTiles[0];
       if (typeId2 && target2) {
         session.selectRecruitType(typeId2);
-        session.handleHexClick(target2.x, target2.y);
+        await session.handleHexClick(target2.x, target2.y);
         expect(session.selectedUnit).toBe(other);
       }
     }
   });
 
-  it('real, reported bug (bugs5.md #4): boardRecruitTiles (the board\'s green highlight) stays empty unless the leader itself is the SELECTED unit, unlike recruitTiles (the context-menu/dialog set, deliberately selection-independent -- see its own doc comment)', () => {
+  it('real, reported bug (bugs5.md #4): boardRecruitTiles (the board\'s green highlight) stays empty unless the leader itself is the SELECTED unit, unlike recruitTiles (the context-menu/dialog set, deliberately selection-independent -- see its own doc comment)', async () => {
     const session = new GameSession(loadSnapshot());
     const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
 
@@ -370,24 +398,26 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
     }
   });
 
-  it('real, reported bug: recruiting never played any animation -- sets lastRecruitAnimation to the new unit + the recruiting leader', () => {
+  it('real, reported bug: recruiting never played any animation -- yields a unitAppear beat for the new unit and the recruiting leader', async () => {
     const session = new GameSession(loadSnapshot());
+    const beats = recordBeats(session);
     const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
     session.selectUnit(leader);
     const typeId = session.recruitOptions[0]!.typeId;
     const target = session.recruitTiles[0]!;
 
-    expect(session.lastRecruitAnimation).toBeNull();
     session.selectRecruitType(typeId);
-    session.handleHexClick(target.x, target.y);
+    await session.handleHexClick(target.x, target.y);
 
-    expect(session.lastRecruitAnimation).not.toBeNull();
-    expect(session.lastRecruitAnimation!.leader).toBe(leader);
-    expect(session.lastRecruitAnimation!.unit.location.x).toBe(target.x);
-    expect(session.lastRecruitAnimation!.unit.location.y).toBe(target.y);
+    const appear = beats.find((b) => b.kind === 'unitAppear');
+    expect(appear).toBeDefined();
+    if (appear?.kind !== 'unitAppear') throw new Error('expected a unitAppear beat');
+    expect(appear.by).toBe(leader);
+    expect(appear.unit.location.x).toBe(target.x);
+    expect(appear.unit.location.y).toBe(target.y);
   });
 
-  it('real, reported bug: recruited units never got any character traits, and the unit infobox never showed trait information -- a freshly recruited unit now gets 2 real traits (e.g. strong/quick/intelligent/resilient), surfaced in unitInfo().traits', () => {
+  it('real, reported bug: recruited units never got any character traits, and the unit infobox never showed trait information -- a freshly recruited unit now gets 2 real traits (e.g. strong/quick/intelligent/resilient), surfaced in unitInfo().traits', async () => {
     const session = new GameSession(loadSnapshot());
     const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
     session.selectUnit(leader);
@@ -395,14 +425,14 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
     const target = session.recruitTiles[0]!;
 
     session.selectRecruitType(typeId);
-    session.handleHexClick(target.x, target.y);
+    await session.handleHexClick(target.x, target.y);
 
     const placed = session.board.allUnits().find((u) => u.location.x === target.x && u.location.y === target.y)!;
     expect(placed.traitNames).toHaveLength(2);
     expect(session.unitInfo(placed).traits).toEqual(placed.traitNames);
   });
 
-  it('refuses to recruit when the side cannot afford the unit', () => {
+  it('refuses to recruit when the side cannot afford the unit', async () => {
     const session = new GameSession(loadSnapshot());
     const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
     session.selectUnit(leader);
@@ -416,14 +446,14 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
     const unitCountBefore = session.board.allUnits().length;
 
     session.selectRecruitType(typeId);
-    const message = session.handleHexClick(target.x, target.y);
+    const message = await session.handleHexClick(target.x, target.y);
 
     expect(message).toMatch(/not enough gold/i);
     expect(session.board.allUnits()).toHaveLength(unitCountBefore);
     expect(team.gold).toBe(-1);
   });
 
-  it('refuses to recruit onto a hex that is not a vacant, connected castle tile', () => {
+  it('refuses to recruit onto a hex that is not a vacant, connected castle tile', async () => {
     const session = new GameSession(loadSnapshot());
     const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
     session.selectUnit(leader);
@@ -432,7 +462,7 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
 
     session.selectRecruitType(typeId);
     // The leader's own occupied hex is never a valid recruit target.
-    const message = session.handleHexClick(leader.location.x, leader.location.y);
+    const message = await session.handleHexClick(leader.location.x, leader.location.y);
 
     expect(message).toMatch(/cannot recruit/i);
     expect(session.board.allUnits()).toHaveLength(unitCountBefore);
@@ -440,12 +470,12 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
 });
 
 describe('GameSession.toSaveData / loadSaveData (round-trip, see persistence.ts for the IndexedDB/gzip layer this feeds)', () => {
-  it('round-trips turn/side/gold/unit-position/hp/moves state exactly', () => {
+  it('round-trips turn/side/gold/unit-position/hp/moves state exactly', async () => {
     const session = new GameSession(loadSnapshot());
-    session.runStartupEvents();
+    await session.runStartupEvents();
 
     // Change enough real state that a naive "just rebuild from snapshot" reload would visibly differ.
-    session.endTurn(); // side 1 -> side 2
+    await session.endTurn(); // side 1 -> side 2
     const team1 = session.board.getTeam(1)!;
     team1.gold = 77;
     const someUnit = session.board.allUnits()[0]!;
@@ -470,7 +500,7 @@ describe('GameSession.toSaveData / loadSaveData (round-trip, see persistence.ts 
     expect(reloadedUnit?.type.id).toBe(someUnit.type.id);
   });
 
-  it('round-trips a latched scenarioResult and keeps the loaded session blocked from further input', () => {
+  it('round-trips a latched scenarioResult and keeps the loaded session blocked from further input', async () => {
     const session = new GameSession(loadSnapshot());
     const kaiKrellis = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
     session.board.removeUnitAt(kaiKrellis.location);
@@ -483,13 +513,13 @@ describe('GameSession.toSaveData / loadSaveData (round-trip, see persistence.ts 
     reloaded.loadSaveData(saved);
 
     expect(reloaded.scenarioResult).toBe('defeat');
-    expect(reloaded.handleHexClick(0, 0)).toBeNull();
-    expect(reloaded.endTurn()).toBe('');
+    expect(await reloaded.handleHexClick(0, 0)).toBeNull();
+    expect(await reloaded.endTurn()).toBe('');
   });
 
-  it('round-trips the live ToD schedule (Schedule.test.ts covers the deeper [time_area]/[replace_schedule] mutation cases; this just confirms the wiring)', () => {
+  it('round-trips the live ToD schedule (Schedule.test.ts covers the deeper [time_area]/[replace_schedule] mutation cases; this just confirms the wiring)', async () => {
     const session = new GameSession(loadSnapshot());
-    session.runStartupEvents();
+    await session.runStartupEvents();
     const someUnit = session.board.allUnits()[0]!;
     const beforeTod = session.timeOfDayAt(someUnit.location);
 
@@ -503,7 +533,7 @@ describe('GameSession.toSaveData / loadSaveData (round-trip, see persistence.ts 
 });
 
 describe('GameSession victory/defeat (real leader-death check, see checkVictory)', () => {
-  it('sets scenarioResult to "defeat" when the player-side leader dies, and blocks further input', () => {
+  it('sets scenarioResult to "defeat" when the player-side leader dies, and blocks further input', async () => {
     const session = new GameSession(loadSnapshot());
     const kaiKrellis = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
     expect(session.scenarioResult).toBeNull();
@@ -519,13 +549,13 @@ describe('GameSession victory/defeat (real leader-death check, see checkVictory)
 
     // The scenario is over -- every mutating entry point should now no-op.
     const unitCountBefore = session.board.allUnits().length;
-    expect(session.handleHexClick(0, 0)).toBeNull();
-    expect(session.endTurn()).toBe('');
+    expect(await session.handleHexClick(0, 0)).toBeNull();
+    expect(await session.endTurn()).toBe('');
     expect(session.board.allUnits()).toHaveLength(unitCountBefore);
     expect(session.activeSide).toBe(1); // endTurn() no-opped, so this never advanced.
   });
 
-  it('sets scenarioResult to "victory" when the enemy leader dies', () => {
+  it('sets scenarioResult to "victory" when the enemy leader dies', async () => {
     const session = new GameSession(loadSnapshot());
     const enemyLeader = session.board.unitsForSide(2).find((u) => u.canRecruit)!;
 
@@ -537,7 +567,7 @@ describe('GameSession victory/defeat (real leader-death check, see checkVictory)
     expect(session.log[0]).toMatch(/victory/i);
   });
 
-  it('checkForGameEnd is idempotent -- does not overwrite an already-latched result', () => {
+  it('checkForGameEnd is idempotent -- does not overwrite an already-latched result', async () => {
     const session = new GameSession(loadSnapshot());
     const kaiKrellis = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
     session.board.removeUnitAt(kaiKrellis.location);
@@ -554,7 +584,7 @@ describe('GameSession victory/defeat (real leader-death check, see checkVictory)
 });
 
 describe('GameSession.nextScenarioId (real next_scenario= chaining)', () => {
-  it('reads the real 01_Invasion -> 02_Flight chain, and null for a scenario with none', () => {
+  it('reads the real 01_Invasion -> 02_Flight chain, and null for a scenario with none', async () => {
     const session = new GameSession(loadSnapshot());
     expect(session.nextScenarioId).toBe('02_Flight');
 
@@ -565,14 +595,14 @@ describe('GameSession.nextScenarioId (real next_scenario= chaining)', () => {
 });
 
 describe('GameSession.startNextScenario (real 01_Invasion -> 02_Flight gold + recall carryover)', () => {
-  it('throws if the finished session did not end in victory', () => {
+  it('throws if the finished session did not end in victory', async () => {
     const finished = new GameSession(loadSnapshot());
     expect(() => GameSession.startNextScenario(finished, loadNextSnapshot())).toThrow();
   });
 
-  it('carries real gold and real surviving non-leader units into a fresh session on the next scenario', () => {
+  it('carries real gold and real surviving non-leader units into a fresh session on the next scenario', async () => {
     const finished = new GameSession(loadSnapshot());
-    finished.runStartupEvents(); // spawns Cylanna/Gwabbo/citizens, matching a real playthrough.
+    await finished.runStartupEvents(); // spawns Cylanna/Gwabbo/citizens, matching a real playthrough.
     const team1 = finished.board.getTeam(1)!;
     team1.gold = 150; // pin to the same hand-verified number as carryover.test.ts.
     finished.turnNumber = 5;
@@ -608,10 +638,10 @@ describe('GameSession.startNextScenario (real 01_Invasion -> 02_Flight gold + re
     expect(next.board.allUnits().some((u) => u.id === 'Kai Krellis')).toBe(true);
   });
 
-  it('carries a recall-list survivor through a SECOND scenario transition even if never recalled in between, and a real prestart {RECALL_LOYAL_UNITS} macro places it on the board via the real [recall] action -- regression for a real dropped-hero bug', () => {
+  it('carries a recall-list survivor through a SECOND scenario transition even if never recalled in between, and a real prestart {RECALL_LOYAL_UNITS} macro places it on the board via the real [recall] action -- regression for a real dropped-hero bug', async () => {
     // Scenario 1 -> 2, exactly as the test above, forcing victory the same way.
     const scenario1 = new GameSession(loadSnapshot());
-    scenario1.runStartupEvents();
+    await scenario1.runStartupEvents();
     scenario1.board.getTeam(1)!.gold = 150;
     scenario1.turnNumber = 5;
     const enemy1Leader = scenario1.board.unitsForSide(2).find((u) => u.canRecruit)!;
@@ -656,7 +686,7 @@ describe('GameSession.startNextScenario (real 01_Invasion -> 02_Flight gold + re
     // etc. This exercises that through the real event pump, the real
     // [recall] action handler, and the real checkRecruitLocation/recallUnit
     // placement logic, not a synthetic fixture.
-    scenario3.runStartupEvents();
+    await scenario3.runStartupEvents();
     const recallIdsAfterPrestart = scenario3.board.recallList(1).map((u) => u.id);
     // Named heroes only (`id !== ''`) -- an empty id is ambiguous (several
     // anonymous citizens share it), so it can't tell a real [recall]
@@ -672,9 +702,9 @@ describe('GameSession.startNextScenario (real 01_Invasion -> 02_Flight gold + re
 });
 
 describe('GameSession recall UI (selectRecallUnit / recallOptions / handleHexClick recall branch)', () => {
-  it('offers the real recall list once carried over, and places a recalled unit with its saved hp on click', () => {
+  it('offers the real recall list once carried over, and places a recalled unit with its saved hp on click', async () => {
     const finished = new GameSession(loadSnapshot());
-    finished.runStartupEvents();
+    await finished.runStartupEvents();
     const someSurvivor = finished.board.unitsForSide(1).find((u) => !u.canRecruit)!;
     someSurvivor.hitpoints = 3; // distinct from max, so recall (not recruit) is what's under test -- recall keeps saved hp.
     finished.board.getTeam(1)!.gold = 150;
@@ -685,6 +715,7 @@ describe('GameSession recall UI (selectRecallUnit / recallOptions / handleHexCli
     finished.checkForGameEnd();
 
     const next = GameSession.startNextScenario(finished, loadNextSnapshot());
+    const beats = recordBeats(next);
     const leader = next.board.unitsForSide(1).find((u) => u.canRecruit)!;
     next.selectUnit(leader);
     expect(next.recruitTiles.length).toBeGreaterThan(0);
@@ -696,7 +727,7 @@ describe('GameSession recall UI (selectRecallUnit / recallOptions / handleHexCli
     const target = next.recruitTiles[0]!;
     const goldBefore = next.board.getTeam(1)!.gold;
     next.selectRecallUnit(recalled!.index);
-    const message = next.handleHexClick(target.x, target.y);
+    const message = await next.handleHexClick(target.x, target.y);
 
     expect(message).toContain('Recalled');
     const placedUnit = next.board.allUnits().find((u) => u.location.x === target.x && u.location.y === target.y && u.hitpoints === 3);
@@ -706,14 +737,16 @@ describe('GameSession recall UI (selectRecallUnit / recallOptions / handleHexCli
     // Real, reported bug: recalling never played any animation either
     // (real Wesnoth's actions::place_recruit -- and its unit_recruited
     // animation call -- handles recruit and recall identically).
-    expect(next.lastRecruitAnimation).not.toBeNull();
-    expect(next.lastRecruitAnimation!.leader).toBe(leader);
-    expect(next.lastRecruitAnimation!.unit).toBe(placedUnit);
+    const appear = beats.find((b) => b.kind === 'unitAppear');
+    expect(appear).toBeDefined();
+    if (appear?.kind !== 'unitAppear') throw new Error('expected a unitAppear beat');
+    expect(appear.by).toBe(leader);
+    expect(appear.unit).toBe(placedUnit);
   });
 });
 
 describe('GameSession recall dialog actions (real, reported bug: no way to rename/dismiss a recall-list unit)', () => {
-  it('dismissRecallUnit permanently removes exactly the targeted recall-list entry, by position', () => {
+  it('dismissRecallUnit permanently removes exactly the targeted recall-list entry, by position', async () => {
     const session = new GameSession(loadSnapshot());
     const resolveType = createTypeResolver(session.snapshot);
     const fighterType = resolveType('Merman Fighter');
@@ -729,7 +762,7 @@ describe('GameSession recall dialog actions (real, reported bug: no way to renam
     expect(session.board.recallList(1)).toEqual([b]);
   });
 
-  it("renameRecallUnit sets the unit's display name, ignoring a blank name", () => {
+  it("renameRecallUnit sets the unit's display name, ignoring a blank name", async () => {
     const session = new GameSession(loadSnapshot());
     const resolveType = createTypeResolver(session.snapshot);
     const fighterType = resolveType('Merman Fighter');
@@ -747,13 +780,13 @@ describe('GameSession recall dialog actions (real, reported bug: no way to renam
 });
 
 describe('GameSession weapon selection (attackerWeaponOptions / selectAttackerWeapon)', () => {
-  it('offers every usable weapon for a real multi-weapon attacker (Dark Sorcerer: staff/chill wave/shadow wave), defaulting to the first', () => {
+  it('offers every usable weapon for a real multi-weapon attacker (Dark Sorcerer: staff/chill wave/shadow wave), defaulting to the first', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     expect(malKevek.attacks.length).toBeGreaterThan(1); // real content: 3 real weapons.
 
     session.selectUnit(malKevek);
     expect(session.attackCandidates).toContain(kaiKrellis);
-    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
 
     const options = session.attackerWeaponOptions;
     expect(options.length).toBe(malKevek.attacks.length);
@@ -763,10 +796,10 @@ describe('GameSession weapon selection (attackerWeaponOptions / selectAttackerWe
     expect(session.pendingAttack!.attackerWeaponIndex).toBe(0);
   });
 
-  it('selectAttackerWeapon switches the pending preview to a real, different weapon\'s real stats', () => {
+  it('selectAttackerWeapon switches the pending preview to a real, different weapon\'s real stats', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     session.selectUnit(malKevek);
-    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
 
     const secondWeapon = malKevek.attacks[1]!;
     session.selectAttackerWeapon(1);
@@ -782,41 +815,41 @@ describe('GameSession weapon selection (attackerWeaponOptions / selectAttackerWe
     expect(session.attackerWeaponOptions.find((o) => o.index === 0)!.selected).toBe(false);
   });
 
-  it('ignores an out-of-range weapon index (no crash, no change)', () => {
+  it('ignores an out-of-range weapon index (no crash, no change)', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     session.selectUnit(malKevek);
-    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
 
     const before = session.pendingAttack!.attackerWeaponIndex;
     session.selectAttackerWeapon(99);
     expect(session.pendingAttack!.attackerWeaponIndex).toBe(before);
   });
 
-  it('returns an empty list when there is no pending attack', () => {
+  it('returns an empty list when there is no pending attack', async () => {
     const session = new GameSession(loadSnapshot());
     expect(session.attackerWeaponOptions).toEqual([]);
   });
 });
 
 describe('GameSession.confirmAttack zeroes the attacker\'s movement (real Wesnoth: attacking ends a unit\'s move)', () => {
-  it('sets movesLeft to 0 after a real attack, even though the attacker never moved and had full movement left', () => {
+  it('sets movesLeft to 0 after a real attack, even though the attacker never moved and had full movement left', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     expect(malKevek.movesLeft).toBe(malKevek.maxMoves); // hasn't moved this turn.
     expect(malKevek.movesLeft).toBeGreaterThan(0);
 
     session.selectUnit(malKevek);
-    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
     expect(session.pendingAttack).not.toBeNull();
-    session.confirmAttack();
+    await session.confirmAttack();
 
     expect(malKevek.movesLeft).toBe(0);
   });
 
-  it('deselects the attacker after confirming, so its (now zeroed) reachable set is not offered until re-selected', () => {
+  it('deselects the attacker after confirming, so its (now zeroed) reachable set is not offered until re-selected', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     session.selectUnit(malKevek);
-    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
-    session.confirmAttack();
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    await session.confirmAttack();
 
     expect(session.selectedUnit).toBeNull();
     expect(session.reachable).toEqual([]);
@@ -826,7 +859,7 @@ describe('GameSession.confirmAttack zeroes the attacker\'s movement (real Wesnot
     expect(session.reachable).toEqual([]);
   });
 
-  it('does not touch movesLeft when the attacker died in the exchange (nothing left to zero)', () => {
+  it('does not touch movesLeft when the attacker died in the exchange (nothing left to zero)', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     // Force a guaranteed kill of the attacker by zeroing its hp pre-combat --
     // executeAttack's own RNG still runs, so instead just assert the guard
@@ -837,8 +870,8 @@ describe('GameSession.confirmAttack zeroes the attacker\'s movement (real Wesnot
     // itself, see combat.test.ts for where deterministic RNG is exercised).
     malKevek.hitpoints = 1;
     session.selectUnit(malKevek);
-    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
-    const message = session.confirmAttack();
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    const message = await session.confirmAttack();
     expect(message).not.toBeNull();
     // Whether or not malKevek actually died this particular RNG draw, the
     // session must not have thrown and must be in a consistent state.
@@ -847,13 +880,13 @@ describe('GameSession.confirmAttack zeroes the attacker\'s movement (real Wesnot
 });
 
 describe('GameSession.confirmAttack logs one line per real blow, not just a summary', () => {
-  it('adds exactly one log line per AttackBlowResult, each naming the real striker/target, plus the summary line on top', () => {
+  it('adds exactly one log line per AttackBlowResult, each naming the real striker/target, plus the summary line on top', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     session.selectUnit(malKevek);
-    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
     const logLengthBefore = session.log.length;
 
-    session.confirmAttack();
+    await session.confirmAttack();
 
     // At least one blow always happens (both combatants have >0 numAttacks
     // in this real matchup); the exact count depends on strike counts and
@@ -874,11 +907,11 @@ describe('GameSession.confirmAttack logs one line per real blow, not just a summ
     }
   });
 
-  it('a hit line reports real, non-negative damage; a miss line reports zero implicitly (no "for N damage" clause)', () => {
+  it('a hit line reports real, non-negative damage; a miss line reports zero implicitly (no "for N damage" clause)', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     session.selectUnit(malKevek);
-    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
-    session.confirmAttack();
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    await session.confirmAttack();
 
     const blowLines = session.log.filter((l) => /% chance to hit\)/.test(l) && !/attacked .+ blows landed/.test(l));
     expect(blowLines.length).toBeGreaterThan(0);
@@ -896,7 +929,7 @@ describe('GameSession.confirmAttack logs one line per real blow, not just a summ
 });
 
 describe('GameSession.currentTimeOfDay (real [time] schedule, threaded into real combat)', () => {
-  it('reads the real Dead Water scenario 1 default schedule, advancing by real game turn as endTurn wraps', () => {
+  it('reads the real Dead Water scenario 1 default schedule, advancing by real game turn as endTurn wraps', async () => {
     const session = new GameSession(loadSnapshot());
     // Side 2 is controller=ai; force it back to human here to test ToD's
     // per-turn (not per-side) progression step by step, independent of
@@ -906,22 +939,22 @@ describe('GameSession.currentTimeOfDay (real [time] schedule, threaded into real
     expect(session.currentTimeOfDay.id).toBe('dawn'); // turn 1, current_time defaults to 0.
     expect(session.currentTimeOfDay.lawfulBonus).toBe(0);
 
-    session.endTurn(); // -> side 2, still turn 1.
+    await session.endTurn(); // -> side 2, still turn 1.
     expect(session.currentTimeOfDay.id).toBe('dawn'); // ToD is per-turn, not per-side -- unchanged mid-turn-1.
 
-    session.endTurn(); // wraps -> turn 2.
+    await session.endTurn(); // wraps -> turn 2.
     expect(session.currentTimeOfDay.id).toBe('morning');
     expect(session.currentTimeOfDay.lawfulBonus).toBe(25); // real value, see Schedule.test.ts.
   });
 
-  it('a lawful attacker deals more real damage during a lawful-favoring phase than during a neutral one, all else equal', () => {
+  it('a lawful attacker deals more real damage during a lawful-favoring phase than during a neutral one, all else equal', async () => {
     // Same real matchup (Kai Krellis, lawful, vs Mal-Kevek adjacent),
     // compared at turn 1 (dawn, lawful_bonus=0) vs turn 2 (morning,
     // lawful_bonus=25) -- buildPreview's real combatModifier() should
     // reflect the schedule difference in the predicted damage per blow.
     const { session: dawnSession, malKevek: dawnMalKevek, kaiKrellis: dawnKaiKrellis } = withAdjacentLeaders();
     dawnSession.selectUnit(dawnKaiKrellis);
-    dawnSession.handleHexClick(dawnMalKevek.location.x, dawnMalKevek.location.y);
+    await dawnSession.handleHexClick(dawnMalKevek.location.x, dawnMalKevek.location.y);
     const dawnDamage = dawnSession.pendingAttack!.preview.attacker.damagePerBlow;
 
     const { session: morningSession, malKevek, kaiKrellis } = withAdjacentLeaders();
@@ -929,12 +962,12 @@ describe('GameSession.currentTimeOfDay (real [time] schedule, threaded into real
     // doesn't itself attack with the now-adjacent Mal-Kevek before this
     // test gets to manually preview Kai Krellis's attack on him.
     morningSession.board.getTeam(2)!.controller = 'human';
-    morningSession.endTurn();
-    morningSession.endTurn(); // -> turn 2, morning, lawful_bonus=25.
+    await morningSession.endTurn();
+    await morningSession.endTurn(); // -> turn 2, morning, lawful_bonus=25.
     expect(morningSession.currentTimeOfDay.id).toBe('morning');
     morningSession.activeSide = 1; // Kai Krellis's side, so selecting/attacking with him is allowed regardless of whose turn endTurn() left active.
     morningSession.selectUnit(kaiKrellis);
-    morningSession.handleHexClick(malKevek.location.x, malKevek.location.y);
+    await morningSession.handleHexClick(malKevek.location.x, malKevek.location.y);
     const morningDamage = morningSession.pendingAttack!.preview.attacker.damagePerBlow;
 
     expect(morningDamage).toBeGreaterThan(dawnDamage);
@@ -942,9 +975,9 @@ describe('GameSession.currentTimeOfDay (real [time] schedule, threaded into real
 });
 
 describe('GameSession.timeOfDayAt real [time_area] (Under the Burning Suns scenario 3: campfires lit against the long dark)', () => {
-  it('a campfire hex reads its own always-lit schedule while the rest of the map follows the global (very dark) one', () => {
+  it('a campfire hex reads its own always-lit schedule while the rest of the map follows the global (very dark) one', async () => {
     const session = new GameSession(loadUtbsTimeAreaSnapshot());
-    session.runStartupEvents(); // real prestart event declares [time_area] id=campfires x=14,16,13 y=10,15,20 radius=2.
+    await session.runStartupEvents(); // real prestart event declares [time_area] id=campfires x=14,16,13 y=10,15,20 radius=2.
 
     const campfireHex = Location.fromWml(14, 10); // one of the area's own declared centres.
     const farAwayHex = Location.fromWml(1, 1); // far outside any campfire's radius=2.
@@ -971,32 +1004,32 @@ describe('GameSession income/upkeep/village economy (real synth_economy_01: gold
    * full derivation, cited directly against `wesnoth/src/game_config.cpp`/
    * `play_controller.cpp`/`team.cpp`.
    */
-  it('grants no income/upkeep on turn 1, but applies real total_income the moment turn 2 begins', () => {
+  it('grants no income/upkeep on turn 1, but applies real total_income the moment turn 2 begins', async () => {
     const session = new GameSession(loadEconomySnapshot());
     expect(session.activeSide).toBe(1);
     expect(session.turnNumber).toBe(1);
     expect(session.board.getTeam(1)!.gold).toBe(40);
     expect(session.economyInfo.netIncome).toBe(0); // turn 1: no preview yet, matching "no income applied yet".
 
-    session.endTurn(); // -> side 2, still turn 1.
+    await session.endTurn(); // -> side 2, still turn 1.
     expect(session.turnNumber).toBe(1);
     expect(session.board.getTeam(2)!.gold).toBe(50); // untouched -- still turn 1.
 
-    session.endTurn(); // wraps -> side 1, turn 2 begins: side 1's income now applies.
+    await session.endTurn(); // wraps -> side 1, turn 2 begins: side 1's income now applies.
     expect(session.turnNumber).toBe(2);
     expect(session.activeSide).toBe(1);
     // total_income = income(2) + base_income(2) + 0 villages*1 = 4. No units
     // beyond the (upkeep-free) leader, so no upkeep expense.
     expect(session.board.getTeam(1)!.gold).toBe(40 + 4);
 
-    session.endTurn(); // -> side 2, still turn 2: side 2's income now applies too.
+    await session.endTurn(); // -> side 2, still turn 2: side 2's income now applies too.
     expect(session.activeSide).toBe(2);
     expect(session.turnNumber).toBe(2);
     // total_income = income(1) + base_income(2) + 0 villages*1 = 3.
     expect(session.board.getTeam(2)!.gold).toBe(50 + 3);
   });
 
-  it('economyInfo previews startGold/incomePerVillage always, and netIncome only once turnNumber > 1', () => {
+  it('economyInfo previews startGold/incomePerVillage always, and netIncome only once turnNumber > 1', async () => {
     const session = new GameSession(loadEconomySnapshot());
     expect(session.economyInfo).toMatchObject({ startGold: 40, incomePerVillage: 1, villagesOwned: 0, netIncome: 0 });
     // Real, reported bug: the status bar had no way to show unit count or
@@ -1005,13 +1038,13 @@ describe('GameSession income/upkeep/village economy (real synth_economy_01: gold
     expect(session.economyInfo.upkeepTotal).toBeGreaterThanOrEqual(0);
     expect(session.economyInfo.upkeepCharged).toBeGreaterThanOrEqual(0);
 
-    session.endTurn();
-    session.endTurn(); // now turn 2, side 1 active -- income already applied by endTurn itself.
+    await session.endTurn();
+    await session.endTurn(); // now turn 2, side 1 active -- income already applied by endTurn itself.
     expect(session.economyInfo.startGold).toBe(40); // startGold never changes, unlike current gold.
     expect(session.economyInfo.netIncome).toBe(4); // matches what just got applied (previewing the NEXT turn's income, which happens to equal this turn's since nothing changed).
   });
 
-  it('walking a unit onto a real village (real executeMove -> GameBoard.captureVillage) captures it, and the next turn\'s income reflects the extra village_gold', () => {
+  it('walking a unit onto a real village (real executeMove -> GameBoard.captureVillage) captures it, and the next turn\'s income reflects the extra village_gold', async () => {
     const session = new GameSession(loadEconomySnapshot());
     const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
     const villageLoc = session.board.map.villages[0]!;
@@ -1023,19 +1056,19 @@ describe('GameSession income/upkeep/village economy (real synth_economy_01: gold
     // the village, not just the isolated engine action in move.test.ts.
     session.selectUnit(leader);
     expect(session.reachable.some((h) => h.x === villageLoc.x && h.y === villageLoc.y)).toBe(true);
-    session.handleHexClick(villageLoc.x, villageLoc.y);
+    await session.handleHexClick(villageLoc.x, villageLoc.y);
 
     expect(leader.location.equals(villageLoc)).toBe(true);
     expect(session.board.villageOwner(villageLoc)).toBe(1);
     expect(session.economyInfo.villagesOwned).toBe(1);
 
-    session.endTurn();
-    session.endTurn(); // turn 2, side 1's income now includes the captured village.
+    await session.endTurn();
+    await session.endTurn(); // turn 2, side 1's income now includes the captured village.
     // total_income = income(2) + base_income(2) + 1 village*1 = 5.
     expect(session.board.getTeam(1)!.gold).toBe(40 + 5);
   });
 
-  it('upkeep charges gold for unit levels beyond what owned villages support, mirroring play_controller\'s expense = side_upkeep - support', () => {
+  it('upkeep charges gold for unit levels beyond what owned villages support, mirroring play_controller\'s expense = side_upkeep - support', async () => {
     const session = new GameSession(loadEconomySnapshot());
     const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
     // Recruit a real level-1 Spearman (cost 14g, matching synthetic-
@@ -1044,19 +1077,19 @@ describe('GameSession income/upkeep/village economy (real synth_economy_01: gold
     session.selectUnit(leader);
     session.selectRecruitType('Spearman');
     const recruitTile = session.recruitTiles[0]!;
-    session.handleHexClick(recruitTile.x, recruitTile.y);
+    await session.handleHexClick(recruitTile.x, recruitTile.y);
     expect(session.board.getTeam(1)!.gold).toBe(40 - 14);
 
-    session.endTurn();
-    session.endTurn(); // turn 2, side 1's turn: income(2)+base(2)+0 villages = 4, upkeep = 1 level - 0 support = 1 expense.
+    await session.endTurn();
+    await session.endTurn(); // turn 2, side 1's turn: income(2)+base(2)+0 villages = 4, upkeep = 1 level - 0 support = 1 expense.
     expect(session.board.getTeam(1)!.gold).toBe(40 - 14 + 4 - 1);
   });
 });
 
 describe('GameSession.endTurn applies real healing (rest/heals-ability/poison) -- previously a no-op gap on top of a real healer-detection bug', () => {
-  it("real Cylanna (a Mermaid Priestess, abilities_list=heals_8,cures) actually heals a damaged adjacent ally's HP on endTurn -- regression for both the missing endTurn healing call and the id-vs-tag ability-matching bug", () => {
+  it("real Cylanna (a Mermaid Priestess, abilities_list=heals_8,cures) actually heals a damaged adjacent ally's HP on endTurn -- regression for both the missing endTurn healing call and the id-vs-tag ability-matching bug", async () => {
     const session = new GameSession(loadSnapshot());
-    session.runStartupEvents();
+    await session.runStartupEvents();
     const cylanna = session.board.allUnits().find((u) => u.id === 'Cylanna')!;
     expect(cylanna).toBeDefined();
     expect(cylanna.type.abilities.some((a) => a.tag === 'heals')).toBe(true); // sanity: the ability-matching fix itself.
@@ -1081,8 +1114,8 @@ describe('GameSession.endTurn applies real healing (rest/heals-ability/poison) -
     // of the whole game, which this session already started in (before
     // any endTurn() call) -- side 2's turn (the first endTurn() call
     // below) already gets a real healing pass.
-    session.endTurn(); // -> side 2.
-    session.endTurn(); // -> side 1 again, turn 2: Cylanna's real heals ability should now fire for real.
+    await session.endTurn(); // -> side 2.
+    await session.endTurn(); // -> side 1 again, turn 2: Cylanna's real heals ability should now fire for real.
 
     expect(kaiKrellis.hitpoints).toBeGreaterThan(hpBefore);
     expect(kaiKrellis.hitpoints).toBe(Math.min(kaiKrellis.maxHitpoints, hpBefore + 8)); // real heals_8 value.
@@ -1091,7 +1124,7 @@ describe('GameSession.endTurn applies real healing (rest/heals-ability/poison) -
 });
 
 describe('GameSession.unitInfo (real, reported bug: UI missing weapon type/abilities info)', () => {
-  it("Kai Krellis' real single melee weapon (scepter/impact) shows up with type/range, and he has no abilities", () => {
+  it("Kai Krellis' real single melee weapon (scepter/impact) shows up with type/range, and he has no abilities", async () => {
     const session = new GameSession(loadSnapshot());
     const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
     const info = session.unitInfo(kaiKrellis);
@@ -1103,7 +1136,7 @@ describe('GameSession.unitInfo (real, reported bug: UI missing weapon type/abili
     expect(info.abilities).toEqual([]);
   });
 
-  it('real, reported bug: XP is not present in the unit infobox -- unitInfo now reports the unit\'s real experience/maxExperience', () => {
+  it('real, reported bug: XP is not present in the unit infobox -- unitInfo now reports the unit\'s real experience/maxExperience', async () => {
     const session = new GameSession(loadSnapshot());
     const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
     kaiKrellis.experience = 3;
@@ -1114,9 +1147,9 @@ describe('GameSession.unitInfo (real, reported bug: UI missing weapon type/abili
     expect(info.maxXp).toBeGreaterThan(0);
   });
 
-  it("real Cylanna's abilities_list=heals_8,cures resolve to real player-facing names, not just tag ids", () => {
+  it("real Cylanna's abilities_list=heals_8,cures resolve to real player-facing names, not just tag ids", async () => {
     const session = new GameSession(loadSnapshot());
-    session.runStartupEvents();
+    await session.runStartupEvents();
     const cylanna = session.board.allUnits().find((u) => u.id === 'Cylanna')!;
     const info = session.unitInfo(cylanna);
 
@@ -1128,7 +1161,7 @@ describe('GameSession.unitInfo (real, reported bug: UI missing weapon type/abili
     for (const a of info.abilities) expect(a.description.length).toBeGreaterThan(0);
   });
 
-  it("Mal-Kevek's real 3 weapons (staff/chill wave/shadow wave) each report their real type and range", () => {
+  it("Mal-Kevek's real 3 weapons (staff/chill wave/shadow wave) each report their real type and range", async () => {
     const { session, malKevek } = withAdjacentLeaders();
     const info = session.unitInfo(malKevek);
 
@@ -1141,7 +1174,7 @@ describe('GameSession.unitInfo (real, reported bug: UI missing weapon type/abili
 });
 
 describe('GameSession.unitInfo Phase 14 infobox fields (image/level/alignment/race/resistances/statuses)', () => {
-  it("Kai Krellis reports his real level/alignment/race, and his portrait image matches the scenario snapshot's unit-type table", () => {
+  it("Kai Krellis reports his real level/alignment/race, and his portrait image matches the scenario snapshot's unit-type table", async () => {
     const snapshot = loadSnapshot();
     const session = new GameSession(snapshot);
     const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
@@ -1154,7 +1187,7 @@ describe('GameSession.unitInfo Phase 14 infobox fields (image/level/alignment/ra
     expect(info.image).toBe(snapshot.unitTypes[kaiKrellis.type.id]?.image ?? null);
   });
 
-  it('resistances is a fixed six-row table (blade/pierce/impact/fire/cold/arcane), each value matching Unit.resistanceAgainst directly', () => {
+  it('resistances is a fixed six-row table (blade/pierce/impact/fire/cold/arcane), each value matching Unit.resistanceAgainst directly', async () => {
     const session = new GameSession(loadSnapshot());
     const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
     const info = session.unitInfo(kaiKrellis);
@@ -1165,7 +1198,7 @@ describe('GameSession.unitInfo Phase 14 infobox fields (image/level/alignment/ra
     }
   });
 
-  it('real, reported gap: no way to see whether a unit is poisoned/slowed/petrified -- unitInfo().statuses now surfaces exactly those three, by display name', () => {
+  it('real, reported gap: no way to see whether a unit is poisoned/slowed/petrified -- unitInfo().statuses now surfaces exactly those three, by display name', async () => {
     const session = new GameSession(loadSnapshot());
     const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
     expect(session.unitInfo(kaiKrellis).statuses).toEqual([]);
@@ -1185,7 +1218,7 @@ describe('GameSession.unitInfo Phase 14 infobox fields (image/level/alignment/ra
 });
 
 describe('GameSession.hoveredHexInfo (Phase 14 infobox: terrain info for the hovered hex)', () => {
-  it('reports real terrain name for an on-board hex, with defensePercent null when nothing is selected', () => {
+  it('reports real terrain name for an on-board hex, with defensePercent null when nothing is selected', async () => {
     const session = new GameSession(loadSnapshot());
     const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
     const info = session.hoveredHexInfo(kaiKrellis.location.x, kaiKrellis.location.y);
@@ -1195,7 +1228,7 @@ describe('GameSession.hoveredHexInfo (Phase 14 infobox: terrain info for the hov
     expect(info!.defensePercent).toBeNull();
   });
 
-  it('once a unit is selected, defensePercent matches defensePercentAt for the same hex', () => {
+  it('once a unit is selected, defensePercent matches defensePercentAt for the same hex', async () => {
     const session = new GameSession(loadSnapshot());
     const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
     session.selectUnit(kaiKrellis);
@@ -1205,20 +1238,20 @@ describe('GameSession.hoveredHexInfo (Phase 14 infobox: terrain info for the hov
     expect(info!.defensePercent).toBe(session.defensePercentAt(target.x, target.y));
   });
 
-  it('returns null for an off-board hex', () => {
+  it('returns null for an off-board hex', async () => {
     const session = new GameSession(loadSnapshot());
     expect(session.hoveredHexInfo(-1, -1)).toBeNull();
   });
 });
 
 describe('GameSession.renderUnits moves-orb reachability (real, reported bug: a unit with an unspent attack but nowhere left to use it showed the yellow "partial" orb instead of red "moved")', () => {
-  it('real Dead_Water scenario 1: moving Kai Krellis to (25,10) leaves him with 1 attack left but no adjacent enemy and no more moves -- canMove/canAttackHere are both false, so his orb reads "moved", not "partial"', () => {
+  it('real Dead_Water scenario 1: moving Kai Krellis to (25,10) leaves him with 1 attack left but no adjacent enemy and no more moves -- canMove/canAttackHere are both false, so his orb reads "moved", not "partial"', async () => {
     const session = new GameSession(loadSnapshot());
     const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
     session.selectUnit(kaiKrellis);
     expect(session.reachable.some((l) => l.x === 25 && l.y === 10)).toBe(true);
 
-    session.handleHexClick(25, 10);
+    await session.handleHexClick(25, 10);
 
     expect(kaiKrellis.movesLeft).toBe(0);
     expect(kaiKrellis.attacksLeft).toBe(1); // an attack is still nominally available...
@@ -1227,7 +1260,7 @@ describe('GameSession.renderUnits moves-orb reachability (real, reported bug: a 
     expect(snap.canAttackHere).toBe(false); // ...but there's no adjacent enemy to use it on.
   });
 
-  it('real, reported bug: enemy units carry no moves-left orb data at all -- only the viewing player\'s own units do', () => {
+  it('real, reported bug: enemy units carry no moves-left orb data at all -- only the viewing player\'s own units do', async () => {
     const session = new GameSession(loadSnapshot());
     const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
     const malKevek = session.board.allUnits().find((u) => u.type.id === 'Dark Sorcerer')!;
@@ -1253,14 +1286,14 @@ describe('GameSession.renderUnits moves-orb reachability (real, reported bug: a 
 });
 
 describe('GameSession.renderUnits idle facing (real, reported bug: the idle sprite never mirrored to face the unit\'s last move/attack direction)', () => {
-  it('a real move sets Unit.facing, and renderUnits carries that same facing through to the SnapshotUnit', () => {
+  it('a real move sets Unit.facing, and renderUnits carries that same facing through to the SnapshotUnit', async () => {
     const session = new GameSession(loadSnapshot());
     const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
     session.selectUnit(kaiKrellis);
     const dest = session.reachable.find((h) => !(h.x === kaiKrellis.location.x && h.y === kaiKrellis.location.y));
     expect(dest).toBeDefined();
 
-    session.handleHexClick(dest!.x, dest!.y);
+    await session.handleHexClick(dest!.x, dest!.y);
 
     expect(kaiKrellis.facing).not.toBe(Direction.Indeterminate);
     const snap = session.renderUnits.find((u) => u.id === 'Kai Krellis')!;
@@ -1269,7 +1302,7 @@ describe('GameSession.renderUnits idle facing (real, reported bug: the idle spri
 });
 
 describe('GameSession.reachable defensePercent (real, reported bug: the map only showed a reachable hex\'s terrain defense on hover, never all of a selected unit\'s real options at a glance)', () => {
-  it('real Dead_Water scenario 1: every one of Kai Krellis\' reachable hexes carries its own real terrain defense, matching defensePercentAt for the same hex', () => {
+  it('real Dead_Water scenario 1: every one of Kai Krellis\' reachable hexes carries its own real terrain defense, matching defensePercentAt for the same hex', async () => {
     const session = new GameSession(loadSnapshot());
     const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
     session.selectUnit(kaiKrellis);
@@ -1287,12 +1320,12 @@ describe('GameSession.reachable defensePercent (real, reported bug: the map only
 });
 
 describe('GameSession.hexVisibility (real, reported bugs: hard shroud edges + border hexes wrongly revealed)', () => {
-  it('is empty when playerSide uses neither fog nor shroud (the common case -- no overlay work at all)', () => {
+  it('is empty when playerSide uses neither fog nor shroud (the common case -- no overlay work at all)', async () => {
     const session = new GameSession(loadSnapshot());
     expect(session.hexVisibility).toEqual([]);
   });
 
-  it('covers the one-hex border ring beyond the playable map, not just on-board hexes', () => {
+  it('covers the one-hex border ring beyond the playable map, not just on-board hexes', async () => {
     // Real, reported bug: SnapshotBoard.renderTerrain builds terrain
     // containers for -1..w()/-1..h() (the same border ring
     // ShroudClearer.clearLoc already extends real vision-clearing into),
@@ -1313,7 +1346,7 @@ describe('GameSession.hexVisibility (real, reported bugs: hard shroud edges + bo
     expect(hv.length).toBe((session.board.map.w() + 2) * (session.board.map.h() + 2));
   });
 
-  it('a border hex reads shrouded/clear consistent with the real Team.shrouded query at that same location (border hexes are not special-cased to always show revealed)', () => {
+  it('a border hex reads shrouded/clear consistent with the real Team.shrouded query at that same location (border hexes are not special-cased to always show revealed)', async () => {
     const session = new GameSession(loadSnapshot());
     const team = session.board.getTeam(session.playerSide)!;
     team.shroud.enabled = true;
@@ -1328,17 +1361,17 @@ describe('GameSession.hexVisibility (real, reported bugs: hard shroud edges + bo
 });
 
 describe('GameSession unit inspection (real, reported bug: no way to see information about enemy units)', () => {
-  it('clicking an enemy that is NOT an attack target (nothing of mine selected) inspects it without selecting/acting on it', () => {
+  it('clicking an enemy that is NOT an attack target (nothing of mine selected) inspects it without selecting/acting on it', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     // No unit selected yet.
-    session.handleHexClick(malKevek.location.x, malKevek.location.y);
+    await session.handleHexClick(malKevek.location.x, malKevek.location.y);
 
     expect(session.inspectedUnit).toBe(malKevek);
     expect(session.selectedUnit).toBeNull(); // enemy click never selects for movement/action
     expect(session.unitInfo(session.inspectedUnit!).name).toBe(session.unitDisplayName(malKevek));
   });
 
-  it('clicking a non-attackable enemy while my own unit is selected inspects it WITHOUT disturbing the current selection/highlights', () => {
+  it('clicking a non-attackable enemy while my own unit is selected inspects it WITHOUT disturbing the current selection/highlights', async () => {
     const session = new GameSession(loadSnapshot());
     const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
     const malKevek = session.board.allUnits().find((u) => u.type.id === 'Dark Sorcerer')!;
@@ -1347,7 +1380,7 @@ describe('GameSession unit inspection (real, reported bug: no way to see informa
     session.selectUnit(kaiKrellis);
     const reachableBefore = session.reachable;
 
-    const result = session.handleHexClick(malKevek.location.x, malKevek.location.y);
+    const result = await session.handleHexClick(malKevek.location.x, malKevek.location.y);
 
     expect(session.inspectedUnit).toBe(malKevek);
     expect(session.selectedUnit).toBe(kaiKrellis); // untouched
@@ -1355,34 +1388,34 @@ describe('GameSession unit inspection (real, reported bug: no way to see informa
     expect(result).toContain('Mal-Kevek');
   });
 
-  it('selecting a different unit of mine clears any prior inspection', () => {
+  it('selecting a different unit of mine clears any prior inspection', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
-    session.handleHexClick(malKevek.location.x, malKevek.location.y);
+    await session.handleHexClick(malKevek.location.x, malKevek.location.y);
     expect(session.inspectedUnit).toBe(malKevek);
 
     session.selectUnit(kaiKrellis);
     expect(session.inspectedUnit).toBeNull();
   });
 
-  it('clicking empty ground with nothing selected clears any prior inspection', () => {
+  it('clicking empty ground with nothing selected clears any prior inspection', async () => {
     const { session, malKevek } = withAdjacentLeaders();
-    session.handleHexClick(malKevek.location.x, malKevek.location.y);
+    await session.handleHexClick(malKevek.location.x, malKevek.location.y);
     expect(session.inspectedUnit).toBe(malKevek);
 
     // Any real empty hex on the map -- (0, 0) is off-board/water on this map, just needs to have no unit.
     const emptyLoc = new Location(0, 0);
     expect(session.board.unitAt(emptyLoc)).toBeUndefined();
-    session.handleHexClick(emptyLoc.x, emptyLoc.y);
+    await session.handleHexClick(emptyLoc.x, emptyLoc.y);
     expect(session.inspectedUnit).toBeNull();
   });
 
-  it('real, reported bug: clicking a hex under fog/shroud does NOT reveal the unit secretly standing there', () => {
+  it('real, reported bug: clicking a hex under fog/shroud does NOT reveal the unit secretly standing there', async () => {
     const { session, malKevek } = withAdjacentLeaders();
     const team = session.board.getTeam(session.playerSide)!;
     team.shroud.enabled = true; // never cleared -- every hex, including malKevek's, starts fully shrouded.
     expect(session.board.isShrouded(session.playerSide, malKevek.location)).toBe(true);
 
-    const result = session.handleHexClick(malKevek.location.x, malKevek.location.y);
+    const result = await session.handleHexClick(malKevek.location.x, malKevek.location.y);
 
     expect(session.inspectedUnit).toBeNull();
     expect(session.selectedUnit).toBeNull();
@@ -1391,20 +1424,20 @@ describe('GameSession unit inspection (real, reported bug: no way to see informa
 });
 
 describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, reported bug: melee vs. ranged not shown)', () => {
-  it("attackerWeaponOptions reports each real weapon's real type/range", () => {
+  it("attackerWeaponOptions reports each real weapon's real type/range", async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     session.selectUnit(malKevek);
-    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
 
     const byName = Object.fromEntries(session.attackerWeaponOptions.map((o) => [o.name, o]));
     expect(byName['staff']).toMatchObject({ type: 'impact', range: 'melee' });
     expect(byName['chill wave']).toMatchObject({ type: 'cold', range: 'ranged' });
   });
 
-  it('attacking with a ranged weapon against a defender with only a melee weapon shows NO defender weapon/counter in the preview', () => {
+  it('attacking with a ranged weapon against a defender with only a melee weapon shows NO defender weapon/counter in the preview', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     session.selectUnit(malKevek);
-    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
     const chillWaveIndex = malKevek.attacks.findIndex((a) => a.name === 'chill wave');
     session.selectAttackerWeapon(chillWaveIndex);
 
@@ -1414,10 +1447,10 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
     expect(preview.defender.numBlows).toBe(0);
   });
 
-  it('attacking with the melee weapon against the same defender DOES show a real melee counter-weapon', () => {
+  it('attacking with the melee weapon against the same defender DOES show a real melee counter-weapon', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     session.selectUnit(malKevek);
-    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
     const staffIndex = malKevek.attacks.findIndex((a) => a.name === 'staff');
     session.selectAttackerWeapon(staffIndex);
 
@@ -1427,10 +1460,10 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
     expect(preview.defender.numBlows).toBeGreaterThan(0);
   });
 
-  it('real, reported bug (bugs4.md #10): CombatantPreview exposes the real time-of-day/leadership/charge/backstab/chance-to-hit-source inputs the combat dialogs display, not just the final numbers -- all neutral here (no ability/special/ToD-bonus in play), but the fields themselves must exist and be well-formed', () => {
+  it('real, reported bug (bugs4.md #10): CombatantPreview exposes the real time-of-day/leadership/charge/backstab/chance-to-hit-source inputs the combat dialogs display, not just the final numbers -- all neutral here (no ability/special/ToD-bonus in play), but the fields themselves must exist and be well-formed', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     session.selectUnit(malKevek);
-    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
     const staffIndex = malKevek.attacks.findIndex((a) => a.name === 'staff');
     session.selectAttackerWeapon(staffIndex);
 
@@ -1446,7 +1479,7 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
     expect(preview.defender.chanceToHitSource).toBeNull();
   });
 
-  it('real, reported bug: a chaotic unit\'s displayed lawfulBonus is its own actual (sign-flipped) damage modifier, not the schedule\'s raw lawful_bonus -- a chaotic unit in daylight actually takes a damage PENALTY, so it must show negative, not the schedule\'s own positive value', () => {
+  it('real, reported bug: a chaotic unit\'s displayed lawfulBonus is its own actual (sign-flipped) damage modifier, not the schedule\'s raw lawful_bonus -- a chaotic unit in daylight actually takes a damage PENALTY, so it must show negative, not the schedule\'s own positive value', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     expect(malKevek.type.alignment).toBe('chaotic'); // Dark Sorcerer
 
@@ -1459,7 +1492,7 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
     expect(rawLawfulBonus).toBe(25); // the schedule's own real Morning value -- sanity-checks the setup itself
 
     session.selectUnit(malKevek);
-    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
     const staffIndex = malKevek.attacks.findIndex((a) => a.name === 'staff');
     session.selectAttackerWeapon(staffIndex);
 
@@ -1470,7 +1503,7 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
     expect(preview.attacker.lawfulBonus).toBe(-25);
   });
 
-  it('real, reported bug (bugs5.md #2): backstabActive stays false when the GEOMETRIC flanking condition holds but the attacker\'s own weapon has no backstab special -- a flanking ally alone does not make backstab "active"', () => {
+  it('real, reported bug (bugs5.md #2): backstabActive stays false when the GEOMETRIC flanking condition holds but the attacker\'s own weapon has no backstab special -- a flanking ally alone does not make backstab "active"', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
 
     // Place a friendly-to-malKevek unit directly on the opposite side of
@@ -1489,7 +1522,7 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
     expect(isBackstabActive(session.board, malKevek.location, kaiKrellis.location)).toBe(true);
 
     session.selectUnit(malKevek);
-    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
     const staffIndex = malKevek.attacks.findIndex((a) => a.name === 'staff'); // Dark Sorcerer's staff has no backstab special
     session.selectAttackerWeapon(staffIndex);
 
@@ -1502,14 +1535,14 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
 });
 
 describe('GameSession.lastAttackAnimation hitpoints-before (real, reported bug: the HP bar only ever updated once, at the end of the whole exchange)', () => {
-  it('attackerHitpointsBefore/defenderHitpointsBefore capture the REAL pre-combat totals, even though the live units already show the post-combat result by the time confirmAttack() returns', () => {
+  it('attackerHitpointsBefore/defenderHitpointsBefore capture the REAL pre-combat totals, even though the live units already show the post-combat result by the time confirmAttack() returns', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     const attackerHpBefore = malKevek.hitpoints;
     const defenderHpBefore = kaiKrellis.hitpoints;
 
     session.selectUnit(malKevek);
-    session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
-    session.confirmAttack();
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    await session.confirmAttack();
 
     expect(session.lastAttackAnimation).not.toBeNull();
     const anim = session.lastAttackAnimation!;
@@ -1528,7 +1561,7 @@ describe('GameSession rest-heal (real, reported bug: units that neither moved no
   // below spends one "warm-up" endTurn() cycle to reach that reset before
   // asserting anything, exactly as a real freshly-recruited unit would.
 
-  it('a unit that neither moves nor attacks this turn heals REST_HEAL_AMOUNT (2) at the start of its own next turn', () => {
+  it('a unit that neither moves nor attacks this turn heals REST_HEAL_AMOUNT (2) at the start of its own next turn', async () => {
     const session = new GameSession(loadSnapshot());
     const resolveType = createTypeResolver(session.snapshot);
     const fighterType = resolveType('Merman Fighter');
@@ -1537,19 +1570,19 @@ describe('GameSession rest-heal (real, reported bug: units that neither moved no
     unit.hitpoints = unit.maxHitpoints - 5;
     session.board.addUnit(unit);
 
-    session.endTurn(); // warm-up: resting was false, so no heal yet, but is now reset true.
+    await session.endTurn(); // warm-up: resting was false, so no heal yet, but is now reset true.
     expect(unit.hitpoints).toBe(unit.maxHitpoints - 5);
 
     // Rested the whole of this turn too (never selected/moved/attacked) --
     // one endTurn() auto-plays side 2's AI turn and lands back on side 1's
     // next turn (established pattern, see "GameSession.endTurn (hotseat
     // cycling)" above), where the heal should now apply.
-    session.endTurn();
+    await session.endTurn();
 
     expect(unit.hitpoints).toBe(unit.maxHitpoints - 3);
   });
 
-  it('real, reported bug (bugs4.md #7): the rest heal above is exposed via lastHealAnimations, not just silently applied -- so the UI can play a floating HP-change numeral/animation for it', () => {
+  it('real, reported bug (bugs4.md #7): the rest heal above is exposed via lastHealAnimations, not just silently applied -- so the UI can play a floating HP-change numeral/animation for it', async () => {
     const session = new GameSession(loadSnapshot());
     const resolveType = createTypeResolver(session.snapshot);
     const fighterType = resolveType('Merman Fighter');
@@ -1557,17 +1590,17 @@ describe('GameSession rest-heal (real, reported bug: units that neither moved no
     unit.hitpoints = unit.maxHitpoints - 5;
     session.board.addUnit(unit);
 
-    session.endTurn(); // warm-up.
+    await session.endTurn(); // warm-up.
     expect(session.lastHealAnimations).toBeNull(); // resting was false yet -- no heal outcome this cycle.
 
-    session.endTurn();
+    await session.endTurn();
     expect(session.lastHealAnimations).not.toBeNull();
     const outcome = session.lastHealAnimations!.find((o) => o.unit === unit);
     expect(outcome).toMatchObject({ amount: 2, curePoison: false });
     expect(outcome!.healers).toEqual([]); // a plain rest heal has no contributing healer unit
   });
 
-  it('a unit that moves (but does not attack) this turn does NOT get the rest heal next turn', () => {
+  it('a unit that moves (but does not attack) this turn does NOT get the rest heal next turn', async () => {
     const session = new GameSession(loadSnapshot());
     const resolveType = createTypeResolver(session.snapshot);
     const fighterType = resolveType('Merman Fighter');
@@ -1575,21 +1608,21 @@ describe('GameSession rest-heal (real, reported bug: units that neither moved no
     unit.hitpoints = unit.maxHitpoints - 5;
     session.board.addUnit(unit);
 
-    session.endTurn(); // warm-up.
+    await session.endTurn(); // warm-up.
     const hpBeforeMove = unit.hitpoints;
 
     session.selectUnit(unit);
     const dest = session.reachable.find((h) => !(h.x === unit.location.x && h.y === unit.location.y));
     expect(dest).toBeDefined();
-    session.handleHexClick(dest!.x, dest!.y);
+    await session.handleHexClick(dest!.x, dest!.y);
     expect(unit.location.equals(new Location(dest!.x, dest!.y))).toBe(true);
 
-    session.endTurn();
+    await session.endTurn();
 
     expect(unit.hitpoints).toBe(hpBeforeMove);
   });
 
-  it('a unit that rests one turn, then moves the next, does NOT keep getting the rest heal forever', () => {
+  it('a unit that rests one turn, then moves the next, does NOT keep getting the rest heal forever', async () => {
     const session = new GameSession(loadSnapshot());
     const resolveType = createTypeResolver(session.snapshot);
     const fighterType = resolveType('Merman Fighter');
@@ -1597,23 +1630,23 @@ describe('GameSession rest-heal (real, reported bug: units that neither moved no
     unit.hitpoints = unit.maxHitpoints - 10;
     session.board.addUnit(unit);
 
-    session.endTurn(); // warm-up.
-    session.endTurn(); // rested -> +2.
+    await session.endTurn(); // warm-up.
+    await session.endTurn(); // rested -> +2.
     expect(unit.hitpoints).toBe(unit.maxHitpoints - 8);
 
     session.selectUnit(unit);
     const dest = session.reachable.find((h) => !(h.x === unit.location.x && h.y === unit.location.y));
     expect(dest).toBeDefined();
-    session.handleHexClick(dest!.x, dest!.y);
+    await session.handleHexClick(dest!.x, dest!.y);
     const hpAfterMove = unit.hitpoints;
 
-    session.endTurn(); // moved last turn -> no rest heal this time.
+    await session.endTurn(); // moved last turn -> no rest heal this time.
     expect(unit.hitpoints).toBe(hpAfterMove);
   });
 });
 
 describe('GameSession.confirmAttack real, reported bug: plague kill did not spawn a Walking Corpse', () => {
-  it("Debug Plaguebearer's real specials_list=plague, when it kills the weakened Target Plague (hitpoints=6, one hit from its damage=6 touch attack), spawns a real Walking Corpse on the attacker's side", () => {
+  it("Debug Plaguebearer's real specials_list=plague, when it kills the weakened Target Plague (hitpoints=6, one hit from its damage=6 touch attack), spawns a real Walking Corpse on the attacker's side", async () => {
     // GameSession has no way to force a hit (see the "does not touch
     // movesLeft when the attacker died" test above for the established
     // precedent) -- so retry across seeds until the (highly likely, since
@@ -1626,9 +1659,9 @@ describe('GameSession.confirmAttack real, reported bug: plague kill did not spaw
       expect(target.hitpoints).toBe(6);
 
       session.selectUnit(plaguebearer);
-      session.handleHexClick(target.location.x, target.location.y);
+      await session.handleHexClick(target.location.x, target.location.y);
       expect(session.pendingAttack).not.toBeNull();
-      session.confirmAttack();
+      await session.confirmAttack();
 
       const targetStillThere = session.board.unitAt(target.location);
       if (targetStillThere === target) continue; // target survived this seed's rolls -- try another.
@@ -1647,7 +1680,7 @@ describe('GameSession.confirmAttack real, reported bug: plague kill did not spaw
 });
 
 describe('GameSession unit advancement (real, reported bug: advances_to= was never wired up -- a unit could never actually level up)', () => {
-  it('a single-option advance (Merman Fighter -> Merman Warrior) happens immediately, with no pending choice', () => {
+  it('a single-option advance (Merman Fighter -> Merman Warrior) happens immediately, with no pending choice', async () => {
     const resolveType = createTypeResolver(new GameSession(loadSnapshot()).snapshot);
     const fighterType = resolveType('Merman Fighter');
     const dummyType = resolveType('Merman Citizen');
@@ -1663,8 +1696,8 @@ describe('GameSession unit advancement (real, reported bug: advances_to= was nev
       s.board.addUnit(f);
       s.board.addUnit(d);
       s.selectUnit(f);
-      s.handleHexClick(d.location.x, d.location.y);
-      s.confirmAttack();
+      await s.handleHexClick(d.location.x, d.location.y);
+      await s.confirmAttack();
       if (f.type.id === 'Merman Warrior') {
         expect(s.pendingAdvancement).toBeNull();
         expect(f.hitpoints).toBe(f.maxHitpoints);
@@ -1675,7 +1708,7 @@ describe('GameSession unit advancement (real, reported bug: advances_to= was nev
     throw new Error('Fighter never landed a hit across 50 seeds -- suspiciously unlucky, or a real regression.');
   });
 
-  it('real, reported bug: lastAttackAnimation captures the PRE-advance type id, even though the live unit already shows the new type by the time confirmAttack() returns', () => {
+  it('real, reported bug: lastAttackAnimation captures the PRE-advance type id, even though the live unit already shows the new type by the time confirmAttack() returns', async () => {
     // confirmAttack() resolves the whole exchange AND any resulting
     // advancement synchronously (advanceTo mutates `.type` in place) --
     // an animation built from the live `attacker`/`defender` objects
@@ -1697,8 +1730,8 @@ describe('GameSession unit advancement (real, reported bug: advances_to= was nev
       s.board.addUnit(f);
       s.board.addUnit(d);
       s.selectUnit(f);
-      s.handleHexClick(d.location.x, d.location.y);
-      s.confirmAttack();
+      await s.handleHexClick(d.location.x, d.location.y);
+      await s.confirmAttack();
       if (f.type.id === 'Merman Warrior') {
         expect(s.lastAttackAnimation).not.toBeNull();
         expect(s.lastAttackAnimation!.attackerTypeId).toBe('Merman Fighter');
@@ -1710,7 +1743,7 @@ describe('GameSession unit advancement (real, reported bug: advances_to= was nev
     throw new Error('Fighter never landed a hit across 50 seeds -- suspiciously unlucky, or a real regression.');
   });
 
-  it('a multi-option advance (Merman Citizen -> Brawler/Fighter/Hunter) blocks on pendingAdvancement until the player chooses', () => {
+  it('a multi-option advance (Merman Citizen -> Brawler/Fighter/Hunter) blocks on pendingAdvancement until the player chooses', async () => {
     const resolveType = (session: GameSession) => createTypeResolver(session.snapshot);
     for (let seed = 0; seed < 50; seed++) {
       const s = new GameSession(loadSnapshot(), { seed });
@@ -1724,8 +1757,8 @@ describe('GameSession unit advancement (real, reported bug: advances_to= was nev
       s.board.addUnit(citizen);
       s.board.addUnit(dummy);
       s.selectUnit(citizen);
-      s.handleHexClick(dummy.location.x, dummy.location.y);
-      s.confirmAttack();
+      await s.handleHexClick(dummy.location.x, dummy.location.y);
+      await s.confirmAttack();
 
       if (s.pendingAdvancement) {
         expect(s.pendingAdvancement.unit).toBe(citizen);
@@ -1745,7 +1778,7 @@ describe('GameSession unit advancement (real, reported bug: advances_to= was nev
 });
 
 describe('GameSession advancement + victory ordering (real, reported bug: a kill that both wins the scenario and levels up the killer left the level-up unreachable)', () => {
-  it('a scenario-winning kill still sets pendingAdvancement -- GameSession.confirmAttack checks advancement before checkForGameEnd, matching real Wesnoth', () => {
+  it('a scenario-winning kill still sets pendingAdvancement -- GameSession.confirmAttack checks advancement before checkForGameEnd, matching real Wesnoth', async () => {
     const resolveType = createTypeResolver(new GameSession(loadSnapshot()).snapshot);
     const citizenType = resolveType('Merman Citizen');
 
@@ -1761,9 +1794,9 @@ describe('GameSession advancement + victory ordering (real, reported bug: a kill
       malKevek.hitpoints = 1;
 
       s.selectUnit(citizen);
-      s.handleHexClick(malKevek.location.x, malKevek.location.y);
+      await s.handleHexClick(malKevek.location.x, malKevek.location.y);
       if (!s.pendingAttack) continue; // not adjacent/no valid attack this seed's layout -- try another.
-      s.confirmAttack();
+      await s.confirmAttack();
 
       if (s.scenarioResult === 'victory') {
         // The whole point: the win didn't silently skip or discard the
@@ -1785,50 +1818,50 @@ describe('GameSession advancement + victory ordering (real, reported bug: a kill
 });
 
 describe('GameSession.menuItems / runMenuItem (Phase 14: real WML/Lua-extensible right-click context menu, [set_menu_item]/[heal_unit])', () => {
-  it('surfaces the Combat debug scenario\'s real [set_menu_item] "Reset HP" entry after startup events run', () => {
+  it('surfaces the Combat debug scenario\'s real [set_menu_item] "Reset HP" entry after startup events run', async () => {
     const session = new GameSession(loadCombatSnapshot());
-    session.runStartupEvents();
+    await session.runStartupEvents();
 
     expect(session.menuItems).toEqual([{ id: 'reset_hp', label: 'Reset HP' }]);
   });
 
-  it('runMenuItem runs the real [heal_unit] command against whichever unit is at the given hex, healing it to full', () => {
+  it('runMenuItem runs the real [heal_unit] command against whichever unit is at the given hex, healing it to full', async () => {
     const session = new GameSession(loadCombatSnapshot());
-    session.runStartupEvents();
+    await session.runStartupEvents();
     const hero = session.board.allUnits().find((u) => u.id === 'Debug Hero')!;
     hero.hitpoints = 1;
 
-    const message = session.runMenuItem('reset_hp', hero.location.x, hero.location.y);
+    const message = await session.runMenuItem('reset_hp', hero.location.x, hero.location.y);
 
     expect(hero.hitpoints).toBe(hero.maxHitpoints);
     expect(message).toBe('Reset HP.');
     expect(session.log[0]).toBe('Reset HP.');
   });
 
-  it('runMenuItem is a harmless no-op on an empty hex (real [heal_unit] with no matching unit)', () => {
+  it('runMenuItem is a harmless no-op on an empty hex (real [heal_unit] with no matching unit)', async () => {
     const session = new GameSession(loadCombatSnapshot());
-    session.runStartupEvents();
+    await session.runStartupEvents();
 
-    expect(() => session.runMenuItem('reset_hp', 0, 0)).not.toThrow();
+    await expect(session.runMenuItem('reset_hp', 0, 0)).resolves.not.toThrow();
   });
 
-  it('runMenuItem with an unknown id is a no-op (returns null, does not throw)', () => {
+  it('runMenuItem with an unknown id is a no-op (returns null, does not throw)', async () => {
     const session = new GameSession(loadCombatSnapshot());
-    session.runStartupEvents();
+    await session.runStartupEvents();
 
-    expect(session.runMenuItem('not_a_real_id', 2, 3)).toBeNull();
+    expect(await session.runMenuItem('not_a_real_id', 2, 3)).toBeNull();
   });
 
-  it('a scenario with no [set_menu_item] declarations (real Dead_Water scenario 1) reports no menu items', () => {
+  it('a scenario with no [set_menu_item] declarations (real Dead_Water scenario 1) reports no menu items', async () => {
     const session = new GameSession(loadSnapshot());
-    session.runStartupEvents();
+    await session.runStartupEvents();
 
     expect(session.menuItems).toEqual([]);
   });
 });
 
 describe('GameSession.storyParts (Phase 16)', () => {
-  it("resolves real Dead Water 1's two [story] blocks: five narrated map parts, then the titled journey part", () => {
+  it("resolves real Dead Water 1's two [story] blocks: five narrated map parts, then the titled journey part", async () => {
     const snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf8')) as GameBoardSnapshot;
     const session = new GameSession(snapshot);
 
@@ -1843,10 +1876,10 @@ describe('GameSession.storyParts (Phase 16)', () => {
 });
 
 describe('GameSession.nextScenarioId: next_scenario=null ends the campaign (Phase 16 outro)', () => {
-  it("real Dead Water epilogue: its start event's [endlevel] wins with no next scenario, while scenario 1 still continues", () => {
+  it("real Dead Water epilogue: its start event's [endlevel] wins with no next scenario, while scenario 1 still continues", async () => {
     const epilogue = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/13_Epilogue.json'), 'utf8')) as GameBoardSnapshot;
     const session = new GameSession(epilogue);
-    const messages = session.runStartupEvents();
+    const messages = await session.runStartupEvents();
 
     expect(messages.length).toBeGreaterThan(0);
     expect(session.scenarioResult).toBe('victory');

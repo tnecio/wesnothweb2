@@ -142,7 +142,7 @@ function* actionScreenFade(cfg: WmlConfig): Flow {
  * waypoints, not a step-by-step path -- consecutive ones are joined by
  * the route the unit would actually walk.
  */
-function fakePath(ctx: EventContext, cfg: WmlConfig, typeId: string, side: number): Location[] {
+function fakePath(ctx: EventContext, cfg: WmlConfig, walker: Unit): Location[] {
   const xs = cfg.getString('x', '').split(',');
   const ys = cfg.getString('y', '').split(',');
   const waypoints: Location[] = [];
@@ -154,30 +154,19 @@ function fakePath(ctx: EventContext, cfg: WmlConfig, typeId: string, side: numbe
   }
   if (waypoints.length === 0) return [];
 
-  // The routing unit is a throwaway of the right type, so terrain costs
-  // match what the sprite is pretending to be.
-  let walker: Unit | undefined;
-  try {
-    walker = Unit.create(ctx.resolveType(typeId), side, waypoints[0]!);
-  } catch {
-    walker = undefined;
-  }
-
   const path: Location[] = [waypoints[0]!];
   for (let i = 1; i < waypoints.length; i++) {
     const from = path[path.length - 1]!;
     const to = waypoints[i]!;
     if (from.equals(to)) continue;
-    let leg: Location[] = [];
-    if (walker) {
-      walker.location = from;
-      leg = findPath(ctx.board, walker, to, { seeAll: true, ignoreUnit: true }).steps;
-    }
-    // No route (impassable terrain, or an unknown type): jump straight
-    // there rather than dropping the whole animation.
-    if (leg.length === 0) leg = [from, to];
-    path.push(...leg.slice(1));
+    // Routed as the unit it is pretending to be, so terrain costs match.
+    walker.location = from;
+    const leg = findPath(ctx.board, walker, to, { seeAll: true, ignoreUnit: true }).steps;
+    // No route (impassable terrain for this type): jump straight there
+    // rather than dropping the whole animation.
+    path.push(...(leg.length === 0 ? [to] : leg.slice(1)));
   }
+  walker.location = path[0]!;
   return path;
 }
 
@@ -188,7 +177,14 @@ function fakeWalk(ctx: EventContext, cfg: WmlConfig): FakeUnitWalk | undefined {
     return undefined;
   }
   const side = cfg.getNumber('side', 1);
-  const path = fakePath(ctx, cfg, typeId, side);
+  let walker: Unit;
+  try {
+    walker = Unit.create(ctx.resolveType(typeId), side, Location.NULL);
+  } catch (e) {
+    ctx.log('error', `[move_unit_fake] unknown type=${typeId}: ${e instanceof Error ? e.message : String(e)}`);
+    return undefined;
+  }
+  const path = fakePath(ctx, cfg, walker);
   if (path.length < 2) return undefined;
   return {
     spec: {
@@ -199,6 +195,7 @@ function fakeWalk(ctx: EventContext, cfg: WmlConfig): FakeUnitWalk | undefined {
       gender: cfg.getString('gender', ''),
     },
     path,
+    unit: walker,
   };
 }
 

@@ -133,6 +133,8 @@
   let board: SnapshotBoard | undefined = $state();
   /** The mounted PixiJS app, reactive so the `paused` effect below runs once it exists. */
   let pixiApp: PIXI.Application | undefined = $state.raw();
+  /** Phase 17 `[lock_view]`: the player's own pan/zoom is off while a cutscene owns the camera. */
+  let viewLocked = false;
   const readyLabel = $derived(`${snapshot.scenario.name} -- ${units.length} units, ${snapshot.map.width}x${snapshot.map.height} hexes`);
 
   $effect(() => {
@@ -157,7 +159,7 @@
     }
 
     function onPointerDown(e: PointerEvent): void {
-      if (e.button !== 0 || !board) return;
+      if (e.button !== 0 || !board || viewLocked) return;
       dragActive = true;
       dragDistance = 0;
       dragStart = { x: e.clientX, y: e.clientY };
@@ -184,7 +186,7 @@
     }
 
     function onWheel(e: WheelEvent): void {
-      if (!board) return;
+      if (!board || viewLocked) return;
       e.preventDefault();
       const zoomFactor = Math.exp(-e.deltaY * 0.001);
       const oldScale = board.stage.scale.x;
@@ -507,6 +509,34 @@
     const scale = board.stage.scale.x;
     board.stage.x = pixiApp.screen.width / 2 - px * scale;
     board.stage.y = pixiApp.screen.height / 2 - py * scale;
+  }
+
+  /**
+   * Phase 17 `[zoom] factor=`: an absolute scale, as opposed to
+   * `zoomBy`'s relative one. Same clamp and same centre-preserving
+   * arithmetic.
+   */
+  export function zoomTo(factor: number): void {
+    if (!board) return;
+    const current = board.stage.scale.x;
+    if (current <= 0) return;
+    zoomBy(factor / current);
+  }
+
+  /** Phase 17 `[scroll]`: shift the view by a pixel delta (upstream's own `display::scroll`). */
+  export function scrollByPixels(dx: number, dy: number): void {
+    if (!board) return;
+    board.stage.x -= dx;
+    board.stage.y -= dy;
+  }
+
+  /**
+   * Phase 17 `[lock_view]`/`[unlock_view]`: while locked, the player
+   * cannot pan or zoom -- a cutscene owns the camera. Scripted moves
+   * (`[scroll_to]` and friends) still work, as upstream.
+   */
+  export function setViewLocked(locked: boolean): void {
+    viewLocked = locked;
   }
 
   /**

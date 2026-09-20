@@ -100,7 +100,7 @@ export interface GameResult {
   readonly luaErrors: number;
 }
 
-export function playGame(snapshot: GameBoardSnapshot, seed: number, maxTurns: number): GameResult {
+export async function playGame(snapshot: GameBoardSnapshot, seed: number, maxTurns: number): Promise<GameResult> {
   const session = new GameSession(snapshot, { seed, playerSide: 1 });
   const numSides = session.board.teams().length;
   const start = Date.now();
@@ -114,7 +114,7 @@ export function playGame(snapshot: GameBoardSnapshot, seed: number, maxTurns: nu
     actions += anims.length;
   }
 
-  session.endTurn(Math.max(1, maxTurns * numSides));
+  await session.endTurn(Math.max(1, maxTurns * numSides));
   actions += session.lastAiAnimations?.length ?? 0;
 
   const ms = Date.now() - start;
@@ -133,7 +133,7 @@ function median(values: readonly number[]): number {
   return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   if (args.lua) {
     console.warn('--lua requested, but Lua candidate actions do not exist until Phase 29 S7 -- ignoring.');
@@ -143,7 +143,7 @@ function main(): void {
   const results: GameResult[] = [];
   for (let i = 0; i < args.games; i++) {
     const seed = args.seed + i;
-    const result = playGame(snapshot, seed, args.maxTurns);
+    const result = await playGame(snapshot, seed, args.maxTurns);
     results.push(result);
     console.log(JSON.stringify(result));
   }
@@ -167,5 +167,5 @@ function main(): void {
 
 // Run only when executed directly (`npx tsx ai-benchmark.ts`), not when imported by a test.
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+  await main();
 }

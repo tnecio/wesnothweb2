@@ -100,8 +100,29 @@ import {
   type AttackType,
   type RegistryEntry,
   UnitStatus,
-  runActionSequence,
+  runActionFlow,
+  runFlow,
+  autoRespond,
+  type ChoiceRecord,
+  type Flow,
+  type Interaction,
+  type InteractionResult,
+  type Responder,
 } from '@wesnothweb2/engine';
+
+/**
+ * Phase 17: whoever can actually show a `[message]` or play a cutscene
+ * beat. `GameShell` supplies one; a headless caller leaves it unset and
+ * every interaction is answered by the engine's own `autoRespond`.
+ *
+ * The contract is deliberately one method: the session hands over one
+ * `Interaction` at a time and does nothing at all until the promise
+ * settles -- which is what "the event is blocked on this dialog" means
+ * here, in place of the nested SDL event loop upstream runs.
+ */
+export interface InteractionHost {
+  handle(interaction: Interaction): Promise<InteractionResult>;
+}
 
 /**
  * The scenario's real `turns=` attribute (from `scenarioConfigJson`), if it
@@ -742,21 +763,23 @@ export class GameSession {
    */
   lastAttackAnimation: LastAttackAnimation | null = null;
   /**
-   * Set by `handleHexClick`'s move branch every time a HUMAN move
-   * actually enters at least one new hex -- see `LastMoveAnimation`'s own
-   * doc comment. Same read-once-then-clear contract as
-   * `lastAttackAnimation`. Not set for a move that resolves to zero
-   * actual steps (e.g. clicking a unit's own hex), and not set for
-   * AI-played moves (`playAiSide` calls `executeMove` directly) for the
-   * same reasoning as attacks.
+   * Phase 17 retired this: a human move's walk is now a `moveUnit`
+   * cutscene beat yielded by the move itself (see `moveSelectedTo`), so
+   * it plays before the `moveto`/`sighted` dialogue it triggers rather
+   * than after the whole click had already resolved. Kept as an always-
+   * null field only so an external caller reading it doesn't silently
+   * break; AI moves still animate from `AiAnimationEvent` as before.
+   *
+   * @deprecated Read the `moveUnit` beat instead.
    */
   lastMoveAnimation: LastMoveAnimation | null = null;
   /**
-   * Set by `tryRecruitAt`/`tryRecallAt` every time a HUMAN recruit/recall
-   * actually places a unit -- see `LastRecruitAnimation`'s own doc
-   * comment. Same read-once-then-clear contract as `lastAttackAnimation`.
-   * Not set for AI-played recruits (`aiManager.playTurn` places units
-   * directly) for the same reasoning as attacks/moves.
+   * Retired by Phase 17 alongside `lastMoveAnimation`: a human
+   * recruit/recall now yields a `unitAppear` beat carrying the new unit
+   * and the leader who called it, so it plays before the `recruit`
+   * event's dialogue. Always null.
+   *
+   * @deprecated Read the `unitAppear` beat instead.
    */
   lastRecruitAnimation: LastRecruitAnimation | null = null;
   /**
@@ -884,7 +907,7 @@ export class GameSession {
    * a `[clear_menu_item]` ran). Returns a log message for the caller's
    * `sync()`, matching every other mutating method here.
    */
-  runMenuItem(id: string, x: number, y: number): string | null {
+  async runMenuItem(id: string, x: number, y: number): Promise<string | null> {
     const def = this.eventPump.ctx.menuItems.get(id);
     if (!def) return null;
     const loc = new Location(x, y);
@@ -892,7 +915,7 @@ export class GameSession {
     this.eventPump.ctx.loc2 = Location.NULL;
     this.eventPump.ctx.variables.set('x1', loc.wmlX);
     this.eventPump.ctx.variables.set('y1', loc.wmlY);
-    runActionSequence(def.command, this.eventPump.ctx);
+    await this.drive(runActionFlow(def.command, this.eventPump.ctx));
     this.checkForGameEnd();
     const message = `${def.description}.`;
     this.log.unshift(message);
@@ -979,6 +1002,15 @@ export class GameSession {
     return key;
   }
   private startupEventsRun = false;
+  /**
+   * Phase 17: who shows a `[message]` or plays a cutscene beat, set once
+   * by `GameShell`. While it is handling one, the event that raised it is
+   * genuinely suspended -- nothing else on the board moves. Left unset by
+   * headless callers, whose interactions are answered by `autoRespond`.
+   */
+  interactionHost: InteractionHost | null = null;
+  /** See `takeDeferredInteractions`. */
+  private readonly deferred: Interaction[] = [];
   /**
    * One event pump for the whole scenario, so in-play events (moveto,
    * sighted, die, turn N, ...) fire during play the way upstream's do, and
@@ -1118,80 +1150,141 @@ export class GameSession {
    * first call has any effect. Returns the recorded messages (empty on a
    * repeat call).
    */
-  runStartupEvents(): RecordedMessage[] {
+  async runStartupEvents(): Promise<RecordedMessage[]> {
     if (this.startupEventsRun) return [];
     this.startupEventsRun = true;
-    this.fire('prestart');
+    return this.drive(this.startupEventsFlow());
+  }
+
+  private *startupEventsFlow(): Flow<RecordedMessage[]> {
+    const shownFrom = this.eventPump.ctx.messages.length;
+    // `[delay]` does nothing before the scenario starts, as upstream --
+    // an opening cutscene's scripted pauses must not stall startup.
+    this.eventPump.ctx.gameStarted = false;
+    yield* this.fireFlow('prestart');
     // play_controller::init: every side's shroud is cleared from its starting units, without sighted events.
     for (const team of this.board.teams()) clearShroud(this.board, team.side);
-    this.fire('start');
-    this.fireSideTurnEvents(this.activeSide);
-    this.fireTurnRefreshEvents(this.activeSide);
+    this.eventPump.ctx.gameStarted = true;
+    yield* this.fireFlow('start');
+    yield* this.fireSideTurnEvents(this.activeSide);
+    yield* this.fireTurnRefreshEvents(this.activeSide);
     this.checkForGameEnd();
-    const messages = this.takeEventMessages();
     const objectives = this.eventPump.ctx.objectivesBySide.get(this.playerSide);
     // Real `team.objectives_changed = not silent` -- a silent firing updates
     // the side's objectives without popping the dialog (matches upstream's
     // own gate on whether `show_objectives` should auto-trigger).
     if (objectives && !objectives.silent) this.scenarioObjectives = objectives;
-    return messages;
+    return this.eventPump.ctx.messages.slice(shownFrom);
   }
 
-  /** `[message]`s recorded by events since the last call (startup or in-play), oldest first. */
-  takeEventMessages(): RecordedMessage[] {
-    return this.eventPump.ctx.messages.splice(0);
+  /**
+   * Every `[message]` the scenario has shown so far, oldest first. Before
+   * Phase 17 the UI drained this array and replayed it after the fact;
+   * now each message is shown as its event reaches it, so this is a
+   * transcript, kept for tests and for a future chat log.
+   */
+  get shownMessages(): readonly RecordedMessage[] {
+    return this.eventPump.ctx.messages;
   }
 
-  private fire(name: string, loc1?: Location, loc2?: Location): void {
+  /** Every `[option]`/`[text_input]` answer this scenario has taken, oldest first (Phase 25's replay log consumes these). */
+  get choices(): readonly ChoiceRecord[] {
+    return this.eventPump.ctx.choices;
+  }
+
+  /**
+   * Interactions raised where the flow could not suspend and wait for the
+   * player -- an AI side's own events, and the `last breath`/`die` events
+   * fired from inside `performAttack`'s choreography callback. They are
+   * answered immediately (`autoRespond`) and collected here so the caller
+   * can still show them once its animations finish, which is exactly what
+   * the pre-Phase-17 UI did with every message. See `endTurn`.
+   */
+  takeDeferredInteractions(): Interaction[] {
+    return this.deferred.splice(0);
+  }
+
+  private readonly collectResponder: Responder = (interaction) => {
+    this.deferred.push(interaction);
+    return autoRespond(interaction);
+  };
+
+  /**
+   * Runs a flow to completion, handing each interaction to
+   * `interactionHost` and waiting for its answer. With no host (a
+   * headless caller, or a test), the engine's own deterministic
+   * `autoRespond` answers instead and nothing ever waits.
+   */
+  private async drive<T>(flow: Flow<T>): Promise<T> {
+    let step = flow.next({});
+    while (!step.done) {
+      const host = this.interactionHost;
+      const answer = host ? await host.handle(step.value) : autoRespond(step.value);
+      step = flow.next(answer);
+    }
+    return step.value;
+  }
+
+  private *fireFlow(name: string, loc1?: Location, loc2?: Location): Flow {
     if (this.scenarioResult) return;
-    this.eventPump.fire(name, loc1, loc2);
+    yield* this.eventPump.fireFlow(name, loc1, loc2);
   }
 
   /** Pumps anything raised by the last action (sighted, moveto, ...), then applies `[endlevel]`/leader loss. */
-  private pumpEvents(): void {
-    if (!this.scenarioResult) this.eventPump.pump();
+  private *pumpEventsFlow(): Flow {
+    if (!this.scenarioResult) yield* this.eventPump.pumpFlow();
     this.checkForGameEnd();
     this.syncVillageMemory();
   }
 
+  /**
+   * The synchronous form, for the two paths that cannot suspend: the AI
+   * host's own `pump()` callback and anything else running inside a
+   * non-generator callback. Interactions are collected rather than
+   * silently dropped -- see `takeDeferredInteractions`.
+   */
+  private pumpEvents(): void {
+    runFlow(this.pumpEventsFlow(), this.collectResponder);
+  }
+
   /** `play_controller::do_init_side`'s events that come before income and healing. */
-  private fireSideTurnEvents(side: number): void {
+  private *fireSideTurnEvents(side: number): Flow {
     const turn = this.turnNumber;
     this.eventPump.ctx.variables.set('side_number', side);
     this.eventPump.ctx.variables.set('turn_number', turn);
     if (this.turnEventsFiredFor !== turn) {
       this.turnEventsFiredFor = turn;
-      this.fire(`turn ${turn}`);
-      this.fire('new turn');
+      yield* this.fireFlow(`turn ${turn}`);
+      yield* this.fireFlow('new turn');
     }
-    this.fire('side turn');
-    this.fire(`side ${side} turn`);
-    this.fire(`side turn ${turn}`);
-    this.fire(`side ${side} turn ${turn}`);
+    yield* this.fireFlow('side turn');
+    yield* this.fireFlow(`side ${side} turn`);
+    yield* this.fireFlow(`side turn ${turn}`);
+    yield* this.fireFlow(`side ${side} turn ${turn}`);
   }
 
   /** `do_init_side`'s `turn refresh` events, then `clear_shroud(side, true)` so vision is accurate. */
-  private fireTurnRefreshEvents(side: number): void {
+  private *fireTurnRefreshEvents(side: number): Flow {
     const turn = this.turnNumber;
-    this.fire('turn refresh');
-    this.fire(`side ${side} turn refresh`);
-    this.fire(`turn ${turn} refresh`);
-    this.fire(`side ${side} turn ${turn} refresh`);
+    yield* this.fireFlow('turn refresh');
+    yield* this.fireFlow(`side ${side} turn refresh`);
+    yield* this.fireFlow(`turn ${turn} refresh`);
+    yield* this.fireFlow(`side ${side} turn ${turn} refresh`);
     clearShroud(this.board, side, { resetFog: true, raise: this.raiseEvent });
-    this.pumpEvents();
+    yield* this.pumpEventsFlow();
   }
 
   /** `play_controller::finish_side_turn_events`. */
-  private fireSideTurnEndEvents(side: number): void {
+  private *fireSideTurnEndEvents(side: number): Flow {
     const turn = this.turnNumber;
     clearShroud(this.board, side, { raise: this.raiseEvent });
-    this.fire('side turn end');
-    this.fire(`side ${side} turn end`);
-    this.fire(`side turn ${turn} end`);
-    this.fire(`side ${side} turn ${turn} end`);
+    yield* this.fireFlow('side turn end');
+    yield* this.fireFlow(`side ${side} turn end`);
+    yield* this.fireFlow(`side turn ${turn} end`);
+    yield* this.fireFlow(`side ${side} turn ${turn} end`);
     // Refog only after all of the side's own events are done.
     recalculateFog(this.board, side, this.raiseEvent);
-    this.pumpEvents();
+    yield* this.pumpEventsFlow();
   }
 
   /**
@@ -1268,23 +1361,6 @@ export class GameSession {
       loyal: unit.loyal,
       underlyingId: this.renderKeyFor(unit),
     };
-  }
-
-  /**
-   * The board as it looked exactly at `message`'s own `[message]` boundary
-   * -- see `RecordedMessage.unitsBefore`'s own doc comment. Real, reported
-   * bug (bugs2.md "Lua events/narration ... not synced with the
-   * narrative messages"): `GameShell.svelte` used to show every startup
-   * message against the board's FINAL, fully-resolved state (every
-   * startup event already having run to completion beforehand), so e.g.
-   * Dead_Water's Gwabbo was already standing at the keep by the time his
-   * very first line ("Back, you fiend!...") displayed, even though his
-   * scripted retreat there is written to happen only AFTER that line.
-   * Stepping `units` through this per-message instead keeps the board in
-   * sync with the story as it's actually being told.
-   */
-  messageUnitSnapshot(message: RecordedMessage): SnapshotUnit[] {
-    return message.unitsBefore.map((c) => this.toSnapshotUnit(c.unit, c.x, c.y, c.hitpoints));
   }
 
   /**
@@ -1537,7 +1613,7 @@ export class GameSession {
    * against `recruitTiles` directly instead means the placement always
    * matches exactly what the player clicked, or is rejected outright.
    */
-  private tryRecruitAt(typeId: string, loc: Location): string | null {
+  private *tryRecruitAt(typeId: string, loc: Location): Flow<string | null> {
     const leader = this.recruitingLeader;
     if (!leader) return null;
     const team = this.board.getTeam(leader.side);
@@ -1555,11 +1631,13 @@ export class GameSession {
     const type = this.resolveType(typeId);
     const leaderLocation = leader.location;
     const result = recruitUnit(this.board, team, type, loc, leaderLocation, this.rng, this.raiseEvent);
-    this.lastRecruitAnimation = { unit: result.unit, leader, unitLocation: result.unit.location, leaderLocation };
     const message = `Recruited ${name} for ${result.cost} gold.`;
     this.log.unshift(message);
+    // The new unit appears before the `recruit` event's own dialogue --
+    // same reasoning as the walk in `moveSelectedTo`.
+    yield { kind: 'beat', beat: { kind: 'unitAppear', unit: result.unit, by: leader } };
     this.eventPump.raise('recruit', loc, leader.location);
-    this.pumpEvents();
+    yield* this.pumpEventsFlow();
     return message;
   }
 
@@ -1572,7 +1650,7 @@ export class GameSession {
    * deliberate "no `checkRecruitLocation` alternate-location fallback" call
    * as `tryRecruitAt` -- see that method's own doc comment.
    */
-  private tryRecallAt(index: number, loc: Location): string | null {
+  private *tryRecallAt(index: number, loc: Location): Flow<string | null> {
     const leader = this.recruitingLeader;
     if (!leader) return null;
     const team = this.board.getTeam(leader.side);
@@ -1597,11 +1675,11 @@ export class GameSession {
     list.splice(index, 1);
     const leaderLocation = leader.location;
     const result = recallUnit(this.board, team, unit, loc, leaderLocation, undefined, this.raiseEvent);
-    this.lastRecruitAnimation = { unit: result.unit, leader, unitLocation: result.unit.location, leaderLocation };
     const message = `Recalled ${name} for ${result.cost} gold.`;
     this.log.unshift(message);
+    yield { kind: 'beat', beat: { kind: 'unitAppear', unit: result.unit, by: leader } };
     this.eventPump.raise('recall', loc, leader.location);
-    this.pumpEvents();
+    yield* this.pumpEventsFlow();
     return message;
   }
 
@@ -1625,10 +1703,14 @@ export class GameSession {
    * human ends up controlling (including a `human`-controlled side that
    * isn't `playerSide` -- true hotseat, unchanged from before).
    */
-  endTurn(maxAiSideTurns = 1000): string {
+  async endTurn(maxAiSideTurns = 1000): Promise<string> {
+    return this.drive(this.endTurnFlow(maxAiSideTurns));
+  }
+
+  private *endTurnFlow(maxAiSideTurns: number): Flow<string> {
     const aiAnimations: AiAnimationEvent[] = [];
     const healOutcomes: HealOutcome[] = [];
-    let message = this.advanceOneTurn(healOutcomes);
+    let message = yield* this.advanceOneTurn(healOutcomes);
     if (!message) return '';
     // Auto-play consecutive AI-controlled sides. Bounded by `sides.length`
     // guard-multiples rather than true unbounded recursion, so a
@@ -1645,7 +1727,7 @@ export class GameSession {
       if (!team || (team.controller !== 'ai' && team.controller !== 'network_ai')) break;
       this.playAiSide(this.activeSide, aiAnimations);
       if (this.scenarioResult) break;
-      const next = this.advanceOneTurn(healOutcomes);
+      const next = yield* this.advanceOneTurn(healOutcomes);
       if (!next) break;
       message = next;
     }
@@ -1667,7 +1749,12 @@ export class GameSession {
    * too is AI-controlled.
    */
   playAiSide(side: number, outAnimations: AiAnimationEvent[]): void {
-    this.fire('ai turn'); // mirrors manager::play_turn's own pre-turn event, real content hooks WML on it.
+    // An AI side resolves its whole turn before any of it is animated
+    // (see `AiAnimationEvent`), so its events cannot block on the player
+    // the way a human's can: anything they raise is answered inline and
+    // collected for the caller to show afterwards. See
+    // `takeDeferredInteractions`.
+    runFlow(this.fireFlow('ai turn'), this.collectResponder); // mirrors manager::play_turn's own pre-turn event, real content hooks WML on it.
     const actions: AiAction[] = this.aiManager.playTurn(side);
     for (const action of actions) {
       if (action.message) this.log.unshift(action.message);
@@ -1688,10 +1775,10 @@ export class GameSession {
    * appended to `outHealOutcomes` (see `lastHealAnimations`'s own doc
    * comment), mirroring `playAiSide`'s identical `outAnimations` pattern.
    */
-  private advanceOneTurn(outHealOutcomes: HealOutcome[]): string | null {
+  private *advanceOneTurn(outHealOutcomes: HealOutcome[]): Flow<string | null> {
     if (this.scenarioResult) return null;
     this.clearSelection();
-    this.fireSideTurnEndEvents(this.activeSide);
+    yield* this.fireSideTurnEndEvents(this.activeSide);
     if (this.scenarioResult) return null;
     const sides = this.board
       .teams()
@@ -1702,14 +1789,14 @@ export class GameSession {
     const nextSide = wrapped ? sides[0] : sides[idx + 1];
     if (nextSide === undefined) return null;
     if (wrapped) {
-      this.fire('turn end');
-      this.fire(`turn ${this.turnNumber} end`);
+      yield* this.fireFlow('turn end');
+      yield* this.fireFlow(`turn ${this.turnNumber} end`);
       this.checkForGameEnd();
       if (this.scenarioResult) return null;
       this.turnNumber += 1;
     }
     this.activeSide = nextSide;
-    this.fireSideTurnEvents(nextSide);
+    yield* this.fireSideTurnEvents(nextSide);
     this.checkForGameEnd();
     if (this.scenarioResult) return null;
     for (const unit of this.board.unitsForSide(nextSide)) {
@@ -1777,7 +1864,7 @@ export class GameSession {
     for (const unit of this.board.unitsForSide(nextSide)) {
       unit.resting = true;
     }
-    this.fireTurnRefreshEvents(nextSide);
+    yield* this.fireTurnRefreshEvents(nextSide);
     if (this.scenarioResult) return null;
     const teamName = this.board.getTeam(nextSide)?.teamName ?? String(nextSide);
     const message = `Turn ${this.turnNumber} -- side ${nextSide} (${teamName})'s turn.`;
@@ -2046,7 +2133,7 @@ export class GameSession {
     return { attacker, defender, attackerWeaponIndex, defenderWeaponIndex, preview };
   }
 
-  private moveSelectedTo(dest: Location): string | null {
+  private *moveSelectedTo(dest: Location): Flow<string | null> {
     const unit = this.selectedUnit;
     if (!unit) return null;
     const route = findPath(this.board, unit, dest);
@@ -2055,14 +2142,18 @@ export class GameSession {
     // its own doc comment -- extracted for Phase 29 so the AI's own moves
     // get the same events).
     const { result } = performMove(this.board, unit, route.steps, { raise: this.raiseEvent });
-    if (result.path.length > 1) this.lastMoveAnimation = { unit, path: result.path };
+    // Phase 17: the walk is a cutscene beat like any other, so it plays
+    // *before* whatever the `moveto`/`sighted` events it triggers have to
+    // say -- the pump below would otherwise reach their dialogue while
+    // the unit was still standing at its old hex on screen.
+    if (result.path.length > 1) yield { kind: 'beat', beat: { kind: 'moveUnit', unit, path: result.path } };
     const name = this.unitDisplayName(unit);
     const message = result.ambushed
       ? `${name} was ambushed!`
       : result.sightedStop
         ? `${name} stopped: units sighted.`
         : `${name} moved.`;
-    this.pumpEvents();
+    yield* this.pumpEventsFlow();
     if (this.scenarioResult || this.board.unitAt(unit.location) !== unit) {
       this.clearSelection();
       this.log.unshift(message);
@@ -2086,7 +2177,11 @@ export class GameSession {
    * Returns a short human-readable message describing what happened (for a
    * toast/log), or `null` if the click had no visible effect.
    */
-  handleHexClick(x: number, y: number): string | null {
+  async handleHexClick(x: number, y: number): Promise<string | null> {
+    return this.drive(this.handleHexClickFlow(x, y));
+  }
+
+  private *handleHexClickFlow(x: number, y: number): Flow<string | null> {
     if (this.scenarioResult) return null;
     const loc = new Location(x, y);
     // Real, reported bug: this used to read `board.unitAt(loc)` directly,
@@ -2110,13 +2205,13 @@ export class GameSession {
     if (this.pendingRecruitTypeId) {
       const typeId = this.pendingRecruitTypeId;
       this.pendingRecruitTypeId = null;
-      return this.tryRecruitAt(typeId, loc);
+      return yield* this.tryRecruitAt(typeId, loc);
     }
 
     if (this.pendingRecallIndex !== null) {
       const index = this.pendingRecallIndex;
       this.pendingRecallIndex = null;
-      return this.tryRecallAt(index, loc);
+      return yield* this.tryRecallAt(index, loc);
     }
 
     const sel = this.selectedUnit;
@@ -2146,7 +2241,7 @@ export class GameSession {
       }
 
       if (this.reachable.some((h) => h.x === x && h.y === y)) {
-        return this.moveSelectedTo(loc);
+        return yield* this.moveSelectedTo(loc);
       }
 
       this.clearSelection();
@@ -2193,14 +2288,18 @@ export class GameSession {
   }
 
   /** Commits the currently-pending attack via the real `executeAttack`, updating the board. */
-  confirmAttack(): string | null {
+  async confirmAttack(): Promise<string | null> {
+    return this.drive(this.confirmAttackFlow());
+  }
+
+  private *confirmAttackFlow(): Flow<string | null> {
     if (this.scenarioResult) return null;
     const pending = this.pendingAttack;
     if (!pending) return null;
 
     const attackerLoc = pending.attacker.location;
     const defenderLoc = pending.defender.location;
-    this.fire('attack', attackerLoc, defenderLoc);
+    yield* this.fireFlow('attack', attackerLoc, defenderLoc);
     this.checkForGameEnd();
     if (this.scenarioResult || this.board.unitAt(attackerLoc) !== pending.attacker || this.board.unitAt(defenderLoc) !== pending.defender) {
       // The attack event ended the scenario or moved/removed a combatant: upstream aborts the attack.
@@ -2228,9 +2327,13 @@ export class GameSession {
       maxLiminalBonus: this.schedule.maxLiminalBonus,
       resolveType: this.resolveType,
       raise: this.raiseEvent,
-      fire: (name, loc1, loc2) => this.eventPump.fire(name, loc1, loc2),
+      // `last breath`/`die`, fired from inside `performAttack`'s own
+      // callback: a plain function, so these cannot suspend -- their
+      // messages are collected and shown after the attack animation
+      // (`takeDeferredInteractions`).
+      fire: (name, loc1, loc2) => this.eventPump.fire(name, loc1, loc2, undefined, this.collectResponder),
     });
-    this.eventPump.pump();
+    yield* this.eventPump.pumpFlow();
 
     this.lastAttackAnimation = {
       attacker: pending.attacker,
