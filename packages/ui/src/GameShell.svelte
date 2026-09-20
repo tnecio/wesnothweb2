@@ -61,7 +61,7 @@
   } from './gameSession.js';
   import { saveGame, loadGame } from './persistence.js';
   import { fetchStoryAssets, type StoryAssets } from './story/storyImages.js';
-  import type { Command } from './commands.js';
+  import { matchesHotkey, type Command } from './commands.js';
   import TopBar from './TopBar.svelte';
   import ContextMenu from './ContextMenu.svelte';
   import GameBoardView from './GameBoardView.svelte';
@@ -1121,15 +1121,18 @@
    * right-click `ContextMenu`, reusing the very same handlers so both
    * surfaces can never drift apart.
    */
+  // Phase 15: bindings are upstream's own (`wesnoth/data/core/hotkeys.cfg`); `ctrl` is Command on macOS,
+  // matching that file's {IF_APPLE_CMD_ELSE_CTRL} macro.
   let menuCommands = $derived<Command[]>([
-    { id: 'save', label: 'Save', enabled: phase === 'playing', handler: handleSave },
-    { id: 'load', label: 'Load', enabled: phase === 'playing', handler: handleLoad },
+    { id: 'save', label: 'Save', enabled: phase === 'playing', handler: handleSave, hotkey: { key: 's', ctrl: true } },
+    { id: 'load', label: 'Load', enabled: phase === 'playing', handler: handleLoad, hotkey: { key: 'o', ctrl: true } },
   ]);
   let actionCommands = $derived<Command[]>([
     {
       id: 'recruit',
       label: 'Recruit...',
       enabled: recruitOptions.length > 0,
+      hotkey: { key: 'r', ctrl: true },
       handler: () => {
         recruitOriginHex = null; // no specific hex -- falls back to arm-then-click (see its own doc comment)
         recruitDialogOpen = true;
@@ -1139,13 +1142,20 @@
       id: 'recall',
       label: 'Recall...',
       enabled: recallOptions.length > 0,
+      hotkey: { key: 'r', alt: true },
       handler: () => {
         recruitOriginHex = null;
         recallDialogOpen = true;
       },
     },
-    { id: 'objectives', label: 'Objectives', enabled: session.scenarioObjectives !== null, handler: () => (objectivesDialogOpen = true) },
-    { id: 'end-turn', label: 'End Turn', enabled: phase === 'playing', handler: handleEndTurn },
+    {
+      id: 'objectives',
+      label: 'Objectives',
+      enabled: session.scenarioObjectives !== null,
+      hotkey: { key: 'j', ctrl: true },
+      handler: () => (objectivesDialogOpen = true),
+    },
+    { id: 'end-turn', label: 'End Turn', enabled: phase === 'playing', handler: handleEndTurn, hotkey: { key: ' ', ctrl: true } },
   ]);
 
   /**
@@ -1206,7 +1216,56 @@
     }
     return [...hexCommands, ...actionCommands.filter((c) => c.id === 'objectives' || c.id === 'end-turn')];
   });
+
+  /**
+   * Phase 15: the commands a keypress can reach right now. Only the menu
+   * bar's and Actions menu's commands -- the context menu's are per-hex
+   * and reached by right-clicking that hex, exactly as upstream (its
+   * entries have no hotkeys of their own).
+   */
+  let hotkeyCommands = $derived<Command[]>([...menuCommands, ...actionCommands]);
+
+  /** A dialog owns the keyboard while it's open (`Modal` handles Escape/Tab/focus itself). */
+  function dialogOpen(): boolean {
+    return (
+      recruitDialogOpen ||
+      recallDialogOpen ||
+      objectivesDialogOpen ||
+      pendingAdvancement !== null ||
+      pendingPreview !== null
+    );
+  }
+
+  /** Typing in a field must never trigger a game hotkey (no such field exists yet; Phase 17's `[text_input]` will bring one). */
+  function isTypingTarget(target: EventTarget | null): boolean {
+    const el = target as HTMLElement | null;
+    if (!el || typeof el.tagName !== 'string') return false;
+    const tag = el.tagName.toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable === true;
+  }
+
+  /**
+   * Phase 15: the one global hotkey dispatcher. Everything goes through
+   * the same `Command` objects the menu bar and context menu use, so a
+   * binding can never drift from what the menu entry does.
+   *
+   * A disabled command still swallows its key (`preventDefault`) rather
+   * than letting the browser act on it -- Ctrl+S must not open "save
+   * page" just because saving happens to be unavailable this moment.
+   */
+  function handleGlobalKeydown(e: KeyboardEvent): void {
+    if (e.repeat || e.defaultPrevented) return;
+    // 'story'/'messages'/'ended' have their own keyboard handling (StoryViewer, MessageViewer, Outro).
+    if (phase !== 'playing') return;
+    if (dialogOpen() || contextMenuAt !== null || isTypingTarget(e.target)) return;
+    const command = hotkeyCommands.find((c) => c.hotkey && matchesHotkey(e, c.hotkey));
+    if (!command) return;
+    e.preventDefault();
+    if (command.enabled) command.handler();
+  }
 </script>
+
+<svelte:window onkeydown={handleGlobalKeydown} />
 
 <div class="game-shell">
   <TopBar
