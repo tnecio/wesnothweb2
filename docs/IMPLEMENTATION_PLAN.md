@@ -950,11 +950,15 @@ Burning Suns (its own two-suns schedule, `[time_area]`).
 
 ## Phase 13 — Modal dialogs: recruit, recall, combat
 
-**Status: not started.** Recruit/recall lists and the attack/weapon
-choice currently live inline in `SidePanel.svelte`; real Wesnoth uses
-modal dialogs for all three. First of the UI areas split out of the old
-Phase 14/16/17 bundle (2026-09-12, user's call), prioritised ahead of
-audio because it's what a player touches every single turn.
+**Status: delivered (2026-09-13)**, branch `phase-13-modals`, with
+follow-ups in the bugs4.md/bugs5.md rounds (see docs/PROGRESS.md). Every
+bullet below is real: `Modal.svelte` is the shared framework and all six
+dialogs use it (recruit, recall, attack, combat simulation, plus the
+migrated advancement and objectives dialogs), and the side panel no
+longer carries inline recruit/recall lists. First of the UI areas split
+out of the old Phase 14/16/17 bundle (2026-09-12, user's call),
+prioritised ahead of audio because it's what a player touches every
+single turn.
 
 Spec sources (data shape and behaviour, not ported code — GUI2 itself
 stays out of scope): `src/gui/dialogs/units_dialog.cpp`
@@ -985,8 +989,13 @@ stays out of scope): `src/gui/dialogs/units_dialog.cpp`
 
 ## Phase 14 — Main game UI overhaul
 
-**Status: not started.** Goal: the in-game screen matches the real
-Wesnoth default theme closely. Spec source: `data/themes/default.cfg`
+**Status: delivered (2026-09-13)**, branch `phase-14-mainui`, with
+follow-ups in the bugs4.md/bugs5.md rounds (see docs/PROGRESS.md) --
+**except two bullets still open**: the unmoved-units end-turn warning and
+`[change_theme]`. The top menu/status bar, infobox, right-click context
+menu, `[set_menu_item]`/`[clear_menu_item]` and the command registry
+(`packages/ui/src/commands.ts`) are all real. Goal: the in-game screen
+matches the real Wesnoth default theme closely. Spec source: `data/themes/default.cfg`
 (`[theme]`/`[resolution]`/`[panel]`/`[status]`/`[menu]`) and
 `src/hotkey/hotkey_command.cpp` for the menu command set.
 
@@ -1549,8 +1558,9 @@ pulls in real content, rather than as the headline focus. Phases 11 and
 12 (fog/shroud/vision, time of day) are now also delivered, both verified
 against the Under the Burning Suns testbed as planned.
 
-1. **Phase 13** (recruit/recall/combat modals), **Phase 14** (main game UI
-   overhaul), **Phase 15** (core keyboard shortcuts). ← **current focus**
+1. **Phase 13** (recruit/recall/combat modals) and **Phase 14** (main game
+   UI overhaul) delivered 2026-09-13; **Phase 15** (core keyboard
+   shortcuts) ← **current focus**
 2. **Phase 16** (narration), **Phase 17** (events/`[option]`/cutscenes).
 3. **Phase 18** (labels/items), **Phase 19** (audio/music).
 4. **Phase 20** (localization/accessibility).
