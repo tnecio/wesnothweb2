@@ -145,6 +145,24 @@ export class GameBoard {
     return count;
   }
 
+  /**
+   * Mirrors `team::villages()`: every village `side` currently owns.
+   *
+   * Real, reported bug: village ownership was live-only state that no save
+   * captured, so a reloaded game re-derived it from the scenario's *initial*
+   * unit placement (`gameBoardFromSnapshot`) -- every village captured during
+   * play reverted to unowned, and the side's income with it. Upstream writes
+   * these as `[village] x= y=` children of each `[side]`; this is the read
+   * half of that, `captureVillage` the write half.
+   */
+  villagesOwnedBy(side: number): Location[] {
+    const owned: Location[] = [];
+    for (const [key, owner] of this.villageOwners) {
+      if (owner === side) owned.push(Location.fromKey(key));
+    }
+    return owned;
+  }
+
   // --- recall lists ---
 
   recallList(side: number): Unit[] {

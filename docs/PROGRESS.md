@@ -3675,3 +3675,43 @@ the destination.
 
 Gates: engine 608, ui 144, renderer 198 tests (+4 new), lua-bridge 32,
 oracle-tools 2 (+1 skip); 0 typecheck/svelte-check errors.
+
+## 2026-09-21 — Phase 26 S1: the save actually saves the game
+
+Phase 26 pulled forward at the user's request ("save game handling is a
+real PITA when testing"). First stage is the unglamorous one: make a save
+capture the game.
+
+Save version 1 stored id/name/type/side/position/hp/moves/attacks per
+unit and nothing else, so a reload silently reverted three kinds of real
+state:
+
+1. *Veterans came back rookies.* No `experience`, `level`,
+   `max_experience`, `facing`, `resting`, `[status]` or `[modifications]`
+   was written, and `loadSaveData` rebuilt units with `Unit.create` (type
+   defaults) rather than from what was saved. A poisoned, slowed, level-3
+   unit with two traits reloaded as a healthy level-1 one with none.
+2. *Captured villages reverted to unowned.* `GameBoard.villageOwners` was
+   live-only state no save recorded, so a reloaded game re-derived
+   ownership from the scenario's *initial* unit placement
+   (`gameBoardFromSnapshot`) -- every village taken during play was lost,
+   and the side's income with it.
+3. *The RNG stream restarted.* `random_seed`/`random_calls` were not
+   saved, so combat after a load diverged from the game that was saved --
+   which would also have made any replay built on a save useless.
+
+Save version 2 fixes all three. `SavedUnit` now carries every mutable
+field `Unit` owns; teams carry their `villages`; the session records the
+`MtRng` seed and draw count (upstream's own two fields -- `MtRng` already
+modelled both, they were simply never read); and the save finally knows
+which campaign/scenario it belongs to, plus the `goldCarryover` banner
+state that cannot be recomputed from the scenario being played. Every
+version-2 field is optional on read, so a version-1 save still loads --
+just without state it never recorded.
+
+Three regression tests, one per bug above, all of which fail against the
+version-1 shape. The RNG one plays a real AI turn first so the stream has
+actually advanced (Dead Water 1's startup events draw nothing, which made
+the first draft of the test vacuous).
+
+Gates: engine 608, ui 147 tests (+3); 0 typecheck/svelte-check errors.

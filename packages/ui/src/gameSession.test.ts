@@ -6,6 +6,7 @@ import {
   Location,
   Unit,
   Direction,
+  WmlConfig,
   getAdjacentTiles,
   ALL_DIRECTIONS,
   directionBetween,
@@ -483,7 +484,7 @@ describe('GameSession.toSaveData / loadSaveData (round-trip, see persistence.ts 
     someUnit.movesLeft = 0;
 
     const saved = session.toSaveData();
-    expect(saved.version).toBe(1);
+    expect(saved.version).toBe(2);
     expect(saved.units.length).toBe(session.board.allUnits().length);
 
     // A fresh session (as if the page were reloaded), then load the save into it.
@@ -515,6 +516,79 @@ describe('GameSession.toSaveData / loadSaveData (round-trip, see persistence.ts 
     expect(reloaded.scenarioResult).toBe('defeat');
     expect(await reloaded.handleHexClick(0, 0)).toBeNull();
     expect(await reloaded.endTurn()).toBe('');
+  });
+
+  it('real, reported bug (save version 1): a veteran came back a rookie -- XP/level/traits/statuses/facing now survive a round trip', async () => {
+    const session = new GameSession(loadSnapshot());
+    await session.runStartupEvents();
+
+    // Make one unit as un-default as a real mid-campaign unit gets.
+    const unit = session.board.unitsForSide(1).find((u) => !u.canRecruit)!;
+    unit.experience = 17;
+    unit.level = 2;
+    unit.maxExperience = 56;
+    unit.facing = Direction.NorthWest;
+    unit.resting = false;
+    unit.setStatus('poisoned', true);
+    unit.setStatus('slowed', true);
+    const traitCfg = new WmlConfig();
+    traitCfg.setAttribute('id', 'strong');
+    unit.modifications = [{ kind: 'trait', cfg: traitCfg }];
+
+    const reloaded = new GameSession(loadSnapshot());
+    reloaded.loadSaveData(session.toSaveData());
+
+    const back = reloaded.board.unitAt(unit.location)!;
+    expect(back.experience).toBe(17);
+    expect(back.level).toBe(2);
+    expect(back.maxExperience).toBe(56);
+    expect(back.facing).toBe(Direction.NorthWest);
+    expect(back.resting).toBe(false);
+    expect(back.hasStatus('poisoned')).toBe(true);
+    expect(back.hasStatus('slowed')).toBe(true);
+    expect(back.modifications.map((m) => m.kind)).toEqual(['trait']);
+    expect(back.modifications[0]!.cfg.getString('id')).toBe('strong');
+  });
+
+  it('real, reported bug (save version 1): captured villages reverted to unowned on load, taking the side\'s income with them', async () => {
+    const session = new GameSession(loadSnapshot());
+    await session.runStartupEvents();
+
+    // Capture a village that side 1 does not start with.
+    const village = session.board.map.villages.find((loc) => session.board.villageOwner(loc) === undefined)!;
+    session.board.captureVillage(village, 1);
+    const villagesBefore = session.board.villageCount(1);
+    expect(villagesBefore).toBeGreaterThan(0);
+
+    const reloaded = new GameSession(loadSnapshot());
+    reloaded.loadSaveData(session.toSaveData());
+
+    expect(reloaded.board.villageOwner(village)).toBe(1);
+    expect(reloaded.board.villageCount(1)).toBe(villagesBefore);
+  });
+
+  it('real, reported bug (save version 1): the RNG stream restarted on load, so post-load combat diverged from the game that was saved', async () => {
+    const session = new GameSession(loadSnapshot());
+    await session.runStartupEvents();
+    // Play a real turn so the stream has actually advanced: side 2 is
+    // `controller=ai` here, and its recruiting/fighting draws randomness.
+    await session.endTurn();
+
+    const saved = session.toSaveData();
+    expect(saved.rng).toBeDefined();
+    // Non-vacuous only if the stream has actually advanced by now: with
+    // calls still at 0 a fresh session would trivially match.
+    expect(saved.rng!.calls).toBeGreaterThan(0);
+    // What the saved session itself would draw next...
+    // @ts-expect-error -- private: this is exactly the stream a load has to resume.
+    const expectedDraws = [session.rng.nextRandom(), session.rng.nextRandom(), session.rng.nextRandom()];
+
+    const reloaded = new GameSession(loadSnapshot());
+    reloaded.loadSaveData(saved);
+    // @ts-expect-error -- private, as above.
+    const actualDraws = [reloaded.rng.nextRandom(), reloaded.rng.nextRandom(), reloaded.rng.nextRandom()];
+
+    expect(actualDraws).toEqual(expectedDraws);
   });
 
   it('round-trips the live ToD schedule (Schedule.test.ts covers the deeper [time_area]/[replace_schedule] mutation cases; this just confirms the wiring)', async () => {

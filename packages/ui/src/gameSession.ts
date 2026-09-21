@@ -34,6 +34,8 @@ import {
   GameBoard,
   Location,
   Unit,
+  parseDirection,
+  writeDirection,
   getAdjacentTiles,
   reachableHexes,
   findPath,
@@ -663,49 +665,140 @@ export interface GameSessionOptions {
 }
 
 /**
- * `GameSession`'s own live-state save shape -- NOT a Wesnoth-compatible
- * save file (see `persistence.ts`'s doc comment for what's deliberately
- * left out: WML variables, replay/undo history). Plain JSON, versioned so
- * a future shape change can detect and reject an old save cleanly instead
- * of silently misreading it.
+ * Everything `SavedUnit` records about a live unit except where it stands
+ * (`toSaveData` adds x/y for board units and leaves it off for recall-list
+ * ones, which have no position -- upstream's own distinction).
+ */
+function savedUnitFields(u: Unit): SavedUnit {
+  return {
+    id: u.id || null,
+    name: u.name || null,
+    typeId: u.type.id,
+    side: u.side,
+    canRecruit: u.canRecruit,
+    hitpoints: u.hitpoints,
+    maxHitpoints: u.maxHitpoints,
+    movesLeft: u.movesLeft,
+    maxMoves: u.maxMoves,
+    attacksLeft: u.attacksLeft,
+    maxAttacksPerTurn: u.maxAttacksPerTurn,
+    experience: u.experience,
+    maxExperience: u.maxExperience,
+    level: u.level,
+    facing: writeDirection(u.facing),
+    resting: u.resting,
+    hidden: u.hidden,
+    role: u.role,
+    underlyingId: u.underlyingId,
+    profile: u.profile,
+    statuses: [...u.statuses],
+    modifications: u.modifications.map((m) => ({ kind: m.kind, cfg: m.cfg.toJSON() })),
+    variables: u.variables?.toJSON(),
+    goto: u.goto ? { x: u.goto.x, y: u.goto.y } : undefined,
+  };
+}
+
+/**
+ * One unit as a save carries it: every *mutable* thing `Unit` owns, since
+ * anything omitted here is silently reset to its unit type's default when
+ * the save is loaded.
+ *
+ * Real, reported class of bug (fixed in save version 2): version 1 stored
+ * only id/name/type/side/position/hp/moves/attacks, so a reloaded game
+ * handed every veteran back at 0 XP, base level, no traits and no status
+ * effects -- a poisoned, slowed, level-3 unit came back a healthy level-1
+ * one. `loadSaveData` applies each field only when present, which is also
+ * how a version-1 save upgrades cleanly: its missing fields simply keep
+ * the freshly-created unit's type defaults, exactly as before.
+ *
+ * Field names mirror `Unit`'s own, not WML's -- the Wesnoth-format
+ * converter (`save/wesnothSave.ts`) is the single place that translates
+ * between the two, so nothing else in the app has to know WML spelling.
+ */
+export interface SavedUnit {
+  id: string | null;
+  name: string | null;
+  typeId: string;
+  side: number;
+  canRecruit: boolean;
+  hitpoints: number;
+  maxHitpoints: number;
+  movesLeft: number;
+  maxMoves: number;
+  attacksLeft: number;
+  maxAttacksPerTurn: number;
+  /** Board position. Omitted for a recall-list unit, which has none (upstream's own rule: a `[unit]` with no x/y is a recall unit). */
+  x?: number;
+  y?: number;
+  // --- everything below is version 2; optional on read (see above) ---
+  experience?: number;
+  maxExperience?: number;
+  level?: number;
+  /** WML's own direction spelling (`"nw"`), not the numeric `Direction` enum, so the JSON survives an enum reorder. */
+  facing?: string;
+  resting?: boolean;
+  hidden?: boolean;
+  role?: string;
+  underlyingId?: number;
+  profile?: string;
+  /** `[status]`: `poisoned`, `slowed`, `guardian`, and any scenario-defined flag. */
+  statuses?: readonly string[];
+  /** `[modifications]`: traits, objects and advancements -- opaque WML this session only carries. */
+  modifications?: readonly { kind: string; cfg: WmlConfigJson }[];
+  /** The unit's own `[variables]` bag. */
+  variables?: WmlConfigJson;
+  goto?: { x: number; y: number };
+}
+
+/**
+ * `GameSession`'s own live-state save shape -- NOT itself a Wesnoth save
+ * file, but complete enough to be converted into one losslessly (see
+ * `save/wesnothSave.ts`, which is the only module that knows the WML
+ * spelling of any of this). Plain JSON, versioned so a shape change can
+ * be detected rather than silently misread.
+ *
+ * Version 2 (Phase 26) made the capture actually complete: full units (see
+ * `SavedUnit`), village ownership, RNG position, and which campaign/
+ * scenario the save belongs to. Every version-2 addition is optional on
+ * read, so a version-1 save still loads -- just without the state it never
+ * recorded.
  */
 export interface SaveGameData {
-  version: 1;
+  version: 1 | 2;
   turnNumber: number;
   activeSide: number;
   scenarioResult: 'victory' | 'defeat' | null;
   startupEventsRun: boolean;
-  teams: readonly { side: number; gold: number; shroudData?: string; fogData?: string }[];
-  units: readonly {
-    id: string | null;
-    name: string | null;
-    typeId: string;
+  /**
+   * Which scenario and campaign this save belongs to. Version 1 stored the
+   * scenario id only outside the save (in the IndexedDB record), and the
+   * campaign nowhere at all -- so a save could not be found, filtered or
+   * resumed from anywhere but the scenario it was taken in.
+   */
+  scenarioId?: string;
+  scenarioName?: string;
+  campaignId?: string;
+  teams: readonly {
     side: number;
-    x: number;
-    y: number;
-    canRecruit: boolean;
-    hitpoints: number;
-    maxHitpoints: number;
-    movesLeft: number;
-    maxMoves: number;
-    attacksLeft: number;
-    maxAttacksPerTurn: number;
+    gold: number;
+    shroudData?: string;
+    fogData?: string;
+    /**
+     * Villages this side owns (`team::villages()`). Real, reported bug:
+     * without these a reloaded game re-derived ownership from the
+     * scenario's *initial* unit placement, so every village captured
+     * during play reverted to unowned and the side's income with it.
+     */
+    villages?: readonly { x: number; y: number }[];
   }[];
+  units: readonly SavedUnit[];
   /**
    * Every side's recall-list units (off-board, so no x/y) -- added
    * alongside the Recall UI/carryover work; optional on read so a save
    * written before this field existed still loads (as an empty recall
    * list for every side, via `loadSaveData`'s `data.recall ?? []`).
    */
-  recall?: readonly {
-    side: number;
-    id: string | null;
-    name: string | null;
-    typeId: string;
-    hitpoints: number;
-    maxHitpoints: number;
-    level: number;
-  }[];
+  recall?: readonly SavedUnit[];
   /**
    * The live ToD schedule's mutated state (`[replace_schedule]`'s new
    * global schedule, every active `[time_area]`) -- optional on read so a
@@ -724,6 +817,16 @@ export interface SaveGameData {
   variables?: WmlConfigJson;
   /** Every `[option]`/`[text_input]` answer taken so far, for Phase 25's replay log. */
   choices?: readonly { value?: number; text?: string; side: number }[];
+  /**
+   * Where the synced RNG stream had got to (`random_seed`/`random_calls`,
+   * upstream's own two fields -- `MtRng` already models both). Real bug:
+   * without them a reload restarted the stream from the session's initial
+   * seed, so combat after a load diverged from the game that was saved --
+   * and a replay built from that save could never line up.
+   */
+  rng?: { seed: string; calls: number };
+  /** The "carried over N gold" result this scenario was entered with, for the UI banner (it is derived from the *previous* scenario, so it cannot be recomputed here). */
+  goldCarryover?: GoldCarryoverResult | null;
 }
 
 /**
@@ -985,12 +1088,22 @@ export class GameSession {
    * scenario started fresh. See `computeGoldCarryover`'s own doc comment
    * for what each field means; the UI can show `goldCarryover.carryoverGoldValue`
    * as a "Carried over N gold" message.
+   *
+   * Not `readonly`: a save records it and `loadSaveData` restores it, since
+   * it is derived from the *previous* scenario and so cannot be recomputed
+   * by a session that was started from a save file.
    */
-  readonly goldCarryover: GoldCarryoverResult | null;
+  goldCarryover: GoldCarryoverResult | null;
 
   /** Resolves any of the ~332 real unit types the snapshot ships (board units, event-spawned units, recruit lists) -- see `createTypeResolver`. */
   private readonly resolveType: (id: string) => UnitType;
   private readonly rng: RngDeterministic;
+  /**
+   * The generator `rng` draws from, held separately because only `MtRng`
+   * exposes the seed and draw count a save has to record and restore
+   * (`random_seed`/`random_calls` -- see `SaveGameData.rng`).
+   */
+  private readonly mtRng: MtRng;
   /**
    * Assigns each live `Unit` object a stable, session-local render key
    * (`renderUnits`' `SnapshotUnit.underlyingId`) the first time it's seen,
@@ -1059,7 +1172,8 @@ export class GameSession {
     this.activeSide = this.playerSide;
     this.board = gameBoardFromSnapshot(snapshot).board;
     this.resolveType = createTypeResolver(snapshot);
-    this.rng = new RngDeterministic(new MtRng(options.seed ?? 0xc0ffee));
+    this.mtRng = new MtRng(options.seed ?? 0xc0ffee);
+    this.rng = new RngDeterministic(this.mtRng);
     this.goldCarryover = options.goldCarryover ?? null;
     // random_start_time= is resolved once here, before any events run --
     // matches upstream's own timing (tod_manager::resolve_random, called
@@ -2493,45 +2607,40 @@ export class GameSession {
     this.processAdvancementQueue();
   }
 
-  /** Captures every mutable bit of live state -- see `SaveGameData`'s own doc comment. */
+  /**
+   * Captures every mutable bit of live state -- see `SaveGameData`'s own
+   * doc comment, and `SavedUnit`'s for why "every" is load-bearing here
+   * (anything omitted silently reverts to a unit type's defaults on load).
+   */
   toSaveData(): SaveGameData {
     const variables = this.eventPump.ctx.variables.toConfig().toJSON();
     return {
-      version: 1,
+      version: 2,
       turnNumber: this.turnNumber,
       activeSide: this.activeSide,
       scenarioResult: this.scenarioResult,
+      scenarioId: this.snapshot.scenario.id,
+      scenarioName: this.snapshot.scenario.name,
       schedule: this.schedule.exportState(),
       variables,
       choices: this.eventPump.ctx.choices.map((c) => ({ ...c })),
       startupEventsRun: this.startupEventsRun,
-      teams: this.board.teams().map((t) => ({ side: t.side, gold: t.gold, shroudData: t.shroud.write(), fogData: t.fog.write() })),
+      rng: { seed: this.mtRng.getRandomSeedStr(), calls: this.mtRng.getRandomCalls() },
+      goldCarryover: this.goldCarryover,
+      teams: this.board.teams().map((t) => ({
+        side: t.side,
+        gold: t.gold,
+        shroudData: t.shroud.write(),
+        fogData: t.fog.write(),
+        villages: this.board.villagesOwnedBy(t.side).map((loc) => ({ x: loc.x, y: loc.y })),
+      })),
       units: this.board.allUnits().map((u) => ({
-        id: u.id || null,
-        name: u.name || null,
-        typeId: u.type.id,
-        side: u.side,
+        ...savedUnitFields(u),
         x: u.location.x,
         y: u.location.y,
-        canRecruit: u.canRecruit,
-        hitpoints: u.hitpoints,
-        maxHitpoints: u.maxHitpoints,
-        movesLeft: u.movesLeft,
-        maxMoves: u.maxMoves,
-        attacksLeft: u.attacksLeft,
-        maxAttacksPerTurn: u.maxAttacksPerTurn,
       })),
-      recall: this.board.teams().flatMap((t) =>
-        this.board.recallList(t.side).map((u) => ({
-          side: t.side,
-          id: u.id || null,
-          name: u.name || null,
-          typeId: u.type.id,
-          hitpoints: u.hitpoints,
-          maxHitpoints: u.maxHitpoints,
-          level: u.level,
-        })),
-      ),
+      // Recall-list units carry no x/y, exactly as upstream writes them.
+      recall: this.board.teams().flatMap((t) => this.board.recallList(t.side).map((u) => savedUnitFields(u))),
     };
   }
 
@@ -2552,19 +2661,7 @@ export class GameSession {
       this.board.clearRecallList(t.side);
     }
     for (const u of data.units) {
-      const type = this.resolveType(u.typeId);
-      const unit = Unit.create(type, u.side, new Location(u.x, u.y), {
-        id: u.id ?? undefined,
-        name: u.name ?? undefined,
-        canRecruit: u.canRecruit,
-      });
-      unit.hitpoints = u.hitpoints;
-      unit.maxHitpoints = u.maxHitpoints;
-      unit.movesLeft = u.movesLeft;
-      unit.maxMoves = u.maxMoves;
-      unit.attacksLeft = u.attacksLeft;
-      unit.maxAttacksPerTurn = u.maxAttacksPerTurn;
-      this.board.addUnit(unit);
+      this.board.addUnit(this.unitFromSave(u, new Location(u.x ?? 0, u.y ?? 0)));
     }
     for (const t of data.teams) {
       const team = this.board.getTeam(t.side);
@@ -2572,21 +2669,19 @@ export class GameSession {
       team.gold = t.gold;
       if (t.shroudData !== undefined) team.shroud.read(t.shroudData);
       if (t.fogData !== undefined) team.fog.read(t.fogData);
+      // Optional-on-read: a version-1 save recorded no village ownership at
+      // all, and re-derived it (wrongly) from initial unit placement.
+      if (t.villages) {
+        for (const v of t.villages) this.board.captureVillage(new Location(v.x, v.y), t.side);
+      }
     }
     // Optional-on-read (see `SaveGameData.recall`'s own doc comment): a save
     // written before this field existed simply had no recall-list units.
     for (const r of data.recall ?? []) {
-      const type = this.resolveType(r.typeId);
-      const unit = Unit.create(type, r.side, Location.NULL, {
-        id: r.id ?? undefined,
-        name: r.name ?? undefined,
-        canRecruit: false,
-      });
-      unit.hitpoints = r.hitpoints;
-      unit.maxHitpoints = r.maxHitpoints;
-      unit.level = r.level;
-      this.board.addToRecallList(r.side, unit);
+      this.board.addToRecallList(r.side, this.unitFromSave(r, Location.NULL));
     }
+    if (data.rng) this.mtRng.seedRandom(data.rng.seed, data.rng.calls);
+    if (data.goldCarryover !== undefined) this.goldCarryover = data.goldCarryover;
     this.turnNumber = data.turnNumber;
     this.activeSide = data.activeSide;
     this.scenarioResult = data.scenarioResult;
@@ -2598,6 +2693,43 @@ export class GameSession {
     this.clearSelection();
     this.lastKnownVillageOwner.clear();
     this.syncVillageMemory();
+  }
+
+  /**
+   * Rebuilds one unit from its saved form at `location`. Every version-2
+   * field is applied only when present, so a version-1 save (which carried
+   * almost none of them) simply keeps the unit type's own defaults for the
+   * rest -- exactly the behaviour it had before version 2 existed.
+   */
+  private unitFromSave(u: SavedUnit, location: Location): Unit {
+    const unit = Unit.create(this.resolveType(u.typeId), u.side, location, {
+      id: u.id ?? undefined,
+      name: u.name ?? undefined,
+      canRecruit: u.canRecruit,
+      role: u.role,
+      hidden: u.hidden,
+      underlyingId: u.underlyingId,
+      facing: u.facing !== undefined ? parseDirection(u.facing) : undefined,
+      profile: u.profile,
+      modifications: u.modifications?.map((m) => ({ kind: m.kind, cfg: WmlConfig.fromJSON(m.cfg) })),
+      variables: u.variables !== undefined ? WmlConfig.fromJSON(u.variables) : undefined,
+    });
+    unit.hitpoints = u.hitpoints;
+    unit.maxHitpoints = u.maxHitpoints;
+    unit.movesLeft = u.movesLeft;
+    unit.maxMoves = u.maxMoves;
+    unit.attacksLeft = u.attacksLeft;
+    unit.maxAttacksPerTurn = u.maxAttacksPerTurn;
+    if (u.experience !== undefined) unit.experience = u.experience;
+    if (u.maxExperience !== undefined) unit.maxExperience = u.maxExperience;
+    if (u.level !== undefined) unit.level = u.level;
+    if (u.resting !== undefined) unit.resting = u.resting;
+    if (u.statuses) {
+      unit.statuses.clear();
+      for (const s of u.statuses) unit.statuses.add(s);
+    }
+    if (u.goto) unit.goto = new Location(u.goto.x, u.goto.y);
+    return unit;
   }
 
   /** Builds a fresh session from `snapshot`, then overwrites its live state from a save. */
