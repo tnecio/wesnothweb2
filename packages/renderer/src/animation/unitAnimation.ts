@@ -218,6 +218,20 @@ export interface UnitAnimationDef {
    * module doc comment on what's data-extraction vs. rendering).
    */
   readonly animationParams: UnitFrameDef;
+  /**
+   * True only for a `[movement_anim]` branch that declared no `offset=`
+   * of its own and so got the engine-injected `MOVEMENT_DEFAULT_OFFSET`
+   * fallback (see that constant's own doc comment). `playback.ts`'s
+   * multi-hex grouping (real, reported bug: "the move animation between
+   * adjacent hexes plays twice") only merges consecutive same-direction
+   * legs into one continuous playback when this is true — the default
+   * offset's ramp REPEATS every 200ms specifically so each repeat can
+   * line up with one hex of a reused animation instance (see
+   * `MOVEMENT_DEFAULT_OFFSET`'s doc comment); an author-authored custom
+   * `offset=` has no such guaranteed periodicity, so grouping it the same
+   * way would be a guess, not a port of a real mechanism.
+   */
+  readonly usesDefaultMovementOffset: boolean;
 }
 
 function buildAnimationDef(branch: AnimBranch, events: readonly string[], baseScoreDelta = 0): UnitAnimationDef {
@@ -242,6 +256,7 @@ function buildAnimationDef(branch: AnimBranch, events: readonly string[], baseSc
     frames,
     missileFrames: bchildren(branch, 'missile_frame').map(parseFrame),
     animationParams: buildFrameFields(branchCfg, totalDurationMs),
+    usesDefaultMovementOffset: false,
   };
 }
 
@@ -325,6 +340,22 @@ function buildDefendAnimations(branch: AnimBranch): UnitAnimationDef[] {
 const MOVEMENT_DEFAULT_OFFSET = Array(34).fill('0~1:200').join(',');
 
 /**
+ * The literal per-hex pacing constant real Wesnoth's own movement loop
+ * rounds to (`units/udisplay.cpp`'s `move_unit_between`: "we round it to
+ * the next multiple of 200 so that movement aligns to hex changes
+ * properly") -- and exactly the segment length of every repeat in
+ * `MOVEMENT_DEFAULT_OFFSET` above, which is not a coincidence: that
+ * string exists so each 200ms repeat can be consumed by one hex of a
+ * continuously-reused "movement" animation instance
+ * (`unit_animator::replace_anim_if_invalid`, animation.cpp ~L1365 --
+ * keeps the same running instance across consecutive hexes rather than
+ * restarting it, as long as it still matches). `playback.ts`'s multi-hex
+ * grouping uses this to know how much of a grouped cue's continuous
+ * elapsed time belongs to each hex.
+ */
+export const HEX_STEP_MS = 200;
+
+/**
  * `add_anims`' own `offset=` default for `[attack_anim]` (animation.cpp
  * ~L834-836) when an author declares neither `offset=` nor any
  * `[missile_frame]` (a ranged attack's projectile carries its own
@@ -405,7 +436,9 @@ export function parseUnitAnimations(unitTypeCfg: WmlConfig): UnitAnimationDef[] 
     ['poisoned'],
   )]);
 
-  forTag('movement_anim', (branch) => [buildAnimationDef(withDefaultOffset(branch, MOVEMENT_DEFAULT_OFFSET), ['movement'])]);
+  forTag('movement_anim', (branch) => [
+    { ...buildAnimationDef(withDefaultOffset(branch, MOVEMENT_DEFAULT_OFFSET), ['movement']), usesDefaultMovementOffset: !bhas(branch, 'offset') },
+  ]);
   forTag('attack_anim', (branch) => [
     buildAnimationDef(bchildren(branch, 'missile_frame').length > 0 ? branch : withDefaultOffset(branch, ATTACK_DEFAULT_OFFSET), ['attack']),
   ]);

@@ -3611,3 +3611,67 @@ Gates: engine 608, ui 144, renderer 194, lua-bridge 32 tests (+2 skip);
 The Horseman/Knight long-ride case (`anim_long_ride` menu item) is built
 into the same testbed but not yet probed -- next up if the glitch is
 still visible there.
+
+## 2026-09-21 — Fix: the move animation between adjacent hexes played twice
+
+Follow-up to the entry above. Probed the Horseman long-ride case
+(`anim_long_ride`) it left open, and separately asked the user's own
+question directly: why do Horseman and Skeleton specifically show a
+"plays twice per hex" glitch? Root-caused against the real engine, not
+just this port's code.
+
+**What's special about Horseman/Skeleton.** Both use the
+`MOVING_ANIM_DIRECTIONAL_*_FRAME` macro family (`animation-utils2.cfg`),
+whose `[movement_anim]` declares no `offset=` of its own, so it falls
+back to the engine's injected default -- copied verbatim from
+`animation.cpp:766`: a REPEATING ramp, `"0~1:200"` x34 (each 200ms
+segment independently glides 0->1). Elvish Fighter, the unit most
+existing animation tests use, authors its own non-directional
+`[movement_anim]` and doesn't exercise the directional-branch path.
+
+**The real mechanism, found in `units/udisplay.cpp` and
+`units/animation.cpp`.** A multi-hex move in real Wesnoth does not start
+a fresh "movement" animation instance per hex. `unit_animator::
+replace_anim_if_invalid` (animation.cpp ~L1365) reuses the SAME running
+instance across consecutive hexes for as long as it still matches (same
+chosen animation, not yet finished), just updating src/dst
+(`update_parameters`) while elapsed time keeps counting continuously --
+`move_unit_between`'s own comment: "we round it to the next multiple of
+200 so that movement aligns to hex changes properly." Each 200ms ramp
+repeat lines up with exactly one hex of that reused instance.
+
+**What this port did instead.** `buildMoveAnimationCues` built one
+independent cue per leg and `SnapshotBoard.playAnimations` restarted
+elapsed=0 for each, playing it for its full frame-cycle duration --
+400ms for Horseman's 8-frame run, 600ms for Skeleton's 12-frame one,
+both 2x-3x the ramp's 200ms segment. Within one hex's worth of travel
+the offset did a full 0->1->(snap)->0->1: glide to the destination, snap
+back, glide again.
+
+**Fix.** `UnitAnimationDef` gained `usesDefaultMovementOffset` (true only
+when a `[movement_anim]` branch got the engine-injected fallback, not an
+author-authored `offset=`). `buildMoveAnimationCues` now groups
+consecutive legs that resolve to the SAME chosen animation into one cue
+with a new `legs` field, capped at `floor(animationDurationMs(anim) /
+HEX_STEP_MS)` hexes per group (2 for Horseman, 3 for Skeleton -- both
+exact multiples in real content, so a group boundary always lands
+cleanly on a hex boundary, mirroring upstream's own
+`animation_finished_potential()` restart). `SnapshotBoard.playAnimations`
+samples the whole group with one continuously increasing elapsed clock
+(so the offset ramp and the walk-cycle frame images both progress
+naturally) but switches which leg's src/dst/direction to interpolate
+against every `HEX_STEP_MS`.
+
+**Verification.** A new real-content regression test
+(`unitAnimation.real.test.ts`) samples the actual Horseman movement
+animation straddling a leg boundary and asserts position stays
+continuous (close to the shared hex) rather than snapping back to the
+first leg's own source -- with a sanity check confirming the same
+sampling WOULD show the snap-back if legs weren't switched, so the test
+actually discriminates the bug. Live re-probe of `anim_long_ride` (a
+6-hex Horseman ride): sprite x-coordinate now advances strictly
+monotonically hex to hex with zero backward steps, settling cleanly at
+the destination.
+
+Gates: engine 608, ui 144, renderer 198 tests (+4 new), lua-bridge 32,
+oracle-tools 2 (+1 skip); 0 typecheck/svelte-check errors.

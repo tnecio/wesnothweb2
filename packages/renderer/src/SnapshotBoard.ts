@@ -89,7 +89,7 @@ import { ImageCache, hexedRef, setImageBaseUrl, setEngineImageBaseUrl } from './
 import { joinRef } from './images/ipf.js';
 import { resolveSideColorId } from './images/teamColor.js';
 import { sampleAnimation, animationDurationMs } from './animation/playback.js';
-import type { UnitAnimationDef } from './animation/unitAnimation.js';
+import { HEX_STEP_MS, type UnitAnimationDef } from './animation/unitAnimation.js';
 import { makeLayerSprite } from './terrainPositioning.js';
 import type { BuildingRule } from './terrain/terrainGraphicsRules.js';
 import { layoutTerrain, type TerrainLayout } from './terrain/terrainLayout.js';
@@ -444,6 +444,25 @@ export interface UnitAnimationCue {
    * Real, reported bug.
    */
   readonly holdInPlace?: boolean;
+  /**
+   * Real, reported bug ("the move animation between adjacent hexes plays
+   * twice on every step"): consecutive same-direction legs of a multi-hex
+   * move that share one chosen `anim` using the engine-injected default
+   * movement offset (`UnitAnimationDef.usesDefaultMovementOffset`) are
+   * grouped by `GameShell.svelte`'s `buildMoveAnimationCues` into ONE cue
+   * with `legs` set, instead of one full-duration cue per hex -- mirroring
+   * `unit_animator::replace_anim_if_invalid` (animation.cpp ~L1365), which
+   * keeps reusing the SAME running "movement" animation instance across
+   * hexes rather than restarting it. `playAnimations` samples the whole
+   * group with one continuously increasing elapsed clock (so the default
+   * offset's repeating 200ms ramp lines up one repeat per hex, and the
+   * walk-cycle frame images don't restart every hex either), picking
+   * which `legs` entry's `srcHex`/`dstHex`/`direction` to interpolate
+   * against via `HEX_STEP_MS`. `srcHex`/`dstHex`/`direction` above still
+   * cover the group's first source and last destination (for the no-anim
+   * synthetic fallback and the final resting position) when this is set.
+   */
+  readonly legs?: readonly { srcHex: HexPoint; dstHex: HexPoint; direction: Direction }[];
 }
 
 /** A stable per-unit key for sprite identity -- see `SnapshotUnit.underlyingId`'s own doc comment. Exported so callers building `UnitAnimationCue`s key them identically to how `renderUnits` will look them up. */
@@ -1275,8 +1294,23 @@ export class SnapshotBoard {
         if (!visual) return null;
         const src = hexToPixel(toHexCoord(cue.srcHex.x, cue.srcHex.y));
         const dst = hexToPixel(toHexCoord(cue.dstHex.x, cue.dstHex.y));
-        const duration = (cue.anim ? animationDurationMs(cue.anim) : defaultDurationMs) / speedMultiplier;
-        return { cue, visual, src, dst, duration: Math.max(1, duration) };
+        // One `HEX_STEP_MS` per grouped leg (see `UnitAnimationCue.legs`'
+        // own doc comment) instead of the whole anim's frame-cycle
+        // duration -- that's what makes each hex get exactly one repeat
+        // of the default offset's ramp rather than however many fit in
+        // one leg's full playback.
+        const legPixels = cue.legs?.map((leg) => ({
+          src: hexToPixel(toHexCoord(leg.srcHex.x, leg.srcHex.y)),
+          dst: hexToPixel(toHexCoord(leg.dstHex.x, leg.dstHex.y)),
+          direction: leg.direction,
+        }));
+        const duration =
+          (legPixels && legPixels.length > 0
+            ? legPixels.length * HEX_STEP_MS
+            : cue.anim
+              ? animationDurationMs(cue.anim)
+              : defaultDurationMs) / speedMultiplier;
+        return { cue, visual, src, dst, legPixels, duration: Math.max(1, duration) };
       })
       .filter((a): a is NonNullable<typeof a> => a !== null);
 
@@ -1286,20 +1320,21 @@ export class SnapshotBoard {
     // no frame swap stalls on a still-loading image mid-animation.
     // Phase 28a P0: the time this takes is an animation's start latency (measure-load.mjs).
     performance.mark('anim:frames-start');
-    for (const { cue, visual } of active) {
+    const isDiagonal = (d: Direction): boolean =>
+      d === Direction.NorthEast || d === Direction.SouthEast || d === Direction.NorthWest || d === Direction.SouthWest;
+    for (const { cue, visual, legPixels } of active) {
       if (!cue.anim) continue;
       const paths = new Set<string>();
+      // A grouped multi-leg cue (see `UnitAnimationCue.legs`) can switch
+      // direction leg to leg (e.g. a WML-authored s/se/sw bucket covers
+      // all three) -- preload for every direction actually used, not just
+      // the cue's own first-leg `direction`.
+      const diagonalUsed = new Set<boolean>([isDiagonal(cue.direction), ...(legPixels?.map((l) => isDiagonal(l.direction)) ?? [])]);
       for (const frame of cue.anim.frames) {
-        const seq =
-          cue.direction === Direction.NorthEast ||
-          cue.direction === Direction.SouthEast ||
-          cue.direction === Direction.NorthWest ||
-          cue.direction === Direction.SouthWest
-            ? frame.imageDiagonal.length > 0
-              ? frame.imageDiagonal
-              : frame.image
-            : frame.image;
-        for (const step of seq) paths.add(step.value);
+        for (const diagonal of diagonalUsed) {
+          const seq = diagonal && frame.imageDiagonal.length > 0 ? frame.imageDiagonal : frame.image;
+          for (const step of seq) paths.add(step.value);
+        }
       }
       await Promise.all([...paths].map((p) => ImageCache.resolve(this.teamColoredRef(p, visual.lastSide, visual.flagRgb))));
     }
@@ -1312,7 +1347,7 @@ export class SnapshotBoard {
       const tick = async (): Promise<void> => {
         const elapsed = performance.now() - start;
 
-        for (const { cue, visual, src, dst, duration } of active) {
+        for (const { cue, visual, src, dst, legPixels, duration } of active) {
           const t = Math.min(elapsed, duration);
           if (cue.anim) {
             // `t` is wall-clock time (already compressed by speedMultiplier);
@@ -1320,7 +1355,25 @@ export class SnapshotBoard {
             // timeline so a real anim's frame/offset progression plays
             // faster, not truncated -- see this method's own doc comment.
             const animT = t * speedMultiplier;
-            const sample = sampleAnimation(cue.anim, cue.direction, animT, src, dst);
+            // A grouped multi-leg cue samples ONE continuously-running
+            // animation across every hex (see `UnitAnimationCue.legs`'
+            // own doc comment) -- `animT` keeps counting up across the
+            // whole group (so the default offset's ramp and the frame
+            // images both progress naturally, exactly as the single
+            // reused instance they're modelling would), but which hex
+            // pair to interpolate position against switches every
+            // `HEX_STEP_MS`.
+            let curSrc = src;
+            let curDst = dst;
+            let curDirection = cue.direction;
+            if (legPixels && legPixels.length > 0) {
+              const legIndex = Math.min(Math.floor(animT / HEX_STEP_MS), legPixels.length - 1);
+              const leg = legPixels[legIndex]!;
+              curSrc = leg.src;
+              curDst = leg.dst;
+              curDirection = leg.direction;
+            }
+            const sample = sampleAnimation(cue.anim, curDirection, animT, curSrc, curDst);
             if (sample.imagePath) {
               const texture = await ImageCache.resolve(this.teamColoredRef(sample.imagePath, visual.lastSide, visual.flagRgb));
               if (texture && visual.sprite && visual.sprite.texture !== texture) visual.sprite.texture = texture;

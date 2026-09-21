@@ -98,6 +98,7 @@ export {
 export {
   MATCH_FAIL,
   DEFAULT_ANIM,
+  HEX_STEP_MS,
   type AnimBranch,
   type UnitAnimationDef,
   type MatchOptions,
@@ -109,6 +110,8 @@ export {
   selectTopAnimations,
   chooseAnimation,
 } from './animation/unitAnimation'
+
+export { animationDurationMs } from './animation/playback'
 
 export {
   type UnitFrameDef,

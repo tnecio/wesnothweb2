@@ -12,7 +12,8 @@ import { UnitType } from '@wesnothweb2/engine/src/model/UnitType.js';
 import { Unit } from '@wesnothweb2/engine/src/model/Unit.js';
 import { Direction, Location } from '@wesnothweb2/engine/src/model/Location.js';
 import type { AnimationContext } from '../../src/animation/animationContext.js';
-import { chooseAnimation, parseUnitAnimations, selectTopAnimations } from '../../src/animation/unitAnimation.js';
+import { HEX_STEP_MS, chooseAnimation, parseUnitAnimations, selectTopAnimations } from '../../src/animation/unitAnimation.js';
+import { animationDurationMs, sampleAnimation } from '../../src/animation/playback.js';
 
 /**
  * Real-content verification, following this project's established standard
@@ -324,5 +325,111 @@ describe('[filter_second] on a real [recruiting_anim] (real Dark Sorcerer conten
     for (const anim of top) {
       expect(anim.secondaryUnitFilters.length).toBe(0);
     }
+  });
+});
+
+/**
+ * Real, reported bug: "the move animation between adjacent hexes plays
+ * twice on every step" (Horseman and Skeleton both -- any real unit whose
+ * `[movement_anim]` uses the `MOVING_ANIM_DIRECTIONAL_*_FRAME` macro
+ * family and so gets no author-declared `offset=`). Root cause and fix
+ * are documented on `UnitAnimationCue.legs` and `HEX_STEP_MS` (both
+ * `@wesnothweb2/renderer`) and `GameShell.svelte`'s `buildMoveAnimationCues`
+ * — this reproduces the actual failure mode directly against real content,
+ * without needing PixiJS or the Svelte grouping glue: sample the SAME
+ * `UnitAnimationDef` at a leg boundary two ways (the two-leg group
+ * `SnapshotBoard.playAnimations` now builds) and confirm position stays
+ * continuous, rather than snapping back to the first leg's own source hex.
+ */
+describe('multi-hex movement grouping (real Horseman + Skeleton content) -- "plays twice per hex" regression', () => {
+  const horsemanCfg = loadUnitTypeCfg('core/units/humans/Horseman.cfg', defines);
+  const horsemanAnims = parseUnitAnimations(horsemanCfg);
+  const skeletonCfg = loadUnitTypeCfg('core/units/undead/Skeleton.cfg', defines);
+  const skeletonAnims = parseUnitAnimations(skeletonCfg);
+
+  function movementFor(cfg: WmlConfig, animations: ReturnType<typeof parseUnitAnimations>, unitType: UnitType) {
+    const unit = Unit.create(unitType, 2, new Location(0, 0));
+    unit.facing = Direction.SouthEast;
+    const ctx: AnimationContext = {
+      loc: unit.location, secondLoc: unit.location, myUnit: unit, event: 'movement',
+      value: 0, value2: 0, hit: 'invalid', terrainAtLoc: NONE_TERRAIN,
+    };
+    const anim = chooseAnimation(animations, ctx);
+    if (!anim) throw new Error('no movement animation matched');
+    return anim;
+  }
+
+  it('Horseman: [movement_anim] (MOVING_ANIM_DIRECTIONAL_8_FRAME) has no author offset= and so uses the engine-injected default -- the condition the "plays twice" bug needs', () => {
+    const anim = movementFor(horsemanCfg, horsemanAnims, buildUnitType(horsemanCfg));
+    expect(anim.usesDefaultMovementOffset).toBe(true);
+    expect(animationDurationMs(anim)).toBe(400); // 8 frames x 50ms
+  });
+
+  it('Skeleton: same, with its own 12-frame cycle', () => {
+    const anim = movementFor(skeletonCfg, skeletonAnims, buildUnitType(skeletonCfg));
+    expect(anim.usesDefaultMovementOffset).toBe(true);
+    expect(animationDurationMs(anim)).toBe(600); // 12 frames x 50ms
+  });
+
+  it('both real durations are exact multiples of HEX_STEP_MS -- a grouped batch boundary always lands on a hex boundary, never mid-glide', () => {
+    const horseman = movementFor(horsemanCfg, horsemanAnims, buildUnitType(horsemanCfg));
+    const skeleton = movementFor(skeletonCfg, skeletonAnims, buildUnitType(skeletonCfg));
+    expect(animationDurationMs(horseman) % HEX_STEP_MS).toBe(0);
+    expect(animationDurationMs(skeleton) % HEX_STEP_MS).toBe(0);
+  });
+
+  it('Horseman, two-hex group: position is continuous across the HEX_STEP_MS leg boundary -- NOT a snap back to the first leg\'s own source hex (the actual pre-fix bug)', () => {
+    const anim = movementFor(horsemanCfg, horsemanAnims, buildUnitType(horsemanCfg));
+    const direction = Direction.SouthEast;
+    // Three hexes in an unbroken SE line, 100px apart on each axis --
+    // real pixel geometry isn't the point here, only that leg1.src ===
+    // leg0.dst (the actual adjacency `SnapshotBoard.playAnimations` relies
+    // on for continuity).
+    const hex0 = { x: 0, y: 0 };
+    const hex1 = { x: 100, y: 100 };
+    const hex2 = { x: 200, y: 200 };
+
+    const legs = [
+      { src: hex0, dst: hex1 },
+      { src: hex1, dst: hex2 },
+    ];
+
+    function positionAt(animT: number) {
+      const legIndex = Math.min(Math.floor(animT / HEX_STEP_MS), legs.length - 1);
+      const { src, dst } = legs[legIndex]!;
+      return sampleAnimation(anim, direction, animT, src, dst);
+    }
+
+    // `sampleProgressivePair` (mirroring real `progressive_pair::
+    // get_current_element`) resolves a sample landing EXACTLY on a
+    // segment boundary to the END of the PRIOR segment, not the start of
+    // the next one -- so straddle the boundary at +-1ms, not exactly on
+    // it, to see the next segment actually take effect (matches real
+    // usage: `animT` is a continuous `performance.now()`-derived float,
+    // never exactly on a 200ms tick).
+    const justBeforeBoundary = positionAt(HEX_STEP_MS - 1);
+    const justAfterBoundary = positionAt(HEX_STEP_MS + 1);
+
+    // The pre-fix bug: resampling the SAME leg (hex0->hex1) past its own
+    // 200ms ramp segment snaps position back toward hex0. Assert the
+    // fixed behaviour is the opposite: position at the boundary is close
+    // to hex1 (leg0's destination == leg1's source) on BOTH sides of it.
+    const distTo = (p: { x: number; y: number }, hex: { x: number; y: number }) =>
+      Math.hypot(p.x - hex.x, p.y - hex.y);
+
+    expect(distTo(justBeforeBoundary, hex1)).toBeLessThan(distTo(justBeforeBoundary, hex0));
+    expect(distTo(justAfterBoundary, hex1)).toBeLessThan(distTo(justAfterBoundary, hex2));
+    // The two samples straddling the boundary are close to each other --
+    // no visible jump -- unlike the pre-fix bug, where the same instant
+    // would jump from ~hex1 (offset~1 on the still-single leg) back to
+    // ~hex0 (offset resets to ~0 on that SAME leg).
+    expect(distTo(justBeforeBoundary, justAfterBoundary)).toBeLessThan(distTo(hex0, hex1) * 0.25);
+
+    // Sanity check that this test actually discriminates the bug: sampling
+    // the SAME leg's own src/dst past its 200ms ramp segment (the pre-fix
+    // behaviour -- one fresh cue per hex, played for its full 400ms
+    // duration with no leg-switching) really does snap back toward hex0.
+    const buggyAfterBoundary = sampleAnimation(anim, direction, HEX_STEP_MS + 1, hex0, hex1);
+    expect(distTo(buggyAfterBoundary, hex0)).toBeLessThan(distTo(buggyAfterBoundary, hex1));
   });
 });

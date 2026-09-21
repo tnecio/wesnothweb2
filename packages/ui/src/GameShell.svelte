@@ -43,6 +43,8 @@
     type HexPoint,
     type UnitAnimationCue,
     type AnimationContext,
+    HEX_STEP_MS,
+    animationDurationMs,
     parseUnitAnimations,
     chooseAnimation,
     buildAttackAnimationContexts,
@@ -858,17 +860,48 @@
   }
 
   /**
-   * Builds one cue per real step of `info.path` (each hex-to-hex leg its
-   * own "movement" `AnimationContext`, matching real per-step animation
-   * re-selection -- terrain/direction can differ leg to leg), for
-   * `GameBoardView.playAnimationSequence`. Each cue's `direction` is the
-   * REAL direction of travel for THAT specific leg, computed directly
-   * from the path -- not `unit.facing`, which `executeMove` only ever
-   * sets ONCE, from the last two hexes of the whole move (a documented
-   * simplification of this project's `move.ts`, never exercised until
-   * movement animation needed a real per-step facing). `restAt: 'dst'`
-   * on every cue: unlike an attack's lunge-and-return, each leg of a
-   * move actually relocates the unit.
+   * Builds one cue per real leg-GROUP of `info.path` for
+   * `GameBoardView.playAnimationSequence` -- each leg its own "movement"
+   * `AnimationContext` (terrain/direction can differ leg to leg) and its
+   * own REAL direction of travel, computed directly from the path -- not
+   * `unit.facing`, which `executeMove` only ever sets ONCE, from the last
+   * two hexes of the whole move (a documented simplification of this
+   * project's `move.ts`, never exercised until movement animation needed
+   * a real per-step facing).
+   *
+   * Real, reported bug: "the move animation between adjacent hexes plays
+   * twice on every step." Root cause, verified against
+   * `src/units/udisplay.cpp`/`animation.cpp`: real Wesnoth does not start
+   * a fresh "movement" animation instance per hex -- `unit_animator::
+   * replace_anim_if_invalid` (animation.cpp ~L1365) keeps reusing the
+   * SAME running instance across consecutive hexes for as long as it
+   * still matches (same chosen animation) AND hasn't finished its own
+   * declared duration, updating only src/dst per hex while elapsed time
+   * keeps counting continuously -- the engine-injected default `offset=`
+   * (`HEX_STEP_MS`'s own doc comment, `@wesnothweb2/renderer`) is a
+   * REPEATING 200ms ramp specifically so each repeat lines up with one
+   * hex of that reused instance. This project instead gave every leg its
+   * own fresh, full-duration cue: for a unit whose movement_anim frame
+   * cycle runs longer than 200ms (any `MOVING_ANIM_DIRECTIONAL_*_FRAME`
+   * unit, e.g. Horseman's 400ms/8-frame run, Skeleton's 600ms/12-frame
+   * one -- not Elvish Fighter, whose custom `movement_anim` happens to
+   * fit in one segment), the repeating ramp played a full
+   * 0->1->(snap)->0->1 within that ONE leg: glide to the hex, snap back,
+   * glide again.
+   *
+   * Fix: consecutive legs that resolve to the SAME chosen `anim` (using
+   * the engine-injected default movement offset -- see
+   * `UnitAnimationDef.usesDefaultMovementOffset`'s own doc comment) are
+   * grouped into one cue with `legs` set, up to `floor(animationDurationMs
+   * (anim) / HEX_STEP_MS)` hexes per group -- exactly how many hexes fit
+   * in that animation's own declared duration before upstream's real
+   * `animation_finished_potential()` would force a fresh instance anyway
+   * (2 for Horseman, 3 for Skeleton; both exact multiples of `HEX_STEP_MS`
+   * in real content, so a group boundary always lands cleanly on a hex
+   * boundary rather than mid-glide). `SnapshotBoard.playAnimations`
+   * samples the whole group with one continuously increasing elapsed
+   * clock, switching which leg's src/dst/direction to interpolate against
+   * every `HEX_STEP_MS` -- see its own doc comment.
    */
   function buildMoveAnimationCues(info: LastMoveAnimation): UnitAnimationCue[][] {
     const contexts = buildMovementAnimationContexts(info.unit, info.path, terrainLookup(session.board));
@@ -880,21 +913,47 @@
       y: info.unit.location.y,
     });
 
-    return contexts.map((ctx, i) => {
+    const legs = contexts.map((ctx, i) => {
       const from = info.path[i]!;
       const to = info.path[i + 1]!;
       const direction = directionBetween(from, to) ?? info.unit.facing;
-      return [
+      return { from, to, direction, anim: chooseAnimation(anims, ctx) };
+    });
+
+    const beats: UnitAnimationCue[][] = [];
+    let i = 0;
+    while (i < legs.length) {
+      const first = legs[i]!;
+      let groupSize = 1;
+      if (first.anim !== undefined && first.anim.usesDefaultMovementOffset) {
+        const maxGroupSize = Math.max(1, Math.floor(animationDurationMs(first.anim) / HEX_STEP_MS));
+        while (groupSize < maxGroupSize && i + groupSize < legs.length && legs[i + groupSize]!.anim === first.anim) {
+          groupSize++;
+        }
+      }
+      const group = legs.slice(i, i + groupSize);
+      const last = group[group.length - 1]!;
+      beats.push([
         {
           key,
-          anim: chooseAnimation(anims, ctx),
-          direction,
-          srcHex: { x: from.x, y: from.y },
-          dstHex: { x: to.x, y: to.y },
+          anim: first.anim,
+          direction: first.direction,
+          srcHex: { x: first.from.x, y: first.from.y },
+          dstHex: { x: last.to.x, y: last.to.y },
           restAt: 'dst' as const,
+          legs:
+            group.length > 1
+              ? group.map((leg) => ({
+                  srcHex: { x: leg.from.x, y: leg.from.y },
+                  dstHex: { x: leg.to.x, y: leg.to.y },
+                  direction: leg.direction,
+                }))
+              : undefined,
         },
-      ];
-    });
+      ]);
+      i += groupSize;
+    }
+    return beats;
   }
 
   /**

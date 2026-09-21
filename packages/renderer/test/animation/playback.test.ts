@@ -50,6 +50,7 @@ function makeTwoFrameAnim(): UnitAnimationDef {
     frames: [frameA, frameB],
     missileFrames: [],
     animationParams: buildFrameFields(animCfg, 180), // 100 (frame A) + 80 (frame B)
+    usesDefaultMovementOffset: false,
   };
 }
 
