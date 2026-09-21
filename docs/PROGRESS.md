@@ -3556,3 +3556,58 @@ event-spawned types -- the natural next step.
 Gates: engine 607, ui 144, renderer 194, lua-bridge 32 tests; 0
 typecheck/svelte-check errors; `dialogue-playthrough.mjs` green; console
 clean in every browser run.
+
+## 2026-09-21 — Animation glitch follow-up: `synthetic_animation` testbed, two AI-turn bugs
+
+Reported live: on Dead Water 1's opening, the enemy's recruited Skeleton
+"jumps back and forth between hexes" before settling on its destination
+hex, similar in spirit to a longstanding Horseman/Knight multi-hex-ride
+glitch. Reaching either case in a real campaign costs a scenario's worth
+of setup every time, so first built a debug campaign,
+`synthetic-campaigns/animation/` (registered as `synthetic_animation` /
+`synth_animation_01`), with four one-click repros from a cold load: End
+Turn for an AI side that recruits and marches (the Dead Water 1 shape
+exactly), and three `[set_menu_item]` triggers -- a scripted
+`[unit] animate=yes` + `[move_unit]` spawn, a six-hex Horseman ride, and
+a `[move_unit_fake]` pass-through -- each repeatable without reloading.
+
+Added a dev-only `window.__wesnothDebug.unitSpritePositions()`
+(`SnapshotBoard.unitSpritePositions`, wired through `GameBoardView`)
+reading every sprite's live `container.x/y`, and a Playwright probe
+sampling it every 200 ms through an AI End Turn. That turned "it jumps"
+into data: unit `u:4`'s sprite walked smoothly from `468,468` toward its
+target, then snapped back to exactly `468,468` at the instant the
+`moveUnit` beat's own timing log fired.
+
+Two distinct bugs, both real:
+
+1. *A beat re-synced the board after finishing.* The previous fix (this
+   file, 2026-09-20) moved the pre-interaction `sync()` to run only
+   before messages, but `playCutsceneBeat` still called `sync()` of its
+   own once the beat resolved. `[move_unit]` animates the walk and only
+   *then* relocates the unit (upstream's own `move_unit.lua` order), so
+   that post-beat sync re-rendered the unit at the hex it started from --
+   arrived, snapped back, reached the destination again only at the next
+   sync. Removed the call; the animation already leaves every sprite
+   where the engine is about to put it, and the sync before the next
+   message reconciles anything else.
+2. *An AI recruit's visual was created at its live, not its recruited,
+   location.* `playAiAnimations`'s recruit branch called
+   `session.snapshotUnitFor(event.unit)`, which reads the unit's
+   *current* position -- but the whole AI turn has already resolved by
+   the time any of it is animated (`AiAnimationEvent`, same rule already
+   applied to attack/recruit cue locations). A unit recruited and then
+   marched had its sprite first created at the far end of that march,
+   flash back to the keep to play its "recruited" appear cue, then walk
+   the route a second time. `GameSession.snapshotUnitFor` gained an
+   `at?: Location` override; the AI recruit call site now passes
+   `event.unitLocation`.
+
+Re-probed after both fixes: `u:4`/`u:5` now walk monotonically toward
+their destinations with no snap-back at any sampled frame.
+
+Gates: engine 608, ui 144, renderer 194, lua-bridge 32 tests (+2 skip);
+0 svelte-check errors; live re-probe on `synthetic_animation` clean.
+The Horseman/Knight long-ride case (`anim_long_ride` menu item) is built
+into the same testbed but not yet probed -- next up if the glitch is
+still visible there.

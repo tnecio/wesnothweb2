@@ -65,6 +65,12 @@
       "name": "[Debug] Dialogue & Choices",
       "description": "A blocking [message], a [move_unit_fake] flight, an [option] prompt that branches the scenario, a [text_input] and a [foreach] -- for fast Phase 17 event/dialogue debugging.",
       "firstScenario": "synth_dialogue_01"
+    },
+    {
+      "id": "synthetic_animation",
+      "name": "[Debug] Animation",
+      "description": "An AI side that recruits and marches, a scripted spawn+move cutscene, a long Horseman ride and a fake unit -- each one click from a cold load, for debugging movement/appearance animation glitches.",
+      "firstScenario": "synth_animation_01"
     }
   ]
 }

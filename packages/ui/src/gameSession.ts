@@ -1333,14 +1333,21 @@ export class GameSession {
   }
 
   /**
-   * `toSnapshotUnit` for exactly one live unit, at its own current
-   * position/hp -- for `GameBoardView.ensureUnitVisual` (bugs5.md #3):
-   * creating a just-recruited/recalled unit's visual on demand, ahead of
-   * the next full `renderUnits`-driven sync, needs the same real
-   * `SnapshotUnit` shape `renderUnits` itself builds for every unit.
+   * `toSnapshotUnit` for exactly one live unit -- for
+   * `GameBoardView.ensureUnitVisual` (bugs5.md #3): creating a
+   * just-recruited/recalled unit's visual on demand, ahead of the next
+   * full `renderUnits`-driven sync, needs the same real `SnapshotUnit`
+   * shape `renderUnits` itself builds for every unit.
+   *
+   * `at` overrides where the visual is created. A caller replaying an AI
+   * turn's animations needs it: the whole turn has already resolved, so
+   * the unit's live hex is where it *ended up*, not where the action
+   * being animated happened (see `AiAnimationEvent`'s own doc comment on
+   * the same rule for cue locations).
    */
-  snapshotUnitFor(unit: Unit): SnapshotUnit {
-    return this.toSnapshotUnit(unit, unit.location.x, unit.location.y, unit.hitpoints);
+  snapshotUnitFor(unit: Unit, at?: Location): SnapshotUnit {
+    const where = at ?? unit.location;
+    return this.toSnapshotUnit(unit, where.x, where.y, unit.hitpoints);
   }
 
   /**

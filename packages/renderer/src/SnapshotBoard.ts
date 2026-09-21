@@ -1462,6 +1462,21 @@ export class SnapshotBoard {
    * sync. No-ops if `key` isn't currently on screen (already gone, or
    * never existed).
    */
+  /**
+   * Where every unit sprite actually is on the board right now, keyed by
+   * `spriteKey` -- the live container position, mid-animation included.
+   * For debugging movement glitches ("it jumps back and forth"): sampled
+   * over time this turns an impression into a list of positions. Exposed
+   * through `window.__wesnothDebug` in dev builds only.
+   */
+  unitSpritePositions(): Record<string, [number, number]> {
+    const out: Record<string, [number, number]> = {};
+    for (const [key, visual] of this.unitVisuals) {
+      out[key] = [Math.round(visual.container.x), Math.round(visual.container.y)];
+    }
+    return out;
+  }
+
   removeUnitVisual(key: string): void {
     const visual = this.unitVisuals.get(key);
     if (!visual) return;

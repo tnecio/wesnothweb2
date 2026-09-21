@@ -321,6 +321,15 @@
   /**
    * Plays one cutscene beat, resolving when the display is done with it.
    *
+   * Deliberately does NOT sync the board afterwards. Real, reported bug
+   * ("the Skeleton jumps back and forth between hexes before settling"):
+   * `[move_unit]` animates the walk and only *then* relocates the unit
+   * (upstream's own `move_unit.lua` order), so a sync straight after the
+   * beat re-renders the unit at the hex it started from -- the sprite
+   * arrived, snapped back, and only reached its destination at the next
+   * sync. The animation leaves every sprite where the engine is about to
+   * put it; the sync before the next message reconciles the rest.
+   *
    * Everything here is guarded, because the event that yielded the beat
    * is suspended until this resolves: a renderer error, or an animation
    * whose frames never finish resolving, would otherwise wedge the
@@ -342,7 +351,6 @@
     if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
       console.info(`[cutscene] ${beat.kind} took ${Math.round(performance.now() - started)}ms`);
     }
-    sync();
     return {};
   }
 
@@ -1242,7 +1250,15 @@
         // every unit an AI side recruited that turn seemed to pop into
         // existence all at once, well after the fact. See
         // `SnapshotBoard.ensureUnitVisual`'s own doc comment.
-        await boardView.ensureUnitVisual(session.snapshotUnitFor(event.unit));
+        //
+        // At `event.unitLocation`, NOT the unit's live hex: the whole AI
+        // turn has already resolved by the time any of it is animated
+        // (see `AiAnimationEvent`), so a unit that was recruited and then
+        // marched would otherwise have its sprite created at the far end
+        // of that march, flash back to the keep for its "recruited" cue,
+        // and walk the route again -- the reported "jumps back and forth
+        // between hexes" on Dead Water 1's first AI turn.
+        await boardView.ensureUnitVisual(session.snapshotUnitFor(event.unit, event.unitLocation));
         await boardView.playAnimationSequence(buildRecruitAnimationCues(event));
       }
     }
