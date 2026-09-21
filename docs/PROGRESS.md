@@ -3715,3 +3715,45 @@ actually advanced (Dead Water 1's startup events draw nothing, which made
 the first draft of the test vacuous).
 
 Gates: engine 608, ui 147 tests (+3); 0 typecheck/svelte-check errors.
+
+## 2026-09-21 — Phase 26 S2: a WML writer
+
+`packages/engine/src/wml/` had a tokenizer, preprocessor and parser but
+no way back out -- `docs/ARCHITECTURE.md` has claimed since the start
+that a savegame is "trivial once the WML serializer exists", and the
+serializer did not exist. `writer.ts` is it: the port of
+`serialization/parser.cpp`'s `write`/`write_key_val`/`write_open_child`
+/`write_close_child`. Tab per nesting level, attributes before children
+in insertion order, booleans as `yes`/`no`, numbers bare, strings quoted
+with embedded `"` doubled, newlines kept verbatim inside the quotes (how
+real `map_data=` is written).
+
+The invariant it is tested against is `parse(write(parse(text)))` equals
+`parse(text)`, not byte equality: upstream's own attribute typing
+coerces `yes`/`no` and numeric-looking values regardless of quoting, so
+`x="12"` and `x=12` are the same value to Wesnoth and there is nothing
+for a writer to preserve between them. Seven tests, including a full
+round trip of Dead Water scenario 1 parsed through the real pipeline.
+
+Verified beyond the suite against the actual target: the real 1.16.9
+`DW-Invasion!-Auto-Save1.gz` on this machine -- 120 KB, 4,771 lines of
+save WML -- parses, re-writes and re-parses to an identical tree.
+
+**Also made the parser browser-safe.** `tokenizer.ts` imported one
+constant, `INLINE_MARK`, from `preprocessor.ts`, which reads files --
+so importing the parser pulled `node:fs` into the module graph and the
+engine barrel deliberately did not export it. The constant moved to its
+own `inlineMark.ts`, leaving tokenizer and parser filesystem-free, and
+`parseConfig`/`writeWml` are now exported from the package for the same
+reason `WmlConfig` already was. Phase 26 needs both in the browser: a
+Wesnoth save is gzipped WML text, so uploading one means parsing it and
+downloading one means writing it.
+
+Deliberate deviation, inherited from the parser: `WmlConfig` has no
+translatable-string type, so a value upstream writes as `_"text"` under a
+`#textdomain` line is written here as a plain quoted string. Real Wesnoth
+reads it back as an untranslated literal with the same characters (this
+is the whole 84-line difference between the real save and our rewrite of
+it).
+
+Gates: engine 615 tests (+7); 0 typecheck errors.

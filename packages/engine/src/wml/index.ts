@@ -18,6 +18,7 @@ export { Tokenizer } from './tokenizer.js';
 export type { TokenType, WmlToken } from './tokenizer.js';
 export { parseConfig } from './parser.js';
 export type { ParseConfigOptions } from './parser.js';
+export { writeWml } from './writer.js';
 export {
   preprocess,
   preprocessFile,

@@ -59,6 +59,8 @@ import * as fs from 'node:fs';
 
 import * as path from 'node:path';
 
+import { INLINE_MARK } from './inlineMark.js';
+
 /**
  * Stand-in for upstream's `INLINED_PREPROCESS_DIRECTIVE_CHAR` (0xFE) marker
  * lines. Upstream's preprocessor output carries a `\\376line ...` marker line
@@ -74,7 +76,7 @@ import * as path from 'node:path';
  * skips this character everywhere except as the lookahead of that escape
  * check. U+FFFE is a Unicode noncharacter, so it cannot occur in real WML.
  */
-export const INLINE_MARK = '\uFFFE';
+export { INLINE_MARK };
 
 export interface MacroDefinition {
   name: string;

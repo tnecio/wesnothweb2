@@ -30,5 +30,15 @@ export * from './rng/index.js';
 export * from './events/index.js';
 export * from './story/storyParser.js';
 export { WmlConfig, type WmlAttributeValue, type WmlConfigJson } from './wml/config.js';
+// Browser-safe halves of the WML pipeline, exported for the same reason
+// `WmlConfig` is (see this file's own header): neither touches the
+// filesystem. `parseConfig` reads WML *text the caller already holds* --
+// the preprocessor, which is what actually needs `node:fs`, stays
+// unexported -- and `writeWml` turns a config back into that text. Phase
+// 26 needs both in the browser: a Wesnoth save file is gzipped WML text,
+// so uploading one means parsing it and downloading one means writing it.
+export { parseConfig } from './wml/parser.js';
+export type { ParseConfigOptions } from './wml/parser.js';
+export { writeWml } from './wml/writer.js';
 
 export * from './snapshot/gameBoardSnapshot.js';

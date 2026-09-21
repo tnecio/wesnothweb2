@@ -17,7 +17,7 @@
  * attribution is needed later.
  */
 
-import { INLINE_MARK } from './preprocessor.js';
+import { INLINE_MARK } from './inlineMark.js';
 
 export type TokenType =
   | 'NEWLINE'
