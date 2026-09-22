@@ -76,9 +76,13 @@ async function saveAs(page, name) {
       if (attempt === 19) throw new Error('Save Game never opened');
     }
   }
-  const suggested = await dialog.locator('input[type=text]').inputValue();
-  await dialog.locator('input[type=text]').fill(name);
-  await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+  const field = dialog.locator('input[type=text]');
+  const suggested = await field.inputValue();
+  await field.fill(name);
+  // Enter, not a click on Save: the dialog is the app's one real typing
+  // target and submits on Enter, and pressing it cannot be intercepted by
+  // whatever else the board is drawing at that moment.
+  await field.press('Enter');
   await dialog.waitFor({ state: 'detached', timeout: 20000 });
   return suggested;
 }

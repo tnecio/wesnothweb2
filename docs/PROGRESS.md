@@ -4042,3 +4042,36 @@ which had been stale.
 
 Gates: engine 620 (+5), ui 168 (+2), renderer 198 tests; 0 typecheck/
 svelte-check errors.
+
+## 2026-09-22 — bugs6.md: the advancement dialog now looks like the real one
+
+Reported with a screenshot of the original (`gui/dialogs/unit_advance.cpp`):
+this port's version showed only a row of big buttons, one per advancement
+option, each committing the choice the moment it was clicked. The real
+dialog is two columns -- the advancing unit's own detail on the left
+(portrait, name, type, level/alignment/race, HP and XP, traits, weapons)
+and the options as a *list* on the right that you select in and confirm
+with OK.
+
+So a player had no way to see what they were advancing *from*, which is
+exactly the information the choice depends on (current HP, traits, which
+weapons the unit already has), and a misclick was final.
+
+`PendingAdvancement` now carries a `SelectedUnitInfo` for the advancing
+unit and a resolved `AdvancementOption` per choice, so the dialog has
+portraits and stats without reaching into the snapshot itself. The detail
+column deliberately mirrors `RecallDialog`'s, which shows the same
+view-model in the same shape -- the two dialogs are the same idea (pick a
+unit, see its details) and should not drift apart. Arrow keys move
+between options, Enter or OK confirms, double-click confirms directly.
+
+Verified against the synthetic advancement campaign in a browser: Debug
+Spearman kills Target B, and the dialog shows the Spearman (Lvl 1,
+Lawful, Human, HP 36/36, XP 45/42, spear 7x3 melee pierce, javelin 6x1
+ranged pierce) beside Swordsman / Pikeman / Javelineer with their own
+sprites and stats.
+
+Also guards PixiJS teardown behind a helper: destroying an `Application`
+whose `init()` has not finished throws `this._cancelResize is not a
+function`, which was filling the console on every quick navigation and
+failing any check that treats page errors as failures.

@@ -248,7 +248,7 @@
         fetchTeamColors(),
       ]);
       if (cancelled) {
-        app.destroy();
+        destroyApp(app);
         return;
       }
       host.appendChild(app.canvas);
@@ -284,7 +284,7 @@
       });
       await newBoard.render();
       if (cancelled) {
-        app.destroy(true);
+        destroyApp(app, true);
         return;
       }
       board = newBoard;
@@ -347,6 +347,23 @@
    * type in `list` (spawns, recruits, advancements appear here as they
    * happen). Bundles are only a cache: a type without one fetches files.
    */
+  /**
+   * Releases a PixiJS app, tolerating one that never finished starting.
+   * `new PIXI.Application()` returns immediately and `app.init()` is
+   * awaited afterwards, so a teardown landing in between reaches a
+   * half-built Application whose `destroy` throws `this._cancelResize is
+   * not a function`. Harmless in itself -- there is nothing to release
+   * yet -- but it buried real errors in the console and failed any check
+   * treating page errors as failures.
+   */
+  function destroyApp(app: PIXI.Application, removeView = false): void {
+    try {
+      app.destroy(removeView);
+    } catch {
+      // Never initialised: nothing to release.
+    }
+  }
+
   function registerUnitBundles(list: readonly SnapshotUnit[]): void {
     ImageCache.addAtlasManifests(new Set(list.map((unit) => unitBundleManifestUrl(unit.typeId))), { prefetch: true });
   }

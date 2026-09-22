@@ -550,9 +550,28 @@ export interface LastRecruitAnimation {
  * option unit advances immediately with no prompt (matching upstream:
  * the dialog only appears when there's an actual choice to make).
  */
+/** One type a unit can advance into, as the advancement dialog shows it. */
+export interface AdvancementOption {
+  readonly typeId: string;
+  readonly name: string;
+  readonly level: number;
+  readonly hitpoints: number;
+  /** Map sprite, for the row's own icon -- same source every other dialog's portraits use. */
+  readonly image: string | null;
+  readonly attacks: readonly WeaponInfo[];
+}
+
 export interface PendingAdvancement {
   readonly unit: Unit;
   readonly options: readonly UnitType[];
+  /**
+   * The advancing unit as the dialog displays it (portrait, level,
+   * alignment, race, HP/XP, traits, weapons) -- upstream's own advancement
+   * dialog shows the full unit beside the choice, not just its name.
+   */
+  readonly unitInfo: SelectedUnitInfo;
+  /** `options`, resolved for display. */
+  readonly optionInfos: readonly AdvancementOption[];
 }
 
 /** One of the attacker's usable weapons against the current target -- see `GameSession.attackerWeaponOptions`. */
@@ -2617,7 +2636,20 @@ export class GameSession {
         if (result.canAdvanceAgain) this.advancementQueue.unshift(unit);
         continue;
       }
-      this.pendingAdvancement = { unit, options: optionIds.map((id) => this.resolveType(id)) };
+      const options = optionIds.map((id) => this.resolveType(id));
+      this.pendingAdvancement = {
+        unit,
+        options,
+        unitInfo: this.unitInfo(unit),
+        optionInfos: options.map((type) => ({
+          typeId: type.id,
+          name: type.name,
+          level: type.level,
+          hitpoints: type.hitpoints,
+          image: this.snapshot.unitTypes[type.id]?.image ?? null,
+          attacks: type.attacks.map(buildWeaponInfo),
+        })),
+      };
       return;
     }
   }
