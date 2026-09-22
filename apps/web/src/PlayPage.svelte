@@ -24,6 +24,26 @@
   let campaign = $state<Campaign | null>(null);
   /** The save being resumed, when the URL carries `?save=<name>` (Phase 26). */
   let initialSave = $state<SaveGameData | null>(null);
+  /** Every campaign, so the in-game load dialog can name the campaign any save belongs to. */
+  let allCampaigns = $state<Campaign[]>([]);
+
+  /**
+   * Put `saveName` (of `campaignId`) in the URL. A different campaign is a
+   * real route change -- `App` keys this page on the campaign id, so the
+   * page remounts and the game reopens with the right campaign, which is
+   * what stops the next save being filed under the old one. The same
+   * campaign just updates the address bar; the game has already been
+   * loaded in place.
+   */
+  function openSave(campaignId: string, saveName: string): void {
+    const target = campaignId || campaignInfoId();
+    if (!target) return;
+    router.navigate(`/play/${target}?save=${encodeURIComponent(saveName)}`);
+  }
+
+  function campaignInfoId(): string {
+    return campaign?.id ?? campaignId;
+  }
 
   $effect(() => {
     let cancelled = false;
@@ -58,6 +78,7 @@
       snapshot = data;
       storyAssets = assets;
       campaign = campaignInfo;
+      allCampaigns = campaigns;
       initialSave = save;
       status = 'ready';
     })().catch((err) => {
@@ -84,7 +105,7 @@
     <!-- No {#key} needed here: App.svelte already keys PlayPage itself on
          campaignId, so a campaign change always tears down this whole
          component (and GameShell inside it) from scratch. -->
-    <GameShell {snapshot} {storyAssets} {campaign} {initialSave} />
+    <GameShell {snapshot} {storyAssets} {campaign} {initialSave} campaigns={allCampaigns} onOpenSave={openSave} />
   {/if}
 </main>
 

@@ -127,6 +127,8 @@
     storyAssets: initialStoryAssets = null,
     campaign = null,
     initialSave = null,
+    onOpenSave = undefined,
+    campaigns = [],
   }: {
     snapshot: GameBoardSnapshot;
     /** `/story/<id>.json` for `snapshot`'s scenario (see `fetchStoryAssets`); null shows the story without images. */
@@ -146,6 +148,17 @@
      * intro every time you resume would be wrong twice over.
      */
     initialSave?: SaveGameData | null;
+    /**
+     * Ask the host to open `saveName` in `campaignId` -- i.e. to put that
+     * campaign and save in the URL and mount accordingly. Called when a
+     * loaded save belongs to a different campaign (this component cannot
+     * switch campaigns by itself: the campaign decides the abbreviation
+     * saves are named with and the id they are filed under), and after
+     * any load, so the address bar names the game that is actually open.
+     */
+    onOpenSave?: (campaignId: string, saveName: string) => void;
+    /** Every campaign, so the load dialog can name the campaign a save belongs to even when it is not the one being played. */
+    campaigns?: readonly Campaign[];
   } = $props();
 
   /** The scenario currently being played -- reassigned by `continueToNextScenario`. Everything below that used to read the `snapshot` prop directly now reads this instead. */
@@ -1508,6 +1521,22 @@
         sync('That save no longer exists.');
         return;
       }
+      // Real, reported bug: loading a save switched the scenario but left
+      // the campaign alone -- the page URL still named the campaign the
+      // session had been opened with, and since `saveDetails` reads the
+      // campaign from that same context, the NEXT save was filed under
+      // the wrong campaign (and named with its abbreviation). A save that
+      // belongs to another campaign is therefore handed back to the host
+      // to open properly, rather than being squeezed into this one.
+      const targetCampaign = found.data.campaignId ?? found.meta.campaignId;
+      if (targetCampaign && targetCampaign !== campaign?.id) {
+        if (!onOpenSave) {
+          sync(`"${name}" belongs to another campaign; open it from the main menu.`);
+          return;
+        }
+        onOpenSave(targetCampaign, name);
+        return;
+      }
       const targetScenario = found.data.scenarioId ?? found.meta.scenarioId;
       if (targetScenario && targetScenario !== activeSnapshot.scenario.id) {
         await loadIntoScenario(targetScenario, found.data);
@@ -1516,6 +1545,10 @@
         phase = session.scenarioResult ? 'ended' : 'playing';
         sync(`Loaded "${name}" (turn ${found.data.turnNumber}).`);
       }
+      // Keep the address bar honest about what is actually loaded, so a
+      // reload or a shared link reopens this game rather than the
+      // campaign's first scenario.
+      onOpenSave?.(campaign?.id ?? '', name);
     } catch (err) {
       sync(`Load failed: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -2184,7 +2217,9 @@
   {#if loadDialogOpen}
     <LoadGameDialog
       saves={savesList}
-      campaignNames={campaign ? { [campaign.id]: campaign.name } : {}}
+      campaignNames={Object.fromEntries(
+        [...campaigns, ...(campaign ? [campaign] : [])].map((c) => [c.id, c.name]),
+      )}
       busy={saveBusy}
       onLoad={(name) => void handleLoadNamed(name)}
       onDelete={(name) => void handleDeleteSave(name)}

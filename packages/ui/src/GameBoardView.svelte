@@ -319,7 +319,19 @@
       host.removeEventListener('pointerleave', onPointerLeave);
       host.removeEventListener('contextmenu', onContextMenu);
       pixiApp = undefined;
-      app?.destroy(true);
+      // `app` may exist but not be initialised yet: `new PIXI.Application()`
+      // returns immediately and `app.init()` is awaited inside the IIFE
+      // above, so a teardown that lands in between (navigating away while
+      // the board is still starting) reaches a half-built Application and
+      // `destroy` throws `this._cancelResize is not a function`. Observed
+      // as a pair of console errors on every quick navigation; harmless in
+      // itself, but it buries real errors and fails any check that treats
+      // page errors as failures.
+      try {
+        app?.destroy(true);
+      } catch {
+        // Nothing initialised, so nothing to release.
+      }
     };
   });
 

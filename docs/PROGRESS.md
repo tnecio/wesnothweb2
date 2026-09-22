@@ -3946,6 +3946,52 @@ measurement:
 
 The remaining difference is that a resumed board mounts with every unit
 the save holds (18 in Dead Water 1) and goes straight to `playing`, where
-a fresh scenario mounts with two and starts in `story`. Tracked as the
-next thing to chase; the in-game Load path shares the same board remount
-and should be timed alongside it.
+a fresh scenario mounts with two and starts in `story`.
+
+**Retracted the following day.** The user does not see this when actually
+playing, and the cross-campaign load probe written for the next fix
+resumes a save and reaches a ready board without trouble. So this was an
+artefact of that one probe against the dev server, not a property of the
+resume path -- recorded here rather than deleted because the measurements
+above were quoted as fact, and a wrong finding that has been chased for
+an hour is worth leaving visible.
+
+## 2026-09-22 — Phase 26 S8: loading a save now switches campaign too
+
+Reported after using the manager: loading a save changed the scenario but
+not the campaign. The page URL kept naming the campaign the session had
+been opened with, and since the save metadata is taken from that same
+context, the *next* save was filed under the wrong campaign and named
+with its abbreviation -- save a Two Brothers game from inside Dead Water
+and it came out as `DW-...`, filed under Dead Water.
+
+`GameShell` cannot switch campaigns by itself (the campaign decides the
+abbreviation saves are named with and the id they are filed under), so it
+now hands the job back to the host: an `onOpenSave(campaignId, saveName)`
+callback that `PlayPage` turns into a route change. A save from another
+campaign therefore reopens properly -- `App` keys the play page on the
+campaign id, so the page remounts with the right campaign and the save in
+the URL -- and any load leaves the address bar naming the game that is
+actually open, so a reload or a shared link reopens it.
+
+The load dialog also gets the full campaign list, so a save row names its
+own campaign rather than showing a raw id for anything from elsewhere.
+
+Verified in a browser end to end: save in Two Brothers, open Dead Water,
+load the Two Brothers save from the in-game manager, and both the URL and
+the next save's name and campaign follow the loaded game.
+
+Also fixed, found by the same script: tearing down the board while it is
+still starting threw `this._cancelResize is not a function` from PixiJS.
+`new PIXI.Application()` returns immediately and `app.init()` is awaited
+afterwards, so a teardown landing in between reaches a half-built
+Application. Harmless in itself, but it buried real errors and failed any
+check treating page errors as failures.
+
+`apps/web/scripts/save-load-playthrough.mjs` is the milestone script for
+the phase: naming, autosave, download-as-Wesnoth-`.gz`, upload, survival
+across a page reload, and the cross-campaign load above. It retries the
+Save/Load hotkeys rather than trusting a quiet window, because
+`GameShell` deliberately ignores hotkeys while a `[message]` is up or
+events are running, and Dead Water 1's opening keeps producing both well
+after the board is ready.
