@@ -356,6 +356,18 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
     expect(session.recruitTiles.some((t) => t.x === target.x && t.y === target.y)).toBe(false);
   });
 
+  it('bugs6.md: autoRecruitTile is the first vacant recruit tile by x, then y, and moves on once it is filled', async () => {
+    const session = new GameSession(loadSnapshot());
+    const byXY = (a: { x: number; y: number }, b: { x: number; y: number }) => a.x - b.x || a.y - b.y;
+    const first = [...session.recruitTiles].sort(byXY)[0]!;
+    expect(session.autoRecruitTile).toEqual(first);
+
+    session.selectRecruitType(session.recruitOptions[0]!.typeId);
+    await session.handleHexClick(first.x, first.y);
+    expect(session.autoRecruitTile).toEqual([...session.recruitTiles].sort(byXY)[0] ?? null);
+    expect(session.autoRecruitTile).not.toEqual(first);
+  });
+
   it('real, reported bug (bugs4.md #4/#6/#8): recruitOptions/recruitTiles/recruiting itself are available WITHOUT the leader being the selected unit -- only requires it being the active side\'s turn and the leader standing on a keep with a vacant connected tile', async () => {
     const session = new GameSession(loadSnapshot());
     const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;

@@ -1670,6 +1670,16 @@ export class GameSession {
   }
 
   /**
+   * Where a recruit/recall chosen from the Ctrl+R/Alt+R dialog lands when
+   * no hex was picked (bugs6.md): the first vacant recruit tile by x, then
+   * y -- deterministic, and no extra click. `null` if the castle is full.
+   */
+  get autoRecruitTile(): HexPoint | null {
+    const tiles = [...this.recruitTiles].sort((a, b) => a.x - b.x || a.y - b.y);
+    return tiles[0] ?? null;
+  }
+
+  /**
    * Vacant castle tiles to highlight green on the BOARD -- unlike
    * `recruitTiles` above, this IS tied to `selectedUnit`: real, reported
    * bug (bugs5.md #4): after `recruitTiles` itself stopped depending on

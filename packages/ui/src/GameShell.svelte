@@ -1293,9 +1293,10 @@
    * empty castle tile (`recruitOriginHex` set), place the recruit there
    * immediately (through the exact same `handleHexClick` path a manual
    * tile click would take) instead of arming a pending choice and making
-   * the player click that same tile again. Falls back to the old arm-
-   * and-wait-for-a-click behavior when there's no such origin hex (opened
-   * from the top bar's Actions menu instead).
+   * the player click that same tile again. Opened without one (Ctrl+R or
+   * the Actions menu), the recruit goes to `session.autoRecruitTile`, the
+   * first vacant tile by x, y (bugs6.md); arm-and-wait-for-a-click remains
+   * only for the case where no tile is free.
    *
    * Deliberately arms via `session.selectRecruitType` directly here, NOT
    * `handleSelectRecruitType` (which also calls `sync()`) -- real,
@@ -1315,7 +1316,7 @@
    */
   async function handleConfirmRecruit(typeId: string): Promise<void> {
     recruitDialogOpen = false;
-    const origin = recruitOriginHex;
+    const origin = recruitOriginHex ?? session.autoRecruitTile;
     recruitOriginHex = null;
     if (origin) {
       session.selectRecruitType(typeId);
@@ -1328,7 +1329,7 @@
   /** Phase 13: `RecallDialog`'s "Recall" button -- same shape as `handleConfirmRecruit`, including the same deliberate no-intermediate-sync reasoning. */
   async function handleConfirmRecall(index: number): Promise<void> {
     recallDialogOpen = false;
-    const origin = recruitOriginHex;
+    const origin = recruitOriginHex ?? session.autoRecruitTile;
     recruitOriginHex = null;
     if (origin) {
       session.selectRecallUnit(index);
@@ -1844,7 +1845,7 @@
       enabled: recruitOptions.length > 0,
       hotkey: { key: 'r', ctrl: true },
       handler: () => {
-        recruitOriginHex = null; // no specific hex -- falls back to arm-then-click (see its own doc comment)
+        recruitOriginHex = null; // no specific hex -- lands on `session.autoRecruitTile` (see `handleConfirmRecruit`)
         recruitDialogOpen = true;
       },
     },

@@ -4135,3 +4135,15 @@ essentially unchanged, so a slowed unit looked no different. Upstream
 changes. New dev hook: `__wesnothDebug.unitSpriteFilterCounts()`.
 
 The Phase 26 save milestone script passed all checks (777s run).
+
+## 2026-09-22 — bugs6.md: Ctrl+R places the recruit without a hex click
+
+Choosing a unit in the Recruit (or Recall) dialog opened from Ctrl+R/Alt+R
+or the Actions menu used to arm the choice and wait for a castle click.
+It now lands immediately on `GameSession.autoRecruitTile`: the first vacant
+recruit tile by x, then y, as the report asked (deterministic; upstream's
+`find_vacant_castle` goes by the mouse-over hex instead). A dialog opened
+from a right-clicked tile still uses that tile; arm-and-click remains only
+when the castle is full. `keyboard-playthrough.mjs` now checks the recruit
+lands on (2,3) and moves the leader south instead of onto that hex; all
+steps pass.

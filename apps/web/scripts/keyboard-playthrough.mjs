@@ -12,7 +12,7 @@
  * this turn), while the combat scenario has two adjacent leaders but no
  * castle to recruit from.
  *
- *   synthetic_economy: recruit (ctrl+r, arrows, Enter, cursor, Enter)
+ *   synthetic_economy: recruit (ctrl+r, arrows, Enter -- lands on the first free castle hex)
  *                      move   (cursor, Enter, cursor, Enter)
  *                      end turn (ctrl+space)
  *   synthetic_combat:  attack (cursor, Enter, cursor, Enter, Enter)
@@ -82,30 +82,35 @@ try {
       const goldBefore = await stat(page, 'Gold');
       const unitsBefore = await stat(page, 'Units');
 
-      // Recruit: ctrl+r opens the dialog, Enter takes the highlighted type,
-      // then the cursor places it on a castle hex.
+      // Recruit: ctrl+r opens the dialog, Enter takes the highlighted type
+      // and places it straight away on the first free castle hex by x, y --
+      // (2,3) here -- with no hex click (bugs6.md).
       await press(page, 'Control+r', 600);
       check('ctrl+r opens the recruit dialog', (await openDialogs(page)).includes('Recruit unit'));
       await press(page, 'ArrowDown');
-      await press(page, 'Enter', 600);
+      await press(page, 'Enter', 1500);
       check('Enter closes the recruit dialog', (await openDialogs(page)).length === 0);
-      await press(page, 'ArrowDown'); // summon the cursor on the leader's keep (3,3)
-      await press(page, 'ArrowDown'); // step down onto the castle hex (3,4)
-      await press(page, 'Enter', 1500); // place the recruit
+      const recruitedAt = await page.evaluate(() =>
+        window.__wesnoth.session.board.unitsForSide(1).some((u) => !u.canRecruit && u.location.x === 2 && u.location.y === 3),
+      );
+      check('the recruit landed on the first free castle hex (2,3)', recruitedAt);
 
       const goldAfter = await stat(page, 'Gold');
       const unitsAfter = await stat(page, 'Units');
       check('recruit added a unit', unitsAfter === unitsBefore + 1, `units ${unitsBefore} -> ${unitsAfter}`);
       check('recruit spent gold', goldAfter !== null && goldAfter < goldBefore, `gold ${goldBefore} -> ${goldAfter}`);
 
-      // Move: select the leader (cursor up onto its keep), then step it west.
-      await press(page, 'ArrowUp'); // cursor back to the keep (3,3)
+      // Move: select the leader on its keep, then step it south.
+      await press(page, 'ArrowDown'); // summon the cursor on the leader's keep (3,3)
       await press(page, 'Enter', 600); // select the leader
       check('Enter selects the unit under the cursor', (await sidePanelText(page)).includes('selected'));
-      await press(page, 'ArrowLeft'); // cursor to the castle hex west (2,3)
+      await press(page, 'ArrowDown'); // cursor to the castle hex south (3,4)
       await press(page, 'Enter', 2000); // move there
-      const afterMove = await sidePanelText(page);
-      check('leader moved to the cursor hex', afterMove.includes('(2, 3)'), afterMove.slice(0, 80));
+      const leaderAt = await page.evaluate(() => {
+        const l = window.__wesnoth.session.board.unitsForSide(1).find((u) => u.canRecruit);
+        return l ? `${l.location.x},${l.location.y}` : null;
+      });
+      check('leader moved to the cursor hex', leaderAt === '3,4', String(leaderAt));
 
       // End turn. Both sides here are `controller=human`, so the turn number
       // stays 1 and it is the active side that changes.
