@@ -4147,3 +4147,16 @@ from a right-clicked tile still uses that tile; arm-and-click remains only
 when the castle is full. `keyboard-playthrough.mjs` now checks the recruit
 lands on (2,3) and moves the leader south instead of onto that hex; all
 steps pass.
+
+## 2026-09-22 — bugs6.md: a speaking unit is selected while its message is up
+
+`message.lua` scrolls to a `[message]`'s speaker, `highlight_hex`es it and
+shows it in the sidebar (`display_unit_hex`); a narrator line calls
+`deselect_hex`. GameShell only scrolled. Now, while a unit's message is on
+screen, its hex gets the selection highlight (`speakerHex`, which takes
+precedence over the player's own selection in `selectedHex`) and it becomes
+the inspected unit, so the sidebar shows it. Its reach is not drawn --
+upstream highlights, it does not select for movement -- and the player's own
+selection highlight returns once the dialogue ends. `highlight=no` is
+honoured. Verified on synthetic_dialogue (sidebar follows Debug Villain,
+then Debug Hero, across lines); `dialogue-playthrough.mjs` passes.

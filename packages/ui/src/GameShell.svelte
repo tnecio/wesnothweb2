@@ -25,6 +25,7 @@
    * before entering 'messages', so the board already reflects every real
    * event-spawned unit by the time the player gets control.
    */
+  import { untrack } from 'svelte';
   import type {
     GameBoardSnapshot,
     SnapshotUnit,
@@ -231,6 +232,8 @@
   /** The currently-inspected unit's view-model (see `GameSession.inspectedUnit`) -- any unit clicked purely to view its info, independent of `selected`. */
   let inspected = $state<SelectedUnitInfo | null>(null);
   let selectedHex = $state<HexPoint | null>(null);
+  /** The hex of the unit speaking the `[message]` on screen, shown as selected meanwhile (bugs6.md; see the speaker `$effect`). */
+  let speakerHex = $state<HexPoint | null>(null);
   let reachable = $state<ReachableHexPoint[]>([]);
   let attackTargets = $state<HexPoint[]>([]);
   /** Feeds the context menu's "is this hex a valid recruit/recall target" check -- selection-independent, see `GameSession.recruitTiles`'s own doc comment. NOT the board's visual highlight -- see `boardRecruitTiles` below. */
@@ -314,7 +317,7 @@
   function syncHighlights(): void {
     selected = selectedInfo();
     inspected = inspectedInfo();
-    selectedHex = session.selectedUnit ? { x: session.selectedUnit.location.x, y: session.selectedUnit.location.y } : null;
+    selectedHex = speakerHex ?? (session.selectedUnit ? { x: session.selectedUnit.location.x, y: session.selectedUnit.location.y } : null);
     reachable = session.reachable;
     attackTargets = session.attackCandidates.map((u) => ({ x: u.location.x, y: u.location.y }));
   }
@@ -324,7 +327,7 @@
     units = session.renderUnits;
     selected = selectedInfo();
     inspected = inspectedInfo();
-    selectedHex = session.selectedUnit ? { x: session.selectedUnit.location.x, y: session.selectedUnit.location.y } : null;
+    selectedHex = speakerHex ?? (session.selectedUnit ? { x: session.selectedUnit.location.x, y: session.selectedUnit.location.y } : null);
     reachable = session.reachable;
     attackTargets = session.attackCandidates.map((u) => ({ x: u.location.x, y: u.location.y }));
     recruitTiles = session.recruitTiles;
@@ -1748,9 +1751,21 @@
   }
 
   // Phase 16: [message] scrolls to its speaker (unless scroll=no or highlight=no), like message.lua.
+  // bugs6.md: and selects it for as long as the message is up -- message.lua's
+  // `highlight_hex`, which also shows the unit in the sidebar
+  // (`display_unit_hex`). Only the highlight and the sidebar: the speaker's
+  // reach is not drawn, and the player's own selection comes back afterwards.
+  // A narrator line clears it (`deselect_hex`).
   $effect(() => {
-    const at = currentMessage?.message.speakerLocation;
-    if (at && currentMessage!.message.scroll && currentMessage!.message.highlight) boardView?.scrollToHexIfOffscreen(at.x, at.y);
+    const message = currentMessage?.message;
+    const at = message?.speakerLocation;
+    const speaker = at && message.highlight ? session.board.unitAt(new Location(at.x, at.y)) : undefined;
+    if (at && message.scroll && message.highlight) boardView?.scrollToHexIfOffscreen(at.x, at.y);
+    untrack(() => {
+      speakerHex = speaker ? { x: speaker.location.x, y: speaker.location.y } : null;
+      if (speaker) session.inspectedUnit = speaker;
+      syncHighlights();
+    });
   });
 
   /** The story screen closed (last part passed, or skipped): now run the startup events, as upstream does after `story_viewer`. */
