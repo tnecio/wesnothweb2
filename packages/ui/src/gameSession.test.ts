@@ -1610,6 +1610,33 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
     expect(preview.defender.numBlows).toBe(0);
   });
 
+  it('bugs6.md: a defender with no counter-weapon still carries its predicted HP outcomes', async () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    session.selectUnit(malKevek);
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    session.selectAttackerWeapon(malKevek.attacks.findIndex((a) => a.name === 'chill wave'));
+
+    const { defender } = session.pendingAttack!.preview;
+    expect(defender.weapon).toBeUndefined();
+    const total = defender.hpDist.reduce((a, b) => a + b, 0);
+    expect(total).toBeCloseTo(1);
+    expect(defender.hpDist[defender.hp]).toBeLessThan(1); // it can be hurt
+  });
+
+  it('bugs6.md: the preview says which combatant is slowed', async () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    malKevek.statuses.add('slowed');
+    session.selectUnit(malKevek);
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    const staffIndex = malKevek.attacks.findIndex((a) => a.name === 'staff');
+    session.selectAttackerWeapon(staffIndex);
+
+    const { attacker, defender } = session.pendingAttack!.preview;
+    expect(attacker.slowed).toBe(true);
+    expect(defender.slowed).toBe(false);
+    expect(attacker.damagePerBlow).toBeLessThan(attacker.baseDamage!);
+  });
+
   it('attacking with the melee weapon against the same defender DOES show a real melee counter-weapon', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     session.selectUnit(malKevek);

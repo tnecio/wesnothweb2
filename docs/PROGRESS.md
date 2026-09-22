@@ -4107,3 +4107,31 @@ made while it ran. Vite hot-reloaded those into the live page and
 remounted the board under the script -- which is also where the stray
 mid-game `this._cancelResize is not a function` came from. Browser checks
 have to run with no source edits in flight.
+
+## 2026-09-22 — bugs6.md: weaponless defender outcomes; slowed status
+
+**Damage calculations, no counter-weapon.** The dialog wrapped a side's
+whole column -- including "Chance to escape unscathed" and the "Expected
+result (HP)" chart -- in `{#if weapon}`, so a defender that cannot fight
+back showed only "will not fight back". It still takes damage, and
+upstream (`attack_predictions.cpp`) hides only the weapon rows (base
+damage, ToD/leadership/slowed modifiers) in that case. The unscathed
+chance and HP chart now render for both sides regardless.
+
+**Slowed.** `CombatantPreview.slowed` (going into the exchange -- upstream's
+`is_slowed`) now shows as "Slowed: / 2 damage" in Damage Calculations
+(upstream's `slowed_modifier` row) and a "Slowed ÷2" badge in the attack
+dialog.
+
+On the map, poisoned/slowed units were drawn with a multiplicative
+`tint` of about (239,239,255) -- which leaves a sprite's dark pixels
+essentially unchanged, so a slowed unit looked no different. Upstream
+(`units/drawer.cpp` `redraw_unit`) *blends* 25% toward (191,191,255)
+(green for poison, averaged when both apply). `statusBlend` +
+`blendColorMatrix` reproduce that as a `ColorMatrixFilter`
+(`out = in * 0.75 + color * 0.25`); verified in the browser, a sprite pixel
+(24,41,49) now renders (66,78,100), exactly upstream's result.
+`SnapshotBoard` rebuilds status filters only when a sprite's status set
+changes. New dev hook: `__wesnothDebug.unitSpriteFilterCounts()`.
+
+The Phase 26 save milestone script passed all checks (777s run).

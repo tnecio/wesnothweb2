@@ -506,6 +506,8 @@
       setRenderingPaused,
       /** Live sprite positions, for debugging movement animation glitches -- see `SnapshotBoard.unitSpritePositions`. */
       unitSpritePositions: () => board?.unitSpritePositions() ?? null,
+      /** Filters per unit sprite, for checking status looks (slowed/poisoned/petrified). */
+      unitSpriteFilterCounts: () => board?.unitSpriteFilterCounts() ?? null,
     };
   }
 

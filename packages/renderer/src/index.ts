@@ -35,7 +35,9 @@ export {
   type MovesOrbStatus,
   movesOrbStatus,
   ORB_COLOR,
-  statusTint,
+  statusBlend,
+  blendColorMatrix,
+  type StatusBlend,
 } from './unitOverlays'
 
 export {

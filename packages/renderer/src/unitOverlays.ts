@@ -12,10 +12,7 @@
  * still move but has no attack left, or couldn't reach an enemy anyway) is
  * folded into `partial` rather than reproduced exactly (upstream's version
  * needs a full reachable-hexes/attack-range analysis this orb doesn't
- * otherwise use); and the poison/slow tint uses a plain color lerp as a
- * stand-in for upstream's true `blend_with`/`blend_ratio` alpha blend
- * (matching this project's already-established hit-flash approximation --
- * see `SnapshotBoard.ts`'s `applyBlend` doc comment).
+ * otherwise use).
  */
 
 /** `units/drawer.cpp`'s `energy_bar` struct constants (all in real, unscaled 72px-hex pixels). */
@@ -129,13 +126,24 @@ export const ORB_COLOR_ID: Record<MovesOrbStatus, string> = {
   moved: 'red',
 };
 
+/** Upstream's `blend_with`/`blend_ratio` pair: every pixel moves `ratio` of the way toward `color` (0xRRGGBB). */
+export interface StatusBlend {
+  color: number;
+  ratio: number;
+}
+
 /**
- * `units/drawer.cpp`'s poison/slow tint block (`redraw_unit`, "Add future
- * colored states here"), returning a plain multiplicative tint approximating
- * the real alpha blend toward the averaged color -- see module doc comment.
- * `0xffffff` (no-op tint) when neither status applies.
+ * `units/drawer.cpp`'s poison/slow block (`redraw_unit`, "Add future
+ * colored states here"): the colors of every active status are averaged,
+ * and so are their 0.25 ratios. `null` when neither status applies.
+ *
+ * This is a true blend, not a multiplicative tint. Reported (bugs6.md):
+ * the tint this used to be scaled pixels by (239,239,255) for slowed, which
+ * leaves the dark pixels of a sprite essentially unchanged -- a slowed unit
+ * looked no different. Blending lifts every pixel toward the pale blue, as
+ * the real game does.
  */
-export function statusTint(poisoned: boolean, slowed: boolean): number {
+export function statusBlend(poisoned: boolean, slowed: boolean): StatusBlend | null {
   let r = 0;
   let g = 0;
   let b = 0;
@@ -153,11 +161,23 @@ export function statusTint(poisoned: boolean, slowed: boolean): number {
     ratio += 0.25;
     tints++;
   }
-  if (tints === 0) return 0xffffff;
-  const avgRatio = ratio / tints;
-  const lerp = (from: number, to: number): number => Math.round(from + (to - from) * avgRatio);
-  const tr = lerp(255, r / tints);
-  const tg = lerp(255, g / tints);
-  const tb = lerp(255, b / tints);
-  return (tr << 16) | (tg << 8) | tb;
+  if (tints === 0) return null;
+  const color = (Math.round(r / tints) << 16) | (Math.round(g / tints) << 8) | Math.round(b / tints);
+  return { color, ratio: ratio / tints };
+}
+
+/**
+ * `statusBlend` as a 5x4 color matrix (PixiJS `ColorMatrixFilter` layout,
+ * channels and offsets in 0-1): `out = in * (1 - ratio) + color * ratio`
+ * for r/g/b, alpha untouched.
+ */
+export function blendColorMatrix(blend: StatusBlend): number[] {
+  const k = 1 - blend.ratio;
+  const channel = (shift: number): number => (((blend.color >> shift) & 0xff) / 255) * blend.ratio;
+  return [
+    k, 0, 0, 0, channel(16),
+    0, k, 0, 0, channel(8),
+    0, 0, k, 0, channel(0),
+    0, 0, 0, 1, 0,
+  ];
 }

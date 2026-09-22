@@ -250,6 +250,8 @@ export interface CombatantPreview {
    * the one currently attacking.
    */
   backstabActive: boolean;
+  /** Already slowed going into this exchange: halves this combatant's damage (upstream's `is_slowed`, shown as the damage dialog's "/ 2" `slowed_modifier` row). */
+  slowed: boolean;
   /** Which weapon special set `chanceToHit` to a flat override, if any (`magical` always wins over `marksman` when both are present -- mirrors `computeUnitStats`'s own precedence). `null` for an ordinary terrain-defense-based chance to hit. */
   chanceToHitSource: 'magical' | 'marksman' | null;
 }
@@ -2301,6 +2303,7 @@ export class GameSession {
         leadershipBonus: attackerLeadershipBonus,
         chargeActive,
         backstabActive: attackerBackstabActive,
+        slowed: attacker.slowed,
         chanceToHitSource: chanceToHitSourceFor(attackerWeapon),
       },
       defender: {
@@ -2329,6 +2332,7 @@ export class GameSession {
         // retaliation shares the exact same flag, not one keyed off its own weapon.
         chargeActive: defenderWeapon ? chargeActive : undefined,
         backstabActive: false, // never applies to a defender's own retaliation blow
+        slowed: defender.slowed,
         chanceToHitSource: chanceToHitSourceFor(defenderWeapon),
       },
     };

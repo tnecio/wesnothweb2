@@ -104,7 +104,8 @@ import {
   DEFAULT_XP_BAR_SCALING,
   movesOrbStatus,
   ORB_COLOR_ID,
-  statusTint,
+  statusBlend,
+  blendColorMatrix,
 } from './unitOverlays.js';
 
 export interface SnapshotTerrainHex {
@@ -477,6 +478,8 @@ export class SnapshotBoard {
   private readonly villageLayer = new PIXI.Container();
   private readonly highlightLayer = new PIXI.Container();
   private readonly unitLayer = new PIXI.Container();
+  /** `applyStatusFilters`: which status set each sprite's filters were last built for. */
+  private readonly statusFilterKeys = new WeakMap<PIXI.Sprite, string>();
   /**
    * Real per-hex `[terrain_graphics]` image layers whose `basey` puts them
    * in FRONT of unit sprites (upstream's `rule_image::is_background() ==
@@ -1022,17 +1025,7 @@ export class SnapshotBoard {
     // cheap synchronous vector redraw).
 
     if (visual.sprite) {
-      const statuses = unit.statuses ?? [];
-      visual.sprite.tint = statusTint(statuses.includes('poisoned'), statuses.includes('slowed'));
-      if (statuses.includes('petrified')) {
-        if (!visual.sprite.filters || (visual.sprite.filters as PIXI.Filter[]).length === 0) {
-          const filter = new PIXI.ColorMatrixFilter();
-          filter.desaturate();
-          visual.sprite.filters = [filter];
-        }
-      } else if (visual.sprite.filters) {
-        visual.sprite.filters = null;
-      }
+      this.applyStatusFilters(visual.sprite, unit.statuses ?? []);
     }
   }
 
@@ -1119,6 +1112,33 @@ export class SnapshotBoard {
     } else if (visual.loyalIcon) {
       visual.loyalIcon.visible = false;
     }
+  }
+
+  /**
+   * Status looks, as `units/drawer.cpp` draws them: petrified units in
+   * greyscale, poisoned/slowed ones blended toward green/pale blue
+   * (`statusBlend`). Filters are only rebuilt when the set of statuses
+   * changes, keyed per sprite so a rebuilt sprite (new image) gets them
+   * again.
+   */
+  private applyStatusFilters(sprite: PIXI.Sprite, statuses: readonly string[]): void {
+    const petrified = statuses.includes('petrified');
+    const blend = statusBlend(statuses.includes('poisoned'), statuses.includes('slowed'));
+    const key = `${petrified}|${blend ? `${blend.color}/${blend.ratio}` : ''}`;
+    if (this.statusFilterKeys.get(sprite) === key) return;
+    this.statusFilterKeys.set(sprite, key);
+    const filters: PIXI.Filter[] = [];
+    if (petrified) {
+      const filter = new PIXI.ColorMatrixFilter();
+      filter.desaturate();
+      filters.push(filter);
+    }
+    if (blend) {
+      const filter = new PIXI.ColorMatrixFilter();
+      filter.matrix = blendColorMatrix(blend) as PIXI.ColorMatrix;
+      filters.push(filter);
+    }
+    sprite.filters = filters.length > 0 ? filters : null;
   }
 
   /**
@@ -1526,6 +1546,16 @@ export class SnapshotBoard {
     const out: Record<string, [number, number]> = {};
     for (const [key, visual] of this.unitVisuals) {
       out[key] = [Math.round(visual.container.x), Math.round(visual.container.y)];
+    }
+    return out;
+  }
+
+  /** Debug: how many filters each unit sprite carries (status looks -- see `applyStatusFilters`). */
+  unitSpriteFilterCounts(): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const [key, visual] of this.unitVisuals) {
+      const filters = visual.sprite?.filters;
+      out[key] = Array.isArray(filters) ? filters.length : filters ? 1 : 0;
     }
     return out;
   }

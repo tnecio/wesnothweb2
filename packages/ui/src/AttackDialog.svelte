@@ -49,6 +49,7 @@
     if (c.leadershipBonus !== 0) badges.push(`Leadership +${c.leadershipBonus}%`);
     if (c.chargeActive) badges.push('Charge ×2');
     if (c.backstabActive) badges.push('Backstab ×2');
+    if (c.slowed && c.weapon) badges.push('Slowed ÷2');
     return badges;
   }
 

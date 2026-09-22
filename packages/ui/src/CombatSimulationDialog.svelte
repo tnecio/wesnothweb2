@@ -57,6 +57,7 @@
     if (c.leadershipBonus !== 0) lines.push(`Leadership: +${c.leadershipBonus}% damage`);
     if (c.chargeActive) lines.push('Charge: ×2 damage (both sides)');
     if (c.backstabActive) lines.push('Backstab: ×2 damage');
+    if (c.slowed) lines.push('Slowed: / 2 damage');
     return lines;
   }
 
@@ -92,31 +93,32 @@
               <span class="label">Chance to hit</span>
               <span class="value hit">{chanceToHitLabel(side.c)}</span>
             </div>
-            <div class="line">
-              <span class="label">Chance to escape unscathed</span>
-              <span class="value unscathed">{unscathedPercent(side.c)}%</span>
-            </div>
             {#if side.c.weapon.specials.length > 0}
               <div class="specials-line">{side.c.weapon.specials.map((s) => s.name).join(', ')}</div>
             {/if}
             {#each modifierLines(side.c) as line (line)}
               <div class="modifier-line">{line}</div>
             {/each}
-            <div class="outcome-label">Expected result (HP)</div>
-            <div class="outcomes">
-              {#each outcomes(side.c) as o (o.hp)}
-                <div class="outcome-row">
-                  <span class="hp-value">{o.hp}</span>
-                  <span class="bar-track">
-                    <span class="bar-fill" style:width={`${Math.round(o.probability * 100)}%`} style:background={cssColor(o.hp, side.c.maxHp)}></span>
-                  </span>
-                  <span class="pct">{Math.round(o.probability * 1000) / 10}%</span>
-                </div>
-              {/each}
-            </div>
           {:else}
             <p class="hint">No usable counter-weapon -- will not fight back.</p>
           {/if}
+          <!-- Upstream (attack_predictions.cpp) shows these for a weaponless side too: it still takes damage (bugs6.md). -->
+          <div class="line">
+            <span class="label">Chance to escape unscathed</span>
+            <span class="value unscathed">{unscathedPercent(side.c)}%</span>
+          </div>
+          <div class="outcome-label">Expected result (HP)</div>
+          <div class="outcomes">
+            {#each outcomes(side.c) as o (o.hp)}
+              <div class="outcome-row">
+                <span class="hp-value">{o.hp}</span>
+                <span class="bar-track">
+                  <span class="bar-fill" style:width={`${Math.round(o.probability * 100)}%`} style:background={cssColor(o.hp, side.c.maxHp)}></span>
+                </span>
+                <span class="pct">{Math.round(o.probability * 1000) / 10}%</span>
+              </div>
+            {/each}
+          </div>
         </div>
       {/each}
     </div>

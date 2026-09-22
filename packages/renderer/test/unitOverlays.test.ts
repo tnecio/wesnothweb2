@@ -11,7 +11,8 @@ import {
   movesOrbStatus,
   ORB_COLOR,
   ORB_COLOR_ID,
-  statusTint,
+  statusBlend,
+  blendColorMatrix,
 } from '../src/unitOverlays'
 
 /**
@@ -84,29 +85,33 @@ describe('movesOrbStatus (display_context::unit_orb_status, collapsed to 3 state
   })
 })
 
-describe('statusTint (units/drawer.cpp redraw_unit poison/slow blend)', () => {
-  it('no status: no-op white tint', () => {
-    expect(statusTint(false, false)).toBe(0xffffff)
+describe('statusBlend (units/drawer.cpp redraw_unit poison/slow blend)', () => {
+  it('no status: nothing to blend', () => {
+    expect(statusBlend(false, false)).toBeNull()
   })
-  it('poisoned alone: a real, non-white green-leaning tint', () => {
-    const tint = statusTint(true, false)
-    expect(tint).not.toBe(0xffffff)
-    const g = (tint >> 8) & 0xff
-    const r = (tint >> 16) & 0xff
-    expect(g).toBeGreaterThan(r) // green channel boosted relative to red
+  it('poisoned: 25% toward pure green', () => {
+    expect(statusBlend(true, false)).toEqual({ color: 0x00ff00, ratio: 0.25 })
   })
-  it('slowed alone: a real, non-white blue-leaning tint', () => {
-    const tint = statusTint(false, true)
-    expect(tint).not.toBe(0xffffff)
-    const b = tint & 0xff
-    const r = (tint >> 16) & 0xff
-    expect(b).toBeGreaterThan(r) // blue channel boosted relative to red
+  it('slowed: 25% toward pale blue (191,191,255)', () => {
+    expect(statusBlend(false, true)).toEqual({ color: 0xbfbfff, ratio: 0.25 })
   })
-  it('both: distinct from either alone (real averaged blend, not just one winning)', () => {
-    const both = statusTint(true, true)
-    expect(both).not.toBe(statusTint(true, false))
-    expect(both).not.toBe(statusTint(false, true))
-    expect(both).not.toBe(0xffffff)
+  it('both: colors averaged, ratio averaged', () => {
+    expect(statusBlend(true, true)).toEqual({ color: (96 << 16) | (223 << 8) | 128, ratio: 0.25 })
+  })
+})
+
+describe('blendColorMatrix', () => {
+  // Apply the 5x4 matrix to an unpremultiplied 0-1 rgba pixel, as PixiJS's shader does.
+  const apply = (m: number[], px: number[]): number[] =>
+    [0, 1, 2, 3].map((row) => m[row * 5]! * px[0]! + m[row * 5 + 1]! * px[1]! + m[row * 5 + 2]! * px[2]! + m[row * 5 + 3]! * px[3]! + m[row * 5 + 4]!)
+  it('lifts a black pixel a quarter of the way to the slowed blue -- visible, unlike a multiply tint', () => {
+    const out = apply(blendColorMatrix({ color: 0xbfbfff, ratio: 0.25 }), [0, 0, 0, 1])
+    expect(out[0]).toBeCloseTo((191 / 255) * 0.25)
+    expect(out[2]).toBeCloseTo(0.25)
+    expect(out[3]).toBe(1)
+  })
+  it('keeps alpha, so transparent pixels stay transparent', () => {
+    expect(apply(blendColorMatrix({ color: 0x00ff00, ratio: 0.25 }), [1, 1, 1, 0])[3]).toBe(0)
   })
 })
 
