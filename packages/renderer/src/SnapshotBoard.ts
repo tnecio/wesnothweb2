@@ -107,6 +107,7 @@ import {
   statusBlend,
   blendColorMatrix,
 } from './unitOverlays.js';
+import { redToGreen } from './colorScales.js';
 
 export interface SnapshotTerrainHex {
   x: number; // engine-convention 0-based
@@ -1638,8 +1639,13 @@ export class SnapshotBoard {
       this.highlightLayer.addChild(g);
     };
 
+    // bugs6.md: each reachable hex is shaded by the unit's defense there, on
+    // upstream's own red-to-green scale (`game_config::red_to_green`, the
+    // colour the sidebar's terrain report gives a defense value): 30% reads
+    // orange-red, 50% yellow, 70% green. Plain blue only when no defense
+    // value was supplied.
     for (const hex of state.reachable ?? []) {
-      drawFill(hex, 0x3fa9f5, 0.45);
+      drawFill(hex, hex.defensePercent !== undefined ? redToGreen(hex.defensePercent) : 0x3fa9f5, 0.45);
       if (hex.defensePercent !== undefined) {
         const coord = toHexCoord(hex.x, hex.y);
         const { x: cx, y: cy } = hexToPixel(coord);

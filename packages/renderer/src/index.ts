@@ -40,6 +40,8 @@ export {
   type StatusBlend,
 } from './unitOverlays'
 
+export { RED_GREEN_SCALE, RED_GREEN_SCALE_TEXT, redToGreen } from './colorScales'
+
 export {
   type Rgb,
   type ColorRange,

@@ -4160,3 +4160,18 @@ upstream highlights, it does not select for movement -- and the player's own
 selection highlight returns once the dialogue ends. `highlight=no` is
 honoured. Verified on synthetic_dialogue (sidebar follows Debug Villain,
 then Debug Hero, across lines); `dialogue-playthrough.mjs` passes.
+
+## 2026-09-22 — bugs6.md: reachable hexes shaded by defense
+
+The reach overlay was flat blue. Each reachable hex is now filled with
+upstream's `game_config::red_to_green` colour for the unit's defense there
+-- the same palette (`red_green_scale`, 121 entries from
+data/game_config.cfg, plus the `_text` variant) the sidebar's terrain report
+uses for defense. Ported as `renderer/src/colorScales.ts` (`redToGreen`),
+with tests pinning 30% -> 0xff8000, 50% -> 0xffff00, 70% -> 0x80ff00 and the
+clamped ends. The sidebar hint text now describes the shading. Checked in
+the browser on synthetic_economy: grass at 40% reads amber, the village at
+60% yellow-green.
+
+Open point: with the leader selected, castle hexes also get the green
+recruit-tile fill, which now overlaps "green = good defense".

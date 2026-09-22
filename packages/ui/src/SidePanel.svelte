@@ -175,8 +175,9 @@
 
   {#if !selected && !inspected && recruitOptions.length === 0 && recallOptions.length === 0}
     <p class="hint">
-      Click one of your units to select it. Blue hexes are where it can move;
-      red hexes are adjacent enemies it can attack.
+      Click one of your units to select it. The hexes it can move to are shaded
+      by its defense there, from red (poor) through yellow to green (good);
+      adjacent enemies it can attack are marked red.
     </p>
   {/if}
 
