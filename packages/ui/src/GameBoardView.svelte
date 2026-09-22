@@ -131,6 +131,9 @@
    * moment it becomes available, regardless of what else changed when.
    */
   let board: SnapshotBoard | undefined = $state();
+  /** Resolves once the first full render -- terrain, then units, highlights, fog -- is on screen (or failed); see `whenReady`. */
+  let markReady: () => void = () => {};
+  const readyPromise = new Promise<void>((resolve) => (markReady = resolve));
   /** The mounted PixiJS app, reactive so the `paused` effect below runs once it exists. */
   let pixiApp: PIXI.Application | undefined = $state.raw();
   /** Phase 17 `[lock_view]`: the player's own pan/zoom is off while a cutscene owns the camera. */
@@ -304,10 +307,12 @@
       newBoard.updateVillageOwnership(villageOwners);
       newBoard.updateFogShroud(hexVisibility);
       if (timeOfDay) newBoard.updateTimeOfDayTint(timeOfDay);
-    })().catch((err) => {
-      console.error(err);
-      status = `failed to load: ${err instanceof Error ? err.message : String(err)}`;
-    });
+    })()
+      .catch((err) => {
+        console.error(err);
+        status = `failed to load: ${err instanceof Error ? err.message : String(err)}`;
+      })
+      .finally(() => markReady());
 
     return () => {
       cancelled = true;
@@ -509,6 +514,16 @@
       /** Filters per unit sprite, for checking status looks (slowed/poisoned/petrified). */
       unitSpriteFilterCounts: () => board?.unitSpriteFilterCounts() ?? null,
     };
+  }
+
+  /**
+   * Resolves once the map and its units are drawn -- bugs6.md: a scenario's
+   * opening dialogue must not start over a still-blank board, or the
+   * speakers it scrolls to and names are not there to see. Also resolves
+   * if loading failed, so nothing waiting on it hangs.
+   */
+  export function whenReady(): Promise<void> {
+    return readyPromise;
   }
 
   /** Phase 16: the board's on-screen area, which the `[message]` dialog covers (upstream's `gamemap_*` window variables). */

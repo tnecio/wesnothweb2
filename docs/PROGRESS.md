@@ -4175,3 +4175,17 @@ the browser on synthetic_economy: grass at 40% reads amber, the village at
 
 Open point: with the leader selected, castle hexes also get the green
 recruit-tile fill, which now overlaps "green = good defense".
+
+## 2026-09-22 — bugs6.md: opening dialogue waits for the map
+
+Startup events (`prestart`/`start`) ran as soon as the story closed, or at
+mount when there is no story, whether or not the board had rendered, so the
+opening `[message]`s could play over a blank or half-loaded map with none
+of their speakers visible. `GameBoardView.whenReady()` now resolves after
+the first full render (terrain, then units, highlights, fog, ToD), or on a
+load failure so nothing hangs. `GameShell.runStartupEvents` awaits it (after
+a `tick`, so a scenario transition's `{#key}` remount binds the new board
+first) while holding `eventsRunning`, which already blocks hotkeys, clicks
+and End Turn. Checked on Dead Water 1: the first message appears after
+`data-board-ready` with unit sprites on the board. Dialogue and keyboard
+playthroughs pass.

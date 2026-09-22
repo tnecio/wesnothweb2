@@ -25,7 +25,7 @@
    * before entering 'messages', so the board already reflects every real
    * event-spawned unit by the time the player gets control.
    */
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import type {
     GameBoardSnapshot,
     SnapshotUnit,
@@ -640,10 +640,24 @@
     void runStartupEvents();
   }
 
+  /**
+   * Waits for the board to finish its first render (bugs6.md): the opening
+   * dialogue used to start while the map was still loading, so the units it
+   * scrolls to and names were not on screen yet. Callers hold
+   * `eventsRunning`, which keeps input blocked meanwhile. The `tick` first
+   * lets a scenario transition's `{#key}` remount bind the new board.
+   */
+  async function boardReady(): Promise<void> {
+    await tick();
+    while (!boardView) await new Promise((resolve) => setTimeout(resolve, 50));
+    await boardView.whenReady();
+  }
+
   /** Runs the scenario's `prestart`/`start` events, showing their dialogue and cutscenes as they happen. */
   async function runStartupEvents(): Promise<void> {
     eventsRunning = true;
     try {
+      await boardReady();
       await session.runStartupEvents();
     } finally {
       eventsRunning = false;
