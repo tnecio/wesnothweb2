@@ -1,0 +1,511 @@
+/**
+ * The only module in this project that knows how a real Wesnoth save file
+ * is spelled. Everything else -- `GameSession`, the storage layer, the UI
+ * -- deals in `SaveGameData`, plain JSON; this converts between that and
+ * the WML tree a `.gz` save actually contains, and it is reached only when
+ * the player downloads or uploads a file.
+ *
+ * ## What a real save is
+ *
+ * Gzipped, tab-indented WML text (there is no binary save format). At file
+ * level: `version=`/`campaign=`/`difficulty=`/`label=` and friends from
+ * `game_classification::to_config`, then `[multiplayer]`, `[statistics]`,
+ * `[carryover_sides]`, `[snapshot]`, `[replay_start]`, `[replay]` -- see
+ * `savegame.cpp`'s `ingame_savegame::write_game` (~L567) for that exact
+ * order. `[snapshot]` is the live game: `play_controller::to_config`
+ * (~L587) starts from a copy of the scenario's own config and overlays
+ * turn/side/unit state onto it, which is why it carries `map_data=` and
+ * every `[event]` as well as the `[side]`/`[unit]` blocks.
+ *
+ * ## Fidelity, and how it is kept
+ *
+ * A save imported from the real game keeps everything this port does not
+ * model -- `[statistics]`, `[multiplayer]`, `[replay]`, `[undo_stack]`,
+ * `[display]`, the scenario's own `[event]`s as that version wrote them --
+ * verbatim in `SaveGameData.wesnothExtras`, and re-exporting overlays live
+ * state back onto it. So a real save can make the round trip through this
+ * port without silently shedding the parts it does not understand, which
+ * is the property `wesnothSave.test.ts` pins down against a real 1.16.9
+ * Dead Water save.
+ *
+ * A save created *here* has no extras to preserve, so export synthesizes
+ * the required blocks from the scenario snapshot instead. The `[replay]`
+ * it writes is minimal but valid (`[upload_log]` plus the `[start]`/
+ * `[random_seed]`/`[init_side]` commands a turn-start autosave contains) --
+ * a real replay log is Phase 25, and is not needed for a save to load.
+ *
+ * ## Coordinates and other traps
+ *
+ * WML `[unit] x=`/`y=` are 1-based, `Location` is 0-based (`Location.
+ * fromWml`/`wmlX` do the conversion); `playing_team` is 0-based where
+ * `side=` is 1-based; a `[unit]` with no x/y is a recall-list unit, which
+ * is how upstream itself tells the two apart; `canrecruit` is only written
+ * when true; and upstream omits any unit attribute still matching its unit
+ * type, which is why every numeric field of `SavedUnit` is optional.
+ */
+
+import {
+  Location,
+  WmlConfig,
+  type GameBoardSnapshot,
+  type WmlConfigJson,
+} from '@wesnothweb2/engine';
+import type { SaveGameData, SavedUnit } from '../gameSession.js';
+
+/**
+ * The campaign identity a save file carries, which this port keeps in a
+ * different spelling than upstream does (`dead_water` vs `Dead_Water`).
+ * Supplied by the caller from `campaigns.json` rather than guessed: the
+ * upstream id cannot be derived from ours (`under_the_burning_suns` gives
+ * no clue which letters are capitalised).
+ */
+export interface WesnothCampaignInfo {
+  /** Upstream's `[campaign] id=`, e.g. `Dead_Water`. */
+  wesnothId: string;
+  /** Upstream's `[campaign] name=`, e.g. `Dead Water`. */
+  name: string;
+  /** Upstream's `[campaign] abbrev=`, e.g. `DW` -- the first half of a save's `label=`. */
+  abbrev: string;
+  /**
+   * Upstream's `[campaign] define=`, e.g. `CAMPAIGN_DEAD_WATER`, written
+   * to the save as `campaign_define=`. Load-bearing, and easy to miss: it
+   * is the `#ifdef` flag that makes Wesnoth preprocess this campaign's own
+   * content, so without it the game loads the save and then dies on the
+   * first campaign-specific unit ("unknown unit type: Merman Child King").
+   */
+  define: string;
+  /** `EASY`/`NORMAL`/`HARD`; this port has no difficulty selection yet, so `NORMAL` unless told otherwise. */
+  difficulty?: string;
+}
+
+export interface ImportedWesnothSave {
+  save: SaveGameData;
+  /** The save's own `label=` (`<abbrev>-<scenario name>`), for naming the imported slot. */
+  label: string;
+  /** Which Wesnoth version wrote it, purely informational. */
+  version: string;
+}
+
+/** Wesnoth's own campaign ids map to this project's by lower-casing (`Dead_Water` -> `dead_water`) for all four ported campaigns. The reverse needs `WesnothCampaignInfo`. */
+function campaignIdFromWesnoth(wesnothId: string): string | undefined {
+  return wesnothId ? wesnothId.toLowerCase() : undefined;
+}
+
+// ── import ──────────────────────────────────────────────────────────────
+
+/** Reads a `[status]` child as the flag names it sets (`poisoned=yes` -> `poisoned`). */
+function statusesFrom(unitCfg: WmlConfig): string[] | undefined {
+  const status = unitCfg.child('status');
+  if (!status) return undefined;
+  const flags = status.attributeNames().filter((name) => status.getBoolean(name, false));
+  return flags.length > 0 ? flags : undefined;
+}
+
+function modificationsFrom(unitCfg: WmlConfig): SavedUnit['modifications'] {
+  const mods = unitCfg.child('modifications');
+  if (!mods) return undefined;
+  const out = mods.allChildren().map(({ tag, config }) => ({ kind: tag, cfg: config.toJSON() }));
+  return out.length > 0 ? out : undefined;
+}
+
+/** Reads one optional numeric attribute, leaving it `undefined` when the save omitted it (so the unit type's own default wins). */
+function optNumber(cfg: WmlConfig, key: string): number | undefined {
+  return cfg.hasAttribute(key) ? cfg.getNumber(key) : undefined;
+}
+
+function optString(cfg: WmlConfig, key: string): string | undefined {
+  return cfg.hasAttribute(key) ? cfg.getString(key) : undefined;
+}
+
+function optBoolean(cfg: WmlConfig, key: string): boolean | undefined {
+  return cfg.hasAttribute(key) ? cfg.getBoolean(key) : undefined;
+}
+
+/** One `[unit]` from a save's `[side]`. A unit with no x/y is a recall-list unit -- upstream's own rule. */
+function unitFromWml(unitCfg: WmlConfig, side: number): SavedUnit {
+  const onBoard = unitCfg.hasAttribute('x') && unitCfg.hasAttribute('y');
+  const loc = onBoard ? Location.fromWml(unitCfg.getNumber('x'), unitCfg.getNumber('y')) : null;
+  const gotoX = unitCfg.getNumber('goto_x', 0);
+  const gotoY = unitCfg.getNumber('goto_y', 0);
+  return {
+    id: unitCfg.getString('id', '') || null,
+    name: unitCfg.getString('name', '') || null,
+    // `parent_type=` is what a unit advanced beyond its base type records.
+    typeId: unitCfg.hasAttribute('parent_type') ? unitCfg.getString('parent_type') : unitCfg.getString('type'),
+    side: unitCfg.getNumber('side', side),
+    canRecruit: unitCfg.getBoolean('canrecruit', false),
+    ...(loc ? { x: loc.x, y: loc.y } : {}),
+    hitpoints: optNumber(unitCfg, 'hitpoints'),
+    maxHitpoints: optNumber(unitCfg, 'max_hitpoints'),
+    movesLeft: optNumber(unitCfg, 'moves'),
+    maxMoves: optNumber(unitCfg, 'max_moves'),
+    attacksLeft: optNumber(unitCfg, 'attacks_left'),
+    maxAttacksPerTurn: optNumber(unitCfg, 'max_attacks'),
+    experience: optNumber(unitCfg, 'experience'),
+    maxExperience: optNumber(unitCfg, 'max_experience'),
+    level: optNumber(unitCfg, 'level'),
+    facing: optString(unitCfg, 'facing'),
+    resting: optBoolean(unitCfg, 'resting'),
+    hidden: optBoolean(unitCfg, 'hidden'),
+    role: optString(unitCfg, 'role'),
+    underlyingId: optNumber(unitCfg, 'underlying_id'),
+    profile: optString(unitCfg, 'profile'),
+    statuses: statusesFrom(unitCfg),
+    modifications: modificationsFrom(unitCfg),
+    variables: unitCfg.child('variables')?.toJSON(),
+    // goto_x/goto_y are 0 (not absent) when there is no pending goto.
+    ...(gotoX > 0 && gotoY > 0 ? { goto: { x: gotoX - 1, y: gotoY - 1 } } : {}),
+    // Everything a real save records per unit that this port does not
+    // model -- see `SavedUnit.wesnothExtras`.
+    wesnothExtras: unitCfg.toJSON(),
+  };
+}
+
+/**
+ * Converts a parsed Wesnoth save into this project's own save shape.
+ *
+ * Only mid-scenario saves carry a `[snapshot]`; a start-of-scenario save
+ * has `[carryover_sides_start]` and nothing else to resume from
+ * (`savegame.cpp:475`), so it is rejected rather than silently loaded as
+ * an empty game.
+ */
+export function fromWesnothSave(cfg: WmlConfig): ImportedWesnothSave {
+  const snapshot = cfg.child('snapshot');
+  if (!snapshot || snapshot.children('side').length === 0) {
+    throw new Error(
+      'This save has no [snapshot] with sides in it. Wesnoth writes that only for a mid-scenario save; ' +
+        'a start-of-scenario or replay-only save cannot be resumed here.',
+    );
+  }
+
+  const teams: SaveGameData['teams'][number][] = [];
+  const units: SavedUnit[] = [];
+  const recall: SavedUnit[] = [];
+
+  for (const sideCfg of snapshot.children('side')) {
+    const side = sideCfg.getNumber('side', teams.length + 1);
+    teams.push({
+      side,
+      gold: sideCfg.getNumber('gold', 0),
+      shroudData: optString(sideCfg, 'shroud_data'),
+      fogData: optString(sideCfg, 'fog_data'),
+      villages: sideCfg.children('village').map((v) => {
+        const loc = Location.fromWml(v.getNumber('x'), v.getNumber('y'));
+        return { x: loc.x, y: loc.y };
+      }),
+    });
+    for (const unitCfg of sideCfg.children('unit')) {
+      const unit = unitFromWml(unitCfg, side);
+      (unit.x === undefined ? recall : units).push(unit);
+    }
+  }
+
+  // `playing_team` is a 0-based index into the side list; `side=` is 1-based.
+  const activeSide = snapshot.hasAttribute('playing_team') ? snapshot.getNumber('playing_team') + 1 : 1;
+
+  // Everything this port does not model, kept so a re-export can put it
+  // back. The `[side]` blocks stay -- they carry `controller=`, `recruit=`,
+  // team colours, carryover settings and `[ai]` config that no live state
+  // here reproduces -- but their `[unit]`/`[village]` children are dropped,
+  // since those ARE regenerated (each unit keeps its own original block in
+  // `SavedUnit.wesnothExtras`) and they are the bulk of the file.
+  const extras = cfg.clone();
+  for (const sideCfg of extras.child('snapshot')?.children('side') ?? []) {
+    sideCfg.removeChildren('unit');
+    sideCfg.removeChildren('village');
+  }
+
+  return {
+    save: {
+      version: 2,
+      turnNumber: snapshot.getNumber('turn_at', 1),
+      activeSide,
+      scenarioResult: null,
+      startupEventsRun: true,
+      scenarioId: snapshot.getString('id', ''),
+      scenarioName: snapshot.getString('name', ''),
+      campaignId: campaignIdFromWesnoth(cfg.getString('campaign', '')),
+      teams,
+      units,
+      recall,
+      variables: snapshot.child('variables')?.toJSON(),
+      rng: {
+        seed: snapshot.getString('random_seed', '00000000'),
+        calls: snapshot.getNumber('random_calls', 0),
+      },
+      wesnothExtras: extras.toJSON(),
+    },
+    label: cfg.getString('label', ''),
+    version: cfg.getString('version', ''),
+  };
+}
+
+// ── export ──────────────────────────────────────────────────────────────
+
+/**
+ * One `[unit]` block. For a unit that came from a real save this starts
+ * from that save's own block (`SavedUnit.wesnothExtras`) and overlays the
+ * fields this port tracks, so the many attributes it does not track --
+ * `gender`, `race`, `upkeep`, `image`, `[filter_recall]`, the movement
+ * type's cost tables -- survive the trip back out to a file.
+ */
+function unitToWml(u: SavedUnit, onBoard: boolean): WmlConfig {
+  const cfg = u.wesnothExtras ? WmlConfig.fromJSON(u.wesnothExtras) : new WmlConfig();
+  cfg.setAttribute('type', u.typeId);
+  if (u.id) cfg.setAttribute('id', u.id);
+  if (u.name) cfg.setAttribute('name', u.name);
+  cfg.setAttribute('side', u.side);
+  if (onBoard && u.x !== undefined && u.y !== undefined) {
+    const loc = new Location(u.x, u.y);
+    cfg.setAttribute('x', loc.wmlX);
+    cfg.setAttribute('y', loc.wmlY);
+  }
+  // Mirrors `unit::write`: canrecruit is written only when true.
+  if (u.canRecruit) cfg.setAttribute('canrecruit', true);
+  const num = (key: string, value: number | undefined): void => {
+    if (value !== undefined) cfg.setAttribute(key, value);
+  };
+  num('hitpoints', u.hitpoints);
+  num('max_hitpoints', u.maxHitpoints);
+  num('moves', u.movesLeft);
+  num('max_moves', u.maxMoves);
+  num('attacks_left', u.attacksLeft);
+  num('max_attacks', u.maxAttacksPerTurn);
+  num('experience', u.experience);
+  num('max_experience', u.maxExperience);
+  num('level', u.level);
+  num('underlying_id', u.underlyingId);
+  if (u.facing) cfg.setAttribute('facing', u.facing);
+  if (u.resting !== undefined) cfg.setAttribute('resting', u.resting);
+  if (u.hidden !== undefined) cfg.setAttribute('hidden', u.hidden);
+  if (u.role) cfg.setAttribute('role', u.role);
+  if (u.profile) cfg.setAttribute('profile', u.profile);
+  if (u.goto) {
+    const loc = new Location(u.goto.x, u.goto.y);
+    cfg.setAttribute('goto_x', loc.wmlX);
+    cfg.setAttribute('goto_y', loc.wmlY);
+  }
+  // Regenerated from live state -- but only when there is live state to
+  // write. Leaving an inherited (possibly empty) block alone is what keeps
+  // a re-exported real save byte-for-byte faithful in these three spots.
+  if (u.statuses && u.statuses.length > 0) {
+    cfg.removeChildren('status');
+    const status = cfg.addChild('status');
+    for (const flag of u.statuses) status.setAttribute(flag, true);
+  }
+  if (u.modifications && u.modifications.length > 0) {
+    cfg.removeChildren('modifications');
+    const mods = cfg.addChild('modifications');
+    for (const m of u.modifications) mods.addChild(m.kind, WmlConfig.fromJSON(m.cfg));
+  }
+  if (u.variables) {
+    cfg.removeChildren('variables');
+    cfg.addChild('variables', WmlConfig.fromJSON(u.variables));
+  }
+  return cfg;
+}
+
+/**
+ * Builds the `[side]` blocks for a `[snapshot]`: live team state, this
+ * side's board units, then its recall-list units (which carry no x/y).
+ * Each side keeps whatever the scenario declared about it that this port
+ * does not track (`recruit=`, `controller=`, `team_name=`, `[ai]`, ...)
+ * by starting from `template`, when one is available.
+ */
+function sidesToWml(save: SaveGameData, templates: Map<number, WmlConfig>): WmlConfig[] {
+  return save.teams.map((team) => {
+    const cfg = templates.get(team.side)?.clone() ?? new WmlConfig();
+    cfg.removeChildren('unit');
+    cfg.removeChildren('village');
+    cfg.setAttribute('side', team.side);
+    cfg.setAttribute('gold', team.gold);
+    if (team.shroudData !== undefined) cfg.setAttribute('shroud_data', team.shroudData);
+    if (team.fogData !== undefined) cfg.setAttribute('fog_data', team.fogData);
+    for (const v of team.villages ?? []) {
+      const loc = new Location(v.x, v.y);
+      cfg.addChild('village').setAttribute('x', loc.wmlX).setAttribute('y', loc.wmlY);
+    }
+    for (const u of save.units) {
+      if (u.side === team.side) cfg.addChild('unit', unitToWml(u, true));
+    }
+    for (const u of save.recall ?? []) {
+      if (u.side === team.side) cfg.addChild('unit', unitToWml(u, false));
+    }
+    return cfg;
+  });
+}
+
+/** The smallest `[replay]` a real save is ever written with -- see this module's doc comment on why a real log is not needed. */
+function minimalReplay(save: SaveGameData): WmlConfig {
+  const replay = new WmlConfig();
+  replay.addChild('upload_log');
+  replay.addChild('command').addChild('start');
+  const seedCommand = replay.addChild('command');
+  seedCommand.setAttribute('dependent', true);
+  seedCommand.setAttribute('from_side', 'server');
+  seedCommand.addChild('random_seed').setAttribute('new_seed', save.rng?.seed ?? '00000000');
+  replay.addChild('command').addChild('init_side').setAttribute('side_number', save.activeSide);
+  return replay;
+}
+
+/**
+ * Converts one of this project's saves into a real Wesnoth save tree,
+ * ready for `writeWml` + gzip.
+ *
+ * `snapshot` supplies what a save needs but live state does not carry: the
+ * scenario's own config (its `[event]`s, `[time]`s and objectives, which
+ * `[snapshot]` embeds) and the map. `version` defaults to the content this
+ * port ships; override it to target the exact build a file is destined for.
+ */
+export function toWesnothSave(
+  save: SaveGameData,
+  snapshot: GameBoardSnapshot,
+  campaign: WesnothCampaignInfo,
+  options: { version?: string } = {},
+): WmlConfig {
+  const extras = save.wesnothExtras ? WmlConfig.fromJSON(save.wesnothExtras) : null;
+  const out = extras ?? new WmlConfig();
+
+  const scenarioCfg = WmlConfig.fromJSON(snapshot.scenarioConfigJson as WmlConfigJson);
+  const label = save.scenarioName ? `${campaign.abbrev}-${save.scenarioName}` : campaign.abbrev;
+
+  // `game_classification::to_config`'s root attributes. An imported save
+  // already has them; keep its own values rather than restating ours.
+  if (!extras) {
+    out.setAttribute('version', options.version ?? WESNOTH_CONTENT_VERSION);
+    out.setAttribute('campaign_type', 'scenario');
+    out.setAttribute('campaign', campaign.wesnothId);
+    out.setAttribute('campaign_name', campaign.name);
+    out.setAttribute('abbrev', campaign.abbrev);
+    out.setAttribute('difficulty', campaign.difficulty ?? 'NORMAL');
+    out.setAttribute('label', label);
+    out.setAttribute('end_credits', true);
+    // See `WesnothCampaignInfo.define`: without these the game loads the
+    // save but has never preprocessed the campaign's own units.
+    out.setAttribute('campaign_define', campaign.define);
+    out.setAttribute('campaign_extra_defines', '');
+    out.setAttribute('scenario_define', '');
+    out.setAttribute('era_define', '');
+    out.setAttribute('mod_defines', '');
+    out.setAttribute('active_mods', '');
+    out.setAttribute('era_id', 'era_default');
+    // Upstream's loader synthesizes a default [multiplayer] when a save
+    // has none, by way of its "convert old saves" path; writing one keeps
+    // a current-version save on the current-version code path.
+    const mp = out.addChild('multiplayer');
+    mp.setAttribute('mp_campaign', campaign.wesnothId);
+    mp.setAttribute('mp_scenario', save.scenarioId ?? snapshot.scenario.id);
+    mp.setAttribute('mp_scenario_name', save.scenarioName ?? snapshot.scenario.name);
+    mp.setAttribute('mp_era_name', 'Default');
+    mp.setAttribute('era_id', 'era_default');
+    mp.setAttribute('experience_modifier', 100);
+    mp.setAttribute('mp_use_map_settings', true);
+    out.addChild('statistics');
+  } else if (options.version) {
+    out.setAttribute('version', options.version);
+  }
+
+  // The `[side]` blocks the scenario declares are the templates for the
+  // live ones: they carry recruit lists, controllers, team names and [ai]
+  // config this port does not track in a save.
+  const templates = new Map<number, WmlConfig>();
+  const previousSnapshot = extras?.child('snapshot');
+  for (const sideCfg of previousSnapshot?.children('side') ?? scenarioCfg.children('side')) {
+    templates.set(sideCfg.getNumber('side', templates.size + 1), sideCfg);
+  }
+
+  // `[snapshot]` = the scenario's config with live state overlaid
+  // (`play_controller::to_config`). Rebuild it from the scenario every
+  // time so a stale copy in `wesnothExtras` cannot drift.
+  out.removeChildren('snapshot');
+  const snapCfg = previousSnapshot ? previousSnapshot.clone() : scenarioCfg.clone();
+  snapCfg.removeChildren('side');
+  snapCfg.removeChildren('variables');
+  // A real `[snapshot]` has no `[story]`, even though the scenario config
+  // it is built from does. Found the hard way: leave it in and the real
+  // game replays the campaign's intro screens instead of resuming the
+  // game, because a snapshot carrying story is indistinguishable to it
+  // from a scenario that has not started yet.
+  snapCfg.removeChildren('story');
+  snapCfg.setAttribute('id', save.scenarioId ?? snapshot.scenario.id);
+  snapCfg.setAttribute('name', save.scenarioName ?? snapshot.scenario.name);
+  snapCfg.setAttribute('map_data', snapshot.map.data);
+  snapCfg.setAttribute('turn_at', save.turnNumber);
+  // `playing_team` is a 0-based index; `next_player_number` is the 1-based
+  // side that plays *after* the current one, wrapping round the side list.
+  snapCfg.setAttribute('playing_team', save.activeSide - 1);
+  snapCfg.setAttribute('next_player_number', (save.activeSide % Math.max(1, save.teams.length)) + 1);
+  snapCfg.setAttribute('init_side_done', true);
+  // `game_state::write`/`game_data::write_snapshot` fields a loader reads
+  // that no live state here carries: the next id new units get (derived
+  // from the highest one in play), and the "resuming, not starting" flags.
+  // Despite the name this is the HIGHEST id handed out so far, not the
+  // next one (`unit_id_manager::get_save_id` returns the counter, and
+  // `next_id()` pre-increments it) -- the real fixture says 11 while
+  // carrying a unit whose `underlying_id` is 11. Never let it shrink
+  // below what an imported save already recorded: ids of units that have
+  // since died must not be reused.
+  snapCfg.setAttribute(
+    'next_underlying_unit_id',
+    Math.max(
+      snapCfg.getNumber('next_underlying_unit_id', 0),
+      ...save.units.map((u) => u.underlyingId ?? 0),
+      ...(save.recall ?? []).map((u) => u.underlyingId ?? 0),
+    ),
+  );
+  snapCfg.setAttribute('it_is_a_new_turn', false);
+  snapCfg.setAttribute('do_healing', true);
+  snapCfg.setAttribute('can_end_turn', true);
+  snapCfg.setAttribute('require_scenario', true);
+  if (save.rng) {
+    snapCfg.setAttribute('random_seed', save.rng.seed);
+    snapCfg.setAttribute('random_calls', save.rng.calls);
+  }
+  if (save.variables) snapCfg.addChild('variables', WmlConfig.fromJSON(save.variables));
+  for (const sideCfg of sidesToWml(save, templates)) snapCfg.addChild('side', sideCfg);
+  out.addChild('snapshot', snapCfg);
+
+  // `[replay_start]` is the scenario as it stood before any of this was
+  // played; an imported save already has the real one.
+  if (!out.child('replay_start')) {
+    const replayStart = scenarioCfg.clone();
+    replayStart.setAttribute('map_data', snapshot.map.data);
+    out.addChild('replay_start', replayStart);
+  }
+  if (!out.child('replay')) out.addChild('replay', minimalReplay(save));
+  // `replay_pos` is how many of `[replay]`'s commands have already been
+  // played. Found the hard way: leave it out and the real game assumes
+  // none have been, replays the scenario from its beginning -- story
+  // screen and all -- instead of resuming the snapshot.
+  snapCfg.setAttribute('replay_pos', out.child('replay')!.children('command').length);
+  if (!out.child('carryover_sides')) out.addChild('carryover_sides', carryoverSides(save, campaign));
+
+  return out;
+}
+
+/** `[carryover_sides]`: what upstream would carry into the next scenario (`carryover.cpp:209`). */
+function carryoverSides(save: SaveGameData, campaign: WesnothCampaignInfo): WmlConfig {
+  const cfg = new WmlConfig();
+  cfg.setAttribute('next_scenario', '');
+  if (save.rng) {
+    cfg.setAttribute('random_seed', save.rng.seed);
+    cfg.setAttribute('random_calls', save.rng.calls);
+  }
+  if (save.variables) cfg.addChild('variables', WmlConfig.fromJSON(save.variables));
+  for (const team of save.teams) {
+    const side = cfg.addChild('side');
+    side.setAttribute('save_id', `${campaign.wesnothId}-${team.side}`);
+    side.setAttribute('gold', team.gold);
+    side.setAttribute('add', false);
+  }
+  return cfg;
+}
+
+/**
+ * The version string a freshly-exported save claims. This port's content
+ * comes from the 1.19 branch of the wesnoth submodule, so that is what it
+ * says it is; `savegame.cpp`'s compatibility check accepts a differing
+ * version with a warning the player can accept, so an older installed
+ * build still opens it.
+ */
+export const WESNOTH_CONTENT_VERSION = '1.19.21';

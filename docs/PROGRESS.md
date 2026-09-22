@@ -3757,3 +3757,61 @@ is the whole 84-line difference between the real save and our rewrite of
 it).
 
 Gates: engine 615 tests (+7); 0 typecheck errors.
+
+## 2026-09-22 — Phase 26 S3: two-way Wesnoth save conversion, verified in the real game
+
+`packages/ui/src/save/wesnothSave.ts` converts between `SaveGameData` and
+the WML tree a real `.gz` save contains. It is the only module in the
+project that knows how a save file is spelled; everything else deals in
+JSON, and the converter is reached only on download/upload (the user's
+call: "keep main code WML-free").
+
+**Both directions are verified against the real game, not just against
+this port's idea of the format.** The fixture
+(`packages/ui/src/save/fixtures/`) is Wesnoth 1.16.9's own turn-1 autosave
+of Dead Water 1, committed unmodified, and both exports were opened in the
+installed 1.16.9 binary under a virtual framebuffer:
+
+- *Import*: the real save's turn, gold, village ownership and every unit
+  (position, hp, XP, traits, leader flag) read correctly.
+- *Re-export*: the imported save written back out loads in the real
+  binary and shows the same game -- turn 1/30, 120 gold, 6/31 villages,
+  9 units.
+- *Native export*: a save created **here** (played through the opening,
+  one turn ended) loads in the real binary at turn 2/30 with 128 gold.
+
+**Fidelity.** A real save records far more than this port models, per
+unit (`gender`, `race`, `upkeep`, `usage`, `image`, `[filter_recall]`,
+movement-type cost tables) and per side (`controller`, `recruit`,
+carryover settings, `[ai]`), plus whole blocks (`[statistics]`,
+`[multiplayer]`, `[replay]`, `[undo_stack]`). Rather than model all of
+it, an imported save keeps it in `wesnothExtras` (save-level and
+per-unit) and export overlays live state back onto it. The round-trip
+test diffs a re-export against the original and fails naming anything
+dropped; it went from 361 missing fields to 0 as the pass-through landed.
+
+**Four requirements only the real binary could have taught us**, each now
+pinned by a test:
+
+1. `campaign_define="CAMPAIGN_DEAD_WATER"` -- without it the game loads
+   the save and then dies with "unknown unit type: Merman Child King",
+   because it never preprocessed the campaign's own content.
+2. No `[story]` in `[snapshot]` -- the scenario config it is built from
+   has one, and leaving it in makes the game replay the campaign intro
+   instead of resuming.
+3. `replay_pos` must equal the number of `[command]`s in `[replay]`, or
+   the game assumes none have been played.
+4. `next_underlying_unit_id` is the highest id handed out, not the next
+   one (`unit_id_manager::get_save_id` returns the counter, which
+   `next_id()` pre-increments) -- the fixture says 11 while carrying a
+   unit whose `underlying_id` is 11.
+
+The `[replay]` written is minimal but structurally real (`[upload_log]`
+plus `[start]`/`[random_seed]`/`[init_side]`, exactly what a turn-start
+autosave contains). That is enough to load, which also retires this
+phase's stated dependency on Phase 25: a save does not need a real replay
+log. Known cosmetic gap: an exported save shows "No objectives available"
+in the real game, since this port does not record the per-side
+`objectives=` string that events set at runtime.
+
+Gates: engine 615, ui 156 tests (+9); 0 typecheck/svelte-check errors.

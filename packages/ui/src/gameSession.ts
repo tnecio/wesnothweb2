@@ -34,6 +34,7 @@ import {
   GameBoard,
   Location,
   Unit,
+  Direction,
   parseDirection,
   writeDirection,
   getAdjacentTiles,
@@ -685,7 +686,9 @@ function savedUnitFields(u: Unit): SavedUnit {
     experience: u.experience,
     maxExperience: u.maxExperience,
     level: u.level,
-    facing: writeDirection(u.facing),
+    // Indeterminate is "no facing recorded", not a direction: writing it
+    // as the empty string would come back as a facing of its own.
+    facing: u.facing === Direction.Indeterminate ? undefined : writeDirection(u.facing),
     resting: u.resting,
     hidden: u.hidden,
     role: u.role,
@@ -721,12 +724,19 @@ export interface SavedUnit {
   typeId: string;
   side: number;
   canRecruit: boolean;
-  hitpoints: number;
-  maxHitpoints: number;
-  movesLeft: number;
-  maxMoves: number;
-  attacksLeft: number;
-  maxAttacksPerTurn: number;
+  /**
+   * All optional for the same reason the version-2 fields below are: each
+   * is applied only if present, so whatever is missing keeps the unit
+   * type's own default. `toSaveData` always writes them; a save *imported*
+   * from real Wesnoth may not, because upstream omits any unit attribute
+   * that still matches its type (`unit::write`'s `write_all=false` path).
+   */
+  hitpoints?: number;
+  maxHitpoints?: number;
+  movesLeft?: number;
+  maxMoves?: number;
+  attacksLeft?: number;
+  maxAttacksPerTurn?: number;
   /** Board position. Omitted for a recall-list unit, which has none (upstream's own rule: a `[unit]` with no x/y is a recall unit). */
   x?: number;
   y?: number;
@@ -748,6 +758,16 @@ export interface SavedUnit {
   /** The unit's own `[variables]` bag. */
   variables?: WmlConfigJson;
   goto?: { x: number; y: number };
+  /**
+   * Present only on a unit read out of a real Wesnoth save: that `[unit]`
+   * block as the game wrote it. A real save records far more per unit than
+   * this port models -- `gender`, `race`, `upkeep`, `usage`, `variation`,
+   * `image`, `[filter_recall]`, the unit's whole movement-type block --
+   * none of which this port needs, but all of which would be lost on the
+   * way back out to a file. Export overlays the modelled fields onto this
+   * and leaves the rest alone. See `save/wesnothSave.ts`.
+   */
+  wesnothExtras?: WmlConfigJson;
 }
 
 /**
@@ -827,6 +847,16 @@ export interface SaveGameData {
   rng?: { seed: string; calls: number };
   /** The "carried over N gold" result this scenario was entered with, for the UI banner (it is derived from the *previous* scenario, so it cannot be recomputed here). */
   goldCarryover?: GoldCarryoverResult | null;
+  /**
+   * Present only on a save *imported* from a real Wesnoth `.gz`: that
+   * file's own tree, minus the `[side]` blocks this session regenerates
+   * from the state above. Carrying it means the parts this port does not
+   * model -- `[statistics]`, `[multiplayer]`, `[replay]`, `[undo_stack]`,
+   * `[display]`, the scenario's `[event]`s as that Wesnoth version wrote
+   * them -- survive the round trip back out to a file instead of being
+   * silently dropped. Nothing but `save/wesnothSave.ts` ever reads it.
+   */
+  wesnothExtras?: WmlConfigJson;
 }
 
 /**
@@ -2714,12 +2744,12 @@ export class GameSession {
       modifications: u.modifications?.map((m) => ({ kind: m.kind, cfg: WmlConfig.fromJSON(m.cfg) })),
       variables: u.variables !== undefined ? WmlConfig.fromJSON(u.variables) : undefined,
     });
-    unit.hitpoints = u.hitpoints;
-    unit.maxHitpoints = u.maxHitpoints;
-    unit.movesLeft = u.movesLeft;
-    unit.maxMoves = u.maxMoves;
-    unit.attacksLeft = u.attacksLeft;
-    unit.maxAttacksPerTurn = u.maxAttacksPerTurn;
+    if (u.hitpoints !== undefined) unit.hitpoints = u.hitpoints;
+    if (u.maxHitpoints !== undefined) unit.maxHitpoints = u.maxHitpoints;
+    if (u.movesLeft !== undefined) unit.movesLeft = u.movesLeft;
+    if (u.maxMoves !== undefined) unit.maxMoves = u.maxMoves;
+    if (u.attacksLeft !== undefined) unit.attacksLeft = u.attacksLeft;
+    if (u.maxAttacksPerTurn !== undefined) unit.maxAttacksPerTurn = u.maxAttacksPerTurn;
     if (u.experience !== undefined) unit.experience = u.experience;
     if (u.maxExperience !== undefined) unit.maxExperience = u.maxExperience;
     if (u.level !== undefined) unit.level = u.level;

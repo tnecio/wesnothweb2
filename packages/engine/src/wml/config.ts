@@ -88,6 +88,23 @@ export class WmlConfig {
     return value;
   }
 
+  /** Mirrors `config::clear_children(tag)`: drops every child with this tag, keeping attributes and other children. */
+  removeChildren(tag: string): void {
+    this.childEntries = this.childEntries.filter((e) => e.tag !== tag);
+  }
+
+  /**
+   * A deep copy, mirroring `config`'s own copy constructor. Needed wherever
+   * a config is used as a template that must not be mutated in place -- a
+   * scenario's `[side]` blocks becoming a save's live ones, for instance.
+   */
+  clone(): WmlConfig {
+    const copy = new WmlConfig();
+    for (const [key, value] of this.attrs) copy.attrs.set(key, value);
+    for (const entry of this.childEntries) copy.childEntries.push({ tag: entry.tag, config: entry.config.clone() });
+    return copy;
+  }
+
   childCount(tag?: string): number {
     return tag === undefined
       ? this.childEntries.length
