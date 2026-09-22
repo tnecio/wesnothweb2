@@ -1420,6 +1420,34 @@ describe('GameSession.renderUnits moves-orb reachability (real, reported bug: a 
   });
 });
 
+describe('selection around a move (real, reported bug, bugs6.md: the reach overlay stayed on the map while the unit walked)', () => {
+  it('the mover is deselected BEFORE its walk plays, and an ordinary move leaves it deselected', async () => {
+    const session = new GameSession(loadSnapshot());
+    const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    session.selectUnit(kaiKrellis);
+    const dest = session.reachable.find((h) => !(h.x === kaiKrellis.location.x && h.y === kaiKrellis.location.y))!;
+
+    // What the board would draw at the instant the walk animation starts.
+    let seenDuringWalk: { selected: unknown; reachable: number } | null = null;
+    session.interactionHost = {
+      async handle(interaction) {
+        if (interaction.kind === 'beat' && interaction.beat.kind === 'moveUnit') {
+          seenDuringWalk = { selected: session.selectedUnit, reachable: session.reachable.length };
+        }
+        return {};
+      },
+    };
+
+    await session.handleHexClick(dest.x, dest.y);
+
+    // Upstream clears the route, the reach highlight and the selected hex
+    // before animating (mouse_handler::move_unit_along_current_route).
+    expect(seenDuringWalk).toEqual({ selected: null, reachable: 0 });
+    // Dead Water 1 has no fog, so nothing interrupts this move: it stays deselected.
+    expect(session.selectedUnit).toBeNull();
+  });
+});
+
 describe('GameSession.renderUnits idle facing (real, reported bug: the idle sprite never mirrored to face the unit\'s last move/attack direction)', () => {
   it('a real move sets Unit.facing, and renderUnits carries that same facing through to the SnapshotUnit', async () => {
     const session = new GameSession(loadSnapshot());

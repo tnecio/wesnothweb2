@@ -299,11 +299,28 @@
     return session.unitInfo(u);
   }
 
+  /**
+   * Re-derives only the selection/highlight views -- deliberately NOT
+   * `units`, so this is safe to call while an animation is playing.
+   * (`SnapshotBoard.updateUnits` snaps every sprite to its target hex and
+   * must not race `playAnimations`; that race is what used to wedge a
+   * scenario mid-cutscene, see this file's `playCutsceneBeat`.)
+   *
+   * Used before a `moveUnit` beat so the walking unit's reach overlay and
+   * selection ring are gone *before* it starts walking, as upstream does
+   * (`mouse_handler::move_unit_along_current_route` clears the route, the
+   * reach highlight and the selected hex before the animation).
+   */
+  function syncHighlights(): void {
+    selected = selectedInfo();
+    inspected = inspectedInfo();
+    selectedHex = session.selectedUnit ? { x: session.selectedUnit.location.x, y: session.selectedUnit.location.y } : null;
+    reachable = session.reachable;
+    attackTargets = session.attackCandidates.map((u) => ({ x: u.location.x, y: u.location.y }));
+  }
+
   /** Re-derives every `$state` view from `session`'s current (just-mutated) state. Call after every session mutation. */
-  let syncCount = 0;
   function sync(message?: string | null): void {
-    syncCount++;
-    if (syncCount % 20 === 0) console.info(`[shell] sync #${syncCount}`);
     units = session.renderUnits;
     selected = selectedInfo();
     inspected = inspectedInfo();
@@ -474,6 +491,11 @@
         await new Promise((r) => setTimeout(r, Math.min(beat.durationMs, MAX_BEAT_MS)));
         break;
       case 'moveUnit':
+        // The mover has already been deselected by the session; push that
+        // to the board before it starts walking so its reach overlay and
+        // selection ring don't follow it around (upstream clears both up
+        // front -- see `syncHighlights`).
+        syncHighlights();
         if (boardView) await boardView.playAnimationSequence(buildMoveAnimationCues({ unit: beat.unit, path: beat.path }), 2);
         break;
       case 'moveFakeUnits':

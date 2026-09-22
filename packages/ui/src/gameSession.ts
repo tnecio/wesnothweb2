@@ -2345,6 +2345,15 @@ export class GameSession {
     // its own doc comment -- extracted for Phase 29 so the AI's own moves
     // get the same events).
     const { result } = performMove(this.board, unit, route.steps, { raise: this.raiseEvent });
+    // Deselect before the walk, not after it. Upstream does exactly this
+    // (`mouse_handler::move_unit_along_current_route`: "do not show
+    // footsteps during movement" / "do not keep the hex highlighted that
+    // we started from" -- it clears the route, the reach highlight and
+    // the selected hex, then animates). Real, reported bug (bugs6.md):
+    // the unit stayed selected throughout, so its reachable-hex overlay
+    // sat on the map, anchored to the hex it had left, for the whole
+    // walk. Re-selected below only when the move was cut short.
+    this.clearSelection();
     // Phase 17: the walk is a cutscene beat like any other, so it plays
     // *before* whatever the `moveto`/`sighted` events it triggers have to
     // say -- the pump below would otherwise reach their dialogue while
@@ -2362,14 +2371,11 @@ export class GameSession {
       this.log.unshift(message);
       return message;
     }
-    // Re-select from the unit's new position so move/attack options refresh
-    // (mirrors real Wesnoth: a unit stays selected after moving so it can
-    // still attack an adjacent enemy this turn).
-    this.selectUnit(unit);
-    if (this.reachable.length === 0 && this.attackCandidates.length === 0) {
-      // Nothing left to do with this unit -- deselect so its highlight doesn't linger.
-      this.clearSelection();
-    }
+    // A move cut short by something the player needs to react to leaves
+    // the unit selected where it stopped, so its remaining options are
+    // right there -- upstream re-selects the stopping hex for exactly
+    // this case, and it is the one exception to the deselect above.
+    if (result.ambushed || result.sightedStop) this.selectUnit(unit);
     this.log.unshift(message);
     return message;
   }

@@ -4075,3 +4075,35 @@ Also guards PixiJS teardown behind a helper: destroying an `Application`
 whose `init()` has not finished throws `this._cancelResize is not a
 function`, which was filling the console on every quick navigation and
 failing any check that treats page errors as failures.
+
+## 2026-09-22 — bugs6.md: deselect a unit when it starts moving
+
+Reported: after ordering a move, the unit stayed selected, so its
+reachable-hex overlay sat on the map -- anchored to the hex it had just
+left -- for the whole walk. Upstream clears everything up front
+(`mouse_handler::move_unit_along_current_route`, mouse_events.cpp:1243:
+"do not show footsteps during movement" / "do not keep the hex
+highlighted that we started from" -- route, reach highlight and selected
+hex, *then* the animation).
+
+`GameSession.moveSelectedTo` now clears the selection before yielding the
+walk beat, and re-selects the unit afterwards only when the move was cut
+short by an ambush or by units being sighted -- the one case where the
+player needs its remaining options in front of them, and the exception
+the report asked for. An ordinary move leaves nothing selected.
+
+On the display side, `GameShell` refreshes only the selection/highlight
+state before playing a `moveUnit` beat (`syncHighlights`). Deliberately
+not a full `sync()`: that would push `units` to the board, and
+`SnapshotBoard.updateUnits` racing `playAnimations` is exactly what used
+to wedge a scenario mid-cutscene.
+
+Also made the PixiJS teardown helper idempotent, since the async init path
+and the effect cleanup can both reach the same Application.
+
+A note on the save milestone script's earlier failures: they coincided
+with edits to `GameShell.svelte`/`gameSession.ts`/`GameBoardView.svelte`
+made while it ran. Vite hot-reloaded those into the live page and
+remounted the board under the script -- which is also where the stray
+mid-game `this._cancelResize is not a function` came from. Browser checks
+have to run with no source edits in flight.

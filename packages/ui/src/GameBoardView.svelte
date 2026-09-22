@@ -357,12 +357,20 @@
    * treating page errors as failures.
    */
   function destroyApp(app: PIXI.Application, removeView = false): void {
+    // Idempotent: the async init path and the effect's own cleanup can
+    // both reach the same app (the init awaits, the component unmounts,
+    // both then tidy up), and PixiJS's second `destroy` walks fields the
+    // first one already nulled.
+    if (destroyedApps.has(app)) return;
+    destroyedApps.add(app);
     try {
       app.destroy(removeView);
     } catch {
       // Never initialised: nothing to release.
     }
   }
+
+  const destroyedApps = new WeakSet<PIXI.Application>();
 
   function registerUnitBundles(list: readonly SnapshotUnit[]): void {
     ImageCache.addAtlasManifests(new Set(list.map((unit) => unitBundleManifestUrl(unit.typeId))), { prefetch: true });
