@@ -391,6 +391,10 @@
   });
 
   $effect(() => {
+    board?.setHoveredHex(hoveredHex);
+  });
+
+  $effect(() => {
     board?.updateVillageOwnership(villageOwners);
   });
 

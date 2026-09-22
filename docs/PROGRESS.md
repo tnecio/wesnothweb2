@@ -4277,3 +4277,19 @@ Checked on Two Brothers 1: the Knight now gets 30% in forest (its values
 across the map are 0/20/30/40%). Tests: pine forest on two grass bases, the
 cap winning on forested hills over a better hills value, and a plain
 positive value unchanged.
+
+## 2026-09-22 — reach overlay restyled after the original
+
+Per the user (with a screenshot of the original): reachable hexes are no
+longer colour-filled or outlined. They get an additive white wash (brighter,
+no tint), and the defense number on each is drawn in upstream's
+`red_to_green` colour (`game_display::draw_movement_info`). The hovered
+reachable hex gets an outline in the same colour (`SnapshotBoard.
+setHoveredHex`, its own `hoverLayer`, so pointer movement never rebuilds the
+overlay). Upstream numbers only the hovered hex; every reachable hex is
+numbered here with a touch interface in mind (user's call). Numbers and the
+hover outline now sit above units and terrain overlays, as upstream's
+`move_info` layer does -- castle towers used to hide them. Both layers are
+`eventMode='none'`; a real mouse click through them still moves the unit.
+Attack targets keep their red fill with the white outline. Checked in the
+browser on synthetic_economy; keyboard playthrough passes.

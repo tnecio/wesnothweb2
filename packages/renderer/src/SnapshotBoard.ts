@@ -476,6 +476,13 @@ export class SnapshotBoard {
   /** Owned-village flag markers -- sits above terrain, below highlight/unit layers (a unit standing on a village shouldn't have its sprite obscured by the flag, but the flag should still read clearly against bare terrain). */
   private readonly villageLayer = new PIXI.Container();
   private readonly highlightLayer = new PIXI.Container();
+  /** Reachable hexes' defense numbers: above units and terrain overlays (castle towers, forest canopies), like upstream's `drawing_layer::move_info`. */
+  private readonly moveInfoLayer = new PIXI.Container();
+  /** The hovered reachable hex's defense-coloured outline (`setHoveredHex`) -- kept apart from `highlightLayer` so pointer movement never rebuilds the whole overlay. */
+  private readonly hoverLayer = new PIXI.Container();
+  /** Defense per reachable hex (by `x,y`) from the last `setHighlights`, for `setHoveredHex`. */
+  private reachableDefense = new Map<string, number>();
+  private hoveredHex: HexPoint | null = null;
   private readonly unitLayer = new PIXI.Container();
   /** `applyStatusFilters`: which status set each sprite's filters were last built for. */
   private readonly statusFilterKeys = new WeakMap<PIXI.Sprite, string>();
@@ -603,6 +610,8 @@ export class SnapshotBoard {
       this.highlightLayer,
       this.unitLayer,
       this.terrainForegroundLayer,
+      this.moveInfoLayer,
+      this.hoverLayer,
       this.fogShroudLayer,
       this.todTintLayer,
       this.animationOverlayLayer,
@@ -610,6 +619,8 @@ export class SnapshotBoard {
       this.floatingLayer,
     );
     this.animationOverlayLayer.eventMode = 'none';
+    this.moveInfoLayer.eventMode = 'none';
+    this.hoverLayer.eventMode = 'none';
     this.todTintPositive.blendMode = 'add';
     // 'subtract' is one of PixiJS v8's "advanced" (shader-based) blend
     // modes, not a native GL blend equation like 'add' -- it needs its
@@ -1146,6 +1157,29 @@ export class SnapshotBoard {
       filters.push(filter);
     }
     sprite.filters = filters.length > 0 ? filters : null;
+  }
+
+  /**
+   * The hex under the pointer (or `null`): if it is one of the reachable
+   * hexes, it is outlined in the colour of the unit's defense there, as
+   * upstream marks the hovered destination (bugs6.md).
+   */
+  setHoveredHex(hex: HexPoint | null): void {
+    if (this.hoveredHex?.x === hex?.x && this.hoveredHex?.y === hex?.y) return;
+    this.hoveredHex = hex;
+    this.drawHoverOutline();
+  }
+
+  private drawHoverOutline(): void {
+    this.hoverLayer.removeChildren().forEach((child) => child.destroy());
+    const hex = this.hoveredHex;
+    const defense = hex ? this.reachableDefense.get(`${hex.x},${hex.y}`) : undefined;
+    if (!hex || defense === undefined) return;
+    const { x: cx, y: cy } = hexToPixel(toHexCoord(hex.x, hex.y));
+    const outline = new PIXI.Graphics();
+    outline.poly(hexCorners(cx, cy).flatMap((p) => [p.x, p.y]));
+    outline.stroke({ width: 3, color: redToGreen(defense), alpha: 1 });
+    this.hoverLayer.addChild(outline);
   }
 
   /**
@@ -1702,19 +1736,13 @@ export class SnapshotBoard {
    */
   setHighlights(state: HighlightState): void {
     this.highlightLayer.removeChildren();
+    this.moveInfoLayer.removeChildren().forEach((child) => child.destroy());
     this.selectionLayer.removeChildren();
 
-    // A colour-coded fill alone isn't reliably visible: Dead Water's map is
-    // almost entirely water and sand/keep hexes, so the original flat blue
-    // reachable-fill on blue ocean (and the gold selection ring on a tan
-    // keep hex, below) were both real, close-to-invisible contrast
-    // failures, not just "could be nicer" -- confirmed by screenshot, not
-    // guessed. Every highlighted hex now also gets a solid white outline
-    // (full alpha, on TOP of the low-alpha colour fill) so it reads
-    // against any terrain hue/brightness; the fill colour still carries
-    // the semantic meaning (blue=move, red=attack, green=recruit) for
-    // anyone who can see it, but the white border is what actually
-    // guarantees visibility.
+    // Attack targets: a colour-coded fill alone isn't reliably visible on
+    // Dead Water's water/sand (confirmed by screenshot), so they also get
+    // a solid white outline on top of the red fill. Reachable hexes are
+    // drawn differently -- see below.
     const drawFill = (hex: HexPoint, color: number, alpha: number): void => {
       const coord = toHexCoord(hex.x, hex.y);
       const { x: cx, y: cy } = hexToPixel(coord);
@@ -1727,25 +1755,33 @@ export class SnapshotBoard {
       this.highlightLayer.addChild(g);
     };
 
-    // bugs6.md: each reachable hex is shaded by the unit's defense there, on
-    // upstream's own red-to-green scale (`game_config::red_to_green`, the
-    // colour the sidebar's terrain report gives a defense value): 30% reads
-    // orange-red, 50% yellow, 70% green. Plain blue only when no defense
-    // value was supplied.
+    // bugs6.md: reachable hexes are only brightened -- an additive white
+    // wash, no colour of their own -- and each shows the unit's defense
+    // there as a number in upstream's `red_to_green` colour
+    // (`game_display::draw_movement_info`). Upstream only numbers the
+    // hovered hex; every reachable one is numbered here, with touch input in
+    // mind. The hovered hex's outline is `setHoveredHex`'s.
+    this.reachableDefense = new Map();
     for (const hex of state.reachable ?? []) {
-      drawFill(hex, hex.defensePercent !== undefined ? redToGreen(hex.defensePercent) : 0x3fa9f5, 0.45);
+      const coord = toHexCoord(hex.x, hex.y);
+      const { x: cx, y: cy } = hexToPixel(coord);
+      const wash = new PIXI.Graphics();
+      wash.poly(hexCorners(cx, cy).flatMap((p) => [p.x, p.y]));
+      wash.fill({ color: 0xffffff, alpha: 0.22 });
+      wash.blendMode = 'add';
+      this.highlightLayer.addChild(wash);
       if (hex.defensePercent !== undefined) {
-        const coord = toHexCoord(hex.x, hex.y);
-        const { x: cx, y: cy } = hexToPixel(coord);
+        this.reachableDefense.set(`${hex.x},${hex.y}`, hex.defensePercent);
         const label = new PIXI.Text({
           text: `${hex.defensePercent}%`,
-          style: { fontSize: 14, fontWeight: 'bold', fill: 0xffffff, stroke: { color: 0x000000, width: 3 } },
+          style: { fontSize: 16, fontWeight: 'bold', fill: redToGreen(hex.defensePercent), stroke: { color: 0x000000, width: 3 } },
         });
         label.anchor.set(0.5);
         label.position.set(cx, cy);
-        this.highlightLayer.addChild(label);
+        this.moveInfoLayer.addChild(label);
       }
     }
+    this.drawHoverOutline();
     for (const hex of state.attackTargets ?? []) drawFill(hex, 0xe23b3b, 0.5);
 
     if (state.selected) {
