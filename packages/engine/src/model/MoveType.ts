@@ -26,6 +26,8 @@ interface TableParams {
   readonly maxValue: number;
   readonly highIsGood: boolean;
   readonly useMove: boolean;
+  /** `parameters::eval`: converts a value read from the config before it is clamped (`config_to_min`/`config_to_max` for defense). */
+  readonly evaluate?: (value: number) => number;
 }
 
 const MOVEMENT_PARAMS: TableParams = {
@@ -42,12 +44,30 @@ const JAMMING_PARAMS: TableParams = {
   highIsGood: false,
   useMove: true,
 };
-const DEFENSE_PARAMS: TableParams = {
-  defaultValue: UNREACHABLE,
+/**
+ * `movetype::terrain_defense` reads the one `[defense]` table two ways
+ * (movetype.cpp ~L35-83): a negative value (`forest=-70` for mounted units)
+ * is a *cap* -- the chance to be hit can't go below 70 however good the
+ * other half of a mixed terrain is. `params_min_` sees only the caps
+ * (`config_to_min`: -v, else 0) and keeps the highest; `params_max_` sees
+ * every value as positive (`config_to_max`) and keeps the lowest, as a
+ * plain table would. The defense is the larger of the two.
+ */
+const DEFENSE_MIN_PARAMS: TableParams = {
+  defaultValue: 0,
+  minValue: 0,
+  maxValue: 100,
+  highIsGood: true,
+  useMove: false,
+  evaluate: (value) => (value < 0 ? -value : 0),
+};
+const DEFENSE_MAX_PARAMS: TableParams = {
+  defaultValue: 100,
   minValue: 0,
   maxValue: 100,
   highIsGood: false,
   useMove: false,
+  evaluate: (value) => (value < 0 ? -value : value),
 };
 
 /**
@@ -72,7 +92,7 @@ function resolveValue(
     let result = params.defaultValue;
     const direct = table.get(info.id);
     if (direct !== undefined) {
-      result = direct;
+      result = params.evaluate ? params.evaluate(direct) : direct;
     } else if (fallback) {
       result = resolveValue(terrain, fallback, params, terrainData, undefined, recurseCount + 1);
     }
@@ -221,7 +241,12 @@ export class MoveType {
   }
 
   defenseModifier(terrain: TerrainCode): number {
-    return resolveValue(terrain, this.defenseTable, DEFENSE_PARAMS, this.terrainData, undefined);
+    // Real, reported bug (bugs6.md): with one plain table, mounted units'
+    // `forest=-70` cap clamped to 0 -- 100% defense in every forest.
+    return Math.max(
+      resolveValue(terrain, this.defenseTable, DEFENSE_MIN_PARAMS, this.terrainData, undefined),
+      resolveValue(terrain, this.defenseTable, DEFENSE_MAX_PARAMS, this.terrainData, undefined),
+    );
   }
 
   resistanceAgainst(damageType: string): number {

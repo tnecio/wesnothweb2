@@ -61,3 +61,34 @@ describe('TerrainType.combine / mergeAliasList (real data/core/terrain.cfg)', ()
     expect(moveType.movementCost(parseTerrainCode('Aa^Fpa'))).toBe(3);
   });
 });
+
+describe('defense caps (movetype::terrain_defense, real data/core/terrain.cfg)', () => {
+  const terrainData = loadRealTerrainData();
+  // The real mounted movetype's relevant [defense] entries.
+  const cfg = new WmlConfig();
+  const defense = new WmlConfig();
+  defense.setAttribute('flat', 60);
+  defense.setAttribute('forest', -70);
+  defense.setAttribute('hills', 60);
+  cfg.addChild('defense', defense);
+  const mounted = MoveType.fromConfig(cfg, terrainData);
+
+  it('real, reported bug (bugs6.md): a negative value is a cap, not 0 -- mounted units get 30% in forest, not 100%', () => {
+    expect(mounted.defenseModifier(parseTerrainCode('Gs^Fp'))).toBe(70);
+    expect(mounted.defenseModifier(parseTerrainCode('Gll^Fp'))).toBe(70);
+  });
+
+  it('the cap holds even when the other half of a mixed terrain is better', () => {
+    const better = new WmlConfig();
+    const d = new WmlConfig();
+    d.setAttribute('hills', 50);
+    d.setAttribute('forest', -70);
+    better.addChild('defense', d);
+    // Hh^Fp (forested hills) is best-of hills/forest: 50 alone, but forest's cap keeps it at 70.
+    expect(MoveType.fromConfig(better, terrainData).defenseModifier(parseTerrainCode('Hh^Fp'))).toBe(70);
+  });
+
+  it('plain positive values are unchanged', () => {
+    expect(mounted.defenseModifier(parseTerrainCode('Gg'))).toBe(60);
+  });
+});

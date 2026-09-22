@@ -4259,3 +4259,21 @@ with the new defense shading. `GameSession.boardRecruitTiles`, the
 selection-independent `GameSession.recruitTiles` stays: it still drives the
 context menu, placement validation and `autoRecruitTile`. The status hint
 for an armed recruit now says "Click a free castle tile".
+
+## 2026-09-22 — mounted units had 100% defense in forest (defense caps)
+
+Reported in Two Brothers: horse units showed 100% defense on forest.
+The mounted movetype says `forest=-70`: a negative `[defense]` value is a
+*cap* (the chance to be hit can't go below 70, even on a mixed terrain whose
+other half is better). `MoveType.defenseModifier` read the table once, as a
+plain lowest-wins table, so -70 clamped to 0 -- 0% chance to be hit.
+
+Now ported as upstream does it (`movetype::terrain_defense`, movetype.cpp
+~L35-83, ~L194): the same table resolved twice, once through
+`config_to_min` (caps only, highest wins, default 0) and once through
+`config_to_max` (absolute values, lowest wins, default 100), taking the
+larger. `resolveValue` gained upstream's `parameters::eval` hook for that.
+Checked on Two Brothers 1: the Knight now gets 30% in forest (its values
+across the map are 0/20/30/40%). Tests: pine forest on two grass bases, the
+cap winning on forested hills over a better hills value, and a plain
+positive value unchanged.
