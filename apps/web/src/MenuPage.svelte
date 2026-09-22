@@ -7,12 +7,21 @@
    * "only load assets needed for a given campaign once it's chosen"
    * requirement -- this component structurally can't preload anything.
    */
+  import { listSaves, type SaveMeta } from '@wesnothweb2/ui';
   import { fetchCampaigns, type Campaign } from './campaigns.js';
   import { router } from './router.svelte.js';
 
   let status = $state<'loading' | 'ready' | 'error'>('loading');
   let errorMessage = $state('');
   let campaigns = $state<Campaign[]>([]);
+  /**
+   * Saved games, so a session can be resumed straight from the menu
+   * rather than only from inside the scenario it was taken in (Phase 26).
+   * Listing is metadata-only -- no scenario snapshot is fetched until a
+   * save is actually picked, keeping this component's "preloads nothing"
+   * property intact.
+   */
+  let saves = $state<SaveMeta[]>([]);
 
   $effect(() => {
     let cancelled = false;
@@ -33,8 +42,37 @@
     };
   });
 
+  $effect(() => {
+    let cancelled = false;
+    listSaves()
+      .then((found) => {
+        if (!cancelled) saves = found;
+      })
+      .catch((err) => console.error('[menu] could not list saves:', err));
+    return () => {
+      cancelled = true;
+    };
+  });
+
   function pick(campaign: Campaign): void {
     router.navigate(`/play/${campaign.id}`);
+  }
+
+  /**
+   * Resumes a save. The campaign comes from the save itself; a save from
+   * before campaigns were recorded (or of a scenario opened directly)
+   * falls back to whichever campaign ships that scenario.
+   */
+  function resume(save: SaveMeta): void {
+    const campaignId =
+      save.campaignId ?? campaigns.find((c) => c.firstScenario === save.scenarioId)?.id ?? campaigns[0]?.id;
+    if (!campaignId) return;
+    router.navigate(`/play/${campaignId}?save=${encodeURIComponent(save.name)}`);
+  }
+
+  function when(savedAt: number): string {
+    const d = new Date(savedAt);
+    return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   }
 </script>
 
@@ -55,6 +93,24 @@
         </li>
       {/each}
     </ul>
+
+    {#if saves.length > 0}
+      <h2>Saved games</h2>
+      <ul class="save-list">
+        {#each saves.slice(0, 12) as save (save.name)}
+          <li>
+            <button class="save" onclick={() => resume(save)}>
+              <span class="name">{save.name}</span>
+              <span class="description">
+                {save.scenarioName ?? save.scenarioId}
+                {#if save.turnNumber}&middot; turn {save.turnNumber}{/if}
+                &middot; {when(save.savedAt)}
+              </span>
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
   {/if}
 </div>
 
@@ -75,6 +131,36 @@
   }
   .hint.error {
     color: #e87a7a;
+  }
+  h2 {
+    font-size: 1.1rem;
+    color: #f1e6c8;
+    margin-top: 2rem;
+  }
+  .save-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .save {
+    width: 100%;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    font: inherit;
+    padding: 0.4rem 0.7rem;
+    border-radius: 4px;
+    border: 1px solid #4a4432;
+    background: #23201a;
+    color: #eee;
+    cursor: pointer;
+  }
+  .save:hover {
+    background: #2c2820;
   }
   .campaign-list {
     list-style: none;

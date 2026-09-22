@@ -10,7 +10,7 @@
    * within-campaign concern, not a page/URL change).
    */
   import type { GameBoardSnapshot } from '@wesnothweb2/engine';
-  import { GameShell, fetchStoryAssets, type StoryAssets } from '@wesnothweb2/ui';
+  import { GameShell, fetchStoryAssets, loadGame, type StoryAssets, type SaveGameData } from '@wesnothweb2/ui';
   import { fetchCampaigns, type Campaign } from './campaigns.js';
   import { router } from './router.svelte.js';
 
@@ -22,6 +22,8 @@
   let storyAssets = $state<StoryAssets | null>(null);
   /** Passed to `GameShell` so saves record which campaign they belong to (Phase 26). */
   let campaign = $state<Campaign | null>(null);
+  /** The save being resumed, when the URL carries `?save=<name>` (Phase 26). */
+  let initialSave = $state<SaveGameData | null>(null);
 
   $effect(() => {
     let cancelled = false;
@@ -30,13 +32,20 @@
     snapshot = null;
     storyAssets = null;
     campaign = null;
+    initialSave = null;
     (async () => {
       const campaigns = await fetchCampaigns();
       const found = campaigns.find((c) => c.id === campaignId);
       if (!found) throw new Error(`Unknown campaign "${campaignId}".`);
       const campaignInfo = found;
+      const params = new URLSearchParams(window.location.search);
+      // `?save=<name>` resumes a save (Phase 26): the scenario to fetch is
+      // whichever one the save was taken in, not the campaign's first.
+      const saveName = params.get('save');
+      const save = saveName ? ((await loadGame<SaveGameData>(saveName))?.data ?? null) : null;
+      if (saveName && !save) throw new Error(`No save called "${saveName}".`);
       // `?scenario=<id>` starts the campaign at a later scenario (debugging/verification, e.g. an epilogue's outro).
-      const scenarioId = new URLSearchParams(window.location.search).get('scenario') || campaignInfo.firstScenario;
+      const scenarioId = save?.scenarioId || params.get('scenario') || campaignInfo.firstScenario;
       const [data, assets] = await Promise.all([
         (async () => {
           const res = await fetch(`/scenarios/${scenarioId}.json`);
@@ -49,6 +58,7 @@
       snapshot = data;
       storyAssets = assets;
       campaign = campaignInfo;
+      initialSave = save;
       status = 'ready';
     })().catch((err) => {
       if (cancelled) return;
@@ -74,7 +84,7 @@
     <!-- No {#key} needed here: App.svelte already keys PlayPage itself on
          campaignId, so a campaign change always tears down this whole
          component (and GameShell inside it) from scratch. -->
-    <GameShell {snapshot} {storyAssets} {campaign} />
+    <GameShell {snapshot} {storyAssets} {campaign} {initialSave} />
   {/if}
 </main>
 

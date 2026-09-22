@@ -126,6 +126,7 @@
     snapshot,
     storyAssets: initialStoryAssets = null,
     campaign = null,
+    initialSave = null,
   }: {
     snapshot: GameBoardSnapshot;
     /** `/story/<id>.json` for `snapshot`'s scenario (see `fetchStoryAssets`); null shows the story without images. */
@@ -137,6 +138,14 @@
      * (see `save/wesnothSave.ts`). Null for a scenario opened directly.
      */
     campaign?: Campaign | null;
+    /**
+     * A save to resume instead of starting the scenario fresh (Phase 26).
+     * The session is built from it directly, and the story screen and
+     * startup events are skipped -- the save already records that they
+     * ran (`SaveGameData.startupEventsRun`), and replaying a campaign's
+     * intro every time you resume would be wrong twice over.
+     */
+    initialSave?: SaveGameData | null;
   } = $props();
 
   /** The scenario currently being played -- reassigned by `continueToNextScenario`. Everything below that used to read the `snapshot` prop directly now reads this instead. */
@@ -162,9 +171,14 @@
    * -- see docs/PROGRESS.md's "real, intermittent reactivity race" entry
    * about `GameBoardView.svelte`'s `board` variable).
    */
-  let session = $state.raw(new GameSession(activeSnapshot));
-  /** Resolved once per scenario, before its startup events run -- see `GameSession.storyParts`. */
-  let storyParts = $state.raw(session.storyParts());
+  // Resuming a save builds the session from it instead (Phase 26) -- see
+  // the `initialSave` prop. `startupEventsRun` comes back true with it, so
+  // `runStartupEvents` below is skipped as well.
+  let session = $state.raw(
+    initialSave ? GameSession.fromSaveData(activeSnapshot, initialSave) : new GameSession(activeSnapshot),
+  );
+  /** Resolved once per scenario, before its startup events run -- see `GameSession.storyParts`. A resumed save has already been past all of this. */
+  let storyParts = $state.raw(initialSave ? [] : session.storyParts());
   let storyAssets = $state.raw(initialStoryAssets);
   /** Single fixed slot for MVP simplicity -- see persistence.ts's doc comment; keyed by scenario so a future multi-scenario build doesn't collide saves across scenarios. */
   let saveSlot = $derived(`quicksave:${activeSnapshot.scenario.id}`);
@@ -175,7 +189,9 @@
   /** Phase 16 N7: set once the campaign outro has played (or was skipped). */
   let outroDone = $state(false);
 
-  let phase = $state<'story' | 'objectives' | 'playing' | 'ended'>(storyParts.length > 0 ? 'story' : 'playing');
+  let phase = $state<'story' | 'objectives' | 'playing' | 'ended'>(
+    session.scenarioResult ? 'ended' : storyParts.length > 0 ? 'story' : 'playing',
+  );
   /** Upstream shows the outro only for a victory with no next scenario, and only when `end_credits` is not turned off. */
   const showOutro = $derived(
     phase === 'ended' &&
@@ -271,7 +287,10 @@
   }
 
   /** Re-derives every `$state` view from `session`'s current (just-mutated) state. Call after every session mutation. */
+  let syncCount = 0;
   function sync(message?: string | null): void {
+    syncCount++;
+    if (syncCount % 20 === 0) console.info(`[shell] sync #${syncCount}`);
     units = session.renderUnits;
     selected = selectedInfo();
     inspected = inspectedInfo();
@@ -576,7 +595,10 @@
 
   // No story: run the startup events immediately, so the board and side
   // panel reflect the real event-spawned units from the first render.
-  if (storyParts.length === 0) {
+  // A resumed save skips them -- they already ran in the game that was
+  // saved, and re-running `prestart`/`start` would spawn its units a
+  // second time on top of the ones the save just restored.
+  if (storyParts.length === 0 && !initialSave) {
     void runStartupEvents();
   }
 
@@ -1458,12 +1480,17 @@
   }
 
   async function handleSaveAs(name: string): Promise<void> {
-    saveDialogOpen = false;
+    // The dialog closes only once the write has actually landed: closing
+    // first looks finished while the IndexedDB transaction is still in
+    // flight, and anything that tears the page down in that window (a
+    // navigation, a reload) loses the save silently.
     try {
       await saveGame(name, saveDetails('manual'), session.toSaveData());
       sync(`Saved as "${name}" (turn ${session.turnNumber}).`);
     } catch (err) {
       sync(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      saveDialogOpen = false;
     }
   }
 

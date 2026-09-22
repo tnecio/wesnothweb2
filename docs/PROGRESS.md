@@ -3901,3 +3901,51 @@ the same state the browser had.
 
 Gates: ui 166 tests; 0 typecheck/svelte-check errors in packages/ui and
 apps/web.
+
+## 2026-09-22 — Phase 26 S7: resume a save from anywhere
+
+A save could only be loaded from inside the scenario it was taken in.
+Now `GameShell` takes an `initialSave`, building its session with
+`GameSession.fromSaveData` and skipping both the story screen and the
+startup events (the save records that they ran; re-running
+`prestart`/`start` would spawn its units a second time on top of the ones
+just restored). `PlayPage` reads `?save=<name>`, resolving the scenario
+from the save rather than the campaign's first, and `MenuPage` lists
+saved games so a session can be resumed straight from the menu.
+
+Fixed on the way: the hand-rolled router matched routes against the whole
+URL including its query string, so `/play/dead_water?save=x` gave a
+campaign id of `dead_water?save=x` and the page failed with "Unknown
+campaign". Route matching now uses the path alone -- a query string is a
+parameter *of* a route, not part of which route it is -- while the full
+URL still goes to the address bar, so a resumed game is bookmarkable.
+
+Also: the Save Game dialog closed before its IndexedDB write completed,
+so navigating immediately afterwards lost the save silently. It now
+closes only once the write lands (found because a browser probe did
+exactly that and the save vanished).
+
+**Known issue, not yet root-caused.** Resuming restores state correctly
+-- turn, gold, villages and units all come back, and the browser probe
+confirms it end to end -- but the board's *first* terrain render is far
+slower on the resume path: `ImageCache.preload`'s 3,921 refs complete at
+roughly 500 per 28s instead of 500 per 0.5s, so the board sits on
+"loading scenario..." for minutes. What has been ruled out by
+measurement:
+
+- not the environment: three repeated fresh loads of the same scenario
+  are consistently ~7s;
+- not leftover contention from the previous session: a 30s idle wait
+  before resuming changes nothing;
+- not the main thread: ~34 fps while it happens;
+- not the worker pool: it is created and usable, and the job queues look
+  identical to the fast path (low=3475, in-flight=24);
+- not a reactive loop: `sync()` runs fewer than 20 times;
+- not the unit-bundle registration or prefetch that a resumed board
+  triggers for its many units (deferring both changed nothing).
+
+The remaining difference is that a resumed board mounts with every unit
+the save holds (18 in Dead Water 1) and goes straight to `playing`, where
+a fresh scenario mounts with two and starts in `story`. Tracked as the
+next thing to chase; the in-game Load path shares the same board remount
+and should be timed alongside it.

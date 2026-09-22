@@ -20,21 +20,38 @@ function normalize(pathname: string): string {
   return pathname || '/';
 }
 
+/**
+ * Just the path part of a URL, with any `?query`/`#hash` removed. Route
+ * matching is on the path alone -- a query string is a parameter *of* a
+ * route, not part of which route it is. Without this, navigating to
+ * `/play/dead_water?save=x` gave a campaign id of
+ * `dead_water?save=x` and the page failed with "Unknown campaign".
+ */
+function pathOnly(url: string): string {
+  return normalize(url.split(/[?#]/)[0] ?? '/');
+}
+
 class Router {
-  path = $state(normalize(window.location.pathname));
+  path = $state(pathOnly(window.location.pathname));
 
   constructor() {
     window.addEventListener('popstate', () => {
-      this.path = normalize(window.location.pathname);
+      this.path = pathOnly(window.location.pathname);
     });
   }
 
-  /** Pushes a new history entry and updates `path` -- use for an actual user-initiated navigation (e.g. picking a campaign). */
-  navigate(path: string): void {
-    const next = normalize(path);
-    if (next === this.path) return;
+  /**
+   * Pushes a new history entry and updates `path` -- use for an actual
+   * user-initiated navigation (e.g. picking a campaign). `url` may carry
+   * a query string, which goes into the address bar (so the page is
+   * bookmarkable and shareable, and `window.location.search` can be read
+   * by whoever needs it) without taking part in route matching.
+   */
+  navigate(url: string): void {
+    const next = normalize(url);
+    if (next === window.location.pathname + window.location.search) return;
     window.history.pushState({}, '', next);
-    this.path = next;
+    this.path = pathOnly(next);
   }
 }
 
