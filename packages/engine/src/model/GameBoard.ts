@@ -265,7 +265,15 @@ export class GameBoard {
           board.addUnit(leader);
           board.captureVillage(leader.location, leader.side);
         }
-        if (leader.id) team.canRecruit.add(leader.type.id);
+        // Deliberately NOT adding the leader's own type to `recruit=`.
+        // Real, reported gameplay bug (bugs6.md): Dead Water 1 offered
+        // "Child King" in its recruit list and the enemy side offered
+        // "Dark Sorcerer" -- each side's own leader type -- where real
+        // Wesnoth offers neither (its save of the same scenario lists
+        // exactly `Mermaid Initiate,Merman Citizen,Merman Fighter,Merman
+        // Hunter`). A side recruits what `[side] recruit=` names, plus
+        // any `extra_recruit=`; a leader's own type is not recruitable
+        // for being a leader's type.
       }
       for (const unitCfg of sideCfg.children('unit')) {
         const unit = Unit.fromConfig(unitCfg, resolveType);

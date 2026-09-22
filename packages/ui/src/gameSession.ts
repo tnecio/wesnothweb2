@@ -1678,7 +1678,11 @@ export class GameSession {
       const type = this.resolveType(typeId);
       return {
         typeId,
-        name: snap?.name ?? typeId,
+        // The engine-parsed name, not the snapshot's scalar copy: only
+        // the former has the translation context stripped (see
+        // `stripTranslationContext`), and the snapshots committed under
+        // apps/web/public/scenarios/ were built before that existed.
+        name: type.name || snap?.name || typeId,
         cost,
         image: snap?.image ?? null,
         affordable: team.gold >= cost,

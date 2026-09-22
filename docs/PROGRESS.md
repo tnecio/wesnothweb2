@@ -3995,3 +3995,50 @@ Save/Load hotkeys rather than trusting a quiet window, because
 `GameShell` deliberately ignores hotkeys while a `[message]` is up or
 events are running, and Dead Water 1's opening keeps producing both well
 after the board is ready.
+
+## 2026-09-22 — bugs6.md: three real content bugs, all in unit-type handling
+
+**Recruit lists offered the side's own leader type** (bugs6.md, marked a
+gameplay bug). Dead Water 1 offered "Child King" and the enemy side
+offered "Dark Sorcerer"; real Wesnoth's own save of that scenario lists
+exactly `Mermaid Initiate,Merman Citizen,Merman Fighter,Merman Hunter`.
+`GameBoard` had been adding a `[side]`'s inline leader type to
+`team.canRecruit` -- a side recruits what `recruit=` names, and nothing
+else. Removing it also corrected Under the Burning Suns 1, whose player
+side declares no `recruit=` at all (gold 0, income -2: you fight with the
+units you start with) but was being offered Kaleh's own Quenoth Youth.
+
+**"female^Mermaid Initiate" in the recruit list.** That `^` is gettext's
+disambiguation context, telling translators *which* "Initiate" this is;
+upstream's `t_string` never shows it. This port stores WML strings raw
+(no `t_string` -- see `wml/parser.ts`), so nothing stripped it.
+`stripTranslationContext` now does, in `UnitType.fromConfig`, which is
+where a display name is first derived from WML.
+
+**Liberty's Footpad_Peasant could not attack at all** (bugs6.md, marked a
+gameplay bug), while the Thug_Peasant beside it could. Both are
+`[base_unit]` reskins of core outlaws, but only Footpad_Peasant overrides
+an `[attack]`, and it overrides exactly one attribute of it: `damage=4`,
+meaning "the same club as a Footpad, weaker". `mergeUnitTypeConfig`
+replaced the base's child list whenever the derived type had children of
+that tag, so the unit was left holding a single nameless, rangeless,
+typeless attack -- no usable weapon anywhere. Upstream merges children
+*positionally per tag* (`config::merge_with`, config.cpp:1097, reached
+via `inherit_from`): the derived type's Nth `[attack]` merges INTO the
+base's Nth, leftovers are appended, and a `__remove=yes` child deletes
+the base's instead. Ported properly, Footpad_Peasant comes out with club
+(melee impact 4x2, the override applied) and sling (ranged impact 5x2,
+inherited) -- exactly what the real game gives it.
+
+The synthetic test that asserted the old behaviour ("derived REPLACES
+base wholesale") was itself the bug written down, and is replaced by
+tests for the real rule, including the partial-override shape reskins
+actually use and `__remove`.
+
+All 40 scenario snapshots were rebuilt, since they bake in flattened unit
+types and side recruit lists. They also pick up schema fields added since
+they were last built (`teams[].shroud`/`fog`/`shareVision`/`noLeader`),
+which had been stale.
+
+Gates: engine 620 (+5), ui 168 (+2), renderer 198 tests; 0 typecheck/
+svelte-check errors.

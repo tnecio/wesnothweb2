@@ -182,13 +182,40 @@ function mergeUnitTypeConfig(base: WmlConfig, derived: WmlConfig): WmlConfig {
   for (const key of base.attributeNames()) merged.setAttribute(key, base.get(key)!);
   for (const key of derived.attributeNames()) merged.setAttribute(key, derived.get(key)!);
 
-  const tags = new Set<string>();
-  for (const { tag } of base.allChildren()) tags.add(tag);
-  for (const { tag } of derived.allChildren()) tags.add(tag);
-  for (const tag of tags) {
-    const derivedChildren = derived.children(tag);
-    const chosen = derivedChildren.length > 0 ? derivedChildren : base.children(tag);
-    for (const child of chosen) merged.addChild(tag, child);
+  // Children merge POSITIONALLY per tag, mirroring `config::merge_with`
+  // (config.cpp:1097, which `inherit_from` runs the base through): the
+  // derived type's Nth `[attack]` merges *into* the base's Nth `[attack]`
+  // rather than replacing the list, and anything left over is appended.
+  //
+  // Real, reported gameplay bug (bugs6.md): Liberty's Footpad_Peasant
+  // could not attack at all. It is a reskin -- `[base_unit] id=Footpad`
+  // -- whose entire `[attack]` block is `damage=4`, meaning "same club as
+  // a Footpad, weaker". Replacing the list left it holding one nameless,
+  // rangeless, typeless attack, so no weapon was ever usable. Thug_Peasant
+  // overrides no attack at all, which is why it worked and made the bug
+  // look unit-specific.
+  const consumed = new Map<string, number>();
+  for (const { tag, config } of base.allChildren()) {
+    const incoming = derived.children(tag);
+    const next = consumed.get(tag) ?? 0;
+    if (next >= incoming.length) {
+      merged.addChild(tag, config);
+      continue;
+    }
+    consumed.set(tag, next + 1);
+    const override = incoming[next]!;
+    // `__remove=yes` deletes the base's child instead of merging into it.
+    if (override.getBoolean('__remove', false)) continue;
+    merged.addChild(tag, mergeUnitTypeConfig(config, override));
+  }
+
+  // Whatever the derived type declares beyond what the base had, in its
+  // own document order.
+  const seen = new Map<string, number>();
+  for (const { tag, config } of derived.allChildren()) {
+    const index = seen.get(tag) ?? 0;
+    seen.set(tag, index + 1);
+    if (index >= (consumed.get(tag) ?? 0)) merged.addChild(tag, config);
   }
 
   return merged;

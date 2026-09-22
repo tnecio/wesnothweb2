@@ -254,7 +254,7 @@ describe('flattenUnitTypeConfig / flattenAllUnitTypes: [base_unit] inheritance (
     expect(flat.getNumber('level')).toBe(1); // inherited
   });
 
-  it('child tags: derived REPLACES base wholesale for a tag name if it has ANY children with that tag, else inherits base\'s wholesale', () => {
+  it('child tags: the derived type\'s Nth child of a tag MERGES INTO the base\'s Nth, extras are appended, unpaired base children stay (config::merge_with)', () => {
     const raw = new Map<string, WmlConfig>();
     raw.set(
       'Base Fighter',
@@ -267,16 +267,60 @@ describe('flattenUnitTypeConfig / flattenAllUnitTypes: [base_unit] inheritance (
     defenseBase.setAttribute('forest', 40);
 
     const derived = unitTypeCfg({ id: 'Elite Fighter' }, { base_unit: baseUnitTag('Base Fighter') });
-    derived.addChild('attack', attackCfg('greatsword', 9, 2)); // derived has ITS OWN [attack] -- replaces base's TWO attacks wholesale
+    derived.addChild('attack', attackCfg('greatsword', 9, 2));
     raw.set('Elite Fighter', derived);
 
     const flat = flattenUnitTypeConfig('Elite Fighter', raw);
-    // attack: derived has its own -> replaces base's wholesale (not merged/appended)
-    expect(flat.children('attack')).toHaveLength(1);
-    expect(flat.children('attack')[0]!.getString('name')).toBe('greatsword');
+    // The one declared attack merges onto the base's FIRST attack; the
+    // base's second survives untouched (upstream `config::merge_with`,
+    // config.cpp:1097 -- pairing is per tag, by position).
+    expect(flat.children('attack').map((a) => a.getString('name'))).toEqual(['greatsword', 'bow']);
+    expect(flat.children('attack')[0]!.getNumber('damage')).toBe(9);
+    expect(flat.children('attack')[1]!.getNumber('damage')).toBe(3);
     // defense: derived has none -> inherits base's wholesale
     expect(flat.hasChild('defense')).toBe(true);
     expect(flat.child('defense')!.getNumber('forest')).toBe(40);
+  });
+
+  it('a partial override keeps the base child\'s other attributes -- the shape real reskins use', () => {
+    const raw = new Map<string, WmlConfig>();
+    const base = unitTypeCfg({ id: 'Footpad-like', hitpoints: 30 }, {});
+    const attack = base.addChild('attack', attackCfg('club', 5, 2));
+    attack.setAttribute('type', 'impact');
+    attack.setAttribute('range', 'melee');
+    raw.set('Footpad-like', base);
+
+    // Exactly Liberty's Footpad_Peasant shape: "same club, weaker".
+    const derived = unitTypeCfg({ id: 'Peasant-like' }, { base_unit: baseUnitTag('Footpad-like') });
+    const weaker = new WmlConfig();
+    weaker.setAttribute('damage', 4);
+    derived.addChild('attack', weaker);
+    raw.set('Peasant-like', derived);
+
+    const flat = flattenUnitTypeConfig('Peasant-like', raw);
+    const merged = flat.children('attack')[0]!;
+    expect(merged.getNumber('damage')).toBe(4); // the override
+    expect(merged.getString('name')).toBe('club'); // everything else survives
+    expect(merged.getString('range')).toBe('melee');
+    expect(merged.getString('type')).toBe('impact');
+    expect(merged.getNumber('number')).toBe(2);
+  });
+
+  it('a `__remove=yes` child deletes the base\'s child at that position instead of merging into it', () => {
+    const raw = new Map<string, WmlConfig>();
+    const base = unitTypeCfg({ id: 'Two Attacks', hitpoints: 30 }, {});
+    base.addChild('attack', attackCfg('sword', 5, 3));
+    base.addChild('attack', attackCfg('bow', 3, 2));
+    raw.set('Two Attacks', base);
+
+    const derived = unitTypeCfg({ id: 'Swordless' }, { base_unit: baseUnitTag('Two Attacks') });
+    const removal = new WmlConfig();
+    removal.setAttribute('__remove', true);
+    derived.addChild('attack', removal);
+    raw.set('Swordless', derived);
+
+    const flat = flattenUnitTypeConfig('Swordless', raw);
+    expect(flat.children('attack').map((a) => a.getString('name'))).toEqual(['bow']);
   });
 
   it('recursive base_unit chains flatten correctly (grandparent -> parent -> child)', () => {
@@ -391,5 +435,65 @@ describe('collectSpecialRegistry + specials_list=/abilities_list= resolution (re
     cfg.setAttribute('specials_list', 'poison,not_a_real_special');
     const attack = AttackType.fromConfig(cfg, weaponSpecialRegistry);
     expect(attack.specials.map((s) => s.getString('id'))).toEqual(['poison']);
+  });
+});
+
+/**
+ * Real, reported gameplay bug (bugs6.md): in Liberty scenario 1 the
+ * Footpad_Peasant could not attack Goblin Pillagers at all, while the
+ * Thug_Peasant standing next to it could.
+ *
+ * Both are reskins of core outlaws via `[base_unit]`, but only
+ * Footpad_Peasant overrides an `[attack]`, and it overrides just one
+ * attribute of it (`damage=4`, "same club, weaker"). Merging the derived
+ * type's children by *replacing* the base's list left it holding a single
+ * nameless, rangeless, typeless attack -- i.e. no usable weapon. Upstream
+ * merges positionally per tag instead (`config::merge_with`,
+ * config.cpp:1097), which is what `mergeUnitTypeConfig` now does.
+ */
+describe('[base_unit] reskins against real Liberty content (bugs6.md: Footpad_Peasant could not attack)', () => {
+  const libertyDir = path.join(dataRoot, 'campaigns/Liberty');
+
+  function libertyContent(): { flattened: Map<string, WmlConfig>; movementTypes: Map<string, WmlConfig> } {
+    const defines: DefineMap = new Map();
+    for (const name of ['CAMPAIGN_LIBERTY', 'NORMAL']) {
+      defines.set(name, { name, params: [], optionalParams: new Map(), body: '', dir: dataRoot, location: '<test>' });
+    }
+    preloadDefinesFromDir(path.join(dataRoot, 'core'), defines, { dataRoot });
+    preloadDefines(path.join(libertyDir, '_main.cfg'), defines, { dataRoot });
+    const core = parseWmlFile(path.join(dataRoot, 'core/units.cfg'), { dataRoot, defines: new Map(defines) });
+    const campaign = parseWmlFile(path.join(libertyDir, '_main.cfg'), { dataRoot, defines: new Map(defines) });
+    const raw = collectUnitTypeConfigs(core);
+    collectUnitTypeConfigs(campaign, raw);
+    return { flattened: flattenAllUnitTypes(raw), movementTypes: collectMovementTypeConfigs(core) };
+  }
+
+  const { flattened, movementTypes: libertyMoveTypes } = libertyContent();
+
+  it('Footpad_Peasant keeps its base Footpad\'s weapons, with only the damage it actually overrides changed', () => {
+    const attacks = flattened.get('Footpad_Peasant')!.children('attack');
+    expect(attacks.map((a) => a.getString('name'))).toEqual(['club', 'sling']);
+
+    const club = attacks[0]!;
+    expect(club.getNumber('damage')).toBe(4); // the override
+    expect(club.getString('range')).toBe('melee'); // inherited -- this is what was lost
+    expect(club.getString('type')).toBe('impact');
+    expect(club.getNumber('number')).toBe(2);
+  });
+
+  it('every weapon it ends up with is actually usable (a name, a range and a type)', () => {
+    const type = UnitType.fromConfig(flattened.get('Footpad_Peasant')!, libertyMoveTypes, new TerrainTypeData());
+    expect(type.attacks.length).toBe(2);
+    for (const attack of type.attacks) {
+      expect(attack.id).not.toBe('');
+      expect(['melee', 'ranged']).toContain(attack.range);
+      expect(attack.damage).toBeGreaterThan(0);
+    }
+  });
+
+  it('Thug_Peasant, which overrides no attack at all, is unaffected (it is why the bug looked unit-specific)', () => {
+    const attacks = flattened.get('Thug_Peasant')!.children('attack');
+    expect(attacks.map((a) => a.getString('name'))).toEqual(['club']);
+    expect(attacks[0]!.getString('range')).toBe('melee');
   });
 });

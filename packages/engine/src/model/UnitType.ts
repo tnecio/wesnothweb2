@@ -68,6 +68,26 @@ export interface RegistryEntry {
 
 const EMPTY_REGISTRY: ReadonlyMap<string, RegistryEntry> = new Map();
 
+/**
+ * Drops a translatable string's disambiguation context, mirroring what
+ * `t_string`/gettext do when a `_ "context^text"` string is displayed:
+ * the part before the `^` exists to tell translators *which* "Initiate"
+ * this is, and is never shown to a player.
+ *
+ * Real, reported bug (bugs6.md): Dead Water 1's recruit list offered
+ * "female^Mermaid Initiate", because this port stores WML strings raw
+ * (it has no `t_string` -- see `wml/parser.ts`'s own note) and nothing
+ * stripped the marker on the way to the screen.
+ *
+ * Only the FIRST `^` is treated as the separator, and only when
+ * something follows it, so a name that legitimately contains `^` keeps
+ * everything after the marker -- the same rule gettext itself uses.
+ */
+export function stripTranslationContext(text: string): string {
+  const marker = text.indexOf('^');
+  return marker > 0 && marker < text.length - 1 ? text.slice(marker + 1) : text;
+}
+
 /** Builds a raw `[trait]`-shaped `WmlConfig` for one of the 4 real traits common to every unit type -- see `UnitType`'s module doc comment. */
 function globalTrait(id: string): WmlConfig {
   return new WmlConfig().setAttribute('id', id).setAttribute('male_name', id).setAttribute('female_name', id).setAttribute('availability', 'any');
@@ -237,7 +257,7 @@ export class UnitType {
     registries: { weaponSpecials?: ReadonlyMap<string, RegistryEntry>; abilities?: ReadonlyMap<string, RegistryEntry> } = {},
   ): UnitType {
     const id = cfg.getString('id');
-    const name = cfg.getString('name', id);
+    const name = stripTranslationContext(cfg.getString('name', id));
     const level = cfg.getNumber('level', 0);
 
     const moveTypeId = cfg.getString('movement_type', '');

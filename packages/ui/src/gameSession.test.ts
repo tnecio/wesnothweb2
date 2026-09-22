@@ -292,6 +292,38 @@ describe('GameSession auto-plays controller=ai sides (real Dead_Water scenario 1
 });
 
 describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)', () => {
+  it('real, reported gameplay bug (bugs6.md): offers exactly the four types Dead Water 1 declares -- not the leader\'s own "Merman Child King"', () => {
+    const session = new GameSession(loadSnapshot());
+    // Exactly what the real game's own save of this scenario records for
+    // side 1 (see packages/ui/src/save/fixtures/): no Child King.
+    expect([...session.board.getTeam(1)!.canRecruit].sort()).toEqual([
+      'Mermaid Initiate',
+      'Merman Citizen',
+      'Merman Fighter',
+      'Merman Hunter',
+    ]);
+    // Same for the enemy side, which used to be offered its own Dark Sorcerer.
+    expect([...session.board.getTeam(2)!.canRecruit].sort()).toEqual([
+      'Skeleton',
+      'Skeleton Archer',
+      'Soulless',
+      'Vampire Bat',
+      'Walking Corpse',
+    ]);
+  });
+
+  it('real, reported bug (bugs6.md): shows "Mermaid Initiate", not the translators\' "female^Mermaid Initiate" disambiguation', async () => {
+    const session = new GameSession(loadSnapshot());
+    await session.runStartupEvents();
+    const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
+    session.selectUnit(leader);
+
+    const initiate = session.recruitOptions.find((o) => o.typeId === 'Mermaid Initiate');
+    expect(initiate).toBeDefined();
+    expect(initiate!.name).toBe('Mermaid Initiate');
+    for (const option of session.recruitOptions) expect(option.name).not.toContain('^');
+  });
+
   it('lists the real recruitable types for a leader standing on its keep with a vacant castle tile, and places a real unit there on click', async () => {
     const session = new GameSession(loadSnapshot());
     const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
