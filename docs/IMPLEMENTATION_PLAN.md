@@ -299,7 +299,8 @@ basics (id/type/side/race/gender/level/canrecruit/role, numeric ranges,
   uses, so it needs its own small piece of work on top of both the
   generic pipeline above and Phase 12's schedule model (which now
   exists, 2026-09-11).
-- Teleport (`[teleport]` action *and* ability), `[tunnel]` routes,
+- Teleport (`[teleport]` action *and* ability), `[tunnel]` routes (now
+  scheduled as Phase 18a),
   `[fake_unit]`/`[move_unit_fake]`/`[move_units_fake]` (cutscene-only,
   doesn't touch game state), `goto_x=`/`goto_y=` queued multi-turn
   movement, move-interruption-on-event (`moveto` firing mid-path) — none
@@ -1206,6 +1207,36 @@ renderer plays one named animation per cue).
 - **Milestone**: a real scenario using `[label]` and at least one `[item]`
   renders both correctly, including under Phase 11's fog.
 
+## Phase 18a — Teleport and the hotseat viewing side (planned 2026-09-22)
+
+**Status: not started.** Scheduled from bugs6.md (user's call: plan it,
+don't build it yet). Both are gaps found while adding debug stations to
+the Abilities & Specials synthetic scenario.
+
+- **Teleport, ability and action.** Port `pathfind/teleport.cpp`
+  (`teleport_map`, `[tunnel]` with `[source]`/`[target]`/`[filter]`,
+  `bidirectional=`, `always_visible=`, `pass_allied_units=`) and feed it
+  to `astar.ts`/`pathfind.ts` (both currently document it as not ported)
+  and `executeMove` (`try_teleport`, a blocked exit failing the move,
+  `teleport_failed`). `ABILITY_TELEPORT`'s tunnel filters use WFL
+  location formulas (`owner_side`, `unit_at(loc)`, `teleport_unit`), so
+  location filters need `formula=` support -- today only unit filters
+  have it (`events/filter.ts`). Then the `[teleport]` ActionWML tag, the
+  `pre_teleport`/`post_teleport` animations (`[teleport_anim]` is already
+  parsed) and the reach overlay showing teleport destinations.
+- **Abilities & Specials station**: a Silver Mage on one side-1 village
+  with a second side-1 village elsewhere (row y=35 is reserved for it in
+  `synthetic-campaigns/abilities/maps/abilities.map`).
+- **Hotseat viewing side.** The board is always drawn from
+  `GameSession.playerSide` (side 1), so on another human side's turn its
+  fog, shroud and hidden units (e.g. an ambusher) are shown from side 1's
+  point of view. Upstream switches the viewing team to the current human
+  side (`play_controller::update_gui_to_player`). Low priority (user,
+  2026-09-22).
+- **Milestone**: the Silver Mage teleports between the two villages using
+  one move and the reach overlay offers it; ending side 1's turn in the
+  Ambush station hides the Ranger from side 2.
+
 ## Phase 19 — Audio & Music (was Phase 13)
 
 **Status: not started.** Nothing in `packages/renderer` or `packages/ui`
@@ -1611,8 +1642,8 @@ against the Under the Burning Suns testbed as planned.
    shortcuts) 2026-09-20 — this group is done
 2. **Phase 16** (narration) delivered 2026-09-14; **Phase 17**
    (events/`[option]`/cutscenes) 2026-09-20 — this group is done
-3. **Phase 18** (labels/items) ← **current focus**, then **Phase 19**
-   (audio/music).
+3. **Phase 18** (labels/items) ← **current focus**, then **Phase 18a**
+   (teleport, hotseat viewing side), then **Phase 19** (audio/music).
 4. **Phase 20** (localization/accessibility).
 5. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).
 6. **Phase 25** (replay/statistics/achievements).
