@@ -1847,6 +1847,23 @@ describe('GameSession rest-heal (real, reported bug: units that neither moved no
   });
 });
 
+describe('Abilities & Specials: ambush station (bugs6.md)', () => {
+  it("side 2's Wolf Rider walking past the Ranger hidden in forest is ambushed next to it", async () => {
+    const session = new GameSession(loadAbilitiesSnapshot());
+    const ranger = session.board.allUnits().find((u) => u.id === 'Debug Ranger')!;
+    const wolf = session.board.allUnits().find((u) => u.id === 'Ambush Wolf')!;
+    expect(ranger.type.id).toBe('Elvish Ranger');
+
+    await session.endTurn();
+    expect(session.activeSide).toBe(2);
+
+    session.selectUnit(wolf);
+    await session.handleHexClick(0, ranger.location.y);
+    // Stopped on the first hex next to the Ranger, short of its goal.
+    expect(wolf.location.x).toBe(ranger.location.x + 1);
+  });
+});
+
 describe('GameSession.confirmAttack real, reported bug: plague kill did not spawn a Walking Corpse', () => {
   it("Debug Plaguebearer's real specials_list=plague, when it kills the weakened Target Plague (hitpoints=6, one hit from its damage=6 touch attack), spawns a real Walking Corpse on the attacker's side", async () => {
     // GameSession has no way to force a hit (see the "does not touch

@@ -4189,3 +4189,21 @@ first) while holding `eventsRunning`, which already blocks hotkeys, clicks
 and End Turn. Checked on Dead Water 1: the first message appears after
 `data-board-ready` with unit sprites on the board. Dialogue and keyboard
 playthroughs pass.
+
+## 2026-09-22 — bugs6.md: Ambush station in Abilities & Specials
+
+New row y=33: an Elvish Ranger on a forest hex (`Gs^Fp`) and a side-2 Wolf
+Rider at x=6. End side 1's turn and walk the Wolf Rider west along the row:
+it stops on the hex next to the hidden Ranger ("was ambushed!"). The map
+grew by three rows (y=34 spare, y=35 reserved for a teleport station). New
+test: the Wolf Rider's move toward x=0 ends one hex east of the Ranger.
+
+Caveat found while testing: the board is always drawn from side 1's view
+(`GameSession.playerSide`), including during side 2's hotseat turn, so the
+Ranger stays visible while side 2 moves. Upstream switches the viewing team
+to the current human side in hotseat. That affects fog and hiding generally,
+not just this station.
+
+Teleport is not implemented in the engine (`astar.ts`/`move.ts`: "NOT
+ported"; it needs `teleport_map` plus location-filter `formula=` for
+`ABILITY_TELEPORT`'s `[tunnel]`), so its station waits on that.
