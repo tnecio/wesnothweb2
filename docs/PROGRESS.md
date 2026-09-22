@@ -3851,3 +3851,53 @@ into `GameShell`, which is also what lets a save record where it belongs.
 
 Gates: ui 166 tests (+10); 0 typecheck/svelte-check errors in both
 packages/ui and apps/web.
+
+## 2026-09-22 — Phase 26 S5+S6: autosave, and the save manager
+
+**Autosave** (`GameShell.autosave`) mirrors upstream: one per player turn,
+written when the turn comes back round to you
+(`playsingle_controller::before_human_turn` is the equivalent moment),
+named `<label>-Auto-Save<turn>`, keeping the newest `autoSaveMax`
+(default 10, `0` disables) via the rotation ported in S4. Plus the
+start-of-scenario save upstream also writes, which is what lets a
+campaign be restarted from any scenario it reached rather than only from
+the turn last played. A failed autosave never interrupts play: it is
+reported in the status line and the game carries on.
+
+**The manager** is two dialogs on the existing `Modal` framework.
+`SaveGameDialog` names the slot, pre-filled with the name upstream would
+choose (`DW-Invasion! Turn 1`) and confirming before overwriting.
+`LoadGameDialog` lists every save with campaign, scenario, turn, kind and
+date, filters by campaign, and offers Load / Rename / Delete (confirmed)
+/ Download / Upload. Menu entries became `Save Game...` (Ctrl+S) and
+`Load Game...` (Ctrl+O); both are in `dialogOpen()` so hotkeys do not
+fire behind them.
+
+Download converts to a real Wesnoth `.gz` on the way out and Upload
+accepts either format, sniffed by content rather than extension (both are
+gzip; what is inside tells them apart). A save for a different scenario
+loads by fetching that scenario's snapshot first -- the thing that makes
+a save resumable from anywhere instead of only inside the scenario it was
+taken in.
+
+**Verified in a real browser**, which found two things the type checker
+could not:
+
+1. *A detached anchor's click is ignored.* `downloadBlob` created an
+   `<a download>` without putting it in the document, so no download ever
+   started in headless Chromium. It is now appended, clicked and cleaned
+   up later -- revoking the object URL in the same tick can cancel the
+   download it just started.
+2. *The end-turn "stall" was the probe's fault, not the game's.* The AI
+   turn appeared to hang on side 2; instrumenting showed a `[message]`
+   dialog open the whole time that the script had stopped answering. Worth
+   recording because it looked exactly like the animation deadlock fixed
+   earlier this week, and was not.
+
+The full loop now works end to end: a game autosaved in the browser,
+downloaded through the manager's own Download button, opens in the real
+1.16.9 binary at turn 2/30 with 128 gold, 6/31 villages and 9 units --
+the same state the browser had.
+
+Gates: ui 166 tests; 0 typecheck/svelte-check errors in packages/ui and
+apps/web.

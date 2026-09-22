@@ -38,7 +38,7 @@
     CutsceneBeat,
     FakeUnitWalk,
   } from '@wesnothweb2/engine';
-  import { WmlConfig, directionBetween, Direction, Location, unitCanAct } from '@wesnothweb2/engine';
+  import { WmlConfig, directionBetween, Direction, Location, unitCanAct, parseConfig, writeWml } from '@wesnothweb2/engine';
   import {
     type HexPoint,
     type UnitAnimationCue,
@@ -75,9 +75,31 @@
     type HoveredHexInfo,
     type InteractionHost,
   } from './gameSession.js';
-  import { saveGame, loadGame, type SaveDetails, type SaveKind } from './persistence.js';
-  import { type CampaignInfo as Campaign, campaignAbbrev } from './save/campaign.js';
-  import { scenarioLabel } from './save/naming.js';
+  import {
+    saveGame,
+    loadGame,
+    listSaves,
+    deleteSave,
+    renameSave,
+    readSetting,
+    type SaveDetails,
+    type SaveKind,
+    type SaveMeta,
+  } from './persistence.js';
+  import { type CampaignInfo as Campaign, campaignAbbrev, wesnothCampaignInfo } from './save/campaign.js';
+  import { fromWesnothSave, toWesnothSave } from './save/wesnothSave.js';
+  import {
+    scenarioLabel,
+    autosaveName,
+    manualSaveName,
+    scenarioStartSaveName,
+    autosavesToDelete,
+    downloadFileName,
+    uniqueName,
+    DEFAULT_AUTO_SAVE_MAX,
+  } from './save/naming.js';
+  import SaveGameDialog from './SaveGameDialog.svelte';
+  import LoadGameDialog from './LoadGameDialog.svelte';
   import { fetchStoryAssets, type StoryAssets } from './story/storyImages.js';
   import { matchesHotkey, type Command } from './commands.js';
   import TopBar from './TopBar.svelte';
@@ -205,6 +227,12 @@
   let recallDialogOpen = $state(false);
   /** Phase 14: real Wesnoth's Actions menu "Objectives" entry -- reopens the same `ObjectivesDialog` the scenario shows automatically at start, on demand, independent of the `phase` state machine (which only ever shows it once, at the right moment in the startup sequence). */
   let objectivesDialogOpen = $state(false);
+  /** Phase 26: the save manager (`gui/dialogs/game_save.cpp`/`game_load.cpp`). */
+  let saveDialogOpen = $state(false);
+  let loadDialogOpen = $state(false);
+  let savesList = $state<SaveMeta[]>([]);
+  /** A download/upload is in flight -- the list stays up but its actions are inert. */
+  let saveBusy = $state(false);
   let attackerWeaponOptions = $state<AttackerWeaponOption[]>([]);
   let log = $state<string[]>([]);
   let turnNumber = $state(session.turnNumber);
@@ -563,6 +591,10 @@
     sync();
     await showDeferredInteractions();
     if (phase !== 'ended') phase = session.scenarioObjectives ? 'objectives' : session.scenarioResult ? 'ended' : 'playing';
+    // Upstream's start-of-scenario save (`scenariostart_savegame`), which
+    // is what lets a campaign be restarted from any scenario it reached
+    // rather than only from the turn you last played.
+    await autosave('scenario-start');
   }
 
   /**
@@ -1351,6 +1383,40 @@
     });
     sync(message);
     await showDeferredInteractions();
+    // Upstream autosaves once per player turn, *before* that turn begins
+    // (`playsingle_controller::before_human_turn`) -- which, after
+    // `endTurn` has cycled through every AI side and come back round, is
+    // here.
+    await autosave();
+  }
+
+  /**
+   * Writes this turn's autosave and prunes old ones, mirroring
+   * `autosave_savegame::autosave` (`savegame.cpp:511`): one per player
+   * turn, named `<label>-Auto-Save<turn>`, keeping the newest
+   * `autoSaveMax` (0 disables autosaving entirely, as upstream's
+   * `auto_save_max() > 0` guard does).
+   *
+   * Deliberately never throws into the caller: losing an autosave must
+   * not interrupt play, so a failure is reported in the status line and
+   * the game carries on.
+   */
+  async function autosave(kind: SaveKind = 'autosave'): Promise<void> {
+    if (phase === 'ended') return;
+    try {
+      const max = await readSetting('autoSaveMax', DEFAULT_AUTO_SAVE_MAX);
+      if (max <= 0) return;
+      const details = saveDetails(kind);
+      const name =
+        kind === 'scenario-start'
+          ? scenarioStartSaveName(details.label ?? '')
+          : autosaveName(details.label ?? '', session.turnNumber);
+      await saveGame(name, details, session.toSaveData());
+      for (const stale of autosavesToDelete(await listSaves(), max)) await deleteSave(stale);
+    } catch (err) {
+      console.error('[autosave] failed:', err);
+      sync(`Autosave failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /**
@@ -1377,6 +1443,209 @@
     } catch (err) {
       sync(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  /** Opens the save manager, refreshing the list first so it is never stale. */
+  async function openSaveManager(which: 'save' | 'load'): Promise<void> {
+    try {
+      savesList = await listSaves();
+    } catch (err) {
+      sync(`Could not read saves: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    if (which === 'save') saveDialogOpen = true;
+    else loadDialogOpen = true;
+  }
+
+  async function handleSaveAs(name: string): Promise<void> {
+    saveDialogOpen = false;
+    try {
+      await saveGame(name, saveDetails('manual'), session.toSaveData());
+      sync(`Saved as "${name}" (turn ${session.turnNumber}).`);
+    } catch (err) {
+      sync(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * Loads a save from the manager. A save for *this* scenario is applied
+   * to the live session; one for another scenario needs its own snapshot
+   * fetched first, which is what makes a save resumable from anywhere
+   * rather than only inside the scenario it was taken in.
+   */
+  async function handleLoadNamed(name: string): Promise<void> {
+    loadDialogOpen = false;
+    try {
+      const found = await loadGame<SaveGameData>(name);
+      if (!found) {
+        sync('That save no longer exists.');
+        return;
+      }
+      const targetScenario = found.data.scenarioId ?? found.meta.scenarioId;
+      if (targetScenario && targetScenario !== activeSnapshot.scenario.id) {
+        await loadIntoScenario(targetScenario, found.data);
+      } else {
+        session.loadSaveData(found.data);
+        phase = session.scenarioResult ? 'ended' : 'playing';
+        sync(`Loaded "${name}" (turn ${found.data.turnNumber}).`);
+      }
+    } catch (err) {
+      sync(`Load failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * Switches to another scenario's snapshot and resumes `data` in it --
+   * the same wholesale replacement `continueToNextScenario` does, minus
+   * the carryover computation (the save already holds the resulting
+   * state) and minus the story screen (this game is in progress).
+   */
+  async function loadIntoScenario(scenarioId: string, data: SaveGameData): Promise<void> {
+    const [res, assets] = await Promise.all([fetch(`/scenarios/${scenarioId}.json`), fetchStoryAssets(scenarioId)]);
+    if (!res.ok) throw new Error(`fetch scenarios/${scenarioId}.json: ${res.status}`);
+    const nextSnapshot = (await res.json()) as GameBoardSnapshot;
+    activeSnapshot = nextSnapshot;
+    session = GameSession.fromSaveData(nextSnapshot, data);
+    session.interactionHost = interactionHost;
+    storyParts = [];
+    storyAssets = assets;
+    currentMessage = null;
+    screenTint = null;
+    phase = session.scenarioResult ? 'ended' : 'playing';
+    sync(`Loaded ${nextSnapshot.scenario.name} (turn ${data.turnNumber}).`);
+  }
+
+  async function handleDeleteSave(name: string): Promise<void> {
+    try {
+      await deleteSave(name);
+      savesList = await listSaves();
+      sync(`Deleted "${name}".`);
+    } catch (err) {
+      sync(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  async function handleRenameSave(from: string, to: string): Promise<void> {
+    try {
+      await renameSave(from, to);
+      savesList = await listSaves();
+      sync(`Renamed to "${to}".`);
+    } catch (err) {
+      sync(`Rename failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * Downloads a save as a real Wesnoth `.gz` file -- converted on the way
+   * out (`save/wesnothSave.ts`), so what lands in the browser's downloads
+   * folder is a file the actual game can open, not this port's JSON.
+   *
+   * Needs the save's own scenario snapshot for the scenario config a
+   * `[snapshot]` embeds, which is why this fetches rather than assuming
+   * the save belongs to the scenario on screen.
+   */
+  async function handleDownloadSave(name: string): Promise<void> {
+    saveBusy = true;
+    try {
+      const found = await loadGame<SaveGameData>(name);
+      if (!found) throw new Error('that save no longer exists');
+      const wesnoth = wesnothCampaignInfo(campaignFor(found.meta.campaignId ?? found.data.campaignId));
+      if (!wesnoth) {
+        throw new Error('this campaign has no Wesnoth counterpart, so its saves cannot be exported');
+      }
+      const scenarioId = found.data.scenarioId ?? found.meta.scenarioId;
+      const snapshotForSave =
+        scenarioId === activeSnapshot.scenario.id ? activeSnapshot : await fetchSnapshot(scenarioId);
+      const text = writeWml(toWesnothSave(found.data, snapshotForSave, wesnoth));
+      const gz = await gzipText(text);
+      downloadBlob(gz, downloadFileName(name));
+      sync(`Downloaded "${downloadFileName(name)}".`);
+    } catch (err) {
+      sync(`Download failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      saveBusy = false;
+    }
+  }
+
+  /**
+   * Uploads a save file. Accepts a real Wesnoth `.gz` (gzipped WML) or
+   * one of this port's own saves, sniffed by content rather than by
+   * extension: both are gzip, and what is inside tells them apart.
+   */
+  async function handleUploadSave(file: File): Promise<void> {
+    saveBusy = true;
+    try {
+      const text = await gunzipToText(file);
+      const trimmed = text.trimStart();
+      let data: SaveGameData;
+      let name: string;
+      if (trimmed.startsWith('{')) {
+        data = JSON.parse(text) as SaveGameData;
+        name = file.name.replace(/\.gz$/i, '');
+      } else {
+        const imported = fromWesnothSave(parseConfig(text));
+        data = imported.save;
+        name = imported.label || file.name.replace(/\.gz$/i, '');
+      }
+      if (!data.scenarioId) throw new Error('that file has no scenario in it');
+      const existing = await listSaves();
+      const unique = uniqueName(name, existing.map((s) => s.name));
+      await saveGame(unique, {
+        scenarioId: data.scenarioId,
+        scenarioName: data.scenarioName,
+        campaignId: data.campaignId,
+        label: name,
+        turnNumber: data.turnNumber,
+        kind: 'manual',
+      }, data);
+      savesList = await listSaves();
+      sync(`Imported "${unique}" (turn ${data.turnNumber}).`);
+    } catch (err) {
+      sync(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      saveBusy = false;
+    }
+  }
+
+  async function fetchSnapshot(scenarioId: string): Promise<GameBoardSnapshot> {
+    const res = await fetch(`/scenarios/${scenarioId}.json`);
+    if (!res.ok) throw new Error(`fetch scenarios/${scenarioId}.json: ${res.status}`);
+    return (await res.json()) as GameBoardSnapshot;
+  }
+
+  /** The campaign a save belongs to -- the one being played, when they match. */
+  function campaignFor(campaignId: string | undefined): Campaign | null {
+    return campaignId && campaign?.id !== campaignId ? null : campaign;
+  }
+
+  /** Same native `CompressionStream` route `persistence.ts` uses -- no gzip library anywhere in this project. */
+  async function gzipText(text: string): Promise<Blob> {
+    const cs = new CompressionStream('gzip');
+    const writer = cs.writable.getWriter();
+    void writer.write(new TextEncoder().encode(text)).then(() => writer.close());
+    return await new Response(cs.readable).blob();
+  }
+
+  async function gunzipToText(blob: Blob): Promise<string> {
+    return await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  }
+
+  function downloadBlob(blob: Blob, filename: string): void {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    // Must be in the document: a detached anchor's click is ignored by
+    // some browsers (and by headless Chromium, which is how this is
+    // verified). Revoking is deferred for the same reason -- revoking the
+    // URL in the same tick can cancel the download that just started.
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      a.remove();
+      URL.revokeObjectURL(url);
+    }, 30_000);
   }
 
   async function handleLoad(): Promise<void> {
@@ -1471,8 +1740,20 @@
   // Phase 15: bindings are upstream's own (`wesnoth/data/core/hotkeys.cfg`); `ctrl` is Command on macOS,
   // matching that file's {IF_APPLE_CMD_ELSE_CTRL} macro.
   let menuCommands = $derived<Command[]>([
-    { id: 'save', label: 'Save', enabled: phase === 'playing', handler: handleSave, hotkey: { key: 's', ctrl: true } },
-    { id: 'load', label: 'Load', enabled: phase === 'playing', handler: handleLoad, hotkey: { key: 'o', ctrl: true } },
+    {
+      id: 'save',
+      label: 'Save Game...',
+      enabled: phase === 'playing',
+      handler: () => void openSaveManager('save'),
+      hotkey: { key: 's', ctrl: true },
+    },
+    {
+      id: 'load',
+      label: 'Load Game...',
+      enabled: phase === 'playing' || phase === 'ended',
+      handler: () => void openSaveManager('load'),
+      hotkey: { key: 'o', ctrl: true },
+    },
   ]);
   let actionCommands = $derived<Command[]>([
     {
@@ -1697,6 +1978,8 @@
       recruitDialogOpen ||
       recallDialogOpen ||
       objectivesDialogOpen ||
+      saveDialogOpen ||
+      loadDialogOpen ||
       pendingAdvancement !== null ||
       pendingPreview !== null ||
       // Phase 17: a suspended event's own dialogue owns the keyboard
@@ -1856,6 +2139,32 @@
       currentTurn={turnNumber}
       turnsLimit={scenarioTurnsLimit}
       onClose={() => (objectivesDialogOpen = false)}
+    />
+  {/if}
+
+  {#if saveDialogOpen}
+    <SaveGameDialog
+      suggestedName={manualSaveName(
+        scenarioLabel(campaignAbbrev(campaign), activeSnapshot.scenario.name),
+        session.turnNumber,
+      )}
+      existingNames={savesList.map((s) => s.name)}
+      onSave={(name) => void handleSaveAs(name)}
+      onCancel={() => (saveDialogOpen = false)}
+    />
+  {/if}
+
+  {#if loadDialogOpen}
+    <LoadGameDialog
+      saves={savesList}
+      campaignNames={campaign ? { [campaign.id]: campaign.name } : {}}
+      busy={saveBusy}
+      onLoad={(name) => void handleLoadNamed(name)}
+      onDelete={(name) => void handleDeleteSave(name)}
+      onRename={(from, to) => void handleRenameSave(from, to)}
+      onDownload={(name) => void handleDownloadSave(name)}
+      onUpload={(file) => void handleUploadSave(file)}
+      onCancel={() => (loadDialogOpen = false)}
     />
   {/if}
 
