@@ -6,10 +6,10 @@
  * image(s) it shows, for how long, and where (position/offset), so a later
  * renderer pass can actually draw it.
  *
- * Deliberately NOT ported (real *rendering* effects, not data — see the
- * Phase 4 task's scope note): halo compositing (`halo::manager`),
- * submerge/highlight alpha blending. `applyFrameEffects()` below is
- * still a stub for those. `blend_with`/`blend_ratio` (the hit-flash
+ * Halos are drawn by `playback.ts` (`sampleUnitHalo`/`sampleParticles`)
+ * and `SnapshotBoard.drawOverlays` (bugs6.md, 2026-09-22). Still NOT
+ * ported: submerge/highlight alpha blending -- `applyFrameEffects()`
+ * below remains a stub for those. `blend_with`/`blend_ratio` (the hit-flash
  * colour blitting) is the one exception, now real (2026-09-11) — see
  * `playback.ts`'s `sampleAnimation` (which samples it the same
  * frame-wins-else-animation-wide way as `offset=`) and `SnapshotBoard`'s
@@ -305,6 +305,9 @@ export interface UnitFrameDef {
   readonly directionalX: number;
   readonly directionalY: number;
   readonly layer?: number;
+  /** `auto_vflip=`/`auto_hflip=`, `undefined` when not set (upstream's `indeterminate` -- see `playback.ts`'s particle sampling for the defaults). */
+  readonly autoVflip?: boolean;
+  readonly autoHflip?: boolean;
 }
 
 function readAttrString(cfg: WmlConfig, key: string): string {
@@ -321,33 +324,39 @@ function readAttrString(cfg: WmlConfig, key: string): string {
  * where the "duration" fed to the progressive-pair parsers is the
  * animation's total, not any one frame's).
  */
-export function buildFrameFields(cfg: WmlConfig, durationMs: number): UnitFrameDef {
-  const imageStr = readAttrString(cfg, 'image');
-  const imageDiagonalStr = readAttrString(cfg, 'image_diagonal');
-  const haloStr = readAttrString(cfg, 'halo');
+export function buildFrameFields(cfg: WmlConfig, durationMs: number, prefix = ''): UnitFrameDef {
+  // `prefix` is `frame_builder(cfg, frame_string)`'s own: a particle's
+  // animation-wide values live on the anim block as e.g. `missile_offset=`.
+  const str = (key: string): string => readAttrString(cfg, prefix + key);
+  const bool = (key: string): boolean | undefined => (cfg.hasAttribute(prefix + key) ? cfg.getBoolean(prefix + key, false) : undefined);
+  const imageStr = str('image');
+  const imageDiagonalStr = str('image_diagonal');
+  const haloStr = str('halo');
 
   return {
     durationMs,
     image: parseStepSequence(imageStr, durationMs),
     imageDiagonal: parseStepSequence(imageDiagonalStr, durationMs),
-    imageMod: readAttrString(cfg, 'image_mod'),
+    imageMod: str('image_mod'),
     halo: parseStepSequence(haloStr, durationMs),
-    haloX: parseProgressivePair(readAttrString(cfg, 'halo_x'), durationMs),
-    haloY: parseProgressivePair(readAttrString(cfg, 'halo_y'), durationMs),
-    haloMod: readAttrString(cfg, 'halo_mod'),
-    sound: readAttrString(cfg, 'sound'),
-    text: readAttrString(cfg, 'text'),
-    textColor: readAttrString(cfg, 'text_color'),
-    blendRatio: parseProgressivePair(readAttrString(cfg, 'blend_ratio'), durationMs),
-    blendColor: readAttrString(cfg, 'blend_color'),
-    highlightRatio: parseProgressivePair(readAttrString(cfg, 'alpha'), durationMs),
-    offset: parseProgressivePair(readAttrString(cfg, 'offset'), durationMs),
-    submerge: parseProgressivePair(readAttrString(cfg, 'submerge'), durationMs),
-    x: parseProgressivePair(readAttrString(cfg, 'x'), durationMs),
-    y: parseProgressivePair(readAttrString(cfg, 'y'), durationMs),
-    directionalX: cfg.getNumber('directional_x', 0),
-    directionalY: cfg.getNumber('directional_y', 0),
-    layer: cfg.hasAttribute('layer') ? cfg.getNumber('layer') : undefined,
+    haloX: parseProgressivePair(str('halo_x'), durationMs),
+    haloY: parseProgressivePair(str('halo_y'), durationMs),
+    haloMod: str('halo_mod'),
+    sound: str('sound'),
+    text: str('text'),
+    textColor: str('text_color'),
+    blendRatio: parseProgressivePair(str('blend_ratio'), durationMs),
+    blendColor: str('blend_color'),
+    highlightRatio: parseProgressivePair(str('alpha'), durationMs),
+    offset: parseProgressivePair(str('offset'), durationMs),
+    submerge: parseProgressivePair(str('submerge'), durationMs),
+    x: parseProgressivePair(str('x'), durationMs),
+    y: parseProgressivePair(str('y'), durationMs),
+    directionalX: cfg.getNumber(prefix + 'directional_x', 0),
+    directionalY: cfg.getNumber(prefix + 'directional_y', 0),
+    layer: cfg.hasAttribute(prefix + 'layer') ? cfg.getNumber(prefix + 'layer') : undefined,
+    autoVflip: bool('auto_vflip'),
+    autoHflip: bool('auto_hflip'),
   };
 }
 

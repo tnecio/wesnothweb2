@@ -149,8 +149,18 @@ describe('parseUnitAnimations + matching (real Elvish Fighter content)', () => {
     expect(top).toHaveLength(1);
     expect(top[0]!.primaryAttackFilters[0]!.getString('name')).toBe('bow');
     expect(top[0]!.frames).toHaveLength(3);
-    expect(top[0]!.missileFrames).toHaveLength(1);
-    expect(top[0]!.missileFrames[0]!.image[0]!.value).toBe('projectiles/missile-n.png');
+    // add_anims pads the missile with a blank 1ms frame at each end.
+    expect(top[0]!.missileFrames).toHaveLength(3);
+    expect(top[0]!.missileFrames[1]!.image[0]!.value).toBe('projectiles/missile-n.png');
+    expect(top[0]!.missileFrames[0]!.image).toHaveLength(0);
+    expect(top[0]!.missileFrames[0]!.durationMs).toBe(1);
+
+    // bugs6.md: the missile is a real particle, flying on the default 0~0.8 offset.
+    const missile = top[0]!.particles.find((p) => p.prefix === 'missile_')!;
+    expect(missile.frames).toHaveLength(3);
+    expect(missile.params.offset.length).toBeGreaterThan(0);
+    expect(missile.startTimeMs).toBeLessThan(0); // it is in flight before the blow lands at 0
+    expect(top[0]!.startTimeMs).toBeLessThan(0);
   });
 
   it('"defend, hit, melee" prefers the DEFENSE_ANIM_RANGE-authored hits=hit branch (score 0) over the auto-split hit-or-kill fallback (score -1)', () => {

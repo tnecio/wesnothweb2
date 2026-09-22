@@ -4207,3 +4207,46 @@ not just this station.
 Teleport is not implemented in the engine (`astar.ts`/`move.ts`: "NOT
 ported"; it needs `teleport_map` plus location-filter `formula=` for
 `ABILITY_TELEPORT`'s `[tunnel]`), so its station waits on that.
+
+## 2026-09-22 — bugs6.md: particle effects (missiles and halos) in animations
+
+Animations only ever drew the unit's own `[frame]` images. Everything
+upstream draws on top of that -- projectiles, spell glows, impact flares --
+was parsed and dropped (`applyFrameEffects` was a logging stub). Now:
+
+- **Particles** (`unitAnimation.ts` `ParticleDef`): every child tag of an
+  animation block ending in `_frame` other than `[frame]` becomes its own
+  particle, as `unit_animation`'s constructor does (animation.cpp
+  ~L303-317): its frames, its start time (`<prefix>start_time=`, else the
+  smallest `begin=`), and its animation-wide values read with the prefix
+  (`missile_offset=` ...; `buildFrameFields` gained upstream's
+  `frame_string` prefix). `[attack_anim]`s with a `[missile_frame]` get
+  `add_anims`' treatment: `missile_offset=0~0.8` by default and a blank
+  1 ms missile frame at both ends.
+- **One clock per beat**: `UnitAnimationDef.startTimeMs` is the unit
+  frames' start (hits land at 0, so attacks start negative).
+  `playAnimations` runs every cue of a beat on a shared clock from the
+  earliest start, as `unit_animator::start_animations` does -- the
+  defender's reaction and the missile's arrival now line up with the
+  attacker's blow instead of every animation starting at the same
+  instant. Grouped multi-hex movement keeps its own clock.
+- **Drawing** (`playback.ts` `sampleParticles`/`sampleUnitHalo`,
+  `SnapshotBoard.drawOverlays`): particle images at their own offset
+  between the two hexes (diagonal art for diagonal facings, mirrored
+  facing west, upside down facing south unless `auto_vflip=no` -- the
+  `!primary` default), and `halo=` images of both the unit's frames and
+  the particles, centred at `halo_x`/`halo_y` (mirrored facing west) with
+  upstream's orientation table, drawn only while their frame is current.
+  They go in a new `animationOverlayLayer` above units and the ToD tint.
+  All images are preloaded before playback starts.
+
+Verified in the browser on the Abilities & Specials stations, with the
+page clock slowed 25x: the Elvish Marksman's longbow shows
+`projectiles/missile-ne.png` in flight; the Mage of Light's lightbeam shows
+`halo/holy/halo*` around the mage and `halo/holy/light-beam-*` coming down
+on the target. New dev hook: `__wesnothDebug.animationOverlays()`.
+
+Not done: `cycles` particles are looped but not tested against content;
+`halo_mod`/`image_mod` are appended to the path and rely on ImageCache's
+modifier support; the unit type's standing `halo=` attribute (e.g. Mage of
+Light's constant glow, outside animations) is a separate feature.

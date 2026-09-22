@@ -64,7 +64,7 @@ import { unitMatchesFilter } from '@wesnothweb2/engine/src/events/filter.js';
 import { WmlConfig, type WmlAttributeValue } from '@wesnothweb2/engine/src/wml/config.js';
 
 import type { AnimationContext, StrikeResult } from './animationContext.js';
-import { buildFrameFields, parseFrame, type UnitFrameDef } from './frame.js';
+import { buildFrameFields, parseDurationMs, parseFrame, type UnitFrameDef } from './frame.js';
 
 /** Mirrors `unit_animation::MATCH_FAIL`/`DEFAULT_ANIM` (animation.hpp). */
 export const MATCH_FAIL = -10;
@@ -187,6 +187,35 @@ function parseHitsList(s: string): StrikeResult[] {
 
 // ── UnitAnimationDef ─────────────────────────────────────────────────────────
 
+/**
+ * One `unit_animation::particle` other than the unit's own: every child tag
+ * of an animation block ending in `_frame` besides `[frame]` itself --
+ * `[missile_frame]` for a projectile, or any author-named family (e.g.
+ * `[halo1_frame]`) carrying spell glows and impact flares (animation.cpp
+ * ~L303-317). Each runs its own frame sequence on the animation's clock,
+ * from `startTimeMs`, drawn at its own `offset=` between the unit's hex
+ * and the target's.
+ */
+export interface ParticleDef {
+  /** The tag's prefix: `missile_` for `[missile_frame]`. Also the prefix of its animation-wide attributes (`missile_offset=`). */
+  readonly prefix: string;
+  readonly frames: readonly UnitFrameDef[];
+  /** `<prefix>start_time=`, else the smallest `begin=` among its frames (`particle::particle`, animation.cpp ~L955-964). */
+  readonly startTimeMs: number;
+  /** Animation-wide fallbacks read with the prefix (`frame_builder(cfg, prefix)`), sampled over the particle's whole duration. */
+  readonly params: UnitFrameDef;
+  /** `<prefix>cycles=`: loops for as long as the animation runs. */
+  readonly cycles: boolean;
+}
+
+/** `particle::particle`'s start time: `<prefix>start_time=` if set, else the smallest `begin=` (missing counts as 0) among the frames; 0 when there are none. */
+function particleStartTime(branch: AnimBranch, prefix: string, frames: readonly WmlConfig[]): number {
+  if (frames.length > 0 && !bhas(branch, prefix + 'start_time')) {
+    return Math.min(...frames.map((f) => parseDurationMs(f.getString('begin', '0'))));
+  }
+  return parseDurationMs(bstr(branch, prefix + 'start_time', '0'));
+}
+
 /** One parsed `unit_animation` candidate: its match filters plus its extracted frame data. */
 export interface UnitAnimationDef {
   /** Mirrors `event_` (the `apply_to=` list) — usually one event, but a generic `[animation]` block may declare several. */
@@ -203,7 +232,11 @@ export interface UnitAnimationDef {
   readonly secondaryAttackFilters: readonly WmlConfig[];
   readonly frequency: number;
   readonly frames: readonly UnitFrameDef[];
+  /** When `frames` starts on the animation clock (`particleStartTime` for `[frame]`); hits land at 0, so attack animations typically start negative. */
+  readonly startTimeMs: number;
   readonly missileFrames: readonly UnitFrameDef[];
+  /** Every non-`[frame]` particle, `[missile_frame]` included -- see `ParticleDef`. */
+  readonly particles: readonly ParticleDef[];
   /**
    * The animation-*wide* fallback parameters (`particle::parameters_`,
    * animation.cpp ~L972) — e.g. Elvish Fighter's sword `[attack_anim]` sets
@@ -235,10 +268,26 @@ export interface UnitAnimationDef {
 }
 
 function buildAnimationDef(branch: AnimBranch, events: readonly string[], baseScoreDelta = 0): UnitAnimationDef {
-  const frames = bchildren(branch, 'frame').map(parseFrame);
+  const frameCfgs = bchildren(branch, 'frame');
+  const frames = frameCfgs.map(parseFrame);
   const totalDurationMs = Math.max(1, frames.reduce((sum, f) => sum + f.durationMs, 0));
   const branchCfg = new WmlConfig();
   for (const [key, value] of branch.attrs) branchCfg.setAttribute(key, value);
+
+  const particleTags = [...new Set(branch.children.map((c) => c.tag))].filter((tag) => tag !== 'frame' && tag.endsWith('_frame'));
+  const particles = particleTags.map((tag): ParticleDef => {
+    const prefix = tag.slice(0, -'frame'.length);
+    const cfgs = bchildren(branch, tag);
+    const particleFrames = cfgs.map(parseFrame);
+    const durationMs = Math.max(1, particleFrames.reduce((sum, f) => sum + f.durationMs, 0));
+    return {
+      prefix,
+      frames: particleFrames,
+      startTimeMs: particleStartTime(branch, prefix, cfgs),
+      params: buildFrameFields(branchCfg, durationMs, prefix),
+      cycles: branchCfg.getBoolean(prefix + 'cycles', false),
+    };
+  });
 
   return {
     events,
@@ -254,7 +303,9 @@ function buildAnimationDef(branch: AnimBranch, events: readonly string[], baseSc
     secondaryAttackFilters: bchildren(branch, 'filter_second_attack'),
     frequency: bnum(branch, 'frequency', 0),
     frames,
+    startTimeMs: particleStartTime(branch, '', frameCfgs),
     missileFrames: bchildren(branch, 'missile_frame').map(parseFrame),
+    particles,
     animationParams: buildFrameFields(branchCfg, totalDurationMs),
     usesDefaultMovementOffset: false,
   };
@@ -374,6 +425,24 @@ function withDefaultOffset(branch: AnimBranch, defaultOffset: string): AnimBranc
   return { attrs: new Map(branch.attrs).set('offset', defaultOffset), children: branch.children };
 }
 
+/**
+ * `add_anims`' treatment of an `[attack_anim]` with a projectile
+ * (animation.cpp ~L838-852): `missile_offset=0~0.8` unless the author set
+ * one (the missile flies from the attacker to most of the way to the
+ * target), and a blank 1ms `[missile_frame]` added at both ends of the
+ * sequence -- which also pulls the missile's start time to 0 at the latest.
+ */
+function withMissileDefaults(branch: AnimBranch): AnimBranch {
+  const attrs = new Map(branch.attrs);
+  if (!bhas(branch, 'missile_offset')) attrs.set('missile_offset', '0~0.8');
+  const pad = (): { tag: string; config: WmlConfig } => {
+    const cfg = new WmlConfig();
+    cfg.setAttribute('duration', 1);
+    return { tag: 'missile_frame', config: cfg };
+  };
+  return { attrs, children: [pad(), ...branch.children, pad()] };
+}
+
 /** Tags handled like `add_simple_anim`: one fixed `apply_to`, no per-tag attribute rewriting. */
 const SIMPLE_ANIM_TAGS: Readonly<Record<string, string>> = {
   resistance_anim: 'resistance',
@@ -440,7 +509,7 @@ export function parseUnitAnimations(unitTypeCfg: WmlConfig): UnitAnimationDef[] 
     { ...buildAnimationDef(withDefaultOffset(branch, MOVEMENT_DEFAULT_OFFSET), ['movement']), usesDefaultMovementOffset: !bhas(branch, 'offset') },
   ]);
   forTag('attack_anim', (branch) => [
-    buildAnimationDef(bchildren(branch, 'missile_frame').length > 0 ? branch : withDefaultOffset(branch, ATTACK_DEFAULT_OFFSET), ['attack']),
+    buildAnimationDef(bchildren(branch, 'missile_frame').length > 0 ? withMissileDefaults(branch) : withDefaultOffset(branch, ATTACK_DEFAULT_OFFSET), ['attack']),
   ]);
   forTag('death', (branch) => [buildAnimationDef(branch, ['death'])]);
   forTag('defend', buildDefendAnimations);

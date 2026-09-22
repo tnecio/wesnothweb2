@@ -39,7 +39,7 @@ import {
   type StepSequenceItem,
   type UnitFrameDef,
 } from './frame.js';
-import type { UnitAnimationDef } from './unitAnimation.js';
+import type { ParticleDef, UnitAnimationDef } from './unitAnimation.js';
 
 /** Total real-time duration of `anim`, summing every `[frame]`'s own duration -- when to stop sampling and consider the animation finished. */
 export function animationDurationMs(anim: UnitAnimationDef): number {
@@ -130,4 +130,143 @@ export function sampleAnimation(
   const blendColor = blendColorRaw ? parseBlendColor(blendColorRaw) : null;
 
   return { imagePath, hflip: resolvedImage.hflip, x: pos.x, y: pos.y, blendRatio, blendColor };
+}
+
+// ── Particles and halos ──────────────────────────────────────────────────────
+
+/**
+ * Where `anim` sits on the animation clock (hits land at 0): from the
+ * earliest of its unit frames and particles to the latest end. A cycling
+ * particle does not extend it (it only runs while the rest does).
+ * `unit_animator` starts every animation of a beat together at the
+ * earliest such start, so an attacker's and a defender's line up on the
+ * blow (`unit_animator::start_animations`).
+ */
+export function animationTimeline(anim: UnitAnimationDef): { startMs: number; endMs: number } {
+  let startMs = anim.startTimeMs;
+  let endMs = anim.startTimeMs + animationDurationMs(anim);
+  for (const p of anim.particles) {
+    startMs = Math.min(startMs, p.startTimeMs);
+    if (!p.cycles) endMs = Math.max(endMs, p.startTimeMs + particleDurationMs(p));
+  }
+  return { startMs, endMs };
+}
+
+function particleDurationMs(p: ParticleDef): number {
+  return p.frames.reduce((sum, f) => sum + f.durationMs, 0);
+}
+
+/** One image to draw above the units for a moment: a particle's sprite (a missile) or a halo. Positions are board pixels of the image's centre. */
+export interface OverlaySample {
+  readonly path: string;
+  readonly x: number;
+  readonly y: number;
+  readonly hflip: boolean;
+  readonly vflip: boolean;
+}
+
+const isDiagonal = (d: Direction): boolean =>
+  d === Direction.NorthEast || d === Direction.SouthEast || d === Direction.NorthWest || d === Direction.SouthWest;
+const facesWest = (d: Direction): boolean => d === Direction.NorthWest || d === Direction.SouthWest;
+const facesNorth = (d: Direction): boolean => d === Direction.NorthWest || d === Direction.North || d === Direction.NorthEast;
+
+/**
+ * `unit_frame::redraw`'s halo half (frame.cpp ~L735-790): the halo image
+ * (frame value, else the animation-wide one) plus `halo_mod`, centred on
+ * the frame's position shifted by `halo_x`/`halo_y` -- `halo_x` mirrored
+ * when facing west -- and flipped per upstream's orientation table
+ * (vertical flips only when `auto_vflip` holds, i.e. not for the unit's
+ * own frames by default).
+ */
+function haloSample(
+  frame: UnitFrameDef,
+  params: UnitFrameDef,
+  tInFrame: number,
+  elapsedMs: number,
+  pos: HexPixelPos,
+  direction: Direction,
+  autoVflip: boolean,
+): OverlaySample | null {
+  const usingFrameHalo = frame.halo.length > 0;
+  const halo = usingFrameHalo ? stepAt(frame.halo, tInFrame) : stepAt(params.halo, elapsedMs);
+  if (!halo) return null;
+  const mod = frame.haloMod || params.haloMod;
+  const haloX = sampleProgressivePair(frame.haloX.length > 0 ? frame.haloX : params.haloX, frame.haloX.length > 0 ? tInFrame : elapsedMs);
+  const haloY = sampleProgressivePair(frame.haloY.length > 0 ? frame.haloY : params.haloY, frame.haloY.length > 0 ? tInFrame : elapsedMs);
+  const west = facesWest(direction);
+  const south = direction === Direction.South || direction === Direction.SouthEast || direction === Direction.SouthWest;
+  return {
+    path: mod ? `${halo}${mod}` : halo,
+    x: pos.x + (west ? -haloX : haloX),
+    y: pos.y + haloY,
+    hflip: west,
+    vflip: south && autoVflip,
+  };
+}
+
+/**
+ * Halo of the unit's own current frame at `absMs` on the animation clock,
+ * or `null` outside its frames (upstream draws halos only "in scope of
+ * frame") or when it has none. `pos` is where the unit is drawn.
+ */
+export function sampleUnitHalo(anim: UnitAnimationDef, direction: Direction, absMs: number, pos: HexPixelPos): OverlaySample | null {
+  const local = absMs - anim.startTimeMs;
+  if (local < 0 || local >= animationDurationMs(anim)) return null;
+  const picked = frameAt(anim.frames, local);
+  if (!picked) return null;
+  const autoVflip = picked.frame.autoVflip ?? anim.animationParams.autoVflip ?? false; // unit frames: `!primary` = false
+  return haloSample(picked.frame, anim.animationParams, picked.tInFrame, local, pos, direction, autoVflip);
+}
+
+/**
+ * Every particle's image and halo at `absMs` on the animation clock
+ * (`unit_animation::particle::redraw`): each is drawn only while one of
+ * its frames is current, at its own `offset=` between `src` and `dst`
+ * (a missile uses the `missile_offset=0~0.8` default), with the
+ * diagonal/flip rules of `unit_frame::redraw` -- particles flip
+ * vertically when facing south unless `auto_vflip=no` (the default is
+ * `!primary`).
+ */
+export function sampleParticles(
+  anim: UnitAnimationDef,
+  direction: Direction,
+  absMs: number,
+  src: HexPixelPos,
+  dst: HexPixelPos,
+): OverlaySample[] {
+  const out: OverlaySample[] = [];
+  for (const p of anim.particles) {
+    const duration = particleDurationMs(p);
+    let local = absMs - p.startTimeMs;
+    if (local < 0 || duration <= 0) continue;
+    if (p.cycles) local %= duration;
+    else if (local >= duration) continue;
+    const picked = frameAt(p.frames, local);
+    if (!picked) continue;
+    const { frame, tInFrame } = picked;
+
+    const usingFrameOffset = frame.offset.length > 0;
+    const offset = sampleProgressivePair(usingFrameOffset ? frame.offset : p.params.offset, usingFrameOffset ? tInFrame : local);
+    const pos = frameCenterPosition(src, dst, offset);
+    const autoVflip = frame.autoVflip ?? p.params.autoVflip ?? true;
+    const autoHflip = frame.autoHflip ?? p.params.autoHflip ?? true;
+
+    const useDiagonal = isDiagonal(direction) && frame.imageDiagonal.length > 0;
+    const image = stepAt(useDiagonal ? frame.imageDiagonal : frame.image, tInFrame);
+    if (image) {
+      const mod = frame.imageMod || p.params.imageMod;
+      const dx = sampleProgressivePair(frame.x.length > 0 ? frame.x : p.params.x, frame.x.length > 0 ? tInFrame : local);
+      const dy = sampleProgressivePair(frame.y.length > 0 ? frame.y : p.params.y, frame.y.length > 0 ? tInFrame : local);
+      out.push({
+        path: mod ? `${image}${mod}` : image,
+        x: pos.x + dx,
+        y: pos.y + dy,
+        hflip: autoHflip && facesWest(direction),
+        vflip: autoVflip && !facesNorth(direction),
+      });
+    }
+    const halo = haloSample(frame, p.params, tInFrame, local, pos, direction, autoVflip);
+    if (halo) out.push(halo);
+  }
+  return out;
 }

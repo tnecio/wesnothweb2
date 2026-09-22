@@ -7,7 +7,7 @@ import { Direction } from '@wesnothweb2/engine/src/model/Location.js';
 import { parseUnitAnimations, selectTopAnimations, type UnitAnimationDef } from '../../src/animation/unitAnimation.js';
 import type { AnimationContext } from '../../src/animation/animationContext.js';
 import { buildFrameFields, parseFrame } from '../../src/animation/frame.js';
-import { animationDurationMs, sampleAnimation } from '../../src/animation/playback.js';
+import { animationDurationMs, animationTimeline, sampleAnimation, sampleParticles, sampleUnitHalo } from '../../src/animation/playback.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const dataRoot = path.join(repoRoot, 'wesnoth/data');
@@ -48,7 +48,9 @@ function makeTwoFrameAnim(): UnitAnimationDef {
     secondaryAttackFilters: [],
     frequency: 0,
     frames: [frameA, frameB],
+    startTimeMs: 0,
     missileFrames: [],
+    particles: [],
     animationParams: buildFrameFields(animCfg, 180), // 100 (frame A) + 80 (frame B)
     usesDefaultMovementOffset: false,
   };
@@ -138,5 +140,64 @@ describe('sampleAnimation (real Merman Fighter [attack_anim], data/core/units/me
 
     const end = sampleAnimation(seAnim!, Direction.SouthEast, total, src, dst);
     expect(end.x).toBeCloseTo(0, 3); // real trident attack returns fully to src by the end.
+  });
+});
+
+describe('particles and halos (bugs6.md: particle effects missing)', () => {
+  /** An `[attack_anim]` with a projectile and a halo, parsed through `parseUnitAnimations` so upstream's missile defaults apply. */
+  function projectileAttack(): UnitAnimationDef {
+    const unitType = new WmlConfig();
+    const attack = unitType.addChild('attack_anim');
+    const frame = attack.addChild('frame');
+    frame.setAttribute('begin', -200);
+    frame.setAttribute('duration', 400);
+    frame.setAttribute('image', 'units/test-attack.png');
+    frame.setAttribute('halo', 'halo/test-flare.png');
+    frame.setAttribute('halo_x', 10);
+    const missile = attack.addChild('missile_frame');
+    missile.setAttribute('begin', -150);
+    missile.setAttribute('duration', 150);
+    missile.setAttribute('image', 'projectiles/test-n.png');
+    missile.setAttribute('image_diagonal', 'projectiles/test-ne.png');
+    return parseUnitAnimations(unitType).find((a) => a.events.includes('attack'))!;
+  }
+  const src = { x: 0, y: 0 };
+  const north = { x: 0, y: -72 };
+
+  it('the timeline spans the unit frames and the missile, on the clock where the blow lands at 0', () => {
+    const anim = projectileAttack();
+    expect(anim.startTimeMs).toBe(-200);
+    expect(anim.particles.map((p) => p.startTimeMs)).toEqual([-150]);
+    expect(animationTimeline(anim)).toEqual({ startMs: -200, endMs: 200 });
+  });
+
+  it('the missile flies from the attacker toward the target, only while its frames run', () => {
+    const anim = projectileAttack();
+    expect(sampleParticles(anim, Direction.North, -180, src, north)).toEqual([]); // not launched yet
+    const early = sampleParticles(anim, Direction.North, -140, src, north)[0]!;
+    const late = sampleParticles(anim, Direction.North, -10, src, north)[0]!;
+    expect(early.path).toBe('projectiles/test-n.png');
+    expect(late.y).toBeLessThan(early.y); // moving north
+    expect(late.y).toBeGreaterThan(north.y * 0.8 - 1); // the default 0~0.8 offset stops short of the target
+    expect(sampleParticles(anim, Direction.North, 50, src, north)).toEqual([]); // gone after it lands
+  });
+
+  it('flips the missile like upstream: diagonal art, mirrored west, upside-down facing south', () => {
+    const anim = projectileAttack();
+    const sw = sampleParticles(anim, Direction.SouthWest, -75, src, { x: -54, y: 36 })[0]!;
+    expect(sw.path).toBe('projectiles/test-ne.png');
+    expect(sw.hflip).toBe(true);
+    expect(sw.vflip).toBe(true);
+    const n = sampleParticles(anim, Direction.North, -75, src, north)[0]!;
+    expect(n.hflip).toBe(false);
+    expect(n.vflip).toBe(false);
+  });
+
+  it("the unit frame's halo sits at halo_x, mirrored when facing west, and only during the frame", () => {
+    const anim = projectileAttack();
+    expect(sampleUnitHalo(anim, Direction.NorthEast, 0, src)).toEqual({ path: 'halo/test-flare.png', x: 10, y: 0, hflip: false, vflip: false });
+    expect(sampleUnitHalo(anim, Direction.NorthWest, 0, src)).toMatchObject({ x: -10, hflip: true });
+    expect(sampleUnitHalo(anim, Direction.North, -250, src)).toBeNull();
+    expect(sampleUnitHalo(anim, Direction.North, 250, src)).toBeNull();
   });
 });

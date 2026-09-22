@@ -88,7 +88,7 @@ import {
 import { ImageCache, hexedRef, setImageBaseUrl, setEngineImageBaseUrl } from './images/ImageCache.js';
 import { joinRef } from './images/ipf.js';
 import { resolveSideColorId } from './images/teamColor.js';
-import { sampleAnimation, animationDurationMs } from './animation/playback.js';
+import { sampleAnimation, animationDurationMs, animationTimeline, sampleParticles, sampleUnitHalo, type OverlaySample } from './animation/playback.js';
 import { HEX_STEP_MS, type UnitAnimationDef } from './animation/unitAnimation.js';
 import { makeLayerSprite } from './terrainPositioning.js';
 import type { BuildingRule } from './terrain/terrainGraphicsRules.js';
@@ -551,6 +551,12 @@ export class SnapshotBoard {
    * `selectionLayer`'s own untinted UI chrome.
    */
   private readonly floatingLayer = new PIXI.Container();
+  /**
+   * Missiles and halos of animations being played (`playAnimations`):
+   * above the units and the time-of-day tint (upstream's halos are not
+   * lit by the time of day), below the selection ring and floating labels.
+   */
+  private readonly animationOverlayLayer = new PIXI.Container();
   private units: SnapshotUnit[];
   private readonly teamColor: Map<number, string>;
   private readonly onHexClick?: (x: number, y: number) => void;
@@ -601,9 +607,11 @@ export class SnapshotBoard {
       this.terrainForegroundLayer,
       this.fogShroudLayer,
       this.todTintLayer,
+      this.animationOverlayLayer,
       this.selectionLayer,
       this.floatingLayer,
     );
+    this.animationOverlayLayer.eventMode = 'none';
     this.todTintPositive.blendMode = 'add';
     // 'subtract' is one of PixiJS v8's "advanced" (shader-based) blend
     // modes, not a native GL blend equation like 'add' -- it needs its
@@ -1325,17 +1333,29 @@ export class SnapshotBoard {
           dst: hexToPixel(toHexCoord(leg.dstHex.x, leg.dstHex.y)),
           direction: leg.direction,
         }));
-        const duration =
-          (legPixels && legPixels.length > 0
-            ? legPixels.length * HEX_STEP_MS
-            : cue.anim
-              ? animationDurationMs(cue.anim)
-              : defaultDurationMs) / speedMultiplier;
-        return { cue, visual, src, dst, legPixels, duration: Math.max(1, duration) };
+        const grouped = legPixels !== undefined && legPixels.length > 0;
+        const timeline = cue.anim && !grouped ? animationTimeline(cue.anim) : null;
+        return { cue, visual, src, dst, legPixels, grouped, timeline };
       })
       .filter((a): a is NonNullable<typeof a> => a !== null);
 
     if (active.length === 0) return;
+
+    // bugs6.md (particles): every animation of a beat runs on one clock on
+    // which hits land at 0 -- `unit_animator::start_animations` starts them
+    // all at the earliest `begin=` among them, so an attack's missile
+    // arrives, and the defender flinches, on the blow. `clockStart` is that
+    // earliest start; grouped movement cues keep their own 0-based clock.
+    const timelines = active.flatMap((a) => (a.timeline ? [a.timeline] : []));
+    const clockStart = timelines.length > 0 ? Math.min(...timelines.map((t) => t.startMs)) : 0;
+    const timed = active.map((a) => {
+      const internalMs = a.grouped
+        ? a.legPixels!.length * HEX_STEP_MS
+        : a.timeline
+          ? a.timeline.endMs - clockStart
+          : defaultDurationMs;
+      return { ...a, duration: Math.max(1, internalMs / speedMultiplier) };
+    });
 
     // Pre-resolve every real texture this playback will need up front, so
     // no frame swap stalls on a still-loading image mid-animation.
@@ -1343,6 +1363,7 @@ export class SnapshotBoard {
     performance.mark('anim:frames-start');
     const isDiagonal = (d: Direction): boolean =>
       d === Direction.NorthEast || d === Direction.SouthEast || d === Direction.NorthWest || d === Direction.SouthWest;
+    const overlayTextures = await this.preloadOverlayImages(active.flatMap((a) => (a.cue.anim ? [a.cue.anim] : [])));
     for (const { cue, visual, legPixels } of active) {
       if (!cue.anim) continue;
       const paths = new Set<string>();
@@ -1361,21 +1382,26 @@ export class SnapshotBoard {
     }
     performance.measure('anim:frames', 'anim:frames-start');
 
-    const totalMs = Math.max(...active.map((a) => a.duration));
+    const totalMs = Math.max(...timed.map((a) => a.duration));
     const start = performance.now();
+    const overlayPool: PIXI.Sprite[] = [];
 
     await new Promise<void>((resolve) => {
       const tick = async (): Promise<void> => {
         const elapsed = performance.now() - start;
+        const overlays: OverlaySample[] = [];
 
-        for (const { cue, visual, src, dst, legPixels, duration } of active) {
+        for (const { cue, visual, src, dst, legPixels, duration, grouped } of timed) {
           const t = Math.min(elapsed, duration);
           if (cue.anim) {
             // `t` is wall-clock time (already compressed by speedMultiplier);
             // scale it back up to the animation's own real internal
             // timeline so a real anim's frame/offset progression plays
             // faster, not truncated -- see this method's own doc comment.
-            const animT = t * speedMultiplier;
+            // `absT` is that time on the shared clock (see `clockStart`);
+            // `animT` the same relative to this animation's own `[frame]`s.
+            const absT = grouped ? t * speedMultiplier + cue.anim.startTimeMs : clockStart + t * speedMultiplier;
+            const animT = Math.max(0, absT - cue.anim.startTimeMs);
             // A grouped multi-leg cue samples ONE continuously-running
             // animation across every hex (see `UnitAnimationCue.legs`'
             // own doc comment) -- `animT` keeps counting up across the
@@ -1404,6 +1430,13 @@ export class SnapshotBoard {
             visual.container.x = sample.x;
             visual.container.y = sample.y;
             this.applyBlend(visual, sample.blendRatio, sample.blendColor);
+            // Upstream takes a frame's facing from src->dst, so an in-place
+            // animation has none (no mirroring of its halos).
+            const inPlace = curSrc.x === curDst.x && curSrc.y === curDst.y;
+            const overlayDirection = inPlace ? Direction.Indeterminate : curDirection;
+            const halo = sampleUnitHalo(cue.anim, overlayDirection, absT, sample);
+            if (halo) overlays.push(halo);
+            overlays.push(...sampleParticles(cue.anim, overlayDirection, absT, curSrc, curDst));
           } else if (!cue.holdInPlace && (cue.srcHex.x !== cue.dstHex.x || cue.srcHex.y !== cue.dstHex.y)) {
             // No real anim: a synthetic beat appropriate to what this cue
             // means. `restAt: 'dst'` (movement) glides straight there,
@@ -1422,7 +1455,10 @@ export class SnapshotBoard {
           }
         }
 
+        this.drawOverlays(overlayPool, elapsed >= totalMs ? [] : overlays, overlayTextures);
+
         if (elapsed >= totalMs) {
+          for (const sprite of overlayPool) sprite.destroy();
           // Settle each sprite at its own real resting hex -- `dst` for a
           // `restAt: 'dst'` cue (movement: the unit's real new hex), `src`
           // otherwise (attack: both the attacker's lunge-and-return and
@@ -1440,6 +1476,60 @@ export class SnapshotBoard {
       };
       requestAnimationFrame(() => void tick());
     });
+  }
+
+  /** Every missile/halo image `anims` can show (see `sampleParticles`/`sampleUnitHalo`), fetched up front so no frame waits on the network. */
+  private async preloadOverlayImages(anims: readonly UnitAnimationDef[]): Promise<Map<string, PIXI.Texture>> {
+    const paths = new Set<string>();
+    const addSteps = (steps: readonly { value: string }[], mod: string): void => {
+      for (const step of steps) paths.add(mod ? `${step.value}${mod}` : step.value);
+    };
+    for (const anim of anims) {
+      for (const frame of anim.frames) addSteps(frame.halo, frame.haloMod || anim.animationParams.haloMod);
+      addSteps(anim.animationParams.halo, anim.animationParams.haloMod);
+      for (const p of anim.particles) {
+        addSteps(p.params.halo, p.params.haloMod);
+        for (const frame of p.frames) {
+          addSteps(frame.image, frame.imageMod || p.params.imageMod);
+          addSteps(frame.imageDiagonal, frame.imageMod || p.params.imageMod);
+          addSteps(frame.halo, frame.haloMod || p.params.haloMod);
+        }
+      }
+    }
+    const textures = new Map<string, PIXI.Texture>();
+    await Promise.all(
+      [...paths].map(async (path) => {
+        const texture = await ImageCache.resolve(path);
+        if (texture) textures.set(path, texture);
+      }),
+    );
+    return textures;
+  }
+
+  /** Debug: the missiles/halos drawn on the latest animation frame (see `drawOverlays`). */
+  lastAnimationOverlays: readonly OverlaySample[] = [];
+
+  /** Shows `overlays` using (and growing) `pool`, one sprite each, hiding the rest. Images that failed to load are skipped. */
+  private drawOverlays(pool: PIXI.Sprite[], overlays: readonly OverlaySample[], textures: ReadonlyMap<string, PIXI.Texture>): void {
+    this.lastAnimationOverlays = overlays.filter((o) => textures.has(o.path));
+    let used = 0;
+    for (const overlay of overlays) {
+      const texture = textures.get(overlay.path);
+      if (!texture) continue;
+      let sprite = pool[used];
+      if (!sprite) {
+        sprite = new PIXI.Sprite(texture);
+        sprite.anchor.set(0.5, 0.5);
+        this.animationOverlayLayer.addChild(sprite);
+        pool.push(sprite);
+      }
+      sprite.texture = texture;
+      sprite.position.set(overlay.x, overlay.y);
+      sprite.scale.set(overlay.hflip ? -1 : 1, overlay.vflip ? -1 : 1);
+      sprite.visible = true;
+      used++;
+    }
+    for (let i = used; i < pool.length; i++) pool[i]!.visible = false;
   }
 
   /**

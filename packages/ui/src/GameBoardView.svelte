@@ -513,6 +513,8 @@
       unitSpritePositions: () => board?.unitSpritePositions() ?? null,
       /** Filters per unit sprite, for checking status looks (slowed/poisoned/petrified). */
       unitSpriteFilterCounts: () => board?.unitSpriteFilterCounts() ?? null,
+      /** Missiles/halos on the latest animation frame, for checking particle effects. */
+      animationOverlays: () => board?.lastAnimationOverlays ?? null,
     };
   }
 
