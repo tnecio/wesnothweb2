@@ -1663,7 +1663,7 @@ export class GameSession {
     );
   }
 
-  /** Vacant castle tiles the active side's recruiting leader (see `recruitingLeader`) could recruit/recall onto -- empty if there's no such leader right now. Deliberately NOT tied to `selectedUnit` -- see `recruitingLeader`'s own doc comment. Feeds the context menu's "is this hex a valid recruit/recall target" check and `tryRecruitAt`/`tryRecallAt`'s own validation -- NOT the board's visual highlight, see `boardRecruitTiles` below. */
+  /** Vacant castle tiles the active side's recruiting leader (see `recruitingLeader`) could recruit/recall onto -- empty if there's no such leader right now. Deliberately NOT tied to `selectedUnit` -- see `recruitingLeader`'s own doc comment. Feeds the context menu's "is this hex a valid recruit/recall target" check and `tryRecruitAt`/`tryRecallAt`'s own validation (the board does not highlight them, as in real Wesnoth). */
   get recruitTiles(): HexPoint[] {
     const leader = this.recruitingLeader;
     return leader ? this.computeRecruitTiles(leader) : [];
@@ -1677,24 +1677,6 @@ export class GameSession {
   get autoRecruitTile(): HexPoint | null {
     const tiles = [...this.recruitTiles].sort((a, b) => a.x - b.x || a.y - b.y);
     return tiles[0] ?? null;
-  }
-
-  /**
-   * Vacant castle tiles to highlight green on the BOARD -- unlike
-   * `recruitTiles` above, this IS tied to `selectedUnit`: real, reported
-   * bug (bugs5.md #4): after `recruitTiles` itself stopped depending on
-   * selection (bugs4.md #4, so the Recruit context-menu entry/dialog work
-   * without the leader being selected), the board's green highlight
-   * started showing constantly too, any time the active side merely HAD a
-   * recruiting leader somewhere -- distracting clutter real Wesnoth
-   * doesn't have (it only highlights recruit tiles once you've actually
-   * selected your leader). Empty unless `selectedUnit` itself is a valid
-   * recruiting leader.
-   */
-  get boardRecruitTiles(): HexPoint[] {
-    const sel = this.selectedUnit;
-    if (!sel || sel.side !== this.activeSide || !sel.canRecruit) return [];
-    return this.computeRecruitTiles(sel);
   }
 
   /** The active side's real recruitable types (cost/name/image from `snapshot.unitTypes`), if it currently has a leader able to recruit. Empty otherwise. */

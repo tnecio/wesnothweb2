@@ -55,7 +55,6 @@
     cursorHex = null,
     reachable = [],
     attackTargets = [],
-    recruitTiles = [],
     villageOwners = [],
     hexVisibility = [],
     timeOfDay = undefined,
@@ -81,7 +80,6 @@
     cursorHex?: HexPoint | null;
     reachable?: readonly (HexPoint & { defensePercent?: number })[];
     attackTargets?: readonly HexPoint[];
-    recruitTiles?: readonly HexPoint[];
     /** Live village ownership (village hex -> owning side, or unowned if absent) -- re-applied whenever it changes, same as `units`. */
     villageOwners?: readonly VillageOwnerPoint[];
     /** Per-hex shroud/fog state for the board's fog overlay -- see `GameSession.hexVisibility`. Empty when the scenario uses neither. */
@@ -303,7 +301,7 @@
       // settled before this async init finished) -- the effects below only
       // fire again on a *subsequent* change.
       await newBoard.updateUnits(units);
-      newBoard.setHighlights({ selected: selectedHex, cursor: cursorHex, reachable, attackTargets, recruitTiles });
+      newBoard.setHighlights({ selected: selectedHex, cursor: cursorHex, reachable, attackTargets });
       newBoard.updateVillageOwnership(villageOwners);
       newBoard.updateFogShroud(hexVisibility);
       if (timeOfDay) newBoard.updateTimeOfDayTint(timeOfDay);
@@ -389,7 +387,7 @@
   });
 
   $effect(() => {
-    board?.setHighlights({ selected: selectedHex, cursor: cursorHex, reachable, attackTargets, recruitTiles });
+    board?.setHighlights({ selected: selectedHex, cursor: cursorHex, reachable, attackTargets });
   });
 
   $effect(() => {

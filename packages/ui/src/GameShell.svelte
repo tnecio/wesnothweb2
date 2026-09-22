@@ -236,18 +236,8 @@
   let speakerHex = $state<HexPoint | null>(null);
   let reachable = $state<ReachableHexPoint[]>([]);
   let attackTargets = $state<HexPoint[]>([]);
-  /** Feeds the context menu's "is this hex a valid recruit/recall target" check -- selection-independent, see `GameSession.recruitTiles`'s own doc comment. NOT the board's visual highlight -- see `boardRecruitTiles` below. */
+  /** Feeds the context menu's "is this hex a valid recruit/recall target" check -- selection-independent, see `GameSession.recruitTiles`'s own doc comment. There is no board highlight for these: real Wesnoth has none (bugs6.md). */
   let recruitTiles = $state<HexPoint[]>([]);
-  /**
-   * The board's green recruit-tile highlight -- real, reported bug
-   * (bugs5.md #4): unlike `recruitTiles` above, this IS tied to whether
-   * the leader is actually SELECTED (see `GameSession.boardRecruitTiles`'s
-   * own doc comment) -- showing it any time the active side merely HAD a
-   * recruiting leader somewhere (which `recruitTiles` itself now
-   * correctly does, for the context menu/dialog's sake) was distracting
-   * clutter real Wesnoth doesn't have.
-   */
-  let boardRecruitTiles = $state<HexPoint[]>([]);
   let recruitOptions = $state<RecruitOption[]>([]);
   let pendingRecruitTypeId = $state<string | null>(null);
   let recallOptions = $state<RecallOption[]>([]);
@@ -331,7 +321,6 @@
     reachable = session.reachable;
     attackTargets = session.attackCandidates.map((u) => ({ x: u.location.x, y: u.location.y }));
     recruitTiles = session.recruitTiles;
-    boardRecruitTiles = session.boardRecruitTiles;
     recruitOptions = session.recruitOptions;
     pendingRecruitTypeId = session.pendingRecruitTypeId;
     recallOptions = session.recallOptions;
@@ -355,9 +344,9 @@
     } else if (pendingPreview) {
       statusMessage = 'Review the attack prediction, then confirm or cancel.';
     } else if (pendingRecruitTypeId) {
-      statusMessage = 'Click a green-highlighted castle tile to place your recruit.';
+      statusMessage = 'Click a free castle tile to place your recruit.';
     } else if (pendingRecallIndex !== null) {
-      statusMessage = 'Click a green-highlighted castle tile to place your recalled unit.';
+      statusMessage = 'Click a free castle tile to place your recalled unit.';
     } else if (selected) {
       statusMessage = `${selected.name} selected.`;
     } else {
@@ -2169,7 +2158,6 @@
         {cursorHex}
         {reachable}
         {attackTargets}
-        recruitTiles={boardRecruitTiles}
         {villageOwners}
         {hexVisibility}
         {timeOfDay}

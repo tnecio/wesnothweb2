@@ -425,24 +425,6 @@ describe('GameSession recruiting (real recruit.ts actions, real recruit= lists)'
     }
   });
 
-  it('real, reported bug (bugs5.md #4): boardRecruitTiles (the board\'s green highlight) stays empty unless the leader itself is the SELECTED unit, unlike recruitTiles (the context-menu/dialog set, deliberately selection-independent -- see its own doc comment)', async () => {
-    const session = new GameSession(loadSnapshot());
-    const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
-
-    expect(session.selectedUnit).toBeNull();
-    expect(session.recruitTiles.length).toBeGreaterThan(0); // available regardless of selection
-    expect(session.boardRecruitTiles).toEqual([]); // but nothing to highlight yet -- leader isn't selected
-
-    session.selectUnit(leader);
-    expect(session.boardRecruitTiles.length).toBe(session.recruitTiles.length);
-
-    const other = session.board.allUnits().find((u) => u !== leader);
-    if (other) {
-      session.selectUnit(other);
-      expect(session.boardRecruitTiles).toEqual([]); // a non-leader selection highlights nothing either
-    }
-  });
-
   it('real, reported bug: recruiting never played any animation -- yields a unitAppear beat for the new unit and the recruiting leader', async () => {
     const session = new GameSession(loadSnapshot());
     const beats = recordBeats(session);

@@ -4250,3 +4250,12 @@ Not done: `cycles` particles are looped but not tested against content;
 `halo_mod`/`image_mod` are appended to the path and rely on ImageCache's
 modifier support; the unit type's standing `halo=` attribute (e.g. Mage of
 Light's constant glow, outside animations) is a separate feature.
+
+## 2026-09-22 — recruit-tile highlight removed
+
+User's call: real Wesnoth has no green recruit-tile fill, and it clashed
+with the new defense shading. `GameSession.boardRecruitTiles`, the
+`recruitTiles` highlight prop and its renderer fill are gone. The
+selection-independent `GameSession.recruitTiles` stays: it still drives the
+context menu, placement validation and `autoRecruitTile`. The status hint
+for an armed recruit now says "Click a free castle tile".

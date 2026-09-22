@@ -397,8 +397,6 @@ export interface HighlightState {
    * at once (a unit selected while the cursor is over its destination).
    */
   cursor?: HexPoint | null;
-  /** Vacant castle tiles the selected leader could recruit onto. */
-  recruitTiles?: readonly HexPoint[];
 }
 
 /** One currently-OWNED village -- unowned villages need no marker (the terrain colour alone already marks them as villages, see `colorForTerrain`). */
@@ -1749,7 +1747,6 @@ export class SnapshotBoard {
       }
     }
     for (const hex of state.attackTargets ?? []) drawFill(hex, 0xe23b3b, 0.5);
-    for (const hex of state.recruitTiles ?? []) drawFill(hex, 0x3fdf6a, 0.45);
 
     if (state.selected) {
       const coord = toHexCoord(state.selected.x, state.selected.y);
