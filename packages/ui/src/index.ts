@@ -15,7 +15,35 @@ export type {
   SaveGameData,
 } from './gameSession.js';
 
-export { saveGame, loadGame, listSaves, deleteSave, type SaveMeta } from './persistence.js';
+export {
+  saveGame,
+  loadGame,
+  listSaves,
+  deleteSave,
+  renameSave,
+  readSetting,
+  writeSetting,
+  type SaveMeta,
+  type SaveDetails,
+  type SaveKind,
+} from './persistence.js';
+
+// Save-file conversion and naming (Phase 26). `wesnothSave` is the only
+// module that knows the real save format; `campaign.ts` carries the
+// upstream identity a file needs, from `campaigns.json`.
+export { fromWesnothSave, toWesnothSave, type WesnothCampaignInfo, type ImportedWesnothSave } from './save/wesnothSave.js';
+export { wesnothCampaignInfo, campaignAbbrev, type CampaignInfo } from './save/campaign.js';
+export {
+  scenarioLabel,
+  autosaveName,
+  manualSaveName,
+  scenarioStartSaveName,
+  autosavesToDelete,
+  downloadFileName,
+  uniqueName,
+  DEFAULT_AUTO_SAVE_MAX,
+  INFINITE_AUTO_SAVES,
+} from './save/naming.js';
 
 export { default as GameShell } from './GameShell.svelte';
 

@@ -75,7 +75,9 @@
     type HoveredHexInfo,
     type InteractionHost,
   } from './gameSession.js';
-  import { saveGame, loadGame } from './persistence.js';
+  import { saveGame, loadGame, type SaveDetails, type SaveKind } from './persistence.js';
+  import { type CampaignInfo as Campaign, campaignAbbrev } from './save/campaign.js';
+  import { scenarioLabel } from './save/naming.js';
   import { fetchStoryAssets, type StoryAssets } from './story/storyImages.js';
   import { matchesHotkey, type Command } from './commands.js';
   import TopBar from './TopBar.svelte';
@@ -101,10 +103,18 @@
   let {
     snapshot,
     storyAssets: initialStoryAssets = null,
+    campaign = null,
   }: {
     snapshot: GameBoardSnapshot;
     /** `/story/<id>.json` for `snapshot`'s scenario (see `fetchStoryAssets`); null shows the story without images. */
     storyAssets?: StoryAssets | null;
+    /**
+     * Which campaign this scenario belongs to (`campaigns.json`). A save
+     * records it so the manager can group and filter by campaign, and so
+     * an exported file can name the campaign the way real Wesnoth does
+     * (see `save/wesnothSave.ts`). Null for a scenario opened directly.
+     */
+    campaign?: Campaign | null;
   } = $props();
 
   /** The scenario currently being played -- reassigned by `continueToNextScenario`. Everything below that used to read the `snapshot` prop directly now reads this instead. */
@@ -1343,10 +1353,26 @@
     await showDeferredInteractions();
   }
 
+  /**
+   * The metadata every save carries so the manager can list, filter and
+   * resume it without decompressing the payload -- and so an export knows
+   * which campaign it belongs to.
+   */
+  function saveDetails(kind: SaveKind): SaveDetails {
+    return {
+      scenarioId: activeSnapshot.scenario.id,
+      scenarioName: activeSnapshot.scenario.name,
+      campaignId: campaign?.id,
+      label: scenarioLabel(campaignAbbrev(campaign), activeSnapshot.scenario.name),
+      turnNumber: session.turnNumber,
+      kind,
+    };
+  }
+
   async function handleSave(): Promise<void> {
     if (phase !== 'playing') return;
     try {
-      await saveGame(saveSlot, activeSnapshot.scenario.id, session.toSaveData());
+      await saveGame(saveSlot, saveDetails('manual'), session.toSaveData());
       sync(`Saved (turn ${session.turnNumber}).`);
     } catch (err) {
       sync(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -1357,7 +1383,7 @@
     if (phase !== 'playing') return;
     try {
       const found = await loadGame<import('./gameSession.js').SaveGameData>(saveSlot);
-      if (!found || found.scenarioId !== activeSnapshot.scenario.id) {
+      if (!found || found.meta.scenarioId !== activeSnapshot.scenario.id) {
         sync('No save found.');
         return;
       }

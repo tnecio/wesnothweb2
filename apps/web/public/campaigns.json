@@ -4,25 +4,37 @@
       "id": "dead_water",
       "name": "Dead Water",
       "description": "Mainline campaign: the merfolk of Jotha defend their home against an undead invasion.",
-      "firstScenario": "01_Invasion"
+      "firstScenario": "01_Invasion",
+      "wesnothId": "Dead_Water",
+      "abbrev": "DW",
+      "define": "CAMPAIGN_DEAD_WATER"
     },
     {
       "id": "two_brothers",
       "name": "A Tale of Two Brothers",
       "description": "Mainline campaign: a warrior is summoned home by his mage brother to drive off a dark mage's minions.",
-      "firstScenario": "01_Rooting_Out_a_Mage"
+      "firstScenario": "01_Rooting_Out_a_Mage",
+      "wesnothId": "Two_Brothers",
+      "abbrev": "AToTB",
+      "define": "CAMPAIGN_TWO_BROTHERS"
     },
     {
       "id": "liberty",
       "name": "Liberty",
       "description": "Mainline campaign: a village militia leader rebels against increasingly tyrannical Wesnothian authority.",
-      "firstScenario": "01_The_Raid"
+      "firstScenario": "01_The_Raid",
+      "wesnothId": "Liberty",
+      "abbrev": "Liberty",
+      "define": "CAMPAIGN_LIBERTY"
     },
     {
       "id": "under_the_burning_suns",
       "name": "Under the Burning Suns",
       "description": "Mainline campaign: the last Quenoth elves flee their dying oasis -- Phase 11/12 testbed (shroud, fog, sighted, time areas, the two-suns schedule).",
-      "firstScenario": "01_The_Morning_After"
+      "firstScenario": "01_The_Morning_After",
+      "wesnothId": "Under_the_Burning_Suns",
+      "abbrev": "UtBS",
+      "define": "CAMPAIGN_UNDER_THE_BURNING_SUNS"
     },
     {
       "id": "synthetic_combat",

@@ -3815,3 +3815,39 @@ in the real game, since this port does not record the per-side
 `objectives=` string that events set at runtime.
 
 Gates: engine 615, ui 156 tests (+9); 0 typecheck/svelte-check errors.
+
+## 2026-09-22 — Phase 26 S4: named slots, real metadata, naming and rotation
+
+The storage layer already supported any number of named slots --
+`listSaves`/`deleteSave` had been sitting in `persistence.ts` since Phase
+5 with zero callers, because the UI only ever wrote one fixed
+`quicksave:<scenario>` slot. What it could not do was tell you anything
+about a save without decompressing it.
+
+Records now carry `campaignId`, `scenarioName`, `turnNumber`, `label` and
+`kind` (`manual` / `autosave` / `scenario-start`), so a manager can list,
+group and filter saves, and so a save can be identified from outside the
+scenario it was taken in. `DB_VERSION` goes 1 -> 2; no data migration is
+needed because every added field is optional on read, exactly as the
+save-payload versioning works. Added `renameSave` (refusing to clobber an
+existing name -- the dialog can ask again, but cannot un-lose a save) and
+a small settings store beside the saves for the autosave cap.
+
+`save/naming.ts` ports the naming and rotation rules from `savegame.cpp`
+/`save_index.cpp` as pure functions, which is what makes them testable
+under this project's node-only vitest setup (IndexedDB is not):
+`<abbrev>-<scenario name>` labels with upstream's illegal-character
+stripping and `_`-to-space rule, `<label>-Auto-Save<turn>` and
+`<label> Turn <n>` filenames, and `delete_old_auto_saves`' keep-newest-N
+rotation -- including its quirk of matching autosaves by substring across
+all campaigns, kept faithful rather than "improved". 10 tests.
+
+`campaigns.json` entries for the four mainline campaigns gained their
+upstream identity (`wesnothId`, `abbrev`, `define`), which a real save
+file has to name; the synthetic debug campaigns deliberately have none,
+and `wesnothCampaignInfo` returns null for them so the UI can offer
+loading but not Wesnoth-format export. `PlayPage` now passes the campaign
+into `GameShell`, which is also what lets a save record where it belongs.
+
+Gates: ui 166 tests (+10); 0 typecheck/svelte-check errors in both
+packages/ui and apps/web.

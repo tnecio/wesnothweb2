@@ -11,7 +11,7 @@
    */
   import type { GameBoardSnapshot } from '@wesnothweb2/engine';
   import { GameShell, fetchStoryAssets, type StoryAssets } from '@wesnothweb2/ui';
-  import { fetchCampaigns } from './campaigns.js';
+  import { fetchCampaigns, type Campaign } from './campaigns.js';
   import { router } from './router.svelte.js';
 
   let { campaignId }: { campaignId: string } = $props();
@@ -20,6 +20,8 @@
   let errorMessage = $state('');
   let snapshot = $state<GameBoardSnapshot | null>(null);
   let storyAssets = $state<StoryAssets | null>(null);
+  /** Passed to `GameShell` so saves record which campaign they belong to (Phase 26). */
+  let campaign = $state<Campaign | null>(null);
 
   $effect(() => {
     let cancelled = false;
@@ -27,12 +29,14 @@
     errorMessage = '';
     snapshot = null;
     storyAssets = null;
+    campaign = null;
     (async () => {
       const campaigns = await fetchCampaigns();
-      const campaign = campaigns.find((c) => c.id === campaignId);
-      if (!campaign) throw new Error(`Unknown campaign "${campaignId}".`);
+      const found = campaigns.find((c) => c.id === campaignId);
+      if (!found) throw new Error(`Unknown campaign "${campaignId}".`);
+      const campaignInfo = found;
       // `?scenario=<id>` starts the campaign at a later scenario (debugging/verification, e.g. an epilogue's outro).
-      const scenarioId = new URLSearchParams(window.location.search).get('scenario') || campaign.firstScenario;
+      const scenarioId = new URLSearchParams(window.location.search).get('scenario') || campaignInfo.firstScenario;
       const [data, assets] = await Promise.all([
         (async () => {
           const res = await fetch(`/scenarios/${scenarioId}.json`);
@@ -44,6 +48,7 @@
       if (cancelled) return;
       snapshot = data;
       storyAssets = assets;
+      campaign = campaignInfo;
       status = 'ready';
     })().catch((err) => {
       if (cancelled) return;
@@ -69,7 +74,7 @@
     <!-- No {#key} needed here: App.svelte already keys PlayPage itself on
          campaignId, so a campaign change always tears down this whole
          component (and GameShell inside it) from scratch. -->
-    <GameShell {snapshot} {storyAssets} />
+    <GameShell {snapshot} {storyAssets} {campaign} />
   {/if}
 </main>
 
