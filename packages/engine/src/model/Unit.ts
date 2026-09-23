@@ -69,6 +69,8 @@ export interface UnitOptions {
   modifications?: readonly UnitModification[];
   variables?: WmlConfig;
   profile?: string;
+  /** `gender=`; defaults to the type's first gender. */
+  gender?: string;
 }
 
 /**
@@ -116,6 +118,8 @@ export class Unit {
   goto: Location | undefined;
   /** `[unit] profile=`: this unit's own portrait, overriding its type's; empty when not overridden. */
   profile: string;
+  /** `[unit] gender=` (`unit::gender_`): `male` or `female`. */
+  gender: string;
 
   private constructor(type: UnitType, side: number, location: Location, options: UnitOptions) {
     this.type = type;
@@ -144,6 +148,7 @@ export class Unit {
     this.variables = options.variables;
     this.goto = undefined;
     this.profile = options.profile ?? '';
+    this.gender = options.gender ?? type.genders[0] ?? 'male';
   }
 
   /**
@@ -196,6 +201,7 @@ export class Unit {
       modifications,
       variables: cfg.child('variables'),
       profile: cfg.getString('profile', ''),
+      ...(cfg.hasAttribute('gender') ? { gender: cfg.getString('gender') } : {}),
     });
 
     // Overrides applied on top of the base type, mirroring unit::init/unit's constructor tail.
@@ -274,6 +280,7 @@ export class Unit {
     cfg.setAttribute('hidden', this.hidden);
     cfg.setAttribute('underlying_id', this.underlyingId);
     if (this.profile !== '') cfg.setAttribute('profile', this.profile);
+    cfg.setAttribute('gender', this.gender);
     if (this.guardian) cfg.setAttribute('ai_special', 'guardian');
     if (this.goto) {
       cfg.setAttribute('goto_x', this.goto.wmlX);

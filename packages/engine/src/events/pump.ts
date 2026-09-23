@@ -54,7 +54,7 @@ import { Schedule, DEFAULT_MAX_LIMINAL_BONUS } from '../model/Schedule.js';
 import type { UnitType } from '../model/UnitType.js';
 import type { Rng } from '../rng/Rng.js';
 import { WmlConfig } from '../wml/config.js';
-import { createDefaultActionRegistry, runActionFlow } from './actionWml.js';
+import { createDefaultActionRegistry, runActionFlow, unitToVarNode } from './actionWml.js';
 import { ActionRegistry, type EventContext, type RecordedMessage } from './context.js';
 import { runFlow, type Flow, type Responder } from './interaction.js';
 import { conditionalPassed } from './conditionalWml.js';
@@ -254,9 +254,13 @@ export class EventPump {
     const outerSkip = this.ctx.skipMessages;
     this.ctx.skipMessages = false;
     this.undoDisabled.push(true);
+    const restoreUnit = this.bindEventUnit('unit', loc1);
+    const restoreSecond = this.bindEventUnit('second_unit', loc2);
     try {
       yield* runActionFlow(cfg, this.ctx);
     } finally {
+      restoreSecond();
+      restoreUnit();
       this.ctx.skipMessages = outerSkip;
       const disabled = this.undoDisabled.pop()!;
       this.undoDisabled[this.undoDisabled.length - 1] ||= disabled;
@@ -316,8 +320,39 @@ export class EventPump {
     }
   }
 
-  /** Mirrors `wml_event_pump::process_event`: filter, then (if first-time-only) disable, then run the body. */
+  /**
+   * `scoped_xy_unit`: binds `$<name>` to the unit standing at `loc` for the
+   * duration of one handler -- filter included, as upstream binds it before
+   * `filter_event` -- and returns the function that puts back whatever the
+   * variable held before. Real content leans on it: `LIMIT_RECRUITS` counts
+   * recruits by `$unit.type`, so without it the limit never triggered.
+   * No unit there: the variable is left alone, as upstream's own "failed to
+   * auto-store" path does.
+   */
+  private bindEventUnit(name: string, loc: Location): () => void {
+    const unit = loc.valid() ? this.ctx.board.unitAt(loc) : undefined;
+    if (!unit) return () => {};
+    const previous = [...this.ctx.variables.getArray(name)];
+    this.ctx.variables.setArray(name, [unitToVarNode(unit)]);
+    return () => {
+      if (previous.length > 0) this.ctx.variables.setArray(name, previous);
+      else this.ctx.variables.clear(name);
+    };
+  }
+
+  /** Mirrors `wml_event_pump::process_event`: bind `$unit`/`$second_unit`, filter, then (if first-time-only) disable, then run the body. */
   private *processEvent(handler: WmlEventHandler, ev: QueuedEvent): Flow {
+    const restoreUnit = this.bindEventUnit('unit', ev.loc1);
+    const restoreSecond = this.bindEventUnit('second_unit', ev.loc2);
+    try {
+      yield* this.processBoundEvent(handler, ev);
+    } finally {
+      restoreSecond();
+      restoreUnit();
+    }
+  }
+
+  private *processBoundEvent(handler: WmlEventHandler, ev: QueuedEvent): Flow {
     if (!this.filterEvent(handler, ev)) return;
     if (!handler.repeatable) handler.disabled = true;
 

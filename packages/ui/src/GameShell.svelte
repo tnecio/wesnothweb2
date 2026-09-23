@@ -1678,7 +1678,7 @@
   /** Opens `data`'s replay from its first command, paused at the start and then playing. */
   async function startReplay(data: SaveGameData): Promise<void> {
     if (!data.replay) {
-      sync('This save has no replay to show (it predates replays, or came from a Wesnoth file).');
+      sync('This save has no replay to show (it was made before replays were recorded).');
       return;
     }
     const scenarioId = data.scenarioId ?? activeSnapshot.scenario.id;

@@ -211,7 +211,7 @@ const { GameMap } = await import(path.join(repoRoot, 'packages/engine/src/model/
 const { UnitType } = await import(path.join(repoRoot, 'packages/engine/src/model/UnitType.ts'));
 const { Location } = await import(path.join(repoRoot, 'packages/engine/src/model/Location.ts'));
 const { WmlConfig } = await import(path.join(repoRoot, 'packages/engine/src/wml/config.ts'));
-const { collectUnitTypeConfigs, collectMovementTypeConfigs, collectSpecialRegistry, flattenAllUnitTypes } = await import(
+const { collectUnitTypeConfigs, collectMovementTypeConfigs, collectSpecialRegistry, flattenAllUnitTypes, collectRaceConfigs, collectGlobalTraits, resolveTraitPools } = await import(
   path.join(repoRoot, 'packages/engine/src/model/UnitTypeDatabase.ts')
 );
 
@@ -334,6 +334,13 @@ const campaignMainCfg = isRealCampaign
 const rawUnitTypeConfigs = collectUnitTypeConfigs(coreUnitsCfg);
 collectUnitTypeConfigs(campaignMainCfg, rawUnitTypeConfigs);
 const flattenedUnitTypes = flattenAllUnitTypes(rawUnitTypeConfigs);
+// Phase 18b: each type's race folded in -- its trait pool in upstream's
+// order, its trait count, and how many random numbers naming a unit takes
+// (see `resolveTraitPools`) -- so recruits and event-spawned units roll the
+// same random numbers the real game does, and replays line up with it.
+const raceConfigs = collectRaceConfigs(coreUnitsCfg);
+collectRaceConfigs(campaignMainCfg, raceConfigs);
+resolveTraitPools(flattenedUnitTypes, raceConfigs, collectGlobalTraits(coreUnitsCfg));
 
 const unitImages = new Map();
 const unitFlagRgb = new Map();

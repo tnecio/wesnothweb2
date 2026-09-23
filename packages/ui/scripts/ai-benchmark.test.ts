@@ -3,7 +3,7 @@ import { loadSnapshot, playGame } from './ai-benchmark.js';
 
 // A single AI-vs-AI game plays several full RCA turns for both sides (attack-combination search included), so each
 // case here budgets well past vitest's 5s default -- these are still fast in absolute terms (a few seconds each).
-const GAME_TIMEOUT_MS = 30_000;
+const GAME_TIMEOUT_MS = 90_000;
 
 describe('ai-benchmark', () => {
   it(

@@ -30,9 +30,11 @@
  *
  * A save created *here* has no extras to preserve, so export synthesizes
  * the required blocks from the scenario snapshot instead. The `[replay]`
- * it writes is minimal but valid (`[upload_log]` plus the `[start]`/
- * `[random_seed]`/`[init_side]` commands a turn-start autosave contains) --
- * a real replay log is Phase 25, and is not needed for a save to load.
+ * it writes is the game's real command log (Phase 18b), with the
+ * `[replay_start]` that log begins from -- so the real game can replay it.
+ * A save from before Phase 18b, with no log, gets a minimal but valid one
+ * (`[upload_log]` plus the `[start]`/`[random_seed]`/`[init_side]` commands
+ * a turn-start autosave contains), which is all a save needs to load.
  *
  * ## Coordinates and other traps
  *
@@ -47,7 +49,10 @@
 import {
   Location,
   WmlConfig,
+  recordedCommandToWml,
+  recordedCommandsFromWml,
   type GameBoardSnapshot,
+  type RecordedCommand,
   type WmlConfigJson,
 } from '@wesnothweb2/engine';
 import type { SaveGameData, SavedUnit } from '../gameSession.js';
@@ -150,6 +155,7 @@ function unitFromWml(unitCfg: WmlConfig, side: number): SavedUnit {
     role: optString(unitCfg, 'role'),
     underlyingId: optNumber(unitCfg, 'underlying_id'),
     profile: optString(unitCfg, 'profile'),
+    gender: optString(unitCfg, 'gender'),
     statuses: statusesFrom(unitCfg),
     modifications: modificationsFrom(unitCfg),
     variables: unitCfg.child('variables')?.toJSON(),
@@ -215,9 +221,34 @@ export function fromWesnothSave(cfg: WmlConfig): ImportedWesnothSave {
     sideCfg.removeChildren('village');
   }
 
+  // Phase 18b: the real game's own command log, so "Show replay" can play
+  // it here. Starts from this port's setup of the scenario, with the gold
+  // and recall lists `[replay_start]` records (see `GameSession.forReplay`).
+  const replayCfg = cfg.child('replay');
+  const replayStartCfg = cfg.child('replay_start');
+  let replay: SaveGameData['replay'];
+  if (replayCfg && replayStartCfg) {
+    const { commands, issues } = recordedCommandsFromWml(replayCfg);
+    const startSides = replayStartCfg.children('side');
+    replay = {
+      commands,
+      wesnothStart: {
+        gold: startSides.map((sideCfg, i) => ({ side: sideCfg.getNumber('side', i + 1), gold: sideCfg.getNumber('gold', 0) })),
+        recall: startSides.flatMap((sideCfg, i) =>
+          sideCfg
+            .children('unit')
+            .filter((u) => !u.hasAttribute('x'))
+            .map((u) => unitFromWml(u, sideCfg.getNumber('side', i + 1))),
+        ),
+      },
+      ...(issues.length > 0 ? { readIssues: issues.map((issue) => `[command] #${issue.index + 1}: ${issue.message}`) } : {}),
+    };
+  }
+
   return {
     save: {
       version: 2,
+      ...(replay ? { replay } : {}),
       turnNumber: snapshot.getNumber('turn_at', 1),
       activeSide,
       scenarioResult: null,
@@ -282,6 +313,7 @@ function unitToWml(u: SavedUnit, onBoard: boolean): WmlConfig {
   if (u.hidden !== undefined) cfg.setAttribute('hidden', u.hidden);
   if (u.role) cfg.setAttribute('role', u.role);
   if (u.profile) cfg.setAttribute('profile', u.profile);
+  if (u.gender) cfg.setAttribute('gender', u.gender);
   if (u.goto) {
     const loc = new Location(u.goto.x, u.goto.y);
     cfg.setAttribute('goto_x', loc.wmlX);
@@ -347,6 +379,51 @@ function minimalReplay(save: SaveGameData): WmlConfig {
   seedCommand.setAttribute('from_side', 'server');
   seedCommand.addChild('random_seed').setAttribute('new_seed', save.rng?.seed ?? '00000000');
   replay.addChild('command').addChild('init_side').setAttribute('side_number', save.activeSide);
+  return replay;
+}
+
+/**
+ * `[replay_start]`: the scenario as it stood before its `start` command --
+ * upstream's `saved_game::replay_start()`. The scenario's own `[side]`s are
+ * kept as written (the real game creates their leaders and inline units
+ * itself, exactly as it did for the original game), with what the scenario
+ * was entered with laid over them: each side's gold and its recall list
+ * (units the previous scenario carried over, traits and all, and
+ * `random_traits=no` so they are not rolled again).
+ */
+function replayStartToWml(start: SaveGameData, scenarioCfg: WmlConfig, snapshot: GameBoardSnapshot): WmlConfig {
+  const cfg = scenarioCfg.clone();
+  cfg.setAttribute('map_data', snapshot.map.data);
+  cfg.setAttribute('turn_at', start.turnNumber);
+  if (start.rng) {
+    cfg.setAttribute('random_seed', start.rng.seed);
+    cfg.setAttribute('random_calls', start.rng.calls);
+  }
+  if (start.variables) {
+    cfg.removeChildren('variables');
+    cfg.addChild('variables', WmlConfig.fromJSON(start.variables));
+  }
+  for (const sideCfg of cfg.children('side')) {
+    const side = sideCfg.getNumber('side', 0);
+    const team = start.teams.find((t) => t.side === side);
+    if (team) sideCfg.setAttribute('gold', team.gold);
+    for (const u of start.recall ?? []) {
+      if (u.side !== side) continue;
+      const unitCfg = unitToWml(u, false);
+      unitCfg.setAttribute('random_traits', false);
+      sideCfg.addChild('unit', unitCfg);
+    }
+  }
+  return cfg;
+}
+
+/** `[replay]`: `[upload_log]`, then every recorded command and its dependents (see `recordedCommandToWml`). */
+function replayToWml(commands: readonly RecordedCommand[]): WmlConfig {
+  const replay = new WmlConfig();
+  replay.addChild('upload_log');
+  for (const rec of commands) {
+    for (const block of recordedCommandToWml(rec)) replay.addChild('command', block);
+  }
   return replay;
 }
 
@@ -479,6 +556,16 @@ export function toWesnothSave(
     const replayStart = scenarioCfg.clone();
     replayStart.setAttribute('map_data', snapshot.map.data);
     out.addChild('replay_start', replayStart);
+  }
+  // Phase 18b: a save made here carries its whole command log, so it can be
+  // written as a real replay -- `[replay_start]` from the state the log
+  // starts at, `[replay]` from the log itself -- and replayed by the real
+  // game (`wesnoth --load <save> --with-replay`).
+  if (!extras && save.replay?.start) {
+    out.removeChildren('replay_start');
+    out.addChild('replay_start', replayStartToWml(save.replay.start, scenarioCfg, snapshot));
+    out.removeChildren('replay');
+    out.addChild('replay', replayToWml(save.replay.commands));
   }
   if (!out.child('replay')) out.addChild('replay', minimalReplay(save));
   // `replay_pos` is how many of `[replay]`'s commands have already been

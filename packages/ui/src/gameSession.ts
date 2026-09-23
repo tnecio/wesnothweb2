@@ -106,6 +106,9 @@ import {
   connectedCastleTiles,
   recruitUnit,
   recallUnit,
+  recruitUnitFlow,
+  recallUnitFlow,
+  type PlaceRecruitHooks,
   dismissUnitAt,
   unitCanAct,
   checkVictory,
@@ -825,6 +828,7 @@ function savedUnitFields(u: Unit): SavedUnit {
     role: u.role,
     underlyingId: u.underlyingId,
     profile: u.profile,
+    gender: u.gender,
     statuses: [...u.statuses],
     modifications: u.modifications.map((m) => ({ kind: m.kind, cfg: m.cfg.toJSON() })),
     variables: u.variables?.toJSON(),
@@ -882,6 +886,8 @@ export interface SavedUnit {
   role?: string;
   underlyingId?: number;
   profile?: string;
+  /** `gender=` (Phase 18b: recruits draw it, as upstream, so it has to survive). */
+  gender?: string;
   /** `[status]`: `poisoned`, `slowed`, `guardian`, and any scenario-defined flag. */
   statuses?: readonly string[];
   /** `[modifications]`: traits, objects and advancements -- opaque WML this session only carries. */
@@ -1006,7 +1012,20 @@ export interface SaveGameData {
    * on imported Wesnoth saves (whose own `[replay]` travels in
    * `wesnothExtras`).
    */
-  replay?: { start: SaveGameData; commands: RecordedCommand[] };
+  replay?: {
+    /** The state before the `start` command (a game recorded here). */
+    start?: SaveGameData;
+    /**
+     * A game recorded by the real Wesnoth instead: no starting state of this
+     * port's own, only what its `[replay_start]` says the scenario was
+     * entered with -- each side's gold and recall list -- to lay over this
+     * port's own setup of the same scenario (see `GameSession.forReplay`).
+     */
+    wesnothStart?: { gold: { side: number; gold: number }[]; recall: SavedUnit[] };
+    commands: RecordedCommand[];
+    /** What reading a real `[replay]` skipped (commands this port does not run, such as `[speak]` or `[label]`). */
+    readIssues?: string[];
+  };
   /** Phase 18b: the active side's undo and redo stacks (upstream's `[undo_stack]`). */
   undoStack?: SavedUndoStack;
 }
@@ -1817,7 +1836,14 @@ export class GameSession {
     const ownersBefore = steps.map((loc) => this.board.villageOwner(loc) ?? 0);
     const outcome = performMove(this.board, unit, steps, { raise: this.raiseEvent, viewingTeam: this.board.getTeam(unit.side) });
     const path = outcome.result.path;
-    if (outcome.moved) {
+    // A move that could not take a single step changed nothing, and the
+    // real game rejects a recorded route the unit cannot walk ("found
+    // corrupt movement in replay"), so it leaves no trace in the log.
+    if (!outcome.moved) return this.reject(action, `the unit at ${start} could not move`);
+    // Record the route actually walked, not the one asked for: upstream only
+    // ever records a route that fits this turn's movement.
+    if (!action.source && path.length !== steps.length) action.rec.command = { ...cmd, steps: path.map(hexOf) };
+    {
       action.steps.push({ kind: 'move', unit, route: path, startingMoves, startingFacing });
       if (outcome.captured) action.steps.push({ kind: 'take_village', loc: unit.location, previousOwner: ownersBefore[path.length - 1] ?? 0 });
     }
@@ -1931,20 +1957,40 @@ export class GameSession {
     const leader = this.board.unitAt(from);
     if (!team || !leader) return this.reject(action, `recruiting leader not found at ${from}`);
     if (this.board.hasUnitAt(loc)) return this.reject(action, `cannot recruit onto ${loc}: occupied`);
+    // `find_recruit_location`: the type has to be on the side's recruit list.
+    if (!team.canRecruit.has(cmd.type)) return this.reject(action, `cannot recruit ${cmd.type}: none of the side's leaders can recruit it`);
     let type: UnitType;
     try {
       type = this.resolveType(cmd.type);
     } catch {
       return this.reject(action, `recruiting illegal unit '${cmd.type}'`);
     }
-    const result = recruitUnit(this.board, team, type, loc, from, this.rng, this.raiseEvent);
-    action.steps.push({ kind: 'recruit', unit: result.unit, side: team.side, loc, cost: result.cost });
-    // The new unit appears before the `recruit` event's own dialogue --
-    // same reasoning as the walk in `execMove`.
-    if (action.present) yield { kind: 'beat', beat: { kind: 'unitAppear', unit: result.unit, by: leader } };
-    this.eventPump.raise('recruit', loc, from);
+    const ownerBefore = this.board.villageOwner(loc) ?? 0;
+    const result = yield* recruitUnitFlow(this.board, team, type, loc, from, this.rng, this.placeHooks(action));
     yield* this.pumpEventsFlow();
+    if (!result) return null; // an event took the unit away again: nothing left to undo, and the undo stack was already cleared by it
+    action.steps.push({ kind: 'recruit', unit: result.unit, side: team.side, loc, cost: result.cost });
+    if (this.board.villageOwner(loc) !== (ownerBefore || undefined)) action.steps.push({ kind: 'take_village', loc, previousOwner: ownerBefore });
     return { result, leader };
+  }
+
+  /**
+   * `placeRecruitFlow`'s hooks: its events fire through this session's pump
+   * (suspending for dialogue), and -- when the action is being watched --
+   * the new unit's arrival plays after `prerecruit`, as upstream animates it.
+   */
+  private placeHooks(action: ActionState): PlaceRecruitHooks {
+    return {
+      fire: (name, loc1, loc2) => this.fireFlow(name, loc1, loc2),
+      raise: this.raiseEvent,
+      ...(action.present
+        ? {
+            appear: function* (unit: Unit, leader: Unit | undefined): Flow {
+              yield { kind: 'beat', beat: { kind: 'unitAppear', unit, ...(leader ? { by: leader } : {}) } };
+            },
+          }
+        : {}),
+    };
   }
 
   /** Finds a recall-list unit by the command's index (when the unit there still matches) or else by id. */
@@ -1966,11 +2012,12 @@ export class GameSession {
     if (!unit) return this.reject(action, `illegal recall: unit '${cmd.id}' not on the recall list`);
     if (this.board.hasUnitAt(loc)) return this.reject(action, `cannot recall onto ${loc}: occupied`);
     this.board.removeFromRecallListAt(team.side, index);
-    const result = recallUnit(this.board, team, unit, loc, from, undefined, this.raiseEvent);
-    action.steps.push({ kind: 'recall', unit, side: team.side, loc, cost: result.cost, index });
-    if (action.present) yield { kind: 'beat', beat: { kind: 'unitAppear', unit: result.unit, by: leader } };
-    this.eventPump.raise('recall', loc, from);
+    const ownerBefore = this.board.villageOwner(loc) ?? 0;
+    const result = yield* recallUnitFlow(this.board, team, unit, loc, from, this.placeHooks(action));
     yield* this.pumpEventsFlow();
+    if (!result) return null;
+    action.steps.push({ kind: 'recall', unit, side: team.side, loc, cost: result.cost, index });
+    if (this.board.villageOwner(loc) !== (ownerBefore || undefined)) action.steps.push({ kind: 'take_village', loc, previousOwner: ownerBefore });
     return { result, leader };
   }
 
@@ -2123,8 +2170,9 @@ export class GameSession {
         if (path.length < 2) return performMove(this.board, unit, path, { raise: this.raiseEvent, viewingTeam: this.board.getTeam(unit.side) });
         const cmd: MoveCommand = { kind: 'move', steps: path.map(hexOf) };
         const done = run(cmd, (action) => this.execMove(cmd, action));
-        if (!done) throw new Error(`AI move from ${path[0]} was refused`);
-        return done.outcome;
+        // Refused (the unit could not take a step): nothing happened, and
+        // the engine's own no-move outcome says so to the AI.
+        return done?.outcome ?? performMove(this.board, unit, path, { raise: this.raiseEvent, viewingTeam: this.board.getTeam(unit.side) });
       },
       attack: (attackerLoc, weapon, defenderLoc, defenderWeapon) => {
         const def = defenderWeapon ?? resolveDefenderWeaponIndex(this.board, attackerLoc, weapon, defenderLoc, this.attackOptions(attackerLoc, defenderLoc));
@@ -2133,16 +2181,12 @@ export class GameSession {
       },
       recruit: (team, type, loc, from) => {
         const cmd: RecruitCommand = { kind: 'recruit', type: type.id, loc: hexOf(loc), from: hexOf(from) };
-        const done = run(cmd, (action) => this.execRecruit(cmd, action));
-        if (!done) throw new Error(`AI recruit of ${type.id} for side ${team.side} was refused`);
-        return done.result;
+        return run(cmd, (action) => this.execRecruit(cmd, action))?.result ?? null;
       },
       recall: (team, unit, loc, from) => {
         const index = this.board.recallList(team.side).indexOf(unit);
         const cmd: RecallCommand = { kind: 'recall', id: unit.id, index, loc: hexOf(loc), from: hexOf(from) };
-        const done = run(cmd, (action) => this.execRecall(cmd, action));
-        if (!done) throw new Error(`AI recall of ${unit.id || unit.type.id} for side ${team.side} was refused`);
-        return done.result;
+        return run(cmd, (action) => this.execRecall(cmd, action))?.result ?? null;
       },
       stopUnit: (unit, movement, attacks) => {
         const cmd: StopUnitCommand = { kind: 'stop_unit', loc: hexOf(unit.location), movement, attacks };
@@ -3613,9 +3657,24 @@ export class GameSession {
    * reported as a divergence.
    */
   static forReplay(snapshot: GameBoardSnapshot, data: SaveGameData, options: GameSessionOptions = {}): GameSession | null {
-    if (!data.replay) return null;
-    const session = GameSession.fromSaveData(snapshot, data.replay.start, { ...options, randomMode: data.randomMode ?? 'per_action' });
-    session.replayStartData = data.replay.start;
+    const replay = data.replay;
+    if (!replay) return null;
+    const mode = { ...options, randomMode: data.randomMode ?? 'per_action' } as const;
+    if (replay.start) {
+      const session = GameSession.fromSaveData(snapshot, replay.start, mode);
+      session.replayStartData = replay.start;
+      return session;
+    }
+    if (!replay.wesnothStart) return null;
+    // A real game's replay: this port's own setup of the scenario, with the
+    // gold and recall lists the real one was entered with.
+    const session = new GameSession(snapshot, mode);
+    for (const { side, gold } of replay.wesnothStart.gold) {
+      const team = session.board.getTeam(side);
+      if (team) team.gold = gold;
+    }
+    for (const u of replay.wesnothStart.recall) session.board.addToRecallList(u.side, session.unitFromSave(u, Location.NULL));
+    session.replayStartData = session.toSaveData();
     return session;
   }
 
@@ -3635,6 +3694,7 @@ export class GameSession {
       underlyingId: u.underlyingId,
       facing: u.facing !== undefined ? parseDirection(u.facing) : undefined,
       profile: u.profile,
+      gender: u.gender,
       modifications: u.modifications?.map((m) => ({ kind: m.kind, cfg: WmlConfig.fromJSON(m.cfg) })),
       variables: u.variables !== undefined ? WmlConfig.fromJSON(u.variables) : undefined,
     });

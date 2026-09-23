@@ -408,11 +408,12 @@ export class AiContext {
   }
 
   /** Mirrors `check_recruit_action`/`execute_recruit_action` collapsed into one call: a fresh `type` for `team`, placed at `loc` (a vacant castle/keep tile), from the recruiting leader at `from`. Caller (the recruitment CA) is responsible for affordability/legality checks -- this always spends the gold and places the unit. */
-  executeRecruit(team: Team, type: UnitType, loc: Location, from: Location): PlaceRecruitResult {
+  executeRecruit(team: Team, type: UnitType, loc: Location, from: Location): PlaceRecruitResult | null {
     const leader = this.host.board.unitAt(from);
     const result = this.host.commands
       ? this.host.commands.recruit(team, type, loc, from)
       : recruitUnit(this.host.board, team, type, loc, from, this.host.rng, this.host.raise);
+    if (!result) return null;
     const unitLocation = result.unit.location;
     this.bumpGamestateChange();
     this.host.pump();
@@ -425,15 +426,16 @@ export class AiContext {
   }
 
   /** Mirrors `check_recall_action`/`execute_recall_action`: pulls `unit` off `team`'s recall list and places it at `loc`. */
-  executeRecall(team: Team, unit: Unit, loc: Location, from: Location): PlaceRecruitResult {
+  executeRecall(team: Team, unit: Unit, loc: Location, from: Location): PlaceRecruitResult | null {
     const leader = this.host.board.unitAt(from);
-    let result: PlaceRecruitResult;
+    let result: PlaceRecruitResult | null;
     if (this.host.commands) {
       result = this.host.commands.recall(team, unit, loc, from);
     } else {
       this.host.board.removeFromRecallList(team.side, unit.underlyingId);
       result = recallUnit(this.host.board, team, unit, loc, from, undefined, this.host.raise);
     }
+    if (!result) return null;
     const unitLocation = result.unit.location;
     this.bumpGamestateChange();
     this.host.pump();

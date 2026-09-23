@@ -268,3 +268,89 @@ export function flattenAllUnitTypes(rawConfigs: ReadonlyMap<string, WmlConfig>):
   for (const id of rawConfigs.keys()) flattenUnitTypeConfig(id, rawConfigs, cache);
   return cache;
 }
+
+// ---------------------------------------------------------------------------
+// Race-level trait pools and name generators (Phase 18b)
+// ---------------------------------------------------------------------------
+
+/** Every `[race]` in a parsed tree, keyed by `id=`, first definition winning (as for unit types). */
+export function collectRaceConfigs(cfg: WmlConfig, out: Map<string, WmlConfig> = new Map()): Map<string, WmlConfig> {
+  for (const { tag, config } of cfg.allChildren()) {
+    if (tag === 'race') {
+      const id = config.getString('id');
+      if (id && !out.has(id)) out.set(id, config);
+    } else if (tag !== 'unit_type') {
+      collectRaceConfigs(config, out);
+    }
+  }
+  return out;
+}
+
+/** The global `[units][trait]`s every race gets unless it says `ignore_global_traits` (`unit_type_data::set_config`). */
+export function collectGlobalTraits(cfg: WmlConfig): WmlConfig[] {
+  const units = cfg.child('units');
+  return units ? units.children('trait') : [];
+}
+
+/**
+ * How many synced random numbers naming one unit of `race` and `gender`
+ * consumes -- not the name itself, which this port does not generate, but
+ * the draws, which a replay must reproduce. Upstream made the count fixed
+ * on purpose (`markov_generator::generate` always draws `max_len` = 12, "to
+ * avoid [...] traits to be different"; `context_free_grammar_generator`
+ * always draws its 20-number seed), so it depends only on which generator
+ * the race has (`name_generator_factory`): `<gender>_name_generator=`,
+ * else `<gender>_names=`, else the ungendered `name_generator=`/`names=`,
+ * else none at all.
+ */
+export function nameDrawCount(race: WmlConfig | undefined, gender: 'male' | 'female'): number {
+  if (!race) return 0;
+  const markov = (list: string): number =>
+    list.split(',').some((n) => n.trim() !== '') && race.getNumber('markov_chain_size', 2) > 0 ? 12 : 0;
+  for (const prefix of [`${gender}_`, '']) {
+    if (race.hasAttribute(`${prefix}name_generator`)) return 20;
+    const names = race.getString(`${prefix}names`, '');
+    if (names.trim() !== '') return markov(names);
+  }
+  return 0;
+}
+
+/**
+ * Folds each unit type's race into its own config the way upstream's
+ * `unit_type` constructor does (`types.cpp`, `build_help_index`): the
+ * possible traits in upstream's order -- the global ones (unless the race
+ * ignores them), then the race's own (a neutral type skips `fearless`;
+ * `ignore_race_traits=yes` drops everything so far), then the type's own --
+ * `num_traits=` falling back to the race's (0 with no race), and the name
+ * generator's draw counts. The order matters: a random trait is picked by
+ * index into this list. Marks the result `traits_resolved=yes` so
+ * `UnitType.fromConfig` uses it as-is.
+ */
+export function resolveTraitPools(
+  flattened: Map<string, WmlConfig>,
+  races: ReadonlyMap<string, WmlConfig>,
+  globalTraits: readonly WmlConfig[],
+): void {
+  for (const cfg of flattened.values()) {
+    const race = races.get(cfg.getString('race', ''));
+    let pool: WmlConfig[] = [...globalTraits];
+    if (race) {
+      if (race.getBoolean('ignore_global_traits', false)) pool = [];
+      if (cfg.getBoolean('ignore_race_traits', false)) {
+        pool = [];
+      } else {
+        const neutral = cfg.getString('alignment', 'neutral') === 'neutral';
+        for (const t of race.children('trait')) {
+          if (!neutral || t.getString('id') !== 'fearless') pool.push(t);
+        }
+      }
+    }
+    pool.push(...cfg.children('trait'));
+    cfg.removeChildren('trait');
+    for (const t of pool) cfg.addChild('trait', t);
+    if (!cfg.hasAttribute('num_traits')) cfg.setAttribute('num_traits', race ? race.getNumber('num_traits', 0) : 0);
+    cfg.setAttribute('name_draws_male', nameDrawCount(race, 'male'));
+    cfg.setAttribute('name_draws_female', nameDrawCount(race, 'female'));
+    cfg.setAttribute('traits_resolved', true);
+  }
+}

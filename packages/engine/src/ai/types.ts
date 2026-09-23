@@ -88,8 +88,9 @@ export interface AiCommandHost {
    * aborts the attack (upstream's `attack::perform`).
    */
   attack(attackerLoc: Location, attackerWeaponIndex: number, defenderLoc: Location, defenderWeaponIndex: number | undefined): AttackResult | null;
-  recruit(team: Team, type: UnitType, loc: Location, from: Location): PlaceRecruitResult;
-  recall(team: Team, unit: Unit, loc: Location, from: Location): PlaceRecruitResult;
+  /** `null` when refused (the type is not on the side's recruit list, the hex is taken, an event took the unit away). */
+  recruit(team: Team, type: UnitType, loc: Location, from: Location): PlaceRecruitResult | null;
+  recall(team: Team, unit: Unit, loc: Location, from: Location): PlaceRecruitResult | null;
   /** `stopunit_result`: gives up the unit's remaining moves and/or attacks. */
   stopUnit(unit: Unit, movement: boolean, attacks: boolean): void;
 }

@@ -40,6 +40,7 @@ import type { Team } from '../model/Team.js';
 import { Unit, type UnitModification } from '../model/Unit.js';
 import type { UnitType } from '../model/UnitType.js';
 import type { Rng } from '../rng/Rng.js';
+import type { Flow } from '../events/interaction.js';
 
 function splitList(value: string): string[] {
   return value
@@ -49,47 +50,87 @@ function splitList(value: string): string[] {
 }
 
 /**
- * Mirrors `unit::generate_traits(must_have_only=false)`: fills `type`'s
- * `numTraits` slots from `type.possibleTraits`, `musthave`-availability ones
- * first (unconditionally, even beyond `numTraits` -- matches upstream, which
- * never caps the musthave pass), then randomly for the rest, honoring each
- * candidate's `require_traits=`/`exclude_traits=` against what's already
- * been picked. Stops early if no candidate remains (matches upstream's
- * "could only generate N traits" case, e.g. a small `possibleTraits` pool).
+ * Mirrors `unit::generate_traits(must_have_only=false)`: adds `type`'s
+ * `musthave` traits the unit lacks (unconditionally, even beyond
+ * `numTraits` -- upstream never caps that pass), then fills the remaining
+ * `numTraits` slots at random from the candidates, honouring each one's
+ * `require_traits=`/`exclude_traits=` against what the unit already has.
+ * `existing` is the unit's traits so far (a WML `[unit]` may list some);
+ * a leader only draws from `availability=any` traits. Stops early when no
+ * candidate remains. Returns only the traits it added.
  *
- * Deliberately NOT ported: the leader-only exclusion (`!can_recruit() ||
- * avl == "any"`) -- moot here since this is only ever called for a freshly
- * recruited unit (`Unit.create`'s `canRecruit: false` at this module's
- * `recruitUnit`), never a leader. See `UnitType`'s own module doc comment
- * for what `numTraits`/`possibleTraits` themselves don't model (race-level
- * defaults).
+ * The candidate list is `type.possibleTraits` in upstream's own order
+ * (see `resolveTraitPools`), because the random pick is an index into it.
  */
-export function generateTraits(type: UnitType, rng: Rng): UnitModification[] {
-  const picked: UnitModification[] = [];
-  const hasId = (id: string) => picked.some((m) => m.cfg.getString('id') === id);
+export function generateTraits(type: UnitType, rng: Rng, existing: readonly UnitModification[] = [], canRecruit = false): UnitModification[] {
+  const added: UnitModification[] = [];
+  const current = () => [...existing.filter((m) => m.kind === 'trait'), ...added];
+  const hasId = (id: string) => current().some((m) => m.cfg.getString('id') === id);
 
   for (const t of type.possibleTraits) {
-    if (t.getString('availability', 'any') === 'musthave' && !hasId(t.getString('id'))) {
-      picked.push({ kind: 'trait', cfg: t });
+    if (t.getString('availability', '') === 'musthave' && !hasId(t.getString('id'))) {
+      added.push({ kind: 'trait', cfg: t });
     }
   }
 
-  while (picked.length < type.numTraits) {
-    const pickedIds = picked.map((m) => m.cfg.getString('id'));
-    const pickedExcludes = picked.flatMap((m) => splitList(m.cfg.getString('exclude_traits', '')));
+  for (let count = current().length; count < type.numTraits; count++) {
+    const traits = current();
+    const pickedIds = traits.map((m) => m.cfg.getString('id'));
+    const pickedExcludes = traits.flatMap((m) => splitList(m.cfg.getString('exclude_traits', '')));
     const candidates = type.possibleTraits.filter((t) => {
       const id = t.getString('id');
-      if (hasId(id) || pickedExcludes.includes(id)) return false;
+      if (hasId(id)) return false;
       if (splitList(t.getString('require_traits', '')).some((r) => !pickedIds.includes(r))) return false;
+      if ([...splitList(t.getString('exclude_traits', '')), ...pickedExcludes].includes(id)) return false;
       if (splitList(t.getString('exclude_traits', '')).some((e) => pickedIds.includes(e))) return false;
-      return true;
+      return !canRecruit || t.getString('availability', '') === 'any';
     });
     if (candidates.length === 0) break;
     const chosen = candidates[rng.getRandomInt(0, candidates.length - 1)]!;
-    picked.push({ kind: 'trait', cfg: chosen });
+    added.push({ kind: 'trait', cfg: chosen });
   }
 
-  return picked;
+  return added;
+}
+
+/**
+ * The synced random draws upstream's `unit::init` makes for a *new* unit,
+ * in its order: the gender (when there is a choice to make), the traits,
+ * then the name. This port does not generate names, but it makes the
+ * same number of draws (`UnitType.nameDraws`), so every draw after them in
+ * the same action -- the next unit's traits, the combat that follows --
+ * lines up with the real game's.
+ *
+ * `gender` given: no draw. `randomGender`: draw among the type's genders
+ * (a recruit always does; a WML `[unit]` only with `random_gender=yes`).
+ * `randomTraits` false (`random_traits=no`): only must-have traits.
+ * `named`: the unit already has a name, so none is generated.
+ */
+export function rollNewUnit(
+  type: UnitType,
+  rng: Rng,
+  options: { gender?: string; randomGender: boolean; existing?: readonly UnitModification[]; randomTraits: boolean; canRecruit: boolean; named: boolean },
+): { gender: string; traits: UnitModification[] } {
+  const genders = type.genders;
+  const gender =
+    options.gender ??
+    (options.randomGender && genders.length > 1 ? genders[rng.getRandomInt(0, genders.length - 1)]! : (genders[0] ?? 'male'));
+  const traits = options.randomTraits
+    ? generateTraits(type, rng, options.existing ?? [], options.canRecruit)
+    : generateMustHaveTraits(type, options.existing ?? []);
+  if (!options.named) {
+    const draws = gender === 'female' ? type.nameDraws.female : type.nameDraws.male;
+    for (let i = 0; i < draws; i++) rng.nextRandom();
+  }
+  return { gender, traits };
+}
+
+/** `generate_traits(must_have_only=true)`: just the missing `musthave` traits, no randomness. */
+function generateMustHaveTraits(type: UnitType, existing: readonly UnitModification[]): UnitModification[] {
+  const have = new Set(existing.filter((m) => m.kind === 'trait').map((m) => m.cfg.getString('id')));
+  return type.possibleTraits
+    .filter((t) => t.getString('availability', '') === 'musthave' && !have.has(t.getString('id')))
+    .map((cfg) => ({ kind: 'trait', cfg }));
 }
 
 /** Mirrors `actions::RECRUIT_CHECK`. */
@@ -295,6 +336,105 @@ function placeRecruit(
 }
 
 /**
+ * What `placeRecruitFlow` needs from whoever owns the event pump: `fire`
+ * runs an event to completion *now* (upstream's `pump().fire`), suspending
+ * for any dialogue it shows; `raise` queues the `sighted` events for the
+ * caller to pump afterwards; `appear` plays the unit's arrival, if anything
+ * is watching.
+ */
+export interface PlaceRecruitHooks {
+  fire(name: string, loc1: Location, loc2: Location): Flow;
+  raise: RaiseEvent;
+  appear?(unit: Unit, leader: Unit | undefined): Flow;
+}
+
+/**
+ * `actions::place_recruit` in full, event by event and in upstream's order:
+ * the unit goes on the board, `unit_placed` fires, then `prerecruit`/
+ * `prerecall` (either may remove it, which aborts the placement), then the
+ * gold is spent and the unit appears, a village under it is taken, fog is
+ * cleared, `recruit`/`recall` fires, and the `sighted` events are raised.
+ * Returns `null` when an event took the unit away.
+ *
+ * The order is not cosmetic: those events run WML that may draw random
+ * numbers (Dead Water 1's `prerecruit` rolls an undead recruit's variation),
+ * so a replay only lines up with the real game when they fire where
+ * upstream fires them.
+ */
+export function* placeRecruitFlow(
+  board: GameBoard,
+  team: Team,
+  unit: Unit,
+  location: Location,
+  from: Location,
+  cost: number,
+  isRecall: boolean,
+  hooks: PlaceRecruitHooks,
+  facing?: Direction,
+): Flow<PlaceRecruitResult | null> {
+  unit.movesLeft = 0;
+  unit.attacksLeft = 0;
+  if (!isRecall) unit.healToFull();
+  unit.hidden = false;
+
+  const leader = board.unitAt(from);
+  unit.location = location;
+  board.addUnit(unit);
+  unit.facing = facing ?? computeRecruitFacing(board, unit, location, leader?.location);
+
+  yield* hooks.fire('unit_placed', location, Location.NULL);
+  if (board.unitAt(location) !== unit) return null;
+  yield* hooks.fire(isRecall ? 'prerecall' : 'prerecruit', location, from);
+  if (board.unitAt(location) !== unit) return null;
+
+  team.spendGold(cost);
+  if (hooks.appear) yield* hooks.appear(unit, leader);
+
+  if (board.map.isVillage(location) && board.villageOwner(location) !== unit.side) {
+    board.captureVillage(location, unit.side);
+    yield* hooks.fire('capture', location, Location.NULL);
+    if (board.unitAt(location) !== unit) return null;
+  }
+
+  const clearer = new ShroudClearer(board);
+  if (team.autoShroudUpdates) clearer.clearUnitIfNeeded(location, unit);
+
+  yield* hooks.fire(isRecall ? 'recall' : 'recruit', location, from);
+
+  clearer.fireEvents(hooks.raise);
+  if (board.unitAt(location) === unit) actorSighted(board, unit, hooks.raise);
+  return { unit, location, cost };
+}
+
+/** `recruit_unit` as a flow: a new unit of `type` (with upstream's creation-time draws, see `rollNewUnit`) placed by `placeRecruitFlow`. */
+export function* recruitUnitFlow(
+  board: GameBoard,
+  team: Team,
+  type: UnitType,
+  loc: Location,
+  from: Location,
+  rng: Rng,
+  hooks: PlaceRecruitHooks,
+): Flow<PlaceRecruitResult | null> {
+  const { gender, traits } = rollNewUnit(type, rng, { randomGender: true, randomTraits: true, canRecruit: false, named: false });
+  const unit = Unit.create(type, team.side, loc, { canRecruit: false, gender, modifications: traits });
+  return yield* placeRecruitFlow(board, team, unit, loc, from, type.cost, false, hooks);
+}
+
+/** `recall_unit` as a flow: `unit` (already off the recall list) placed by `placeRecruitFlow`. */
+export function* recallUnitFlow(
+  board: GameBoard,
+  team: Team,
+  unit: Unit,
+  loc: Location,
+  from: Location,
+  hooks: PlaceRecruitHooks,
+): Flow<PlaceRecruitResult | null> {
+  const cost = unit.type.recallCost >= 0 ? unit.type.recallCost : team.recallCost;
+  return yield* placeRecruitFlow(board, team, unit, loc, from, cost, true, hooks);
+}
+
+/**
  * Recruits a fresh unit of `type` for `side`, mirroring `actions::
  * recruit_unit`. `loc`/`from` should already have passed `checkRecruitLocation`
  * (this function does not itself re-validate placement legality -- callers
@@ -304,7 +444,10 @@ function placeRecruit(
  * never got any.
  */
 export function recruitUnit(board: GameBoard, team: Team, type: UnitType, loc: Location, from: Location, rng: Rng, raise?: RaiseEvent): PlaceRecruitResult {
-  const unit = Unit.create(type, team.side, loc, { canRecruit: false, modifications: generateTraits(type, rng) });
+  // unit::init's synced draws, in upstream's order (see `rollNewUnit`). Its
+  // facing draw uses the unsynced generator, so it is not mirrored.
+  const { gender, traits } = rollNewUnit(type, rng, { randomGender: true, randomTraits: true, canRecruit: false, named: false });
+  const unit = Unit.create(type, team.side, loc, { canRecruit: false, gender, modifications: traits });
   return placeRecruit(board, team, unit, loc, from, type.cost, false, false, undefined, raise);
 }
 

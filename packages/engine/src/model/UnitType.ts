@@ -173,6 +173,15 @@ export class AttackType {
   }
 }
 
+/** `unit_type`'s gender list: `gender=male,female` in order, male when absent or empty. */
+function parseGenders(raw: string): string[] {
+  const genders = raw
+    .split(',')
+    .map((g) => g.trim())
+    .filter((g) => g === 'male' || g === 'female');
+  return genders.length > 0 ? [...new Set(genders)] : ['male'];
+}
+
 /**
  * A unit type's WML-authored definition. Mirrors the data half of
  * `unit_type`. Immutable: building a live `Unit` from one never mutates it.
@@ -230,6 +239,10 @@ export class UnitType {
     public readonly profile: string = '',
     /** `image=`: the type's base sprite, the portrait fallback when there is no profile. */
     public readonly image: string = '',
+    /** `gender=`: the genders a unit of this type can have, in declaration order (`unit_type::genders()`); male when unset. */
+    public readonly genders: readonly string[] = ['male'],
+    /** Synced random numbers naming a new unit of this type consumes, per gender (see `nameDrawCount`). */
+    public readonly nameDraws: { readonly male: number; readonly female: number } = { male: 0, female: 0 },
   ) {}
 
   /** Mirrors `unit_type::experience_needed`: the modifier is the game-wide `[game_config] experience_modifier` (default 100 = unchanged). */
@@ -270,8 +283,13 @@ export class UnitType {
     const listedAbilities = resolveIdList(cfg.getString('abilities_list', ''), registries.abilities ?? EMPTY_REGISTRY);
     const abilities = [...inlineAbilities, ...listedAbilities];
 
-    const numTraits = cfg.getNumber('num_traits', 2);
-    const possibleTraits = [...cfg.children('trait'), ...GLOBAL_TRAITS];
+    // A snapshot built since Phase 18b carries the race-resolved pool, in
+    // upstream's order (`resolveTraitPools`). Anything else (hand-built test
+    // types) gets the old approximation, in upstream's order at least:
+    // the global traits first, then the type's own.
+    const resolved = cfg.getBoolean('traits_resolved', false);
+    const numTraits = cfg.getNumber('num_traits', resolved ? 0 : 2);
+    const possibleTraits = resolved ? cfg.children('trait') : [...GLOBAL_TRAITS, ...cfg.children('trait')];
 
     return new UnitType(
       id,
@@ -304,6 +322,8 @@ export class UnitType {
       cfg.getString('usage', ''),
       cfg.getString('profile', ''),
       cfg.getString('image', ''),
+      parseGenders(cfg.getString('gender', '')),
+      { male: cfg.getNumber('name_draws_male', 0), female: cfg.getNumber('name_draws_female', 0) },
     );
   }
 }

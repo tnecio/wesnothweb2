@@ -81,7 +81,7 @@ import type { EndLevelState } from './context.js';
 import { Direction, Location, parseDirection } from '../model/Location.js';
 import { Unit } from '../model/Unit.js';
 import { WmlConfig } from '../wml/config.js';
-import { checkRecruitLocation, recallUnit } from '../actions/recruit.js';
+import { checkRecruitLocation, recallUnit, rollNewUnit } from '../actions/recruit.js';
 import { findPath, findVacantTile } from '../pathfind/pathfind.js';
 import type { Rng } from '../rng/Rng.js';
 import type { ActionHandler, EventContext, RecordedMessage } from './context.js';
@@ -606,7 +606,7 @@ function actionClearVariable(cfg: WmlConfig, ctx: EventContext): void {
 
 // --- [store_unit] ---
 
-function unitToVarNode(unit: Unit): VarNode {
+export function unitToVarNode(unit: Unit): VarNode {
   const node = newVarNode();
   node.attrs.set('type', unit.type.id);
   node.attrs.set('id', unit.id);
@@ -894,6 +894,21 @@ function* actionUnit(cfg: WmlConfig, ctx: EventContext): Flow {
     ctx.log('error', `Error occurred inside [unit]: ${e instanceof Error ? e.message : String(e)}`);
     return;
   }
+  // A new real unit gets upstream's creation-time draws (`unit::init(cfg)`):
+  // a random gender only with `random_gender=yes`, traits unless
+  // `random_traits=no`, a name unless it has one or `generate_name=no`.
+  if (ctx.rng) {
+    const { gender, traits } = rollNewUnit(unit.type, ctx.rng, {
+      ...(cfg.hasAttribute('gender') ? { gender: cfg.getString('gender') } : {}),
+      randomGender: cfg.getBoolean('random_gender', false),
+      existing: unit.modifications,
+      randomTraits: cfg.getBoolean('random_traits', true),
+      canRecruit: unit.canRecruit,
+      named: unit.name !== '' || !cfg.getBoolean('generate_name', true),
+    });
+    unit.gender = gender;
+    unit.modifications = [...unit.modifications, ...traits];
+  }
   const placed = placeNewUnit(cfg, ctx, unit, side);
   if (placed) {
     unit.location = placed;
@@ -959,6 +974,28 @@ function actionAllowRecruit(cfg: WmlConfig, ctx: EventContext): void {
     const team = ctx.board.getTeam(side);
     if (!team) continue;
     for (const t of types) team.canRecruit.add(t);
+  }
+}
+
+/**
+ * Mirrors `wml_actions.disallow_recruit` (`data/lua/wml-tags.lua`): takes
+ * `type=`'s types off each matching side's recruit list, or empties the
+ * list when no `type=` is given. `LIMIT_RECRUITS` (Dead Water 1's "three of
+ * each level 1 unit") relies on it.
+ */
+function actionDisallowRecruit(cfg: WmlConfig, ctx: EventContext): void {
+  const types = cfg.hasAttribute('type')
+    ? cfg
+        .getString('type')
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+    : null;
+  for (const side of findSides(ctx, cfg)) {
+    const team = ctx.board.getTeam(side);
+    if (!team) continue;
+    if (types) for (const t of types) team.canRecruit.delete(t);
+    else team.canRecruit.clear();
   }
 }
 
@@ -1444,6 +1481,7 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('gold', actionGold);
   registry.register('store_gold', actionStoreGold);
   registry.register('allow_recruit', actionAllowRecruit);
+  registry.register('disallow_recruit', actionDisallowRecruit);
   registry.register('capture_village', actionCaptureVillage);
   registry.register('recall', actionRecall);
   registry.register('move_unit', actionMoveUnit);

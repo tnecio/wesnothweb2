@@ -11,8 +11,10 @@ import { describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Location, type GameBoardSnapshot, type RecordedCommand, type WmlConfigJson } from '@wesnothweb2/engine';
+import { gunzipSync } from 'node:zlib';
+import { Location, parseConfig, type GameBoardSnapshot, type RecordedCommand, type WmlConfigJson } from '@wesnothweb2/engine';
 import { GameSession, type SaveGameData } from './gameSession.js';
+import { fromWesnothSave } from './save/wesnothSave.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const load = (name: string): GameBoardSnapshot =>
@@ -98,7 +100,13 @@ describe('Phase 18b: the command log', () => {
     const session = await aiVsAi(7, 2);
     const recruits = session.replayLog.filter((r) => r.command.kind === 'recruit');
     expect(recruits.length).toBeGreaterThan(0);
-    for (const r of recruits) expect(r.dependents.filter((d) => d.kind === 'random_seed')).toHaveLength(1);
+    // At most one seed per action; merfolk recruits draw (traits, names),
+    // undead ones do not (one must-have trait, no names) and so ask for none.
+    for (const r of session.replayLog) expect(r.dependents.filter((d) => d.kind === 'random_seed').length).toBeLessThanOrEqual(1);
+    const drawing = recruits.filter((r) => r.command.kind === 'recruit' && r.command.type.startsWith('Mer'));
+    expect(drawing.length).toBeGreaterThan(0);
+    for (const r of drawing) expect(r.dependents.filter((d) => d.kind === 'random_seed')).toHaveLength(1);
+    for (const r of recruits.filter((r) => r.command.kind === 'recruit' && r.command.type === 'Skeleton')) expect(r.dependents).toEqual([]);
     const seeds = session.replayLog.flatMap((r) => r.dependents.filter((d) => d.kind === 'random_seed').map((d) => (d.kind === 'random_seed' ? d.seed : '')));
     expect(new Set(seeds).size).toBe(seeds.length);
   }, 60_000);
@@ -107,7 +115,7 @@ describe('Phase 18b: the command log', () => {
     const session = await aiVsAi(11, 1);
     const saved = JSON.parse(JSON.stringify(session.toSaveData())) as SaveGameData;
     expect(saved.replay?.commands.length).toBe(session.replayLog.length);
-    expect(saved.replay?.start.startupEventsRun).toBe(false);
+    expect(saved.replay?.start?.startupEventsRun).toBe(false);
     const reloaded = GameSession.fromSaveData(load('01_Invasion'), saved);
     expect(reloaded.replayLog).toEqual(session.replayLog);
     expect(reloaded.stateDigest()).toBe(session.stateDigest());
@@ -335,5 +343,34 @@ describe('Phase 18b milestone 2: undo and redo', () => {
     expect(replay.describeState()).toBe(session.describeState());
     const moves = session.replayLog.filter((r: RecordedCommand) => r.command.kind === 'move');
     expect(moves).toHaveLength(1);
+  });
+});
+
+describe('Phase 18b milestone 4: a replay recorded by the real Wesnoth 1.16.9 replays here', () => {
+  it("Dead Water 1's real [start] (seed e5eacb0f) spawns the very same units, traits and genders here as it did in the real game", () => {
+    const cfg = parseConfig(gunzipSync(fs.readFileSync(path.join(repoRoot, 'packages/ui/src/save/fixtures/dead-water-1-autosave-1.16.9.gz'))).toString('utf8'));
+    const { save } = fromWesnothSave(cfg);
+    expect(save.replay?.commands.map((c) => c.command.kind)).toEqual(['start', 'init_side']);
+
+    const session = GameSession.forReplay(load('01_Invasion'), save)!;
+    for (const rec of save.replay!.commands) expect(session.replayCommand(rec)).toBe(true);
+    expect(session.syncIssues).toEqual([]);
+
+    // The real game's own record of what that [start] produced.
+    const real = cfg
+      .child('snapshot')!
+      .children('side')
+      .flatMap((side) => side.children('unit'))
+      .filter((u) => u.hasAttribute('x'));
+    expect(real.length).toBeGreaterThan(10);
+    const describe = (type: string, traits: string[], gender: string) => `${type} [${traits.join(',')}] ${gender}`;
+    for (const u of real) {
+      const ours = session.board.unitAt(Location.fromWml(u.getNumber('x'), u.getNumber('y')));
+      const realTraits = (u.child('modifications')?.children('trait') ?? []).map((t) => t.getString('id'));
+      expect(ours && describe(ours.type.id, ours.modifications.filter((m) => m.kind === 'trait').map((m) => m.cfg.getString('id')), ours.gender)).toBe(
+        describe(u.getString('type'), realTraits, u.getString('gender', 'male')),
+      );
+    }
+    expect(session.board.allUnits()).toHaveLength(real.length);
   });
 });

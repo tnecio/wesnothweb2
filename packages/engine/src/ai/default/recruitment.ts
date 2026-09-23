@@ -591,16 +591,17 @@ export class RecruitmentCandidateAction extends CandidateAction {
         if (!unit) {
           ok = false;
         } else {
-          this.ctx.executeRecall(team, unit, vacant, bestLeaderData.leader.location);
-          ok = true;
+          ok = this.ctx.executeRecall(team, unit, vacant, bestLeaderData.leader.location) !== null;
         }
       } else {
         const type = this.resolveType(bestRecruit);
         if (!type || team.gold < type.cost) {
           ok = false;
         } else {
-          this.ctx.executeRecruit(team, type, vacant, bestLeaderData.leader.location);
-          ok = true;
+          // Refused -- e.g. the type came off the recruit list mid-turn
+          // (LIMIT_RECRUITS' [disallow_recruit]): stop, as upstream's CA does
+          // when its recruit_result is not ok.
+          ok = this.ctx.executeRecruit(team, type, vacant, bestLeaderData.leader.location) !== null;
         }
       }
 

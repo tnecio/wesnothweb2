@@ -152,7 +152,8 @@ export type Dependent =
 
 /** One entry of the log: a command, what it depended on, and (when recorded live) a digest of the state it left behind. */
 export interface RecordedCommand {
-  readonly command: SyncedCommand;
+  /** Mutable only so an executor can settle it while running (a move records the route actually walked). */
+  command: SyncedCommand;
   /** The side that issued it (`from_side=`). */
   readonly side: number;
   dependents: Dependent[];

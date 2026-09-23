@@ -4,6 +4,7 @@ import { GameMap } from '../../src/model/Map.js';
 import { TerrainTypeData } from '../../src/model/Terrain.js';
 import { Team } from '../../src/model/Team.js';
 import { Unit } from '../../src/model/Unit.js';
+import { Location } from '../../src/model/Location.js';
 import { AttackType, UnitType } from '../../src/model/UnitType.js';
 import { MoveType } from '../../src/model/MoveType.js';
 import { EventManager, EventPump } from '../../src/events/pump.js';
@@ -613,5 +614,45 @@ describe('undo tracking ([allow_undo]/[disallow_undo]/[on_undo], pump.cpp contex
     pump.ctx.variables.set('who', 'Kai');
     pump.fire('go');
     expect(bodies).toEqual(['Kai', '$who']);
+  });
+});
+
+describe('$unit/$second_unit (scoped_xy_unit) and [disallow_recruit]', () => {
+  it('binds $unit and $second_unit to the units at the event locations, for the filter and body, then restores them', () => {
+    const board = makeBoard();
+    const resolve = makeResolveType();
+    board.addUnit(Unit.create(resolve('Spearman'), 1, Location.fromWml(1, 1), { id: 'a' }));
+    board.addUnit(Unit.create(resolve('Grunt'), 2, Location.fromWml(2, 2), { id: 'b' }));
+    const { manager, pump } = makePump(board);
+    for (const ev of parseWml(`
+      [event]
+        name=probe
+        [filter_condition]
+          [variable]
+            name=unit.type
+            equals=Spearman
+          [/variable]
+        [/filter_condition]
+        [set_variable]
+          name=seen
+          value="$unit.id|/$second_unit.type|"
+        [/set_variable]
+      [/event]
+    `).children('event')) manager.addFromWml(ev);
+    pump.ctx.variables.set('unit.type', 'before');
+    pump.fire('probe', Location.fromWml(1, 1), Location.fromWml(2, 2));
+    expect(pump.ctx.variables.get('seen')).toBe('a/Grunt');
+    expect(pump.ctx.variables.get('unit.type')).toBe('before');
+    expect(pump.ctx.variables.get('second_unit.type')).toBeUndefined();
+  });
+
+  it('LIMIT_RECRUITS-style counting: [disallow_recruit] takes a type off the recruit list, or all of them', () => {
+    const board = makeBoard();
+    board.getTeam(1)!.canRecruit = new Set(['Spearman', 'Bowman', 'Mage']);
+    const { pump } = makePump(board);
+    runActionSequence(parseWml('[disallow_recruit]\nside=1\ntype=Bowman\n[/disallow_recruit]'), pump.ctx);
+    expect([...board.getTeam(1)!.canRecruit]).toEqual(['Spearman', 'Mage']);
+    runActionSequence(parseWml('[disallow_recruit]\nside=1\n[/disallow_recruit]'), pump.ctx);
+    expect([...board.getTeam(1)!.canRecruit]).toEqual([]);
   });
 });

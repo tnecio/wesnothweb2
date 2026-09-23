@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
-import { WmlConfig, parseConfig, writeWml, type GameBoardSnapshot } from '@wesnothweb2/engine';
+import { WmlConfig, parseConfig, writeWml, recordedCommandToWml, type GameBoardSnapshot } from '@wesnothweb2/engine';
 import { GameSession } from '../gameSession.js';
 import { fromWesnothSave, toWesnothSave, type WesnothCampaignInfo } from './wesnothSave.js';
 
@@ -263,3 +263,35 @@ function missingFrom(expected: WmlConfig, actual: WmlConfig, at: string): string
   }
   return problems;
 }
+
+describe('Phase 18b: the command log as a real [replay], both ways', () => {
+  it('exports a game played here as [replay_start] + its whole [replay], and reads that [replay] back', async () => {
+    const session = new GameSession(loadSnapshot(), { seed: 3 });
+    await session.runStartupEvents();
+    await session.endTurn(); // side 2 (the AI) plays a whole turn
+    const save = session.toSaveData();
+    const exported = parseConfig(writeWml(toWesnothSave(save, loadSnapshot(), DEAD_WATER)));
+
+    // [replay_start] is the scenario itself, sides and events included, as upstream writes it.
+    const start = exported.child('replay_start')!;
+    expect(start.children('side').length).toBe(2);
+    expect(start.children('event').length).toBeGreaterThan(10);
+
+    // Every recorded command that has a WML form, then its dependents.
+    const commands = exported.child('replay')!.children('command');
+    const expected = save.replay!.commands.flatMap((r) => recordedCommandToWml(r));
+    expect(commands.length).toBe(expected.length);
+    expect(commands[0]!.hasChild('start')).toBe(true);
+    expect(exported.child('snapshot')!.getNumber('replay_pos')).toBe(commands.length);
+
+    // Imported back, the log is the same minus this port's local [stop_unit]s.
+    const imported = fromWesnothSave(exported).save;
+    expect(imported.replay?.readIssues).toBeUndefined();
+    expect(imported.replay!.commands.map((r) => r.command)).toEqual(
+      save.replay!.commands.filter((r) => r.command.kind !== 'stop_unit').map((r) => r.command),
+    );
+    expect(imported.replay!.commands.map((r) => r.dependents)).toEqual(
+      save.replay!.commands.filter((r) => r.command.kind !== 'stop_unit').map((r) => r.dependents),
+    );
+  });
+});
