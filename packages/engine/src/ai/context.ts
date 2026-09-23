@@ -343,9 +343,15 @@ export class AiContext {
 
   /** Mirrors `check_move_action`/`execute_move_action` collapsed into one call (this port's action results aren't split into a separate non-executing "check" phase yet -- see this file's own module doc comment). `removeMovement` (default true, matching every S1 CA's own usage) zeroes `movesLeft` once the move lands, mirroring `remove_movement=true`. */
   executeMove(unit: Unit, path: readonly Location[], removeMovement = true): PerformMoveResult {
-    const outcome = performMove(this.host.board, unit, path, { raise: this.host.raise, viewingTeam: this.team() });
+    const commands = this.host.commands;
+    const outcome = commands
+      ? commands.move(unit, path)
+      : performMove(this.host.board, unit, path, { raise: this.host.raise, viewingTeam: this.team() });
     if (outcome.moved) {
-      if (removeMovement) unit.movesLeft = 0;
+      if (removeMovement && unit.movesLeft > 0) {
+        if (commands) commands.stopUnit(unit, true, false);
+        else unit.movesLeft = 0;
+      }
       this.bumpGamestateChange();
       this.host.pump();
       this.logAction({ kind: 'move', message: '', animation: { kind: 'move', unit, path } });
@@ -354,7 +360,7 @@ export class AiContext {
   }
 
   /** Mirrors `check_attack_action`/`execute_attack_action` collapsed into one call (see this file's own module doc comment on why check/execute aren't split yet). Records the target into `recentAttacks` and bumps the gamestate-change counter unconditionally -- a real attack always changes SOMETHING (attacks_left at minimum), matching upstream's own `attack_result` always reporting `is_gamestate_changed()`. */
-  executeAttack(attackerLoc: Location, attackerWeaponIndex: number, defenderLoc: Location, defenderWeaponIndex: number | undefined): AttackResult {
+  executeAttack(attackerLoc: Location, attackerWeaponIndex: number, defenderLoc: Location, defenderWeaponIndex: number | undefined): AttackResult | null {
     const board = this.host.board;
     const attacker = board.unitAt(attackerLoc);
     const defender = board.unitAt(defenderLoc);
@@ -363,19 +369,21 @@ export class AiContext {
     const attackerLocation = attackerLoc;
     const defenderLocation = defenderLoc;
 
-    const result = performAttack(board, this.host.rng, attackerLoc, attackerWeaponIndex, defenderLoc, defenderWeaponIndex, {
-      attackerLawfulBonus: this.host.lawfulBonusAt(attackerLoc),
-      defenderLawfulBonus: this.host.lawfulBonusAt(defenderLoc),
-      maxLiminalBonus: this.host.maxLiminalBonus,
-      resolveType: this.host.resolveType,
-      raise: this.host.raise,
-      fire: this.host.fire,
-    });
+    const result = this.host.commands
+      ? this.host.commands.attack(attackerLoc, attackerWeaponIndex, defenderLoc, defenderWeaponIndex)
+      : performAttack(board, this.host.rng, attackerLoc, attackerWeaponIndex, defenderLoc, defenderWeaponIndex, {
+          attackerLawfulBonus: this.host.lawfulBonusAt(attackerLoc),
+          defenderLawfulBonus: this.host.lawfulBonusAt(defenderLoc),
+          maxLiminalBonus: this.host.maxLiminalBonus,
+          resolveType: this.host.resolveType,
+          raise: this.host.raise,
+          fire: this.host.fire,
+        });
     this.recentAttackLocs.push(defenderLoc);
     this.bumpGamestateChange();
     this.host.pump();
 
-    if (attacker && defender) {
+    if (result && attacker && defender) {
       const hits = result.blows.filter((b) => b.hit).length;
       this.logAction({
         kind: 'attack',
@@ -402,7 +410,9 @@ export class AiContext {
   /** Mirrors `check_recruit_action`/`execute_recruit_action` collapsed into one call: a fresh `type` for `team`, placed at `loc` (a vacant castle/keep tile), from the recruiting leader at `from`. Caller (the recruitment CA) is responsible for affordability/legality checks -- this always spends the gold and places the unit. */
   executeRecruit(team: Team, type: UnitType, loc: Location, from: Location): PlaceRecruitResult {
     const leader = this.host.board.unitAt(from);
-    const result = recruitUnit(this.host.board, team, type, loc, from, this.host.rng, this.host.raise);
+    const result = this.host.commands
+      ? this.host.commands.recruit(team, type, loc, from)
+      : recruitUnit(this.host.board, team, type, loc, from, this.host.rng, this.host.raise);
     const unitLocation = result.unit.location;
     this.bumpGamestateChange();
     this.host.pump();
@@ -417,8 +427,13 @@ export class AiContext {
   /** Mirrors `check_recall_action`/`execute_recall_action`: pulls `unit` off `team`'s recall list and places it at `loc`. */
   executeRecall(team: Team, unit: Unit, loc: Location, from: Location): PlaceRecruitResult {
     const leader = this.host.board.unitAt(from);
-    this.host.board.removeFromRecallList(team.side, unit.underlyingId);
-    const result = recallUnit(this.host.board, team, unit, loc, from, undefined, this.host.raise);
+    let result: PlaceRecruitResult;
+    if (this.host.commands) {
+      result = this.host.commands.recall(team, unit, loc, from);
+    } else {
+      this.host.board.removeFromRecallList(team.side, unit.underlyingId);
+      result = recallUnit(this.host.board, team, unit, loc, from, undefined, this.host.raise);
+    }
     const unitLocation = result.unit.location;
     this.bumpGamestateChange();
     this.host.pump();
@@ -432,16 +447,17 @@ export class AiContext {
 
   /** Mirrors `check_stopunit_action`/`execute_stopunit_action`: zeroes moves and/or attacks without moving, used by CAs (e.g. `goto`) to burn a unit's turn when its intended move didn't land, so the RCA loop doesn't blacklist them for "lying" in `evaluate()`. */
   stopUnit(unit: Unit, removeMovement: boolean, removeAttacks: boolean): boolean {
-    let changed = false;
-    if (removeMovement && unit.movesLeft > 0) {
-      unit.movesLeft = 0;
-      changed = true;
+    const movement = removeMovement && unit.movesLeft > 0;
+    const attacks = removeAttacks && unit.attacksLeft > 0;
+    const changed = movement || attacks;
+    if (!changed) return false;
+    if (this.host.commands) {
+      this.host.commands.stopUnit(unit, movement, attacks);
+    } else {
+      if (movement) unit.movesLeft = 0;
+      if (attacks) unit.attacksLeft = 0;
     }
-    if (removeAttacks && unit.attacksLeft > 0) {
-      unit.attacksLeft = 0;
-      changed = true;
-    }
-    if (changed) this.bumpGamestateChange();
+    this.bumpGamestateChange();
     return changed;
   }
 }

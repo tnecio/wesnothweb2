@@ -124,6 +124,33 @@ function healBy(unit: Unit, amount: number): void {
 }
 
 /**
+ * The counter-weapon `executeAttack` would pick when none is given
+ * (`chooseDefenderWeaponIndex` with the same terrain inputs), or -1 for no
+ * counter-attack. A synced attack command records this up front, as
+ * upstream's does (`defender_weapon=`), so a replay never has to re-derive it.
+ */
+export function resolveDefenderWeaponIndex(
+  board: GameBoard,
+  attackerLoc: Location,
+  attackerWeaponIndex: number,
+  defenderLoc: Location,
+  options: AttackOptions = {},
+): number {
+  const attacker = board.unitAt(attackerLoc);
+  const defender = board.unitAt(defenderLoc);
+  if (!attacker || !defender || !attacker.attacks[attackerWeaponIndex]) return -1;
+  return chooseDefenderWeaponIndex(
+    attacker,
+    attackerWeaponIndex,
+    defender,
+    distanceBetween(attackerLoc, defenderLoc),
+    attacker.defenseModifier(board.map.getTerrain(attackerLoc)),
+    defender.defenseModifier(board.map.getTerrain(defenderLoc)),
+    options,
+  );
+}
+
+/**
  * Executes a full attack action between the units at `attackerLoc` and
  * `defenderLoc`, mirroring `attack::perform()`'s net state-mutating effect.
  * `attackerWeaponIndex` selects `attacker.attacks[i]`; `defenderWeaponIndex`

@@ -12,6 +12,7 @@ export * from './recruit.js';
 export * from './heal.js';
 export * from './advancement.js';
 export * from './undo.js';
+export * from './synced.js';
 export * from './victory.js';
 export * from './carryover.js';
 export * from './illumination.js';

@@ -13,6 +13,9 @@ import type { GameBoard } from '../model/GameBoard.js';
 import type { Rng } from '../rng/Rng.js';
 import type { WmlConfig } from '../wml/config.js';
 import type { AttackResult } from '../actions/combat.js';
+import type { Team } from '../model/Team.js';
+import type { PerformMoveResult } from '../actions/moveSequence.js';
+import type { PlaceRecruitResult } from '../actions/recruit.js';
 
 export type AiActionKind = 'recruit' | 'move' | 'attack' | 'advance';
 
@@ -69,6 +72,28 @@ export interface AiAction {
  * see `actions/moveSequence.ts`/`attackSequence.ts` (Phase 29 S0), which
  * `ai/actions.ts` (S1) threads this through to.
  */
+/**
+ * Phase 18b: how the AI's actions reach the game when a host records them
+ * (`packages/ui`'s `GameSession`): each one runs as a synced command through
+ * the host's single executor -- the same one a human's action, a replay and a
+ * redo use -- instead of the AI calling the engine actions itself. A host
+ * without one (a hand-built test context) keeps the direct calls.
+ */
+export interface AiCommandHost {
+  move(unit: Unit, path: readonly Location[]): PerformMoveResult;
+  /**
+   * `defenderWeaponIndex` undefined: the defender picks its best counter, as
+   * upstream's `attack_result` does before recording. `null` when the
+   * `attack` event ended the scenario or moved a combatant away, which
+   * aborts the attack (upstream's `attack::perform`).
+   */
+  attack(attackerLoc: Location, attackerWeaponIndex: number, defenderLoc: Location, defenderWeaponIndex: number | undefined): AttackResult | null;
+  recruit(team: Team, type: UnitType, loc: Location, from: Location): PlaceRecruitResult;
+  recall(team: Team, unit: Unit, loc: Location, from: Location): PlaceRecruitResult;
+  /** `stopunit_result`: gives up the unit's remaining moves and/or attacks. */
+  stopUnit(unit: Unit, movement: boolean, attacks: boolean): void;
+}
+
 export interface AiHost {
   readonly board: GameBoard;
   readonly rng: Rng;
@@ -85,4 +110,6 @@ export interface AiHost {
   readonly log: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
   /** True once `[endlevel]`/a leader loss has ended the scenario mid-turn -- the AI stops acting immediately when this flips. */
   readonly scenarioEnded: () => boolean;
+  /** See `AiCommandHost`. */
+  readonly commands?: AiCommandHost;
 }

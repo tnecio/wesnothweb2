@@ -63,6 +63,33 @@ import {
   combatModifier,
   RngDeterministic,
   MtRng,
+  SyncedRng,
+  entropySeedStr,
+  type RandomMode,
+  Recorder,
+  UndoList,
+  type UndoStep,
+  type SyncedCommand,
+  type MoveCommand,
+  type AttackCommand,
+  type RecruitCommand,
+  type RecallCommand,
+  type DisbandCommand,
+  type FireEventCommand,
+  type StopUnitCommand,
+  type RecordedCommand,
+  type Dependent,
+  stateDigest,
+  stateDescription,
+  fnv1a,
+  hexOf,
+  locOf,
+  resolveDefenderWeaponIndex,
+  chooseAdvancementRandomly,
+  type PerformMoveResult,
+  type PlaceRecruitResult,
+  type AiCommandHost,
+  type Team,
   gameBoardFromSnapshot,
   createTypeResolver,
   EventManager,
@@ -684,6 +711,89 @@ export interface GameSessionOptions {
    * no-op), so nothing in the browser console depends on it.
    */
   onLog?: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
+  /**
+   * Phase 18b: upstream's `random_mode`. `per_action` (the default, as
+   * upstream's) seeds a fresh RNG for every action and records the seed;
+   * `deterministic` draws every action from one whole-game stream.
+   */
+  randomMode?: RandomMode;
+  /**
+   * Where `per_action` seeds come from. Omitted: derived from `seed`, so a
+   * headless run (a test, the AI benchmark) repeats exactly. `'entropy'`:
+   * real randomness, as upstream's `seed_rng::next_seed()` -- what the game
+   * in the browser uses, so reloading before an attack gives a new roll.
+   */
+  actionSeeds?: 'entropy';
+}
+
+/**
+ * The action a synced command is running as (upstream's `synced_context`
+ * state plus the `undo_action_container` being filled): the log entry being
+ * written, the undo steps collected so far, whether anything has made it
+ * impossible to undo, and -- while replaying or redoing -- the recorded
+ * dependents still to be consumed, in order.
+ */
+interface ActionState {
+  readonly rec: RecordedCommand;
+  readonly steps: UndoStep[];
+  undoBlocked: boolean;
+  /** Set by an executor that refused the command; the log entry is then dropped (`run_and_store`'s `recorder->undo()`). */
+  rejected: string | null;
+  readonly source: Dependent[] | null;
+  /** Whether cutscene beats (the walk, the recruit appearing) are yielded to the display. */
+  readonly present: boolean;
+}
+
+/** One undo step as a save stores it: units by where they stand, since `UndoStep` holds live `Unit`s. */
+export type SavedUndoStep =
+  | { kind: 'move'; route: { x: number; y: number }[]; startingMoves: number; startingFacing: string }
+  | { kind: 'take_village'; loc: { x: number; y: number }; previousOwner: number }
+  | { kind: 'recruit'; loc: { x: number; y: number }; side: number; cost: number }
+  | { kind: 'recall'; loc: { x: number; y: number }; side: number; cost: number; index: number }
+  | { kind: 'dismiss'; unit: SavedUnit; side: number; index: number }
+  | { kind: 'event'; commands: WmlConfigJson; loc1: { x: number; y: number }; loc2: { x: number; y: number } };
+
+/** Upstream's `[undo_stack]`: what the side whose turn it is can still undo or redo. */
+export interface SavedUndoStack {
+  undo: { steps: SavedUndoStep[]; command: RecordedCommand }[];
+  redo: RecordedCommand[];
+}
+
+/** What a replay or redo found that did not match the recorded game. */
+export interface SyncIssue {
+  /** Index of the command in the log. */
+  readonly index: number;
+  readonly command: SyncedCommand['kind'];
+  readonly message: string;
+}
+
+/** A deep copy of a log entry, so saved and live logs never share mutable dependents. */
+function cloneRecordedCommand(rec: RecordedCommand): RecordedCommand {
+  return JSON.parse(JSON.stringify(rec)) as RecordedCommand;
+}
+
+/** A short human description of a command, for the log after an undo or redo. */
+export function describeCommand(command: SyncedCommand): string {
+  switch (command.kind) {
+    case 'move':
+      return 'move';
+    case 'recruit':
+      return `recruit of ${command.type}`;
+    case 'recall':
+      return `recall of ${command.id || 'a unit'}`;
+    case 'disband':
+      return `dismissal of ${command.id || 'a unit'}`;
+    case 'fire_event':
+      return command.raise;
+    default:
+      return command.kind.replace('_', ' ');
+  }
+}
+
+const EVENT_LOCATION_VARIABLES = new Set(['x1', 'y1', 'x2', 'y2']);
+
+function needsInput(interaction: Interaction): boolean {
+  return interaction.kind === 'message' && (interaction.options.length > 0 || interaction.textInput !== undefined);
 }
 
 /**
@@ -885,6 +995,20 @@ export interface SaveGameData {
    * silently dropped. Nothing but `save/wesnothSave.ts` ever reads it.
    */
   wesnothExtras?: WmlConfigJson;
+  /** Phase 18b: upstream's `random_mode`; absent means `per_action`. */
+  randomMode?: RandomMode;
+  /** Upstream's `do_healing`: false only until the scenario's first side turn has started. Absent: true once startup events ran. */
+  doHealing?: boolean;
+  /**
+   * Phase 18b: the game so far as a replay -- the state the scenario started
+   * from (before its `start` command) and every command since, with its
+   * dependents and state digest. Absent on saves from before Phase 18b and
+   * on imported Wesnoth saves (whose own `[replay]` travels in
+   * `wesnothExtras`).
+   */
+  replay?: { start: SaveGameData; commands: RecordedCommand[] };
+  /** Phase 18b: the active side's undo and redo stacks (upstream's `[undo_stack]`). */
+  undoStack?: SavedUndoStack;
 }
 
 /**
@@ -1109,13 +1233,9 @@ export class GameSession {
   async runMenuItem(id: string, x: number, y: number): Promise<string | null> {
     const def = this.eventPump.ctx.menuItems.get(id);
     if (!def) return null;
-    const loc = new Location(x, y);
-    this.eventPump.ctx.loc1 = loc;
-    this.eventPump.ctx.loc2 = Location.NULL;
-    this.eventPump.ctx.variables.set('x1', loc.wmlX);
-    this.eventPump.ctx.variables.set('y1', loc.wmlY);
-    await this.drive(runActionFlow(def.command, this.eventPump.ctx));
-    this.checkForGameEnd();
+    const cmd: FireEventCommand = { kind: 'fire_event', raise: `menu item ${id}`, source: hexOf(new Location(x, y)) };
+    const done = await this.drive(this.runSynced(cmd, (action) => this.execFireEvent(cmd, action), { present: true }));
+    if (done === null) return null;
     const message = `${def.description}.`;
     this.log.unshift(message);
     return message;
@@ -1176,13 +1296,40 @@ export class GameSession {
 
   /** Resolves any of the ~332 real unit types the snapshot ships (board units, event-spawned units, recruit lists) -- see `createTypeResolver`. */
   private readonly resolveType: (id: string) => UnitType;
-  private readonly rng: RngDeterministic;
   /**
-   * The generator `rng` draws from, held separately because only `MtRng`
-   * exposes the seed and draw count a save has to record and restore
-   * (`random_seed`/`random_calls` -- see `SaveGameData.rng`).
+   * Every game rule's RNG (Phase 18b): a fresh, recorded stream per synced
+   * action in `per_action` mode, the whole-game stream in `deterministic`
+   * mode, and an unsynced stream outside actions (AI decisions) -- see
+   * `SyncedRng`.
+   */
+  private readonly rng: SyncedRng;
+  /**
+   * The whole-game stream, held separately because only `MtRng` exposes the
+   * seed and draw count a save has to record and restore (`random_seed`/
+   * `random_calls` -- see `SaveGameData.rng`).
    */
   private readonly mtRng: MtRng;
+  /** A new per-action seed: from real entropy in the browser game, from `seed` headless. */
+  private readonly nextFreshSeed: () => string;
+
+  // --- Phase 18b: synced actions, the command log, undo/redo ---
+
+  /** Every command so far, with its dependents (upstream's `[replay]`). */
+  private readonly recorder = new Recorder();
+  /** The active side's undo and redo stacks. */
+  private readonly undoList = new UndoList();
+  /** The synced action running now, if any. */
+  private action: ActionState | null = null;
+  /** The state the scenario started from, before its `start` command -- a replay's starting point. */
+  private replayStartData: SaveGameData | null = null;
+  /** Upstream's `do_healing`: healing starts with the second side turn of the scenario. */
+  private doHealing = false;
+  /** Set while `redo` re-runs a command, which must not clear the rest of the redo stack. */
+  private redoing = false;
+  /** Where the attack that is waiting on the player's advancement choice was recorded. */
+  private advancementRec: RecordedCommand | null = null;
+  /** Divergences found while replaying or redoing (see `replayCommands`). */
+  readonly syncIssues: SyncIssue[] = [];
   /**
    * Assigns each live `Unit` object a stable, session-local render key
    * (`renderUnits`' `SnapshotUnit.underlyingId`) the first time it's seen,
@@ -1252,13 +1399,27 @@ export class GameSession {
     this.viewingSideValue = this.playerSide;
     this.board = gameBoardFromSnapshot(snapshot).board;
     this.resolveType = createTypeResolver(snapshot);
-    this.mtRng = new MtRng(options.seed ?? 0xc0ffee);
-    this.rng = new RngDeterministic(this.mtRng);
+    const seed = (options.seed ?? 0xc0ffee) >>> 0;
+    this.mtRng = new MtRng(seed);
+    if (options.actionSeeds === 'entropy') {
+      this.nextFreshSeed = entropySeedStr;
+    } else {
+      const seeder = new MtRng((seed + 0x9e3779b9) >>> 0);
+      this.nextFreshSeed = () => seeder.getNextRandom().toString(16).padStart(8, '0');
+    }
+    this.rng = new SyncedRng(this.mtRng, new MtRng((seed ^ 0x5eed5eed) >>> 0), options.randomMode ?? 'per_action', () =>
+      this.provideSeed(),
+    );
+    // Any random number an action draws makes it impossible to undo, in
+    // both modes (`ask_server_choice`/`get_rng_for_action` block undo).
+    this.rng.onSyncedDraw = () => {
+      if (this.action) this.action.undoBlocked = true;
+    };
     this.goldCarryover = options.goldCarryover ?? null;
     // random_start_time= is resolved once here, before any events run --
     // matches upstream's own timing (tod_manager::resolve_random, called
     // from the play_controller constructor sequence before fire_prestart).
-    this.schedule = scheduleFromScenarioConfigJson(snapshot.scenarioConfigJson, this.rng);
+    this.schedule = scheduleFromScenarioConfigJson(snapshot.scenarioConfigJson, new RngDeterministic(this.mtRng));
     const manager = new EventManager();
     manager.loadScenarioEvents(WmlConfig.fromJSON(snapshot.scenarioConfigJson));
     this.eventPump = new EventPump(manager, {
@@ -1270,6 +1431,9 @@ export class GameSession {
       log: options.onLog,
     });
     this.board.lawfulBonusAt = (loc) => this.timeOfDayAt(loc).lawfulBonus;
+    this.eventPump.ctx.addUndoCommands = (commands) => {
+      this.action?.steps.push({ kind: 'event', commands, loc1: this.eventPump.ctx.loc1, loc2: this.eventPump.ctx.loc2 });
+    };
 
     const aiHost: AiHost = {
       board: this.board,
@@ -1287,6 +1451,7 @@ export class GameSession {
            browser console being the intended audience for now, not this session's own player-facing `log`. */
       },
       scenarioEnded: () => !!this.scenarioResult,
+      commands: this.aiCommands(),
     };
     this.aiManager = new AiManager(aiHost, (side) => findSideConfig(snapshot.scenarioConfigJson, side)?.children('ai') ?? []);
     const aiWmlHooks: AiWmlHooks = {
@@ -1365,29 +1530,32 @@ export class GameSession {
    */
   async runStartupEvents(): Promise<RecordedMessage[]> {
     if (this.startupEventsRun) return [];
+    // Phase 18b: the replay starts from here -- the scenario as set up,
+    // carryover included, before its `start` command runs.
+    this.replayStartData = this.toSaveData();
     this.startupEventsRun = true;
     return this.drive(this.startupEventsFlow());
   }
 
+  /** `[start]` then the first side's `[init_side]`, each its own synced command as upstream records them. */
   private *startupEventsFlow(): Flow<RecordedMessage[]> {
     const shownFrom = this.eventPump.ctx.messages.length;
-    // `[delay]` does nothing before the scenario starts, as upstream --
-    // an opening cutscene's scripted pauses must not stall startup.
-    this.eventPump.ctx.gameStarted = false;
-    yield* this.fireFlow('prestart');
-    // play_controller::init: every side's shroud is cleared from its starting units, without sighted events.
-    for (const team of this.board.teams()) clearShroud(this.board, team.side);
-    this.eventPump.ctx.gameStarted = true;
-    yield* this.fireFlow('start');
-    yield* this.fireSideTurnEvents(this.activeSide);
-    yield* this.fireTurnRefreshEvents(this.activeSide);
+    yield* this.runSynced({ kind: 'start' }, () => this.execStart(), { present: true });
+    const side = this.activeSide;
+    if (!this.scenarioResult) yield* this.runSynced({ kind: 'init_side', side }, (action) => this.execInitSide(side, action), { present: true });
     this.checkForGameEnd();
-    const objectives = this.eventPump.ctx.objectivesBySide.get(this.playerSide);
-    // Real `team.objectives_changed = not silent` -- a silent firing updates
-    // the side's objectives without popping the dialog (matches upstream's
-    // own gate on whether `show_objectives` should auto-trigger).
-    if (objectives && !objectives.silent) this.scenarioObjectives = objectives;
+    this.captureStartObjectives();
     return this.eventPump.ctx.messages.slice(shownFrom);
+  }
+
+  /**
+   * Real `team.objectives_changed = not silent` -- a silent firing updates
+   * the side's objectives without popping the dialog (matches upstream's
+   * own gate on whether `show_objectives` should auto-trigger).
+   */
+  private captureStartObjectives(): void {
+    const objectives = this.eventPump.ctx.objectivesBySide.get(this.playerSide);
+    if (objectives && !objectives.silent) this.scenarioObjectives = objectives;
   }
 
   /**
@@ -1429,23 +1597,558 @@ export class GameSession {
 
   private readonly collectResponder: Responder = (interaction) => {
     this.deferred.push(interaction);
-    return autoRespond(interaction);
+    const replayed = this.replayedAnswer(interaction);
+    if (replayed) return replayed;
+    const answer = autoRespond(interaction);
+    this.recordAnswer(interaction, answer);
+    return answer;
   };
 
   /**
    * Runs a flow to completion, handing each interaction to
    * `interactionHost` and waiting for its answer. With no host (a
    * headless caller, or a test), the engine's own deterministic
-   * `autoRespond` answers instead and nothing ever waits.
+   * `autoRespond` answers instead and nothing ever waits. A choice the
+   * log already holds (a replay, a redo) is answered from the log without
+   * asking anyone; any other choice made inside an action is recorded.
    */
   private async drive<T>(flow: Flow<T>): Promise<T> {
     let step = flow.next({});
     while (!step.done) {
-      const host = this.interactionHost;
-      const answer = host ? await host.handle(step.value) : autoRespond(step.value);
+      const interaction = step.value;
+      let answer = this.replayedAnswer(interaction);
+      if (!answer) {
+        const host = this.interactionHost;
+        answer = host ? await host.handle(interaction) : autoRespond(interaction);
+        this.recordAnswer(interaction, answer);
+      }
       step = flow.next(answer);
     }
     return step.value;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase 18b: synced actions (synced_context.cpp / synced_commands.cpp)
+  // ---------------------------------------------------------------------------
+
+  /** A `[message]` answer taken from the log, when the running action is a replay or redo. */
+  private replayedAnswer(interaction: Interaction): InteractionResult | undefined {
+    const action = this.action;
+    if (!action?.source || !needsInput(interaction)) return undefined;
+    const dep = this.takeDependent(action, 'input');
+    if (!dep) return undefined;
+    action.rec.dependents.push(dep);
+    return { value: dep.value, text: dep.text };
+  }
+
+  /** Records a `[message]` answer as a dependent `[input]` of the running action (`synced_user_choice`). */
+  private recordAnswer(interaction: Interaction, answer: InteractionResult): void {
+    const action = this.action;
+    if (!action || !needsInput(interaction) || interaction.kind !== 'message') return;
+    action.rec.dependents.push({
+      kind: 'input',
+      ...(interaction.options.length > 0 ? { value: answer.value ?? 1 } : {}),
+      ...(interaction.textInput ? { text: answer.text ?? interaction.textInput.text } : {}),
+      side: this.activeSide,
+    });
+  }
+
+  /** A new action's seed: the recorded one when replaying or redoing, otherwise a fresh one, recorded as `[random_seed]`. */
+  private provideSeed(): string {
+    const action = this.action;
+    if (action?.source) {
+      const dep = this.takeDependent(action, 'random_seed');
+      if (dep) {
+        action.rec.dependents.push(dep);
+        return dep.seed;
+      }
+    }
+    const seed = this.nextFreshSeed();
+    action?.rec.dependents.push({ kind: 'random_seed', seed });
+    return seed;
+  }
+
+  /** The next recorded dependent, if it is the kind asked for (upstream: "[x] expected but none found"). */
+  private takeDependent<K extends Dependent['kind']>(action: ActionState, kind: K): Extract<Dependent, { kind: K }> | null {
+    const source = action.source;
+    if (!source) return null;
+    const next = source[0];
+    if (!next) {
+      this.reportSync(action, `expected a recorded [${kind}], found none`);
+      return null;
+    }
+    if (next.kind !== kind) {
+      this.reportSync(action, `expected a recorded [${kind}], found [${next.kind}]`);
+      return null;
+    }
+    source.shift();
+    return next as Extract<Dependent, { kind: K }>;
+  }
+
+  private reportSync(action: ActionState, message: string): void {
+    const index = this.recorder.commands.indexOf(action.rec);
+    this.syncIssues.push({ index, command: action.rec.command.kind, message });
+    this.eventPump.ctx.log('warn', `out of sync at command ${index} [${action.rec.command.kind}]: ${message}`);
+  }
+
+  /**
+   * Turn, side, result and a hash of the WML variables: the non-board state
+   * a digest covers. `$x1`/`$y1`/`$x2`/`$y2` are left out: the pump rewrites
+   * them for every event it processes, so they are scratch values an undo
+   * cannot and need not restore.
+   */
+  private digestExtra(): Record<string, string | number | boolean | null> {
+    const vars = this.eventPump.ctx.variables.toConfig().toJSON();
+    const kept = Object.entries(vars.attrs).filter(([k]) => !EVENT_LOCATION_VARIABLES.has(k));
+    return {
+      turn: this.turnNumber,
+      side: this.activeSide,
+      result: this.scenarioResult,
+      variables: fnv1a(JSON.stringify([kept, vars.children])),
+    };
+  }
+
+  /** The state digest each recorded command carries (see `stateDigest`). */
+  stateDigest(): string {
+    return stateDigest(this.board, this.digestExtra());
+  }
+
+  /** The text `stateDigest` hashes -- for diffing two states when a replay diverges. */
+  describeState(): string {
+    return stateDescription(this.board, this.digestExtra());
+  }
+
+  /**
+   * Runs `command` as one synced action (`synced_context::run_and_store`):
+   * records it, gives it its own RNG stream, collects its undo steps, and
+   * afterwards either files it on the undo stack or -- if anything made it
+   * irreversible -- clears the stack (`undo_list::finish_action`). `source`
+   * is the recorded dependents when replaying or redoing. Returns `null` if
+   * the executor refused the command, which then leaves no trace in the log.
+   */
+  private *runSynced<T>(
+    command: SyncedCommand,
+    exec: (action: ActionState) => Flow<T>,
+    opts: { source?: readonly Dependent[] | null; present?: boolean } = {},
+  ): Flow<T | null> {
+    if (this.action) {
+      // Already synced (synced_context::SYNCED): part of the running action.
+      return yield* exec(this.action);
+    }
+    if (!this.redoing) this.undoList.clearRedo();
+    const rec = this.recorder.add(command, this.activeSide);
+    const action: ActionState = {
+      rec,
+      steps: [],
+      undoBlocked: false,
+      rejected: null,
+      source: opts.source ? opts.source.map((d) => ({ ...d })) : null,
+      present: opts.present ?? false,
+    };
+    this.action = action;
+    this.eventPump.takeUndoDisabled();
+    this.rng.beginAction();
+    let result: T;
+    try {
+      result = yield* exec(action);
+    } finally {
+      this.rng.endAction();
+      this.action = null;
+    }
+    if (action.rejected !== null) {
+      if (action.source) this.reportSync(action, action.rejected);
+      this.recorder.cutLast();
+      return null;
+    }
+    if (action.source && action.source.length > 0) {
+      this.reportSync(action, `${action.source.length} recorded dependent(s) left unused`);
+    }
+    const eventsDisabledUndo = this.eventPump.takeUndoDisabled();
+    if (action.undoBlocked || eventsDisabledUndo || this.scenarioResult) this.undoList.clear();
+    else this.undoList.push({ steps: action.steps, command: rec });
+    rec.digest = this.stateDigest();
+    return result;
+  }
+
+  /** Marks the running action as refused (`spectator.error`); returns `null` for the executor to pass on. */
+  private reject(action: ActionState, message: string): null {
+    action.rejected = message;
+    return null;
+  }
+
+  /** Runs any command through its executor -- a replay's and a redo's entry point. */
+  private *execCommand(command: SyncedCommand, action: ActionState): Flow<unknown> {
+    switch (command.kind) {
+      case 'move':
+        return yield* this.execMove(command, action);
+      case 'attack':
+        return yield* this.execAttack(command, action);
+      case 'recruit':
+        return yield* this.execRecruit(command, action);
+      case 'recall':
+        return yield* this.execRecall(command, action);
+      case 'disband':
+        return this.execDisband(command, action);
+      case 'init_side':
+        return yield* this.execInitSide(command.side, action);
+      case 'end_turn':
+        return yield* this.execEndTurn(action);
+      case 'fire_event':
+        return yield* this.execFireEvent(command, action);
+      case 'start':
+        return yield* this.execStart();
+      case 'stop_unit':
+        return this.execStopUnit(command, action);
+      default: {
+        const exhaustive: never = command;
+        return exhaustive;
+      }
+    }
+  }
+
+  /** `[move]` (`execute_move_unit`): walks the steps, recording the move and any village taken for undo. */
+  private *execMove(cmd: MoveCommand, action: ActionState): Flow<{ unit: Unit; outcome: PerformMoveResult } | null> {
+    const steps = cmd.steps.map(locOf);
+    const start = steps[0];
+    const unit = start ? this.board.unitAt(start) : undefined;
+    if (!start || !unit || steps.length < 2) return this.reject(action, `no unit to move at ${start ?? '?'}`);
+    const startingMoves = unit.movesLeft;
+    const startingFacing = unit.facing;
+    const ownersBefore = steps.map((loc) => this.board.villageOwner(loc) ?? 0);
+    const outcome = performMove(this.board, unit, steps, { raise: this.raiseEvent, viewingTeam: this.board.getTeam(unit.side) });
+    const path = outcome.result.path;
+    if (outcome.moved) {
+      action.steps.push({ kind: 'move', unit, route: path, startingMoves, startingFacing });
+      if (outcome.captured) action.steps.push({ kind: 'take_village', loc: unit.location, previousOwner: ownersBefore[path.length - 1] ?? 0 });
+    }
+    // unit_mover::undo_blocked: an ambush, a blocked or failed teleport, a fog/shroud reveal.
+    if (outcome.result.undoBlocked) action.undoBlocked = true;
+    // Phase 17: the walk is a cutscene beat like any other, so it plays
+    // *before* whatever the `moveto`/`sighted` events it triggers have to
+    // say -- the pump below would otherwise reach their dialogue while the
+    // unit was still standing at its old hex on screen.
+    if (action.present && path.length > 1) yield { kind: 'beat', beat: { kind: 'moveUnit', unit, path } };
+    yield* this.pumpEventsFlow();
+    return { unit, outcome };
+  }
+
+  /** Terrain/ToD inputs every attack between these two hexes is computed with. */
+  private attackOptions(attackerLoc: Location, defenderLoc: Location) {
+    return {
+      attackerLawfulBonus: this.timeOfDayAt(attackerLoc).lawfulBonus,
+      defenderLawfulBonus: this.timeOfDayAt(defenderLoc).lawfulBonus,
+      maxLiminalBonus: this.schedule.maxLiminalBonus,
+      resolveType: this.resolveType,
+    };
+  }
+
+  /** The `[attack]` command for a chosen exchange, with upstream's informational fields filled in. */
+  private attackCommand(attackerLoc: Location, weapon: number, defenderLoc: Location, defenderWeapon: number): AttackCommand {
+    const attacker = this.board.unitAt(attackerLoc);
+    const defender = this.board.unitAt(defenderLoc);
+    return {
+      kind: 'attack',
+      source: hexOf(attackerLoc),
+      destination: hexOf(defenderLoc),
+      weapon,
+      defenderWeapon,
+      ...(attacker ? { attackerType: attacker.type.id, attackerLevel: attacker.level } : {}),
+      ...(defender ? { defenderType: defender.type.id, defenderLevel: defender.level } : {}),
+      turn: this.turnNumber,
+      tod: this.currentTimeOfDay.id,
+    };
+  }
+
+  /**
+   * `[attack]` (`attack_unit_and_advance`): the `attack` event, the exchange,
+   * then both survivors' advancement. Never undoable. Returns what the
+   * display needs to animate it, or `null` when the `attack` event aborted it.
+   */
+  private *execAttack(cmd: AttackCommand, action: ActionState): Flow<LastAttackAnimation | null> {
+    action.undoBlocked = true;
+    const attackerLoc = locOf(cmd.source);
+    const defenderLoc = locOf(cmd.destination);
+    const attacker = this.board.unitAt(attackerLoc);
+    const defender = this.board.unitAt(defenderLoc);
+    if (!attacker || !defender) return this.reject(action, `no attacker at ${attackerLoc} or no defender at ${defenderLoc}`);
+    if (!attacker.attacks[cmd.weapon]) return this.reject(action, `illegal weapon ${cmd.weapon}`);
+    if (cmd.defenderWeapon >= defender.attacks.length) return this.reject(action, `illegal defender weapon ${cmd.defenderWeapon}`);
+
+    yield* this.fireFlow('attack', attackerLoc, defenderLoc);
+    this.checkForGameEnd();
+    if (this.scenarioResult || this.board.unitAt(attackerLoc) !== attacker || this.board.unitAt(defenderLoc) !== defender) {
+      // The attack event ended the scenario or moved/removed a combatant: upstream aborts the attack.
+      return null;
+    }
+
+    // Captured before the exchange, for the per-blow HP bars (see LastAttackAnimation).
+    const attackerHitpointsBefore = attacker.hitpoints;
+    const defenderHitpointsBefore = defender.hitpoints;
+    const attackerTypeId = attacker.type.id;
+    const defenderTypeId = defender.type.id;
+    const result = performAttack(this.board, this.rng, attackerLoc, cmd.weapon, defenderLoc, cmd.defenderWeapon, {
+      ...this.attackOptions(attackerLoc, defenderLoc),
+      raise: this.raiseEvent,
+      // `last breath`/`die`, fired from inside `performAttack`'s own
+      // callback: a plain function, so these cannot suspend -- their
+      // messages are collected and shown after the attack animation
+      // (`takeDeferredInteractions`).
+      fire: (name, loc1, loc2) => this.eventPump.fire(name, loc1, loc2, undefined, this.collectResponder),
+    });
+    yield* this.eventPump.pumpFlow();
+
+    // A unit that has fought is done moving (`attack::perform` spends the
+    // weapon's `movement_used`, which defaults to all of it).
+    if (!result.attackerDied) attacker.movesLeft = 0;
+
+    // Advancement comes right after the exchange, before any victory check
+    // (`attack_unit_and_advance`) -- the unit landing the winning kill still levels.
+    if (!result.attackerDied) this.queueAdvancement(attacker);
+    if (!result.defenderDied) this.queueAdvancement(defender);
+    this.processAdvancementQueue(action.rec, action.source ? action : null);
+
+    if (result.defenderDied || result.attackerDied) this.checkForGameEnd();
+    return {
+      attacker,
+      attackerWeaponIndex: cmd.weapon,
+      defender,
+      defenderWeaponIndex: cmd.defenderWeapon,
+      result,
+      attackerHitpointsBefore,
+      defenderHitpointsBefore,
+      attackerTypeId,
+      defenderTypeId,
+      attackerLocation: attackerLoc,
+      defenderLocation: defenderLoc,
+    };
+  }
+
+  /** `[recruit]` (`recruit_unit`): a new unit of `type` at `loc`, called by the leader at `from`. */
+  private *execRecruit(cmd: RecruitCommand, action: ActionState): Flow<{ result: PlaceRecruitResult; leader: Unit } | null> {
+    const team = this.board.getTeam(this.activeSide);
+    const from = locOf(cmd.from);
+    const loc = locOf(cmd.loc);
+    const leader = this.board.unitAt(from);
+    if (!team || !leader) return this.reject(action, `recruiting leader not found at ${from}`);
+    if (this.board.hasUnitAt(loc)) return this.reject(action, `cannot recruit onto ${loc}: occupied`);
+    let type: UnitType;
+    try {
+      type = this.resolveType(cmd.type);
+    } catch {
+      return this.reject(action, `recruiting illegal unit '${cmd.type}'`);
+    }
+    const result = recruitUnit(this.board, team, type, loc, from, this.rng, this.raiseEvent);
+    action.steps.push({ kind: 'recruit', unit: result.unit, side: team.side, loc, cost: result.cost });
+    // The new unit appears before the `recruit` event's own dialogue --
+    // same reasoning as the walk in `execMove`.
+    if (action.present) yield { kind: 'beat', beat: { kind: 'unitAppear', unit: result.unit, by: leader } };
+    this.eventPump.raise('recruit', loc, from);
+    yield* this.pumpEventsFlow();
+    return { result, leader };
+  }
+
+  /** Finds a recall-list unit by the command's index (when the unit there still matches) or else by id. */
+  private recallIndexFor(side: number, id: string, index: number | undefined): number {
+    const list = this.board.recallList(side);
+    if (index !== undefined && list[index] && (id === '' || list[index]!.id === id)) return index;
+    return id === '' ? -1 : list.findIndex((u) => u.id === id);
+  }
+
+  /** `[recall]` (`recall_unit`): brings a recall-list unit back onto `loc`. */
+  private *execRecall(cmd: RecallCommand, action: ActionState): Flow<{ result: PlaceRecruitResult; leader: Unit } | null> {
+    const team = this.board.getTeam(this.activeSide);
+    const from = locOf(cmd.from);
+    const loc = locOf(cmd.loc);
+    const leader = this.board.unitAt(from);
+    if (!team || !leader) return this.reject(action, `recalling leader not found at ${from}`);
+    const index = this.recallIndexFor(team.side, cmd.id, cmd.index);
+    const unit = this.board.recallList(team.side)[index];
+    if (!unit) return this.reject(action, `illegal recall: unit '${cmd.id}' not on the recall list`);
+    if (this.board.hasUnitAt(loc)) return this.reject(action, `cannot recall onto ${loc}: occupied`);
+    this.board.removeFromRecallListAt(team.side, index);
+    const result = recallUnit(this.board, team, unit, loc, from, undefined, this.raiseEvent);
+    action.steps.push({ kind: 'recall', unit, side: team.side, loc, cost: result.cost, index });
+    if (action.present) yield { kind: 'beat', beat: { kind: 'unitAppear', unit: result.unit, by: leader } };
+    this.eventPump.raise('recall', loc, from);
+    yield* this.pumpEventsFlow();
+    return { result, leader };
+  }
+
+  /** `[disband]`: dismisses a recall-list unit for good (undoable, `undo::dismiss_action`). */
+  private execDisband(cmd: DisbandCommand, action: ActionState): Unit | null {
+    const side = this.activeSide;
+    const index = this.recallIndexFor(side, cmd.id, cmd.index);
+    const unit = index >= 0 ? dismissUnitAt(this.board, side, index) : undefined;
+    if (!unit) return this.reject(action, `illegal disband of '${cmd.id}'`);
+    action.steps.push({ kind: 'dismiss', unit, side, index });
+    return unit;
+  }
+
+  /** This port's `[stop_unit]`: the AI giving up a unit's remaining moves and/or attacks. */
+  private execStopUnit(cmd: StopUnitCommand, action: ActionState): boolean | null {
+    const unit = this.board.unitAt(locOf(cmd.loc));
+    if (!unit) return this.reject(action, `no unit to stop at ${locOf(cmd.loc)}`);
+    if (cmd.movement) unit.movesLeft = 0;
+    if (cmd.attacks) unit.attacksLeft = 0;
+    return true;
+  }
+
+  /**
+   * `[fire_event] raise="menu item <id>"`: runs a `[set_menu_item]`'s
+   * `[command]` at the clicked hex, as the event upstream fires for it --
+   * so, like any event, it makes the action non-undoable unless it says
+   * `[allow_undo]`.
+   */
+  private *execFireEvent(cmd: FireEventCommand, action: ActionState): Flow<string | null> {
+    const prefix = 'menu item ';
+    const id = cmd.raise.startsWith(prefix) ? cmd.raise.slice(prefix.length) : null;
+    const def = id !== null ? this.eventPump.ctx.menuItems.get(id) : undefined;
+    if (!def) return this.reject(action, `no menu item for event '${cmd.raise}'`);
+    const loc = cmd.source ? locOf(cmd.source) : Location.NULL;
+    yield* this.eventPump.runAsHandlerFlow(def.command, loc, Location.NULL);
+    this.checkForGameEnd();
+    return def.description;
+  }
+
+  /** `[start]`: `prestart`, every side's initial shroud clearing, then `start` (`play_controller::start_game`). */
+  private *execStart(): Flow<void> {
+    // `[delay]` does nothing before the scenario starts, as upstream --
+    // an opening cutscene's scripted pauses must not stall startup.
+    this.eventPump.ctx.gameStarted = false;
+    yield* this.fireFlow('prestart');
+    // play_controller::init: every side's shroud is cleared from its starting units, without sighted events.
+    for (const team of this.board.teams()) clearShroud(this.board, team.side);
+    this.eventPump.ctx.gameStarted = true;
+    yield* this.fireFlow('start');
+    this.checkForGameEnd();
+  }
+
+  /** The side after `side` in turn order, and whether reaching it starts a new turn. */
+  private sideAfter(side: number): { next: number; wrapped: boolean } | null {
+    const sides = this.board
+      .teams()
+      .map((t) => t.side)
+      .sort((a, b) => a - b);
+    const idx = sides.indexOf(side);
+    const wrapped = idx === -1 || idx === sides.length - 1;
+    const next = wrapped ? sides[0] : sides[idx + 1];
+    return next === undefined ? null : { next, wrapped };
+  }
+
+  /**
+   * `[end_turn]`: the ending side's turn-end events (`finish_side_turn_events`),
+   * the turn-end ones when the turn wraps (`finish_turn`), then the next
+   * side becomes active. Never undoable.
+   */
+  private *execEndTurn(action: ActionState): Flow<void> {
+    action.undoBlocked = true;
+    yield* this.fireSideTurnEndEvents(this.activeSide);
+    if (this.scenarioResult) return;
+    const order = this.sideAfter(this.activeSide);
+    if (!order) return;
+    if (order.wrapped) {
+      yield* this.fireFlow('turn end');
+      yield* this.fireFlow(`turn ${this.turnNumber} end`);
+      this.checkForGameEnd();
+      if (this.scenarioResult) return;
+      this.turnNumber += 1;
+    }
+    this.setActiveSide(order.next);
+  }
+
+  /** Heal outcomes collected across one `endTurn()` call, for `lastHealAnimations`. */
+  private healOutcomeSink: HealOutcome[] | null = null;
+
+  /**
+   * `[init_side]` (`play_controller::do_init_side`): the side-turn events,
+   * then -- from turn 2 -- refreshed units, income and upkeep, then healing
+   * (every side turn but the scenario's first), then the `turn refresh`
+   * events. Never undoable.
+   */
+  private *execInitSide(side: number, action: ActionState): Flow<void> {
+    action.undoBlocked = true;
+    if (side !== this.activeSide) {
+      if (action.source) this.reportSync(action, `[init_side] for side ${side}, but side ${this.activeSide} is playing`);
+      this.setActiveSide(side);
+    }
+    yield* this.fireSideTurnEvents(side);
+    this.checkForGameEnd();
+    if (this.scenarioResult) return;
+    if (this.turnNumber > 1) {
+      for (const unit of this.board.unitsForSide(side)) {
+        // unit::new_turn: full moves and attacks, and ambushers revealed last turn can hide again.
+        unit.movesLeft = unit.maxMoves;
+        unit.attacksLeft = unit.maxAttacksPerTurn;
+        unit.setStatus('uncovered', false);
+      }
+      // team::new_turn: income = income= + the hardcoded base + villages *
+      // village_gold; then upkeep (a unit's level, 0 for leaders) beyond
+      // what villages support (`play_controller.cpp`).
+      const team = this.board.getTeam(side);
+      if (team) {
+        team.applyIncome(this.totalIncomeFor(side));
+        const expense = this.upkeepExpenseFor(side);
+        if (expense > 0) team.spendGold(expense);
+      }
+    }
+    if (this.doHealing) {
+      // Rest/village healing, poison, and [heals]/[regenerate] (`calculate_healing`).
+      const healOutcomes = applySideHealing(this.board, side).filter((o) => o.amount !== 0 || o.curePoison);
+      for (const outcome of healOutcomes) {
+        const name = this.unitDisplayName(outcome.unit);
+        if (outcome.amount > 0) {
+          const healerNote = outcome.healers.length > 0 ? ` (${outcome.healers.map((h) => this.unitDisplayName(h)).join(', ')})` : '';
+          this.log.unshift(`${name} heals ${outcome.amount} HP${healerNote}.`);
+        } else if (outcome.amount < 0) {
+          this.log.unshift(`${name} takes ${-outcome.amount} poison damage.`);
+        }
+        if (outcome.curePoison) this.log.unshift(`${name}'s poison is cured.`);
+      }
+      this.healOutcomeSink?.push(...healOutcomes);
+    }
+    // "Do healing on every side turn except the very first side turn."
+    this.doHealing = true;
+    // "Set resting now after the healing has been done": a unit that rests
+    // this turn earns the rest-heal at the start of its next one.
+    for (const unit of this.board.unitsForSide(side)) unit.resting = true;
+    yield* this.fireTurnRefreshEvents(side);
+  }
+
+  /** The AI's actions as synced commands (see `AiCommandHost`), run synchronously through the same executors. */
+  private aiCommands(): AiCommandHost {
+    const run = <T>(command: SyncedCommand, exec: (action: ActionState) => Flow<T>): T | null =>
+      runFlow(this.runSynced(command, exec), this.collectResponder);
+    return {
+      move: (unit, path) => {
+        if (path.length < 2) return performMove(this.board, unit, path, { raise: this.raiseEvent, viewingTeam: this.board.getTeam(unit.side) });
+        const cmd: MoveCommand = { kind: 'move', steps: path.map(hexOf) };
+        const done = run(cmd, (action) => this.execMove(cmd, action));
+        if (!done) throw new Error(`AI move from ${path[0]} was refused`);
+        return done.outcome;
+      },
+      attack: (attackerLoc, weapon, defenderLoc, defenderWeapon) => {
+        const def = defenderWeapon ?? resolveDefenderWeaponIndex(this.board, attackerLoc, weapon, defenderLoc, this.attackOptions(attackerLoc, defenderLoc));
+        const cmd = this.attackCommand(attackerLoc, weapon, defenderLoc, def);
+        return run(cmd, (action) => this.execAttack(cmd, action))?.result ?? null;
+      },
+      recruit: (team, type, loc, from) => {
+        const cmd: RecruitCommand = { kind: 'recruit', type: type.id, loc: hexOf(loc), from: hexOf(from) };
+        const done = run(cmd, (action) => this.execRecruit(cmd, action));
+        if (!done) throw new Error(`AI recruit of ${type.id} for side ${team.side} was refused`);
+        return done.result;
+      },
+      recall: (team, unit, loc, from) => {
+        const index = this.board.recallList(team.side).indexOf(unit);
+        const cmd: RecallCommand = { kind: 'recall', id: unit.id, index, loc: hexOf(loc), from: hexOf(from) };
+        const done = run(cmd, (action) => this.execRecall(cmd, action));
+        if (!done) throw new Error(`AI recall of ${unit.id || unit.type.id} for side ${team.side} was refused`);
+        return done.result;
+      },
+      stopUnit: (unit, movement, attacks) => {
+        const cmd: StopUnitCommand = { kind: 'stop_unit', loc: hexOf(unit.location), movement, attacks };
+        run(cmd, (action) => this.syncFlow(() => this.execStopUnit(cmd, action)));
+      },
+    };
   }
 
   private *fireFlow(name: string, loc1?: Location, loc2?: Location): Flow {
@@ -1799,8 +2502,19 @@ export class GameSession {
   dismissRecallUnit(index: number): void {
     const leader = this.recruitingLeader;
     if (!leader) return;
-    const removed = dismissUnitAt(this.board, leader.side, index);
+    const unit = this.board.recallList(leader.side)[index];
+    if (!unit) return;
+    const cmd: DisbandCommand = { kind: 'disband', id: unit.id, index };
+    const removed = runFlow(
+      this.runSynced(cmd, (action) => this.syncFlow(() => this.execDisband(cmd, action))),
+      this.collectResponder,
+    );
     if (removed && this.pendingRecallIndex === index) this.pendingRecallIndex = null;
+  }
+
+  /** A plain function as a (never-suspending) flow, for commands whose executor has nothing to wait for. */
+  private *syncFlow<T>(f: () => T): Flow<T> {
+    return f();
   }
 
   /** Real Wesnoth's recall-dialog "Rename" action: sets a recall-list unit's display name directly (`Unit.name` is plain mutable data -- no engine action needed). No-op if `name` is empty (a blank name isn't a real rename, just noise). */
@@ -1854,16 +2568,11 @@ export class GameSession {
     if (team.gold < cost) {
       return `Not enough gold to recruit ${name} (needs ${cost}, have ${team.gold}).`;
     }
-    const type = this.resolveType(typeId);
-    const leaderLocation = leader.location;
-    const result = recruitUnit(this.board, team, type, loc, leaderLocation, this.rng, this.raiseEvent);
-    const message = `Recruited ${name} for ${result.cost} gold.`;
+    const cmd: RecruitCommand = { kind: 'recruit', type: typeId, loc: hexOf(loc), from: hexOf(leader.location) };
+    const done = yield* this.runSynced(cmd, (action) => this.execRecruit(cmd, action), { present: true });
+    if (!done) return `Cannot recruit ${name} there.`;
+    const message = `Recruited ${name} for ${done.result.cost} gold.`;
     this.log.unshift(message);
-    // The new unit appears before the `recruit` event's own dialogue --
-    // same reasoning as the walk in `moveSelectedTo`.
-    yield { kind: 'beat', beat: { kind: 'unitAppear', unit: result.unit, by: leader } };
-    this.eventPump.raise('recruit', loc, leader.location);
-    yield* this.pumpEventsFlow();
     return message;
   }
 
@@ -1893,19 +2602,14 @@ export class GameSession {
     if (team.gold < cost) {
       return `Not enough gold to recall ${name} (needs ${cost}, have ${team.gold}).`;
     }
-    // `list` is the board's own live recall-list array (see `GameBoard.recallList`'s
-    // doc comment), so splicing it directly removes exactly the entry the
-    // player selected -- deliberately not `removeFromRecallList`'s
-    // `underlyingId` lookup, which is unsafe here (see `RecallOption.index`'s
-    // own doc comment on why: most recall-list units share `underlyingId=0`).
-    list.splice(index, 1);
-    const leaderLocation = leader.location;
-    const result = recallUnit(this.board, team, unit, loc, leaderLocation, undefined, this.raiseEvent);
-    const message = `Recalled ${name} for ${result.cost} gold.`;
+    // The recall-list position is recorded alongside the id: most of this
+    // port's recall-list units share `underlyingId=0` and may lack an id,
+    // so the index is what reliably names the unit the player picked.
+    const cmd: RecallCommand = { kind: 'recall', id: unit.id, index, loc: hexOf(loc), from: hexOf(leader.location) };
+    const done = yield* this.runSynced(cmd, (action) => this.execRecall(cmd, action), { present: true });
+    if (!done) return `Cannot recall ${name} there.`;
+    const message = `Recalled ${name} for ${done.result.cost} gold.`;
     this.log.unshift(message);
-    yield { kind: 'beat', beat: { kind: 'unitAppear', unit: result.unit, by: leader } };
-    this.eventPump.raise('recall', loc, leader.location);
-    yield* this.pumpEventsFlow();
     return message;
   }
 
@@ -1936,7 +2640,16 @@ export class GameSession {
   private *endTurnFlow(maxAiSideTurns: number): Flow<string> {
     const aiAnimations: AiAnimationEvent[] = [];
     const healOutcomes: HealOutcome[] = [];
-    let message = yield* this.advanceOneTurn(healOutcomes);
+    this.healOutcomeSink = healOutcomes;
+    try {
+      return yield* this.endTurnLoop(maxAiSideTurns, aiAnimations, healOutcomes);
+    } finally {
+      this.healOutcomeSink = null;
+    }
+  }
+
+  private *endTurnLoop(maxAiSideTurns: number, aiAnimations: AiAnimationEvent[], healOutcomes: HealOutcome[]): Flow<string> {
+    let message = yield* this.advanceOneTurn();
     if (!message) return '';
     // Auto-play consecutive AI-controlled sides. Bounded by `sides.length`
     // guard-multiples rather than true unbounded recursion, so a
@@ -1953,7 +2666,7 @@ export class GameSession {
       if (!team || (team.controller !== 'ai' && team.controller !== 'network_ai')) break;
       this.playAiSide(this.activeSide, aiAnimations);
       if (this.scenarioResult) break;
-      const next = yield* this.advanceOneTurn(healOutcomes);
+      const next = yield* this.advanceOneTurn();
       if (!next) break;
       message = next;
     }
@@ -1990,110 +2703,23 @@ export class GameSession {
   }
 
   /**
-   * Advances `activeSide` to the next side in turn order (wrapping back to
-   * the lowest side, which is also when `turnNumber` increments),
-   * refreshing that side's units' moves/attacks to full, applying income/
-   * upkeep and the real healing pass, and logging/returning the new
-   * turn's banner message. Pulled out of `endTurn` so it can be called
-   * once per side-turn, including once per AI side `endTurn` auto-plays
-   * through -- see `endTurn`'s own doc comment. Any real heal/poison
-   * outcomes this side-transition's turn-start healing pass produced are
-   * appended to `outHealOutcomes` (see `lastHealAnimations`'s own doc
-   * comment), mirroring `playAiSide`'s identical `outAnimations` pattern.
+   * Ends the active side's turn and starts the next side's, as the two
+   * synced commands upstream records for it -- `[end_turn]` (turn-end
+   * events, and the turn counter when it wraps) then `[init_side]` (turn
+   * events, refresh, income, healing -- see `execInitSide`). Returns the new
+   * turn's banner message, or `null` if the scenario ended on the way.
+   * Heal outcomes go to `healOutcomeSink` (see `lastHealAnimations`).
    */
-  private *advanceOneTurn(outHealOutcomes: HealOutcome[]): Flow<string | null> {
+  private *advanceOneTurn(): Flow<string | null> {
     if (this.scenarioResult) return null;
     this.clearSelection();
-    yield* this.fireSideTurnEndEvents(this.activeSide);
+    yield* this.runSynced({ kind: 'end_turn', nextSide: this.activeSide + 1 }, (action) => this.execEndTurn(action));
     if (this.scenarioResult) return null;
-    const sides = this.board
-      .teams()
-      .map((t) => t.side)
-      .sort((a, b) => a - b);
-    const idx = sides.indexOf(this.activeSide);
-    const wrapped = idx === -1 || idx === sides.length - 1;
-    const nextSide = wrapped ? sides[0] : sides[idx + 1];
-    if (nextSide === undefined) return null;
-    if (wrapped) {
-      yield* this.fireFlow('turn end');
-      yield* this.fireFlow(`turn ${this.turnNumber} end`);
-      this.checkForGameEnd();
-      if (this.scenarioResult) return null;
-      this.turnNumber += 1;
-    }
-    this.setActiveSide(nextSide);
-    yield* this.fireSideTurnEvents(nextSide);
-    this.checkForGameEnd();
+    const side = this.activeSide;
+    yield* this.runSynced({ kind: 'init_side', side }, (action) => this.execInitSide(side, action));
     if (this.scenarioResult) return null;
-    for (const unit of this.board.unitsForSide(nextSide)) {
-      unit.movesLeft = unit.maxMoves;
-      unit.attacksLeft = unit.maxAttacksPerTurn;
-      // unit::new_turn: ambushers revealed last turn can hide again.
-      unit.setStatus('uncovered', false);
-    }
-    // Income/upkeep: mirrors `play_controller::play_side`'s
-    // `if (turn() > 1) { current_team().new_turn(); ... }` -- the very
-    // first turn of the whole game (turn 1, every side's first go) grants
-    // no income and charges no upkeep; from turn 2 onward, a side's gold
-    // is adjusted the moment its turn begins. `team::new_turn` itself is
-    // `gold += total_income()` where `total_income() = base_income() +
-    // villages*village_gold`, and `base_income() = income= (raw WML,
-    // default 0) + game_config::base_income` (a hardcoded 2, NOT
-    // WML-configurable upstream -- see wesnoth/src/game_config.cpp).
-    // Upkeep separately mirrors `play_controller.cpp`'s
-    // `expense = side_upkeep - support(); if (expense > 0) spend_gold(expense)`:
-    // `side_upkeep` sums `unit::upkeep()` (a unit's level, or 0 for a
-    // leader -- `can_recruit()` -- per `unit.cpp`), and `support()` is
-    // `villages * village_support`.
-    if (this.turnNumber > 1) {
-      const team = this.board.getTeam(nextSide);
-      if (team) {
-        team.applyIncome(this.totalIncomeFor(nextSide));
-        const expense = this.upkeepExpenseFor(nextSide);
-        if (expense > 0) team.spendGold(expense);
-      }
-    }
-    // Rest/village healing, poison damage, and real heals=/regenerate=
-    // ability healing: mirrors `play_controller.cpp`'s
-    // `if (do_healing()) { calculate_healing(current_side(), ...); }`.
-    // Unlike income above, this is NOT gated on `turnNumber > 1` --
-    // upstream's own `do_healing()` flag starts false and is set true
-    // right after the very first check, so only the whole game's very
-    // first side-turn (side 1, turn 1 -- the state this session starts in
-    // BEFORE any endTurn() call) is exempt; every side reached via an
-    // actual endTurn() call, including side 2's own first turn, gets a
-    // real healing pass. `applySideHealing` (`actions/heal.ts`) covers
-    // rest heal, village heal, poison damage/curing, and real `[heals]`/
-    // `[regenerate]` ability healing in one real-content-driven pass.
-    const healOutcomes = applySideHealing(this.board, nextSide).filter((o) => o.amount !== 0 || o.curePoison);
-    for (const outcome of healOutcomes) {
-      const name = this.unitDisplayName(outcome.unit);
-      if (outcome.amount > 0) {
-        const healerNote = outcome.healers.length > 0 ? ` (${outcome.healers.map((h) => this.unitDisplayName(h)).join(', ')})` : '';
-        this.log.unshift(`${name} heals ${outcome.amount} HP${healerNote}.`);
-      } else if (outcome.amount < 0) {
-        this.log.unshift(`${name} takes ${-outcome.amount} poison damage.`);
-      }
-      if (outcome.curePoison) this.log.unshift(`${name}'s poison is cured.`);
-    }
-    outHealOutcomes.push(...healOutcomes);
-    // "Set resting now after the healing has been done" (play_controller.cpp):
-    // each unit's `resting` flag reflects whether it moved/attacked during
-    // its OWN just-finished turn (moving sets it false in executeMove,
-    // attacking sets it false in executeAttack), and the healing pass just
-    // above already consumed that value. Reset it true for every one of
-    // this side's units now, so a unit that rests THIS turn earns the
-    // heal at the START OF ITS NEXT turn -- real, reported bug: units that
-    // neither moved nor attacked never got the rest-heal, because nothing
-    // in this engine ever set `resting` true in the first place (it starts
-    // false and combat.ts only ever clears it further).
-    for (const unit of this.board.unitsForSide(nextSide)) {
-      unit.resting = true;
-    }
-    yield* this.fireTurnRefreshEvents(nextSide);
-    if (this.scenarioResult) return null;
-    const teamName = this.board.getTeam(nextSide)?.teamName ?? String(nextSide);
-    const message = `Turn ${this.turnNumber} -- side ${nextSide} (${teamName})'s turn.`;
+    const teamName = this.board.getTeam(side)?.teamName ?? String(side);
+    const message = `Turn ${this.turnNumber} -- side ${side} (${teamName})'s turn.`;
     this.log.unshift(message);
     return message;
   }
@@ -2376,11 +3002,7 @@ export class GameSession {
     const unit = this.selectedUnit;
     if (!unit) return null;
     const route = findPath(this.board, unit, dest);
-    if (route.steps.length === 0) return null;
-    // performMove owns the executeMove + capture/moveto choreography (see
-    // its own doc comment -- extracted for Phase 29 so the AI's own moves
-    // get the same events).
-    const { result } = performMove(this.board, unit, route.steps, { raise: this.raiseEvent });
+    if (route.steps.length < 2) return null;
     // Deselect before the walk, not after it. Upstream does exactly this
     // (`mouse_handler::move_unit_along_current_route`: "do not show
     // footsteps during movement" / "do not keep the hex highlighted that
@@ -2390,18 +3012,20 @@ export class GameSession {
     // sat on the map, anchored to the hex it had left, for the whole
     // walk. Re-selected below only when the move was cut short.
     this.clearSelection();
-    // Phase 17: the walk is a cutscene beat like any other, so it plays
-    // *before* whatever the `moveto`/`sighted` events it triggers have to
-    // say -- the pump below would otherwise reach their dialogue while
-    // the unit was still standing at its old hex on screen.
-    if (result.path.length > 1) yield { kind: 'beat', beat: { kind: 'moveUnit', unit, path: result.path } };
+    // Phase 18b: the move runs as a synced `[move]` command -- recorded,
+    // undoable when nothing was revealed, and the same executor the AI, a
+    // replay and a redo use. It yields the walk beat and pumps the
+    // `moveto`/`sighted` events itself.
+    const cmd: MoveCommand = { kind: 'move', steps: route.steps.map(hexOf) };
+    const done = yield* this.runSynced(cmd, (action) => this.execMove(cmd, action), { present: true });
+    if (!done) return null;
+    const result = done.outcome.result;
     const name = this.unitDisplayName(unit);
     const message = result.ambushed
       ? `${name} was ambushed!`
       : result.sightedStop
         ? `${name} stopped: units sighted.`
         : `${name} moved.`;
-    yield* this.pumpEventsFlow();
     if (this.scenarioResult || this.board.unitAt(unit.location) !== unit) {
       this.clearSelection();
       this.log.unshift(message);
@@ -2542,59 +3166,19 @@ export class GameSession {
     const pending = this.pendingAttack;
     if (!pending) return null;
 
-    const attackerLoc = pending.attacker.location;
-    const defenderLoc = pending.defender.location;
-    yield* this.fireFlow('attack', attackerLoc, defenderLoc);
-    this.checkForGameEnd();
-    if (this.scenarioResult || this.board.unitAt(attackerLoc) !== pending.attacker || this.board.unitAt(defenderLoc) !== pending.defender) {
+    // Phase 18b: one synced `[attack]` command -- the `attack` event, the
+    // exchange, advancement and the victory check all happen inside it
+    // (`execAttack`), exactly as for the AI, a replay and a redo.
+    const cmd = this.attackCommand(pending.attacker.location, pending.attackerWeaponIndex, pending.defender.location, pending.defenderWeaponIndex);
+    const logBefore = this.log.length;
+    const animation = yield* this.runSynced(cmd, (action) => this.execAttack(cmd, action), { present: true });
+    if (!animation) {
       // The attack event ended the scenario or moved/removed a combatant: upstream aborts the attack.
       this.clearSelection();
       return null;
     }
-
-    // Captured now, before executeAttack (below) mutates either unit's
-    // hitpoints -- a caller stepping through result.blows to preview the
-    // HP bar per blow (real, reported bug: it only ever updated once, at
-    // the very end) needs the PRE-combat totals to run its own per-blow
-    // arithmetic forward from, the same way attackerTypeId/defenderTypeId
-    // below need the pre-advancement type ids.
-    const attackerHitpointsBefore = pending.attacker.hitpoints;
-    const defenderHitpointsBefore = pending.defender.hitpoints;
-
-    // performAttack owns the executeAttack + last breath/die/attack end
-    // choreography (see its own doc comment -- extracted for Phase 29 so
-    // the AI's own attacks get the same events); firing 'attack' itself,
-    // the abort check above, and pumping afterward stay here since they
-    // need this session's own scenarioResult/event-pump state.
-    const result = performAttack(this.board, this.rng, attackerLoc, pending.attackerWeaponIndex, defenderLoc, pending.defenderWeaponIndex, {
-      attackerLawfulBonus: this.timeOfDayAt(attackerLoc).lawfulBonus,
-      defenderLawfulBonus: this.timeOfDayAt(defenderLoc).lawfulBonus,
-      maxLiminalBonus: this.schedule.maxLiminalBonus,
-      resolveType: this.resolveType,
-      raise: this.raiseEvent,
-      // `last breath`/`die`, fired from inside `performAttack`'s own
-      // callback: a plain function, so these cannot suspend -- their
-      // messages are collected and shown after the attack animation
-      // (`takeDeferredInteractions`).
-      fire: (name, loc1, loc2) => this.eventPump.fire(name, loc1, loc2, undefined, this.collectResponder),
-    });
-    yield* this.eventPump.pumpFlow();
-
-    this.lastAttackAnimation = {
-      attacker: pending.attacker,
-      attackerWeaponIndex: pending.attackerWeaponIndex,
-      defender: pending.defender,
-      defenderWeaponIndex: pending.defenderWeaponIndex,
-      result,
-      attackerHitpointsBefore,
-      defenderHitpointsBefore,
-      // Captured now, before advancement (below) can mutate either unit's
-      // `.type` -- see LastAttackAnimation.attackerTypeId's own doc comment.
-      attackerTypeId: pending.attacker.type.id,
-      defenderTypeId: pending.defender.type.id,
-      attackerLocation: attackerLoc,
-      defenderLocation: defenderLoc,
-    };
+    this.lastAttackAnimation = animation;
+    const { result } = animation;
 
     const attackerName = pending.preview.attacker.name;
     const defenderName = pending.preview.defender.name;
@@ -2603,47 +3187,14 @@ export class GameSession {
     if (result.defenderDied) message += ` ${defenderName} was slain!`;
     if (result.attackerDied) message += ` ${attackerName} was slain!`;
 
-    // One log line per blow, in the order they actually happened -- not
-    // just a "N/M landed" summary. `log` is most-recent-first (see its own
-    // doc comment), so blows are unshifted in chronological order: the
-    // LAST blow to happen ends up closest to the top, the FIRST blow ends
-    // up at the bottom of this group, and the overall summary (unshifted
-    // last, below) sits above all of them as the most-recent entry. This
-    // is also groundwork for animation (Phase 10): once real per-blow
-    // animation playback exists, this is the same ordered sequence it'll
-    // need to step through.
-    for (const blow of result.blows) {
-      this.log.unshift(this.formatBlowMessage(blow, attackerName, defenderName));
-    }
-    this.log.unshift(message);
-    // A unit that has fought is done acting for this turn: real Wesnoth
-    // zeroes an attacker's remaining movement after any attack (`attack.
-    // cpp`'s `attack::execute` calls `set_movement(movement_left() -
-    // movement_used())`, and `[attack] movement_used=` defaults to 100000
-    // -- effectively "all of it," clamped to 0 by `unit::set_movement` --
-    // for every weapon that doesn't explicitly override it, which none of
-    // this project's real content does). This was previously only
-    // *simulated* by deselecting the unit (see the comment that used to be
-    // here, which claimed this without actually doing it) -- the unit's
-    // own `movesLeft` was untouched, so re-selecting it after an attack
-    // still showed (and allowed using) its real leftover movement. Real,
-    // reported bug.
-    if (!result.attackerDied) pending.attacker.movesLeft = 0;
+    // One log line per blow, in the order they happened, under the summary
+    // -- and both under anything the command logged itself (an advancement,
+    // the victory line), which happened after the exchange. `log` is
+    // most-recent-first, so the first blow ends up lowest.
+    const loggedByCommand = this.log.length - logBefore;
+    const lines = [message, ...result.blows.map((blow) => this.formatBlowMessage(blow, attackerName, defenderName)).reverse()];
+    this.log.splice(loggedByCommand, 0, ...lines);
     this.clearSelection();
-    // Only combat can kill a unit in this project today (recruiting/moving
-    // cannot), so this is the one place a victory/defeat check is needed --
-    // checkForGameEnd() overwrites the log's top entry with the outcome
-    // message if the scenario just ended, on top of the combat message
-    // above (both stay in `log`, most-recent-first).
-    // Real Wesnoth checks both combatants for advancement right after the
-    // exchange (`attack_unit_and_advance`, actions/attack.cpp), before any
-    // victory check -- a unit that just landed the kill needed to end the
-    // scenario still gets to level up first.
-    if (!result.attackerDied) this.queueAdvancement(pending.attacker);
-    if (!result.defenderDied) this.queueAdvancement(pending.defender);
-    this.processAdvancementQueue();
-
-    if (result.defenderDied || result.attackerDied) this.checkForGameEnd();
     return this.scenarioResult ? this.log[0]! : message;
   }
 
@@ -2656,63 +3207,91 @@ export class GameSession {
     if (unit.advances()) this.advancementQueue.push(unit);
   }
 
+  /** Whether an AI plays `side` (its units' advancement choices are the AI's, not the player's). */
+  private isAiSide(side: number): boolean {
+    const controller = this.board.getTeam(side)?.controller;
+    return controller === 'ai' || controller === 'network_ai';
+  }
+
   /**
    * Drains `advancementQueue`: a unit with exactly one real
    * `advances_to=` option advances immediately (no choice to make,
    * matching upstream -- the dialog only ever appears for an actual
    * choice), and -- since overflow XP can cascade straight into ANOTHER
    * advancement (`Unit.advanceTo` carries it over) -- is re-queued if it
-   * still qualifies afterward. A unit with 2+ options instead sets
-   * `pendingAdvancement` and stops draining; `chooseAdvancement` resumes
-   * the drain once the player picks.
+   * still qualifies afterward.
+   *
+   * A real choice is recorded as a dependent `[choose] value=` of the
+   * attack that caused it (`rec`), as upstream's `get_user_choice("choose")`.
+   * Replaying (`replay` set), it is read back from the log instead. An AI
+   * side's unit chooses at random from the unsynced stream (upstream's AI
+   * advancement choice is not synced randomness either). A player's unit
+   * sets `pendingAdvancement` and stops draining; `chooseAdvancement`
+   * records the answer and resumes.
    */
-  private processAdvancementQueue(): void {
+  private processAdvancementQueue(rec: RecordedCommand | null, replay: ActionState | null): void {
     while (this.advancementQueue.length > 0) {
       const unit = this.advancementQueue.shift()!;
       if (!unit.advances()) continue; // healed/demoted by something else in between -- no longer eligible.
       const optionIds = unit.type.advancesTo;
-      if (optionIds.length === 1) {
-        const before = unit.type.name;
-        const result = advanceUnitTo(unit, this.resolveType(optionIds[0]!));
-        this.log.unshift(`${before} advances to ${result.unit.type.name}!`);
-        if (result.canAdvanceAgain) this.advancementQueue.unshift(unit);
-        continue;
+      let index = 0;
+      if (optionIds.length > 1) {
+        if (replay) {
+          const dep = this.takeDependent(replay, 'choose');
+          if (dep) replay.rec.dependents.push(dep);
+          index = dep && dep.value >= 0 && dep.value < optionIds.length ? dep.value : 0;
+        } else if (this.isAiSide(unit.side)) {
+          index = this.rng.unsynced.getNextRandom() % optionIds.length;
+          rec?.dependents.push({ kind: 'choose', value: index, side: unit.side });
+        } else {
+          const options = optionIds.map((id) => this.resolveType(id));
+          this.advancementRec = rec;
+          this.pendingAdvancement = {
+            unit,
+            options,
+            unitInfo: this.unitInfo(unit),
+            optionInfos: options.map((type) => ({
+              typeId: type.id,
+              name: type.name,
+              level: type.level,
+              hitpoints: type.hitpoints,
+              image: this.snapshot.unitTypes[type.id]?.image ?? null,
+              attacks: type.attacks.map(buildWeaponInfo),
+            })),
+          };
+          return;
+        }
       }
-      const options = optionIds.map((id) => this.resolveType(id));
-      this.pendingAdvancement = {
-        unit,
-        options,
-        unitInfo: this.unitInfo(unit),
-        optionInfos: options.map((type) => ({
-          typeId: type.id,
-          name: type.name,
-          level: type.level,
-          hitpoints: type.hitpoints,
-          image: this.snapshot.unitTypes[type.id]?.image ?? null,
-          attacks: type.attacks.map(buildWeaponInfo),
-        })),
-      };
-      return;
+      const before = unit.type.name;
+      const result = advanceUnitTo(unit, this.resolveType(optionIds[index]!));
+      this.log.unshift(`${before} advances to ${result.unit.type.name}!`);
+      if (result.canAdvanceAgain) this.advancementQueue.unshift(unit);
     }
+    // Choices made after the action ended change what it left behind.
+    if (!this.action && rec) rec.digest = this.stateDigest();
   }
 
   /**
    * Resolves the current `pendingAdvancement` to `typeId` (must be one of
-   * its own `options`), logs it, and resumes draining the advancement
-   * queue (the same unit re-queues itself if overflow XP lets it advance
-   * again immediately).
+   * its own `options`), records it as the attack's `[choose]`, logs it, and
+   * resumes draining the advancement queue (the same unit re-queues itself
+   * if overflow XP lets it advance again immediately).
    */
   chooseAdvancement(typeId: string): void {
     const pending = this.pendingAdvancement;
     if (!pending) return;
-    const chosen = pending.options.find((t) => t.id === typeId);
+    const index = pending.options.findIndex((t) => t.id === typeId);
+    const chosen = pending.options[index];
     if (!chosen) return;
+    const rec = this.advancementRec;
+    rec?.dependents.push({ kind: 'choose', value: index, side: pending.unit.side });
+    this.advancementRec = null;
     const before = pending.unit.type.name;
     const result = advanceUnitTo(pending.unit, chosen);
     this.log.unshift(`${before} advances to ${result.unit.type.name}!`);
     this.pendingAdvancement = null;
     if (result.canAdvanceAgain) this.advancementQueue.unshift(pending.unit);
-    this.processAdvancementQueue();
+    this.processAdvancementQueue(rec, null);
   }
 
   /**
@@ -2737,6 +3316,10 @@ export class GameSession {
       goldCarryover: this.goldCarryover,
       tunnels: this.board.tunnels.toConfigs().map((c) => c.toJSON()),
       nextTeleportGroupId: this.board.tunnels.nextTeleportGroupId,
+      randomMode: this.rng.mode,
+      doHealing: this.doHealing,
+      ...(this.replayStartData ? { replay: { start: this.replayStartData, commands: this.recorder.toJSON() } } : {}),
+      undoStack: this.saveUndoStack(),
       teams: this.board.teams().map((t) => ({
         side: t.side,
         gold: t.gold,
@@ -2793,6 +3376,14 @@ export class GameSession {
     if (data.rng) this.mtRng.seedRandom(data.rng.seed, data.rng.calls);
     if (data.goldCarryover !== undefined) this.goldCarryover = data.goldCarryover;
     this.board.tunnels.loadConfigs((data.tunnels ?? []).map((c) => WmlConfig.fromJSON(c)), data.nextTeleportGroupId ?? 0);
+    this.rng.mode = data.randomMode ?? 'per_action';
+    this.doHealing = data.doHealing ?? data.startupEventsRun;
+    this.replayStartData = data.replay?.start ?? null;
+    this.recorder.replaceAll(data.replay?.commands ?? []);
+    this.syncIssues.length = 0;
+    this.pendingAdvancement = null;
+    this.advancementQueue.length = 0;
+    this.advancementRec = null;
     this.turnNumber = data.turnNumber;
     this.setActiveSide(data.activeSide);
     this.scenarioResult = data.scenarioResult;
@@ -2804,6 +3395,205 @@ export class GameSession {
     this.clearSelection();
     this.lastKnownVillageOwnerBySide.clear();
     this.syncVillageMemory();
+    this.restoreUndoStack(data.undoStack);
+  }
+
+  /** `[undo_stack]` as a save stores it -- units named by where they stand now. */
+  private saveUndoStack(): SavedUndoStack {
+    const hex = (loc: Location) => ({ x: loc.x, y: loc.y });
+    const saveStep = (step: UndoStep): SavedUndoStep => {
+      switch (step.kind) {
+        case 'move':
+          return { kind: 'move', route: step.route.map(hex), startingMoves: step.startingMoves, startingFacing: writeDirection(step.startingFacing) };
+        case 'take_village':
+          return { kind: 'take_village', loc: hex(step.loc), previousOwner: step.previousOwner };
+        case 'recruit':
+          return { kind: 'recruit', loc: hex(step.loc), side: step.side, cost: step.cost };
+        case 'recall':
+          return { kind: 'recall', loc: hex(step.loc), side: step.side, cost: step.cost, index: step.index };
+        case 'dismiss':
+          return { kind: 'dismiss', unit: savedUnitFields(step.unit), side: step.side, index: step.index };
+        case 'event':
+          return { kind: 'event', commands: step.commands.toJSON(), loc1: hex(step.loc1), loc2: hex(step.loc2) };
+        default: {
+          const exhaustive: never = step;
+          return exhaustive;
+        }
+      }
+    };
+    return {
+      undo: this.undoList.undoEntries.map((c) => ({ steps: c.steps.map(saveStep), command: cloneRecordedCommand(c.command) })),
+      redo: this.undoList.redoEntries.map(cloneRecordedCommand),
+    };
+  }
+
+  /**
+   * Rebuilds the undo stack from a save. A step whose unit is no longer
+   * where the save says makes the whole stack unusable, so it is dropped
+   * rather than risk undoing the wrong unit (upstream discards a stack it
+   * cannot read the same way).
+   */
+  private restoreUndoStack(saved: SavedUndoStack | undefined): void {
+    this.undoList.clear();
+    if (!saved) return;
+    const loc = (h: { x: number; y: number }) => new Location(h.x, h.y);
+    const unitAt = (h: { x: number; y: number }): Unit => {
+      const unit = this.board.unitAt(loc(h));
+      if (!unit) throw new Error(`no unit at ${loc(h)}`);
+      return unit;
+    };
+    try {
+      const undos = saved.undo.map((entry) => ({
+        command: cloneRecordedCommand(entry.command),
+        steps: entry.steps.map((step): UndoStep => {
+          switch (step.kind) {
+            case 'move':
+              return {
+                kind: 'move',
+                unit: unitAt(step.route[step.route.length - 1]!),
+                route: step.route.map(loc),
+                startingMoves: step.startingMoves,
+                startingFacing: parseDirection(step.startingFacing),
+              };
+            case 'take_village':
+              return { kind: 'take_village', loc: loc(step.loc), previousOwner: step.previousOwner };
+            case 'recruit':
+              return { kind: 'recruit', unit: unitAt(step.loc), loc: loc(step.loc), side: step.side, cost: step.cost };
+            case 'recall':
+              return { kind: 'recall', unit: unitAt(step.loc), loc: loc(step.loc), side: step.side, cost: step.cost, index: step.index };
+            case 'dismiss':
+              return { kind: 'dismiss', unit: this.unitFromSave(step.unit, Location.NULL), side: step.side, index: step.index };
+            case 'event':
+              return { kind: 'event', commands: WmlConfig.fromJSON(step.commands), loc1: loc(step.loc1), loc2: loc(step.loc2) };
+            default: {
+              const exhaustive: never = step;
+              return exhaustive;
+            }
+          }
+        }),
+      }));
+      this.undoList.restore(undos, saved.redo.map(cloneRecordedCommand));
+    } catch (e) {
+      this.eventPump.ctx.log('warn', `discarding the saved undo stack: ${(e as Error).message}`);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase 18b: undo, redo, replay
+  // ---------------------------------------------------------------------------
+
+  /** Whether the player can undo now: something on the stack, it is a human side's turn, nothing is running. */
+  get canUndo(): boolean {
+    return this.undoList.canUndo && this.canUseUndoStack();
+  }
+
+  get canRedo(): boolean {
+    return this.undoList.canRedo && this.canUseUndoStack();
+  }
+
+  private canUseUndoStack(): boolean {
+    return !this.scenarioResult && !this.action && !this.pendingAdvancement && !this.isAiSide(this.activeSide);
+  }
+
+  /**
+   * Undoes the newest undoable action (`undo_list::undo`): its steps run
+   * backwards, and its command leaves the log (`replay::undo_cut`) to wait
+   * on the redo stack. Returns a log line, or `null` if there was nothing
+   * to undo.
+   */
+  undo(): string | null {
+    if (!this.canUndo) return null;
+    const container = this.undoList.undo(this.board, (step) => {
+      runFlow(this.eventPump.runAsHandlerFlow(step.commands, step.loc1, step.loc2), this.collectResponder);
+    });
+    if (!container) return null;
+    const log = this.recorder.commands;
+    if (log[log.length - 1] === container.command) this.recorder.cutLast();
+    else this.recorder.replaceAll(log.filter((c) => c !== container.command));
+    this.clearSelection();
+    this.syncVillageMemory();
+    const message = `Undid ${describeCommand(container.command.command)}.`;
+    this.log.unshift(message);
+    return message;
+  }
+
+  /**
+   * Redoes the newest undone action (`undo_list::redo`): its recorded
+   * command runs again through the normal executor, with its recorded
+   * dependents -- the same seeds, so a redone recruit gets the same traits.
+   */
+  async redo(): Promise<string | null> {
+    if (!this.canRedo) return null;
+    const rec = this.undoList.takeRedo();
+    if (!rec) return null;
+    this.clearSelection();
+    this.redoing = true;
+    try {
+      await this.drive(this.runSynced(rec.command, (action) => this.execCommand(rec.command, action), { source: rec.dependents, present: true }));
+    } finally {
+      this.redoing = false;
+    }
+    const message = `Redid ${describeCommand(rec.command)}.`;
+    this.log.unshift(message);
+    return message;
+  }
+
+  /** The command log so far (upstream's `[replay]`). */
+  get replayLog(): readonly RecordedCommand[] {
+    return this.recorder.commands;
+  }
+
+  /** Where the log starts from: the scenario before its `start` command. `null` until startup has run (or for an older save). */
+  get replayStart(): SaveGameData | null {
+    return this.replayStartData;
+  }
+
+  /**
+   * Replays one recorded command on this session (which must be at the
+   * state the log reached just before it): runs it with its recorded
+   * dependents and, when the record carries a digest, checks the state it
+   * leaves behind. Anything that does not match lands in `syncIssues`.
+   * Returns whether the command ran.
+   */
+  *replayCommandFlow(rec: RecordedCommand, present = false): Flow<boolean> {
+    if (rec.command.kind === 'start') this.startupEventsRun = true;
+    const before = this.syncIssues.length;
+    const done = yield* this.runSynced(rec.command, (action) => this.execCommand(rec.command, action), { source: rec.dependents, present });
+    const mine = this.recorder.last();
+    if (done !== null && rec.digest !== undefined && mine && mine.digest !== rec.digest && this.syncIssues.length === before) {
+      this.syncIssues.push({
+        index: this.recorder.length - 1,
+        command: rec.command.kind,
+        message: 'the state after this command differs from the recorded game',
+      });
+    }
+    if (rec.command.kind === 'init_side' && this.recorder.commands.filter((c) => c.command.kind === 'init_side').length === 1) {
+      this.captureStartObjectives();
+    }
+    return done !== null;
+  }
+
+  /** `replayCommandFlow` headless: interactions answered from the log or automatically, nothing shown. */
+  replayCommand(rec: RecordedCommand): boolean {
+    return runFlow(this.replayCommandFlow(rec, false), this.collectResponder);
+  }
+
+  /** `replayCommandFlow` driven through `interactionHost`, so the replay viewer shows walks, attacks and dialogue. */
+  async replayCommandShown(rec: RecordedCommand): Promise<boolean> {
+    return this.drive(this.replayCommandFlow(rec, true));
+  }
+
+  /**
+   * A session at the start of `data`'s replay, ready for `replayCommand`
+   * (`null` if the save has no replay). Runs with the save's random mode and
+   * never draws a fresh seed unless the log runs out, which is itself
+   * reported as a divergence.
+   */
+  static forReplay(snapshot: GameBoardSnapshot, data: SaveGameData, options: GameSessionOptions = {}): GameSession | null {
+    if (!data.replay) return null;
+    const session = GameSession.fromSaveData(snapshot, data.replay.start, { ...options, randomMode: data.randomMode ?? 'per_action' });
+    session.replayStartData = data.replay.start;
+    return session;
   }
 
   /**

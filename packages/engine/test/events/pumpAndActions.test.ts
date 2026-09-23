@@ -521,3 +521,97 @@ describe('EventPump + action WML (synthetic content)', () => {
     });
   });
 });
+
+describe('undo tracking ([allow_undo]/[disallow_undo]/[on_undo], pump.cpp context::state)', () => {
+  function withEvents(wml: string) {
+    const board = makeBoard();
+    const { manager, pump } = makePump(board);
+    for (const ev of parseWml(wml).children('event')) manager.addFromWml(ev);
+    return pump;
+  }
+
+  it('an event handler that runs disables undo; one that filters out or does not exist does not', () => {
+    const pump = withEvents(`
+      [event]
+        name=ran
+        [set_variable]
+          name=x
+          value=1
+        [/set_variable]
+      [/event]
+      [event]
+        name=filtered
+        [filter_condition]
+          [variable]
+            name=never
+            equals=yes
+          [/variable]
+        [/filter_condition]
+      [/event]
+    `);
+    pump.fire('nobody_listens');
+    expect(pump.takeUndoDisabled()).toBe(false);
+    pump.fire('filtered');
+    expect(pump.takeUndoDisabled()).toBe(false);
+    pump.fire('ran');
+    expect(pump.takeUndoDisabled()).toBe(true);
+    expect(pump.takeUndoDisabled()).toBe(false); // reset by the read
+  });
+
+  it('[allow_undo] keeps its handler undoable, [disallow_undo] takes that back, and nested events still count', () => {
+    const pump = withEvents(`
+      [event]
+        name=allowed
+        [allow_undo][/allow_undo]
+      [/event]
+      [event]
+        name=allowed_then_not
+        [allow_undo][/allow_undo]
+        [disallow_undo][/disallow_undo]
+      [/event]
+      [event]
+        name=allowed_but_nested
+        [allow_undo][/allow_undo]
+        [fire_event]
+          name=inner
+        [/fire_event]
+      [/event]
+      [event]
+        name=inner
+        first_time_only=no
+      [/event]
+    `);
+    pump.fire('allowed');
+    expect(pump.takeUndoDisabled()).toBe(false);
+    pump.fire('allowed_then_not');
+    expect(pump.takeUndoDisabled()).toBe(true);
+    pump.fire('allowed_but_nested');
+    expect(pump.takeUndoDisabled()).toBe(true);
+  });
+
+  it('[on_undo] hands its body to the host, variables substituted unless delayed', () => {
+    const pump = withEvents(`
+      [event]
+        name=go
+        [on_undo]
+          [set_variable]
+            name=a
+            value=$who
+          [/set_variable]
+        [/on_undo]
+        [on_undo]
+          delayed_variable_substitution=yes
+          [set_variable]
+            name=b
+            value=$who
+          [/set_variable]
+        [/on_undo]
+      [/event]
+    `);
+    const bodies: string[] = [];
+    pump.ctx.addUndoCommands = (cfg) => bodies.push(cfg.child('set_variable')!.getString('value'));
+    pump.ctx.variables.set('who', 'Kai');
+    pump.fire('go');
+    expect(bodies).toEqual(['Kai', '$who']);
+  });
+});

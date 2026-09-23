@@ -1,5 +1,5 @@
 // Phase 29: the real RCA candidate-action framework (replaced the Phase 7 heuristic, simpleAi.ts, as of S5).
-export type { AiAction, AiActionKind, AiAnimationEvent, AiHost } from './types.js';
+export type { AiAction, AiActionKind, AiAnimationEvent, AiHost, AiCommandHost } from './types.js';
 export { AiContext } from './context.js';
 export { calculateMoves, type CalculateMovesOptions, type CalculatedMoves, type MoveMap } from './moveMaps.js';
 export { powerProjection, bestDefensivePosition, type PowerProjectionContext, type DefensivePosition } from './powerProjection.js';

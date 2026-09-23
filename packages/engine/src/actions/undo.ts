@@ -1,156 +1,207 @@
 /**
- * Undo stack for the actions in this directory. Loosely mirrors upstream's
- * `actions/undo.cpp`/`undo_action.hpp` family (`undo_action_container` plus
- * one `undo_action` subclass per action type: `move_action`,
- * `recruit_action`, `recall_action`, `dismiss_action`), but takes a
- * deliberately simpler shape rather than replicating the C++ inheritance
- * hierarchy 1:1 -- see "Design choice" below.
+ * Undo and redo (Phase 18b), after upstream's `actions/undo.cpp` family:
+ * each undoable action is an `UndoContainer` of *steps* recorded while it
+ * ran (`undo_action_container`) -- the move itself, the village it took
+ * (`take_village_step`), the recruit or recall, a dismissal, and any
+ * `[on_undo]` WML an event attached (`undo_event`). Undoing runs the steps
+ * backwards. Redo does not invert anything: it re-runs the command the
+ * undone action was recorded as, with its recorded dependents (seeds,
+ * choices), through the normal command executor (`undo_list::redo` ->
+ * `synced_context::run`) -- which is why the redo stack holds
+ * `RecordedCommand`s rather than steps.
  *
- * ## Design choice
+ * What makes an action *not* undoable is decided by the executor, as
+ * upstream's `synced_context::block_undo` calls are: an attack, any random
+ * draw, a fog or shroud reveal, an ambush or a failed teleport, any event
+ * that ran without `[allow_undo]`, a turn change. A non-undoable action
+ * clears the whole stack (`undo_list::finish_action(false)` -> `clear()`),
+ * and every new action clears the redo stack (`init_action`).
  *
- * Upstream's `undo_action` is a polymorphic base class (`virtual bool
- * undo(int side)`, `virtual void write(config&)`) with one subclass per
- * action, each subclass a `.hpp`/`.cpp` pair, plus a `t_factory_map`
- * self-registration mechanism (`subaction_factory<T>`) so `undo_action_
- * container::read` can reconstruct the right subclass from a saved
- * `config`. That machinery exists because C++ needs virtual dispatch and
- * upstream also uses these same objects for save-game serialization
- * (`write`/the `config`-based constructor) and multiplayer's shroud-
- * clearing bookkeeping (`shroud_clearing_action`, not ported here -- see
- * `move.ts`/`recruit.ts`'s module doc comments on fog/shroud being out of
- * scope throughout this port).
- *
- * None of that is needed here: a plain discriminated union
- * (`UndoAction`) plus a `switch` in `UndoStack.undo()` gives the same
- * "each action type knows how to invert itself" property with far less
- * ceremony, is trivially serializable as plain data (JSON-friendly, no
- * factory registration needed) if a future save-game format wants it, and
- * needs no forward-declared base class for a family of exactly four
- * variants. If this grows a fifth/sixth undo-able action type later,
- * adding a union member is strictly additive.
- *
- * **Attacks are not undoable** (there is no `undo_attack_action` upstream
- * either, for the same reason: combat consumes real randomness, so
- * "undoing" it would mean un-observing an RNG draw, which upstream instead
- * handles by clearing the whole undo stack the moment an action that
- * consumes randomness or otherwise can't be cleanly inverted occurs --
- * mirrored here by `UndoStack.blockFurtherUndo()`, which callers should
- * invoke after `combat.ts`'s `executeAttack`, matching `synced_context::
- * block_undo`'s real-world effect of preventing undo past that point).
+ * Not ported: delayed shroud updates (`auto_shroud_updates=no`,
+ * `shroud_clearing_action`, `commit_vision`) -- this port always updates
+ * fog and shroud as a unit moves, so the moves that reveal something are
+ * simply not undoable, which is the same rule upstream applies with
+ * automatic updates on.
  */
 
 import type { Location, Direction } from '../model/Location.js';
 import type { GameBoard } from '../model/GameBoard.js';
 import type { Unit } from '../model/Unit.js';
+import type { WmlConfig } from '../wml/config.js';
+import type { RecordedCommand } from './synced.js';
 
-export interface MoveUndoAction {
+/** `undo::move_action`: the route actually walked, and the unit's state before it. */
+export interface MoveUndoStep {
   readonly kind: 'move';
   readonly unit: Unit;
-  readonly from: Location;
-  readonly to: Location;
+  /** The hexes entered, starting hex first. */
+  readonly route: readonly Location[];
   readonly startingMoves: number;
   readonly startingFacing: Direction;
 }
 
-export interface RecruitUndoAction {
+/** `take_village_step`: the village's owner before the move took it (0 = nobody). */
+export interface TakeVillageUndoStep {
+  readonly kind: 'take_village';
+  readonly loc: Location;
+  readonly previousOwner: number;
+}
+
+/** `undo::recruit_action`: removes the recruit and refunds its cost. */
+export interface RecruitUndoStep {
   readonly kind: 'recruit';
   readonly unit: Unit;
   readonly side: number;
-  readonly at: Location;
+  readonly loc: Location;
   readonly cost: number;
 }
 
-export interface RecallUndoAction {
+/** `undo::recall_action`: returns the unit to the recall-list slot it came from and refunds the cost. */
+export interface RecallUndoStep {
   readonly kind: 'recall';
   readonly unit: Unit;
   readonly side: number;
-  readonly at: Location;
+  readonly loc: Location;
   readonly cost: number;
+  readonly index: number;
 }
 
-export interface DismissUndoAction {
+/** `undo::dismiss_action`: puts a dismissed unit back on the recall list. */
+export interface DismissUndoStep {
   readonly kind: 'dismiss';
   readonly unit: Unit;
   readonly side: number;
+  readonly index: number;
 }
 
-export type UndoAction = MoveUndoAction | RecruitUndoAction | RecallUndoAction | DismissUndoAction;
+/** `undo_event`: `[on_undo]` WML, run with the firing event's locations as `$x1,$y1`/`$x2,$y2`. */
+export interface EventUndoStep {
+  readonly kind: 'event';
+  readonly commands: WmlConfig;
+  readonly loc1: Location;
+  readonly loc2: Location;
+}
+
+export type UndoStep = MoveUndoStep | TakeVillageUndoStep | RecruitUndoStep | RecallUndoStep | DismissUndoStep | EventUndoStep;
+
+/** One undoable action: its steps, and the command it was recorded as (for redo). */
+export interface UndoContainer {
+  readonly steps: UndoStep[];
+  readonly command: RecordedCommand;
+}
+
+/** Runs an `[on_undo]` body; supplied by whoever owns the event pump. */
+export type UndoEventRunner = (step: EventUndoStep) => void;
 
 /**
- * A per-side undo stack. Callers are responsible for pushing an
- * `UndoAction` after each undoable action they perform (`move.ts`/
- * `recruit.ts` return everything an undo record needs, but don't push one
- * themselves -- constructing the record is the caller's job, matching how
- * upstream's own call sites, not `move_unit`/`place_recruit` themselves,
- * call `resources::undo_stack->add_move`/`add_recruit`/`add_recall`).
+ * Inverts one step against `board`. Returns false when the board no longer
+ * matches what the step expects (upstream: "Illegal 'undo' found. Possible
+ * abuse of [allow_undo]?"), in which case the undo is abandoned.
  */
-export class UndoStack {
-  private readonly stack: UndoAction[] = [];
-  private blocked = false;
+function undoStep(board: GameBoard, step: UndoStep, runEvent: UndoEventRunner): boolean {
+  switch (step.kind) {
+    case 'move': {
+      const start = step.route[0];
+      const end = step.route[step.route.length - 1];
+      if (!start || !end) return false;
+      if (board.unitAt(end) !== step.unit || (board.hasUnitAt(start) && !start.equals(end))) return false;
+      board.moveUnit(end, start);
+      step.unit.movesLeft = step.startingMoves;
+      step.unit.facing = step.startingFacing;
+      step.unit.goto = undefined;
+      return true;
+    }
+    case 'take_village':
+      board.captureVillage(step.loc, step.previousOwner);
+      return true;
+    case 'recruit': {
+      if (board.unitAt(step.loc) !== step.unit) return false;
+      board.removeUnitAt(step.loc);
+      board.getTeam(step.side)?.spendGold(-step.cost);
+      return true;
+    }
+    case 'recall': {
+      if (board.unitAt(step.loc) !== step.unit) return false;
+      board.removeUnitAt(step.loc);
+      board.getTeam(step.side)?.spendGold(-step.cost);
+      board.insertIntoRecallList(step.side, step.unit, step.index);
+      return true;
+    }
+    case 'dismiss':
+      board.insertIntoRecallList(step.side, step.unit, step.index);
+      return true;
+    case 'event':
+      runEvent(step);
+      return true;
+    default: {
+      const exhaustive: never = step;
+      return exhaustive;
+    }
+  }
+}
 
-  push(action: UndoAction): void {
-    this.stack.push(action);
+/** `actions::undo_list`: the undo and redo stacks of the side whose turn it is. */
+export class UndoList {
+  private readonly undos: UndoContainer[] = [];
+  private readonly redos: RecordedCommand[] = [];
+
+  get canUndo(): boolean {
+    return this.undos.length > 0;
   }
 
-  canUndo(): boolean {
-    return !this.blocked && this.stack.length > 0;
+  get canRedo(): boolean {
+    return this.redos.length > 0;
   }
 
-  peek(): UndoAction | undefined {
-    return this.stack[this.stack.length - 1];
+  get undoEntries(): readonly UndoContainer[] {
+    return this.undos;
   }
 
-  /** Mirrors `synced_context::block_undo`'s effect: call after any non-undoable action (chiefly `combat.ts`'s `executeAttack`). */
-  blockFurtherUndo(): void {
-    this.blocked = true;
-    this.stack.length = 0;
+  get redoEntries(): readonly RecordedCommand[] {
+    return this.redos;
   }
 
+  /** `finish_action(true)`: an undoable action completed. Steps-less actions (a menu item that did nothing) are dropped, as `cleanup_action`. */
+  push(container: UndoContainer): void {
+    if (container.steps.length === 0) return;
+    this.undos.push(container);
+  }
+
+  /** `init_action`: a new action invalidates what could be redone. */
+  clearRedo(): void {
+    this.redos.length = 0;
+  }
+
+  /** `undo_list::clear`: after an action that cannot be undone, nothing before it can be either. */
   clear(): void {
-    this.blocked = false;
-    this.stack.length = 0;
+    this.undos.length = 0;
+    this.redos.length = 0;
   }
 
   /**
-   * Pops and inverts the most recent action against `board`, mirroring
-   * `undo_action_container::undo`. Returns `false` (leaving the stack
-   * unchanged) if there is nothing to undo.
+   * Undoes the newest action (`undo_list::undo`), returning it -- the caller
+   * cuts its command from the log. `null` when there is nothing to undo or
+   * the board no longer allows it.
    */
-  undo(board: GameBoard): boolean {
-    if (!this.canUndo()) return false;
-    const action = this.stack.pop()!;
-    switch (action.kind) {
-      case 'move': {
-        board.moveUnit(action.to, action.from);
-        action.unit.movesLeft = action.startingMoves;
-        action.unit.facing = action.startingFacing;
-        return true;
-      }
-      case 'recruit': {
-        board.removeUnitAt(action.at);
-        const team = board.getTeam(action.side);
-        if (team) team.gold += action.cost;
-        return true;
-      }
-      case 'recall': {
-        board.removeUnitAt(action.at);
-        const team = board.getTeam(action.side);
-        if (team) team.gold += action.cost;
-        board.addToRecallList(action.side, action.unit);
-        return true;
-      }
-      case 'dismiss': {
-        // `GameBoard` only exposes appending to a recall list, not inserting
-        // at an index, so undo restores the unit but not necessarily its
-        // original position in the list (a minor, honestly-documented gap
-        // rather than a `model/`-layer change this task is out of bounds to make).
-        board.addToRecallList(action.side, action.unit);
-        return true;
-      }
-      default: {
-        const exhaustive: never = action;
-        return exhaustive;
-      }
+  undo(board: GameBoard, runEvent: UndoEventRunner): UndoContainer | null {
+    const container = this.undos[this.undos.length - 1];
+    if (!container) return null;
+    for (let i = container.steps.length - 1; i >= 0; i--) {
+      if (!undoStep(board, container.steps[i]!, runEvent)) return null;
     }
+    this.undos.pop();
+    this.redos.push(container.command);
+    return container;
+  }
+
+  /** Takes the newest undone command off the redo stack for the caller to re-run (`undo_list::redo`). */
+  takeRedo(): RecordedCommand | null {
+    return this.redos.pop() ?? null;
+  }
+
+  /** Re-populates both stacks (a loaded save's `[undo_stack]`). */
+  restore(undos: readonly UndoContainer[], redos: readonly RecordedCommand[]): void {
+    this.undos.splice(0, this.undos.length, ...undos);
+    this.redos.splice(0, this.redos.length, ...redos);
   }
 }

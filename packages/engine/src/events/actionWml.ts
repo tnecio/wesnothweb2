@@ -1396,6 +1396,32 @@ function* actionFireEvent(cfg: WmlConfig, ctx: EventContext): Flow {
   yield* ctx.fireNow(name, filterLoc('primary_unit'), filterLoc('secondary_unit'), data, id);
 }
 
+/** `[allow_undo]` (`wml-tags.lua`): this event did nothing an undo would have to take back. */
+function actionAllowUndo(_cfg: WmlConfig, ctx: EventContext): void {
+  ctx.setUndoable(true);
+}
+
+/** `[disallow_undo]`: the opposite, for an event that already allowed it. */
+function actionDisallowUndo(_cfg: WmlConfig, ctx: EventContext): void {
+  ctx.setUndoable(false);
+}
+
+/**
+ * `[on_undo]`: WML to run if the action behind this event is undone
+ * (`wesnoth.experimental.game_events.add_undo_actions`). Variables are
+ * substituted now unless `delayed_variable_substitution=yes`, as upstream's
+ * `wml.parsed`/`wml.literal` split. It does not by itself allow undo --
+ * an event pairing it with `[allow_undo]` is what makes an action undoable.
+ */
+function actionOnUndo(cfg: WmlConfig, ctx: EventContext): void {
+  if (!ctx.addUndoCommands) {
+    ctx.log('debug', '[on_undo]: no undo stack in this context');
+    return;
+  }
+  const body = cfg.getBoolean('delayed_variable_substitution', false) ? cfg.clone() : ctx.variables.expandConfigDeep(cfg);
+  ctx.addUndoCommands(body);
+}
+
 /**
  * Builds a fresh registry with every action tag this module implements
  * (plus the presentation no-ops and extension-point placeholders)
@@ -1437,6 +1463,9 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('set_menu_item', actionSetMenuItem);
   registry.register('clear_menu_item', actionClearMenuItem);
   registry.register('fire_event', actionFireEvent);
+  registry.register('allow_undo', actionAllowUndo);
+  registry.register('disallow_undo', actionDisallowUndo);
+  registry.register('on_undo', actionOnUndo);
   registerFlowActions((tag, handler) => registry.register(tag, handler));
 
   for (const tag of ['music', 'sound', 'redraw', 'highlight', 'floating_text', 'label', 'select_unit', 'unit_overlay', 'remove_unit_overlay']) {

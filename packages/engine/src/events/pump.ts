@@ -145,6 +145,16 @@ export class EventPump {
   private queue: QueuedEvent[] = [];
   /** How many `pumpFlow` calls are on the stack: 1 is a top-level drain, more means `fireNow` nested into one. */
   private nesting = 0;
+  /**
+   * Upstream's per-context `undo_disabled` flags (`pump.cpp`'s
+   * `context::state`): every handler that passes its filter runs in a new
+   * context that starts disabled, `[allow_undo]`/`[disallow_undo]` set the
+   * innermost one, and a context's flag ORs into its parent when it ends.
+   * The bottom entry collects everything since `takeUndoDisabled` last
+   * reset it -- the synced action's own answer to "did an event change
+   * something undo can't take back?".
+   */
+  private readonly undoDisabled: boolean[] = [false];
   readonly ctx: EventContext;
 
   constructor(
@@ -172,6 +182,9 @@ export class EventPump {
       fireNow: (name, loc1 = Location.NULL, loc2 = Location.NULL, data = new WmlConfig(), id = '') =>
         this.fireNowFlow(name, loc1, loc2, data, id),
       skipMessages: false,
+      setUndoable: (undoable) => {
+        this.undoDisabled[this.undoDisabled.length - 1] = !undoable;
+      },
       gameStarted: true,
       log: options.log ?? (() => {}),
     };
@@ -183,6 +196,13 @@ export class EventPump {
 
   raiseById(name: string, id: string, loc1: Location = Location.NULL, loc2: Location = Location.NULL, data: WmlConfig = new WmlConfig()): void {
     this.queue.push({ name: standardizeEventName(name), id, loc1, loc2, data });
+  }
+
+  /** Whether any event handler ran since the last call without `[allow_undo]`; resets the flag. */
+  takeUndoDisabled(): boolean {
+    const disabled = this.undoDisabled[0]!;
+    this.undoDisabled[0] = false;
+    return disabled;
   }
 
   /**
@@ -214,6 +234,34 @@ export class EventPump {
     } finally {
       this.queue = outer;
     }
+  }
+
+  /**
+   * Runs `cfg` the way an event handler's body runs -- event locations set,
+   * `$x1`/`$y1`/`$x2`/`$y2` bound, its own undo context -- then drains
+   * whatever it raised. For a `[set_menu_item]`'s `[command]`, which
+   * upstream fires as the event `menu item <id>` rather than calling directly.
+   */
+  *runAsHandlerFlow(cfg: WmlConfig, loc1: Location, loc2: Location): Flow {
+    this.ctx.loc1 = loc1;
+    this.ctx.loc2 = loc2;
+    this.ctx.eventData = new WmlConfig();
+    this.ctx.exit = { type: 'none' };
+    this.ctx.variables.set('x1', loc1.valid() ? loc1.wmlX : 0);
+    this.ctx.variables.set('y1', loc1.valid() ? loc1.wmlY : 0);
+    this.ctx.variables.set('x2', loc2.valid() ? loc2.wmlX : 0);
+    this.ctx.variables.set('y2', loc2.valid() ? loc2.wmlY : 0);
+    const outerSkip = this.ctx.skipMessages;
+    this.ctx.skipMessages = false;
+    this.undoDisabled.push(true);
+    try {
+      yield* runActionFlow(cfg, this.ctx);
+    } finally {
+      this.ctx.skipMessages = outerSkip;
+      const disabled = this.undoDisabled.pop()!;
+      this.undoDisabled[this.undoDisabled.length - 1] ||= disabled;
+    }
+    yield* this.pumpFlow();
   }
 
   /**
@@ -284,10 +332,13 @@ export class EventPump {
     // got there through `fireNow`.
     const outerSkip = this.ctx.skipMessages;
     if (this.nesting <= 1) this.ctx.skipMessages = false;
+    this.undoDisabled.push(true);
     try {
       yield* runActionFlow(handler.rawCfg, this.ctx);
     } finally {
       this.ctx.skipMessages = outerSkip;
+      const disabled = this.undoDisabled.pop()!;
+      this.undoDisabled[this.undoDisabled.length - 1] ||= disabled;
     }
   }
 

@@ -594,7 +594,9 @@ describe('GameSession.toSaveData / loadSaveData (round-trip, see persistence.ts 
   });
 
   it('real, reported bug (save version 1): the RNG stream restarted on load, so post-load combat diverged from the game that was saved', async () => {
-    const session = new GameSession(loadSnapshot());
+    // The whole-game stream only advances in deterministic mode; per-action
+    // mode seeds each action afresh (see the Phase 18b tests).
+    const session = new GameSession(loadSnapshot(), { randomMode: 'deterministic' });
     await session.runStartupEvents();
     // Play a real turn so the stream has actually advanced: side 2 is
     // `controller=ai` here, and its recruiting/fighting draws randomness.
@@ -607,12 +609,15 @@ describe('GameSession.toSaveData / loadSaveData (round-trip, see persistence.ts 
     expect(saved.rng!.calls).toBeGreaterThan(0);
     // What the saved session itself would draw next...
     // @ts-expect-error -- private: this is exactly the stream a load has to resume.
-    const expectedDraws = [session.rng.nextRandom(), session.rng.nextRandom(), session.rng.nextRandom()];
+    const expectedDraws = [session.mtRng.getNextRandom(), session.mtRng.getNextRandom(), session.mtRng.getNextRandom()];
 
     const reloaded = new GameSession(loadSnapshot());
     reloaded.loadSaveData(saved);
+    // The save carries the mode with it.
     // @ts-expect-error -- private, as above.
-    const actualDraws = [reloaded.rng.nextRandom(), reloaded.rng.nextRandom(), reloaded.rng.nextRandom()];
+    expect(reloaded.rng.mode).toBe('deterministic');
+    // @ts-expect-error -- private, as above.
+    const actualDraws = [reloaded.mtRng.getNextRandom(), reloaded.mtRng.getNextRandom(), reloaded.mtRng.getNextRandom()];
 
     expect(actualDraws).toEqual(expectedDraws);
   });
@@ -1247,8 +1252,11 @@ describe('GameSession.endTurn applies real healing (rest/heals-ability/poison) -
     await session.endTurn(); // -> side 1 again, turn 2: Cylanna's real heals ability should now fire for real.
 
     expect(kaiKrellis.hitpoints).toBeGreaterThan(hpBefore);
-    expect(kaiKrellis.hitpoints).toBe(Math.min(kaiKrellis.maxHitpoints, hpBefore + 8)); // real heals_8 value.
-    expect(session.log.some((l) => l.includes('heals 8 HP') && l.includes('Cylanna'))).toBe(true);
+    // Real heals_8 value, plus the +2 rest heal: Kai stood still through turn
+    // 1, and upstream marks a side's units resting at every side-turn start,
+    // the scenario's first included (`do_init_side`).
+    expect(kaiKrellis.hitpoints).toBe(Math.min(kaiKrellis.maxHitpoints, hpBefore + 8 + 2));
+    expect(session.log.some((l) => l.includes('heals 10 HP') && l.includes('Cylanna'))).toBe(true);
   });
 });
 

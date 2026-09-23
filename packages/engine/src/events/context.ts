@@ -218,6 +218,18 @@ export interface EventContext {
    */
   skipMessages: boolean;
   /**
+   * `[allow_undo]`/`[disallow_undo]` (`wesnoth.experimental.game_events.
+   * set_undoable`): marks the running event handler as having (not) changed
+   * anything an undo would have to take back. See `EventPump.undoDisabled`.
+   */
+  setUndoable: (undoable: boolean) => void;
+  /**
+   * `[on_undo]`: WML to run if the action that fired this event is undone.
+   * Set by a host with an undo stack (`GameSession`); without one the tag
+   * logs and does nothing.
+   */
+  addUndoCommands?: (commands: WmlConfig) => void;
+  /**
    * False while the scenario's `prestart` (and anything before it) runs,
    * true once `start` has fired. Only `[delay]` reads it, mirroring
    * `intf_delay`'s own "do nothing during PRELOAD/PRESTART/INITIAL" guard

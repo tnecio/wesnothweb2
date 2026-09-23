@@ -8,7 +8,8 @@ import { Unit } from '../../src/model/Unit.js';
 import { UnitType, AttackType } from '../../src/model/UnitType.js';
 import { MoveType } from '../../src/model/MoveType.js';
 import { WmlConfig } from '../../src/wml/config.js';
-import { UndoStack } from '../../src/actions/undo.js';
+import { UndoList, type UndoStep } from '../../src/actions/undo.js';
+import type { RecordedCommand } from '../../src/actions/synced.js';
 
 function makeBoard() {
   const terrainData = TerrainTypeData.fromConfigs([]);
@@ -20,8 +21,16 @@ function makeBoard() {
   return { board, type, team: board.getTeam(1)! };
 }
 
-describe('UndoStack', () => {
-  it('inverts a move: restores location, moves-left, and facing', () => {
+const noEvents = () => {
+  throw new Error('no [on_undo] expected');
+};
+
+function container(steps: UndoStep[], side = 1): { steps: UndoStep[]; command: RecordedCommand } {
+  return { steps, command: { command: { kind: 'disband', id: 'x' }, side, dependents: [] } };
+}
+
+describe('UndoList', () => {
+  it('inverts a move: restores location, moves-left, facing, and the village it took', () => {
     const { board, type } = makeBoard();
     const from = Location.fromWml(1, 1);
     const to = Location.fromWml(2, 1);
@@ -30,21 +39,22 @@ describe('UndoStack', () => {
     unit.facing = Direction.North;
     board.addUnit(unit);
 
-    const stack = new UndoStack();
-    // Simulate the caller's side of a move: mutate, then push the inverse record.
+    const list = new UndoList();
     board.moveUnit(from, to);
     unit.movesLeft = 1;
     unit.facing = Direction.South;
-    stack.push({ kind: 'move', unit, from, to, startingMoves: 3, startingFacing: Direction.North });
+    list.push(container([{ kind: 'move', unit, route: [from, to], startingMoves: 3, startingFacing: Direction.North }]));
 
-    expect(stack.canUndo()).toBe(true);
-    const undone = stack.undo(board);
-    expect(undone).toBe(true);
+    expect(list.canUndo).toBe(true);
+    const undone = list.undo(board, noEvents);
+    expect(undone).not.toBeNull();
     expect(board.unitAt(from)).toBe(unit);
     expect(board.unitAt(to)).toBeUndefined();
     expect(unit.movesLeft).toBe(3);
     expect(unit.facing).toBe(Direction.North);
-    expect(stack.canUndo()).toBe(false);
+    expect(list.canUndo).toBe(false);
+    expect(list.canRedo).toBe(true);
+    expect(list.takeRedo()).toBe(undone!.command);
   });
 
   it('inverts a recruit: removes the unit and refunds gold', () => {
@@ -54,36 +64,84 @@ describe('UndoStack', () => {
     board.addUnit(unit);
     team.spendGold(15);
 
-    const stack = new UndoStack();
-    stack.push({ kind: 'recruit', unit, side: 1, at: loc, cost: 15 });
+    const list = new UndoList();
+    list.push(container([{ kind: 'recruit', unit, side: 1, loc, cost: 15 }]));
 
-    expect(stack.undo(board)).toBe(true);
+    expect(list.undo(board, noEvents)).not.toBeNull();
     expect(board.unitAt(loc)).toBeUndefined();
-    expect(team.gold).toBe(100); // refunded
+    expect(team.gold).toBe(100);
   });
 
-  it('returns false and changes nothing when the stack is empty', () => {
+  it('inverts a recall and a dismissal back into their original recall-list slots', () => {
+    const { board, type, team } = makeBoard();
+    const a = Unit.create(type, 1, Location.NULL, { id: 'a' });
+    const b = Unit.create(type, 1, Location.NULL, { id: 'b' });
+    const c = Unit.create(type, 1, Location.NULL, { id: 'c' });
+    board.addToRecallList(1, a);
+    board.addToRecallList(1, c);
+    const loc = Location.fromWml(3, 3);
+    b.location = loc;
+    board.addUnit(b);
+    team.spendGold(20);
+
+    const list = new UndoList();
+    list.push(container([{ kind: 'recall', unit: b, side: 1, loc, cost: 20, index: 1 }]));
+    expect(list.undo(board, noEvents)).not.toBeNull();
+    expect(board.recallList(1).map((u) => u.id)).toEqual(['a', 'b', 'c']);
+    expect(team.gold).toBe(100);
+
+    board.removeFromRecallListAt(1, 0);
+    list.push(container([{ kind: 'dismiss', unit: a, side: 1, index: 0 }]));
+    expect(list.undo(board, noEvents)).not.toBeNull();
+    expect(board.recallList(1).map((u) => u.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('runs [on_undo] steps last-to-first with the rest of the action', () => {
     const { board } = makeBoard();
-    const stack = new UndoStack();
-    expect(stack.undo(board)).toBe(false);
+    const seen: string[] = [];
+    const list = new UndoList();
+    const cfg = (n: string) => {
+      const c = new WmlConfig();
+      c.setAttribute('n', n);
+      return c;
+    };
+    list.push(
+      container([
+        { kind: 'event', commands: cfg('first'), loc1: Location.NULL, loc2: Location.NULL },
+        { kind: 'event', commands: cfg('second'), loc1: Location.NULL, loc2: Location.NULL },
+      ]),
+    );
+    list.undo(board, (step) => seen.push(step.commands.getString('n')));
+    expect(seen).toEqual(['second', 'first']);
   });
 
-  it('blockFurtherUndo clears the stack and prevents any further undo (mirrors combat consuming randomness)', () => {
+  it('refuses an undo the board no longer matches, leaving the stack alone', () => {
     const { board, type } = makeBoard();
     const from = Location.fromWml(1, 1);
     const to = Location.fromWml(2, 1);
-    const unit = Unit.create(type, 1, from);
+    const unit = Unit.create(type, 1, to);
     board.addUnit(unit);
+    board.addUnit(Unit.create(type, 1, from));
+    const list = new UndoList();
+    list.push(container([{ kind: 'move', unit, route: [from, to], startingMoves: 5, startingFacing: Direction.North }]));
+    expect(list.undo(board, noEvents)).toBeNull();
+    expect(list.canUndo).toBe(true);
+  });
 
-    const stack = new UndoStack();
-    board.moveUnit(from, to);
-    stack.push({ kind: 'move', unit, from, to, startingMoves: unit.movesLeft, startingFacing: unit.facing });
-    expect(stack.canUndo()).toBe(true);
+  it('drops step-less actions, and clear() empties both stacks', () => {
+    const { board, type } = makeBoard();
+    const list = new UndoList();
+    list.push(container([]));
+    expect(list.canUndo).toBe(false);
 
-    stack.blockFurtherUndo();
-    expect(stack.canUndo()).toBe(false);
-    expect(stack.undo(board)).toBe(false);
-    // The move from before the block must NOT be reverted.
-    expect(board.unitAt(to)).toBe(unit);
+    const loc = Location.fromWml(1, 1);
+    const unit = Unit.create(type, 1, loc);
+    board.addUnit(unit);
+    list.push(container([{ kind: 'recruit', unit, side: 1, loc, cost: 0 }]));
+    list.undo(board, noEvents);
+    list.push(container([{ kind: 'recruit', unit, side: 1, loc, cost: 0 }]));
+    expect(list.canUndo && list.canRedo).toBe(true);
+    list.clear();
+    expect(list.canUndo || list.canRedo).toBe(false);
   });
 });

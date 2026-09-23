@@ -413,4 +413,17 @@ export class VariableStore {
     }
     return out;
   }
+
+  /** `wml.parsed`: `expandConfig` applied through every nested child too -- for WML stored now and run later (`[on_undo]`). */
+  expandConfigDeep(cfg: WmlConfig): WmlConfig {
+    const out = new WmlConfig();
+    for (const name of cfg.attributeNames()) {
+      const v = cfg.get(name)!;
+      out.setAttribute(name, typeof v === 'string' ? this.substitute(v) : v);
+    }
+    for (const { tag, config } of cfg.allChildren()) {
+      out.addChild(tag, this.expandConfigDeep(config));
+    }
+    return out;
+  }
 }

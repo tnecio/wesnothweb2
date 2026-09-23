@@ -178,6 +178,16 @@ export class GameBoard {
     else this.recallLists.set(side, [unit]);
   }
 
+  /** Puts `unit` back at `index` of `side`'s recall list (clamped to its end) -- an undone recall or dismissal returns to the slot it came from. */
+  insertIntoRecallList(side: number, unit: Unit, index: number): void {
+    const list = this.recallLists.get(side);
+    if (!list) {
+      this.recallLists.set(side, [unit]);
+      return;
+    }
+    list.splice(Math.max(0, Math.min(index, list.length)), 0, unit);
+  }
+
   removeFromRecallList(side: number, underlyingId: number): Unit | undefined {
     const list = this.recallLists.get(side);
     if (!list) return undefined;
