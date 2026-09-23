@@ -1252,31 +1252,81 @@ the Abilities & Specials synthetic scenario.
 
 ## Phase 18b — Replay, undo & redo (split from Phase 25, 2026-09-23)
 
-**Status: not started; detailed plan to be written once Phase 18a is
-done** (user's call: moved ahead of Phases 18–25). What exists: the
-engine's `UndoStack` (`actions/undo.ts`: move/recruit/recall/dismiss,
-blocked by randomness), tested but not used by `GameSession`; the synced
-MT RNG with seed/call count in saves; `[option]` choices already
-recorded in upstream's `[input]` shape (Phase 17 E1).
+**Status: planned (2026-09-23), awaiting the user's go-ahead.**
 
-- Undo/redo in play: wire the `UndoStack` into `GameSession` (incl. fog
-  re-shroud and the `undoBlocked` cases `executeMove` already reports),
-  the redo stack (invalidated by any new action), upstream's `undo`/`redo`
-  hotkeys and menu entries.
-- Replay recording: every synced action (move/attack/recruit/recall/
-  end_turn/choose, incl. `[option]` choices and `rand=`) logged in order,
-  independent of the snapshot, so a scenario replays from its start to
-  identical state. Saves then carry a real `[replay]` (Phase 26 emits a
-  minimal one today).
-- Replay playback: a viewer to watch a scenario back (play/pause/step per
-  action/turn/side, skip animations).
-- Out-of-sync self-check: replay a recorded scenario and diff the final
-  state against the live run -- a regression test in its own right.
-- `[sync_variable]` correctness.
-- **Milestone**: a scripted scenario's full action sequence replays from a
-  recorded log to bit-identical final state; undo/redo of a move and a
-  recruit restores the exact prior state (gold, moves, fog); a save
-  downloaded mid-scenario carries a `[replay]` the real binary replays.
+### Where things stand
+
+| Fact | Consequence |
+|---|---|
+| Human actions go through `GameSession` (`performMove`, `confirmAttack`, `tryRecruitAt`/`tryRecallAt`, `dismissRecallUnit`, `endTurn`, `runMenuItem`); AI actions through `ai/context.ts`'s executors; both end in the same engine functions | One command layer under both is enough to record, replay and redo everything |
+| One `MtRng` stream for the whole game, saved as seed + call count | Replays work only if every draw happens in the same order; one divergent draw corrupts the rest of the game |
+| Upstream's default `random_mode` seeds a **fresh RNG per action**, lazily on its first draw, and records the seed as a dependent `[random_seed]` command | Replays are deterministic and a divergence stays inside one action -- and reloading before an attack gives a new roll, as in the real game |
+| Real saves: `[replay_start]` (scenario before prestart) + `[replay]` of `[command]`s -- `[move]` (steps), `[attack]` (source/destination/weapons), `[recruit]`/`[recall]`/`[disband]`, `[init_side]`, `[end_turn]`, `[fire_event]` (menu items), dependent `[random_seed]`/`[input]` | The log format to emit and read (`replay_helper.cpp`) |
+| `[checkup]` blocks are optional: a replayed command without one is simply not checked (`synced_checkup::local_checkup`) | Our exported replay can omit upstream checkups instead of matching its unit checksums exactly |
+| The engine's `UndoStack` (move/recruit/recall/dismiss) is tested but unused; upstream's undo is a container of *steps* per action (the move, `take_village_step` restoring an owner, `[on_undo]` events), blocked by randomness in deterministic mode, fog reveals, ambushes and any event that does something without `[allow_undo]` | The port's stack needs village restoration and event-aware blocking before it is wired in |
+| Upstream redo re-runs the undone action's recorded `[command]` (with its seed) through `synced_context::run` | Redo falls out of the command layer for free |
+| `wesnoth --load <save> --with-replay` replays a save's `[replay]` in the real binary (1.16.9 installed) | Export can be verified against the real game, as Phase 26 was |
+
+### Stages (one commit each, suites green, PROGRESS.md entry)
+
+- **R0 -- Synced command layer** (`engine/src/actions/synced.ts`, port of
+  `synced_commands.cpp`): a `SyncedCommand` union in upstream's `[command]`
+  shapes and one `runSyncedCommand` that executes it through the existing
+  engine functions. `GameSession` and the AI context route every
+  state-changing action through it. No behaviour change.
+- **R1 -- Per-action RNG** (`random_synced.cpp`): each command gets its own
+  MT stream, seeded lazily on the first draw from a seed source and
+  recorded; the whole-game stream stays for scenario setup and as a
+  `random_mode=deterministic` option (tests, AI benchmarks). Saves carry
+  `random_mode`. All in-action randomness (combat, traits, `rand=`,
+  `[option]`-driven branches) draws from the action RNG.
+- **R2 -- Recorder**: an ordered log of commands with their dependents
+  (seeds, `[option]`/`[text_input]` answers -- replacing Phase 17's
+  `choices` list) and a per-command state digest of our own (unit
+  positions/hp/xp, gold, RNG position) for out-of-sync checks. Saved in
+  `SaveGameData` together with the scenario-start state it replays from.
+- **R3 -- Headless replay + out-of-sync self-check**: rebuild the
+  scenario-start state, re-run the startup events feeding recorded
+  answers, apply commands one by one (`stepTo(n)`), compare digests. A
+  test harness replays any recorded session; the AI benchmark and the
+  synthetic scenarios become regression tests.
+- **R4 -- Undo/redo in play**: per-action undo containers (move with
+  village restore, recruit, recall, dismiss), blocked by attacks, fog or
+  shroud reveals, ambushes, teleport failures and events that fire without
+  `[allow_undo]`/`[on_undo]`; `[allow_undo]`/`[on_undo]`/`[on_redo]`
+  tags; the redo stack re-runs recorded commands with their seeds; undo
+  cuts the command from the log. Upstream hotkeys `u` (undo) and `r`
+  (redo), menu entries, and `[undo_stack]` in saves.
+- **R5 -- Replay viewer**: "Show replay" in the Load dialog (upstream's
+  checkbox) and at scenario end; controls as `replay_controller`: play,
+  pause, next move / side / turn, restart, skip animations, and the
+  viewpoint (one side or everything), on the normal board with normal
+  animations.
+- **R6 -- Wesnoth `[replay]`**: export the real command log (with
+  `[random_seed]`, `[input]`, `[init_side]`, `[end_turn]`) instead of
+  Phase 26's minimal one, and import one from a real save;
+  `[sync_variable]`.
+- **R7 -- Milestones and docs.**
+
+### Milestones
+
+1. A scripted scenario (synthetic combat/economy, then Dead Water 1 with
+   its AI side) replays from its log to a bit-identical final state, and
+   an injected divergence is reported as out of sync at the right command.
+2. Undo and redo of a move (capturing a village) and of a recruit restore
+   the exact prior state -- gold, moves, village owner, facing -- and redo
+   repeats the recruit with the same traits.
+3. A save downloaded here opens in the real binary with `--with-replay`
+   and replays through to the saved turn.
+
+### Risks
+
+| Risk | Mitigation |
+|---|---|
+| The real binary replays our log with *its* engine: any rule the port computes differently (traits, name generation, AI-free but rule-dependent outcomes) makes that replay diverge | Per-action seeding confines a divergence to one action; milestone 3 measures how far a real replay gets and records the gaps rather than blocking the phase |
+| Every mutation path must go through the command layer, or replays silently miss it | R0 routes all known paths; R3's self-check on AI-vs-AI games catches anything that bypasses it |
+| Events that change state during an action make undo unsafe | Upstream's rule: block undo unless the event says `[allow_undo]`/`[on_undo]` |
+| Content version gap (our 1.19 data, the 1.16.9 binary) | Same approach as Phase 26: verify on Dead Water, whose scenario 1 matches |
 
 ## Phase 19 — Audio & Music (was Phase 13)
 
@@ -1675,8 +1725,8 @@ content breadth continues opportunistically. Phase 26 (save games) was
 pulled forward and delivered 2026-09-22.
 
 1. **Phase 18a** (teleport, hotseat viewing side) — delivered 2026-09-23.
-2. **Phase 18b** (replay, undo & redo) ← **current focus**: detailed plan
-   being written.
+2. **Phase 18b** (replay, undo & redo) ← **current focus**: planned
+   2026-09-23, awaiting go-ahead.
 3. **Phase 18** (labels/items), then **Phase 19** (audio/music).
 4. **Phase 20** (localization/accessibility).
 5. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).
