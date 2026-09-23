@@ -866,6 +866,13 @@ export interface SaveGameData {
    * and a replay built from that save could never line up.
    */
   rng?: { seed: string; calls: number };
+  /**
+   * The scenario's `[tunnel]`s (Phase 18a), in the form upstream saves them
+   * (`saved`/`reversed`/`id` set), plus its tunnel id counter. Optional on
+   * read, like every field added after version 1.
+   */
+  tunnels?: WmlConfigJson[];
+  nextTeleportGroupId?: number;
   /** The "carried over N gold" result this scenario was entered with, for the UI banner (it is derived from the *previous* scenario, so it cannot be recomputed here). */
   goldCarryover?: GoldCarryoverResult | null;
   /**
@@ -2695,6 +2702,8 @@ export class GameSession {
       startupEventsRun: this.startupEventsRun,
       rng: { seed: this.mtRng.getRandomSeedStr(), calls: this.mtRng.getRandomCalls() },
       goldCarryover: this.goldCarryover,
+      tunnels: this.board.tunnels.toConfigs().map((c) => c.toJSON()),
+      nextTeleportGroupId: this.board.tunnels.nextTeleportGroupId,
       teams: this.board.teams().map((t) => ({
         side: t.side,
         gold: t.gold,
@@ -2750,6 +2759,7 @@ export class GameSession {
     }
     if (data.rng) this.mtRng.seedRandom(data.rng.seed, data.rng.calls);
     if (data.goldCarryover !== undefined) this.goldCarryover = data.goldCarryover;
+    this.board.tunnels.loadConfigs((data.tunnels ?? []).map((c) => WmlConfig.fromJSON(c)), data.nextTeleportGroupId ?? 0);
     this.turnNumber = data.turnNumber;
     this.activeSide = data.activeSide;
     this.scenarioResult = data.scenarioResult;

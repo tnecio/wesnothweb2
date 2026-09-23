@@ -95,6 +95,7 @@ import { newVarNode, varNodeFromConfig, varNodeToConfig, VariableStore, type Var
 import { parseScenarioObjectives } from './objectives.js';
 import { registerFlowActions } from './flowWml.js';
 import { playBeat, registerCutsceneActions } from './cutsceneWml.js';
+import { ShroudClearer } from '../actions/vision.js';
 
 // --- shared helpers ---
 
@@ -1144,6 +1145,56 @@ function* actionMoveUnit(cfg: WmlConfig, ctx: EventContext): Flow {
   }
 }
 
+// --- [teleport] / [tunnel] (Phase 18a) ---
+
+/**
+ * `[teleport]` (wml-tags.lua + `game_lua_kernel::intf_teleport`): moves
+ * the first unit matching `[filter]` (default: the unit at `$x1,$y1`) to
+ * `x,y=` or `location_id=` -- the nearest vacant hex to it, passable for
+ * the unit unless `check_passability=no`. Clears shroud around the
+ * destination unless `clear_shroud=no`, captures a village there, and with
+ * `animate=yes` plays the move (a jump, not a walk) first.
+ */
+function* actionTeleport(cfg: WmlConfig, ctx: EventContext): Flow {
+  const filter = cfg.child('filter');
+  const unit = filter ? findUnits(ctx.board, filter)[0] : ctx.board.unitAt(ctx.loc1);
+  if (!unit) return; // no error if no unit matches
+  let dst: Location;
+  const locationId = cfg.getString('location_id', '');
+  if (locationId) dst = ctx.board.map.specialLocation(locationId);
+  else dst = Location.fromWml(cfg.getNumber('x', 0), cfg.getNumber('y', 0));
+  const from = unit.location;
+  if (dst.equals(from) || !ctx.board.map.onBoard(dst)) return;
+  const checkPassability = cfg.getBoolean('check_passability', true);
+  const target = findVacantTile(ctx.board, dst, { passCheck: checkPassability ? unit : undefined });
+  if (!target || !ctx.board.map.onBoard(target)) return;
+
+  if (cfg.getBoolean('animate', false)) yield* playBeat({ kind: 'moveUnit', unit, path: [from, target] });
+  ctx.board.moveUnit(from, target);
+
+  const team = ctx.board.getTeam(unit.side);
+  if (cfg.getBoolean('clear_shroud', true) && team) {
+    const clearer = new ShroudClearer(ctx.board);
+    clearer.clearUnit(target, unit, team);
+    clearer.fireEvents(ctx.raise);
+  }
+  if (ctx.board.map.isVillage(target)) ctx.board.captureVillage(target, unit.side);
+}
+
+/** `[tunnel]` (action_wml.cpp): adds a tunnel (both ways unless `bidirectional=no`) to the board's `[tunnel]`s, or with `remove=yes` drops those named in `id=`. */
+function actionTunnel(cfg: WmlConfig, ctx: EventContext): void {
+  if (cfg.getBoolean('remove', false)) {
+    for (const id of cfg.getString('id', '').split(',').map((s) => s.trim()).filter(Boolean)) ctx.board.tunnels.remove(id);
+    return;
+  }
+  const missing = ['source', 'target', 'filter'].filter((tag) => cfg.children(tag).length !== 1);
+  if (missing.length > 0) {
+    ctx.log('error', `[tunnel] needs exactly one each of [source], [target] and [filter] (problem: ${missing.join(', ')})`);
+    return;
+  }
+  ctx.board.tunnels.addFromWml(cfg.clone());
+}
+
 // --- [objectives] ---
 
 /**
@@ -1370,6 +1421,8 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('capture_village', actionCaptureVillage);
   registry.register('recall', actionRecall);
   registry.register('move_unit', actionMoveUnit);
+  registry.register('teleport', actionTeleport);
+  registry.register('tunnel', actionTunnel);
   registry.register('objectives', actionObjectives);
   registry.register('endlevel', actionEndlevel);
   registry.register('remove_shroud', actionRemoveShroud);

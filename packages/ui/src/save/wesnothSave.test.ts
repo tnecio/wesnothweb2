@@ -178,6 +178,27 @@ describe('toWesnothSave round trip (the fidelity contract)', () => {
     expect(commands.some((c) => c.hasChild('init_side'))).toBe(true);
   });
 
+  it('Phase 18a: [tunnel]s survive a save, a reload and the trip through the Wesnoth format', async () => {
+    const session = new GameSession(loadSnapshot());
+    await session.runStartupEvents();
+    session.board.tunnels.addFromWml(
+      parseConfig('[tunnel]\nid=gate\n[source]\nx,y=1,1\n[/source]\n[target]\nx,y=5,5\n[/target]\n[filter]\nside=1\n[/filter]\n[/tunnel]').child('tunnel')!,
+    );
+    const before = session.toSaveData();
+    expect(before.tunnels).toHaveLength(2); // both directions
+
+    const reloaded = GameSession.fromSaveData(loadSnapshot(), before);
+    expect(reloaded.board.tunnels.all().map((t) => [t.id, t.reversed])).toEqual([['gate', false], ['gate-__REVERSED__', true]]);
+
+    const wml = parseConfig(writeWml(toWesnothSave(before, loadSnapshot(), DEAD_WATER)));
+    const tunnels = wml.child('snapshot')!.children('tunnel');
+    expect(tunnels.map((t) => [t.getString('id'), t.getBoolean('reversed'), t.getBoolean('saved')])).toEqual([
+      ['gate', false, true],
+      ['gate-__REVERSED__', true, true],
+    ]);
+    expect(fromWesnothSave(wml).save.tunnels).toHaveLength(2);
+  });
+
   it('round-trips one of our own saves back into the same SaveGameData', async () => {
     const session = new GameSession(loadSnapshot());
     await session.runStartupEvents();

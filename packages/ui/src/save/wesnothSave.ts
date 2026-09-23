@@ -229,6 +229,8 @@ export function fromWesnothSave(cfg: WmlConfig): ImportedWesnothSave {
       units,
       recall,
       variables: snapshot.child('variables')?.toJSON(),
+      tunnels: snapshot.children('tunnel').map((t) => t.toJSON()),
+      nextTeleportGroupId: snapshot.getNumber('next_teleport_group_id', 0),
       rng: {
         seed: snapshot.getString('random_seed', '00000000'),
         calls: snapshot.getNumber('random_calls', 0),
@@ -462,6 +464,12 @@ export function toWesnothSave(
     snapCfg.setAttribute('random_calls', save.rng.calls);
   }
   if (save.variables) snapCfg.addChild('variables', WmlConfig.fromJSON(save.variables));
+  // `pathfind::manager::to_config`, merged into the snapshot root.
+  snapCfg.removeChildren('tunnel');
+  for (const t of save.tunnels ?? []) snapCfg.addChild('tunnel', WmlConfig.fromJSON(t));
+  if (save.tunnels !== undefined || snapCfg.hasAttribute('next_teleport_group_id')) {
+    snapCfg.setAttribute('next_teleport_group_id', save.nextTeleportGroupId ?? snapCfg.getNumber('next_teleport_group_id', 0));
+  }
   for (const sideCfg of sidesToWml(save, templates)) snapCfg.addChild('side', sideCfg);
   out.addChild('snapshot', snapCfg);
 
