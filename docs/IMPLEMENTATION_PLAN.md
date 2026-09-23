@@ -1252,7 +1252,45 @@ the Abilities & Specials synthetic scenario.
 
 ## Phase 18b — Replay, undo & redo (split from Phase 25, 2026-09-23)
 
-**Status: planned (2026-09-23).** User decisions (2026-09-23):
+**Status: delivered (2026-09-23)** -- R0–R7 in commits `1d7a3eb`,
+`575f735`, `b21be21`, `d0ac1ca`. What landed, and where it differs from the
+plan below:
+
+- Every state change -- the player's, the AI's (`AiCommandHost`), a
+  replay's and a redo's -- runs as one synced command through one executor
+  (`GameSession.runSynced`/`execCommand`); the log, with `[random_seed]`/
+  `[input]`/`[choose]` dependents and a state digest per command, is saved
+  with the state it starts from. Per-action seeds as upstream's default
+  `random_mode` (real entropy in the browser, derived from the session seed
+  headless); `deterministic` kept.
+- Replay: headless (`GameSession.forReplay`/`replayCommand`) with a
+  divergence report per command, and the minimal viewer ("Show replay" in
+  the Load dialog: play/pause, restart, continue playing).
+- Undo/redo (`u`/`r`, menu entries, `[undo_stack]` in saves) as upstream's
+  step containers, with `[allow_undo]`/`[disallow_undo]`/`[on_undo]`.
+  **Deviation from milestone 2 as planned:** a recruit that draws random
+  numbers (traits, gender, name) cannot be undone -- upstream's rule
+  ("Removed the possibility to undo unit recruits because it caused oos";
+  any synced draw blocks undo), so "redo repeats the recruit with the same
+  traits" does not arise; recalls, dismissals and moves undo and redo
+  exactly. There is no `[on_redo]` upstream (redo re-runs the command).
+- Real `[replay]` both ways. Replaying through the real 1.16.9 binary
+  found and fixed real rules gaps: unit creation's synced draws (gender,
+  race-resolved trait pools in upstream's order, name-generator draw
+  counts), `place_recruit`'s event order (`prerecruit` was never fired),
+  `$unit`/`$second_unit`, `[disallow_recruit]` (so `LIMIT_RECRUITS` never
+  worked), recruit-list validation, and moves recorded as walked.
+- **Milestone 3:** a Dead Water 1 game played here opens in the real binary
+  with `--with-replay` and replays all its commands; seeds, recruits
+  (traits included) and moves stay in sync until the first fight, where
+  this port's missing trait effects (e.g. resilient's hitpoints) change the
+  outcome. **Milestone 4:** the real binary's own `[start]` (seed
+  `e5eacb0f`) gives the same 11 units, traits and genders here; a real AI
+  game (fixture) replays through turn 1 to the real game's turn-2 board,
+  except Walking Corpses, whose swimmer variation is an `[object]`. Both
+  divergences are Phase 18c's.
+
+User decisions (2026-09-23):
 
 - **Per-action RNG seeds**, as upstream's default `random_mode`: a reload
   before an attack gives a new roll; replays stay exact. A deterministic
@@ -1340,6 +1378,36 @@ the Abilities & Specials synthetic scenario.
 | Every mutation path must go through the command layer, or replays silently miss it | R0 routes all known paths; R3's self-check on AI-vs-AI games catches anything that bypasses it |
 | Events that change state during an action make undo unsafe | Upstream's rule: block undo unless the event says `[allow_undo]`/`[on_undo]` |
 | Content version gap (our 1.19 data, the 1.16.9 binary) | Same approach as Phase 26: verify on Dead Water, whose scenario 1 matches |
+
+## Phase 18c — Unit modifications: `[effect]`, traits, `[object]`, runtime `[event]`
+
+**Status: not started (found 2026-09-23 by Phase 18b's real-binary replays).**
+The port records traits and objects on a unit but applies none of their
+effects (`Unit.ts`'s own module comment: "a freshly-built Unit here has its
+listed traits' names but not their numeric effects"), `[object]` is an
+unsupported action tag (19 scenario files in the four ported campaigns use
+it), and an `[event]` nested inside an event (WML adding a handler at run
+time) is skipped. So a strong unit hits no harder, a resilient one has no
+extra hitpoints, a quick one no extra move, a Walking Corpse given the
+swimmer variation still walks water on its land movetype, and a scenario's
+items do nothing. It is also what keeps real Wesnoth replays from staying in
+sync past the first fight (Phase 18b milestones 3–4).
+
+- `[effect]` application (`unit::add_modification`/`apply_modifications`):
+  every `apply_to=` upstream supports -- hitpoints, movement, attack
+  (damage/number/specials/new attacks), resistance, defense, movement_costs,
+  vision_costs, jamming, variation/type, status, profile/image_mod, zoc,
+  loyal, experience, max_experience, level, alignment, overlay, halo,
+  new_ability/remove_ability, new_animation -- with `[filter]`, `times=`
+  and gender-specific effects.
+- Traits apply on creation, advancement re-applies modifications
+  (`advance_to` + `apply_modifications`), AMLA (`[advancement]`).
+- `[object]` (with `duration=`, `[filter]`, `silent=`, `[then]`/`[else]`)
+  and `[remove_object]`; `[modify_unit] [object]`.
+- Runtime `[event]` registration (and `[remove_event]`), `id=` dedupe.
+- **Milestone:** the Phase 18b real-AI fixture replays its whole log here
+  in sync, and a replay recorded here replays in the real binary past the
+  first fight.
 
 ## Phase 19 — Audio & Music (was Phase 13)
 
@@ -1738,15 +1806,17 @@ content breadth continues opportunistically. Phase 26 (save games) was
 pulled forward and delivered 2026-09-22.
 
 1. **Phase 18a** (teleport, hotseat viewing side) — delivered 2026-09-23.
-2. **Phase 18b** (replay, undo & redo) ← **current focus**: planned
-   2026-09-23 with the user's decisions recorded.
-3. **Phase 18** (labels/items), then **Phase 19** (audio/music).
-4. **Phase 20** (localization/accessibility).
-5. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).
-6. **Phase 25** (statistics & achievements).
-7. **Phase 27** (feature completeness assessment).
-8. **Phase 28** (CI/CD/performance/platform).
-9. **Phase 29** (real AI: RCA framework + Lua on fengari) — underway
+2. **Phase 18b** (replay, undo & redo) — delivered 2026-09-23.
+3. **Phase 18c** (unit modifications: `[effect]`, traits, `[object]`,
+   runtime `[event]`) ← **proposed next**: found by 18b; a gameplay
+   correctness gap as much as a replay one.
+4. **Phase 18** (labels/items), then **Phase 19** (audio/music).
+5. **Phase 20** (localization/accessibility).
+6. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).
+7. **Phase 25** (statistics & achievements).
+8. **Phase 27** (feature completeness assessment).
+9. **Phase 28** (CI/CD/performance/platform).
+10. **Phase 29** (real AI: RCA framework + Lua on fengari) — underway
    alongside the above rather than strictly after it (Phase 7's MVP
    heuristic AI remains playable throughout).
 
@@ -1764,7 +1834,7 @@ pulled forward and delivered 2026-09-22.
 | 16 Advanced Map Rendering | 18 (labels/items), 17 (camera scripting, screen fade), 22 (minimap/camera) |
 | 17 Advanced UI Shell | 13 (recruit/recall/combat), 14 (theme/context menu/menu items), 15 (hotkeys), 17 (`[option]`/`[text_input]`, message options), 21 (campaign list/difficulty/credits), 23 (mobile), 24 (preferences/help/unit list/stats dialog) |
 | 18 CI/CD, Performance & Platform | 28 |
-| — | 16 Narration (new), 18a Teleport & hotseat view (new), 26 Save games (new), 27 Completeness assessment (new) |
+| — | 16 Narration (new), 18a Teleport & hotseat view (new), 18c Unit modifications (new), 26 Save games (new), 27 Completeness assessment (new) |
 
 ---
 

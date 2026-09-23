@@ -4346,3 +4346,72 @@ Not done: vision paths ignore teleports (upstream's `check_vision`);
 variables are substituted once, not on every use
 (`delayed_variable_substitution`); hotseat has no "hand the screen over"
 turn dialog between human sides.
+
+## 2026-09-23: Phase 18b — replay, undo & redo (delivered)
+
+R0–R7 per the plan, user decisions: per-action seeds, real `[replay]` both
+ways, a minimal viewer.
+
+- **Command layer (R0).** `engine/src/actions/synced.ts`: the command union
+  in upstream's `[command]` shapes (move/attack/recruit/recall/disband/
+  init_side/end_turn/fire_event/start, plus this port's local `stop_unit`),
+  dependents (`[random_seed]`/`[input]`/`[choose]`), WML both ways, the
+  `Recorder`, a state digest. `GameSession.runSynced` runs every command --
+  the player's, the AI's (new optional `AiHost.commands`), a replay's, a
+  redo's -- through one executor per kind (`execMove`/`execAttack`/...).
+  Turn changes are now upstream's two commands (`[end_turn]`, then the next
+  side's `[init_side]`); startup is `[start]` then `[init_side]`.
+- **RNG (R1).** `rng/SyncedRng.ts`: per action a fresh MT stream seeded
+  lazily from a recorded seed (upstream's default `random_mode`), or the
+  whole-game stream (`deterministic`); outside actions an unsynced stream
+  (AI decisions). The browser game uses real entropy for seeds, so reloading
+  before an attack gives a new roll; headless sessions derive seeds from the
+  session seed and repeat exactly.
+- **Recorder and replay (R2–R3).** The log and the state it starts from are
+  saved; `GameSession.forReplay` + `replayCommand` replay it, checking each
+  command's digest and reporting missing/mismatched dependents
+  (`syncIssues`). Dead Water 1 AI-vs-AI and scripted hotseat games replay
+  bit-identically; an injected seed change is flagged at its own command.
+- **Undo/redo (R4).** `actions/undo.ts` rewritten as upstream's step
+  containers (move, take_village, recruit, recall, dismiss, `[on_undo]`);
+  the pump tracks upstream's per-handler `undo_disabled`; `[allow_undo]`,
+  `[disallow_undo]`, `[on_undo]` tags. `u`/`r` and menu entries; an undone
+  move walks back. Upstream's rules, including one the plan's milestone did
+  not anticipate: any synced random draw blocks undo, so recruits with
+  random traits cannot be undone (upstream removed recruit undo for OOS).
+  There is no `[on_redo]` upstream.
+- **Viewer (R5).** "Show replay" in the Load dialog: the log plays on the
+  normal board with walks, fights, healing and dialogue; Play/Pause,
+  Restart, and Continue playing at the end.
+- **Real `[replay]` (R6).** Export writes `[replay_start]` (scenario +
+  starting gold/recall lists) and the whole log; import reads a real
+  save's log so Show replay plays real games. Driving the real 1.16.9
+  binary (`--with-replay`, under Xvfb with `xdotool`, a scratch
+  `--userdata-dir` binding `p` to playreplay) exposed, and this fixed:
+  - unit creation's synced draws: gender, the race-resolved trait pool in
+    upstream's candidate order (snapshots rebuilt: `resolveTraitPools`),
+    and the name generator's fixed draw count (12/20/0);
+  - `place_recruit`'s event order -- `prerecruit`/`prerecall` and
+    `unit_placed` were never fired;
+  - `$unit`/`$second_unit` were never bound in events, and
+    `[disallow_recruit]` did not exist -- `LIMIT_RECRUITS` never worked;
+  - the recruit executor accepted types off the recruit list;
+  - moves are recorded as walked; a move that cannot step is not recorded.
+- **Milestones.** 1 and 2 as tests (`packages/ui/src/replay.test.ts`) and
+  in the browser (`apps/web/scripts/undo-replay-playthrough.mjs`). 3: a
+  game played here replays in the real binary through every command, in
+  sync until the first fight. 4: the real binary's own `[start]` reproduces
+  unit for unit here, and a real AI game (new fixtures) replays through
+  turn 1 to the real turn-2 board.
+
+**First divergence from the real game, both directions: unit modifications.**
+This port applies no `[effect]`s -- traits change no stats, `[object]` is
+unsupported, runtime `[event]` registration is skipped. The real game's
+resilient Cylanna has 41 HP to our 35, so fights differ; Dead Water's
+Walking Corpses get the swimmer variation from an `[object]`, so their
+moves differ. Proposed as Phase 18c in the plan.
+
+Also known: the XP thresholds in 1.16's data differ from the 1.19 data this
+port ships (Merman Netcaster 54 vs 80) -- a content-version gap, not a rules
+one. Delayed shroud updates are not ported (moves that reveal fog are simply
+not undoable, upstream's rule with automatic updates on).
