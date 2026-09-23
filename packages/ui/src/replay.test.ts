@@ -347,6 +347,49 @@ describe('Phase 18b milestone 2: undo and redo', () => {
 });
 
 describe('Phase 18b milestone 4: a replay recorded by the real Wesnoth 1.16.9 replays here', () => {
+  const realSave = (name: string) =>
+    parseConfig(gunzipSync(fs.readFileSync(path.join(repoRoot, 'packages/ui/src/save/fixtures', name))).toString('utf8'));
+
+  it('a real AI game: turn 1 (both sides, the real AI recruiting and moving) ends on the very board the real game had', () => {
+    const { save } = fromWesnothSave(realSave('dead-water-1-real-ai-turn5-1.16.9.gz'));
+    const commands = save.replay!.commands;
+    expect(commands.length).toBeGreaterThan(60);
+    expect(save.replay!.readIssues).toBeUndefined();
+
+    const session = GameSession.forReplay(load('01_Invasion'), save)!;
+    // Up to and including side 1's [init_side] of turn 2.
+    const turn2 = commands.findIndex((r, i) => i > 1 && r.command.kind === 'init_side' && r.command.side === 1);
+    expect(turn2).toBeGreaterThan(5);
+    for (const rec of commands.slice(0, turn2 + 1)) expect(session.replayCommand(rec)).toBe(true);
+    expect(session.syncIssues).toEqual([]);
+    expect(session.turnNumber).toBe(2);
+
+    const real = realSave('dead-water-1-real-ai-turn2-1.16.9.gz')
+      .child('snapshot')!
+      .children('side')
+      .flatMap((side) => side.children('unit'))
+      .filter((u) => u.hasAttribute('x'));
+    expect(session.board.allUnits()).toHaveLength(real.length);
+    // Walking Corpses are the one known exception: Dead Water 1 gives them
+    // the `swimmer` variation through an [object] at prestart, which this
+    // port does not apply yet, so they walk the water on their land
+    // movetype and stop short of where the real ones got to.
+    const corpses = (units: readonly { type: { id: string } }[]) => units.filter((u) => u.type.id === 'Walking Corpse').length;
+    expect(corpses(session.board.allUnits())).toBe(real.filter((u) => u.getString('type') === 'Walking Corpse').length);
+    for (const u of real.filter((r) => r.getString('type') !== 'Walking Corpse')) {
+      const ours = session.board.unitAt(Location.fromWml(u.getNumber('x'), u.getNumber('y')));
+      const traits = (u.child('modifications')?.children('trait') ?? []).map((t) => t.getString('id')).join(',');
+      expect(ours && `${ours.type.id} [${ours.modifications.filter((m) => m.kind === 'trait').map((m) => m.cfg.getString('id')).join(',')}]`).toBe(
+        `${u.getString('type')} [${traits}]`,
+      );
+    }
+    // Known gap, documented in PROGRESS.md: [effect]s -- traits' and
+    // [object]s' -- are not applied in this port, so a resilient unit's
+    // hitpoints differ and the corpses above stop short; the replay goes out
+    // of sync on turn 2 when a side-2 move starts from a corpse's real hex.
+    // When effects land, extend this test to the whole log.
+  });
+
   it("Dead Water 1's real [start] (seed e5eacb0f) spawns the very same units, traits and genders here as it did in the real game", () => {
     const cfg = parseConfig(gunzipSync(fs.readFileSync(path.join(repoRoot, 'packages/ui/src/save/fixtures/dead-water-1-autosave-1.16.9.gz'))).toString('utf8'));
     const { save } = fromWesnothSave(cfg);
