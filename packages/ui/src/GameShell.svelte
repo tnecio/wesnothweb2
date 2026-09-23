@@ -39,7 +39,7 @@
     CutsceneBeat,
     FakeUnitWalk,
   } from '@wesnothweb2/engine';
-  import { WmlConfig, directionBetween, Direction, Location, unitCanAct, parseConfig, writeWml } from '@wesnothweb2/engine';
+  import { WmlConfig, directionBetween, relativeDirection, tilesAdjacent, Direction, Location, unitCanAct, parseConfig, writeWml } from '@wesnothweb2/engine';
   import {
     type HexPoint,
     type UnitAnimationCue,
@@ -1021,14 +1021,20 @@
     const legs = contexts.map((ctx, i) => {
       const from = info.path[i]!;
       const to = info.path[i + 1]!;
-      const direction = directionBetween(from, to) ?? info.unit.facing;
-      return { from, to, direction, anim: chooseAnimation(anims, ctx) };
+      const teleport = !tilesAdjacent(from, to);
+      const direction = teleport ? relativeDirection(from, to) : (directionBetween(from, to) ?? info.unit.facing);
+      return { from, to, direction, teleport, anim: teleport ? undefined : chooseAnimation(anims, ctx) };
     });
 
     const beats: UnitAnimationCue[][] = [];
     let i = 0;
     while (i < legs.length) {
       const first = legs[i]!;
+      if (first.teleport) {
+        beats.push(...teleportBeats(key, info.unit, first.from, first.to, first.direction, anims));
+        i++;
+        continue;
+      }
       let groupSize = 1;
       if (first.anim !== undefined && first.anim.usesDefaultMovementOffset) {
         const maxGroupSize = Math.max(1, Math.floor(animationDurationMs(first.anim) / HEX_STEP_MS));
@@ -1058,6 +1064,35 @@
       ]);
       i += groupSize;
     }
+    return beats;
+  }
+
+  /**
+   * Phase 18a: a teleport step (`teleport_unit_between`, udisplay.cpp) --
+   * "pre_teleport" played in place at the source, then the unit reappears
+   * at the exit and plays "post_teleport" there, facing the way it went.
+   * A unit type with neither animation (most, when a `[teleport]` tag or a
+   * `[tunnel]` moves them) simply vanishes and reappears.
+   */
+  function teleportBeats(
+    key: string,
+    unit: Unit,
+    from: Location,
+    to: Location,
+    direction: Direction,
+    anims: ReturnType<typeof animationsFor>,
+  ): UnitAnimationCue[][] {
+    const context = (event: string, at: Location) => ({ ...buildMovementAnimationContext(unit, at, at, terrainLookup(session.board)), event });
+    const pre = chooseAnimation(anims, context('pre_teleport', from));
+    const post = chooseAnimation(anims, context('post_teleport', to));
+    const beats: UnitAnimationCue[][] = [];
+    if (pre) beats.push([{ key, anim: pre, direction, srcHex: { x: from.x, y: from.y }, dstHex: { x: from.x, y: from.y } }]);
+    beats.push([
+      post
+        ? { key, anim: post, direction, srcHex: { x: to.x, y: to.y }, dstHex: { x: to.x, y: to.y } }
+        : // No arrival animation: jump straight to the exit (`holdInPlace` + `restAt: 'dst'` = no glide).
+          { key, anim: undefined, direction, srcHex: { x: from.x, y: from.y }, dstHex: { x: to.x, y: to.y }, restAt: 'dst' as const, holdInPlace: true },
+    ]);
     return beats;
   }
 

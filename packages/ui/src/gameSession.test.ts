@@ -1846,6 +1846,25 @@ describe('Abilities & Specials: ambush station (bugs6.md)', () => {
   });
 });
 
+describe('Abilities & Specials: teleport station (Phase 18a)', () => {
+  it("the Silver Mage reaches side 1's far village through its teleport and gets there for one move", async () => {
+    const session = new GameSession(loadAbilitiesSnapshot());
+    await session.runStartupEvents();
+    const mage = session.board.allUnits().find((u) => u.id === 'Debug Silver Mage')!;
+    const far = new Location(7, 34);
+    expect(session.board.villageOwner(mage.location)).toBe(1);
+    expect(session.board.villageOwner(far)).toBe(1);
+
+    session.selectUnit(mage);
+    expect(session.reachable.some((h) => h.x === far.x && h.y === far.y)).toBe(true);
+
+    const before = mage.movesLeft;
+    await session.handleHexClick(far.x, far.y);
+    expect(mage.location.equals(far)).toBe(true);
+    expect(before - mage.movesLeft).toBe(1);
+  });
+});
+
 describe('GameSession.confirmAttack real, reported bug: plague kill did not spawn a Walking Corpse', () => {
   it("Debug Plaguebearer's real specials_list=plague, when it kills the weakened Target Plague (hitpoints=6, one hit from its damage=6 touch attack), spawns a real Walking Corpse on the attacker's side", async () => {
     // GameSession has no way to force a hit (see the "does not touch
