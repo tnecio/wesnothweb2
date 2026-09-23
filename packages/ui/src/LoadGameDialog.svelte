@@ -28,7 +28,8 @@
     campaignNames: Record<string, string>;
     /** A file operation is in flight; the list stays visible but actions are inert. */
     busy?: boolean;
-    onLoad: (name: string) => void;
+    /** `showReplay`: upstream's "Show replay" checkbox -- watch the game from its start instead of resuming it. */
+    onLoad: (name: string, showReplay: boolean) => void;
     onDelete: (name: string) => void;
     onRename: (from: string, to: string) => void;
     onDownload: (name: string) => void;
@@ -42,6 +43,7 @@
   let renaming = $state(false);
   let renameTo = $state('');
   let fileInput = $state<HTMLInputElement | undefined>();
+  let showReplay = $state(false);
 
   let filtered = $derived(
     campaignFilter === '' ? saves : saves.filter((s) => (s.campaignId ?? '') === campaignFilter),
@@ -151,7 +153,7 @@
               <tr
                 class:selected={save.name === selectedName}
                 onclick={() => select(save.name)}
-                ondblclick={() => onLoad(save.name)}
+                ondblclick={() => onLoad(save.name, showReplay)}
               >
                 <td>
                   <button type="button" class="row-button" data-list-option onclick={() => select(save.name)}>
@@ -206,7 +208,11 @@
         }}
       />
       <div class="spacer"></div>
-      <button class="primary" data-autofocus disabled={!selected || busy} onclick={() => selected && onLoad(selected.name)}>
+      <label class="filter replay-toggle">
+        <input type="checkbox" bind:checked={showReplay} data-testid="show-replay" />
+        Show replay
+      </label>
+      <button class="primary" data-autofocus disabled={!selected || busy} onclick={() => selected && onLoad(selected.name, showReplay)}>
         Load
       </button>
       <button onclick={onCancel}>Cancel</button>
@@ -325,6 +331,12 @@
   }
   .spacer {
     flex: 1 1 auto;
+  }
+  .replay-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    cursor: pointer;
   }
   .file-input {
     display: none;

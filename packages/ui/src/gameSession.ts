@@ -3482,6 +3482,13 @@ export class GameSession {
   // Phase 18b: undo, redo, replay
   // ---------------------------------------------------------------------------
 
+  /**
+   * Set by `undo` when the undone action was a move: the unit and the route
+   * back, for the display to animate (the board is already updated). Read
+   * it once and clear it, like `lastAttackAnimation`.
+   */
+  lastUndoneWalk: { unit: Unit; path: Location[] } | null = null;
+
   /** Whether the player can undo now: something on the stack, it is a human side's turn, nothing is running. */
   get canUndo(): boolean {
     return this.undoList.canUndo && this.canUseUndoStack();
@@ -3507,6 +3514,9 @@ export class GameSession {
       runFlow(this.eventPump.runAsHandlerFlow(step.commands, step.loc1, step.loc2), this.collectResponder);
     });
     if (!container) return null;
+    // Upstream walks the unit back (`move_action::undo` -> `unit_display::move_unit`).
+    const moveStep = container.steps.find((st) => st.kind === 'move');
+    this.lastUndoneWalk = moveStep && moveStep.kind === 'move' ? { unit: moveStep.unit, path: [...moveStep.route].reverse() } : null;
     const log = this.recorder.commands;
     if (log[log.length - 1] === container.command) this.recorder.cutLast();
     else this.recorder.replaceAll(log.filter((c) => c !== container.command));
@@ -3558,7 +3568,20 @@ export class GameSession {
   *replayCommandFlow(rec: RecordedCommand, present = false): Flow<boolean> {
     if (rec.command.kind === 'start') this.startupEventsRun = true;
     const before = this.syncIssues.length;
-    const done = yield* this.runSynced(rec.command, (action) => this.execCommand(rec.command, action), { source: rec.dependents, present });
+    // Shown replays animate like live play: the attack's blows
+    // (`lastAttackAnimation`) and a side turn's healing (`lastHealAnimations`).
+    const heals: HealOutcome[] = [];
+    if (present) this.healOutcomeSink = heals;
+    let done: unknown;
+    try {
+      done = yield* this.runSynced(rec.command, (action) => this.execCommand(rec.command, action), { source: rec.dependents, present });
+    } finally {
+      if (present) this.healOutcomeSink = null;
+    }
+    if (present) {
+      if (rec.command.kind === 'attack' && done) this.lastAttackAnimation = done as LastAttackAnimation;
+      if (heals.length > 0) this.lastHealAnimations = heals;
+    }
     const mine = this.recorder.last();
     if (done !== null && rec.digest !== undefined && mine && mine.digest !== rec.digest && this.syncIssues.length === before) {
       this.syncIssues.push({

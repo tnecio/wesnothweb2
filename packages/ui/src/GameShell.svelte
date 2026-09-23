@@ -75,6 +75,7 @@
     type PendingAdvancement,
     type HoveredHexInfo,
     type InteractionHost,
+    type GameSessionOptions,
   } from './gameSession.js';
   import {
     saveGame,
@@ -185,11 +186,17 @@
    * -- see docs/PROGRESS.md's "real, intermittent reactivity race" entry
    * about `GameBoardView.svelte`'s `board` variable).
    */
+  /**
+   * Phase 18b: the browser game seeds each action from real entropy, as
+   * upstream does, so reloading before an attack gives a new roll. (Headless
+   * callers keep the default: seeds derived from the session seed.)
+   */
+  const SESSION_OPTIONS: GameSessionOptions = { actionSeeds: 'entropy' };
   // Resuming a save builds the session from it instead (Phase 26) -- see
   // the `initialSave` prop. `startupEventsRun` comes back true with it, so
   // `runStartupEvents` below is skipped as well.
   let session = $state.raw(
-    initialSave ? GameSession.fromSaveData(activeSnapshot, initialSave) : new GameSession(activeSnapshot),
+    initialSave ? GameSession.fromSaveData(activeSnapshot, initialSave, SESSION_OPTIONS) : new GameSession(activeSnapshot, SESSION_OPTIONS),
   );
   /** Resolved once per scenario, before its startup events run -- see `GameSession.storyParts`. A resumed save has already been past all of this. */
   let storyParts = $state.raw(initialSave ? [] : session.storyParts());
@@ -203,7 +210,7 @@
   /** Phase 16 N7: set once the campaign outro has played (or was skipped). */
   let outroDone = $state(false);
 
-  let phase = $state<'story' | 'objectives' | 'playing' | 'ended'>(
+  let phase = $state<'story' | 'objectives' | 'playing' | 'ended' | 'replay'>(
     session.scenarioResult ? 'ended' : storyParts.length > 0 ? 'story' : 'playing',
   );
   /** Upstream shows the outro only for a victory with no next scenario, and only when `end_credits` is not turned off. */
@@ -257,6 +264,9 @@
   let saveBusy = $state(false);
   let attackerWeaponOptions = $state<AttackerWeaponOption[]>([]);
   let log = $state<string[]>([]);
+  /** Phase 18b: whether Undo/Redo are available -- mirrors `session.canUndo`/`canRedo`, refreshed by `sync`. */
+  let canUndo = $state(false);
+  let canRedo = $state(false);
   let turnNumber = $state(session.turnNumber);
   let activeSide = $state(session.activeSide);
   let gold = $state(session.board.getTeam(session.activeSide)?.gold ?? 0);
@@ -329,6 +339,8 @@
     pendingAdvancement = session.pendingAdvancement;
     attackerWeaponOptions = session.attackerWeaponOptions;
     log = session.log;
+    canUndo = session.canUndo;
+    canRedo = session.canRedo;
     turnNumber = session.turnNumber;
     activeSide = session.activeSide;
     gold = session.board.getTeam(session.activeSide)?.gold ?? 0;
@@ -687,6 +699,30 @@
     // reaches them -- before whatever the `moveto`/`recruit` events they
     // trigger have to say, not after the click has fully resolved.
     const message = await runPlayerAction(() => session.handleHexClick(x, y));
+    sync(message);
+  }
+
+  /**
+   * Phase 18b: undoes the last undoable action (upstream's `u`). A move
+   * walks back along its route, as upstream animates it; everything else
+   * simply reappears as it was.
+   */
+  async function handleUndo(): Promise<void> {
+    if (!canAct() || !session.canUndo) return;
+    const message = await runPlayerAction(async () => {
+      const text = session.undo();
+      const walk = session.lastUndoneWalk;
+      session.lastUndoneWalk = null;
+      if (walk && walk.path.length > 1) await playCutsceneBeat({ kind: 'moveUnit', unit: walk.unit, path: walk.path });
+      return text;
+    });
+    sync(message);
+  }
+
+  /** Phase 18b: redoes the last undone action (upstream's `r`) -- it runs again, with the same recorded outcome. */
+  async function handleRedo(): Promise<void> {
+    if (!canAct() || !session.canRedo) return;
+    const message = await runPlayerAction(() => session.redo());
     sync(message);
   }
 
@@ -1577,12 +1613,22 @@
    * fetched first, which is what makes a save resumable from anywhere
    * rather than only inside the scenario it was taken in.
    */
-  async function handleLoadNamed(name: string): Promise<void> {
+  async function handleLoadNamed(name: string, showReplay = false): Promise<void> {
     loadDialogOpen = false;
+    if (replay) {
+      // Leaving a replay: let its current action finish, then drop it.
+      replay.playing = false;
+      await replayLoop;
+      replay = null;
+    }
     try {
       const found = await loadGame<SaveGameData>(name);
       if (!found) {
         sync('That save no longer exists.');
+        return;
+      }
+      if (showReplay) {
+        await startReplay(found.data);
         return;
       }
       // Real, reported bug: loading a save switched the scenario but left
@@ -1618,6 +1664,104 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Phase 18b R5: the replay viewer (minimal, by the user's call) -- upstream's
+  // "Show replay": the saved game played again from its start on the normal
+  // board, with its walks, fights and dialogue; play/pause and restart.
+  // ---------------------------------------------------------------------------
+
+  /** The replay being shown: the save it comes from, how far it has got, and whether it is running. */
+  let replay = $state<{ data: SaveGameData; index: number; total: number; playing: boolean } | null>(null);
+  /** The running playback loop, so Restart can wait for it to stop. */
+  let replayLoop: Promise<void> | null = null;
+
+  /** Opens `data`'s replay from its first command, paused at the start and then playing. */
+  async function startReplay(data: SaveGameData): Promise<void> {
+    if (!data.replay) {
+      sync('This save has no replay to show (it predates replays, or came from a Wesnoth file).');
+      return;
+    }
+    const scenarioId = data.scenarioId ?? activeSnapshot.scenario.id;
+    let replaySnapshot = activeSnapshot;
+    if (scenarioId !== activeSnapshot.scenario.id) {
+      const res = await fetch(`/scenarios/${scenarioId}.json`);
+      if (!res.ok) throw new Error(`fetch scenarios/${scenarioId}.json: ${res.status}`);
+      replaySnapshot = (await res.json()) as GameBoardSnapshot;
+    }
+    const replaySession = GameSession.forReplay(replaySnapshot, data, SESSION_OPTIONS);
+    if (!replaySession) return;
+    activeSnapshot = replaySnapshot;
+    session = replaySession;
+    session.interactionHost = interactionHost;
+    storyParts = [];
+    currentMessage = null;
+    screenTint = null;
+    phase = 'replay';
+    replay = { data, index: 0, total: data.replay.commands.length, playing: true };
+    sync(`Replay of ${replaySnapshot.scenario.name}: ${replay.total} actions.`);
+    await tick();
+    replayLoop = runReplayLoop();
+  }
+
+  /** Plays recorded commands one by one, animating each, until paused or done. */
+  async function runReplayLoop(): Promise<void> {
+    while (replay && replay.playing && replay.index < replay.total) {
+      const rec = replay.data.replay!.commands[replay.index]!;
+      eventsRunning = true;
+      try {
+        await session.replayCommandShown(rec);
+        const heals = session.lastHealAnimations;
+        session.lastHealAnimations = null;
+        if (heals) await playHealAnimations(heals);
+        const anim = session.lastAttackAnimation;
+        session.lastAttackAnimation = null;
+        if (anim && boardView) await boardView.playAnimationSequence(buildBlowAnimationCues(anim), 1, makeBlowPreview(anim));
+      } finally {
+        eventsRunning = false;
+      }
+      if (!replay) return;
+      replay.index += 1;
+      sync(replayStatus());
+      await showDeferredInteractions();
+    }
+    if (replay && replay.index >= replay.total) {
+      replay.playing = false;
+      sync(replayStatus());
+    }
+  }
+
+  function replayStatus(): string {
+    if (!replay) return '';
+    const issue = session.syncIssues[0];
+    if (issue) return `Replay out of sync at action ${issue.index + 1} (${issue.command}): ${issue.message}`;
+    return replay.index >= replay.total ? 'Replay finished.' : `Replay: action ${replay.index} of ${replay.total}.`;
+  }
+
+  function toggleReplayPlaying(): void {
+    if (!replay || replay.index >= replay.total) return;
+    replay.playing = !replay.playing;
+    if (replay.playing && !eventsRunning) replayLoop = runReplayLoop();
+    else sync(replay.playing ? replayStatus() : 'Replay paused.');
+  }
+
+  /** Back to the start: waits for the current action to finish, then rebuilds the session from the save's starting point. */
+  async function restartReplay(): Promise<void> {
+    if (!replay) return;
+    const data = replay.data;
+    replay.playing = false;
+    await replayLoop;
+    replay = null;
+    await startReplay(data);
+  }
+
+  /** Upstream's end-of-replay offer: take over and play on from where the replay ended. */
+  function continueFromReplay(): void {
+    if (!replay || replay.playing) return;
+    replay = null;
+    phase = session.scenarioResult ? 'ended' : 'playing';
+    sync('Playing on from the end of the replay.');
+  }
+
   /**
    * Switches to another scenario's snapshot and resumes `data` in it --
    * the same wholesale replacement `continueToNextScenario` does, minus
@@ -1629,7 +1773,7 @@
     if (!res.ok) throw new Error(`fetch scenarios/${scenarioId}.json: ${res.status}`);
     const nextSnapshot = (await res.json()) as GameBoardSnapshot;
     activeSnapshot = nextSnapshot;
-    session = GameSession.fromSaveData(nextSnapshot, data);
+    session = GameSession.fromSaveData(nextSnapshot, data, SESSION_OPTIONS);
     session.interactionHost = interactionHost;
     storyParts = [];
     storyAssets = assets;
@@ -1837,7 +1981,7 @@
         })(),
         fetchStoryAssets(nextId),
       ]);
-      const nextSession = GameSession.startNextScenario(session, nextSnapshot);
+      const nextSession = GameSession.startNextScenario(session, nextSnapshot, SESSION_OPTIONS);
       const nextStoryParts = nextSession.storyParts();
 
       activeSnapshot = nextSnapshot;
@@ -1886,7 +2030,7 @@
     {
       id: 'load',
       label: 'Load Game...',
-      enabled: phase === 'playing' || phase === 'ended',
+      enabled: phase === 'playing' || phase === 'ended' || phase === 'replay',
       handler: () => void openSaveManager('load'),
       hotkey: { key: 'o', ctrl: true },
     },
@@ -1919,6 +2063,9 @@
       hotkey: { key: 'j', ctrl: true },
       handler: () => (objectivesDialogOpen = true),
     },
+    // Upstream's own bindings (hotkeys.cfg: undo=u, redo=r).
+    { id: 'undo', label: 'Undo', enabled: phase === 'playing' && canUndo, handler: () => void handleUndo(), hotkey: { key: 'u' } },
+    { id: 'redo', label: 'Redo', enabled: phase === 'playing' && canRedo, handler: () => void handleRedo(), hotkey: { key: 'r' } },
     { id: 'end-turn', label: 'End Turn', enabled: phase === 'playing', handler: handleEndTurn, hotkey: { key: ' ', ctrl: true } },
   ]);
 
@@ -2296,7 +2443,7 @@
         [...campaigns, ...(campaign ? [campaign] : [])].map((c) => [c.id, c.name]),
       )}
       busy={saveBusy}
-      onLoad={(name) => void handleLoadNamed(name)}
+      onLoad={(name, showReplay) => void handleLoadNamed(name, showReplay)}
       onDelete={(name) => void handleDeleteSave(name)}
       onRename={(from, to) => void handleRenameSave(from, to)}
       onDownload={(name) => void handleDownloadSave(name)}
@@ -2348,6 +2495,20 @@
   {/if}
 
   <AdvancementDialog pending={pendingAdvancement} onChoose={handleChooseAdvancement} />
+
+  {#if phase === 'replay' && replay}
+    <div class="replay-bar" role="toolbar" aria-label="Replay controls" data-testid="replay-bar">
+      <span class="replay-label">Replay</span>
+      <button onclick={toggleReplayPlaying} disabled={replay.index >= replay.total} data-testid="replay-play">
+        {replay.playing ? 'Pause' : 'Play'}
+      </button>
+      <button onclick={() => void restartReplay()} data-testid="replay-restart">Restart</button>
+      <span class="replay-progress" data-testid="replay-progress">{replay.index} / {replay.total}</span>
+      {#if !replay.playing && replay.index >= replay.total}
+        <button onclick={continueFromReplay} data-testid="replay-continue">Continue playing</button>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -2359,6 +2520,33 @@
     pointer-events: none;
     transition-property: opacity;
     transition-timing-function: linear;
+  }
+
+  /* Phase 18b R5: the replay viewer's controls, floating over the top of the board. */
+  .replay-bar {
+    position: fixed;
+    top: 3rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 250;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.6rem;
+    background: rgba(14, 20, 32, 0.92);
+    border: 1px solid #4a4432;
+    border-radius: 4px;
+    color: #eee;
+    font-size: 0.9rem;
+  }
+  .replay-label {
+    font-weight: 700;
+    color: #e4c860;
+  }
+  .replay-progress {
+    min-width: 5rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
   }
 
   .game-shell {
