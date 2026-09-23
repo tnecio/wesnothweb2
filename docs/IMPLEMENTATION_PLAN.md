@@ -1216,8 +1216,14 @@ renderer plays one named animation per cue).
 
 ## Phase 18a — Teleport and the hotseat viewing side (planned 2026-09-22)
 
-**Status: not started.** Scheduled from bugs6.md (user's call: plan it,
-don't build it yet). Both are gaps found while adding debug stations to
+**Status: delivered T1–T6 (2026-09-23)**, see docs/PROGRESS.md. Location
+filters gained `gives_income=`/`owner_side=`/`formula=` (with
+`teleport_unit`/`unit_at`); `pathfind/teleport.ts` ports `teleport.cpp`;
+A*, reachable hexes and `executeMove` use teleports; `[teleport]`/
+`[tunnel]` tags; tunnels saved; pre/post_teleport animation; Silver Mage
+station; `GameSession.viewingSide` for hotseat. Left open: vision paths
+ignore teleports, `[tunnel]` variables are not re-substituted per use,
+no hotseat "hand over" dialog. Originally scheduled from bugs6.md. Both are gaps found while adding debug stations to
 the Abilities & Specials synthetic scenario.
 
 - **Teleport, ability and action.** Port `pathfind/teleport.cpp`
@@ -1668,9 +1674,9 @@ Phases 0–5, 7, 9–17 are delivered (see each phase's status); Phase 6
 content breadth continues opportunistically. Phase 26 (save games) was
 pulled forward and delivered 2026-09-22.
 
-1. **Phase 18a** (teleport, hotseat viewing side) ← **current focus**.
-2. **Phase 18b** (replay, undo & redo) — its detailed plan is written
-   when 18a is done.
+1. **Phase 18a** (teleport, hotseat viewing side) — delivered 2026-09-23.
+2. **Phase 18b** (replay, undo & redo) ← **current focus**: detailed plan
+   being written.
 3. **Phase 18** (labels/items), then **Phase 19** (audio/music).
 4. **Phase 20** (localization/accessibility).
 5. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).

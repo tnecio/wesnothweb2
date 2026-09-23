@@ -4293,3 +4293,56 @@ hover outline now sit above units and terrain overlays, as upstream's
 `eventMode='none'`; a real mouse click through them still moves the unit.
 Attack targets keep their red fill with the white outline. Checked in the
 browser on synthetic_economy; keyboard playthrough passes.
+
+## 2026-09-23 — Phase 18a: teleport, and the hotseat viewing side
+
+Stages T1–T6, one commit each.
+
+- **T1 location filters.** `gives_income=`, `owner_side=` and `formula=`
+  in location filters (`terrain_filter::match_internal`), with WFL's
+  `terrain_callable` (`x`/`y`/`loc`/`id`/`village`/`castle`/`keep`/
+  `healing`/`owner_side`), `teleport_unit` bound to a reference unit, and
+  the game-state function `unit_at(loc)`. Unit callables now compare by
+  identity and expose `side_number` and `loc`. Tested with
+  `ABILITY_TELEPORT`'s own tunnel formulas. New test helper
+  `test/helpers/realContent.ts` loads real core terrain and unit types.
+- **T2 teleport map** (`pathfind/teleport.ts`, port of `teleport.cpp`):
+  tunnels from a unit's `[teleport]` abilities plus the board's
+  `[tunnel]`s (`GameBoard.tunnels`, `pathfind/tunnels.ts`), the
+  enemy-fog rule, `always_visible=`, `pass_allied_units=`,
+  `allow_vision=`, bidirectional tunnels and removal by id.
+- **T3 movement.** Teleport targets are extra neighbours in `findRoutes`
+  and in A* (with upstream's admissible heuristic adjustment).
+  `executeMove` takes non-adjacent steps and fails a teleport whose exit
+  is blocked (`check_for_obstructing_unit`, `MoveResult.teleportFailed`).
+  `allowTeleport` defaults to true, since upstream's game-side searches
+  (the player's moves, the AI's move maps, `find_path`) all pass it. New
+  `relativeDirection` (`get_relative_dir`'s `DEFAULT` mode) for a
+  teleporter's facing.
+- **T4 tags and saves.** `[teleport]` (wml-tags.lua + `intf_teleport`:
+  filter or `$x1,$y1`, `x,y=`/`location_id=`, nearest vacant hex,
+  `check_passability=`, `clear_shroud=`, `animate=`, village capture) and
+  `[tunnel]` (add, `bidirectional=no`, `remove=yes id=`). Tunnels are
+  saved (`SaveGameData.tunnels`/`nextTeleportGroupId`) and converted to
+  and from the `[snapshot]` root, as upstream's `pathfind::manager::
+  to_config` writes them.
+- **T5 display and station.** A teleport step plays "pre_teleport" in
+  place, then "post_teleport" at the exit (`teleport_unit_between`), or
+  simply jumps for a unit type with neither. Abilities & Specials row
+  y=35: a Silver Mage on one side-1 village, the other seven hexes away.
+  Verified in the browser: the reach overlay covers the far village, the
+  move costs one MP, the Silver Mage's sparkle halos play (our new
+  particle system), and the sprite ends on the village.
+- **T6 hotseat viewing side.** `GameSession.viewingSide` follows the
+  active side whenever a human plays it and stays put through AI turns
+  (`update_gui_to_player`). Unit visibility, the moves orb, fog/shroud,
+  village flags (now remembered per side) and click-inspection all use
+  it; `playerSide` still decides victory and carryover. The Ambush
+  station now works as intended: the Ranger is hidden on side 2's turn
+  (35 sprites instead of 36 in the browser) and revealed by the ambush.
+
+Not done: vision paths ignore teleports (upstream's `check_vision`);
+`ignore_units` doesn't swap in a unit-less filter context; `[tunnel]`
+variables are substituted once, not on every use
+(`delayed_variable_substitution`); hotseat has no "hand the screen over"
+turn dialog between human sides.

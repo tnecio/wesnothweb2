@@ -1838,11 +1838,15 @@ describe('Abilities & Specials: ambush station (bugs6.md)', () => {
 
     await session.endTurn();
     expect(session.activeSide).toBe(2);
+    // Phase 18a: side 2's hotseat turn is drawn through side 2's eyes, so the Ranger is hidden.
+    expect(session.viewingSide).toBe(2);
+    expect(session.renderUnits.some((u) => u.id === 'Debug Ranger')).toBe(false);
 
     session.selectUnit(wolf);
     await session.handleHexClick(0, ranger.location.y);
-    // Stopped on the first hex next to the Ranger, short of its goal.
+    // Stopped on the first hex next to the Ranger, short of its goal -- and the Ranger is revealed.
     expect(wolf.location.x).toBe(ranger.location.x + 1);
+    expect(session.renderUnits.some((u) => u.id === 'Debug Ranger')).toBe(true);
   });
 });
 

@@ -903,6 +903,27 @@ export class GameSession {
   /** Initial active side (Dead_Water scenario 1's Kai Krellis side by default) -- see `activeSide` for who can actually act now. */
   readonly playerSide: number;
 
+  /**
+   * Whose eyes the board is drawn through: fog, shroud, hidden units,
+   * village flags, moves orbs (Phase 18a). Upstream switches the viewing
+   * team to each human side as its turn starts (`play_controller::
+   * update_gui_to_player`) and keeps it through AI turns -- so in hotseat,
+   * side 2's turn no longer shows side 1's knowledge (an ambusher side 2
+   * cannot see stays hidden). `playerSide` still decides the campaign's
+   * outcome and carryover.
+   */
+  get viewingSide(): number {
+    return this.viewingSideValue;
+  }
+  private viewingSideValue: number;
+
+  /** Makes `side` the acting side, and the viewing side too if a human plays it. */
+  private setActiveSide(side: number): void {
+    this.activeSide = side;
+    const controller = this.board.getTeam(side)?.controller;
+    if (controller !== 'ai' && controller !== 'network_ai') this.viewingSideValue = side;
+  }
+
   /** The side currently allowed to act -- see `endTurn`'s doc comment on the hotseat model this demo uses in place of an AI. */
   activeSide: number;
   /** 1-based turn counter, incremented by `endTurn` whenever it wraps back past the highest side number. */
@@ -1228,6 +1249,7 @@ export class GameSession {
     this.snapshot = snapshot;
     this.playerSide = options.playerSide ?? 1;
     this.activeSide = this.playerSide;
+    this.viewingSideValue = this.playerSide;
     this.board = gameBoardFromSnapshot(snapshot).board;
     this.resolveType = createTypeResolver(snapshot);
     this.mtRng = new MtRng(options.seed ?? 0xc0ffee);
@@ -1497,7 +1519,7 @@ export class GameSession {
    * snapshot's original `units` array onto the board.
    */
   get renderUnits(): SnapshotUnit[] {
-    const playerTeam = this.board.getTeam(this.playerSide);
+    const playerTeam = this.board.getTeam(this.viewingSide);
     return this.board
       .allUnits()
       .filter((u) => !playerTeam || isUnitVisibleToTeam(this.board, u, playerTeam, false))
@@ -1540,7 +1562,7 @@ export class GameSession {
    * convention (`updateIcons`'s "present = draw it" contract).
    */
   private toSnapshotUnit(unit: Unit, x: number, y: number, hitpoints: number): SnapshotUnit {
-    const isOwnUnit = unit.side === this.playerSide;
+    const isOwnUnit = unit.side === this.viewingSide;
     const { canMove, canAttackHere } = isOwnUnit ? unitCanAct(this.board, unit) : { canMove: undefined, canAttackHere: undefined };
     return {
       id: unit.id || null,
@@ -1999,7 +2021,7 @@ export class GameSession {
       if (this.scenarioResult) return null;
       this.turnNumber += 1;
     }
-    this.activeSide = nextSide;
+    this.setActiveSide(nextSide);
     yield* this.fireSideTurnEvents(nextSide);
     this.checkForGameEnd();
     if (this.scenarioResult) return null;
@@ -2116,14 +2138,25 @@ export class GameSession {
    * !viewing_team().is_enemy(...)`). Updated by `syncVillageMemory`,
    * called after every action that can move the game forward.
    */
-  private readonly lastKnownVillageOwner = new Map<string, number>();
+  private readonly lastKnownVillageOwnerBySide = new Map<number, Map<string, number>>();
+
+  /** The viewing side's memory of village owners (each side remembers its own). */
+  private get lastKnownVillageOwner(): Map<string, number> {
+    let memory = this.lastKnownVillageOwnerBySide.get(this.viewingSide);
+    if (!memory) {
+      memory = new Map();
+      this.lastKnownVillageOwnerBySide.set(this.viewingSide, memory);
+    }
+    return memory;
+  }
 
   private syncVillageMemory(): void {
+    const memory = this.lastKnownVillageOwner;
     for (const loc of this.board.map.villages) {
-      if (this.board.isFogged(this.playerSide, loc)) continue;
+      if (this.board.isFogged(this.viewingSide, loc)) continue;
       const side = this.board.villageOwner(loc);
-      if (side !== undefined) this.lastKnownVillageOwner.set(loc.key(), side);
-      else this.lastKnownVillageOwner.delete(loc.key());
+      if (side !== undefined) memory.set(loc.key(), side);
+      else memory.delete(loc.key());
     }
   }
 
@@ -2131,7 +2164,7 @@ export class GameSession {
   get villageOwnership(): VillageOwnerInfo[] {
     const result: VillageOwnerInfo[] = [];
     for (const loc of this.board.map.villages) {
-      const side = this.board.isFogged(this.playerSide, loc) ? this.lastKnownVillageOwner.get(loc.key()) : this.board.villageOwner(loc);
+      const side = this.board.isFogged(this.viewingSide, loc) ? this.lastKnownVillageOwner.get(loc.key()) : this.board.villageOwner(loc);
       if (side !== undefined) result.push({ x: loc.x, y: loc.y, side });
     }
     return result;
@@ -2144,7 +2177,7 @@ export class GameSession {
    * without `shroud=`/`fog=` pays nothing extra to render.
    */
   get hexVisibility(): HexVisibilityPoint[] {
-    const team = this.board.getTeam(this.playerSide);
+    const team = this.board.getTeam(this.viewingSide);
     if (!team || !team.fogOrShroud()) return [];
     const result: HexVisibilityPoint[] = [];
     // Includes the one-hex border ring beyond the playable area (same
@@ -2159,7 +2192,7 @@ export class GameSession {
     for (let x = -1; x <= this.board.map.w(); x++) {
       for (let y = -1; y <= this.board.map.h(); y++) {
         const loc = new Location(x, y);
-        const visibility: HexVisibility = this.board.isShrouded(this.playerSide, loc) ? 'shrouded' : this.board.isFogged(this.playerSide, loc) ? 'fogged' : 'clear';
+        const visibility: HexVisibility = this.board.isShrouded(this.viewingSide, loc) ? 'shrouded' : this.board.isFogged(this.viewingSide, loc) ? 'fogged' : 'clear';
         result.push({ x, y, visibility });
       }
     }
@@ -2403,7 +2436,7 @@ export class GameSession {
     // fog-aware lookup `renderUnits`/AI targeting already use elsewhere in
     // this file; it always returns the player's own units regardless of
     // fog (see `isUnitVisibleToTeam`'s `team.side === unit.side` case).
-    const playerTeam = this.board.getTeam(this.playerSide);
+    const playerTeam = this.board.getTeam(this.viewingSide);
     const clickedUnit = getVisibleUnit(this.board, loc, playerTeam, false);
 
     if (this.pendingAttack) {
@@ -2761,7 +2794,7 @@ export class GameSession {
     if (data.goldCarryover !== undefined) this.goldCarryover = data.goldCarryover;
     this.board.tunnels.loadConfigs((data.tunnels ?? []).map((c) => WmlConfig.fromJSON(c)), data.nextTeleportGroupId ?? 0);
     this.turnNumber = data.turnNumber;
-    this.activeSide = data.activeSide;
+    this.setActiveSide(data.activeSide);
     this.scenarioResult = data.scenarioResult;
     this.startupEventsRun = data.startupEventsRun;
     // Optional-on-read (see `SaveGameData.schedule`'s own doc comment): an
@@ -2769,7 +2802,7 @@ export class GameSession {
     // scenario's own static config.
     if (data.schedule) this.schedule.importState(data.schedule);
     this.clearSelection();
-    this.lastKnownVillageOwner.clear();
+    this.lastKnownVillageOwnerBySide.clear();
     this.syncVillageMemory();
   }
 
