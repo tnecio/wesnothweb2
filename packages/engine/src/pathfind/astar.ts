@@ -7,19 +7,16 @@
  * `game_state.cpp`, `mouse_events.cpp`, `ai/default/ca*.cpp`,
  * `generators/*_map_generator*.cpp`).
  *
- * NOT ported: teleportation (`pathfind::teleport_map`, from `teleport.cpp`).
- * Upstream's `a_star_search` takes an optional `teleport_map*` that adds
- * extra graph edges (ability-granted teleport pairs) and nudges the
- * heuristic to stay admissible around them; wesnothweb2 doesn't have a
- * teleport/ability-evaluation model yet (abilities are inert raw WML per
- * `UnitType`'s module doc comment), so there is nothing to feed a teleport
- * map from. This is a real, documented gap -- revisit once ability
- * evaluation exists. Every call site here simply omits it, exactly as
- * upstream call sites do when a unit has no teleport-granting ability.
+ * Teleports (Phase 18a): an optional `TeleportMap` adds each source hex's
+ * teleport targets as extra neighbours, and lowers a node's heuristic to
+ * "distance to the nearest teleport source + 1 + distance from the nearest
+ * target to the destination" when that is smaller, so the estimate stays
+ * admissible (astarsearch.cpp's `node` constructor).
  */
 
 import { Location, getAdjacentTiles, distanceBetween } from '../model/Location.js';
 import { IndexedHeap } from './heap.js';
+import type { TeleportMap } from './teleport.js';
 
 /** Mirrors `cost_calculator::getNoPathValue()`: the sentinel "this path is impossible" cost. */
 export const NO_PATH_VALUE = 42424242;
@@ -55,6 +52,8 @@ interface AStarNode {
   g: number;
   h: number;
   t: number;
+  /** Heuristic distance to the nearest teleport source (upstream `srch`); -1 until computed. */
+  srch: number;
   curr: Location;
   prev: Location | null;
 }
@@ -73,6 +72,7 @@ export function aStarSearch(
   width: number,
   height: number,
   border = 0,
+  teleports?: TeleportMap,
 ): PlainRoute {
   // Mirrors the early-abort check: if the destination itself can never be
   // entered (regardless of path), don't bother searching.
@@ -88,8 +88,25 @@ export function aStarSearch(
 
   const heap = new IndexedHeap<string>((a, b) => nodes.get(a)!.t < nodes.get(b)!.t);
 
-  const srcH = heuristic(src, dst);
-  nodes.set(srcKey, { g: 0, h: srcH, t: srcH, curr: src, prev: null });
+  const useTeleports = teleports !== undefined && !teleports.isEmpty;
+  // Heuristic distance from the nearest teleport target to the destination.
+  let dsth = 1.0;
+  if (useTeleports) for (const t of teleports.targets) dsth = Math.min(dsth, heuristic(t, dst));
+
+  const makeNode = (g: number, curr: Location, prev: Location | null, knownSrch: number): AStarNode => {
+    let h = heuristic(curr, dst);
+    let srch = knownSrch;
+    if (useTeleports) {
+      if (srch < 0) {
+        srch = 1.0;
+        for (const s of teleports.sources) srch = Math.min(srch, heuristic(curr, s));
+      }
+      h = Math.min(h, srch + dsth + 1.0);
+    }
+    return { g, h, t: g + h, srch, curr, prev };
+  };
+
+  nodes.set(srcKey, makeNode(0, src, null, -1));
   heap.push(srcKey);
 
   while (heap.size > 0) {
@@ -101,7 +118,8 @@ export function aStarSearch(
     // reached dst); once every remaining open node can only be worse, stop.
     if (n.t >= (nodes.get(dstKey)?.g ?? stopAt + 1)) break;
 
-    for (const loc of getAdjacentTiles(n.curr)) {
+    const neighbours = useTeleports ? [...getAdjacentTiles(n.curr), ...teleports.adjacents(n.curr)] : getAdjacentTiles(n.curr);
+    for (const loc of neighbours) {
       if (!loc.valid(width, height, border)) continue;
       if (loc.equals(n.curr)) continue;
 
@@ -115,8 +133,7 @@ export function aStarSearch(
       if (cost >= thresh) continue;
 
       const wasOpen = heap.has(lk);
-      const h = heuristic(loc, dst);
-      nodes.set(lk, { g: cost, h, t: cost + h, curr: loc, prev: n.curr });
+      nodes.set(lk, makeNode(cost, loc, n.curr, isKnown ? nodes.get(lk)!.srch : -1));
 
       if (wasOpen) {
         heap.fix(lk);

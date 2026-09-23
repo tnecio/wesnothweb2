@@ -8,8 +8,9 @@
  *
  * Deliberately NOT ported (documented gaps, not oversights):
  *
- *  - **Teleportation** (`teleport.cpp`/`teleport_map`): no ability-evaluation
- *    model exists yet (see `astar.ts`'s module doc comment) to feed one.
+ *  - **Teleportation** (Phase 18a): `findRoutes` takes a `TeleportMap`
+ *    (`reachableHexes`' `allowTeleport`) and `findPath` passes one to A*.
+ *    Vision paths do not use teleports yet (upstream's `check_vision`).
  *  - Vision/jamming paths themselves live in `actions/vision.ts`; this
  *    module only provides `find_routes`' `jamming_map` hook they use. Unit
  *    visibility (fog, `hides`) comes from `visibility.ts`.
@@ -46,6 +47,7 @@
  *    fallback.)
  */
 
+import { getTeleportLocations, type TeleportMap } from './teleport.js';
 import { Location, getAdjacentTiles } from '../model/Location.js';
 import type { TerrainCode } from '../model/Terrain.js';
 import { UNREACHABLE } from '../model/MoveType.js';
@@ -180,6 +182,8 @@ export interface FindPathOptions extends ShortestPathCalculatorOptions {
   viewingTeam?: Team;
   /** Mirrors the `stop_at` bound real call sites pass (typically `map.w() + map.h()` or a large constant). */
   stopAt?: number;
+  /** Route through the unit's teleports (default true: upstream hands `a_star_search` the unit's teleport map for moves, the AI and `find_path`). */
+  allowTeleport?: boolean;
 }
 
 /**
@@ -191,7 +195,8 @@ export function findPath(board: GameBoard, unit: Unit, dst: Location, options: F
   const stopAt = options.stopAt ?? board.map.w() + board.map.h();
   const viewingTeam = options.seeAll ? undefined : (options.viewingTeam ?? board.getTeam(unit.side));
   const calc = new ShortestPathCalculator(board, unit, viewingTeam, options);
-  return aStarSearch(unit.location, dst, stopAt, calc, board.map.w(), board.map.h());
+  const teleports = (options.allowTeleport ?? true) ? getTeleportLocations(board, unit, { viewingTeam, seeAll: viewingTeam === undefined }) : undefined;
+  return aStarSearch(unit.location, dst, stopAt, calc, board.map.w(), board.map.h(), 0, teleports);
 }
 
 // --- find_routes: the reachable-hexes flood fill ---
@@ -276,6 +281,8 @@ export interface FindRoutesOptions {
   viewingTeam?: Team;
   /** Mirrors `find_routes`' `jamming_map`: extra cost per hex (keyed by `Location.key()`), used by vision paths. */
   jammingMap?: ReadonlyMap<string, number>;
+  /** Teleport targets reachable from each hex, as extra neighbours (upstream's `teleporter` argument). */
+  teleports?: TeleportMap;
 }
 
 export interface FindRoutesResult {
@@ -336,7 +343,8 @@ export function findRoutes(options: FindRoutesOptions & { board: GameBoard; orig
     const curNode = nodes.get(curKey)!;
     const curHex = Location.fromKey(curKey);
 
-    for (const nextHex of getAdjacentTiles(curHex)) {
+    const neighbours = options.teleports ? [...getAdjacentTiles(curHex), ...options.teleports.adjacents(curHex)] : getAdjacentTiles(curHex);
+    for (const nextHex of neighbours) {
       if (!map.onBoard(nextHex)) {
         if (collectEdges) edges.add(nextHex.key());
         continue;
@@ -414,13 +422,14 @@ export interface ReachableHexesOptions {
   /** Set if units should never obstruct paths (implies ignoring ZoC too, matching upstream). */
   ignoreUnits?: boolean;
   collectEdges?: boolean;
+  /** Include the unit's teleports (`allow_teleport`). Defaults to true: the game's reach display, the AI's move maps and moves all pass it upstream. */
+  allowTeleport?: boolean;
 }
 
 /**
  * Mirrors `pathfind::paths`' unit constructor: every hex `unit` can reach
  * this turn (plus `additionalTurns` more), with the best route to each --
- * the calculation behind move-range highlighting. Teleportation
- * (`allow_teleport` upstream) is not offered, see module doc comment.
+ * the calculation behind move-range highlighting.
  */
 export function reachableHexes(board: GameBoard, unit: Unit, options: ReachableHexesOptions = {}): FindRoutesResult {
   const forceIgnoreZoc = options.forceIgnoreZoc ?? false;
@@ -443,6 +452,9 @@ export function reachableHexes(board: GameBoard, unit: Unit, options: ReachableH
     currentTeam,
     zocUnit,
     viewingTeam,
+    teleports: (options.allowTeleport ?? true)
+      ? getTeleportLocations(board, unit, { viewingTeam, seeAll: viewingTeam === undefined, ignoreUnits })
+      : undefined,
   });
 }
 

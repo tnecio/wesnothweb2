@@ -331,6 +331,31 @@ export function directionBetween(from: Location, to: Location): Direction | unde
   return idx === -1 ? undefined : ALL_DIRECTIONS[idx];
 }
 
+/**
+ * The general direction from `from` to any other hex (`map_location::
+ * get_relative_dir`, its `DEFAULT` mode -- upstream's default call uses a
+ * rotation-based "radial symmetry" mode that agrees for adjacent hexes and
+ * differs only on exact ties far away). `Indeterminate` for the same hex.
+ * Used for a teleporting unit's facing.
+ */
+export function relativeDirection(from: Location, to: Location): Direction {
+  const dx = to.x - from.x;
+  let dy = to.y - from.y;
+  // eslint-disable-next-line no-bitwise
+  if ((to.x & 1) === 0 && (from.x & 1) === 1) dy--;
+  if (dx === 0 && dy === 0) return Direction.Indeterminate;
+  let dist = Math.abs(dx);
+  const distSwNe = Math.abs(dy + Math.trunc((dx + (dy > 0 ? 0 : 1)) / 2));
+  const distSeNw = Math.abs(dy - Math.trunc((dx - (dy > 0 ? 0 : 1)) / 2));
+  let dir = dy > 0 ? Direction.South : Direction.North;
+  if (distSeNw < dist) {
+    dir = dx > 0 ? Direction.SouthEast : Direction.NorthWest;
+    dist = distSeNw;
+  }
+  if (distSwNe < dist) dir = dx > 0 ? Direction.NorthEast : Direction.SouthWest;
+  return dir;
+}
+
 /** Mirrors `tiles_adjacent`. */
 export function tilesAdjacent(a: Location, b: Location): boolean {
   const dy = a.y - b.y;

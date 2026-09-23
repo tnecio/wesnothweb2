@@ -34,13 +34,15 @@
  *    owned" special case). `MoveResult.enteredVillage` still reports
  *    whether the final hex is a village, for callers that want to react to
  *    the capture (e.g. a UI toast) without re-deriving it themselves.
- *  - **Teleportation** (`try_teleport`/`pathfind::teleport_map`): no
- *    teleport-map support exists yet (`pathfind.ts`'s own module doc
- *    comment excludes it for the same "no ability-evaluation model yet"
- *    reason). `executeMove` only walks ordinary adjacent-hex steps.
+ *  - **Teleportation** (Phase 18a): a route may jump between
+ *    non-adjacent hexes (a teleport, from `findPath`'s `allowTeleport`).
+ *    It costs the exit hex's terrain as usual; an enemy on the exit, or an
+ *    ally when the tunnel doesn't let units pass (`pass_allied_units=no`),
+ *    fails the teleport and stops the unit before it
+ *    (`check_for_obstructing_unit`, `MoveResult.teleportFailed`).
  */
 
-import { Location, getAdjacentTiles, ALL_DIRECTIONS, type Direction } from '../model/Location.js';
+import { Location, getAdjacentTiles, relativeDirection, tilesAdjacent, type Direction } from '../model/Location.js';
 import type { GameBoard } from '../model/GameBoard.js';
 import type { Team } from '../model/Team.js';
 import type { Unit } from '../model/Unit.js';
@@ -48,6 +50,7 @@ import { UnitStatus } from '../model/Unit.js';
 import { enemyZoc, hasSkirmisher } from '../pathfind/pathfind.js';
 import { getVisibleUnit, unitInvisible } from '../pathfind/visibility.js';
 import { ShroudClearer, actorSighted, getSidesNotSeeing, type RaiseEvent } from './vision.js';
+import { getTeleportLocations } from '../pathfind/teleport.js';
 
 export interface PlanTurnMovementOptions {
   /** Only this team's visible units are considered for ZoC; omit for "see all" (matches `pathfind.ts`'s convention). */
@@ -183,6 +186,8 @@ export interface MoveResult {
   readonly ambusherLocations: readonly Location[];
   /** An enemy the mover couldn't see occupied the next hex, so it stopped in front of it. */
   readonly blocked: boolean;
+  /** A teleport on the route failed because a unit blocks its exit; the unit stopped before it. */
+  readonly teleportFailed: boolean;
   /** Movement was interrupted because units came into view. */
   readonly sightedStop: boolean;
   readonly enemiesSighted: number;
@@ -200,10 +205,9 @@ export interface ExecuteMoveOptions extends PlanTurnMovementOptions {
   raise?: RaiseEvent;
 }
 
+/** The facing after stepping `from` -> `to`: the hex direction for a walk, the general direction for a teleport. */
 function directionTo(from: Location, to: Location): Direction {
-  const adj = getAdjacentTiles(from);
-  const idx = adj.findIndex((loc) => loc.equals(to));
-  return idx === -1 ? ALL_DIRECTIONS[0]! : ALL_DIRECTIONS[idx]!;
+  return relativeDirection(from, to);
 }
 
 /**
@@ -225,10 +229,23 @@ export function executeMove(board: GameBoard, unit: Unit, path: readonly Locatio
   let limit = planned.steps.length;
   let ambusherLocations: readonly Location[] = [];
   let blockedLoc: Location | undefined;
+  let teleportFailed = false;
   for (let i = 1; i < planned.steps.length; i++) {
     const hex = planned.steps[i]!;
     const occupant = board.unitAt(hex);
     const occupantTeam = occupant ? board.getTeam(occupant.side) : undefined;
+    const prev = planned.steps[i - 1]!;
+    if (occupant && occupant !== unit && !tilesAdjacent(prev, hex)) {
+      // check_for_obstructing_unit: an enemy always blocks a teleport exit;
+      // an ally only when the tunnel does not let units pass.
+      const enemy = !!team && !!occupantTeam && team.isEnemy(occupantTeam);
+      const allowed = !enemy && getTeleportLocations(board, unit, { seeAll: true }).adjacents(prev).some((l) => l.equals(hex));
+      if (!allowed) {
+        teleportFailed = true;
+        limit = i;
+        break;
+      }
+    }
     if (occupant && team && occupantTeam && team.isEnemy(occupantTeam)) {
       blockedLoc = hex;
       limit = i;
@@ -325,11 +342,12 @@ export function executeMove(board: GameBoard, unit: Unit, path: readonly Locatio
     ambushed,
     ambusherLocations: ambushed ? ambusherLocations : [],
     blocked,
+    teleportFailed,
     sightedStop,
     enemiesSighted: counts.enemies,
     friendsSighted: counts.friends,
     fogChanged,
-    undoBlocked: ambushed || blocked || fogChanged,
+    undoBlocked: ambushed || blocked || teleportFailed || fogChanged,
     enteredVillage,
     facing: unit.facing,
   };

@@ -87,3 +87,75 @@ side=1
     expect(getTeleportLocations(board, mage, { viewingTeam: t2, seeAll: true }).isEmpty).toBe(false);
   });
 });
+
+import { ALL_DIRECTIONS, directionBetween, getAdjacentTiles, relativeDirection, Direction } from '../../src/model/Location.js';
+import { findPath, reachableHexes } from '../../src/pathfind/pathfind.js';
+import { executeMove } from '../../src/actions/move.js';
+
+describe('relativeDirection', () => {
+  it('agrees with the adjacency directions on both column parities', () => {
+    for (const center of [L(4, 4), L(5, 4)]) {
+      const adj = getAdjacentTiles(center);
+      adj.forEach((loc, i) => expect(relativeDirection(center, loc)).toBe(ALL_DIRECTIONS[i]));
+      adj.forEach((loc) => expect(relativeDirection(center, loc)).toBe(directionBetween(center, loc)));
+    }
+  });
+  it('gives a general direction far away, and Indeterminate for the same hex', () => {
+    expect(relativeDirection(L(0, 0), L(0, 5))).toBe(Direction.South);
+    expect(relativeDirection(L(0, 5), L(6, 1))).toBe(Direction.NorthEast);
+    expect(relativeDirection(L(3, 3), L(3, 3))).toBe(Direction.Indeterminate);
+  });
+});
+
+describe('moving through a teleport', () => {
+  /** A wide strip: side 1's villages at the far ends, far beyond one turn's walk. */
+  function strip() {
+    const row = Array(16).fill('Gg');
+    row[0] = 'Gg^Vh';
+    row[15] = 'Gg^Vh';
+    const board = new GameBoard(content.map([row.join(', '), Array(16).fill('Gg').join(', ')]));
+    const t1 = new Team(1, { teamName: 'a' });
+    const t2 = new Team(2, { teamName: 'b' });
+    board.addTeam(t1);
+    board.addTeam(t2);
+    board.captureVillage(L(0, 0), 1);
+    board.captureVillage(L(15, 0), 1);
+    const mage = Unit.create(content.unitType('Silver Mage'), 1, L(0, 0));
+    board.addUnit(mage);
+    return { board, mage };
+  }
+
+  it('the reach includes the far village and the hexes around it, unless allowTeleport=false', () => {
+    const { board, mage } = strip();
+    const withTeleport = reachableHexes(board, mage, { allowTeleport: true });
+    expect(withTeleport.destinations.contains(L(15, 0))).toBe(true);
+    expect(withTeleport.destinations.contains(L(14, 0))).toBe(true);
+    expect(reachableHexes(board, mage, { allowTeleport: false }).destinations.contains(L(15, 0))).toBe(false);
+  });
+
+  it('findPath jumps: one step from village to village', () => {
+    const { board, mage } = strip();
+    const route = findPath(board, mage, L(14, 1), { allowTeleport: true });
+    expect(route.steps.slice(0, 2).map((l) => `${l.x},${l.y}`)).toEqual(['0,0', '15,0']);
+    expect(route.steps.at(-1)!.equals(L(14, 1))).toBe(true);
+  });
+
+  it('executeMove teleports, paying only the exit terrain, and faces the way it went', () => {
+    const { board, mage } = strip();
+    const before = mage.movesLeft;
+    const result = executeMove(board, mage, findPath(board, mage, L(15, 0), { allowTeleport: true }).steps);
+    expect(mage.location.equals(L(15, 0))).toBe(true);
+    expect(result.teleportFailed).toBe(false);
+    expect(before - mage.movesLeft).toBe(1); // entering the village hex
+  });
+
+  it('an enemy the mover could not see on the exit fails the teleport', () => {
+    const { board, mage } = strip();
+    const path = findPath(board, mage, L(15, 0), { allowTeleport: true }).steps;
+    board.addUnit(Unit.create(content.unitType('Spearman'), 2, L(15, 0)));
+    board.getTeam(1)!.fog.enabled = true; // the exit is fogged: side 1 cannot see the Spearman
+    const result = executeMove(board, mage, path);
+    expect(result.teleportFailed).toBe(true);
+    expect(mage.location.equals(L(0, 0))).toBe(true);
+  });
+});
