@@ -148,7 +148,9 @@ loyalty.
   consumed anywhere yet (feeds Phases 20/24).
 - Round-trip serialisation (parse → re-serialise → re-parse identical) —
   needed for save-file fidelity beyond the current gzipped-JSON snapshot
-  approach; revisit alongside Phase 25's replay work.
+  approach. The WML writer now exists (Phase 26 S2, `wml/writer.ts`,
+  parse -> write -> parse tested on real content); the action-log side is
+  Phase 18b's replay work.
 - `[race]` random name generation (Markov generators), `[variation]`/
   `[male]`/`[female]` gendered variants, unit help-topic generation — data
   model has the hooks (`UnitType`) but generators/variation-switching
@@ -340,7 +342,8 @@ basics (id/type/side/race/gender/level/canrecruit/role, numeric ranges,
   modules — good candidates to drive from real Phase 6 content rather than
   speculatively building ahead of a scenario that needs them.
 - Statistics recording (`[statistics]`/`[team]`/`[attacks]`/`[defends]`/
-  `[killed]`/`[deaths]`) — tracked under Phase 25 alongside replay.
+  `[killed]`/`[deaths]`) — tracked under Phase 25 (statistics &
+  achievements).
 - `[test_do_attack_by_id]`, `[disable]` special, `[damage_type]` override,
   attack alignment override (`set_alignment=`) — small, not yet ported.
 
@@ -596,7 +599,8 @@ strike-out covers *networked* multiplayer only (session/lobby/relay,
 recording/playback, out-of-sync detection, or RNG/choice synchronisation
 (catalogue category 20) — those matter for single-player determinism,
 testing, and "watch your last game back" even with zero network code, and
-are tracked as real, in-scope work under **Phase 25**.
+are tracked as real, in-scope work under **Phase 18b** (replay, undo &
+redo).
 
 ## Phase 9 — Terrain visuals
 
@@ -774,10 +778,12 @@ now exists:
 - AI-played attacks (`GameSession.playAiSide`) are still instant,
   deliberately (see that field's own doc comment: animating every blow
   of every automated AI turn would slow `endTurn` for no benefit).
-  Sound-in-frame playback, halo/blend/submerge compositing, and
-  `[delay]`/screen-shake/floating-damage-text remain unbuilt (see
-  `frame.ts`'s `applyFrameEffects` stub and the catalogue checklist
-  below).
+  Particles and halos are now drawn (2026-09-22, bugs6.md: every
+  `[*_frame]` family as its own particle -- missiles included -- on a
+  shared per-beat clock aligned on the blow, plus `halo=` images; see
+  docs/PROGRESS.md). Sound-in-frame playback, submerge/highlight
+  compositing and screen-shake remain unbuilt (see `frame.ts`'s
+  `applyFrameEffects` stub and the catalogue checklist below).
 
 ### Catalogue checklist (category 18 in full)
 
@@ -1047,8 +1053,9 @@ UI stays in Phase 24 (it lives in the preferences dialog).
 
 **Scope note (2026-09-20).** Three of the bullet list's example bindings
 have no feature behind them yet and are therefore *not* in this phase:
-`undo`/`redo` (no undo stack exists in `GameSession`; the coverage map
-puts undo in Phase 2, still unbuilt), `togglegrid` and `statistics`/
+`undo`/`redo` (the engine has a tested `UndoStack`,
+`actions/undo.ts`, from Phase 2, but `GameSession` never uses it -- wiring
+it up is Phase 18b), `togglegrid` and `statistics`/
 `unitlist` (no such views). They get their upstream bindings when the
 features land. Everything else below is wired to something real.
 
@@ -1237,6 +1244,34 @@ the Abilities & Specials synthetic scenario.
   one move and the reach overlay offers it; ending side 1's turn in the
   Ambush station hides the Ranger from side 2.
 
+## Phase 18b — Replay, undo & redo (split from Phase 25, 2026-09-23)
+
+**Status: not started; detailed plan to be written once Phase 18a is
+done** (user's call: moved ahead of Phases 18–25). What exists: the
+engine's `UndoStack` (`actions/undo.ts`: move/recruit/recall/dismiss,
+blocked by randomness), tested but not used by `GameSession`; the synced
+MT RNG with seed/call count in saves; `[option]` choices already
+recorded in upstream's `[input]` shape (Phase 17 E1).
+
+- Undo/redo in play: wire the `UndoStack` into `GameSession` (incl. fog
+  re-shroud and the `undoBlocked` cases `executeMove` already reports),
+  the redo stack (invalidated by any new action), upstream's `undo`/`redo`
+  hotkeys and menu entries.
+- Replay recording: every synced action (move/attack/recruit/recall/
+  end_turn/choose, incl. `[option]` choices and `rand=`) logged in order,
+  independent of the snapshot, so a scenario replays from its start to
+  identical state. Saves then carry a real `[replay]` (Phase 26 emits a
+  minimal one today).
+- Replay playback: a viewer to watch a scenario back (play/pause/step per
+  action/turn/side, skip animations).
+- Out-of-sync self-check: replay a recorded scenario and diff the final
+  state against the live run -- a regression test in its own right.
+- `[sync_variable]` correctness.
+- **Milestone**: a scripted scenario's full action sequence replays from a
+  recorded log to bit-identical final state; undo/redo of a move and a
+  recruit restores the exact prior state (gold, moves, fog); a save
+  downloaded mid-scenario carries a `[replay]` the real binary replays.
+
 ## Phase 19 — Audio & Music (was Phase 13)
 
 **Status: not started.** Nothing in `packages/renderer` or `packages/ui`
@@ -1307,7 +1342,8 @@ list). Spec sources: `title_screen.cpp`, `campaign_selection.cpp`,
 - Campaign selection modal: campaign list with icon, description, image,
   difficulty chooser (`[difficulty]`), and campaign completion markers
   (persisted); debug campaigns kept but visually separated.
-- Load Game opens the existing load flow (fully reworked in Phase 26);
+- Load Game opens the existing load flow (fully reworked in Phase 26,
+  which also added a saved-games list and resume to the current menu page);
   Preferences opens Phase 24's dialog; credits screen
   (`[about]`/`[entry]`/`[credits_group]`).
 - **Milestone**: starting a campaign at a chosen difficulty, and loading a
@@ -1354,49 +1390,46 @@ chasing a moving one.
   selector), advanced — persisted.
 - Unit list dialog (sortable, click-to-centre), in-game help/encyclopedia
   (`[topic]`/`[section]`/`[toplevel]`/`[open_help]`; unit/terrain/ability
-  pages), statistics dialog (feeds off Phase 25), advancement-choice
+  pages), statistics dialog (feeds off Phase 25's statistics), advancement-choice
   dialog polish (preview the resulting unit).
 - **Milestone**: the help browser opens a real unit's stat/ability page,
   animation speed changes take effect immediately, and a rebound hotkey
   persists across reload.
 
-## Phase 25 — Replay, Statistics & Achievements (was Phase 15)
+## Phase 25 — Statistics & Achievements (was Phase 15)
 
-**Status: partially started; deprioritised 2026-09-12 (user's call).**
-Undo (single action, real state restoration) is done (Phase 2). Save/load
-(Phase 5) captures enough state to resume a scenario, but not as a
-replayable *action log* — there's no replay recording/playback, no
-out-of-sync self-check, no statistics tallying, and no achievements.
+**Status: not started.** Split 2026-09-23 (user's call): replay, undo and
+redo moved forward to Phase 18b; this phase keeps the rest of the old
+Phase 15.
 
-- Replay recording: every synced action (move/attack/recruit/recall/
-  end_turn/choose, incl. Phase 17's `[option]` choices) logged in order,
-  independent of the snapshot-based save system, so a finished scenario
-  replays from turn 1 to identical state — also the natural place to close
-  Phase 1's deferred "round-trip serialisation" gap.
-- Redo stack (extends Phase 2's undo stack; invalidated by any new
-  action).
-- Out-of-sync self-check: replay a recorded scenario and diff final state
-  against the live run — a strong regression test in its own right.
-- `[sync_variable]` correctness.
 - Statistics (`[statistics]`/`[team]`/`[attacks]`/`[defends]`/`[killed]`/
   `[deaths]`): damage dealt/taken (expected vs. actual), kills/losses,
   recruits/recalls/advances per side per scenario, rolled up per campaign.
+  Recorded from the same synced actions Phase 18b logs; saves already
+  carry an imported `[statistics]` subtree verbatim (Phase 26), which this
+  phase starts writing for real.
 - Achievements (`[achievement]`/`[achievement_group]`/`[sub_achievement]`/
   `[set_achievement]`/`[progress_achievement]`/`[has_achievement]`) —
   UtBS ships a real `achievements.cfg` to test against.
 - Persistent global variables (`[set_global_variable]`/
   `[get_global_variable]`/`namespace=`) — same durable storage layer as
-  achievements.
-- **Milestone**: a scripted scenario's full action sequence replays from a
-  recorded log to bit-identical final state, the statistics dialog shows
-  correct expected-vs-actual combat numbers for that run, and one real
-  UtBS achievement completes and stays earned across a reload.
+  achievements (IndexedDB, like saves).
+- **Milestone**: the statistics dialog shows correct expected-vs-actual
+  combat numbers for a played scenario, and one real UtBS achievement
+  completes and stays earned across a reload.
 
 ## Phase 26 — Save game handling
 
-**Status: basic save/load only** (Phase 5: gzipped config tree in
-IndexedDB, no management UI). Sequenced after Phase 25 because upstream
-save files embed the `[replay]` log, so format compatibility depends on it.
+**Status: delivered S1–S8 (2026-09-22)**, pulled forward ahead of Phases
+18–25 (user's call); see docs/PROGRESS.md. Canonical saves stay JSON
+(`SaveGameData` v2, now complete: XP/traits/statuses/villages/RNG
+position...) in IndexedDB; WML appears only at the download/upload
+boundary (`save/wesnothSave.ts`, over a new WML writer). Verified both
+ways against the real 1.16.9 binary; a round-trip test diffs a real save
+field by field. The "sequenced after Phase 25" assumption below turned
+out wrong: a turn-start save needs only a minimal `[replay]`, which is
+what is emitted -- a real action log comes with Phase 18b. The
+thumbnail in the list below was not built.
 
 - Save/load dialogs (`game_save.cpp`/`game_load.cpp`): list with
   campaign/scenario/turn/date/thumbnail, rename, delete (with
@@ -1628,31 +1661,25 @@ recruitment budgeting (`[recruitment_instructions]`/`[recruit]`/
 
 ---
 
-## Priority as of 2026-09-12
+## Priority as of 2026-09-23
 
-Explicit user direction (2026-09-12), superseding the 2026-09-09 priority
-section. Phases 0–5, 7, 9, 10 are delivered (see each phase's status);
-Phase 6 content breadth continues opportunistically as each new phase
-pulls in real content, rather than as the headline focus. Phases 11 and
-12 (fog/shroud/vision, time of day) are now also delivered, both verified
-against the Under the Burning Suns testbed as planned.
+Explicit user direction (2026-09-23), superseding the 2026-09-12 list.
+Phases 0–5, 7, 9–17 are delivered (see each phase's status); Phase 6
+content breadth continues opportunistically. Phase 26 (save games) was
+pulled forward and delivered 2026-09-22.
 
-1. **Phase 13** (recruit/recall/combat modals) and **Phase 14** (main game
-   UI overhaul) delivered 2026-09-13, **Phase 15** (core keyboard
-   shortcuts) 2026-09-20 — this group is done
-2. **Phase 16** (narration) delivered 2026-09-14; **Phase 17**
-   (events/`[option]`/cutscenes) 2026-09-20 — this group is done
-3. **Phase 18** (labels/items) ← **current focus**, then **Phase 18a**
-   (teleport, hotseat viewing side), then **Phase 19** (audio/music).
+1. **Phase 18a** (teleport, hotseat viewing side) ← **current focus**.
+2. **Phase 18b** (replay, undo & redo) — its detailed plan is written
+   when 18a is done.
+3. **Phase 18** (labels/items), then **Phase 19** (audio/music).
 4. **Phase 20** (localization/accessibility).
 5. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).
-6. **Phase 25** (replay/statistics/achievements).
-7. **Phase 26** (save game handling).
-8. **Phase 27** (feature completeness assessment).
-9. **Phase 28** (CI/CD/performance/platform).
-10. **Phase 29** (real AI: RCA framework + Lua on fengari) — added
-    2026-09-13, underway alongside the above rather than strictly after
-    it (Phase 7's MVP heuristic AI remains playable throughout).
+6. **Phase 25** (statistics & achievements).
+7. **Phase 27** (feature completeness assessment).
+8. **Phase 28** (CI/CD/performance/platform).
+9. **Phase 29** (real AI: RCA framework + Lua on fengari) — underway
+   alongside the above rather than strictly after it (Phase 7's MVP
+   heuristic AI remains playable throughout).
 
 ### Old → new phase numbers
 
@@ -1664,11 +1691,11 @@ against the Under the Burning Suns testbed as planned.
 | 12 Time of Day | 12 (unchanged) |
 | 13 Audio & Music | 19 |
 | 14 Localization & Accessibility | 20 |
-| 15 Replay, Statistics & Achievements | 25 |
+| 15 Replay, Statistics & Achievements | 18b (replay, undo & redo), 25 (statistics & achievements) |
 | 16 Advanced Map Rendering | 18 (labels/items), 17 (camera scripting, screen fade), 22 (minimap/camera) |
 | 17 Advanced UI Shell | 13 (recruit/recall/combat), 14 (theme/context menu/menu items), 15 (hotkeys), 17 (`[option]`/`[text_input]`, message options), 21 (campaign list/difficulty/credits), 23 (mobile), 24 (preferences/help/unit list/stats dialog) |
 | 18 CI/CD, Performance & Platform | 28 |
-| — | 16 Narration (new), 26 Save games (new), 27 Completeness assessment (new) |
+| — | 16 Narration (new), 18a Teleport & hotseat view (new), 26 Save games (new), 27 Completeness assessment (new) |
 
 ---
 
@@ -1700,7 +1727,7 @@ item.
 | 17 | UI, Menus, Input & Localization | 5 (core play loop), 13/14 (dialogs, main UI), 15 (hotkeys), 20 (localization/accessibility), 21 (main menu), 23 (mobile), 24 (preferences/help) |
 | 18 | Animation & Visual Effects | 10 |
 | 19 | Audio & Music | 19 |
-| 20 | Persistence, Undo, Replay & Platform | 2 (undo), 5 (save/load), 25 (replay/statistics/achievements), 26 (save management/format), 28 (CI/CD/perf/platform) |
+| 20 | Persistence, Undo, Replay & Platform | 2 (undo stack), 5 (save/load), 18b (replay, undo/redo in play), 25 (statistics/achievements), 26 (save management/format), 28 (CI/CD/perf/platform) |
 
 Editor (`EditorWML`/`PblWML`) is explicitly out of scope per the
 catalogue's own Appendix A and this plan's opening paragraph — no phase
