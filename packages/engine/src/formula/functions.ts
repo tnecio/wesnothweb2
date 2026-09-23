@@ -65,6 +65,11 @@ export class FunctionSymbolTable {
     return FunctionSymbolTable.builtinsInstance;
   }
 
+  /** Registers a host-provided built-in (e.g. game-state functions like `unit_at`, which need the live board). */
+  addBuiltin(name: string, factory: (args: Expression[]) => Expression): void {
+    this.custom.set(name, { builtin: factory });
+  }
+
   addUserFunction(name: string, def: UserFunctionDef): void {
     this.custom.set(name, { user: def });
   }

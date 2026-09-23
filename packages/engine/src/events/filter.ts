@@ -36,7 +36,7 @@ import { Location, distanceBetween, getAdjacentTiles } from '../model/Location.j
 import { parseTerrainList, terrainMatches } from '../model/Terrain.js';
 import type { Unit } from '../model/Unit.js';
 import type { WmlConfig } from '../wml/config.js';
-import { MapFormulaCallable, parseFormula, Variant } from '../formula/index.js';
+import { FormulaError, FunctionSymbolTable, MapFormulaCallable, parseFormula, Variant, type Callable, type Expression } from '../formula/index.js';
 import { isUnitVisibleToTeam } from '../pathfind/visibility.js';
 
 /** Parses WML's range-list syntax ("3", "3-7", "3,5,9-11") into inclusive [lo, hi] pairs. */
@@ -62,24 +62,128 @@ function inRanges(n: number, ranges: Array<[number, number]>): boolean {
   return ranges.some(([lo, hi]) => n >= lo && n <= hi);
 }
 
+/** A map location as WFL sees it (`location_callable`): `x`/`y` in WML (1-based) coordinates, equal by position. */
+class LocationCallable implements Callable {
+  constructor(readonly loc: Location) {}
+  getValue(key: string): Variant {
+    if (key === 'x') return Variant.int(this.loc.wmlX);
+    if (key === 'y') return Variant.int(this.loc.wmlY);
+    return Variant.null_();
+  }
+  getInputs(): string[] {
+    return ['x', 'y'];
+  }
+  equalsCallable(other: Callable): boolean {
+    return other instanceof LocationCallable && other.loc.equals(this.loc);
+  }
+}
+
+/**
+ * A `Unit` as WFL sees it -- a slice of `unit_callable`: its scalar fields,
+ * `side_number` (1-based; kept `side` 1-based too, as this port's
+ * `formula=` filters always had it), `loc`, and equality by identity
+ * (`unit_callable::do_compare` compares underlying ids), so a tunnel filter
+ * can ask `unit = teleport_unit`.
+ */
+class UnitCallable implements Callable {
+  constructor(readonly unit: Unit) {}
+  getValue(key: string): Variant {
+    const u = this.unit;
+    switch (key) {
+      case 'id': return Variant.string(u.id);
+      case 'type': return Variant.string(u.type.id);
+      case 'side': return Variant.int(u.side);
+      case 'side_number': return Variant.int(u.side);
+      case 'x': return Variant.int(u.location.wmlX);
+      case 'y': return Variant.int(u.location.wmlY);
+      case 'loc': return Variant.callable(new LocationCallable(u.location));
+      case 'hitpoints': return Variant.int(u.hitpoints);
+      case 'max_hitpoints': return Variant.int(u.maxHitpoints);
+      case 'moves': return Variant.int(u.movesLeft);
+      case 'max_moves': return Variant.int(u.maxMoves);
+      case 'experience': return Variant.int(u.experience);
+      case 'level': return Variant.int(u.level);
+      case 'resting': return Variant.int(u.resting ? 1 : 0);
+      case 'canrecruit': return Variant.int(u.canRecruit ? 1 : 0);
+      default: return Variant.null_();
+    }
+  }
+  getInputs(): string[] {
+    return ['id', 'type', 'side', 'side_number', 'x', 'y', 'loc', 'hitpoints', 'max_hitpoints', 'moves', 'max_moves', 'experience', 'level', 'resting', 'canrecruit'];
+  }
+  equalsCallable(other: Callable): boolean {
+    return other instanceof UnitCallable && other.unit === this.unit;
+  }
+}
+
 /** Exposes a `Unit`'s scalar fields to `formula=` filters as `self.<field>`. Mirrors a small slice of `unit_callable`. */
 export function unitFormulaContext(unit: Unit): MapFormulaCallable {
-  const self = new MapFormulaCallable();
-  self.add('id', Variant.string(unit.id));
-  self.add('type', Variant.string(unit.type.id));
-  self.add('side', Variant.int(unit.side));
-  self.add('x', Variant.int(unit.location.wmlX));
-  self.add('y', Variant.int(unit.location.wmlY));
-  self.add('hitpoints', Variant.int(unit.hitpoints));
-  self.add('max_hitpoints', Variant.int(unit.maxHitpoints));
-  self.add('moves', Variant.int(unit.movesLeft));
-  self.add('max_moves', Variant.int(unit.maxMoves));
-  self.add('experience', Variant.int(unit.experience));
-  self.add('level', Variant.int(unit.level));
-  self.add('resting', Variant.int(unit.resting ? 1 : 0));
   const top = new MapFormulaCallable();
-  top.add('self', Variant.callable(self));
+  top.add('self', Variant.callable(new UnitCallable(unit)));
   return top;
+}
+
+/**
+ * `terrain_callable` (callable_objects.cpp ~L607-650): what a location
+ * filter's `formula=` sees as its top-level names -- the hex's `x`/`y`/`loc`,
+ * its terrain's `id`/`village`/`castle`/`keep`/`healing`, and `owner_side`
+ * (the owning side's number, 0 if none).
+ */
+class TerrainCallable implements Callable {
+  constructor(
+    private readonly board: GameBoard,
+    private readonly loc: Location,
+  ) {}
+  getValue(key: string): Variant {
+    const map = this.board.map;
+    switch (key) {
+      case 'x': return Variant.int(this.loc.wmlX);
+      case 'y': return Variant.int(this.loc.wmlY);
+      case 'loc': return Variant.callable(new LocationCallable(this.loc));
+      case 'id': return Variant.string(map.terrainId(this.loc));
+      case 'village': return Variant.int(map.isVillage(this.loc) ? 1 : 0);
+      case 'castle': return Variant.int(map.isCastle(this.loc) ? 1 : 0);
+      case 'keep': return Variant.int(map.isKeep(this.loc) ? 1 : 0);
+      case 'healing': return Variant.int(map.givesHealing(this.loc));
+      case 'owner_side': return Variant.int(this.board.villageOwner(this.loc) ?? 0);
+      default: return Variant.null_();
+    }
+  }
+  getInputs(): string[] {
+    return ['x', 'y', 'loc', 'id', 'village', 'castle', 'keep', 'healing', 'owner_side'];
+  }
+}
+
+/** `unit_at(loc)` (function_gamestate.cpp): the unit on the live board at a location, or null. */
+function gameStateSymbols(board: GameBoard): FunctionSymbolTable {
+  const symbols = new FunctionSymbolTable();
+  symbols.addBuiltin('unit_at', (args: Expression[]): Expression => {
+    if (args.length !== 1) throw new FormulaError(args.length < 1 ? 'Too few arguments' : 'Too many arguments');
+    return {
+      evaluate(vars: Callable): Variant {
+        const value = args[0]!.evaluate(vars);
+        if (!value.isCallable()) return Variant.null_();
+        const target = value.asCallable();
+        const loc = target instanceof LocationCallable ? target.loc : new Location(target.getValue('x').asInt() - 1, target.getValue('y').asInt() - 1);
+        const unit = board.unitAt(loc);
+        return unit ? Variant.callable(new UnitCallable(unit)) : Variant.null_();
+      },
+      toString: () => `unit_at(${args[0]!.toString()})`,
+    };
+  });
+  return symbols;
+}
+
+/** A location filter's `formula=` at `loc`, with `teleport_unit` bound when there is a reference unit (terrain_filter::match_internal). Formulas that fail to parse or evaluate match nothing, as upstream. */
+function locationFormulaMatches(board: GameBoard, loc: Location, source: string, refUnit: Unit | undefined): boolean {
+  try {
+    const context = new MapFormulaCallable();
+    context.setFallback(new TerrainCallable(board, loc));
+    if (refUnit) context.add('teleport_unit', Variant.callable(new UnitCallable(refUnit)));
+    return parseFormula(source, gameStateSymbols(board)).evaluate(context).asBool();
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -213,20 +317,26 @@ export function locationMatchesFilter(loc: Location, filterCfg: WmlConfig): bool
  * single-hex checks, where testing one location is wanted rather than
  * enumerating every matching one via `findLocations`.
  */
-export function locationMatchesFilterOnBoard(board: GameBoard, loc: Location, cfg: WmlConfig): boolean {
-  if (!locationSelfMatches(board, loc, cfg)) return false;
+export function locationMatchesFilterOnBoard(board: GameBoard, loc: Location, cfg: WmlConfig, refUnit?: Unit): boolean {
+  if (!locationSelfMatches(board, loc, cfg, refUnit)) return false;
   let matches = true;
   for (const { tag, config } of cfg.allChildren()) {
-    if (tag === 'and') matches = matches && locationMatchesFilterOnBoard(board, loc, config);
-    else if (tag === 'or') matches = matches || locationMatchesFilterOnBoard(board, loc, config);
-    else if (tag === 'not') matches = matches && !locationMatchesFilterOnBoard(board, loc, config);
+    if (tag === 'and') matches = matches && locationMatchesFilterOnBoard(board, loc, config, refUnit);
+    else if (tag === 'or') matches = matches || locationMatchesFilterOnBoard(board, loc, config, refUnit);
+    else if (tag === 'not') matches = matches && !locationMatchesFilterOnBoard(board, loc, config, refUnit);
   }
   return matches;
 }
 
-/** The per-hex part of a standard location filter: `x,y=`, `terrain=`, and `[filter]` on the unit standing there. */
-function locationSelfMatches(board: GameBoard, loc: Location, cfg: WmlConfig): boolean {
+/**
+ * The per-hex part of a standard location filter (`terrain_filter::
+ * match_internal`): `x,y=`, `gives_income=` (is a village), `terrain=`,
+ * `[filter]` on the unit standing there, `owner_side=`, and `formula=`
+ * (with `teleport_unit` bound to `refUnit`, as tunnels need).
+ */
+function locationSelfMatches(board: GameBoard, loc: Location, cfg: WmlConfig, refUnit?: Unit): boolean {
   if (!locationMatchesFilter(loc, cfg)) return false;
+  if (cfg.hasAttribute('gives_income') && cfg.getBoolean('gives_income') !== board.map.isVillage(loc)) return false;
   if (cfg.hasAttribute('terrain') && !terrainMatches(board.map.getTerrain(loc), parseTerrainList(cfg.getString('terrain')))) {
     return false;
   }
@@ -235,6 +345,8 @@ function locationSelfMatches(board: GameBoard, loc: Location, cfg: WmlConfig): b
     const u = board.unitAt(loc);
     if (!u || !unitMatchesFilter(u, unitFilter, board)) return false;
   }
+  if (cfg.hasAttribute('owner_side') && (board.villageOwner(loc) ?? 0) !== cfg.getNumber('owner_side', 0)) return false;
+  if (cfg.hasAttribute('formula') && !locationFormulaMatches(board, loc, cfg.getString('formula'), refUnit)) return false;
   return true;
 }
 
@@ -243,10 +355,11 @@ function locationSelfMatches(board: GameBoard, loc: Location, cfg: WmlConfig): b
  * tags like `[remove_shroud]` use): on-board hexes matching `x,y=`,
  * `terrain=` and `[filter]`, then `[and]`/`[or]`/`[not]` applied in
  * document order, then expanded by `radius=` (through hexes matching
- * `[filter_radius]`, if given). Not covered: `find_in=`, `[filter_adjacent_location]`,
- * `owner_side=`, `time_of_day=`, `area=`.
+ * `[filter_radius]`, if given). `refUnit` is `get_locations`' reference unit,
+ * bound as `teleport_unit` in `formula=`. Not covered: `find_in=`,
+ * `[filter_adjacent_location]`, `[filter_owner]`, `time_of_day=`, `area=`.
  */
-export function findLocations(board: GameBoard, cfg: WmlConfig): Location[] {
+export function findLocations(board: GameBoard, cfg: WmlConfig, refUnit?: Unit): Location[] {
   const map = board.map;
   const all: Location[] = [];
   for (let x = 0; x < map.w(); x++) {
@@ -254,12 +367,12 @@ export function findLocations(board: GameBoard, cfg: WmlConfig): Location[] {
   }
   const matched = new Map<string, Location>();
   for (const loc of all) {
-    if (locationSelfMatches(board, loc, cfg)) matched.set(loc.key(), loc);
+    if (locationSelfMatches(board, loc, cfg, refUnit)) matched.set(loc.key(), loc);
   }
 
   for (const { tag, config } of cfg.allChildren()) {
     if (tag !== 'and' && tag !== 'or' && tag !== 'not') continue;
-    const other = new Set(findLocations(board, config).map((l) => l.key()));
+    const other = new Set(findLocations(board, config, refUnit).map((l) => l.key()));
     if (tag === 'and') {
       for (const key of [...matched.keys()]) if (!other.has(key)) matched.delete(key);
     } else if (tag === 'or') {
@@ -278,7 +391,7 @@ export function findLocations(board: GameBoard, cfg: WmlConfig): Location[] {
     return all.filter((loc) => matched.has(loc.key()) || seeds.some((s) => distanceBetween(s, loc) <= radius));
   }
   // get_tiles_radius with a predicate: grow ring by ring, only through hexes the predicate accepts.
-  const allowed = new Set(findLocations(board, radiusFilter).map((l) => l.key()));
+  const allowed = new Set(findLocations(board, radiusFilter, refUnit).map((l) => l.key()));
   const result = new Map(matched);
   let frontier = [...matched.values()];
   for (let step = 0; step < radius && frontier.length > 0; step++) {
