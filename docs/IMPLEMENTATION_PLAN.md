@@ -1252,7 +1252,16 @@ the Abilities & Specials synthetic scenario.
 
 ## Phase 18b — Replay, undo & redo (split from Phase 25, 2026-09-23)
 
-**Status: planned (2026-09-23), awaiting the user's go-ahead.**
+**Status: planned (2026-09-23).** User decisions (2026-09-23):
+
+- **Per-action RNG seeds**, as upstream's default `random_mode`: a reload
+  before an attack gives a new roll; replays stay exact. A deterministic
+  whole-game stream remains as an option for tests and AI benchmarks.
+- **Real-binary compatibility both ways**: export a real `[replay]`
+  (verified with `wesnoth --with-replay`) *and* import and replay real
+  Wesnoth replays here.
+- **Minimal replay viewer**: play/pause and restart, opened from the Load
+  dialog.
 
 ### Where things stand
 
@@ -1297,15 +1306,16 @@ the Abilities & Specials synthetic scenario.
   tags; the redo stack re-runs recorded commands with their seeds; undo
   cuts the command from the log. Upstream hotkeys `u` (undo) and `r`
   (redo), menu entries, and `[undo_stack]` in saves.
-- **R5 -- Replay viewer**: "Show replay" in the Load dialog (upstream's
-  checkbox) and at scenario end; controls as `replay_controller`: play,
-  pause, next move / side / turn, restart, skip animations, and the
-  viewpoint (one side or everything), on the normal board with normal
-  animations.
-- **R6 -- Wesnoth `[replay]`**: export the real command log (with
-  `[random_seed]`, `[input]`, `[init_side]`, `[end_turn]`) instead of
-  Phase 26's minimal one, and import one from a real save;
-  `[sync_variable]`.
+- **R5 -- Replay viewer (minimal, user's call)**: "Show replay" in the
+  Load dialog (upstream's checkbox); play/pause and restart, on the
+  normal board with normal animations. Step controls, skip-animations and
+  viewpoint selection are left for later.
+- **R6 -- Wesnoth `[replay]`, both ways**: export the real command log
+  (with `[random_seed]`, `[input]`, `[init_side]`, `[end_turn]`) instead
+  of Phase 26's minimal one; import a real save's `[replay_start]` +
+  `[replay]` and replay it here through R3, reporting where it goes out
+  of sync; `[sync_variable]`. Oracle: a replay recorded by the real
+  binary on Dead Water 1 (its scenario-1 content matches ours).
 - **R7 -- Milestones and docs.**
 
 ### Milestones
@@ -1318,6 +1328,9 @@ the Abilities & Specials synthetic scenario.
    repeats the recruit with the same traits.
 3. A save downloaded here opens in the real binary with `--with-replay`
    and replays through to the saved turn.
+4. A replay recorded by the real binary on Dead Water 1 imports and
+   replays here; every command up to the first recorded divergence
+   matches, and that divergence (if any) is named in docs/PROGRESS.md.
 
 ### Risks
 
@@ -1726,7 +1739,7 @@ pulled forward and delivered 2026-09-22.
 
 1. **Phase 18a** (teleport, hotseat viewing side) — delivered 2026-09-23.
 2. **Phase 18b** (replay, undo & redo) ← **current focus**: planned
-   2026-09-23, awaiting go-ahead.
+   2026-09-23 with the user's decisions recorded.
 3. **Phase 18** (labels/items), then **Phase 19** (audio/music).
 4. **Phase 20** (localization/accessibility).
 5. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).
