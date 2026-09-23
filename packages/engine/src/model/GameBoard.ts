@@ -8,6 +8,7 @@
  * of this container rather than belonging to the data model itself.
  */
 
+import { TunnelManager } from '../pathfind/tunnels.js';
 import { Location } from './Location.js';
 import { GameMap } from './Map.js';
 import { Team } from './Team.js';
@@ -25,6 +26,8 @@ export class GameBoard {
   private readonly recallLists = new Map<number, Unit[]>();
   /** Which side (if any) currently owns each village, keyed by `Location.key()`. Mirrors `team::villages_`/`village_owner`. */
   private readonly villageOwners = new Map<string, number>();
+  /** The scenario's `[tunnel]`s (`resources::tunnels`) -- see `pathfind/teleport.ts`. */
+  readonly tunnels = new TunnelManager();
 
   /**
    * Effective `lawful_bonus` at a hex (upstream's `tod_manager::get_illuminated_time_of_day`),
