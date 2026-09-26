@@ -102,3 +102,22 @@ describe('Recorder', () => {
     expect(exported[1]!.dependents).toEqual([{ kind: 'input', value: 2, side: 1 }]);
   });
 });
+
+describe('Phase 18: [label] / [clear_labels] replay commands (replay::add_label, clear_labels)', () => {
+  it('are written as non-undoable commands without from_side, and read back', () => {
+    const label: RecordedCommand = { command: { kind: 'label', label: { attrs: { x: 3, y: 4, text: 'Ford', team_name: '', color: '255,0,0', side: 1 }, children: [] } }, side: 1, dependents: [] };
+    const clear: RecordedCommand = { command: { kind: 'clear_labels', teamName: 'good', force: false }, side: 1, dependents: [] };
+    const [labelCmd] = recordedCommandToWml(label);
+    const [clearCmd] = recordedCommandToWml(clear);
+    expect(labelCmd!.getBoolean('undo', true)).toBe(false);
+    expect(labelCmd!.hasAttribute('from_side')).toBe(false);
+    expect(labelCmd!.child('label')!.getString('text')).toBe('Ford');
+    expect(clearCmd!.child('clear_labels')!.getString('team_name')).toBe('good');
+    const replay = new WmlConfig();
+    replay.addChild('command', labelCmd!);
+    replay.addChild('command', clearCmd!);
+    const { commands, issues } = recordedCommandsFromWml(replay);
+    expect(issues).toEqual([]);
+    expect(commands.map((c) => c.command)).toEqual([label.command, { kind: 'clear_labels', teamName: 'good', force: false }]);
+  });
+});

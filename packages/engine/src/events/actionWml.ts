@@ -100,6 +100,7 @@ import {
   actionPutToRecallList,
   actionSetRecruit,
   actionStoreLocations,
+  actionStoreMapDimensions,
   actionStoreSide,
   actionStoreStartingLocation,
   actionStoreTurns,
@@ -1815,6 +1816,7 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('store_unit_type', actionStoreUnitType);
   registry.register('store_side', actionStoreSide);
   registry.register('store_turns', actionStoreTurns);
+  registry.register('store_map_dimensions', actionStoreMapDimensions);
   registry.register('unit_worth', actionUnitWorth);
   registry.register('set_recruit', actionSetRecruit);
   registry.register('hide_unit', actionHideUnit);

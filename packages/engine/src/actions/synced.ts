@@ -19,7 +19,7 @@
  * spelling, which uses upstream's 1-based `x`/`y`.
  */
 
-import { WmlConfig } from '../wml/config.js';
+import { WmlConfig, type WmlConfigJson } from '../wml/config.js';
 import { Location } from '../model/Location.js';
 import type { GameBoard } from '../model/GameBoard.js';
 
@@ -127,7 +127,27 @@ export interface StopUnitCommand {
   readonly attacks: boolean;
 }
 
+/**
+ * A player-placed map label (`replay::add_label`, `terrain_label::write`).
+ * Not synced: it changes no game state, is never undone, and a replay
+ * applies it as `set_label` with the label's place, text, creator, team and
+ * colour. Phase 18.
+ */
+export interface LabelCommand {
+  readonly kind: 'label';
+  readonly label: WmlConfigJson;
+}
+
+/** `replay::clear_labels`: the team's and the global labels, all or only the mutable ones. Not synced. */
+export interface ClearLabelsCommand {
+  readonly kind: 'clear_labels';
+  readonly teamName: string;
+  readonly force: boolean;
+}
+
 export type SyncedCommand =
+  | LabelCommand
+  | ClearLabelsCommand
   | MoveCommand
   | AttackCommand
   | RecruitCommand
@@ -240,6 +260,12 @@ export function commandToWml(command: SyncedCommand): { tag: string; cfg: WmlCon
       return { tag: 'start', cfg };
     case 'stop_unit':
       return null;
+    case 'label':
+      return { tag: 'label', cfg: WmlConfig.fromJSON(command.label) };
+    case 'clear_labels':
+      cfg.setAttribute('team_name', command.teamName);
+      cfg.setAttribute('force', command.force);
+      return { tag: 'clear_labels', cfg };
     default: {
       const exhaustive: never = command;
       return exhaustive;
@@ -289,6 +315,10 @@ export function commandFromWml(tag: string, cfg: WmlConfig): SyncedCommand | nul
     }
     case 'start':
       return { kind: 'start' };
+    case 'label':
+      return { kind: 'label', label: cfg.toJSON() };
+    case 'clear_labels':
+      return { kind: 'clear_labels', teamName: cfg.getString('team_name', ''), force: cfg.getBoolean('force', false) };
     default:
       return null;
   }
@@ -345,9 +375,12 @@ export function recordedCommandToWml(rec: RecordedCommand): WmlConfig[] {
   const out: WmlConfig[] = [];
   const cmd = new WmlConfig();
   // [start] carries no from_side upstream (replay::add_start); [init_side]/[end_turn] neither.
-  if (rec.command.kind !== 'start' && rec.command.kind !== 'init_side' && rec.command.kind !== 'end_turn') {
+  const unsynced = rec.command.kind === 'label' || rec.command.kind === 'clear_labels';
+  if (rec.command.kind !== 'start' && rec.command.kind !== 'init_side' && rec.command.kind !== 'end_turn' && !unsynced) {
     cmd.setAttribute('from_side', rec.side);
   }
+  // add_nonundoable_command.
+  if (unsynced) cmd.setAttribute('undo', false);
   cmd.addChild(main.tag, main.cfg);
   out.push(cmd);
   for (const dep of rec.dependents) {

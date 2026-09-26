@@ -148,6 +148,10 @@ import {
   readPersistentItem,
   labelFromConfig,
   labelToConfig,
+  LABEL_COLOR,
+  type MapLabel,
+  type LabelCommand,
+  type ClearLabelsCommand,
   itemToConfig,
   standardizeEventName,
 } from '@wesnothweb2/engine';
@@ -1916,6 +1920,10 @@ export class GameSession {
         return yield* this.execStart();
       case 'stop_unit':
         return this.execStopUnit(command, action);
+      case 'label':
+      case 'clear_labels':
+        this.applyLabelCommand(command);
+        return true;
       default: {
         const exhaustive: never = command;
         return exhaustive;
@@ -2263,6 +2271,87 @@ export class GameSession {
     return this.mapItemsCache.items;
   }
 
+  /**
+   * The label a player would edit on `hex` (`map_labels::get_label`): the
+   * viewing team's own, else the global one; `null` for none.
+   */
+  labelAt(hex: HexPoint): { text: string; teamOnly: boolean } | null {
+    const loc = new Location(hex.x, hex.y);
+    const myTeam = this.board.getTeam(this.viewingSide)?.teamName ?? '';
+    const own = this.eventPump.ctx.labels.get(loc, myTeam);
+    if (own) return { text: own.text, teamOnly: true };
+    const global = this.eventPump.ctx.labels.get(loc, '');
+    return global ? { text: global.text, teamOnly: false } : null;
+  }
+
+  /**
+   * `menu_handler::label_terrain`: the viewing side's player labels `hex`
+   * -- for its team only (white), or for everyone in the side's colour
+   * (`sideColor`, `r,g,b`). Empty text removes it. A label placed is
+   * recorded (`replay::add_label`); neither is undoable nor undoes anything.
+   */
+  placeLabel(hex: HexPoint, text: string, teamOnly: boolean, sideColor: string): void {
+    if (!this.board.map.onBoard(new Location(hex.x, hex.y))) return;
+    const label: MapLabel = {
+      loc: new Location(hex.x, hex.y),
+      text,
+      tooltip: '',
+      teamName: teamOnly ? (this.board.getTeam(this.viewingSide)?.teamName ?? '') : '',
+      color: teamOnly ? LABEL_COLOR : sideColor,
+      visibleInFog: true,
+      visibleInShroud: false,
+      immutable: false,
+      category: '',
+      creator: this.viewingSide,
+    };
+    this.eventPump.ctx.labels.set(label);
+    if (text !== '') this.recorder.add({ kind: 'label', label: labelToConfig(label).toJSON() }, this.viewingSide).digest = this.stateDigest();
+  }
+
+  /** `menu_handler::clear_labels`: the viewing team's and the global labels that players may clear. Recorded. */
+  clearLabels(): void {
+    const teamName = this.board.getTeam(this.viewingSide)?.teamName ?? '';
+    this.eventPump.ctx.labels.clearTeam(teamName, false);
+    this.recorder.add({ kind: 'clear_labels', teamName, force: false }, this.viewingSide).digest = this.stateDigest();
+  }
+
+  /** A recorded `[label]`/`[clear_labels]`, as `replay.cpp` applies it: `set_label` takes only place, text, creator, team and colour. */
+  private applyLabelCommand(command: LabelCommand | ClearLabelsCommand): void {
+    const labels = this.eventPump.ctx.labels;
+    if (command.kind === 'clear_labels') {
+      labels.clearTeam(command.teamName, command.force);
+      return;
+    }
+    const read = labelFromConfig(WmlConfig.fromJSON(command.label), this.eventPump.ctx);
+    labels.set({ ...read, tooltip: '', visibleInFog: true, visibleInShroud: false, immutable: false, category: '' });
+  }
+
+  /** `display_context::hidden_label_categories` -- the label settings' choice; not saved with the game. */
+  hiddenLabelCategories: string[] = [];
+
+  /**
+   * The label settings' rows (`label_settings`, over `map_labels::
+   * all_categories`), sorted by key as upstream's map is: each category in
+   * use (`cat:`), each side (`side:N`, not hidden sides), and team labels.
+   */
+  get labelCategories(): { id: string; name: string; visible: boolean; side?: number }[] {
+    const ids = new Set<string>(['team', ...this.board.teams().map((t) => `side:${t.side}`)]);
+    for (const label of this.eventPump.ctx.labels.all()) if (label.category !== '') ids.add(`cat:${label.category}`);
+    const rows: { id: string; name: string; visible: boolean; side?: number }[] = [];
+    for (const id of [...ids].sort()) {
+      const visible = !this.hiddenLabelCategories.includes(id);
+      if (id === 'team') rows.push({ id, name: 'Team Labels', visible });
+      else if (id.startsWith('cat:')) rows.push({ id, name: id.slice(4), visible });
+      else {
+        const team = this.board.getTeam(Number(id.slice(5)));
+        if (!team || team.hidden) continue;
+        const name = team.sideName || team.userTeamName || 'Unknown';
+        rows.push({ id, name: `Side ${team.side} (${name})`, visible, side: team.side });
+      }
+    }
+    return rows;
+  }
+
   private mapLabelsCache: { key: string; labels: MapLabelInfo[] } | null = null;
 
   /**
@@ -2277,6 +2366,11 @@ export class GameSession {
     const labels: MapLabelInfo[] = [];
     for (const label of ctx.labels.all()) {
       if (label.teamName === '' ? ctx.labels.get(label.loc, myTeam) !== undefined && myTeam !== '' : label.teamName !== myTeam) continue;
+      // terrain_label::hidden: the label settings, then fog and shroud.
+      const hidden = this.hiddenLabelCategories;
+      if (hidden.includes(`cat:${label.category}`)) continue;
+      if (label.creator > 0 && hidden.includes(`side:${label.creator}`)) continue;
+      if (label.teamName !== '' && hidden.includes('team')) continue;
       if (!label.visibleInFog && this.board.isFogged(this.viewingSide, label.loc)) continue;
       if (!label.visibleInShroud && this.board.isShrouded(this.viewingSide, label.loc)) continue;
       labels.push({ x: label.loc.x, y: label.loc.y, text: label.text, color: label.color, tooltip: label.tooltip });
@@ -3906,6 +4000,12 @@ export class GameSession {
    * Returns whether the command ran.
    */
   *replayCommandFlow(rec: RecordedCommand, present = false): Flow<boolean> {
+    if (rec.command.kind === 'label' || rec.command.kind === 'clear_labels') {
+      // Not synced: applied as recorded, never on the undo stack.
+      this.applyLabelCommand(rec.command);
+      this.recorder.add(rec.command, rec.side);
+      return true;
+    }
     if (rec.command.kind === 'start') this.startupEventsRun = true;
     const before = this.syncIssues.length;
     // Shown replays animate like live play: the attack's blows

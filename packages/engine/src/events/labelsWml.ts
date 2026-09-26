@@ -42,6 +42,15 @@ export class LabelStore {
     this.byTeam.clear();
   }
 
+  /** `map_labels::clear`: this team's labels and the global ones -- only the mutable ones unless `force`. */
+  clearTeam(teamName: string, force: boolean): void {
+    for (const name of new Set([teamName, ''])) {
+      const map = this.byTeam.get(name);
+      if (!map) continue;
+      for (const [key, label] of map) if (force || !label.immutable) map.delete(key);
+    }
+  }
+
   /** `map_labels::set_label`: replaces this team's label on the hex, or removes it when the text is empty. */
   set(label: MapLabel): void {
     const map = this.byTeam.get(label.teamName);

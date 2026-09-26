@@ -141,3 +141,14 @@ export function resolveSideColorId(color: string, side: number, defaultColors: r
   }
   return trimmed || (defaultColors[side - 1] ?? '')
 }
+
+/**
+ * `team::get_side_color`: the side's colour range's `mid`, as `r,g,b` --
+ * what a player's map label for everyone is drawn in (Phase 18). `null`
+ * before the colour data has loaded or for an unknown colour.
+ */
+export function sideColorRgb(data: ColorData | null, color: string, side: number): string | null {
+  if (!data) return null
+  const range = data.ranges[resolveSideColorId(color, side, data.defaultColors)] ?? data.sideRanges[side]
+  return range ? range.mid.join(',') : null
+}

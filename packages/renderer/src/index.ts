@@ -180,3 +180,4 @@ export {
 
 export { type HexVisibility, type FogShroudHex } from './fogShroud'
 export { parseHaloFrames, LABEL_FONT_SIZE, type MapItemPoint, type MapLabelPoint } from './mapItems.js';
+export { sideColorRgb } from './images/teamColor';

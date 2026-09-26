@@ -494,3 +494,10 @@ describe('[label] (map_labels)', () => {
     expect(labels.all()).toHaveLength(2);
   });
 });
+
+describe('[store_map_dimensions]', () => {
+  it('stores the playable size and the border', () => {
+    const { vars } = setup('[store_map_dimensions]\n[/store_map_dimensions]');
+    expect([vars.get('map_size.width'), vars.get('map_size.height'), vars.get('map_size.border_size')]).toEqual([4, 3, 1]);
+  });
+});

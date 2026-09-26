@@ -321,3 +321,11 @@ export function actionTerrainMask(raw: WmlConfig, ctx: EventContext): void {
   const mask = ctx.board.map.parseSibling(cfg.getString('mask', ''), 1);
   ctx.board.terrainMask(mask, x, y, rules, isOdd, cfg.getBoolean('ignore_special_locations', false));
 }
+
+/** `[store_map_dimensions]`: `$variable.width/.height` (playable) and `.border_size`; `variable=` defaults to `map_size`. */
+export function actionStoreMapDimensions(raw: WmlConfig, ctx: EventContext): void {
+  const variable = parsed(raw, ctx).getString('variable', 'map_size');
+  ctx.variables.set(`${variable}.width`, ctx.board.map.w());
+  ctx.variables.set(`${variable}.height`, ctx.board.map.h());
+  ctx.variables.set(`${variable}.border_size`, ctx.board.map.borderSize);
+}

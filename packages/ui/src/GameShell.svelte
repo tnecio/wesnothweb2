@@ -55,6 +55,8 @@
     spriteKey,
     setImageBaseUrl,
     setCampaignImages,
+    sideColorRgb,
+    ImageCache,
     setEngineImageBaseUrl,
   } from '@wesnothweb2/renderer';
   import {
@@ -107,6 +109,9 @@
   import { matchesHotkey, type Command } from './commands.js';
   import TopBar from './TopBar.svelte';
   import ContextMenu from './ContextMenu.svelte';
+  import LabelDialog from './LabelDialog.svelte';
+  import ConfirmDialog from './ConfirmDialog.svelte';
+  import LabelSettingsDialog from './LabelSettingsDialog.svelte';
   import GameBoardView from './GameBoardView.svelte';
   import SidePanel from './SidePanel.svelte';
   import StoryViewer from './StoryViewer.svelte';
@@ -293,6 +298,12 @@
   let hoveredHexInfo = $state<HoveredHexInfo | null>(null);
   /** Phase 14: the right-click context menu's position + which hex it's for, `null` when closed. */
   let contextMenuAt = $state<{ x: number; y: number; clientX: number; clientY: number } | null>(null);
+  /** Phase 18: the "Place Label" dialog's hex and initial state, `null` when closed. */
+  let labelDialog = $state<{ hex: HexPoint; text: string; teamOnly: boolean } | null>(null);
+  let clearLabelsConfirmOpen = $state(false);
+  let labelSettingsOpen = $state(false);
+  /** The last hex the pointer was over -- where the label hotkeys act, as upstream's `get_last_hex`. */
+  let lastHoveredHex: HexPoint | null = null;
   /**
    * Real, reported bug (bugs4.md #5): the hex a Recruit/Recall dialog was
    * opened FROM, when opened by right-clicking a specific empty castle
@@ -767,6 +778,25 @@
   /** `GameBoardView`'s `onHexHoverChange` -- keeps the infobox's hovered-hex terrain section live. */
   function handleHexHoverChange(hex: HexPoint | null): void {
     hoveredHexInfo = hex ? session.hoveredHexInfo(hex.x, hex.y) : null;
+    if (hex) lastHoveredHex = hex;
+  }
+
+  /** `menu_handler::label_terrain`: opens the label dialog on `hex`, with its current label if any. */
+  function openLabelDialog(hex: HexPoint | null, teamOnly: boolean): void {
+    if (!hex) return;
+    const current = session.labelAt(hex);
+    labelDialog = { hex, text: current?.text ?? '', teamOnly };
+  }
+
+  function placeLabel(text: string, teamOnly: boolean): void {
+    const dialog = labelDialog;
+    labelDialog = null;
+    if (!dialog) return;
+    const side = session.viewingSide;
+    const team = activeSnapshot.teams.find((t) => t.side === side);
+    const color = sideColorRgb(ImageCache.getColorData(), team?.color ?? '', side) ?? '255,255,255';
+    session.placeLabel(dialog.hex, text, teamOnly, color);
+    sync();
   }
 
   /** `GameBoardView`'s `onHexRightClick` -- opens the context menu at the clicked hex/screen position; its commands are built by `contextMenuCommands` below from the same hex. */
@@ -2077,6 +2107,33 @@
       },
     },
     {
+      id: 'label-team',
+      label: 'Place Label (Team)...',
+      enabled: phase === 'playing',
+      hotkey: { key: 'l', ctrl: true },
+      handler: () => openLabelDialog(lastHoveredHex ?? cursorHex, true),
+    },
+    {
+      id: 'label',
+      label: 'Place Label...',
+      enabled: phase === 'playing',
+      hotkey: { key: 'l', alt: true },
+      handler: () => openLabelDialog(lastHoveredHex ?? cursorHex, false),
+    },
+    {
+      id: 'clear-labels',
+      label: 'Clear Labels',
+      enabled: phase === 'playing',
+      hotkey: { key: 'c', ctrl: true },
+      handler: () => (clearLabelsConfirmOpen = true),
+    },
+    {
+      id: 'label-settings',
+      label: 'Label Settings...',
+      enabled: phase === 'playing',
+      handler: () => (labelSettingsOpen = true),
+    },
+    {
       id: 'objectives',
       label: 'Objectives',
       enabled: session.scenarioObjectives !== null,
@@ -2133,6 +2190,7 @@
           recallDialogOpen = true;
         },
       });
+      hexCommands.push({ id: 'ctx-label', label: 'Place Label...', enabled: true, handler: () => openLabelDialog({ x, y }, false) });
       // Real `[set_menu_item]` entries the scenario's own WML declared --
       // see `GameSession.menuItems`'s own doc comment on why these are
       // offered unconditionally rather than per-hex-filtered.
@@ -2283,6 +2341,9 @@
       objectivesDialogOpen ||
       saveDialogOpen ||
       loadDialogOpen ||
+      labelDialog !== null ||
+      clearLabelsConfirmOpen ||
+      labelSettingsOpen ||
       pendingAdvancement !== null ||
       pendingPreview !== null ||
       // Phase 17: a suspended event's own dialogue owns the keyboard
@@ -2447,6 +2508,40 @@
     />
   {/if}
 
+  {#if labelDialog}
+    <LabelDialog
+      initialText={labelDialog.text}
+      initialTeamOnly={labelDialog.teamOnly}
+      onPlace={placeLabel}
+      onCancel={() => (labelDialog = null)}
+    />
+  {/if}
+  {#if labelSettingsOpen}
+    <LabelSettingsDialog
+      categories={session.labelCategories}
+      sideColors={new Map(
+        activeSnapshot.teams.map((t) => [t.side, `rgb(${sideColorRgb(ImageCache.getColorData(), t.color ?? '', t.side) ?? '255,255,255'})`]),
+      )}
+      onApply={(hidden) => {
+        labelSettingsOpen = false;
+        session.hiddenLabelCategories = hidden;
+        sync();
+      }}
+      onCancel={() => (labelSettingsOpen = false)}
+    />
+  {/if}
+  {#if clearLabelsConfirmOpen}
+    <ConfirmDialog
+      title="Clear Labels"
+      message="Are you sure you want to clear map labels?"
+      onYes={() => {
+        clearLabelsConfirmOpen = false;
+        session.clearLabels();
+        sync();
+      }}
+      onNo={() => (clearLabelsConfirmOpen = false)}
+    />
+  {/if}
   {#if saveDialogOpen}
     <SaveGameDialog
       suggestedName={manualSaveName(

@@ -2275,3 +2275,50 @@ describe('Phase 18: map labels', () => {
     expect(loaded.toSaveData().labels).toHaveLength(3);
   });
 });
+
+describe('Phase 18: player labels (label_terrain / clear_labels)', () => {
+  it('places, clears (scenario labels are immutable) and records them, unsynced, so a replay shows them', async () => {
+    const snapshot = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/01_The_Raid.json'), 'utf8')) as GameBoardSnapshot;
+    const session = new GameSession(snapshot);
+    await session.runStartupEvents();
+    const undoable = session.canUndo;
+    session.placeLabel({ x: 3, y: 3 }, 'Ford', false, '255,0,0');
+    session.placeLabel({ x: 4, y: 4 }, 'Ours', true, '255,0,0');
+    expect(session.labelAt({ x: 4, y: 4 })).toEqual({ text: 'Ours', teamOnly: true });
+    expect(session.mapLabels.map((l) => `${l.text}:${l.color}`).sort()).toEqual(['Dallben:255,255,255', 'Ford:255,0,0', 'Ours:255,255,255']);
+    expect(session.canUndo).toBe(undoable); // labels never touch the undo stack
+
+    const kinds = session.toSaveData().replay!.commands.map((r) => r.command.kind);
+    expect(kinds.filter((k) => k === 'label')).toHaveLength(2);
+
+    session.clearLabels();
+    expect(session.mapLabels.map((l) => l.text)).toEqual(['Dallben']); // immutable (scenario) label stays
+
+    // A replay of the log reproduces them.
+    const save = session.toSaveData();
+    const replay = GameSession.forReplay(snapshot, save)!;
+    for (const rec of save.replay!.commands.slice(0, -1)) replay.replayCommand(rec);
+    expect(replay.mapLabels.map((l) => l.text).sort()).toEqual(['Dallben', 'Ford', 'Ours']);
+    replay.replayCommand(save.replay!.commands.at(-1)!);
+    expect(replay.mapLabels.map((l) => l.text)).toEqual(['Dallben']);
+  });
+});
+
+describe('Phase 18: label settings (hidden_label_categories)', () => {
+  it('lists team, sides and categories; hiding a side hides the labels it made', async () => {
+    const snapshot = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/01_The_Raid.json'), 'utf8')) as GameBoardSnapshot;
+    snapshot.scenarioConfigJson.children.push({
+      tag: 'event',
+      config: parseConfig('[event]\nname=prestart\n[label]\nx=2\ny=2\ntext=Camp\ncategory=places\n[/label]\n[/event]').child('event')!.toJSON(),
+    });
+    const session = new GameSession(snapshot);
+    await session.runStartupEvents();
+    session.placeLabel({ x: 5, y: 5 }, 'Mine', false, '255,0,0');
+    const ids = session.labelCategories.map((c) => c.id);
+    expect(ids[0]).toBe('cat:places');
+    expect(ids).toContain('team');
+    expect(ids).toContain(`side:${session.viewingSide}`);
+    session.hiddenLabelCategories = [`side:${session.viewingSide}`, 'cat:places'];
+    expect(session.mapLabels.map((l) => l.text)).toEqual(['Dallben']);
+  });
+});
