@@ -1200,7 +1200,19 @@ renderer plays one named animation per cue).
 
 ## Phase 18 — Map labels & items
 
-**Status: not started.** Split from the old Phase 16.
+**Status: delivered 2026-09-26.** Items (`[item]`/`[remove_item]`/
+`[store_items]`, scenario-level `[item]`s, halos, `[filter_team]`/
+`team_name=`/`visible_in_fog=`/`z_order=`), labels (`[label]`, per-team,
+scenario-level, fog/shroud flags), player labels (Place Label Alt+L /
+Ctrl+L team-only, context menu, Clear Labels Ctrl+C; recorded as
+upstream's non-undoable replay commands), Label Settings, and
+`[store_map_dimensions]`; all saved and carried through Wesnoth saves.
+Campaign images are now searched before core (upstream's binary-path
+order), which runtime WML images needed. Not done: item `submerge=`
+(drawn whole), `~NO_TOD_SHIFT()` items (tinted like the rest), Pango markup
+in labels (shown as plain text), label tooltips. See `docs/PROGRESS.md`.
+
+Original scope (split from the old Phase 16):
 
 - `[item]`/`[remove_item]`: decorative or functional images placed on
   hexes, with optional halo and team colour, `visible_in_fog=`, queryable
@@ -1864,9 +1876,8 @@ pulled forward and delivered 2026-09-22.
 3. **Phase 18c** (unit modifications: `[effect]`, traits, `[object]`,
    runtime `[event]`, unit ids) — delivered 2026-09-26.
 4. **Phase 18d** (missing WML action tags, from the audit) — delivered 2026-09-26.
-5. **Phase 18** (labels/items -- `[item]`/`[remove_item]` are the audit's
-   last missing tags besides achievements) ← **next**, then **Phase 19**
-   (audio/music).
+5. **Phase 18** (labels/items) — delivered 2026-09-26. **Phase 19**
+   (audio/music) ← **next**.
 6. **Phase 20** (localization/accessibility).
 7. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).
 8. **Phase 25** (statistics & achievements).

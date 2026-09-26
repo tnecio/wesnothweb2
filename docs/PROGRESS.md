@@ -4497,3 +4497,29 @@ condition at the start; now 3 left, all owned by other phases:
 - **Renderer bug (pre-existing, reproduced on the pre-18c commit):**
   advancing dialogue during a cutscene animation destroyed the unit visual
   under it; the animation loop threw and its promise never resolved.
+
+## 2026-09-26: Phase 18 — map items and labels
+
+- **Items** (`items.lua`): `[item]`, `[remove_item]`, `[store_items]`,
+  scenario-level `[item]`s (read as upstream's persistent tags, `name=""`),
+  `item_N` names, `[filter_team]` resolved to team names when placed,
+  `visible_in_fog=`, `z_order=`. Saved, and written/read as `[item]`/
+  `[next_item_name]` in Wesnoth saves. Drawn over terrain and under flags
+  and units, lit by the time of day; halos untinted and animated
+  (`halo.cpp` frame syntax, 100 ms default).
+- **Campaign images first.** A path WML gives at run time is looked up in
+  the campaign's own `images/` before core -- upstream's binary paths are a
+  sorted set, so `data/campaigns/...` wins. A generated
+  `campaignImages.json` feeds `setCampaignImages`, also sent to the
+  compositor workers (which resolve URLs on their own).
+- **Labels** (`map_labels`): `[label]` (was a no-op), one per hex per team
+  name, scenario-level labels, saved and in Wesnoth saves. The viewing team
+  sees its own labels and the global ones they do not cover, subject to
+  fog/shroud flags and the label settings.
+- **Player labels**: Place Label (Alt+L; Ctrl+L team-only; context menu),
+  Clear Labels (Ctrl+C, confirmed), Label Settings. Recorded as upstream's
+  non-undoable `[label]`/`[clear_labels]` replay commands and applied on
+  replay as `replay.cpp` does; never on the undo stack.
+- `[store_map_dimensions]`.
+- Browser-checked: Dead Water 3's buried trident (campaign art), Liberty
+  1's "Dallben" label, a label placed with Alt+L in Dead Water 1.
