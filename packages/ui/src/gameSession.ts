@@ -147,6 +147,10 @@ import {
   performMoveFlow,
   readPersistentItem,
   labelFromConfig,
+  MusicList,
+  startScenarioMusic,
+  selectEndMusic,
+  playEndMusic,
   labelToConfig,
   LABEL_COLOR,
   type MapLabel,
@@ -771,6 +775,14 @@ export interface GameSessionOptions {
    * in the browser uses, so reloading before an attack gives a new roll.
    */
   actionSeeds?: 'entropy';
+  /**
+   * Phase 19: the music playlist, handed on from the previous scenario (or
+   * the app's own). Upstream's list is global and outlives scenarios; a
+   * session given none makes its own.
+   */
+  music?: MusicList;
+  /** Set by `fromSaveData`: the save's own playlist is applied by `loadSaveData`, not the scenario's. */
+  deferMusic?: boolean;
 }
 
 /**
@@ -1067,6 +1079,8 @@ export interface SaveGameData {
   nextItemName?: number;
   /** Phase 18: the map labels (`[label]`s). Absent: the scenario's own. */
   labels?: WmlConfigJson[];
+  /** Phase 19: the music playlist as `[music]` tags (`write_music_play_list`): the first replaces, the rest append. Absent: the scenario's own. */
+  music?: WmlConfigJson[];
   /** Phase 18d: the map as WML left it (`[terrain]`, `[terrain_mask]`), as `map_data=` text. Absent: the scenario's own map. */
   mapData?: string;
   /** Phase 18d: the turn limit as `[modify_turns]` left it (`-1`: none). Absent: the scenario's `turns=`. */
@@ -1536,7 +1550,9 @@ export class GameSession {
       schedule: this.schedule,
       rng: this.rng,
       log: options.onLog,
+      music: options.music,
     });
+    if (!options.deferMusic) startScenarioMusic(this.music, WmlConfig.fromJSON(snapshot.scenarioConfigJson));
     this.board.lawfulBonusAt = (loc) => this.timeOfDayAt(loc).lawfulBonus;
     this.eventPump.ctx.turnLimit = parseScenarioTurnsLimit(snapshot.scenarioConfigJson.attrs['turns']) ?? -1;
     this.eventPump.ctx.turnNumber = () => this.turnNumber;
@@ -1584,6 +1600,35 @@ export class GameSession {
     };
     registerAiWmlActions(this.eventPump.ctx.registry);
     this.eventPump.ctx.ai = aiWmlHooks;
+  }
+
+  /** Phase 19: the music playlist (see `GameSessionOptions.music`). */
+  get music(): MusicList {
+    return this.eventPump.ctx.music;
+  }
+
+  /**
+   * `play_scenario` for a loaded game: the saved playlist replaces the
+   * current one, as its `[music]` tags are read like a scenario's own. A save
+   * without one starts the scenario's music.
+   */
+  private applySavedMusic(saved: WmlConfigJson[] | undefined): void {
+    if (saved === undefined) {
+      startScenarioMusic(this.music, WmlConfig.fromJSON(this.snapshot.scenarioConfigJson));
+      return;
+    }
+    const level = new WmlConfig();
+    for (const m of saved) level.addChild('music', WmlConfig.fromJSON(m));
+    startScenarioMusic(this.music, level);
+  }
+
+  /** The victory/defeat stinger (`playsingle_controller::play_scenario_end`), once the scenario is over. */
+  private playScenarioEndMusic(): void {
+    const endLevel = this.eventPump.ctx.endLevel;
+    const victory = this.scenarioResult === 'victory';
+    if (victory && endLevel?.carryoverReport === false) return;
+    const scenario = WmlConfig.fromJSON(this.snapshot.scenarioConfigJson);
+    playEndMusic(this.music, selectEndMusic(scenario, victory, endLevel?.music, (max) => this.music.randomInt(max)));
   }
 
   /**
@@ -3716,6 +3761,7 @@ export class GameSession {
       items: this.eventPump.ctx.items.all().map((item) => itemToConfig(item).toJSON()),
       nextItemName: this.eventPump.ctx.items.nextItemName,
       labels: this.eventPump.ctx.labels.all().map((label) => labelToConfig(label).toJSON()),
+      music: this.music.write().map((m) => m.toJSON()),
       mapData: this.board.terrainVersion > 0 ? this.board.map.write() : undefined,
       events: this.eventPump.manager.activeConfigs().map((c) => c.toJSON()),
       menuItems: [...this.eventPump.ctx.menuItems.values()].map((m) => ({ id: m.id, description: m.description, command: m.command.toJSON() })),
@@ -3797,6 +3843,7 @@ export class GameSession {
       this.eventPump.ctx.labels.clear();
       for (const label of data.labels) this.eventPump.ctx.labels.set(labelFromConfig(WmlConfig.fromJSON(label), this.eventPump.ctx));
     }
+    this.applySavedMusic(data.music);
     this.board.nextUnitId =
       data.nextUnitId ?? Math.max(0, ...[...data.units, ...(data.recall ?? [])].map((u) => u.underlyingId ?? 0));
     if (data.events) this.eventPump.manager.replaceAll(data.events.map((e) => WmlConfig.fromJSON(e)));
@@ -4112,7 +4159,7 @@ export class GameSession {
 
   /** Builds a fresh session from `snapshot`, then overwrites its live state from a save. */
   static fromSaveData(snapshot: GameBoardSnapshot, data: SaveGameData, options: GameSessionOptions = {}): GameSession {
-    const session = new GameSession(snapshot, options);
+    const session = new GameSession(snapshot, { ...options, deferMusic: true });
     session.loadSaveData(data);
     return session;
   }
@@ -4171,7 +4218,7 @@ export class GameSession {
     const goldCarryover = finished.computeGoldCarryoverResult(nextSnapshot);
     const carriedOverUnits = computeCarryoverRecruits(finished.board, finished.playerSide, nextSnapshot.scenarioConfigJson);
 
-    const session = new GameSession(nextSnapshot, { ...options, goldCarryover });
+    const session = new GameSession(nextSnapshot, { music: finished.music, ...options, goldCarryover });
     const team = session.board.getTeam(session.playerSide);
     if (team) team.gold = goldCarryover.nextScenarioGold;
     for (const unit of carriedOverUnits) {
@@ -4204,6 +4251,7 @@ export class GameSession {
       this.scenarioResult = endLevel.result;
       this.clearSelection();
       this.log.unshift(endLevel.result === 'victory' ? 'Victory!' : 'Defeat.');
+      this.playScenarioEndMusic();
       return;
     }
     const { continueLevel, notDefeated } = checkVictory(this.board);
@@ -4213,5 +4261,6 @@ export class GameSession {
     this.log.unshift(
       this.scenarioResult === 'victory' ? 'Victory! The enemy has been defeated.' : 'Defeat... your side has fallen.',
     );
+    this.playScenarioEndMusic();
   }
 }

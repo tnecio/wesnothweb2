@@ -62,6 +62,7 @@ import { runFlow, type Flow, type Responder } from './interaction.js';
 import { conditionalPassed } from './conditionalWml.js';
 import { unitMatchesFilter } from './filter.js';
 import type { VariableStore } from './variables.js';
+import { MusicList } from '../audio/musicList.js';
 
 /** Mirrors `event_handlers::standardize_name`: trim, then spaces -> underscores. */
 export function standardizeEventName(name: string): string {
@@ -161,6 +162,8 @@ export interface EventPumpOptions {
   schedule?: Schedule;
   /** The session's synced RNG, for `[set_variable] rand=`. */
   rng?: Rng;
+  /** The music playlist, handed on from the previous scenario (one is made if absent). */
+  music?: MusicList;
 }
 
 /** TS port of `wml_event_pump`: queues and dispatches events to registered `[event]` handlers. */
@@ -200,6 +203,7 @@ export class EventPump {
       objectivesChanged: new Set(),
       items: new ItemStore(),
       labels: new LabelStore(),
+      music: options.music ?? new MusicList({ random: (max) => Math.floor(Math.random() * (max + 1)) }),
       objectivesBySide: new Map(),
       menuItems: new Map(),
       loc1: Location.NULL,

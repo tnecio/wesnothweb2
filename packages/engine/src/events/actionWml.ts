@@ -119,6 +119,7 @@ import { parseScenarioObjectives, type ScenarioObjectives } from './objectives.j
 import { registerFlowActions } from './flowWml.js';
 import { playBeat, registerCutsceneActions } from './cutsceneWml.js';
 import { ShroudClearer } from '../actions/vision.js';
+import { applyMusicAction } from '../audio/musicList.js';
 
 // --- shared helpers ---
 
@@ -1643,6 +1644,8 @@ function actionEndlevel(cfg: WmlConfig, ctx: EventContext): void {
     ...(cfg.hasAttribute('end_text') ? { endText: cfg.getString('end_text') } : {}),
     ...(cfg.hasAttribute('end_text_duration') ? { endTextDuration: Math.min(Math.max(Math.trunc(cfg.getNumber('end_text_duration', 0)), 0), 5000) } : {}),
     ...(cfg.hasAttribute('end_credits') ? { endCredits: cfg.getBoolean('end_credits', true) } : {}),
+    carryoverReport: cfg.getBoolean('carryover_report', true),
+    ...(cfg.getString('music', '') !== '' ? { music: cfg.getString('music').split(',').map((t) => t.trim()).filter((t) => t !== '') } : {}),
   };
 }
 
@@ -1871,7 +1874,8 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('on_undo', actionOnUndo);
   registerFlowActions((tag, handler) => registry.register(tag, handler));
 
-  for (const tag of ['music', 'sound', 'redraw', 'highlight', 'floating_text', 'select_unit', 'unit_overlay', 'remove_unit_overlay']) {
+  registry.register('music', (cfg, ctx) => applyMusicAction(ctx.music, cfg));
+  for (const tag of ['sound', 'redraw', 'highlight', 'floating_text', 'select_unit', 'unit_overlay', 'remove_unit_overlay']) {
     registry.register(tag, noop);
   }
   registerCutsceneActions((tag, handler) => registry.register(tag, handler));

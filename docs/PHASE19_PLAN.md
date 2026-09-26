@@ -297,14 +297,14 @@ plus one manual listen by you in a real browser.
 1. **Audio formats.** Decided: Ogg/WAV as shipped, no fallback. A
    size-reducing transcode is a Phase 23 option only if real-world tests
    show the download is a problem.
-2. **Where the playlist lives.** Proposal: the engine `MusicList`, handed
+2. **Where the playlist lives.** Decided: the engine `MusicList`, handed
    from session to session. The Phase 21 main menu, which plays
    `title_music`, will then reuse the same `AudioEngine` with its own
-   list. The alternative is one app-global list from the start.
-3. **Controls now.** Proposal: a mute toggle plus a small Audio dialog
+   list. 
+3. **Controls now.** Decided: a mute toggle plus a small Audio dialog
    with the volume sliders now; the full preferences screen stays in
    Phase 24.
-4. **Verification depth.** Proposal: headless checks through the debug
+4. **Verification depth.** Decided: headless checks through the debug
    log, plus one real-binary `--log-info=audio` comparison for a
    non-shuffled playlist. There'd be no attempt to compare shuffled
    choices or timing, since both are unsynced and client-side upstream.

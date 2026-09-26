@@ -20,6 +20,7 @@ import type { Rng } from '../rng/Rng.js';
 import type { VariableStore } from './variables.js';
 import type { ScenarioObjectives } from './objectives.js';
 import type { Flow } from './interaction.js';
+import type { MusicList } from '../audio/musicList.js';
 
 /**
  * One real `[set_menu_item]` declaration -- see `actionWml.ts`'s
@@ -109,6 +110,10 @@ export interface EndLevelState {
   endTextDuration?: number;
   /** `end_credits=` (default yes): whether the outro rolls the campaign credits after the end text. */
   endCredits?: boolean;
+  /** `carryover_report=` (default yes): whether the victory summary is shown -- and the victory stinger played. */
+  carryoverReport?: boolean;
+  /** `music=`: the tracks to choose the stinger from, in place of the scenario's `victory_music=`/`defeat_music=`. */
+  music?: string[];
 }
 
 /**
@@ -198,6 +203,8 @@ export interface EventContext {
   items: ItemStore;
   /** Phase 18: map labels (`map_labels`). */
   labels: LabelStore;
+  /** Phase 19: the music playlist (`sound.cpp`'s `current_track_list`), shared across scenarios. */
+  music: MusicList;
   /** `[cancel_action]` (`wml_event_pump::set_action_canceled`): the move firing this event stops at this hex. */
   actionCanceled: boolean;
   /**

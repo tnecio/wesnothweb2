@@ -43,3 +43,4 @@ export type { ParseConfigOptions } from './wml/parser.js';
 export { writeWml } from './wml/writer.js';
 
 export * from './snapshot/gameBoardSnapshot.js';
+export * from './audio/musicList.js';
