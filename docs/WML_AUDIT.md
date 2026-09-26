@@ -110,4 +110,4 @@ Conditions the port does not evaluate are treated as **passing**, so a missing o
 | `[and]` | yes | 6 | 5 | 05_Tirigaz, 06_The_Hunters, 09_The_Mage, 10_The_Flaming_Sword, +1 |
 | `[or]` | yes | 9 | 4 | 02_Across_the_Harsh_Sands, 04_Descending_into_Darkness, 09_The_Mage, 10_The_Flaming_Sword |
 | `[have_location]` | yes | 6 | 4 | 01_Invasion, 02_Across_the_Harsh_Sands, 03_Guarded_Castle, 04_Unlawful_Orders |
-| `[lua]` | **NO** | 5 | 3 | 03_A_Strategy_of_Hope, 04_Unlawful_Orders, 07_Glory |
+| `[lua]` | yes | 5 | 3 | 03_A_Strategy_of_Hope, 04_Unlawful_Orders, 07_Glory |

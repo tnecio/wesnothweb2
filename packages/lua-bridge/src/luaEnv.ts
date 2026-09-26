@@ -1,3 +1,4 @@
+/// <reference path="./vendor.d.ts" />
 /**
  * Thin wrapper around Fengari (the pure-JS Lua 5.3 VM this package embeds --
  * see `docs/OPEN_QUESTIONS.md` decision 2) plus `fengari-interop` (the

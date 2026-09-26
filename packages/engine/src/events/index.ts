@@ -8,7 +8,7 @@ export type { VarNode } from './variables.js';
 
 export { unitMatchesFilter, findUnits, locationMatchesFilter, locationMatchesFilterOnBoard, findLocations, unitFormulaContext } from './filter.js';
 
-export { conditionalPassed, builtinConditions } from './conditionalWml.js';
+export { conditionalPassed, builtinConditions, setLuaConditionalEvaluator, type LuaConditionalEvaluator } from './conditionalWml.js';
 
 export { ActionRegistry } from './context.js';
 export type { ActionHandler, EventContext, EndLevelState, ExitState, RecordedMessage, MenuItemDef, ChoiceRecord } from './context.js';

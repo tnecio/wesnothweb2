@@ -102,6 +102,19 @@ export const builtinConditions: Record<string, (cfg: WmlConfig, ctx: EventContex
   found_item: (cfg, ctx) => ctx.usedItems.has(cfg.getString('id', '')),
 };
 
+/**
+ * `[lua]` as a condition (`wml_conditionals.lua`): runs `code=` and passes
+ * if it returns a true value. The engine has no Lua VM of its own; the
+ * app installs one (`packages/lua-bridge`'s `createLuaConditionalEvaluator`)
+ * through `setLuaConditionalEvaluator`. Without one, `[lua]` is an unknown
+ * conditional -- which upstream treats as passing, with an error logged.
+ */
+export type LuaConditionalEvaluator = (cfg: WmlConfig, ctx: EventContext) => boolean;
+let luaConditional: LuaConditionalEvaluator | null = null;
+export function setLuaConditionalEvaluator(fn: LuaConditionalEvaluator | null): void {
+  luaConditional = fn;
+}
+
 const CONNECTIVE_OR_BRANCH_TAGS = new Set(['then', 'else', 'elseif', 'not', 'and', 'or', 'do']);
 
 function internalConditionalPassed(cond: WmlConfig, ctx: EventContext): boolean {
@@ -110,8 +123,17 @@ function internalConditionalPassed(cond: WmlConfig, ctx: EventContext): boolean 
 
   for (const { tag, config } of cond.allChildren()) {
     if (CONNECTIVE_OR_BRANCH_TAGS.has(tag)) continue;
+    if (tag === 'lua' && luaConditional) {
+      // `wml.shallow_literal`: the code is not variable-substituted.
+      if (!luaConditional(config, ctx)) return false;
+      continue;
+    }
     const handler = builtinConditions[tag];
-    if (!handler) continue; // unregistered/Lua-only conditional -- treated as passing, see module doc comment.
+    if (!handler) {
+      // `game_lua_kernel::run_wml_conditional`: an unknown conditional passes, with an error.
+      ctx.log('error', `unknown conditional wml: [${tag}]`);
+      continue;
+    }
     if (!handler(ctx.variables.expandConfig(config), ctx)) return false;
   }
   return true;

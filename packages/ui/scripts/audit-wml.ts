@@ -22,9 +22,9 @@
  *  - MISSING: no handler; the pump logs "[tag] not supported (skipped)".
  *  - campaign Lua: defined by the campaign's own Lua (`wml_actions.X`),
  *    which this port does not run yet -- effectively missing too.
- * Conditions this port does not evaluate are treated as *passing*
- * (`conditionalWml.ts`), which is worse than skipping, so they are listed
- * separately.
+ * Conditions this port does not evaluate are treated as *passing* with an
+ * error logged (as upstream treats an unknown conditional), which is worse
+ * than skipping, so they are listed separately.
  */
 
 import * as fs from 'node:fs';
@@ -47,8 +47,8 @@ const actionSource = fs.readFileSync(path.join(repoRoot, 'packages/engine/src/ev
 const noopList = /for \(const tag of \[([^\]]*)\]\) \{\s*registry\.register\(tag, noop\)/.exec(actionSource)?.[1] ?? '';
 const NOOP = new Set([...noopList.matchAll(/'([^']+)'/g)].map((m) => m[1]!));
 const EXTENSION = new Set([...actionSource.matchAll(/registry\.register\('([^']+)', extensionPoint\(/g)].map((m) => m[1]!));
-/** `conditionalWml.ts`'s `builtinConditions`, plus the connectives and literals it handles itself. */
-const CONDITIONS_EVALUATED = new Set(['have_unit', 'have_location', 'found_item', 'variable', 'true', 'false', 'and', 'or', 'not']);
+/** `conditionalWml.ts`'s `builtinConditions`, `[lua]` (run by lua-bridge), plus the connectives and literals it handles itself. */
+const CONDITIONS_EVALUATED = new Set(['have_unit', 'have_location', 'found_item', 'lua', 'variable', 'true', 'false', 'and', 'or', 'not']);
 
 // ---------------------------------------------------------------------------
 // Which children of an action are themselves action bodies / conditions

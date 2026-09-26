@@ -1442,10 +1442,10 @@ gameplay-relevant remainder is:
   `[set_recruit]`, `[role]`, `[hide_unit]`/`[unhide_unit]`,
   `[random_placement]`, `[unit_worth]`, `[put_to_recall_list]`,
   `[cancel_action]`, `[insert_tag]`, `[wml_message]`.
-- Conditions `[have_location]` (and, once Lua runs, `[lua]`): today an
-  unknown condition is treated as *passing*, so these silently take the
-  wrong branch -- a correctness bug to fix first, even before the tags
-  themselves (an unknown condition should warn and fail, as upstream's).
+- Conditions: `[have_location]` (done in 18c) and `[lua]` -- done
+  2026-09-26: `[lua]` conditions run in Fengari through lua-bridge
+  (`wml.variables` bridged). An unknown condition passes with an error
+  logged, which is upstream's own rule (`run_wml_conditional`), not a bug.
 - `[show_objectives]` belongs with the objectives UI; `[item]`/
   `[remove_item]` stay in Phase 18 (labels/items); `[set_achievement]` in
   Phase 25.

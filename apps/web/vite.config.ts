@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [
     svelte(),
     {
@@ -20,6 +20,12 @@ export default defineConfig({
       },
     },
   ],
+  // Fengari (packages/lua-bridge's Lua VM) reads `process.env.FENGARICONF` at load time; its
+  // README has bundlers define it. Build only: in dev, Vite would materialize a `process.env.*`
+  // define as a runtime global `process`, which flips fengari into its Node code paths -- the
+  // dev server's dep prebundle gets the static replacement below instead.
+  define: command === 'build' ? { 'process.env.FENGARICONF': 'undefined' } : {},
+  optimizeDeps: { esbuildOptions: { define: { 'process.env.FENGARICONF': 'undefined' } } },
   // Module workers (packages/renderer's image compositor pool) are emitted as ES modules.
   worker: { format: 'es' },
   server: {
@@ -36,4 +42,4 @@ export default defineConfig({
     // work with workspace packages' TS sources directly, no separate build step
     preserveSymlinks: false,
   },
-});
+}));

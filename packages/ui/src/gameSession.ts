@@ -143,7 +143,13 @@ import {
   type Interaction,
   type InteractionResult,
   type Responder,
+  setLuaConditionalEvaluator,
 } from '@wesnothweb2/engine';
+// Deep import: lua-bridge's index also exports Node-only data loaders.
+import { createLuaConditionalEvaluator } from '@wesnothweb2/lua-bridge/src/conditionals.js';
+
+// `[lua]` conditions run in a real Lua VM (Fengari); see lua-bridge's conditionals.ts.
+setLuaConditionalEvaluator(createLuaConditionalEvaluator());
 
 /**
  * Phase 17: whoever can actually show a `[message]` or play a cutscene
