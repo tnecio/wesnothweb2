@@ -655,7 +655,14 @@ export const AI_ALGORITHM_CONFIGS_JSON: Record<string, WmlConfigJson> = {
   "ai_default_rca": {
     "attrs": {
       "id": "ai_default_rca",
-      "description": "Multiplayer_AI^Default AI (RCA)",
+      "description": {
+        "t": [
+          [
+            "wesnoth-lib",
+            "Multiplayer_AI^Default AI (RCA)"
+          ]
+        ]
+      },
       "mp_rank": 1000
     },
     "children": [
@@ -857,7 +864,14 @@ export const AI_ALGORITHM_CONFIGS_JSON: Record<string, WmlConfigJson> = {
   "ai_default_rca_1_14": {
     "attrs": {
       "id": "ai_default_rca_1_14",
-      "description": "Multiplayer_AI^Old Default AI (1.14 version)",
+      "description": {
+        "t": [
+          [
+            "wesnoth-lib",
+            "Multiplayer_AI^Old Default AI (1.14 version)"
+          ]
+        ]
+      },
       "mp_rank": 1005
     },
     "children": [
@@ -1020,7 +1034,14 @@ export const AI_ALGORITHM_CONFIGS_JSON: Record<string, WmlConfigJson> = {
   "ai_experimental": {
     "attrs": {
       "id": "experimental_ai",
-      "description": "Multiplayer_AI^Experimental AI",
+      "description": {
+        "t": [
+          [
+            "wesnoth-lib",
+            "Multiplayer_AI^Experimental AI"
+          ]
+        ]
+      },
       "mp_rank": 1010
     },
     "children": [
@@ -1235,7 +1256,14 @@ export const AI_ALGORITHM_CONFIGS_JSON: Record<string, WmlConfigJson> = {
   "idle_ai": {
     "attrs": {
       "id": "idle_ai",
-      "description": "Multiplayer_AI^Dev AI: Idle AI",
+      "description": {
+        "t": [
+          [
+            "wesnoth-lib",
+            "Multiplayer_AI^Dev AI: Idle AI"
+          ]
+        ]
+      },
       "hidden": true
     },
     "children": [

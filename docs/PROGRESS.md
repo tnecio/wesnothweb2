@@ -4663,3 +4663,67 @@ condition at the start; now 3 left, all owned by other phases:
 - Not covered: main-menu music (Phase 21); `[harm_unit]` status sounds
   (Phase 29, Lua); the countdown timer's sound (no turn timer exists yet);
   the full preferences screen (Phase 24).
+
+## 2026-09-26: Phase 20, stage 1 — translatable strings survive parsing
+
+Plan: `docs/PHASE20_PLAN.md`. Until now `_ "..."` was parsed to a plain
+English string, so nothing downstream could ever translate. It now keeps its
+identity, with the textdomain the author wrote it under.
+
+- **`packages/engine/src/i18n/`** (pure, no browser APIs):
+  - `tstring.ts`: `TString`, the port of `t_string`. Parts are literals or
+    `{domain, msgid}`, so `_ "a" + "b"` keeps its untranslatable tail.
+    `str()` translates and caches against a translation generation counter
+    (upstream's `translation_timestamp`), so a language switch relocalizes on
+    the next read with nothing rebuilt.
+  - `gettext.ts`: the catalogue registry and `dgettext`/`dsgettext`/
+    `dsngettext`. `dsgettext` has upstream's `^` rule (an untranslated
+    `female^Elvish Fighter` shows as `Elvish Fighter`); `dsngettext` picks a
+    plural form with the catalogue's own rule. With nothing registered every
+    lookup returns English.
+  - `plural.ts`: a recursive-descent evaluator for `Plural-Forms` (never
+    `eval`). A malformed header falls back to English rather than throwing.
+- **Preprocessor scopes the textdomain as upstream does**: a macro body runs
+  in the domain it was `#define`d under, an included file inherits its
+  includer's and restores it, and each substituted argument keeps its
+  caller's. Where the domain changes the output carries a `U+FFFF` marker
+  (upstream's `\376textdomain` lines, inline because bodies are spliced
+  mid-line); the tokenizer stamps each token with the domain in effect where
+  it starts, and the parser stores an attribute with any translatable part as
+  a `TString`. The old single un-scoped "last seen" domain is gone.
+- **`WmlConfig`** stores `TString`s but `get()`/`getString()` still return
+  plain (translated) text, as `config_attribute_value` converts; `getRaw()`
+  and `getTString()` keep the value translatable. So no existing reader
+  changed, and typecheck needed only one fix (a `WmlConfigJson.attrs` read).
+- **`WmlConfigJson`** encodes a translatable attribute as
+  `{"t": [[domain, msgid] | literal, ...]}`. The writer emits
+  `#textdomain` lines and `_ "..."` again, so a save keeps a translatable
+  variable translatable.
+- **Variables** keep the `TString` (`VariableStore.getRaw`), and
+  `expandConfig` follows `interpolate_variables_into_tstring`: translate,
+  substitute, and keep the `TString` only if nothing was substituted.
+- **Side effect worth knowing**: the built-in AI descriptions had shown as
+  `Multiplayer_AI^Default AI (RCA)`, the raw msgid with its context; they are
+  translatable now and `dsgettext` strips the prefix.
+- **Rebuilt** all 41 scenario snapshots (new `apps/web/scripts/
+  rebuild-snapshots.mjs`, which finds each one's cfg by scenario id), the
+  story JSON and the generated AI configs. The only differences from the old
+  snapshots are the `{"t": ...}` markers. Size: 132 MB to 140 MB raw, and
+  gzip 254 KB to 259 KB (+2%) for Dead Water 1.
+- **Coverage check** (`apps/web/scripts/i18n-coverage.mjs`, with a small
+  `lib/po.mjs` reader shared with the next stage): 314,946 translatable
+  parts, 3,129 distinct `(domain, msgid)` pairs across every shipped
+  scenario and story. All but 22 exist in their domain's upstream `.pot`. The
+  22 are recorded in `i18n-known-gaps.json`: 17 are the Rogue Mage / Shadow
+  Mage line (`data/internal/`), whose strings no upstream `.pot` carries, and
+  5 are our own synthetic debug scenarios' text. Zero unexpected. This is
+  what proves the scoping: a macro expanded under the wrong domain would
+  produce a msgid missing from that domain's `.pot`.
+- The upstream `po/` tree is not in the data-only `wesnoth` submodule;
+  scripts find it through `lib/poRoot.mjs` (`$WESNOTH_PO`, then `wesnoth/po`,
+  then `~/wesnothweb/wesnoth/po`).
+
+Gates: engine 787 (+22), ui, renderer and lua-bridge unchanged;
+0 typecheck/svelte-check errors. Browser: `measure-load.mjs` loads Dead Water
+1, Liberty 1 and UtBS 1 with no regressions in board-ready time, and
+`dialogue-playthrough.mjs` passes.

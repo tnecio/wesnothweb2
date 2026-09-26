@@ -45,11 +45,12 @@
  */
 
 import { parseFormula } from '../formula/index.js';
-import { WmlConfig, type WmlAttributeValue } from '../wml/config.js';
+import { TString } from '../i18n/tstring.js';
+import { WmlConfig, plainValue, type WmlAttributeValue, type WmlStoredValue } from '../wml/config.js';
 
 /** A mutable, freely-replaceable analogue of `WmlConfig`'s (attrs, named child-lists) shape. */
 export interface VarNode {
-  attrs: Map<string, WmlAttributeValue>;
+  attrs: Map<string, WmlStoredValue>;
   arrays: Map<string, VarNode[]>;
 }
 
@@ -61,7 +62,7 @@ export function newVarNode(): VarNode {
 export function varNodeFromConfig(cfg: WmlConfig): VarNode {
   const node = newVarNode();
   for (const name of cfg.attributeNames()) {
-    node.attrs.set(name, cfg.get(name)!);
+    node.attrs.set(name, cfg.getRaw(name)!);
   }
   for (const { tag, config } of cfg.allChildren()) {
     let arr = node.arrays.get(tag);
@@ -205,6 +206,16 @@ export class VariableStore {
   // --- scalar access ---
 
   get(path: string): WmlAttributeValue | undefined {
+    const raw = this.getRaw(path);
+    return raw === undefined ? undefined : plainValue(raw);
+  }
+
+  /**
+   * The stored value untouched: a `_ "..."` value stays a `TString`, as
+   * upstream's variables keep their `t_string`, so it follows a language
+   * switch until something interpolates or stringifies it.
+   */
+  getRaw(path: string): WmlStoredValue | undefined {
     if (path.length > '.length'.length && path.endsWith('.length')) {
       return this.arrayLength(path.slice(0, -'.length'.length));
     }
@@ -233,7 +244,7 @@ export class VariableStore {
     return v === 'yes' || v === 'true' || v === '1';
   }
 
-  set(path: string, value: WmlAttributeValue): void {
+  set(path: string, value: WmlStoredValue): void {
     const loc = this.locate(path, true);
     if (!loc) return;
     loc.node.attrs.set(loc.key, value);
@@ -435,8 +446,16 @@ export class VariableStore {
   expandConfig(cfg: WmlConfig): WmlConfig {
     const out = new WmlConfig();
     for (const name of cfg.attributeNames()) {
-      const v = cfg.get(name)!;
-      out.setAttribute(name, typeof v === 'string' ? this.substitute(v) : v);
+      const raw = cfg.getRaw(name)!;
+      if (raw instanceof TString) {
+        // `interpolate_variables_into_tstring`: translate, substitute, and keep the
+        // TString only when substitution changed nothing.
+        const text = raw.str();
+        const expanded = this.substitute(text);
+        out.setAttribute(name, expanded === text ? raw : expanded);
+      } else {
+        out.setAttribute(name, typeof raw === 'string' ? this.substitute(raw) : raw);
+      }
     }
     for (const { tag, config } of cfg.allChildren()) {
       out.addChild(tag, config);
@@ -448,8 +467,16 @@ export class VariableStore {
   expandConfigDeep(cfg: WmlConfig): WmlConfig {
     const out = new WmlConfig();
     for (const name of cfg.attributeNames()) {
-      const v = cfg.get(name)!;
-      out.setAttribute(name, typeof v === 'string' ? this.substitute(v) : v);
+      const raw = cfg.getRaw(name)!;
+      if (raw instanceof TString) {
+        // `interpolate_variables_into_tstring`: translate, substitute, and keep the
+        // TString only when substitution changed nothing.
+        const text = raw.str();
+        const expanded = this.substitute(text);
+        out.setAttribute(name, expanded === text ? raw : expanded);
+      } else {
+        out.setAttribute(name, typeof raw === 'string' ? this.substitute(raw) : raw);
+      }
     }
     for (const { tag, config } of this.childrenWithInserts(cfg)) {
       out.addChild(tag, this.expandConfigDeep(config));

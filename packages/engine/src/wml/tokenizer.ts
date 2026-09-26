@@ -17,7 +17,7 @@
  * attribution is needed later.
  */
 
-import { INLINE_MARK } from './inlineMark.js';
+import { DOMAIN_MARK, INLINE_MARK } from './inlineMark.js';
 
 export type TokenType =
   | 'NEWLINE'
@@ -39,6 +39,8 @@ export interface WmlToken {
   value: string;
   /** 1-based line number (in the preprocessed text) where this token starts. */
   line: number;
+  /** The textdomain in effect where this token starts (what a `_ "..."` string belongs to). */
+  textdomain: string;
 }
 
 type Char = string | null;
@@ -80,12 +82,14 @@ export class Tokenizer {
   private current: Char;
   private line = 1;
   private startLine = 0;
+  private startDomain: string;
   /** Updated in place whenever a `#textdomain NAME` line is scanned. */
   textdomain: string;
 
   constructor(src: string, initialTextdomain = 'wesnoth') {
     this.src = src;
     this.textdomain = initialTextdomain;
+    this.startDomain = initialTextdomain;
     this.idx = 0;
     this.current = this.rawNext();
   }
@@ -100,7 +104,22 @@ export class Tokenizer {
     // they are never content. `peekChar` deliberately does NOT skip them: a
     // mark between `""` and `""` is exactly what stops the `""` escaped-quote
     // lookahead from fusing two adjacent empty strings into one literal quote.
-    while (this.idx < this.src.length && this.src.charAt(this.idx) === INLINE_MARK) this.idx++;
+    while (this.idx < this.src.length) {
+      const m = this.src.charAt(this.idx);
+      if (m === INLINE_MARK) {
+        this.idx++;
+      } else if (m === DOMAIN_MARK) {
+        const end = this.src.indexOf(DOMAIN_MARK, this.idx + 1);
+        if (end === -1) {
+          this.idx = this.src.length;
+          break;
+        }
+        this.textdomain = this.src.slice(this.idx + 1, end);
+        this.idx = end + 1;
+      } else {
+        break;
+      }
+    }
     if (this.idx >= this.src.length) return EOF;
     const c = this.src.charAt(this.idx);
     this.idx++;
@@ -164,7 +183,7 @@ export class Tokenizer {
   }
 
   private makeToken(type: TokenType, value: string): WmlToken {
-    return { type, value, line: this.startLine };
+    return { type, value, line: this.startLine, textdomain: this.startDomain };
   }
 
   /** Reads and returns the next token, advancing internal state past it. */
@@ -177,6 +196,7 @@ export class Tokenizer {
     }
 
     this.startLine = this.line;
+    this.startDomain = this.textdomain;
     const c = this.current;
 
     if (c === EOF) {

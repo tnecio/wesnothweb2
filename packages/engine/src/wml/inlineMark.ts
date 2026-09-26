@@ -15,3 +15,19 @@
  * occur in real WML.
  */
 export const INLINE_MARK = '￾';
+
+/**
+ * Stand-in for upstream's `\376textdomain NAME` lines. The preprocessor
+ * emits `DOMAIN_MARK + name + DOMAIN_MARK` wherever the textdomain in effect
+ * changes -- entering a macro body, leaving it, entering and leaving an
+ * included file, a substituted argument -- so the tokenizer can stamp each
+ * `_ "..."` with the domain its author wrote it under. Unlike upstream's
+ * marker it is not a line, because macro bodies are spliced mid-line.
+ * U+FFFF is a Unicode noncharacter, so it cannot occur in real WML.
+ */
+export const DOMAIN_MARK = '\uFFFF';
+
+/** Removes every preprocessor marker from `text` (for symbol names built from substituted arguments). */
+export function stripMarks(text: string): string {
+  return text.replace(/\uFFFF[^\uFFFF]*\uFFFF/g, '').split(INLINE_MARK).join('');
+}

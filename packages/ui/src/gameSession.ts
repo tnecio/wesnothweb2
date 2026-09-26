@@ -31,6 +31,7 @@
  */
 
 import {
+  plainJsonValue,
   GameBoard,
   Location,
   Unit,
@@ -1566,7 +1567,7 @@ export class GameSession {
     this.eventPump.ctx.onVolume = options.onVolume;
     if (!options.deferMusic) startScenarioMusic(this.music, WmlConfig.fromJSON(snapshot.scenarioConfigJson));
     this.board.lawfulBonusAt = (loc) => this.timeOfDayAt(loc).lawfulBonus;
-    this.eventPump.ctx.turnLimit = parseScenarioTurnsLimit(snapshot.scenarioConfigJson.attrs['turns']) ?? -1;
+    this.eventPump.ctx.turnLimit = parseScenarioTurnsLimit(plainJsonValue(snapshot.scenarioConfigJson.attrs['turns'])) ?? -1;
     this.eventPump.ctx.turnNumber = () => this.turnNumber;
     // The scenario's own `[item]`s and `[label]`s, read as upstream does at scenario start.
     for (const { tag, config } of WmlConfig.fromJSON(snapshot.scenarioConfigJson).allChildren()) {
@@ -1680,7 +1681,7 @@ export class GameSession {
    */
   get nextScenarioId(): string | null {
     // An [endlevel] next_scenario= overrides the scenario's own (endlevel.lua sets wesnoth.scenario.next).
-    const raw = this.eventPump.ctx.endLevel?.nextScenario ?? this.snapshot.scenarioConfigJson.attrs['next_scenario'];
+    const raw = this.eventPump.ctx.endLevel?.nextScenario ?? plainJsonValue(this.snapshot.scenarioConfigJson.attrs['next_scenario']);
     if (raw === undefined || raw === null) return null;
     const id = String(raw).trim();
     // `next_scenario=null` is how campaigns mark their last scenario (game_state::has_next_scenario).

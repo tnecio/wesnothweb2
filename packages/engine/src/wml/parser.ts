@@ -7,21 +7,21 @@
  * become attributes, including the `x,y = 1,2` multi-assign form and
  * `"a" + "b"` string concatenation.
  *
- * Simplification vs. upstream: WML's translatable strings (`_ "text"`) are
- * stored as plain strings -- the leading `_` marker is recognized (so
- * parsing doesn't choke on it and multi-part translatable concatenation
- * still works) but no textdomain/translation object is attached, since
- * `WmlConfig` (the shared contract) only models plain attribute values.
- * Revisit if/when a real i18n layer is added.
+ * Translatable strings (`_ "text"`) keep their identity: each one is stamped
+ * with the textdomain the preprocessor left in effect at that point and the
+ * attribute is stored as a `TString`, so a later language switch can
+ * retranslate it. An attribute with no translatable part is still inferred
+ * to a scalar, exactly as before.
  */
 
-import type { WmlAttributeValue } from './config.js';
+import { TString, type TStringPart } from '../i18n/tstring.js';
+import type { WmlAttributeValue, WmlStoredValue } from './config.js';
 import { WmlConfig } from './config.js';
 import type { TokenType, WmlToken } from './tokenizer.js';
 import { Tokenizer } from './tokenizer.js';
 
 export interface ParseConfigOptions {
-  /** Initial textdomain, e.g. carried over from the preprocessor. Informational only. */
+  /** The textdomain in effect at the start of the text (the preprocessor's initial one; default `wesnoth`). */
   textdomain?: string;
 }
 
@@ -49,6 +49,12 @@ function inferAttributeValue(raw: string): WmlAttributeValue {
   return raw;
 }
 
+/** A finished attribute value: a `TString` if any part was translatable, else the inferred scalar. */
+function valueFromParts(parts: TStringPart[]): WmlStoredValue {
+  if (parts.some((p) => typeof p !== 'string')) return TString.fromParts(parts);
+  return inferAttributeValue(parts.join(''));
+}
+
 interface ElementFrame {
   cfg: WmlConfig;
   name: string;
@@ -64,7 +70,7 @@ class Parser {
 
   constructor(text: string, textdomain?: string) {
     this.tok = new Tokenizer(text, textdomain);
-    this.current = { type: 'END', value: '', line: 0 };
+    this.current = { type: 'END', value: '', line: 0, textdomain: textdomain ?? 'wesnoth' };
   }
 
   private next(): WmlToken {
@@ -183,7 +189,7 @@ class Parser {
     if (!variables[variables.length - 1]) this.fail('Empty variable name');
 
     let curvarIdx = 0;
-    let buffer = '';
+    let parts: TStringPart[] = [];
     let ignoreNextNewlines = false;
     let previousString = false;
 
@@ -199,11 +205,11 @@ class Parser {
       switch (t.type) {
         case 'COMMA':
           if (curvarIdx + 1 < variables.length) {
-            cfg.setAttribute(variables[curvarIdx] as string, inferAttributeValue(buffer));
-            buffer = '';
+            cfg.setAttribute(variables[curvarIdx] as string, valueFromParts(parts));
+            parts = [];
             curvarIdx++;
           } else {
-            buffer += ',';
+            parts.push(',');
           }
           break;
 
@@ -214,12 +220,12 @@ class Parser {
           if (t2.type === 'UNTERMINATED_QSTRING') {
             this.fail('Unterminated quoted string');
           } else if (t2.type === 'QSTRING') {
-            buffer += t2.value;
+            parts.push({ domain: t2.textdomain, msgid: t2.value });
           } else if (t2.type === 'END' || t2.type === 'NEWLINE') {
-            buffer += '_';
+            parts.push('_');
             finished = true;
           } else {
-            buffer += '_' + t2.value;
+            parts.push('_' + t2.value);
           }
           break;
         }
@@ -229,12 +235,12 @@ class Parser {
           continue;
 
         case 'STRING':
-          if (previousString) buffer += ' ';
-          buffer += t.value;
+          if (previousString) parts.push(' ');
+          parts.push(t.value);
           break;
 
         case 'QSTRING':
-          buffer += t.value;
+          parts.push(t.value);
           break;
 
         case 'UNTERMINATED_QSTRING':
@@ -251,7 +257,7 @@ class Parser {
           break;
 
         default:
-          buffer += t.value;
+          parts.push(t.value);
           break;
       }
 
@@ -261,7 +267,7 @@ class Parser {
       ignoreNextNewlines = false;
     }
 
-    cfg.setAttribute(variables[curvarIdx] as string, inferAttributeValue(buffer));
+    cfg.setAttribute(variables[curvarIdx] as string, valueFromParts(parts));
     for (let i = curvarIdx + 1; i < variables.length; i++) {
       cfg.setAttribute(variables[i] as string, '');
     }

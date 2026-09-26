@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { VariableStore } from '../../src/events/variables.js';
 import { WmlConfig } from '../../src/wml/config.js';
+import { TString, clearCatalogues, setCatalogue } from '../../src/i18n/index.js';
 
 describe('VariableStore', () => {
   it('reads/writes plain scalars', () => {
@@ -118,6 +119,48 @@ describe('VariableStore', () => {
       // Children are kept as raw references -- expanding them is each consumer's own job,
       // done at the point it actually reads them (see the module doc comment on why).
       expect(expanded.child('option')!.getString('label')).toBe('unexpanded $who');
+    });
+  });
+
+  describe('translatable values', () => {
+    it('keeps a `_ "..."` value translatable in the store and across toConfig/JSON', () => {
+      const vars = new VariableStore();
+      vars.set('title', TString.translatable('wesnoth-dw', 'Hello'));
+      expect(vars.getString('title')).toBe('Hello');
+      const back = WmlConfig.fromJSON(JSON.parse(JSON.stringify(vars.toConfig().toJSON())));
+      const restored = new VariableStore();
+      restored.replaceAll(back);
+      setCatalogue('wesnoth-dw', { entries: { Hello: 'Cześć' } });
+      try {
+        expect(restored.getString('title')).toBe('Cześć');
+      } finally {
+        clearCatalogues();
+      }
+    });
+
+    it('expandConfig keeps the TString when nothing was substituted, and a plain string when something was', () => {
+      const vars = new VariableStore();
+      vars.set('who', 'Krellis');
+      const cfg = new WmlConfig();
+      cfg.setAttribute('plain', TString.translatable('wesnoth', 'Hello'));
+      cfg.setAttribute('subst', TString.translatable('wesnoth', 'Hail, $who!'));
+      const out = vars.expandConfig(cfg);
+      expect(out.isTranslatable('plain')).toBe(true);
+      expect(out.isTranslatable('subst')).toBe(false);
+      expect(out.getString('subst')).toBe('Hail, Krellis!');
+    });
+
+    it('translates before substituting, as upstream does', () => {
+      const vars = new VariableStore();
+      vars.set('who', 'Krellis');
+      setCatalogue('wesnoth', { entries: { 'Hail, $who!': 'Witaj, $who!' } });
+      try {
+        const cfg = new WmlConfig();
+        cfg.setAttribute('m', TString.translatable('wesnoth', 'Hail, $who!'));
+        expect(vars.expandConfig(cfg).getString('m')).toBe('Witaj, Krellis!');
+      } finally {
+        clearCatalogues();
+      }
     });
   });
 });

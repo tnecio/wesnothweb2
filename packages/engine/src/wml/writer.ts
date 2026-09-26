@@ -18,13 +18,10 @@
  *    embedded `"` **doubled** (`utils::wml_escape_string`), newlines kept
  *    verbatim inside the quotes (that is how real `map_data=` is written).
  *
- * Deliberate deviation, inherited from `parser.ts`: this project's
- * `WmlConfig` has no translatable-string type (see that module's own
- * "Simplification vs. upstream" note), so a value that upstream would
- * write as `_"text"` preceded by a `#textdomain` line is written here as
- * a plain quoted string. Real Wesnoth reads it back as an untranslated
- * literal with the same characters -- the text displays identically in
- * English and loses only the ability to be re-translated.
+ * Translatable values (`TString`) are written the way upstream writes them:
+ * a `#textdomain NAME` line whenever the domain changes, then `_ "msgid"`,
+ * with the parts of a concatenation joined by ` +` and a line break, so
+ * the parser reads back the same parts with the same domains.
  *
  * Round-tripping: compare `parse(write(parse(text)))` against
  * `parse(text)`, not the raw text. Upstream's own type inference
@@ -33,7 +30,8 @@
  * *tree* round-trips exactly while the text need not be identical.
  */
 
-import { WmlConfig, type WmlAttributeValue } from './config.js';
+import { TString } from '../i18n/tstring.js';
+import { WmlConfig, type WmlStoredValue } from './config.js';
 
 /** Mirrors `utils::wml_escape_string` (`string_utils.hpp`): `"` is escaped by doubling it, nothing else is. */
 function escapeWmlString(value: string): string {
@@ -41,21 +39,63 @@ function escapeWmlString(value: string): string {
 }
 
 /** Mirrors `write_key_val`'s type dispatch: bare for bools/numbers, quoted-and-escaped for strings. */
-function formatValue(value: WmlAttributeValue): string {
+function formatScalar(value: string | number | boolean): string {
   if (typeof value === 'boolean') return value ? 'yes' : 'no';
   if (typeof value === 'number') return String(value);
   return `"${escapeWmlString(value)}"`;
 }
 
-function writeInto(out: string[], cfg: WmlConfig, level: number): void {
+interface WriterState {
+  out: string[];
+  /** The `#textdomain` in effect where the next line is written; a fresh parse starts in `wesnoth`. */
+  domain: string;
+}
+
+function writeTString(st: WriterState, indent: string, key: string, value: TString): void {
+  let line = `${indent}${key}=`;
+  const pieces: string[] = [];
+  for (const part of value.parts) {
+    if (typeof part === 'string') {
+      pieces.push(`"${escapeWmlString(part)}"`);
+    } else {
+      const switchLine = part.domain !== st.domain ? `#textdomain ${part.domain}\n` : '';
+      st.domain = part.domain;
+      pieces.push(`${switchLine}_ "${escapeWmlString(part.msgid)}"`);
+    }
+  }
+  // A `#textdomain` line has to start a line, and must not fall inside the first piece's own line.
+  const first = pieces[0] as string;
+  if (first.startsWith('#textdomain')) {
+    const nl = first.indexOf('\n');
+    st.out.push(`${first.slice(0, nl + 1)}${line}${first.slice(nl + 1)}`);
+  } else {
+    st.out.push(`${line}${first}`);
+  }
+  for (let i = 1; i < pieces.length; i++) st.out.push(` +\n${pieces[i]}`);
+  st.out.push('\n');
+}
+
+function writeValue(st: WriterState, indent: string, key: string, value: WmlStoredValue): void {
+  if (value instanceof TString) {
+    if (value.translatable) {
+      writeTString(st, indent, key, value);
+    } else {
+      st.out.push(`${indent}${key}=${formatScalar(value.baseStr())}\n`);
+    }
+  } else {
+    st.out.push(`${indent}${key}=${formatScalar(value)}\n`);
+  }
+}
+
+function writeInto(st: WriterState, cfg: WmlConfig, level: number): void {
   const indent = '\t'.repeat(level);
   for (const key of cfg.attributeNames()) {
-    out.push(`${indent}${key}=${formatValue(cfg.get(key)!)}\n`);
+    writeValue(st, indent, key, cfg.getRaw(key) as WmlStoredValue);
   }
   for (const { tag, config } of cfg.allChildren()) {
-    out.push(`${indent}[${tag}]\n`);
-    writeInto(out, config, level + 1);
-    out.push(`${indent}[/${tag}]\n`);
+    st.out.push(`${indent}[${tag}]\n`);
+    writeInto(st, config, level + 1);
+    st.out.push(`${indent}[/${tag}]\n`);
   }
 }
 
@@ -67,7 +107,7 @@ function writeInto(out: string[], cfg: WmlConfig, level: number): void {
  * `[snapshot]`/`[replay]` and friends.
  */
 export function writeWml(cfg: WmlConfig): string {
-  const out: string[] = [];
-  writeInto(out, cfg, 0);
-  return out.join('');
+  const st: WriterState = { out: [], domain: 'wesnoth' };
+  writeInto(st, cfg, 0);
+  return st.out.join('');
 }

@@ -1,0 +1,90 @@
+[
+  {
+    "domain": "wesnoth-units",
+    "msgid": "Arcane Enforcer"
+  },
+  {
+    "domain": "wesnoth-units",
+    "msgid": "Dabbling in many schools of magic yet not fully embracing any, the impoverished, obsessive study of an independent mage can sometimes yield impressive results. Unrestrained by the structure of formal apprenticeship, Shadow Magi have learned to weave together spell and sword, seizing the secrets of both light and darkness with equal fervor. One of the many fruits of their labor is the unnerving power to vanish and evade seemingly-lethal blows, only to reappear moments later and strike in sudden retaliation."
+  },
+  {
+    "domain": "wesnoth-units",
+    "msgid": "Not every student has the skill and temperament to become a mage. Novices often find themselves abandoned by their masters, sometimes for attempting to practice forbidden arts, but more often for mundane transgressions such as theft or embezzlement, or even a simple lack of funds.\n\nWhile most of these failed wizards switch to other paths, a driven few turn to banditry as a way of continuing to fund their independent studies. Now completely outside the law, Rogue Mages do whatever is necessary to support themselves, and will often dabble in the use of black magic as a result. Although they are rarely as skilled as wizards with more formal training, their spells can still be quite dangerous, and their banditry has resulted in moderate skill with the short sword."
+  },
+  {
+    "domain": "wesnoth-units",
+    "msgid": "Orcish swordplay focuses almost strictly on offense, making use of their natural stamina to outlast their opponents through sheer resilience. A more seasoned Orcish Warrior is thus commonly seen wielding two blades, choosing to forgo a shield and instead trade hits with enemies in melee range. Though a rather brutish tactic, it is still quite effective for these fighters, who lack the training and finesse to act on more complex strategies."
+  },
+  {
+    "domain": "wesnoth-units",
+    "msgid": "Rogue Mage"
+  },
+  {
+    "domain": "wesnoth-units",
+    "msgid": "Shadow Lord"
+  },
+  {
+    "domain": "wesnoth-units",
+    "msgid": "Shadow Mage"
+  },
+  {
+    "domain": "wesnoth-units",
+    "msgid": "The fruits of the paths of either light or darkness are well known to magi: the brilliance of a white mage or the deep gloom of a necromancer. Much less well known is the art of the Shadow Lord, those few who master a union of both white and black magic. Though decades of zealous study and self-neglect have left them drained of strength, these savants have transcended the need for crude physical weapons, instead channeling their energies into devastatingly accurate magical attacks that undercut their enemies’ defenses."
+  },
+  {
+    "domain": "wesnoth-units",
+    "msgid": "The harsh, violent life of an outlaw does not readily lend itself to magical study. Rogue mages who survive their first few years often do so with the aid of organized bandit gangs, who are more than happy to provide protection in return for muscle and loyalty. Outfitted with stolen crossbows and augmenting their piecemeal armor with scraps of half-remembered magic, these ex-magi brawl with surprising competence, especially under the cover of darkness."
+  },
+  {
+    "domain": "wesnoth-units",
+    "msgid": "This attack can deal either blade or cold damage, depending on which would be more effective."
+  },
+  {
+    "domain": "wesnoth-units",
+    "msgid": "This unit’s melee attack can deal either blade or cold damage, depending on which would be more effective."
+  },
+  {
+    "domain": "wesnoth-units",
+    "msgid": "astral blade"
+  },
+  {
+    "domain": "wesnoth-units",
+    "msgid": "chill"
+  },
+  {
+    "domain": "wesnoth-units",
+    "msgid": "female^Arcane Enforcer"
+  },
+  {
+    "domain": "wesnoth-units",
+    "msgid": "female^Rogue Mage"
+  },
+  {
+    "domain": "wesnoth-units",
+    "msgid": "female^Shadow Lord"
+  },
+  {
+    "domain": "wesnoth-units",
+    "msgid": "female^Shadow Mage"
+  },
+  {
+    "domain": "wesnoth",
+    "msgid": "Attack each station's weak target to see it advance -- Debug Archer advances immediately (one real option); Debug Spearman opens the real advancement-choice dialog (three real options)"
+  },
+  {
+    "domain": "wesnoth",
+    "msgid": "Defeat the enemy leader"
+  },
+  {
+    "domain": "wesnoth",
+    "msgid": "Nothing here is scripted or faked: both attackers are real Wesnoth unit types one real combat-XP gain away from their real experience= threshold, and both targets are real, deliberately weak (1 HP) so a landed hit is (very likely, not guaranteed) lethal."
+  },
+  {
+    "domain": "wesnoth",
+    "msgid": "Nothing here is scripted or faked: every unit is a real Wesnoth unit type using its real specials_list=/abilities_list= shorthand."
+  },
+  {
+    "domain": "wesnoth",
+    "msgid": "Try each station's weapon/ability against its real target -- see this scenario's own file header for what each one demonstrates"
+  }
+]

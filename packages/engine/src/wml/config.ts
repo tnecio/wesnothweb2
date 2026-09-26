@@ -12,7 +12,30 @@
  * childRange/addChild) so later C++-to-TS porting reads similarly.
  */
 
+import { TString, isTStringJson, type TStringJson } from '../i18n/tstring.js';
+
 export type WmlAttributeValue = string | number | boolean;
+
+/**
+ * What an attribute actually stores: a scalar, or a `TString` when the WML
+ * wrote it as `_ "..."`. Readers that want text use `get()`/`getString()`,
+ * which translate (upstream's `config_attribute_value` converts the same
+ * way); readers that must keep the value translatable across a language
+ * switch use `getTString()`.
+ */
+export type WmlStoredValue = WmlAttributeValue | TString;
+
+/** Translated text for a value read straight from `WmlConfigJson.attrs`; scalars pass through. */
+export function plainJsonValue(v: WmlAttributeValue | TStringJson): WmlAttributeValue;
+export function plainJsonValue(v: WmlAttributeValue | TStringJson | undefined): WmlAttributeValue | undefined;
+export function plainJsonValue(v: WmlAttributeValue | TStringJson | undefined): WmlAttributeValue | undefined {
+  return isTStringJson(v) ? TString.fromJSON(v).str() : v;
+}
+
+/** Translated text for a stored value; scalars pass through. */
+export function plainValue(v: WmlStoredValue): WmlAttributeValue {
+  return v instanceof TString ? v.str() : v;
+}
 
 interface ChildEntry {
   tag: string;
@@ -20,29 +43,49 @@ interface ChildEntry {
 }
 
 export class WmlConfig {
-  private attrs = new Map<string, WmlAttributeValue>();
+  private attrs = new Map<string, WmlStoredValue>();
   private childEntries: ChildEntry[] = [];
 
   // --- attributes ---
 
+  /** The value as plain data; a translatable string is returned translated. */
   get(key: string): WmlAttributeValue | undefined {
+    const v = this.attrs.get(key);
+    return v === undefined ? undefined : plainValue(v);
+  }
+
+  /** The stored value untouched, `TString` included. */
+  getRaw(key: string): WmlStoredValue | undefined {
     return this.attrs.get(key);
   }
 
-  getString(key: string, fallback = ''): string {
+  /** The value as a `TString` (a literal one when the WML did not mark it translatable). */
+  getTString(key: string): TString | undefined {
     const v = this.attrs.get(key);
+    if (v === undefined) return undefined;
+    return v instanceof TString ? v : TString.literal(String(v));
+  }
+
+  /** True when the WML wrote this attribute as `_ "..."`. */
+  isTranslatable(key: string): boolean {
+    const v = this.attrs.get(key);
+    return v instanceof TString && v.translatable;
+  }
+
+  getString(key: string, fallback = ''): string {
+    const v = this.get(key);
     return v === undefined ? fallback : String(v);
   }
 
   getNumber(key: string, fallback = 0): number {
-    const v = this.attrs.get(key);
+    const v = this.get(key);
     if (v === undefined) return fallback;
     const n = typeof v === 'number' ? v : Number(v);
     return Number.isNaN(n) ? fallback : n;
   }
 
   getBoolean(key: string, fallback = false): boolean {
-    const v = this.attrs.get(key);
+    const v = this.get(key);
     if (v === undefined) return fallback;
     if (typeof v === 'boolean') return v;
     if (typeof v === 'number') return v !== 0;
@@ -53,7 +96,7 @@ export class WmlConfig {
     return this.attrs.has(key);
   }
 
-  setAttribute(key: string, value: WmlAttributeValue): this {
+  setAttribute(key: string, value: WmlStoredValue): this {
     this.attrs.set(key, value);
     return this;
   }
@@ -124,7 +167,7 @@ export class WmlConfig {
 
   toJSON(): WmlConfigJson {
     return {
-      attrs: Object.fromEntries(this.attrs),
+      attrs: Object.fromEntries([...this.attrs].map(([k, v]) => [k, v instanceof TString ? v.toJSON() : v])),
       children: this.childEntries.map((e) => ({ tag: e.tag, config: e.config.toJSON() })),
     };
   }
@@ -132,7 +175,7 @@ export class WmlConfig {
   static fromJSON(json: WmlConfigJson): WmlConfig {
     const cfg = new WmlConfig();
     for (const [key, value] of Object.entries(json.attrs)) {
-      cfg.setAttribute(key, value);
+      cfg.setAttribute(key, isTStringJson(value) ? TString.fromJSON(value) : value);
     }
     for (const child of json.children) {
       cfg.addChild(child.tag, WmlConfig.fromJSON(child.config));
@@ -142,6 +185,7 @@ export class WmlConfig {
 }
 
 export interface WmlConfigJson {
-  attrs: Record<string, WmlAttributeValue>;
+  /** A translatable attribute is `{"t": [[domain, msgid] | literal, ...]}`; everything else is a scalar. */
+  attrs: Record<string, WmlAttributeValue | TStringJson>;
   children: Array<{ tag: string; config: WmlConfigJson }>;
 }

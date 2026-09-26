@@ -80,7 +80,7 @@
 import type { EndLevelState } from './context.js';
 import { Direction, Location, parseDirection } from '../model/Location.js';
 import { Unit } from '../model/Unit.js';
-import { WmlConfig } from '../wml/config.js';
+import { WmlConfig, plainValue } from '../wml/config.js';
 import { checkRecruitLocation, recallUnit, rollNewUnit } from '../actions/recruit.js';
 import { findPath, findVacantTile } from '../pathfind/pathfind.js';
 import type { Rng } from '../rng/Rng.js';
@@ -454,8 +454,8 @@ export function applySetVariable(cfg: WmlConfig, variables: VariableStore, log: 
     return;
   }
 
-  if (cfg.hasAttribute('value')) variables.set(name, cfg.get('value')!);
-  if (cfg.hasAttribute('literal')) variables.set(name, cfg.get('literal')!);
+  if (cfg.hasAttribute('value')) variables.set(name, cfg.getRaw('value')!);
+  if (cfg.hasAttribute('literal')) variables.set(name, cfg.getRaw('literal')!);
   if (cfg.hasAttribute('to_variable')) variables.set(name, variables.get(cfg.getString('to_variable')) ?? '');
   if (cfg.hasAttribute('suffix')) variables.set(name, variables.getString(name) + cfg.getString('suffix'));
   if (cfg.hasAttribute('prefix')) variables.set(name, cfg.getString('prefix') + variables.getString(name));
@@ -532,7 +532,8 @@ export function applySetVariable(cfg: WmlConfig, variables: VariableStore, log: 
     const removeEmpty = joinCfg.getBoolean('remove_empty', false);
     const parts: string[] = [];
     for (const elem of variables.getArray(arrayName)) {
-      const v = elem.attrs.get(keyName);
+      const raw = elem.attrs.get(keyName);
+      const v = raw === undefined ? undefined : plainValue(raw);
       if (v === undefined && removeEmpty) continue;
       parts.push(v === undefined ? '' : String(v));
     }

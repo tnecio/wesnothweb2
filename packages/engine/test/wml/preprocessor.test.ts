@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { preprocess, preprocessFile, type PreprocessorHost } from '../../src/wml/preprocessor';
 import { parseConfig } from '../../src/wml/parser';
-import { parseWml } from '../../src/wml/index';
+import { parseWml, writeWml, WmlConfig } from '../../src/wml/index';
 
 /** In-memory filesystem host so most preprocessor tests don't touch real disk. */
 function memHost(files: Record<string, string>): PreprocessorHost {
@@ -166,5 +166,84 @@ describe('preprocess against real files on disk', () => {
     fs.writeFileSync(path.join(dir, 'main.cfg'), '[a]\n{inc.cfg}\n[/a]\n');
     const cfg = parseWml(fs.readFileSync(path.join(dir, 'main.cfg'), 'utf8'), { filePath: path.join(dir, 'main.cfg') });
     expect(cfg.child('a')!.get('y')).toBe(2);
+  });
+});
+
+describe('textdomain scoping (translatable strings)', () => {
+  const raw = (v: unknown) => (v as { parts?: unknown }).parts;
+
+  it('stamps a top-level string with the current #textdomain', () => {
+    const cfg = parseWml('#textdomain wesnoth-dw\nname= _ "Hello"\n#textdomain wesnoth-lib\nother= _ "Bye"\n');
+    expect(raw(cfg.getRaw('name'))).toEqual([{ domain: 'wesnoth-dw', msgid: 'Hello' }]);
+    expect(raw(cfg.getRaw('other'))).toEqual([{ domain: 'wesnoth-lib', msgid: 'Bye' }]);
+  });
+
+  it('defaults to `wesnoth`, or to initialTextdomain', () => {
+    expect(raw(parseWml('a= _ "x"').getRaw('a'))).toEqual([{ domain: 'wesnoth', msgid: 'x' }]);
+    expect(raw(parseWml('a= _ "x"', { initialTextdomain: 'wesnoth-l' }).getRaw('a'))).toEqual([
+      { domain: 'wesnoth-l', msgid: 'x' },
+    ]);
+  });
+
+  it('runs a macro body in the domain it was defined under, then restores the caller', () => {
+    const cfg = parseWml(
+      [
+        '#textdomain wesnoth',
+        '#define GREETING',
+        '_ "Hello"#enddef',
+        '#textdomain wesnoth-dw',
+        'a= {GREETING}',
+        'b= _ "Local"',
+      ].join('\n'),
+    );
+    // GREETING was defined in `wesnoth` and is called from `wesnoth-dw`.
+    expect(raw(cfg.getRaw('a'))).toEqual([{ domain: 'wesnoth', msgid: 'Hello' }]);
+    expect(raw(cfg.getRaw('b'))).toEqual([{ domain: 'wesnoth-dw', msgid: 'Local' }]);
+  });
+
+  it('keeps a macro argument in the caller domain even inside a macro body of another domain', () => {
+    const cfg = parseWml(
+      [
+        '#textdomain wesnoth',
+        '#define WRAP TEXT',
+        'a= {TEXT}',
+        'b= _ "Body"#enddef',
+        '#textdomain wesnoth-dw',
+        '[t]',
+        '{WRAP ( _ "Arg")}',
+        '[/t]',
+      ].join('\n'),
+    );
+    const t = cfg.child('t')!;
+    expect(raw(t.getRaw('a'))).toEqual([{ domain: 'wesnoth-dw', msgid: 'Arg' }]);
+    expect(raw(t.getRaw('b'))).toEqual([{ domain: 'wesnoth', msgid: 'Body' }]);
+  });
+
+  it('lets an included file inherit its includer domain and restores it afterwards', () => {
+    const host = memHost({
+      '/d/main.cfg': '#textdomain wesnoth-dw\n{inc.cfg}\nafter= _ "After"\n',
+      '/d/inc.cfg': 'inside= _ "Inside"\n#textdomain wesnoth-lib\nswitched= _ "Switched"\n',
+    });
+    const cfg = parseWml(host.readFile('/d/main.cfg'), { dir: '/d', host });
+    expect(raw(cfg.getRaw('inside'))).toEqual([{ domain: 'wesnoth-dw', msgid: 'Inside' }]);
+    expect(raw(cfg.getRaw('switched'))).toEqual([{ domain: 'wesnoth-lib', msgid: 'Switched' }]);
+    expect(raw(cfg.getRaw('after'))).toEqual([{ domain: 'wesnoth-dw', msgid: 'After' }]);
+  });
+
+  it('keeps translated text out of plain readers: get() translates, getRaw() keeps the marker', () => {
+    const cfg = parseWml('a= _ "Hello"\nb="plain"\nc=5\n');
+    expect(cfg.get('a')).toBe('Hello');
+    expect(cfg.isTranslatable('a')).toBe(true);
+    expect(cfg.isTranslatable('b')).toBe(false);
+    expect(cfg.get('c')).toBe(5);
+  });
+
+  it('survives a JSON round trip and a write -> parse round trip', () => {
+    const cfg = parseWml('#textdomain wesnoth-dw\na= _ "Hello" + " there"\n#textdomain wesnoth\nb= _ "Bye"\nc="x"\n');
+    const viaJson = WmlConfig.fromJSON(JSON.parse(JSON.stringify(cfg.toJSON())));
+    expect(viaJson.toJSON()).toEqual(cfg.toJSON());
+    expect(raw(viaJson.getRaw('a'))).toEqual([{ domain: 'wesnoth-dw', msgid: 'Hello' }, ' there']);
+    const viaText = parseWml(writeWml(cfg));
+    expect(viaText.toJSON()).toEqual(cfg.toJSON());
   });
 });

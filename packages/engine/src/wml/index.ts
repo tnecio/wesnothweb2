@@ -66,7 +66,7 @@ export function parseWml(text: string, opts: ParseWmlOptions = {}): WmlConfig {
     initialTextdomain: opts.initialTextdomain,
     host: opts.host,
   });
-  return parseConfig(pre.text, { textdomain: pre.textdomain });
+  return parseConfig(pre.text, { textdomain: opts.initialTextdomain });
 }
 
 /** Reads, preprocesses and parses a `.cfg` file from disk. */

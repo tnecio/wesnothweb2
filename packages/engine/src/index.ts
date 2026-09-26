@@ -30,7 +30,8 @@ export * from './ai/index.js';
 export * from './rng/index.js';
 export * from './events/index.js';
 export * from './story/storyParser.js';
-export { WmlConfig, type WmlAttributeValue, type WmlConfigJson } from './wml/config.js';
+export { WmlConfig, plainValue, plainJsonValue, type WmlAttributeValue, type WmlStoredValue, type WmlConfigJson } from './wml/config.js';
+export * from './i18n/index.js';
 // Browser-safe halves of the WML pipeline, exported for the same reason
 // `WmlConfig` is (see this file's own header): neither touches the
 // filesystem. `parseConfig` reads WML *text the caller already holds* --

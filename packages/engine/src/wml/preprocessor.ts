@@ -26,11 +26,13 @@
  *
  * Known simplifications / deferred features (documented here so they're
  * easy to find):
- *  - Textdomain tracking is a single un-scoped "last seen" value, not
- *    properly push/popped per file/macro like upstream's `textdomain_`.
- *    This has no effect on parsed attribute *values* (WmlConfig has no
- *    translatable-string type -- see parser.ts) so it only matters once a
- *    real i18n layer exists.
+ *  - Textdomains are scoped as upstream scopes them: a macro body runs in
+ *    the domain it was `#define`d under, an included file inherits its
+ *    includer's, and each substituted argument keeps its caller's. Wherever
+ *    the domain in effect changes, the output carries a `DOMAIN_MARK`
+ *    marker (upstream's `\376textdomain NAME` lines, but inline because
+ *    macro bodies are spliced mid-line) which the tokenizer turns into the
+ *    domain of each `_ "..."` string.
  *  - `#deprecated` (both the top-level directive and the `#define` body
  *    variant) is recognized and skipped, but no deprecation warning is
  *    surfaced anywhere.
@@ -59,7 +61,7 @@ import * as fs from 'node:fs';
 
 import * as path from 'node:path';
 
-import { INLINE_MARK } from './inlineMark.js';
+import { DOMAIN_MARK, INLINE_MARK, stripMarks } from './inlineMark.js';
 
 /**
  * Stand-in for upstream's `INLINED_PREPROCESS_DIRECTIVE_CHAR` (0xFE) marker
@@ -88,6 +90,8 @@ export interface MacroDefinition {
   body: string;
   /** Directory of the file this macro was `#define`d in; used to resolve `{includes}` inside its body. */
   dir: string;
+  /** The textdomain in effect where this macro was `#define`d; its body's `_ "..."` strings belong to it. */
+  textdomain?: string;
   /** For diagnostics. */
   location: string;
 }
@@ -158,17 +162,34 @@ const MAX_INCLUDE_DEPTH = 40;
 
 class PreprocessorError extends Error {}
 
+/** A macro argument's expanded text plus the textdomain its author wrote it under. */
+interface BoundArg {
+  text: string;
+  domain: string;
+}
+
 interface Ctx {
   dir: string;
   currentFile: string;
   defines: DefineMap;
   /** Bound parameter values for the macro body currently being expanded, if any. */
-  localArgs?: Map<string, string>;
+  localArgs?: Map<string, BoundArg>;
   depth: number;
   host: PreprocessorHost;
   dataRoot: string | undefined;
   /** Mutable box so directive handling can update it and have later text in the same scan see it. */
   domain: { value: string };
+}
+
+function domainMark(domain: string): string {
+  return DOMAIN_MARK + domain + DOMAIN_MARK;
+}
+
+/** Makes `domain` the one in effect; returns the marker to emit, or '' when it already was. */
+function switchDomain(ctx: Ctx, domain: string): string {
+  if (ctx.domain.value === domain) return '';
+  ctx.domain.value = domain;
+  return domainMark(domain);
 }
 
 function lineAt(src: string, pos: number): number {
@@ -470,8 +491,9 @@ function expandIncludedFile(resolvedPath: string, ctx: Ctx): string {
     dataRoot: ctx.dataRoot,
     domain: ctx.domain,
   };
+  const outer = ctx.domain.value;
   const r = expandText(text, 0, nestedCtx, true, false);
-  return r.text;
+  return r.text + switchDomain(ctx, outer);
 }
 
 function expandIncludedDir(resolvedPath: string, ctx: Ctx): string {
@@ -490,13 +512,14 @@ function bindMacroArgs(
   ctx: Ctx,
   pos: number,
   src: string,
-): Map<string, string> {
-  const bound = new Map<string, string>();
+): Map<string, BoundArg> {
+  const bound = new Map<string, BoundArg>();
   let optionalArgCount = 0;
+  const callerDomain = ctx.domain.value;
 
   for (let i = 0; i < argChunks.length; i++) {
     if (i < macro.params.length) {
-      bound.set(macro.params[i] as string, argChunks[i] as string);
+      bound.set(macro.params[i] as string, { text: argChunks[i] as string, domain: callerDomain });
       continue;
     }
     const chunk = argChunks[i] as string;
@@ -504,7 +527,7 @@ function bindMacroArgs(
     if (eq === -1) continue;
     const argName = chunk.slice(0, eq);
     if (macro.optionalParams.has(argName)) {
-      bound.set(argName, chunk.slice(eq + 1));
+      bound.set(argName, { text: chunk.slice(eq + 1), domain: callerDomain });
       optionalArgCount++;
     } else {
       optionalArgCount++; // keep the arg-count check from blowing up, matching upstream
@@ -514,8 +537,14 @@ function bindMacroArgs(
   for (const [name, defaultRaw] of macro.optionalParams) {
     if (!bound.has(name)) {
       // Optional-argument defaults are themselves WML text that may reference other args.
-      const r = expandText(defaultRaw, 0, { ...ctx, dir: macro.dir, localArgs: bound }, true, false);
-      bound.set(name, r.text);
+      const r = expandText(
+        defaultRaw,
+        0,
+        { ...ctx, dir: macro.dir, localArgs: bound, domain: { value: macro.textdomain ?? ctx.domain.value } },
+        true,
+        false,
+      );
+      bound.set(name, { text: r.text, domain: macro.textdomain ?? ctx.domain.value });
     }
   }
 
@@ -592,7 +621,7 @@ function readBraceExpr(src: string, pos: number, ctx: Ctx, active: boolean): { t
   }
   // Upstream erases its inline marker lines from the symbol before lookup
   // (`{TRAIT_{PARAM}}`-style names are built from substituted arguments).
-  const symbol = (chunks[0] as string).split(INLINE_MARK).join('');
+  const symbol = stripMarks(chunks[0] as string);
   const args = chunks.slice(1);
 
   if (symbol === CURRENT_FILE_SYM && args.length === 0) {
@@ -612,7 +641,12 @@ function readBraceExpr(src: string, pos: number, ctx: Ctx, active: boolean): { t
     if (args.length !== 0) {
       fail(src, callSitePos, `Macro argument '${symbol}' does not expect any arguments`);
     }
-    return { text: INLINE_MARK + (ctx.localArgs.get(symbol) as string) + INLINE_MARK, pos };
+    const arg = ctx.localArgs.get(symbol) as BoundArg;
+    // The argument was written in the caller's domain; the body carries on in its own.
+    const bodyDomain = ctx.domain.value;
+    const enter = arg.domain === bodyDomain ? '' : domainMark(arg.domain);
+    const leave = arg.domain === bodyDomain ? '' : domainMark(bodyDomain);
+    return { text: INLINE_MARK + enter + arg.text + leave + INLINE_MARK, pos };
   }
 
   const macro = ctx.defines.get(symbol);
@@ -631,8 +665,10 @@ function readBraceExpr(src: string, pos: number, ctx: Ctx, active: boolean): { t
       dataRoot: ctx.dataRoot,
       domain: ctx.domain,
     };
+    const outer = ctx.domain.value;
+    const enter = switchDomain(ctx, macro.textdomain ?? outer);
     const r = expandText(macro.body, 0, nestedCtx, true, false);
-    return { text: INLINE_MARK + r.text, pos };
+    return { text: INLINE_MARK + enter + r.text + switchDomain(ctx, outer), pos };
   }
 
   // Not a known macro or special symbol: treat as a file/directory to include.
@@ -726,6 +762,7 @@ function processDirective(
         optionalParams,
         body,
         dir: ctx.dir,
+        textdomain: ctx.domain.value,
         location: `${ctx.currentFile}:${lineAt(src, pos)}`,
       });
     }
@@ -797,8 +834,8 @@ function processDirective(
   if (command === 'textdomain') {
     const p1 = skipSpacesTabs(src, afterCommand);
     const { word: domain, pos: afterWord } = readWord(src, p1);
-    if (domain) ctx.domain.value = domain;
-    return { text: '\n', pos: skipToEol(src, afterWord), stoppedBy: null };
+    const mark = domain && active ? switchDomain(ctx, domain) : '';
+    return { text: mark + '\n', pos: skipToEol(src, afterWord), stoppedBy: null };
   }
 
   if (command === 'enddef') {
