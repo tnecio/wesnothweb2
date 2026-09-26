@@ -4523,3 +4523,51 @@ condition at the start; now 3 left, all owned by other phases:
 - `[store_map_dimensions]`.
 - Browser-checked: Dead Water 3's buried trident (campaign art), Liberty
   1's "Dallben" label, a label placed with Alt+L in Dead Water 1.
+
+## 2026-09-26: Phase 19, stage 1 — music
+
+- **Playlist** (`engine/src/audio/musicList.ts`), a port of `sound.cpp`'s
+  playlist half: `play_music_config` (`play_once`/`append`/`immediate`, the
+  duplicate-name rule, insert index), `commit_music_changes`,
+  `choose_track` + `track_ok` (Timothy Pinkham's no-repeat rules),
+  `play_music_once`, `write_music_play_list`, and the Lua `[music]` action
+  (it appends, never commits, so a changed list is heard when the current
+  track ends). One list lives on the event context and is handed from
+  session to session, as upstream's global one survives scenarios. Track
+  choice uses an unsynced random source, never the game's RNG.
+- **What upstream really does**, found while porting: `choose_track` has no
+  index increment, so `shuffle=no` keeps returning the entry at the current
+  index (no shipped scenario uses it). A scenario's `[music]` in `prestart`
+  (Dead Water) only fills the list; it is the music thinker finding the
+  mixer idle that starts a track -- checked against the real 1.19 build
+  (`--log-info=audio`: "Considering vengeful.ogg" right after prestart).
+- **Scenario start/end.** Top-level `[music]`s are played and committed
+  before the story; a loaded save replays its saved list. At the end, the
+  stinger (`select_music`: `victory_music=`/`defeat_music=`, `[endlevel]
+  music=`, else the defaults) empties the list and plays once -- on defeat,
+  or on victory unless `carryover_report=no`. A story part's `music=`
+  replaces the list and switches at once (2 s fade-out).
+- **Saves.** `SaveGameData.music`; `[music]` tags in Wesnoth snapshots both ways.
+- **Playback** (`ui/src/audio/`). Music is an `HTMLAudioElement` routed
+  through Web Audio for the gains: the browser fetches (range requests) and
+  decodes on its own threads; nothing decodes in JS or touches the image
+  workers. Nothing is fetched before the board has rendered and a gesture has
+  happened. The next track is chosen ~20 s ahead (`peekNext`, which leaves
+  the list's state alone) and fetched on a second element, so the switch is
+  immediate. Fades are gain ramps on the audio thread. Missing/undecodable
+  files are logged once and skipped, giving up after three in a row.
+- **Controls.** Settings kept per browser (four volumes, four on/off
+  switches, mute, pause in background); a mute button in the top bar;
+  Menu > Audio... dialog; Menu > Mute.
+- **Browser check** (`apps/web/scripts/audio-playthrough.mjs`, reads the
+  engine's `window.__audio` log): no music request before board-ready plus a
+  gesture; Dead Water 1 starts a track on the first key press with 1 ms of
+  main-thread work; near the end the next track is prefetched and follows
+  unfaded; mute takes the master gain to 0, survives a reload, unmute
+  restores it; the Audio dialog sets the music gain; Liberty's epilogue plays
+  its story `music=`. Load metrics (`measure-load.mjs`) are unchanged.
+- **Not done here / notes.** The dev server sends a day's cache for music and
+  sound files; production hosting must do the same (they are not
+  content-hashed). Vitest's ui run prints a `Timeout calling "onTaskUpdate"`
+  error because the AI/replay tests block a worker for 40-70 s; it is the
+  same on the commit before Phase 19.

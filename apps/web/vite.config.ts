@@ -15,6 +15,11 @@ export default defineConfig(({ command }) => ({
           if (req.url && /^\/atlases\/.+\.[0-9a-f]{12}\.png(\?|$)/.test(req.url)) {
             res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
           }
+          // Phase 19: music and sound files are not content-hashed, but they never change under a
+          // running version; a day's cache stops replayed scenarios refetching several MB of music.
+          if (req.url && /^\/game-images\/.+\/(music|sounds)\//.test(req.url)) {
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+          }
           next();
         });
       },
