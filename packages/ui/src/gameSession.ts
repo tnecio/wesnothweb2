@@ -148,6 +148,8 @@ import {
   readPersistentItem,
   labelFromConfig,
   MusicList,
+  GAME_SOUNDS,
+  type SoundRequest,
   startScenarioMusic,
   selectEndMusic,
   playEndMusic,
@@ -781,6 +783,8 @@ export interface GameSessionOptions {
    * session given none makes its own.
    */
   music?: MusicList;
+  /** Phase 19: where sound effects go to be heard (the app's audio); without it they are only recorded on the context. */
+  onSound?: (request: SoundRequest) => void;
   /** Set by `fromSaveData`: the save's own playlist is applied by `loadSaveData`, not the scenario's. */
   deferMusic?: boolean;
 }
@@ -1552,6 +1556,7 @@ export class GameSession {
       log: options.onLog,
       music: options.music,
     });
+    this.eventPump.ctx.onSound = options.onSound;
     if (!options.deferMusic) startScenarioMusic(this.music, WmlConfig.fromJSON(snapshot.scenarioConfigJson));
     this.board.lawfulBonusAt = (loc) => this.timeOfDayAt(loc).lawfulBonus;
     this.eventPump.ctx.turnLimit = parseScenarioTurnsLimit(snapshot.scenarioConfigJson.attrs['turns']) ?? -1;
@@ -2522,6 +2527,26 @@ export class GameSession {
     // this turn earns the rest-heal at the start of its next one.
     for (const unit of this.board.unitsForSide(side)) unit.resting = true;
     yield* this.fireTurnRefreshEvents(side);
+    this.playTurnSounds(side);
+  }
+
+  /** The turn the time of day's ambient sound last played on (`did_tod_sound_this_turn_`). */
+  private todSoundTurn = -1;
+
+  /**
+   * `play_controller::init_side_end` and `playsingle_controller::
+   * before_human_turn`: the time of day's own sound once per turn (in the
+   * sound-source group), and the turn bell when a human side's turn begins.
+   */
+  private playTurnSounds(side: number): void {
+    if (this.todSoundTurn !== this.turnNumber) {
+      this.todSoundTurn = this.turnNumber;
+      const sounds = this.currentTimeOfDay.sounds ?? '';
+      if (sounds !== '') this.eventPump.ctx.playSound({ files: sounds, repeats: 0, group: 'sources' });
+    }
+    if (this.board.getTeam(side)?.controller === 'human') {
+      this.eventPump.ctx.playSound({ files: GAME_SOUNDS.turnBell, repeats: 0, group: 'bell' });
+    }
   }
 
   /** The AI's actions as synced commands (see `AiCommandHost`), run synchronously through the same executors. */

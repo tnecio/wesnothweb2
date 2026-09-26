@@ -166,6 +166,8 @@ export interface EventPumpOptions {
   music?: MusicList;
 }
 
+const MAX_RECORDED_SOUNDS = 200;
+
 /** TS port of `wml_event_pump`: queues and dispatches events to registered `[event]` handlers. */
 export class EventPump {
   private queue: QueuedEvent[] = [];
@@ -204,6 +206,12 @@ export class EventPump {
       items: new ItemStore(),
       labels: new LabelStore(),
       music: options.music ?? new MusicList({ random: (max) => Math.floor(Math.random() * (max + 1)) }),
+      sounds: [],
+      playSound: (request) => {
+        this.ctx.sounds.push(request);
+        if (this.ctx.sounds.length > MAX_RECORDED_SOUNDS) this.ctx.sounds.splice(0, this.ctx.sounds.length - MAX_RECORDED_SOUNDS);
+        this.ctx.onSound?.(request);
+      },
       objectivesBySide: new Map(),
       menuItems: new Map(),
       loc1: Location.NULL,

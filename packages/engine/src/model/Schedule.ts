@@ -48,6 +48,8 @@ export interface TimeOfDayEntry {
   readonly red: number;
   readonly green: number;
   readonly blue: number;
+  /** `[time] sound=`: the ambient sound played once when the turn starts (`time_of_day::sounds`). */
+  readonly sounds?: string;
 }
 
 /** Parses a config's `[time]` children into `TimeOfDayEntry`s -- shared by the global schedule, `[time_area]`, and `[replace_schedule]`. */
@@ -61,6 +63,7 @@ export function parseTimes(cfg: WmlConfig): TimeOfDayEntry[] {
       red: t.getNumber('red', 0),
       green: t.getNumber('green', 0),
       blue: t.getNumber('blue', 0),
+      sounds: t.getString('sound', ''),
     }),
   );
 }

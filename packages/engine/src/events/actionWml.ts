@@ -1649,6 +1649,21 @@ function actionEndlevel(cfg: WmlConfig, ctx: EventContext): void {
   };
 }
 
+// --- [sound] ---
+
+/**
+ * `[sound] name= repeat=` (`wml-tags.lua` over `wesnoth.audio.play`): a sound
+ * effect, `repeat=` extra times. `name=` is required.
+ */
+function actionSound(cfg: WmlConfig, ctx: EventContext): void {
+  const name = cfg.getString('name', '');
+  if (name === '') {
+    ctx.log('error', '[sound] missing required name= attribute');
+    return;
+  }
+  ctx.playSound({ files: name, repeats: Math.trunc(cfg.getNumber('repeat', 0)), group: 'sound' });
+}
+
 // --- [heal_unit] ---
 
 /**
@@ -1875,7 +1890,8 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registerFlowActions((tag, handler) => registry.register(tag, handler));
 
   registry.register('music', (cfg, ctx) => applyMusicAction(ctx.music, cfg));
-  for (const tag of ['sound', 'redraw', 'highlight', 'floating_text', 'select_unit', 'unit_overlay', 'remove_unit_overlay']) {
+  registry.register('sound', actionSound);
+  for (const tag of ['redraw', 'highlight', 'floating_text', 'select_unit', 'unit_overlay', 'remove_unit_overlay']) {
     registry.register(tag, noop);
   }
   registerCutsceneActions((tag, handler) => registry.register(tag, handler));

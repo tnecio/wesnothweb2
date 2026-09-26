@@ -21,6 +21,7 @@ import type { VariableStore } from './variables.js';
 import type { ScenarioObjectives } from './objectives.js';
 import type { Flow } from './interaction.js';
 import type { MusicList } from '../audio/musicList.js';
+import type { SoundRequest } from '../audio/sounds.js';
 
 /**
  * One real `[set_menu_item]` declaration -- see `actionWml.ts`'s
@@ -205,6 +206,12 @@ export interface EventContext {
   labels: LabelStore;
   /** Phase 19: the music playlist (`sound.cpp`'s `current_track_list`), shared across scenarios. */
   music: MusicList;
+  /** Phase 19: every sound effect the game has asked for, oldest first (capped), for headless callers. */
+  sounds: SoundRequest[];
+  /** Where sound effects go to be heard (`sound::play_sound`); the session installs it. Without one they are only recorded. */
+  onSound?: (request: SoundRequest) => void;
+  /** Asks for a sound effect: records it and hands it to `onSound`. */
+  playSound: (request: SoundRequest) => void;
   /** `[cancel_action]` (`wml_event_pump::set_action_canceled`): the move firing this event stops at this hex. */
   actionCanceled: boolean;
   /**
