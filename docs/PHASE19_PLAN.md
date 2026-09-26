@@ -86,28 +86,14 @@ work starts.
 - The image compositor worker pool is untouched: audio never goes through
   it.
 
-**Formats.**
-- Ogg Vorbis plays natively in Chrome, Edge and Firefox on every platform,
-  and WAV plays everywhere, so the shipped files need **no conversion** for
-  the desktop browsers we test with.
-- Safari (and so every iOS browser, which all use WebKit) is the risk:
-  its Ogg Vorbis support is recent and has varied across macOS and iOS
-  versions.
-- Proposal:
-  - At startup, detect with `canPlayType('audio/ogg; codecs="vorbis"')`.
-    If Vorbis isn't supported, disable music and Ogg sound effects with a
-    single notice (WAV effects still play), rather than failing file by
-    file.
-  - Add an **optional** build step, `build:audio`, now or with Phase 23
-    (mobile). It would transcode `music/` and `sounds/` with ffmpeg into
-    a second format: Opus in WebM or Ogg for Safari 17+, and/or AAC `.m4a`
-    as a universal fallback. It would write a manifest (like
-    `campaignImages.json`) that maps each original path to its variants;
-    the player picks the first variant `canPlayType` accepts.
-  - A side benefit: Opus at ~96 kbps would roughly halve the music
-    download (162 MB → ~95 MB). That matters more on mobile than here.
-- This build step would be the only place ffmpeg is needed. I'd make it
-  opt-in so the default build keeps the original files untouched.
+**Formats (decided 2026-09-26).**
+- The shipped Ogg Vorbis and WAV files are used as they are, with no
+  conversion and no format detection or fallback. Old Safari versions
+  without Vorbis are not supported.
+- A transcode is **not** part of Phase 19. It stays an option for Phase 23
+  (mobile), purely to shrink the download (for example Opus at ~96 kbps
+  would take the music from ~162 MB to ~95 MB), and only if real-world
+  tests show the download size is actually a problem.
 
 **Checks for this part.**
 - In the Playwright run, the main thread's long tasks (`PerformanceObserver`,
@@ -308,11 +294,9 @@ plus one manual listen by you in a real browser.
 
 ## Decisions I'd like you to confirm
 
-1. **Audio formats.** See "Loading, threading and formats". Proposal:
-   ship the Ogg/WAV files as they are, detect Vorbis support once, and
-   make the ffmpeg transcode (Opus and/or AAC, with a variant manifest) an
-   opt-in build step. It could land now or with Phase 23 (mobile); tell
-   me if you want it now.
+1. **Audio formats.** Decided: Ogg/WAV as shipped, no fallback. A
+   size-reducing transcode is a Phase 23 option only if real-world tests
+   show the download is a problem.
 2. **Where the playlist lives.** Proposal: the engine `MusicList`, handed
    from session to session. The Phase 21 main menu, which plays
    `title_music`, will then reuse the same `AudioEngine` with its own

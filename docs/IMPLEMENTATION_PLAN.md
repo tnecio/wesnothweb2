@@ -1499,6 +1499,10 @@ touches audio; this is a whole missing subsystem.
   loading with silent-but-logged failure for missing files, and a
   simultaneous-sound-channel limit so mass combat doesn't distort/exhaust
   channels.
+- Formats (decided 2026-09-26): the shipped Ogg Vorbis/WAV files as they
+  are; old Safari without Vorbis is not supported. A size-reducing
+  transcode (e.g. Opus) is a Phase 23 option only if real-world tests show
+  the download is a problem. Working plan: `docs/PHASE19_PLAN.md`.
 - **Milestone**: a real scenario's `[music]` playlist audibly plays and
   transitions correctly across a turn boundary, at least one weapon's
   attack sound fires on hit, and toggling mute silences everything
@@ -1580,6 +1584,9 @@ chasing a moving one.
 - Touch input: tap-select/tap-move (with a confirm tap for moves/attacks),
   long-press context menu, pinch-zoom, drag-pan, and resize/orientation
   change without losing game state.
+- *Conditional* (from Phase 19): transcode music/sounds (e.g. Opus) to
+  shrink the audio download -- only if real-world tests on mobile show the
+  size (~162 MB of music as shipped) is actually a problem.
 - **Milestone**: a full scenario is playable start-to-finish on a phone-
   sized viewport using only touch input.
 
