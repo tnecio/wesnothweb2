@@ -95,6 +95,7 @@
 
 <style>
   .outro {
+    direction: ltr; /* Wesnoth does not mirror its GUI for right-to-left languages; text runs pick their own direction (dir="auto") */
     position: fixed;
     inset: 0;
     z-index: 300;
@@ -107,7 +108,7 @@
     cursor: default;
   }
   .text {
-    font-family: 'Story Script', 'Palatino Linotype', Palatino, Georgia, serif;
+    font-family: var(--font-script);
     font-size: 60px;
     line-height: 1.15;
     text-align: center;
@@ -127,7 +128,7 @@
     position: absolute;
     right: 20px;
     bottom: 20px;
-    font-family: Lato, 'Segoe UI', system-ui, sans-serif;
+    font-family: var(--font-ui);
     font-size: 17px;
   }
   @media (max-width: 600px) {

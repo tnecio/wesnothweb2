@@ -49,7 +49,7 @@
 </script>
 
 <aside class="side-panel">
-  <p class="status">{statusMessage}</p>
+  <p class="status" dir="auto">{statusMessage}</p>
 
   {#if hoveredHexInfo}
     <!-- Phase 14: real theme's always-on "terrain under the cursor" strip. -->
@@ -66,7 +66,7 @@
       {/if}
       <div class="headline">
         <div class="name-row">
-          <span class="unit-name">{info.name}</span>
+          <span class="unit-name" dir="auto">{info.name}</span>
           {#if info.statuses.length > 0}
             <span class="statuses">
               {#each info.statuses as status (status)}
@@ -184,7 +184,7 @@
     {:else}
       <ul>
         {#each log as entry, i (i)}
-          <li>{entry}</li>
+          <li dir="auto">{entry}</li>
         {/each}
       </ul>
     {/if}
@@ -197,18 +197,25 @@
 
 <style>
   .side-panel {
+    direction: ltr; /* Wesnoth does not mirror its GUI for right-to-left languages; text runs pick their own direction (dir="auto") */
     width: 20rem;
     flex: 0 0 auto;
     padding: 0.75rem 1rem;
     background: #1c1a16;
     color: #ddd;
-    font-family: sans-serif;
+    font-family: var(--font-ui);
     font-size: 0.85rem;
     overflow-y: auto;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
+  }
+  @media (max-width: 720px) {
+    .side-panel {
+      width: auto;
+      max-height: 42vh;
+    }
   }
   .status {
     margin: 0;
@@ -294,9 +301,13 @@
     margin: 0.2rem 0;
   }
   .bar-label {
-    width: 1.6rem;
+    /* Wide enough for a translated label such as Arabic's two-word "hit points"; wraps between words, never inside one. */
+    flex: 0 0 auto;
+    width: 3.4rem;
     font-size: 0.75em;
     opacity: 0.7;
+    overflow-wrap: normal;
+    hyphens: manual;
   }
   .bar {
     flex: 1 1 auto;

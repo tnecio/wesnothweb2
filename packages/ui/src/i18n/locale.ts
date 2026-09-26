@@ -13,6 +13,7 @@
  */
 
 import { createSubscriber } from 'svelte/reactivity';
+import { fontStacks, loadOnDemandFonts, type FontStacks } from './fonts.js';
 import {
   dsgettext,
   dsngettext,
@@ -52,6 +53,8 @@ export interface LocaleHost {
   preferredLanguages(): readonly string[];
   /** Called with the BCP 47 tag and text direction whenever the language changes. */
   applyDocument(lang: string, dir: 'ltr' | 'rtl'): void;
+  /** Called with the font stacks for the new language (`--font-ui`, `--font-script`, `--font-mono`). */
+  applyFonts(stacks: FontStacks): void;
 }
 
 function browserHost(baseUrl: string): LocaleHost {
@@ -80,6 +83,14 @@ function browserHost(baseUrl: string): LocaleHost {
       if (typeof document === 'undefined') return;
       document.documentElement.lang = lang;
       document.documentElement.dir = dir;
+    },
+    applyFonts: (stacks) => {
+      if (typeof document === 'undefined') return;
+      const style = document.documentElement.style;
+      style.setProperty('--font-ui', stacks.ui);
+      style.setProperty('--font-script', stacks.script);
+      style.setProperty('--font-mono', stacks.mono);
+      loadOnDemandFonts(stacks);
     },
   };
 }
@@ -179,6 +190,7 @@ export class LocaleManager {
       this.currentCode = target;
       const active = this.languageList.find((l) => l.code === target);
       this.host.applyDocument(languageTag(target), active?.rtl ? 'rtl' : 'ltr');
+      this.host.applyFonts(fontStacks());
       if (opts.remember !== false) this.host.saveChoice(target);
       this.notify();
     };

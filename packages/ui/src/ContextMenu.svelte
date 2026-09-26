@@ -67,7 +67,7 @@
     border-radius: 4px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     padding: 0.25rem 0;
-    font-family: sans-serif;
+    font-family: var(--font-ui);
     font-size: 0.85rem;
   }
   .context-menu button {

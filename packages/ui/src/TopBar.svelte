@@ -158,11 +158,12 @@
 
 <style>
   .top-bar {
+    direction: ltr; /* Wesnoth does not mirror its GUI for right-to-left languages; text runs pick their own direction (dir="auto") */
     display: flex;
     align-items: stretch;
     background: #23201a;
     color: #f1e6c8;
-    font-family: sans-serif;
+    font-family: var(--font-ui);
     font-size: 0.85rem;
     border-bottom: 1px solid #4a4432;
   }
@@ -247,6 +248,7 @@
   }
   .status {
     flex: 1 1 auto;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 1rem;
@@ -278,6 +280,8 @@
     object-fit: contain;
   }
   .scenario-name {
+    flex: 0 0 auto;
+    white-space: nowrap;
     margin-left: auto;
     font-style: italic;
     opacity: 0.75;

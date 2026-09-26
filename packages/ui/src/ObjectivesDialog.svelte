@@ -59,7 +59,7 @@
 <Modal title={scenarioName} width="32rem" onClose={onClose}>
   {#snippet children()}
     {#if objectives.summary}
-      <p class="summary">{ts(objectives.summaryT)}</p>
+      <p class="summary" dir="auto">{ts(objectives.summaryT)}</p>
     {/if}
 
     {#if winObjectives.length > 0}

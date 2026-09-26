@@ -15,13 +15,14 @@ const catalogues: Record<string, unknown> = {
   'pl_PL/wesnoth.json': { plural: 'nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);', entries: { Recruit: 'Rekrutuj' } },
   'pl_PL/wesnoth-lib.json': { entries: { 'End Turn': 'Zakończ turę' } },
   'pl_PL/wesnoth-dw.json': { entries: { Hello: 'Cześć' } },
-  'ar_AR/wesnoth.json': { entries: { Recruit: 'جنّد' } },
+  'ar_AR/wesnoth.json': { entries: { Recruit: 'جنّد', Lato: 'لاتو' } },
 };
 
 interface Recorded {
   fetched: string[];
   saved: string | null;
   document: { lang: string; dir: string } | null;
+  fonts?: string;
 }
 
 function fakeHost(over: Partial<LocaleHost> & { saved?: string | null; preferred?: string[] } = {}): { host: LocaleHost; rec: Recorded } {
@@ -36,6 +37,7 @@ function fakeHost(over: Partial<LocaleHost> & { saved?: string | null; preferred
     saveChoice: (c) => (rec.saved = c),
     preferredLanguages: () => over.preferred ?? [],
     applyDocument: (lang, dir) => (rec.document = { lang, dir }),
+    applyFonts: (stacks) => (rec.fonts = stacks.ui),
     ...over,
   };
   return { host, rec };
@@ -125,6 +127,18 @@ describe('LocaleManager', () => {
     expect(rec.document).toEqual({ lang: 'ar-AR', dir: 'rtl' });
     await m.setLanguage('pl_PL');
     expect(rec.document?.dir).toBe('ltr');
+  });
+
+  it('takes the font order from the language\'s own family_order, falling through to bundled fonts', async () => {
+    const { host, rec } = fakeHost();
+    const m = new LocaleManager(host);
+    await m.init();
+    expect(rec.fonts).toBe('"Lato", "DejaVu Sans", sans-serif');
+    await m.setLanguage('ar_AR');
+    // Arabic's translators wrote a name no installed font has; the English name and DejaVu Sans (which has Arabic) follow.
+    expect(rec.fonts).toBe('"لاتو", "Lato", "DejaVu Sans", sans-serif');
+    await m.setLanguage('pl_PL');
+    expect(rec.fonts).toBe('"Lato", "DejaVu Sans", sans-serif');
   });
 
   it('fetches a scenario domain only when asked, and only if the language has one', async () => {

@@ -164,9 +164,9 @@
         <div class="panel-border" style:background-image="url('{ENGINE_IMAGES}/dialogs/translucent65-border-top.png')"></div>
         <div class="content" style:margin-left="{layout.contentX}px" style:width="{layout.contentWidth}px">
           {#if titleText}
-            <div class="title">{titleText}</div>
+            <div class="title" dir="auto">{titleText}</div>
           {/if}
-          <div class="text">{bodyText}</div>
+          <div class="text" dir="auto">{bodyText}</div>
 
           {#if textInput}
             <div class="text-input">
@@ -199,8 +199,8 @@
                     }}
                   >
                     {#if option.image}<img class="option-icon" src={imageUrl(option.image)} alt="" />{/if}
-                    <span class="option-label">{option.labelT ? ts(option.labelT) : option.label}</span>
-                    {#if option.description}<span class="option-description">{option.descriptionT ? ts(option.descriptionT) : option.description}</span>{/if}
+                    <span class="option-label" dir="auto">{option.labelT ? ts(option.labelT) : option.label}</span>
+                    {#if option.description}<span class="option-description" dir="auto">{option.descriptionT ? ts(option.descriptionT) : option.description}</span>{/if}
                   </button>
                 </li>
               {/each}
@@ -305,12 +305,13 @@
   }
 
   .window {
+    direction: ltr; /* Wesnoth does not mirror its GUI for right-to-left languages; text runs pick their own direction (dir="auto") */
     position: fixed;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
-    font-family: Lato, 'Segoe UI', system-ui, sans-serif;
+    font-family: var(--font-ui);
   }
 
   .panel {

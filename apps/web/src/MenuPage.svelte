@@ -99,8 +99,8 @@
       {#each campaigns as campaign (campaign.id)}
         <li>
           <button class="campaign" onclick={() => pick(campaign)}>
-            <span class="name">{ts(campaign.nameT)}</span>
-            <span class="description">{plainDescription(ts(campaign.descriptionT))}</span>
+            <span class="name" dir="auto">{ts(campaign.nameT)}</span>
+            <span class="description" dir="auto">{plainDescription(ts(campaign.descriptionT))}</span>
           </button>
         </li>
       {/each}
@@ -132,10 +132,11 @@
 
 <style>
   .menu {
+    direction: ltr; /* Wesnoth does not mirror its GUI for right-to-left languages; text runs pick their own direction (dir="auto") */
     max-width: 40rem;
     margin: 3rem auto;
     padding: 0 1rem;
-    font-family: sans-serif;
+    font-family: var(--font-ui);
     color: #eee;
   }
   .top {

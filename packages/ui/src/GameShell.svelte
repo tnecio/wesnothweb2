@@ -2852,6 +2852,7 @@
   }
 
   .game-shell {
+    direction: ltr; /* Wesnoth does not mirror its GUI for right-to-left languages; text runs pick their own direction (dir="auto") */
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -2860,5 +2861,11 @@
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
+  }
+  /* A phone: the side panel goes under the board instead of squeezing it into a strip. */
+  @media (max-width: 720px) {
+    .main {
+      flex-direction: column;
+    }
   }
 </style>

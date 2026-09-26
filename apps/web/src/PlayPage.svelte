@@ -111,7 +111,7 @@
 
 <style>
   main {
-    font-family: sans-serif;
+    font-family: var(--font-ui);
     color: #eee;
     background: #181818;
     height: 100vh;

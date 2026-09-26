@@ -4850,3 +4850,51 @@ Gates: engine 787+14, ui 284 (+14), 0 typecheck/svelte-check errors.
   `node --import tsx`.
 
 Gates: engine 791, ui 292, lua-bridge 38; 0 typecheck/svelte-check errors.
+
+## 2026-09-26: Phase 20, stage 4 — scripts, fonts and layout
+
+- **Fonts are upstream's own** (`apps/web/scripts/build-fonts.mjs`, output in
+  `packages/ui/src/assets/fonts/`, 812 KB of WOFF2 in the repo, none fetched until a
+  character needs it): Lato (Regular/Bold/Italic/BoldItalic, subset to Latin, ~70 KB
+  each: Polish, Czech, Hungarian, Finnish, Italian, Spanish, Galician and English need
+  nothing more), WesScript (22 KB; it replaces the IM Fell English stand-in the story
+  screen used, which is deleted), DejaVu Sans Regular/Bold (the fallback, and what
+  draws Arabic) and DejaVu Sans Mono. Upstream's `fonts/COPYING` sits beside them.
+  No CJK or Bengali file ships: none of the shipped languages needs one.
+- **Font order per language** (`i18n/fonts.ts`): upstream marks `family_order`,
+  `family_order_monospace` and `family_order_script` translatable in `fonts.cfg`, so
+  the stack is the translated name, then the English one, then DejaVu Sans. Arabic's
+  catalogue says "لاتو" for Lato, which no font has, so it falls through to Lato and
+  then DejaVu, exactly the case the plan called out. Applied as `--font-ui`,
+  `--font-script` and `--font-mono` on `<html>` on every language change; a family
+  that would need an on-demand file (`ON_DEMAND_FONTS`, empty for now) is fetched by
+  the `FontFace` API. Every `font-family: sans-serif`, `Lato, 'Segoe UI', ...` and the
+  story script now use the variables.
+- **Right-to-left** (`<html dir>` comes from the language's `dir=rtl`): the shell, side
+  panel, top bar, dialogs, dialogue box, story and menu are `direction: ltr` (Wesnoth
+  does not mirror its GUI), and text runs are `dir="auto"` (dialogue and story text,
+  option labels, the status line, log, unit names, objectives summary, campaign
+  names and descriptions), so Arabic reads and aligns right-to-left inside an
+  otherwise left-to-right layout.
+- **Wrapping**: `hyphens: auto` and `overflow-wrap: break-word` page-wide, and
+  `overflow-wrap: anywhere` inside dialogs, the side panel, the dialogue box and the
+  story, so one long compound word cannot push anything past its box. Numbers stay
+  plain integers as upstream shows them; dates and times use the language's own
+  format (`Intl.DateTimeFormat`).
+- **Phone width**: the side panel goes under the board below 720 px instead of
+  squeezing it into a 70 px strip, the board can shrink, and the top bar's scenario
+  name no longer wraps letter by letter (that was the new `anywhere` rule finding a
+  flex item that never had `nowrap`). The side panel's bar labels are wide enough for
+  Arabic's two-word "hit points".
+- **Verification** (`apps/web/scripts/i18n-screenshots.mjs`): for pl, ar, fi, hu and cs,
+  the menu, story, first dialogue line, side panel, objectives and recruit dialog at
+  1280x720 and 390x844, with an automatic check that no text overflows its box and no
+  box leaves the viewport (except inside the top bar's own scroller). 60 captures, no
+  overflow, no console errors. Looked at by eye: Polish diacritics, Arabic shaping and
+  direction, the board and side panel staying left-to-right.
+- One headless-Chromium artefact worth knowing when reading the shots: without
+  subpixel positioning it rounds every glyph advance to a whole pixel, so a digit
+  followed by a space can look tight ("Level 0Merman"). The DOM text has the space, and
+  measured widths are right.
+
+Gates: ui 298 (+5), 0 svelte-check errors.

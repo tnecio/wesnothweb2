@@ -62,6 +62,7 @@
 
 <style>
   .end-overlay {
+    direction: ltr; /* Wesnoth does not mirror its GUI for right-to-left languages; text runs pick their own direction (dir="auto") */
     position: fixed;
     inset: 0;
     z-index: 200;
@@ -69,7 +70,7 @@
     align-items: center;
     justify-content: center;
     background: rgba(0, 0, 0, 0.78);
-    font-family: sans-serif;
+    font-family: var(--font-ui);
     text-align: center;
   }
   .end-content {

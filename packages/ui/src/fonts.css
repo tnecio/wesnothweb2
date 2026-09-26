@@ -1,0 +1,95 @@
+/*
+ * Phase 20: upstream's own fonts, as WOFF2 built by `apps/web/scripts/build-fonts.mjs` (SIL OFL for
+ * Lato; GPL v2+ with font exception for WesScript and DejaVu -- see the licence in upstream's
+ * `fonts/COPYING`). A web font is fetched only when a character needs it, so DejaVu Sans (the
+ * fallback that covers Arabic, Hebrew, Cyrillic, Greek, ...) costs a Latin-script player nothing.
+ *
+ * `--font-ui`, `--font-script` and `--font-mono` are set on <html> by `i18n/fonts.ts` from the
+ * language's own `family_order` (upstream's `fonts.cfg` marks those translatable, so each language
+ * picks its font order); the values here are the English defaults.
+ */
+@font-face {
+  font-family: 'Lato';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/lato-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Lato';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./assets/fonts/lato-latin-700-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Lato';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/lato-latin-400-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Lato';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./assets/fonts/lato-latin-700-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'WesScript';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/wesscript-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'DejaVu Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/dejavu-sans-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'DejaVu Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./assets/fonts/dejavu-sans-700-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'DejaVu Sans Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/dejavu-sans-mono-400-normal.woff2') format('woff2');
+}
+
+:root {
+  --font-ui: 'Lato', 'DejaVu Sans', sans-serif;
+  --font-script: 'WesScript', 'DejaVu Sans', serif;
+  --font-mono: 'DejaVu Sans Mono', 'DejaVu Sans', monospace;
+}
+
+body {
+  font-family: var(--font-ui);
+}
+
+/*
+ * Wrapping: text is translated, so line lengths are not ours to know. `hyphens: auto` uses the
+ * browser's dictionary for the page language (`<html lang>`), where it has one; `anywhere` is the
+ * backstop so one long compound word (Finnish and Hungarian are the longest in the shipped set)
+ * can never push a dialog, the side panel or a button past its box.
+ */
+:root {
+  hyphens: auto;
+  overflow-wrap: break-word;
+}
+.modal-box,
+.side-panel,
+.story,
+.window,
+.end-overlay,
+.menu {
+  overflow-wrap: anywhere;
+}

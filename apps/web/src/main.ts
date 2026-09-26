@@ -1,4 +1,5 @@
 import { mount } from 'svelte';
+import '@wesnothweb2/ui/src/fonts.css';
 import { locale } from '@wesnothweb2/ui';
 import App from './App.svelte';
 

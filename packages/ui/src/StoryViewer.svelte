@@ -357,7 +357,7 @@
         style:opacity={alpha}
         style:text-align={part.titleAlignment}
       >
-        {ts(part.titleT)}
+        <span dir="auto">{ts(part.titleT)}</span>
       </div>
     {/if}
 
@@ -382,7 +382,7 @@
       <div class="middle">
         <!-- svelte-ignore a11y_click_events_have_key_events -- keyboard navigation is handled window-wide above -->
         <div class="text" role="button" tabindex="-1" style:opacity={alpha} style:text-align={part.textAlignment} onclick={() => navigate(1)}>
-          {ts(part.textT)}
+          <span dir="auto">{ts(part.textT)}</span>
         </div>
         <button class="skip" onclick={close}>{t('Skip')}</button>
       </div>
@@ -397,22 +397,16 @@
 {/if}
 
 <style>
-  @font-face {
-    /* Stand-in for upstream's WesScript (see docs/PROGRESS.md, Phase 16): IM Fell English, SIL OFL 1.1. */
-    font-family: 'Story Script';
-    src: url('./assets/fonts/im-fell-english-latin-400-normal.woff2') format('woff2');
-    font-display: swap;
-  }
-
   .story {
-    --story-script-font: 'Story Script', 'Palatino Linotype', Palatino, Georgia, serif;
+    direction: ltr; /* Wesnoth does not mirror its GUI for right-to-left languages; text runs pick their own direction (dir="auto") */
+    --story-script-font: var(--font-script);
     position: fixed;
     inset: 0;
     z-index: 100;
     overflow: hidden;
     background: #000;
     color: rgb(215, 215, 215);
-    font-family: Lato, 'Segoe UI', system-ui, sans-serif;
+    font-family: var(--font-ui);
     user-select: none;
   }
 

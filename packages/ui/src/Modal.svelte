@@ -102,9 +102,10 @@
     align-items: center;
     justify-content: center;
     background: rgba(0, 0, 0, 0.6);
-    font-family: sans-serif;
+    font-family: var(--font-ui);
   }
   .modal-box {
+    direction: ltr; /* Wesnoth does not mirror its GUI for right-to-left languages; text runs pick their own direction (dir="auto") */
     max-width: 95vw;
     max-height: 90vh;
     display: flex;

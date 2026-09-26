@@ -689,7 +689,7 @@
   .status {
     margin: 0;
     padding: 0.35rem 1rem;
-    font-family: sans-serif;
+    font-family: var(--font-ui);
     font-size: 0.8rem;
     color: #aaa;
     background: #181818;
@@ -698,5 +698,12 @@
     flex: 1 1 auto;
     min-height: 0;
     touch-action: none;
+  }
+  /* A phone: the board shares the column with the side panel (see GameShell), so it must be able to shrink. */
+  @media (max-width: 720px) {
+    .board-view {
+      flex: 1 1 0;
+      min-height: 0;
+    }
   }
 </style>
