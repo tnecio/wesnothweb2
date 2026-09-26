@@ -669,7 +669,7 @@
     }
     sync();
     await showDeferredInteractions();
-    if (phase !== 'ended') phase = session.scenarioObjectives ? 'objectives' : session.scenarioResult ? 'ended' : 'playing';
+    if (phase !== 'ended') phase = session.takeObjectivesChanged() ? 'objectives' : session.scenarioResult ? 'ended' : 'playing';
     // Upstream's start-of-scenario save (`scenariostart_savegame`), which
     // is what lets a campaign be restarted from any scenario it reached
     // rather than only from the turn you last played.
@@ -1527,6 +1527,8 @@
     // `endTurn` has cycled through every AI side and come back round, is
     // here.
     await autosave();
+    // Then, as `play_human_turn` does, the objectives if WML changed them.
+    if (phase !== 'ended' && session.takeObjectivesChanged()) objectivesDialogOpen = true;
   }
 
   /**

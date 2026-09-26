@@ -112,7 +112,7 @@ import {
 } from './miscWml.js';
 import { actionTimeArea, actionRemoveTimeArea, actionReplaceSchedule, actionStoreTimeOfDay } from './todWml.js';
 import { newVarNode, varNodeFromConfig, varNodeToConfig, VariableStore, type VarNode } from './variables.js';
-import { parseScenarioObjectives } from './objectives.js';
+import { parseScenarioObjectives, type ScenarioObjectives } from './objectives.js';
 import { registerFlowActions } from './flowWml.js';
 import { playBeat, registerCutsceneActions } from './cutsceneWml.js';
 import { ShroudClearer } from '../actions/vision.js';
@@ -131,7 +131,7 @@ import { ShroudClearer } from '../actions/vision.js';
  * `ctx.exit.type` becomes non-`'none'`.
  */
 /** Action tags whose handler gets its config exactly as written (see `runActionFlow`). */
-const RAW_CONFIG_TAGS = new Set(['event']);
+const RAW_CONFIG_TAGS = new Set(['event', 'objectives']);
 
 export function* runActionFlow(body: WmlConfig, ctx: EventContext): Flow {
   for (const child of body.allChildren()) {
@@ -162,6 +162,7 @@ function* runOneAction(tag: string, config: WmlConfig, ctx: EventContext): Flow 
     // A nested [event] is stored as written: its variables are substituted
     // when it fires, not now (`delayed_variable_substitution` defaults to
     // yes), so it must not get the usual attribute expansion either.
+    // [objectives] decides for itself (its own delayed_variable_substitution=).
     const result = handler(RAW_CONFIG_TAGS.has(tag) ? config : ctx.variables.expandConfig(config), ctx);
     // A handler that needs to block returns a generator (see
     // interaction.ts); delegating rather than driving it here is what
@@ -1532,27 +1533,60 @@ function actionTunnel(cfg: WmlConfig, ctx: EventContext): void {
 
 // --- [objectives] ---
 
+/** `remove_ssf_info_from`: the side-filter keys, which do not belong in a stored `[objectives]`. */
+function withoutSideFilter(cfg: WmlConfig): WmlConfig {
+  const out = new WmlConfig();
+  for (const name of cfg.attributeNames()) {
+    if (!['side', 'team_name', 'side_in', 'controller'].includes(name)) out.setAttribute(name, cfg.get(name)!);
+  }
+  for (const { tag, config } of cfg.allChildren()) {
+    if (!['has_unit', 'enemy_of', 'allied_with', 'has_enemy', 'has_ally'].includes(tag)) out.addChild(tag, config);
+  }
+  return out;
+}
+
+/** `generate_objectives`, with each `[show_if]` evaluated now. */
+function generateObjectives(cfg: WmlConfig, ctx: EventContext): ScenarioObjectives {
+  return parseScenarioObjectives(cfg, (showIf) => conditionalPassed(ctx.variables.expandConfigDeep(showIf), ctx));
+}
+
 /**
- * Real, reported bug (bugs3.md): `[objectives]` was a plain no-op, so no
- * caller had any structured data to show a real objectives dialog with.
- * Mirrors `wml_actions.objectives` (`data/lua/wml/objectives.lua`): parses
- * the block once (`parseScenarioObjectives`) and applies it to every side
- * named in `side=` (a comma-separated list, matching real WML's own
- * convention -- see `findUnits`' side-filter handling elsewhere in this
- * file for the same pattern), or every side currently on the board if
- * `side=` is absent (real `#sides_cfg == 0` branch).
+ * `wml_actions.objectives` (`objectives.lua`): generates the objectives for
+ * the sides the tag's side filter picks (all when it picks none or all),
+ * stores the raw config for `[show_objectives]` (slot 0 when for every
+ * side), and marks them changed unless `silent=yes`.
  */
-function actionObjectives(cfg: WmlConfig, ctx: EventContext): void {
-  const parsed = parseScenarioObjectives(cfg);
-  const sideAttr = cfg.getString('side', '');
-  const sides = sideAttr
-    ? sideAttr
-        .split(',')
-        .map((s) => Number(s.trim()))
-        .filter((n) => Number.isFinite(n))
-    : ctx.board.teams().map((t) => t.side);
+function actionObjectives(raw: WmlConfig, ctx: EventContext): void {
+  // Variables are substituted now unless delayed_variable_substitution=yes.
+  const cfg = raw.getBoolean('delayed_variable_substitution', false) ? raw : ctx.variables.expandConfigDeep(raw);
+  const sides = findSides(ctx, cfg);
+  const silent = cfg.getBoolean('silent', false);
+  const objectives = generateObjectives(cfg, ctx);
+  const stored = withoutSideFilter(cfg);
+  const all = ctx.board.teams().map((t) => t.side);
+  const forAll = sides.length === 0 || sides.length === all.length;
+  if (forAll) ctx.objectivesConfigBySide.set(0, stored);
+  for (const side of forAll ? all : sides) {
+    if (!forAll) ctx.objectivesConfigBySide.set(side, stored);
+    ctx.objectivesBySide.set(side, objectives);
+    if (silent) ctx.objectivesChanged.delete(side);
+    else ctx.objectivesChanged.add(side);
+  }
+}
+
+/** `wml_actions.show_objectives`: regenerates the stored objectives (re-evaluating `[show_if]`) for the sides picked (all if none) and marks them to be shown. */
+function actionShowObjectives(cfg: WmlConfig, ctx: EventContext): void {
+  const maybeParsed = (c: WmlConfig | undefined) =>
+    c && c.getBoolean('delayed_variable_substitution', false) ? ctx.variables.expandConfigDeep(c) : c;
+  const cfg0 = maybeParsed(ctx.objectivesConfigBySide.get(0));
+  const objectives0 = cfg0 && generateObjectives(cfg0, ctx);
+  let sides = findSides(ctx, cfg);
+  if (sides.length === 0) sides = ctx.board.teams().map((t) => t.side);
   for (const side of sides) {
-    ctx.objectivesBySide.set(side, parsed);
+    const own = maybeParsed(ctx.objectivesConfigBySide.get(side));
+    const objectives = own ? generateObjectives(own, ctx) : objectives0;
+    if (objectives) ctx.objectivesBySide.set(side, objectives);
+    ctx.objectivesChanged.add(side);
   }
 }
 
@@ -1810,6 +1844,7 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('teleport', actionTeleport);
   registry.register('tunnel', actionTunnel);
   registry.register('objectives', actionObjectives);
+  registry.register('show_objectives', actionShowObjectives);
   registry.register('endlevel', actionEndlevel);
   registry.register('remove_shroud', actionRemoveShroud);
   registry.register('place_shroud', actionPlaceShroud);

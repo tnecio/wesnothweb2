@@ -363,3 +363,48 @@ _f, _f, _f"
     expect(board.terrainVersion).toBe(2);
   });
 });
+
+describe('[objectives] / [show_objectives] (objectives.lua)', () => {
+  const objectives = `
+    [objectives]
+      summary=Hold on
+      [objective]
+        description=Survive
+        condition=win
+      [/objective]
+      [objective]
+        description=Reach the bridge
+        condition=win
+        [show_if]
+          [variable]
+            name=bridge_known
+            boolean_equals=yes
+          [/variable]
+        [/show_if]
+      [/objective]
+    [/objectives]`;
+
+  it('[show_if] is evaluated when generated; [show_objectives] regenerates and marks them to show', () => {
+    const { pump } = setup(objectives, false);
+    const ctx = pump.ctx;
+    pump.fire('probe');
+    expect(ctx.objectivesBySide.get(1)!.objectives.map((o) => o.description)).toEqual(['Survive']);
+    expect([...ctx.objectivesChanged]).toEqual([1, 2]);
+    ctx.objectivesChanged.clear();
+    ctx.variables.set('bridge_known', true);
+    pump.manager.addFromWml(parseWml('[event]\nname=reveal\n[show_objectives]\nside=1\n[/show_objectives]\n[/event]').child('event')!);
+    pump.fire('reveal');
+    expect(ctx.objectivesBySide.get(1)!.objectives.map((o) => o.description)).toEqual(['Survive', 'Reach the bridge']);
+    expect(ctx.objectivesBySide.get(2)!.objectives).toHaveLength(1); // not regenerated
+    expect([...ctx.objectivesChanged]).toEqual([1]);
+  });
+
+  it('silent=yes updates without marking; side= stores per side', () => {
+    const { pump } = setup('[objectives]\nside=2\nsilent=yes\nsummary=Quiet\n[/objectives]');
+    expect(pump.ctx.objectivesChanged.size).toBe(0);
+    expect(pump.ctx.objectivesBySide.get(2)!.summary).toBe('Quiet');
+    expect(pump.ctx.objectivesBySide.has(1)).toBe(false);
+    expect(pump.ctx.objectivesConfigBySide.has(2)).toBe(true);
+    expect(pump.ctx.objectivesConfigBySide.get(2)!.hasAttribute('side')).toBe(false);
+  });
+});

@@ -194,6 +194,8 @@ export class EventPump {
       usedItems: new Set(),
       turnLimit: -1,
       actionCanceled: false,
+      objectivesConfigBySide: new Map(),
+      objectivesChanged: new Set(),
       objectivesBySide: new Map(),
       menuItems: new Map(),
       loc1: Location.NULL,

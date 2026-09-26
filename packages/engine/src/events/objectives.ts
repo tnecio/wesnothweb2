@@ -9,15 +9,11 @@
  * Deliberately not ported: per-`[objective]`/`[gold_carryover]`/`[note]`
  * `red=`/`green=`/`blue=`/`bullet=` overrides (real content overwhelmingly
  * uses the real defaults -- green win / red lose / pale-yellow gold /
- * white notes -- ported as constants below), `show_if` per-entry
- * conditionals, `caption=`, `delayed_variable_substitution=`, and the
- * `[show_objectives]` action (re-opens the dialog later, e.g. from a
- * hotkey menu -- this project only shows it once, at scenario start, per
- * the reported bug this addresses). Multi-side variants of the same
- * `[objectives]` firing with different content per side aren't modeled
- * either -- `parseScenarioObjectives` returns one model per firing, and
- * the caller (`actionWml.ts`'s `actionObjectives`) applies it to every
- * side named in `side=` (or every side on the board, if absent).
+ * white notes -- ported as constants below) and `caption=`. Per-entry
+ * `[show_if]` is evaluated when the objectives are generated (Phase 18d),
+ * through the `passes` callback `parseScenarioObjectives` is given; the
+ * `[objectives]`/`[show_objectives]` actions (`actionWml.ts`) keep the raw
+ * configs per side, as upstream's `scenario_objectives` table does.
  */
 
 import type { WmlConfig } from '../wml/config.js';
@@ -66,10 +62,19 @@ export const OBJECTIVE_COLOR = {
   note: '#ffffff',
 } as const;
 
-/** Mirrors `generate_objectives`'s per-`[objective]` loop (win/lose branches only -- `show_if`/per-entry color overrides not ported, see module doc comment). */
-function parseObjectiveEntries(cfg: WmlConfig): ScenarioObjectiveEntry[] {
+/** A `[show_if]` test (`wml.eval_conditional`); entries without one always show. */
+export type ShowIf = (showIf: WmlConfig) => boolean;
+
+const shown = (entries: WmlConfig[], passes?: ShowIf) =>
+  entries.filter((e) => {
+    const showIf = e.child('show_if');
+    return !showIf || !passes || passes(showIf);
+  });
+
+/** Mirrors `generate_objectives`'s per-`[objective]` loop (win/lose branches only -- per-entry color overrides not ported, see module doc comment). */
+function parseObjectiveEntries(cfg: WmlConfig, passes?: ShowIf): ScenarioObjectiveEntry[] {
   const entries: ScenarioObjectiveEntry[] = [];
-  for (const obj of cfg.children('objective')) {
+  for (const obj of shown(cfg.children('objective'), passes)) {
     const condition = obj.getString('condition', '');
     if (condition !== 'win' && condition !== 'lose') continue; // real Wesnoth wml.error()s; headless, just skip.
     entries.push({
@@ -82,9 +87,9 @@ function parseObjectiveEntries(cfg: WmlConfig): ScenarioObjectiveEntry[] {
 }
 
 /** Mirrors `generate_objectives`'s per-`[gold_carryover]` loop. */
-function parseGoldCarryoverEntries(cfg: WmlConfig): GoldCarryoverEntry[] {
+function parseGoldCarryoverEntries(cfg: WmlConfig, passes?: ShowIf): GoldCarryoverEntry[] {
   const entries: GoldCarryoverEntry[] = [];
-  for (const obj of cfg.children('gold_carryover')) {
+  for (const obj of shown(cfg.children('gold_carryover'), passes)) {
     const entry: { bonus?: boolean; carryoverPercentage?: number } = {};
     if (obj.hasAttribute('bonus')) entry.bonus = obj.getBoolean('bonus', false);
     if (obj.hasAttribute('carryover_percentage')) entry.carryoverPercentage = obj.getNumber('carryover_percentage');
@@ -94,24 +99,23 @@ function parseGoldCarryoverEntries(cfg: WmlConfig): GoldCarryoverEntry[] {
 }
 
 /** Mirrors `generate_objectives`'s per-`[note]` loop. */
-function parseNoteEntries(cfg: WmlConfig): string[] {
-  return cfg
-    .children('note')
+function parseNoteEntries(cfg: WmlConfig, passes?: ShowIf): string[] {
+  return shown(cfg.children('note'), passes)
     .map((n) => n.getString('description', ''))
     .filter((d) => d.length > 0);
 }
 
 /** Parses a real `[objectives]` tag's config into a `ScenarioObjectives` model -- see this module's own doc comment for scope. */
-export function parseScenarioObjectives(cfg: WmlConfig): ScenarioObjectives {
+export function parseScenarioObjectives(cfg: WmlConfig, passes?: ShowIf): ScenarioObjectives {
   return {
     summary: cfg.getString('summary', ''),
     victoryLabel: cfg.getString('victory_string', 'Victory:'),
     defeatLabel: cfg.getString('defeat_string', 'Defeat:'),
     goldCarryoverLabel: cfg.getString('gold_carryover_string', 'Gold carryover:'),
     notesLabel: cfg.getString('notes_string', 'Notes:'),
-    objectives: parseObjectiveEntries(cfg),
-    goldCarryover: parseGoldCarryoverEntries(cfg),
-    notes: parseNoteEntries(cfg),
+    objectives: parseObjectiveEntries(cfg, passes),
+    goldCarryover: parseGoldCarryoverEntries(cfg, passes),
+    notes: parseNoteEntries(cfg, passes),
     silent: cfg.getBoolean('silent', false),
   };
 }

@@ -1455,6 +1455,10 @@ export class SnapshotBoard {
         const overlays: OverlaySample[] = [];
 
         for (const { cue, visual, src, dst, legPixels, duration, grouped } of timed) {
+          // A visual replaced mid-animation (the unit changed or left -- e.g.
+          // the dialogue it plays under was advanced): nothing left to move.
+          // Touching it would throw and leave this promise unresolved.
+          if (visual.container.destroyed) continue;
           const t = Math.min(elapsed, duration);
           if (cue.anim) {
             // `t` is wall-clock time (already compressed by speedMultiplier);
@@ -1486,6 +1490,7 @@ export class SnapshotBoard {
             const sample = sampleAnimation(cue.anim, curDirection, animT, curSrc, curDst);
             if (sample.imagePath) {
               const texture = await ImageCache.resolve(this.teamColoredRef(sample.imagePath, visual.lastSide, visual.flagRgb));
+              if (visual.container.destroyed) continue;
               if (texture && visual.sprite && visual.sprite.texture !== texture) visual.sprite.texture = texture;
             }
             if (visual.sprite)
@@ -1527,6 +1532,7 @@ export class SnapshotBoard {
           // otherwise (attack: both the attacker's lunge-and-return and
           // the defender's in-place reaction end where they started).
           for (const { cue, visual, src, dst } of active) {
+            if (visual.container.destroyed) continue;
             const rest = cue.restAt === 'dst' ? dst : src;
             visual.container.x = rest.x;
             visual.container.y = rest.y;

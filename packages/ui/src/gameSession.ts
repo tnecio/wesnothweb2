@@ -1046,6 +1046,8 @@ export interface SaveGameData {
   menuItems?: { id: string; description: string; command: WmlConfigJson }[];
   /** Phase 18c: each side's current `[objectives]` (lost on reload before). */
   objectives?: { side: number; objectives: ScenarioObjectives }[];
+  /** Phase 18d: the raw `[objectives]` per side (0: every side), for `[show_objectives]` (upstream's persistent `[objectives]` tags). */
+  objectiveConfigs?: { side: number; cfg: WmlConfigJson }[];
   /** Phase 18b: upstream's `random_mode`; absent means `per_action`. */
   randomMode?: RandomMode;
   /** Upstream's `do_healing`: false only until the scenario's first side turn has started. Absent: true once startup events ran. */
@@ -1191,7 +1193,19 @@ export class GameSession {
    * wants to let the player reopen it later (real Wesnoth's own
    * "Objectives" menu item) can just keep reading this field.
    */
-  scenarioObjectives: ScenarioObjectives | null = null;
+  get scenarioObjectives(): ScenarioObjectives | null {
+    return this.eventPump.ctx.objectivesBySide.get(this.playerSide) ?? null;
+  }
+
+  /**
+   * `team.objectives_changed` for the player's side, cleared as it is read:
+   * upstream shows the objectives dialog at the start of the side's turn
+   * when `[objectives]` (not `silent=`) or `[show_objectives]` changed them.
+   */
+  takeObjectivesChanged(): boolean {
+    const changed = this.eventPump.ctx.objectivesChanged.delete(this.playerSide);
+    return changed && this.scenarioObjectives !== null;
+  }
   /**
    * Set by `endTurn` every time it auto-plays one or more consecutive
    * `ai`/`network_ai`-controlled sides, to every real `AiAnimationEvent`
@@ -1618,18 +1632,7 @@ export class GameSession {
     const side = this.activeSide;
     if (!this.scenarioResult) yield* this.runSynced({ kind: 'init_side', side }, (action) => this.execInitSide(side, action), { present: true });
     this.checkForGameEnd();
-    this.captureStartObjectives();
     return this.eventPump.ctx.messages.slice(shownFrom);
-  }
-
-  /**
-   * Real `team.objectives_changed = not silent` -- a silent firing updates
-   * the side's objectives without popping the dialog (matches upstream's
-   * own gate on whether `show_objectives` should auto-trigger).
-   */
-  private captureStartObjectives(): void {
-    const objectives = this.eventPump.ctx.objectivesBySide.get(this.playerSide);
-    if (objectives && !objectives.silent) this.scenarioObjectives = objectives;
   }
 
   /**
@@ -3542,6 +3545,7 @@ export class GameSession {
       events: this.eventPump.manager.activeConfigs().map((c) => c.toJSON()),
       menuItems: [...this.eventPump.ctx.menuItems.values()].map((m) => ({ id: m.id, description: m.description, command: m.command.toJSON() })),
       objectives: [...this.eventPump.ctx.objectivesBySide].map(([side, objectives]) => ({ side, objectives })),
+      objectiveConfigs: [...this.eventPump.ctx.objectivesConfigBySide].map(([side, cfg]) => ({ side, cfg: cfg.toJSON() })),
       randomMode: this.rng.mode,
       doHealing: this.doHealing,
       ...(this.replayStartData ? { replay: { start: this.replayStartData, commands: this.recorder.toJSON() } } : {}),
@@ -3619,8 +3623,9 @@ export class GameSession {
     }
     if (data.objectives) {
       this.eventPump.ctx.objectivesBySide = new Map(data.objectives.map((o) => [o.side, o.objectives]));
-      const mine = this.eventPump.ctx.objectivesBySide.get(this.playerSide);
-      if (mine) this.scenarioObjectives = mine;
+    }
+    if (data.objectiveConfigs) {
+      this.eventPump.ctx.objectivesConfigBySide = new Map(data.objectiveConfigs.map((o) => [o.side, WmlConfig.fromJSON(o.cfg)]));
     }
     this.doHealing = data.doHealing ?? data.startupEventsRun;
     this.replayStartData = data.replay?.start ?? null;
@@ -3834,9 +3839,6 @@ export class GameSession {
         command: rec.command.kind,
         message: 'the state after this command differs from the recorded game',
       });
-    }
-    if (rec.command.kind === 'init_side' && this.recorder.commands.filter((c) => c.command.kind === 'init_side').length === 1) {
-      this.captureStartObjectives();
     }
     return done !== null;
   }

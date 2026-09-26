@@ -184,6 +184,14 @@ export interface EventContext {
    * twice, and `[found_item]` asks whether one was.
    */
   usedItems: Set<string>;
+  /**
+   * `objectives.lua`'s `scenario_objectives`: the raw `[objectives]` last
+   * given for each side (0: for every side), kept so `[show_objectives]`
+   * can regenerate them. Saved with the game.
+   */
+  objectivesConfigBySide: Map<number, WmlConfig>;
+  /** Sides whose objectives changed since they were last shown (`team.objectives_changed`). */
+  objectivesChanged: Set<number>;
   /** `[cancel_action]` (`wml_event_pump::set_action_canceled`): the move firing this event stops at this hex. */
   actionCanceled: boolean;
   /**
