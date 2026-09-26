@@ -90,6 +90,7 @@ import { joinRef } from './images/ipf.js';
 import { resolveSideColorId } from './images/teamColor.js';
 import { sampleAnimation, animationDurationMs, animationTimeline, sampleParticles, sampleUnitHalo, type OverlaySample } from './animation/playback.js';
 import { HEX_STEP_MS, type UnitAnimationDef } from './animation/unitAnimation.js';
+import { parseHaloFrames, type MapItemPoint } from './mapItems.js';
 import { makeLayerSprite } from './terrainPositioning.js';
 import type { BuildingRule } from './terrain/terrainGraphicsRules.js';
 import { layoutTerrain, type TerrainLayout } from './terrain/terrainLayout.js';
@@ -475,6 +476,11 @@ export class SnapshotBoard {
   private readonly terrainLayer = new PIXI.Container();
   /** Owned-village flag markers -- sits above terrain, below highlight/unit layers (a unit standing on a village shouldn't have its sprite obscured by the flag, but the flag should still read clearly against bare terrain). */
   private readonly villageLayer = new PIXI.Container();
+  /** Phase 18: map items' images (`display::draw_overlays_at`, `terrain_bg`): over terrain, under village flags and units, lit by the time of day. */
+  private readonly itemLayer = new PIXI.Container();
+  /** Map items' halos: upstream's halo manager draws them over everything map-side, untinted -- as the animation overlays here. */
+  private readonly itemHaloLayer = new PIXI.Container();
+  private itemsUpdate: Promise<void> = Promise.resolve();
   private readonly highlightLayer = new PIXI.Container();
   /** Reachable hexes' defense numbers: above units and terrain overlays (castle towers, forest canopies), like upstream's `drawing_layer::move_info`. */
   private readonly moveInfoLayer = new PIXI.Container();
@@ -606,6 +612,7 @@ export class SnapshotBoard {
     this.teamColor = new Map(snapshot.teams.map((t) => [t.side, t.color]));
     this.stage.addChild(
       this.terrainLayer,
+      this.itemLayer,
       this.villageLayer,
       this.highlightLayer,
       this.unitLayer,
@@ -614,11 +621,14 @@ export class SnapshotBoard {
       this.hoverLayer,
       this.fogShroudLayer,
       this.todTintLayer,
+      this.itemHaloLayer,
       this.animationOverlayLayer,
       this.selectionLayer,
       this.floatingLayer,
     );
     this.animationOverlayLayer.eventMode = 'none';
+    this.itemLayer.eventMode = 'none';
+    this.itemHaloLayer.eventMode = 'none';
     this.moveInfoLayer.eventMode = 'none';
     this.hoverLayer.eventMode = 'none';
     this.todTintPositive.blendMode = 'add';
@@ -1737,6 +1747,59 @@ export class SnapshotBoard {
    * terrain layer's own placeholder village colour already marks it as a
    * village at all -- see `colorForTerrain`); this only shows WHO owns it.
    */
+  /**
+   * Phase 18: draws (replacing any previous) the map items, already
+   * filtered for what the viewing side sees and ordered for drawing. An
+   * image fills its hex's tile rect (upstream blits it to the hex's
+   * destination rect); a halo is centred on the hex at its own size and
+   * cycles its frames (`name:ms`, 100 ms when unspecified, as `halo.cpp`).
+   * `submerge=` is not drawn (items show whole).
+   */
+  updateItems(items: readonly MapItemPoint[]): Promise<void> {
+    this.itemsUpdate = this.itemsUpdate.then(async () => {
+      const refs = new Set<string>();
+      const halos = items.map((item) => (item.halo ? parseHaloFrames(item.halo) : []));
+      for (const item of items) if (item.image) refs.add(item.image);
+      for (const frames of halos) for (const f of frames) refs.add(f.image);
+      await ImageCache.preload(refs);
+      for (const layer of [this.itemLayer, this.itemHaloLayer]) {
+        for (const child of layer.removeChildren()) child.destroy();
+      }
+      for (const [i, item] of items.entries()) {
+        const { x: cx, y: cy } = hexToPixel(toHexCoord(item.x, item.y));
+        if (item.image) {
+          const texture = await ImageCache.resolve(item.image);
+          if (texture) {
+            const sprite = new PIXI.Sprite(texture);
+            sprite.anchor.set(0.5);
+            sprite.position.set(cx, cy);
+            sprite.width = TILE_SIZE;
+            sprite.height = TILE_SIZE;
+            this.itemLayer.addChild(sprite);
+          }
+        }
+        const frames: PIXI.FrameObject[] = [];
+        for (const f of halos[i]!) {
+          const texture = await ImageCache.resolve(f.image);
+          if (texture) frames.push({ texture, time: f.durationMs });
+        }
+        if (frames.length === 1) {
+          const sprite = new PIXI.Sprite(frames[0]!.texture);
+          sprite.anchor.set(0.5);
+          sprite.position.set(cx, cy);
+          this.itemHaloLayer.addChild(sprite);
+        } else if (frames.length > 1) {
+          const sprite = new PIXI.AnimatedSprite(frames);
+          sprite.anchor.set(0.5);
+          sprite.position.set(cx, cy);
+          sprite.play();
+          this.itemHaloLayer.addChild(sprite);
+        }
+      }
+    });
+    return this.itemsUpdate;
+  }
+
   updateVillageOwnership(owners: readonly VillageOwnerPoint[]): void {
     this.villageLayer.removeChildren();
     for (const v of owners) {

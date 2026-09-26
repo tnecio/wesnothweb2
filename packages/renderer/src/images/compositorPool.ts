@@ -18,7 +18,7 @@
  *   change (checked before dispatching), since each worker has its own copy
  *   of the compositor module.
  */
-import { getImageBaseUrls } from './compositor'
+import { getCampaignImages, getImageBaseUrls } from './compositor'
 import type { FromCompositorWorker, ToCompositorWorker } from './compositor.worker'
 import { splitRef } from './ipf'
 import type { ColorData } from './teamColor'
@@ -67,7 +67,13 @@ export class CompositorPool {
   private nextId = 1
   private colors: ColorData | null = null
   private atlasManifests: readonly string[] = []
-  private sent: { image: string; engine: string; colors: ColorData | null; atlasManifests: readonly string[] } | null = null
+  private sent: {
+    image: string
+    engine: string
+    colors: ColorData | null
+    atlasManifests: readonly string[]
+    campaignImages: ReturnType<typeof getCampaignImages>
+  } | null = null
 
   private constructor(size: number, colors: ColorData | null) {
     this.colors = colors
@@ -185,16 +191,19 @@ export class CompositorPool {
       sent.image === urls.image &&
       sent.engine === urls.engine &&
       sent.colors === this.colors &&
-      sent.atlasManifests === this.atlasManifests
+      sent.atlasManifests === this.atlasManifests &&
+      sent.campaignImages === getCampaignImages()
     )
       return
-    this.sent = { ...urls, colors: this.colors, atlasManifests: this.atlasManifests }
+    const campaignImages = getCampaignImages()
+    this.sent = { ...urls, colors: this.colors, atlasManifests: this.atlasManifests, campaignImages }
     const message: ToCompositorWorker = {
       type: 'config',
       imageBaseUrl: urls.image,
       engineImageBaseUrl: urls.engine,
       colors: this.colors,
       atlasManifests: [...this.atlasManifests],
+      campaignImages: campaignImages ? { root: campaignImages.root, files: [...campaignImages.files] } : null,
     }
     for (const slot of this.slots) slot.worker.postMessage(message)
   }

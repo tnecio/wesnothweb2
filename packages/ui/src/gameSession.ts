@@ -145,6 +145,8 @@ import {
   type Responder,
   setLuaConditionalEvaluator,
   performMoveFlow,
+  readPersistentItem,
+  itemToConfig,
   standardizeEventName,
 } from '@wesnothweb2/engine';
 // Deep import: lua-bridge's index also exports Node-only data loaders.
@@ -184,6 +186,14 @@ export function parseScenarioTurnsLimit(raw: WmlAttributeValue | undefined): num
 export interface HexPoint {
   x: number;
   y: number;
+}
+
+/** One map item as the board draws it -- see `GameSession.mapItems`. */
+export interface MapItemInfo extends HexPoint {
+  image: string;
+  halo: string;
+  submerge: number;
+  zOrder: number;
 }
 
 /** One hex's terrain code, for redrawing a map WML changed -- see `GameSession.terrainHexes`. */
@@ -1038,6 +1048,9 @@ export interface SaveGameData {
   events?: WmlConfigJson[];
   /** Phase 18c: the unit id counter (upstream's `next_underlying_unit_id`). Absent: derived from the highest id in the save. */
   nextUnitId?: number;
+  /** Phase 18: the items on the map, as upstream saves them (`[item]` tags), and its `next_item_name`. Absent: the scenario's own. */
+  items?: WmlConfigJson[];
+  nextItemName?: number;
   /** Phase 18d: the map as WML left it (`[terrain]`, `[terrain_mask]`), as `map_data=` text. Absent: the scenario's own map. */
   mapData?: string;
   /** Phase 18d: the turn limit as `[modify_turns]` left it (`-1`: none). Absent: the scenario's `turns=`. */
@@ -1511,6 +1524,10 @@ export class GameSession {
     this.board.lawfulBonusAt = (loc) => this.timeOfDayAt(loc).lawfulBonus;
     this.eventPump.ctx.turnLimit = parseScenarioTurnsLimit(snapshot.scenarioConfigJson.attrs['turns']) ?? -1;
     this.eventPump.ctx.turnNumber = () => this.turnNumber;
+    // The scenario's own `[item]`s, read as upstream's persistent tags are at scenario start.
+    for (const { tag, config } of WmlConfig.fromJSON(snapshot.scenarioConfigJson).allChildren()) {
+      if (tag === 'item') readPersistentItem(this.eventPump.ctx, config);
+    }
     this.eventPump.ctx.unitTypeConfig = (id) => {
       const json = this.snapshot.unitTypeConfigs?.[id];
       return json ? WmlConfig.fromJSON(json) : undefined;
@@ -2207,6 +2224,29 @@ export class GameSession {
       if (this.scenarioResult) return;
     }
     this.setActiveSide(order.next);
+  }
+
+  private mapItemsCache: { key: string; items: MapItemInfo[] } | null = null;
+
+  /**
+   * The items the viewing side sees, in drawing order (`display::
+   * draw_overlays_at`): not in fog unless `visible_in_fog=`, and only for
+   * the teams an item names. A new array only when that changes.
+   */
+  get mapItems(): MapItemInfo[] {
+    const viewing = this.board.getTeam(this.viewingSide);
+    const myTeams = (viewing?.teamName ?? '').split(',').map((n) => n.trim());
+    const items: MapItemInfo[] = [];
+    for (const item of this.eventPump.ctx.items.all()) {
+      if (!item.visibleInFog && this.board.isFogged(this.viewingSide, item.loc)) continue;
+      if (item.overlayTeamName !== '' && !item.overlayTeamName.split(',').some((n) => myTeams.includes(n.trim()))) continue;
+      items.push({ x: item.loc.x, y: item.loc.y, image: item.image, halo: item.halo, submerge: item.submerge, zOrder: item.zOrder });
+    }
+    // Per hex by z_order, stable (`display::add_overlay` inserts before the first higher one).
+    items.sort((a, b) => a.x - b.x || a.y - b.y || a.zOrder - b.zOrder);
+    const key = JSON.stringify(items);
+    if (this.mapItemsCache?.key !== key) this.mapItemsCache = { key, items };
+    return this.mapItemsCache.items;
   }
 
   private terrainHexesCache: { version: number; hexes: TerrainHexInfo[] } | null = null;
@@ -3541,6 +3581,8 @@ export class GameSession {
       usedItems: [...this.eventPump.ctx.usedItems],
       nextUnitId: this.board.nextUnitId,
       turnLimit: this.eventPump.ctx.turnLimit,
+      items: this.eventPump.ctx.items.all().map((item) => itemToConfig(item).toJSON()),
+      nextItemName: this.eventPump.ctx.items.nextItemName,
       mapData: this.board.terrainVersion > 0 ? this.board.map.write() : undefined,
       events: this.eventPump.manager.activeConfigs().map((c) => c.toJSON()),
       menuItems: [...this.eventPump.ctx.menuItems.values()].map((m) => ({ id: m.id, description: m.description, command: m.command.toJSON() })),
@@ -3613,6 +3655,11 @@ export class GameSession {
     this.rng.mode = data.randomMode ?? 'per_action';
     this.eventPump.ctx.usedItems = new Set(data.usedItems ?? []);
     if (data.turnLimit !== undefined) this.eventPump.ctx.turnLimit = data.turnLimit;
+    if (data.items !== undefined) {
+      this.eventPump.ctx.items.clear();
+      for (const item of data.items) readPersistentItem(this.eventPump.ctx, WmlConfig.fromJSON(item));
+    }
+    if (data.nextItemName !== undefined) this.eventPump.ctx.items.nextItemName = data.nextItemName;
     this.board.nextUnitId =
       data.nextUnitId ?? Math.max(0, ...[...data.units, ...(data.recall ?? [])].map((u) => u.underlyingId ?? 0));
     if (data.events) this.eventPump.manager.replaceAll(data.events.map((e) => WmlConfig.fromJSON(e)));

@@ -54,6 +54,7 @@
     terrainLookup,
     spriteKey,
     setImageBaseUrl,
+    setCampaignImages,
     setEngineImageBaseUrl,
   } from '@wesnothweb2/renderer';
   import {
@@ -123,6 +124,8 @@
   // image roots -- until the board mounted, they defaulted to a non-existent `/data/data` (Phase 16 N0 finding).
   setImageBaseUrl('/game-images');
   setEngineImageBaseUrl('/game-images-engine');
+
+  import campaignImages from './campaignImages.json';
 
   let {
     snapshot,
@@ -204,6 +207,13 @@
   /** Single fixed slot for MVP simplicity -- see persistence.ts's doc comment; keyed by scenario so a future multi-scenario build doesn't collide saves across scenarios. */
   let saveSlot = $derived(`quicksave:${activeSnapshot.scenario.id}`);
   /** The live turn limit (`[modify_turns]` can change it); synced with the rest of the session state. */
+  // Phase 18: the campaign's own images are searched before core (its [binary_path]).
+  $effect.pre(() => {
+    const id = campaign?.wesnothId;
+    const files = id ? (campaignImages as Record<string, string[]>)[id] : undefined;
+    setCampaignImages(id && files ? `campaigns/${id}/images` : null, files ?? []);
+  });
+
   let scenarioTurnsLimit = $state<number | null>(session.turnLimit);
 
   let continuing = $state(false);
@@ -275,6 +285,7 @@
   let villageOwners = $state<VillageOwnerInfo[]>(session.villageOwnership);
   let hexVisibility = $state<HexVisibilityPoint[]>(session.hexVisibility);
   let terrainHexes = $state(session.terrainHexes);
+  let mapItems = $state(session.mapItems);
   let timeOfDay = $state<TimeOfDayEntry>(session.currentTimeOfDay);
   let statusMessage = $state('Click one of your units to select it.');
   /** Phase 14: the infobox's "terrain info for the hovered hex" -- kept in sync by `GameBoardView`'s `onHexHoverChange`. */
@@ -351,6 +362,7 @@
     villageOwners = session.villageOwnership;
     hexVisibility = session.hexVisibility;
     terrainHexes = session.terrainHexes;
+    mapItems = session.mapItems;
     timeOfDay = session.currentTimeOfDay;
 
     if (session.scenarioResult) {
@@ -2348,6 +2360,7 @@
         {attackTargets}
         {villageOwners}
         terrain={terrainHexes}
+        items={mapItems}
         {hexVisibility}
         {timeOfDay}
         onHexClick={handleHexClick}

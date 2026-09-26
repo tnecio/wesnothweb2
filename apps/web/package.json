@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build:atlases": "tsx scripts/build-image-atlases.mjs",
+    "build:campaign-images": "node scripts/build-campaign-images.mjs",
     "predev": "npm run build:atlases",
     "dev": "vite",
     "prebuild": "npm run build:atlases",

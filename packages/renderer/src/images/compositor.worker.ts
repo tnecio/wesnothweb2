@@ -11,11 +11,18 @@
  * (`needAtlas`), which downloads each bundle once and hands every worker the
  * same `Blob` (`atlas`) -- Blobs cross to workers without copying bytes.
  */
-import { Compositor, setEngineImageBaseUrl, setImageBaseUrl } from './compositor'
+import { Compositor, setCampaignImages, setEngineImageBaseUrl, setImageBaseUrl } from './compositor'
 import type { ColorData } from './teamColor'
 
 export type ToCompositorWorker =
-  | { type: 'config'; imageBaseUrl: string; engineImageBaseUrl: string; colors: ColorData | null; atlasManifests: string[] }
+  | {
+      type: 'config'
+      imageBaseUrl: string
+      engineImageBaseUrl: string
+      colors: ColorData | null
+      atlasManifests: string[]
+      campaignImages: { root: string; files: string[] } | null
+    }
   | { type: 'render'; id: number; ref: string }
   | { type: 'atlas'; url: string; blob: Blob | null }
   | { type: 'clear' }
@@ -65,6 +72,7 @@ scope.onmessage = (event) => {
     case 'config':
       setImageBaseUrl(message.imageBaseUrl)
       setEngineImageBaseUrl(message.engineImageBaseUrl)
+      setCampaignImages(message.campaignImages?.root ?? null, message.campaignImages?.files ?? [])
       compositor.setColorData(message.colors)
       compositor.setAtlasManifests(message.atlasManifests)
       return

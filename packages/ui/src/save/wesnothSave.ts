@@ -273,6 +273,8 @@ export function fromWesnothSave(cfg: WmlConfig): ImportedWesnothSave {
       events: snapshot.children('event').map((e) => e.toJSON()),
       nextUnitId: snapshot.getNumber('next_underlying_unit_id', 0),
       turnLimit: snapshot.getNumber('turns', -1),
+      items: snapshot.children('item').map((i) => i.toJSON()),
+      nextItemName: snapshot.child('next_item_name')?.getNumber('next_item_name', 0) ?? 0,
       mapData: snapshot.getString('map_data', '') || undefined,
       usedItems: (snapshot.child('used_items')?.attributeNames() ?? []).filter((id) => snapshot.child('used_items')!.getBoolean(id, false)),
       tunnels: snapshot.children('tunnel').map((t) => t.toJSON()),
@@ -574,6 +576,15 @@ export function toWesnothSave(
     ),
   );
   if (save.turnLimit !== undefined) snapCfg.setAttribute('turns', save.turnLimit);
+  // Phase 18: the live items (upstream's persistent [item]/[next_item_name] tags), not the scenario's.
+  if (save.items !== undefined) {
+    snapCfg.removeChildren('item');
+    for (const item of save.items) snapCfg.addChild('item', WmlConfig.fromJSON(item));
+  }
+  if (save.nextItemName !== undefined) {
+    snapCfg.removeChildren('next_item_name');
+    snapCfg.addChild('next_item_name').setAttribute('next_item_name', save.nextItemName);
+  }
   snapCfg.setAttribute('it_is_a_new_turn', false);
   snapCfg.setAttribute('do_healing', true);
   snapCfg.setAttribute('can_end_turn', true);

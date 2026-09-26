@@ -90,6 +90,7 @@ import { ActionRegistry } from './context.js';
 import { isFlow, runFlow, type Flow, type MessageOption, type Responder, type TextInputSpec } from './interaction.js';
 import { conditionalPassed } from './conditionalWml.js';
 import { findUnits, locationMatchesFilter, unitMatchesFilter } from './filter.js';
+import { actionItem, actionRemoveItem, actionStoreItems } from './itemsWml.js';
 import { actionLiftFog, actionPlaceShroud, actionRemoveShroud, actionResetFog } from './shroudWml.js';
 import {
   actionCancelAction,
@@ -1823,6 +1824,9 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('terrain', actionTerrain);
   registry.register('cancel_action', actionCancelAction);
   registry.register('terrain_mask', actionTerrainMask);
+  registry.register('item', actionItem);
+  registry.register('remove_item', actionRemoveItem);
+  registry.register('store_items', actionStoreItems);
   registry.register('unstore_unit', actionUnstoreUnit);
   registry.register('kill', actionKill);
   registry.register('modify_unit', actionModifyUnit);

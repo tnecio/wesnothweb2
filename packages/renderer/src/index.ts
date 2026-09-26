@@ -19,6 +19,7 @@ export {
   imageUrl,
   setImageBaseUrl,
   setEngineImageBaseUrl,
+  setCampaignImages,
 } from './images/ImageCache'
 export { unitBundleManifestUrl } from './images/compositor'
 
@@ -178,3 +179,4 @@ export {
 } from './SnapshotBoard'
 
 export { type HexVisibility, type FogShroudHex } from './fogShroud'
+export { parseHaloFrames, type MapItemPoint } from './mapItems.js';

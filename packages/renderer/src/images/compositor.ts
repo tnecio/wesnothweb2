@@ -140,7 +140,26 @@ export function imageUrl(path: string): string {
 export function rootedImagePath(path: string): string {
   const clean = path.replace(/^\/+/, '')
   if (clean.startsWith('engine/') || clean.startsWith('core/') || clean.startsWith('campaigns/')) return clean
+  // The engine's image search: the campaign's own images/ first, then core.
+  if (campaignImages && campaignImages.files.has(clean.split('~')[0]!)) return `${campaignImages.root}/${clean}`
   return `core/images/${clean}`
+}
+
+let campaignImages: { root: string; files: ReadonlySet<string> } | null = null
+
+/**
+ * Phase 18: the current campaign's own images (`root`, e.g.
+ * `campaigns/Dead_Water/images`, and the files under it, relative to it),
+ * searched before core by `rootedImagePath` -- the campaign's
+ * `[binary_path]`. `null` for none (a synthetic campaign).
+ */
+export function setCampaignImages(root: string | null, files: Iterable<string> = []): void {
+  campaignImages = root ? { root, files: new Set(files) } : null
+}
+
+/** What `setCampaignImages` set (the compositor workers get the same, see `compositorPool`). */
+export function getCampaignImages(): { root: string; files: ReadonlySet<string> } | null {
+  return campaignImages
 }
 
 /**

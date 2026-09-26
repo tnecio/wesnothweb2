@@ -13,6 +13,7 @@ import type { GameBoard } from '../model/GameBoard.js';
 import type { Location } from '../model/Location.js';
 import type { Schedule } from '../model/Schedule.js';
 import type { UnitType } from '../model/UnitType.js';
+import type { ItemStore } from './itemsWml.js';
 import type { WmlConfig } from '../wml/config.js';
 import type { Rng } from '../rng/Rng.js';
 import type { VariableStore } from './variables.js';
@@ -192,6 +193,8 @@ export interface EventContext {
   objectivesConfigBySide: Map<number, WmlConfig>;
   /** Sides whose objectives changed since they were last shown (`team.objectives_changed`). */
   objectivesChanged: Set<number>;
+  /** Phase 18: the items on the map (`items.lua`'s `scenario_items`) and its name counter. */
+  items: ItemStore;
   /** `[cancel_action]` (`wml_event_pump::set_action_canceled`): the move firing this event stops at this hex. */
   actionCanceled: boolean;
   /**

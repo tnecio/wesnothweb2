@@ -2236,3 +2236,23 @@ describe('Phase 18d: [terrain_mask] against the real 1.19 build', () => {
     expect(cells(session.board.map.write())).toEqual(cells(real));
   });
 });
+
+describe('Phase 18: map items', () => {
+  it("the scenario's own [item]s are on the map, survive a save and a load, and go into a Wesnoth save", async () => {
+    const snapshot = loadWolfCoastSnapshot();
+    expect(new GameSession(snapshot).mapItems).toEqual([expect.objectContaining({ x: 19, y: 16, image: 'items/storm-trident-buried.png' })]);
+    // One more placed by WML, then a load.
+    snapshot.scenarioConfigJson.children.push({
+      tag: 'event',
+      config: parseConfig('[event]\nname=prestart\n[item]\nx=3\ny=3\nimage=items/chest.png\n[/item]\n[/event]').child('event')!.toJSON(),
+    });
+    const session = new GameSession(snapshot);
+    await session.runStartupEvents();
+    const data = session.toSaveData();
+    expect(data.items).toHaveLength(2);
+    expect(data.nextItemName).toBe(1);
+    const loaded = GameSession.fromSaveData(snapshot, data);
+    expect(loaded.mapItems.map((i) => i.image).sort()).toEqual(['items/chest.png', 'items/storm-trident-buried.png']);
+    expect(loaded.toSaveData().nextItemName).toBe(1);
+  });
+});

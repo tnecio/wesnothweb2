@@ -58,6 +58,7 @@
     villageOwners = [],
     hexVisibility = [],
     terrain = null,
+    items = [],
     timeOfDay = undefined,
     onHexClick,
     onHexRightClick,
@@ -87,6 +88,8 @@
     hexVisibility?: readonly FogShroudHex[];
     /** The whole on-board terrain once WML changed the map (`GameSession.terrainHexes`); `null` while it is the scenario's. */
     terrain?: readonly { x: number; y: number; code: string }[] | null;
+    /** Map items the viewing side sees (`GameSession.mapItems`). */
+    items?: readonly { x: number; y: number; image: string; halo: string }[];
     /** The current global ToD's red=/green=/blue= colour shift -- see `SnapshotBoard.updateTimeOfDayTint`. Omit for no tint (a scenario with no [time] schedule). */
     timeOfDay?: Pick<TimeOfDayEntry, 'red' | 'green' | 'blue'>;
     onHexClick: (x: number, y: number) => void;
@@ -407,6 +410,10 @@
 
   $effect(() => {
     if (terrain) void board?.updateTerrain(terrain);
+  });
+
+  $effect(() => {
+    void board?.updateItems(items);
   });
 
   $effect(() => {

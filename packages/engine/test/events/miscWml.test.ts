@@ -13,6 +13,7 @@ import { MtRng } from '../../src/rng/MtRng.js';
 import { EventManager, EventPump } from '../../src/events/pump.js';
 import { VariableStore } from '../../src/events/variables.js';
 import { findSides } from '../../src/events/sideFilter.js';
+import { readPersistentItem } from '../../src/events/itemsWml.js';
 import { parseWml } from '../../src/wml/index.js';
 
 const content = loadRealContent();
@@ -406,5 +407,60 @@ describe('[objectives] / [show_objectives] (objectives.lua)', () => {
     expect(pump.ctx.objectivesBySide.has(1)).toBe(false);
     expect(pump.ctx.objectivesConfigBySide.has(2)).toBe(true);
     expect(pump.ctx.objectivesConfigBySide.get(2)!.hasAttribute('side')).toBe(false);
+  });
+});
+
+describe('[item] / [remove_item] / [store_items] (items.lua)', () => {
+  it('names items item_N (one name per tag), removes by image or all, stores by item_name', () => {
+    const { pump } = setup(`
+      [item]
+        x=1,2
+        y=1,1
+        image=items/chest.png
+        write_name=chest_name
+      [/item]
+      [item]
+        x=1
+        y=1
+        halo=halo/fire-aura.png
+        name=fire
+        [filter_team]
+          side=2
+        [/filter_team]
+      [/item]
+      [store_items]
+        x=1
+        y=1
+        variable=here
+      [/store_items]
+      [store_items]
+        item_name=fire
+        variable=fires
+      [/store_items]
+      [remove_item]
+        x=1
+        y=1
+        image=items/chest.png
+      [/remove_item]
+      [remove_item]
+        x=2
+        y=1
+      [/remove_item]`);
+    const ctx = pump.ctx;
+    expect(ctx.variables.get('chest_name')).toBe('item_0');
+    expect(ctx.variables.arrayLength('here')).toBe(2);
+    expect(ctx.variables.get('here[0].name')).toBe('item_0');
+    expect(ctx.variables.arrayLength('fires')).toBe(1);
+    const left = ctx.items.all();
+    expect(left.map((i) => i.name)).toEqual(['fire']);
+    expect(left[0]!.overlayTeamName).toBe('bad'); // [filter_team] side=2 -> its team name
+    expect(ctx.items.nextItemName).toBe(1);
+  });
+
+  it('a persistent [item] (scenario-level or saved) keeps name="" rather than taking a number', () => {
+    const { pump } = setup('', false);
+    readPersistentItem(pump.ctx, parseWml('[item]\nx=2\ny=2\nimage=items/altar.png\n[/item]').child('item')!);
+    expect(pump.ctx.items.all()[0]!.name).toBe('');
+    expect(pump.ctx.items.nextItemName).toBe(0);
   });
 });
