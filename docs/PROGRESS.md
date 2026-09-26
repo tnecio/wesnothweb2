@@ -4462,3 +4462,38 @@ not undoable, upstream's rule with automatic updates on).
 - **Save/load browser check after 18c** (`apps/web/scripts/save-load-playthrough.mjs`):
   all checks pass (named slots, autosaves, reload, download as a real
   Wesnoth `.gz`, upload, cross-campaign load), 818 s.
+
+## 2026-09-26: Phase 18d — the missing WML tags
+
+Driven by `docs/WML_AUDIT.md` (23 missing action tags, one unevaluated
+condition at the start; now 3 left, all owned by other phases:
+`[item]`/`[remove_item]` Phase 18, `[set_achievement]` Phase 25).
+
+- **Conditions.** `[lua]` conditions run in a real Lua VM (Fengari, via
+  lua-bridge; `wml.variables` bridged). An unknown condition passes with an
+  error logged -- upstream's own rule, contrary to what the plan assumed.
+  Fengari needed `process.env.FENGARICONF` defined for the dep prebundle
+  and build (not in dev, where Vite would create a global `process`).
+- **Real bug: the turn limit was never enforced.** `check_time_over` now
+  runs at each turn wrap: `time over` fires, then defeat unless turns were
+  added. `[modify_turns]`/`[store_turns]` work on it; saved; the UI shows it live.
+- **Side filter** (`sideFilter.ts`) for every side-picking tag.
+- **Tags:** the `[store_*]` family, `[unit_worth]`, `[set_recruit]`,
+  `[hide_unit]`/`[unhide_unit]`, `[put_to_recall_list]`, `[wml_message]`,
+  `[role]`, `[terrain]`, `[terrain_mask]`, `[insert_tag]` (resolved lazily
+  while iterating, as vconfig does), `[random_placement]`, `[cancel_action]`,
+  `[show_objectives]`.
+- **Maps WML changes:** `GameMap.write` (reproduces real `map_data`
+  exactly), saved with the game; the renderer relayouts on change
+  (`SnapshotBoard.updateTerrain`, fog re-applied). Browser-checked on
+  Liberty 6. `[terrain_mask]` checked against the real 1.19 build: Dead
+  Water 2's map after prestart is identical hex for hex (new fixture).
+- **Moves fire `exit hex`/`enter hex` mid-route** (`executeMoveFlow`),
+  where upstream's mover does; `[cancel_action]` or a removed unit stops
+  the move. The session shows the walk so far before such an event's WML.
+- **Objectives** as upstream keeps them: `[show_if]`, per-side raw configs
+  (saved), `objectives_changed` -- the dialog now pops at the start of the
+  player's turn when WML changed them, and the menu shows current ones.
+- **Renderer bug (pre-existing, reproduced on the pre-18c commit):**
+  advancing dialogue during a cutscene animation destroyed the unit visual
+  under it; the animation loop threw and its promise never resolved.

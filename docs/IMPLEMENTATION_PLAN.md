@@ -1428,7 +1428,18 @@ sync past the first fight (Phase 18b milestones 3–4).
 
 ## Phase 18d — Missing WML action tags (from the 2026-09-26 audit)
 
-**Status: not started.** `packages/ui/scripts/audit-wml.ts` walks every
+**Status: delivered 2026-09-26.** The audit reports every action tag the
+shipped scenarios use as implemented except `[item]`/`[remove_item]`
+(Phase 18) and `[set_achievement]` (Phase 25); every condition tag is
+evaluated. Found and fixed along the way: the scenario turn limit was never
+enforced (no `time over`, no defeat), mid-scenario objectives never popped
+up and the menu showed stale ones, and `exit hex`/`enter hex` never fired.
+`[terrain_mask]` is verified against the real 1.19 build (Dead Water 2's
+map after prestart, hex for hex). Not ported: `[terrain_mask] mask_file=`,
+side-filter `formula=`, `[random_placement]`'s deprecated Lua `num_items=`.
+See `docs/PROGRESS.md`, 2026-09-26.
+
+Original scope: `packages/ui/scripts/audit-wml.ts` walks every
 branch of every event in the 40 shipped scenarios and checks each action
 and condition tag against what the port implements; the result is
 `docs/WML_AUDIT.md` (regenerate it after each change). After Phase 18c
@@ -1852,9 +1863,10 @@ pulled forward and delivered 2026-09-22.
 2. **Phase 18b** (replay, undo & redo) — delivered 2026-09-23.
 3. **Phase 18c** (unit modifications: `[effect]`, traits, `[object]`,
    runtime `[event]`, unit ids) — delivered 2026-09-26.
-4. **Phase 18d** (missing WML action tags, from the audit) ← **current focus**
-   (after the save/load browser check).
-5. **Phase 18** (labels/items), then **Phase 19** (audio/music).
+4. **Phase 18d** (missing WML action tags, from the audit) — delivered 2026-09-26.
+5. **Phase 18** (labels/items -- `[item]`/`[remove_item]` are the audit's
+   last missing tags besides achievements) ← **next**, then **Phase 19**
+   (audio/music).
 6. **Phase 20** (localization/accessibility).
 7. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).
 8. **Phase 25** (statistics & achievements).
