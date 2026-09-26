@@ -50,3 +50,11 @@ autosave. Made with
 `wesnoth --data-dir <src> --userdata-dir <scratch> --campaign Dead_Water
 --campaign-difficulty 2 --campaign-skip-story` under Xvfb; 1.19 writes its
 saves to `<userdata>/sync/saves`.
+
+## `dead-water-2-autosave-turn1-1.19.21.gz` (Phase 18d)
+
+The real 1.19.21+dev build's turn-1 autosave of Dead Water 2 ("Flight"),
+normal difficulty, started with `--campaign Dead_Water
+--campaign-scenario 02_Flight --campaign-skip-story`. Its `[snapshot]
+map_data=` is the map after `prestart`'s `[terrain_mask]`, which the port
+must reproduce exactly.

@@ -10,7 +10,7 @@
 
 import { TunnelManager } from '../pathfind/tunnels.js';
 import { Location } from './Location.js';
-import { GameMap } from './Map.js';
+import { GameMap, type OverlayRule } from './Map.js';
 import { Team } from './Team.js';
 import { Unit } from './Unit.js';
 import { UnitType } from './UnitType.js';
@@ -156,6 +156,19 @@ export class GameBoard {
     if (villageChange === 'former_village') this.villageOwners.delete(loc.key());
     this.terrainVersion++;
     return true;
+  }
+
+  /**
+   * `[terrain_mask]` (`intf_terrain_mask`): `GameMap.overlay`, then every
+   * side loses the villages that are no longer villages (`team::fix_villages`).
+   */
+  terrainMask(mask: GameMap, xpos: number, ypos: number, rules: readonly OverlayRule[], isOdd: boolean, ignoreSpecialLocations: boolean): void {
+    this.map.overlay(mask, xpos, ypos, rules, isOdd, ignoreSpecialLocations);
+    for (const key of [...this.villageOwners.keys()]) {
+      const [x, y] = key.split(',').map(Number) as [number, number];
+      if (!this.map.isVillage(new Location(x, y))) this.villageOwners.delete(key);
+    }
+    this.terrainVersion++;
   }
 
   /**

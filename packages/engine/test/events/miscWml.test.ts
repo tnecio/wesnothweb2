@@ -327,3 +327,39 @@ describe('[random_placement] (random_placement.lua)', () => {
     }
   });
 });
+
+describe('[terrain_mask] (gamemap_base::overlay)', () => {
+  it('by default the mask’s first real hex lands on x,y; _f is skipped; rules can keep the old terrain or substitute', () => {
+    const { board } = setup(`
+      [terrain_mask]
+        x=2
+        y=2
+        mask="_f, _f, _f
+_f, Wo, _f
+_f, Wo, _f"
+      [/terrain_mask]
+      [terrain_mask]
+        x=3
+        y=1
+        mask="_f, _f, _f
+_f, Ds, Ds
+_f, _f, _f"
+        [rule]
+          old=Gg^Vh
+          use_old=yes
+        [/rule]
+        [rule]
+          terrain=Rr
+        [/rule]
+      [/terrain_mask]`);
+    const at = (x: number, y: number) => board.map.getTerrain(Location.fromWml(x, y)).toString();
+    expect(at(2, 2)).toBe('Wo');
+    expect(at(2, 3)).toBe('Wo');
+    expect(at(1, 2)).toBe('Gg'); // _f: untouched
+    expect(at(3, 1)).toBe('Gg^Vh'); // use_old keeps the village
+    let rr = 0;
+    for (let x = 1; x <= 4; x++) for (let y = 1; y <= 3; y++) if (at(x, y) === 'Rr') rr++;
+    expect(rr).toBe(1); // the other hex: [rule] terrain= substitutes
+    expect(board.terrainVersion).toBe(2);
+  });
+});

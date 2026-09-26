@@ -17,7 +17,7 @@
  */
 
 import { Location } from './Location.js';
-import { NONE_TERRAIN, TerrainCode, TerrainTypeData, parseTerrainCode, writeTerrainCode, type MergeMode } from './Terrain.js';
+import { NONE_TERRAIN, TerrainCode, TerrainTypeData, parseTerrainCode, terrainMatches, writeTerrainCode, type MergeMode } from './Terrain.js';
 import type { WmlConfig } from '../wml/config.js';
 
 export type VillageChange = 'unchanged' | 'new_village' | 'former_village';
@@ -142,6 +142,20 @@ function parseGameMapText(input: string, borderOffset: Location): ParsedGameMap 
  * ("special locations", including the numbered per-side ones). Mirrors
  * `gamemap`/`gamemap_base`.
  */
+/** One `[terrain_mask] [rule]` (`gamemap_base::overlay_rule`). */
+export interface OverlayRule {
+  /** Terrains the map hex must match (empty: any). */
+  readonly old: readonly TerrainCode[];
+  /** Terrains the mask hex must match (empty: any). */
+  readonly new: readonly TerrainCode[];
+  readonly mode: MergeMode;
+  /** Put this instead of the mask's terrain. */
+  readonly terrain?: TerrainCode;
+  /** Keep the map's terrain. */
+  readonly useOld: boolean;
+  readonly replaceIfFailed: boolean;
+}
+
 export class GameMap {
   static readonly DEFAULT_BORDER = 1;
   static readonly MAX_PLAYERS = 9;
@@ -298,9 +312,56 @@ export class GameMap {
     return { newTerrain, villageChange };
   }
 
-  /** Parses `map_data=` text with this map's terrain types and border (for comparing or restoring a saved map). */
-  parseSibling(data: string): GameMap {
-    return GameMap.fromMapString(data, this.terrainData, this.borderSize);
+  /** Parses `map_data=` text with this map's terrain types (and border, unless given). */
+  parseSibling(data: string, borderSize = this.borderSize): GameMap {
+    return GameMap.fromMapString(data, this.terrainData, borderSize);
+  }
+
+  /**
+   * `gamemap_base::overlay` (`[terrain_mask]`): lays `mask` over this map
+   * with the mask's raw (0,0) -- its border corner -- at WML `(xpos, ypos)`.
+   * Each mask hex replaces the one under it, unless it is `_f`/`_s`, or a
+   * rule (the first whose `old`/`new` lists match) says otherwise.
+   * `isOdd` shifts odd columns as for a mask cut at an odd column. Special
+   * locations in the mask move here unless `ignoreSpecialLocations`.
+   * Works on raw tile indices, border included, as upstream does.
+   */
+  overlay(mask: GameMap, xpos: number, ypos: number, rules: readonly OverlayRule[] = [], isOdd = false, ignoreSpecialLocations = false): void {
+    const xstart = Math.max(0, -xpos);
+    const xend = Math.min(mask.totalWidthVal, this.totalWidthVal - xpos);
+    const ystartEven = Math.max(0, -ypos);
+    const yendEven = Math.min(mask.totalHeightVal, this.totalHeightVal - ypos);
+    const shift = (xpos & 1) - (isOdd ? 1 : 0);
+    const ystartOdd = Math.max(0, -ypos + shift);
+    const yendOdd = Math.min(mask.totalHeightVal, this.totalHeightVal - ypos + shift);
+    const yoffsetOdd = ypos - shift;
+    const raw = (map: GameMap, x: number, y: number) => new Location(x - map.borderSize, y - map.borderSize);
+
+    for (let x1 = xstart; x1 < xend; x1++) {
+      const odd = (x1 & 1) === 1;
+      const [ystart, yend, yoffset] = odd ? [ystartOdd, yendOdd, yoffsetOdd] : [ystartEven, yendEven, ypos];
+      for (let y1 = ystart; y1 < yend; y1++) {
+        const target = raw(this, x1 + xpos, y1 + yoffset);
+        const t = mask.getTerrain(raw(mask, x1, y1));
+        const code = writeTerrainCode(t);
+        if (code === '_f' || code === '_s') continue;
+        const current = this.getTerrain(target);
+        const rule = rules.find(
+          (r) => (r.old.length === 0 || terrainMatches(current, r.old)) && (r.new.length === 0 || terrainMatches(t, r.new)),
+        );
+        if (!rule) this.setTerrain(target, t, 'BOTH', false);
+        else if (!rule.useOld) this.setTerrain(target, rule.terrain ?? t, rule.mode, rule.replaceIfFailed);
+      }
+    }
+
+    if (ignoreSpecialLocations) return;
+    for (const [name, loc] of mask.startingPositions) {
+      const x = loc.x + mask.borderSize;
+      const y = loc.y + mask.borderSize;
+      const odd = (x & 1) === 1;
+      if (x < xstart || x >= xend || y < (odd ? ystartOdd : ystartEven) || y >= (odd ? yendOdd : yendEven)) continue;
+      this.startingPositions.set(name, raw(this, x + xpos, y + (odd ? yoffsetOdd : ypos)));
+    }
   }
 
   /** `wesnoth.terrain_types[code]` exists: a terrain type this game knows. */

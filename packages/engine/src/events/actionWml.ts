@@ -104,6 +104,7 @@ import {
   actionStoreUnitType,
   actionStoreVillages,
   actionTerrain,
+  actionTerrainMask,
   actionUnhideUnit,
   actionUnitWorth,
   actionWmlMessage,
@@ -1787,6 +1788,7 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('wml_message', actionWmlMessage);
   registry.register('terrain', actionTerrain);
   registry.register('cancel_action', actionCancelAction);
+  registry.register('terrain_mask', actionTerrainMask);
   registry.register('unstore_unit', actionUnstoreUnit);
   registry.register('kill', actionKill);
   registry.register('modify_unit', actionModifyUnit);

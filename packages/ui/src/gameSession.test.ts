@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import {
   Location,
@@ -11,6 +12,7 @@ import {
   ALL_DIRECTIONS,
   directionBetween,
   distanceBetween,
+  parseConfig,
   isBackstabActive,
   createTypeResolver,
   type GameBoardSnapshot,
@@ -2217,5 +2219,20 @@ describe('Phase 18d: exit hex / enter hex fire mid-move; [cancel_action] stops t
     expect(session.getVariable('stopped_at')).toBe(`${unit.location.wmlX},${unit.location.wmlY}`);
     expect(unit.movesLeft).toBeGreaterThan(0);
     expect(unit.movesLeft).toBeLessThan(movesBefore);
+  });
+});
+
+describe('Phase 18d: [terrain_mask] against the real 1.19 build', () => {
+  it("Dead Water 2's prestart mask gives exactly the real game's map, the moved side 4 start included", async () => {
+    const snapshot = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/02_Flight.json'), 'utf8')) as GameBoardSnapshot;
+    const session = new GameSession(snapshot);
+    await session.runStartupEvents();
+    const real = parseConfig(
+      zlib.gunzipSync(fs.readFileSync(path.join(repoRoot, 'packages/ui/src/save/fixtures/dead-water-2-autosave-turn1-1.19.21.gz'))).toString('utf8'),
+    )
+      .child('snapshot')!
+      .getString('map_data');
+    const cells = (text: string) => text.trim().split('\n').map((row) => row.split(',').map((c) => c.trim()));
+    expect(cells(session.board.map.write())).toEqual(cells(real));
   });
 });

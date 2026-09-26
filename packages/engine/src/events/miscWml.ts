@@ -13,13 +13,14 @@
  */
 import { WmlConfig } from '../wml/config.js';
 import type { EventContext } from './context.js';
-import type { Location } from '../model/Location.js';
+import { Direction, Location } from '../model/Location.js';
 import { UnitStatus } from '../model/Unit.js';
 import { applyModifier } from '../model/UnitType.js';
 import { BASE_INCOME } from '../actions/carryover.js';
 import { findLocations, findUnits } from './filter.js';
 import { findSides } from './sideFilter.js';
-import { parseTerrainCode, type MergeMode } from '../model/Terrain.js';
+import { parseTerrainCode, parseTerrainList, type MergeMode } from '../model/Terrain.js';
+import type { OverlayRule } from '../model/Map.js';
 
 /** The tag's config with variables substituted throughout, filter children included (`wml.parsed`). */
 const parsed = (cfg: WmlConfig, ctx: EventContext) => ctx.variables.expandConfigDeep(cfg);
@@ -279,4 +280,44 @@ export function actionTerrain(raw: WmlConfig, ctx: EventContext): void {
 /** `[cancel_action]`: stops the move whose `enter hex`/`exit hex` event is running (`wesnoth.cancel_action`). */
 export function actionCancelAction(_cfg: WmlConfig, ctx: EventContext): void {
   ctx.actionCanceled = true;
+}
+
+/**
+ * `[terrain_mask]` (`wml-tags.lua`): overlays `mask=` on the map at `x,y`.
+ * Alignment: `alignment=even|odd|raw`; else `border=no` means odd; else
+ * (the default) the mask's border corner goes one hex north-west of
+ * `x,y`, so its first real hex lands on it. `[rule]`s pick what to keep.
+ */
+export function actionTerrainMask(raw: WmlConfig, ctx: EventContext): void {
+  const cfg = parsed(raw, ctx);
+  if (!cfg.hasAttribute('x') || !cfg.hasAttribute('y')) {
+    ctx.log('error', `[terrain_mask] missing ${cfg.hasAttribute('x') ? 'y' : 'x'} attribute`);
+    return;
+  }
+  let x = cfg.getNumber('x');
+  let y = cfg.getNumber('y');
+  const alignment = cfg.getString('alignment', '');
+  let isOdd = false;
+  if (alignment === 'odd') isOdd = true;
+  else if (alignment === 'raw') isOdd = x % 2 !== 0;
+  else if (alignment !== 'even' && cfg.hasAttribute('border') && !cfg.getBoolean('border')) isOdd = true;
+  else if (alignment !== 'even') {
+    const nw = Location.fromWml(x, y).getDirection(Direction.NorthWest);
+    x = nw.wmlX;
+    y = nw.wmlY;
+  }
+  if (cfg.hasAttribute('mask_file')) {
+    ctx.log('error', '[terrain_mask] mask_file= is not supported; use mask=');
+    return;
+  }
+  const rules: OverlayRule[] = cfg.children('rule').map((r) => ({
+    old: parseTerrainList(r.getString('old', '')),
+    new: parseTerrainList(r.getString('new', '')),
+    mode: (r.getString('layer', 'both') === 'base' ? 'BASE' : r.getString('layer', 'both') === 'overlay' ? 'OVERLAY' : 'BOTH') as MergeMode,
+    ...(r.getString('terrain', '') !== '' ? { terrain: parseTerrainList(r.getString('terrain'))[0] } : {}),
+    useOld: r.getBoolean('use_old', false),
+    replaceIfFailed: r.getBoolean('replace_if_failed', false),
+  }));
+  const mask = ctx.board.map.parseSibling(cfg.getString('mask', ''), 1);
+  ctx.board.terrainMask(mask, x, y, rules, isOdd, cfg.getBoolean('ignore_special_locations', false));
 }
