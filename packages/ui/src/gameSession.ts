@@ -1007,6 +1007,22 @@ export interface SaveGameData {
   wesnothExtras?: WmlConfigJson;
   /** Phase 18c: `[object] id=`s already taken (upstream's `[used_items]`). */
   usedItems?: string[];
+  /**
+   * Phase 18c: the live `[event]` handlers, in order -- spent
+   * `first_time_only` ones gone, ones added at run time present, as
+   * upstream writes them into `[snapshot]`. Real bug fixed with it: a
+   * reloaded game rebuilt its handlers from the scenario, so every
+   * one-time event (a first `moveto` dialogue, a turn-limited trigger)
+   * could fire again, and handlers added by events were lost. Absent on
+   * older saves, which keep the old behaviour.
+   */
+  events?: WmlConfigJson[];
+  /** Phase 18c: the unit id counter (upstream's `next_underlying_unit_id`). Absent: derived from the highest id in the save. */
+  nextUnitId?: number;
+  /** Phase 18c: `[set_menu_item]`s in effect (lost on reload before). */
+  menuItems?: { id: string; description: string; command: WmlConfigJson }[];
+  /** Phase 18c: each side's current `[objectives]` (lost on reload before). */
+  objectives?: { side: number; objectives: ScenarioObjectives }[];
   /** Phase 18b: upstream's `random_mode`; absent means `per_action`. */
   randomMode?: RandomMode;
   /** Upstream's `do_healing`: false only until the scenario's first side turn has started. Absent: true once startup events ran. */
@@ -3367,6 +3383,10 @@ export class GameSession {
       tunnels: this.board.tunnels.toConfigs().map((c) => c.toJSON()),
       nextTeleportGroupId: this.board.tunnels.nextTeleportGroupId,
       usedItems: [...this.eventPump.ctx.usedItems],
+      nextUnitId: this.board.nextUnitId,
+      events: this.eventPump.manager.activeConfigs().map((c) => c.toJSON()),
+      menuItems: [...this.eventPump.ctx.menuItems.values()].map((m) => ({ id: m.id, description: m.description, command: m.command.toJSON() })),
+      objectives: [...this.eventPump.ctx.objectivesBySide].map(([side, objectives]) => ({ side, objectives })),
       randomMode: this.rng.mode,
       doHealing: this.doHealing,
       ...(this.replayStartData ? { replay: { start: this.replayStartData, commands: this.recorder.toJSON() } } : {}),
@@ -3429,6 +3449,19 @@ export class GameSession {
     this.board.tunnels.loadConfigs((data.tunnels ?? []).map((c) => WmlConfig.fromJSON(c)), data.nextTeleportGroupId ?? 0);
     this.rng.mode = data.randomMode ?? 'per_action';
     this.eventPump.ctx.usedItems = new Set(data.usedItems ?? []);
+    this.board.nextUnitId =
+      data.nextUnitId ?? Math.max(0, ...[...data.units, ...(data.recall ?? [])].map((u) => u.underlyingId ?? 0));
+    if (data.events) this.eventPump.manager.replaceAll(data.events.map((e) => WmlConfig.fromJSON(e)));
+    if (data.menuItems) {
+      this.eventPump.ctx.menuItems = new Map(
+        data.menuItems.map((m) => [m.id, { id: m.id, description: m.description, command: WmlConfig.fromJSON(m.command) }]),
+      );
+    }
+    if (data.objectives) {
+      this.eventPump.ctx.objectivesBySide = new Map(data.objectives.map((o) => [o.side, o.objectives]));
+      const mine = this.eventPump.ctx.objectivesBySide.get(this.playerSide);
+      if (mine) this.scenarioObjectives = mine;
+    }
     this.doHealing = data.doHealing ?? data.startupEventsRun;
     this.replayStartData = data.replay?.start ?? null;
     this.recorder.replaceAll(data.replay?.commands ?? []);

@@ -111,6 +111,9 @@ import { ShroudClearer } from '../actions/vision.js';
  * not to the action sequence), and iteration stops as soon as
  * `ctx.exit.type` becomes non-`'none'`.
  */
+/** Action tags whose handler gets its config exactly as written (see `runActionFlow`). */
+const RAW_CONFIG_TAGS = new Set(['event']);
+
 export function* runActionFlow(body: WmlConfig, ctx: EventContext): Flow {
   for (const { tag, config } of body.allChildren()) {
     if (tag.startsWith('filter')) continue;
@@ -120,7 +123,10 @@ export function* runActionFlow(body: WmlConfig, ctx: EventContext): Flow {
       continue;
     }
     try {
-      const result = handler(ctx.variables.expandConfig(config), ctx);
+      // A nested [event] is stored as written: its variables are substituted
+      // when it fires, not now (`delayed_variable_substitution` defaults to
+      // yes), so it must not get the usual attribute expansion either.
+      const result = handler(RAW_CONFIG_TAGS.has(tag) ? config : ctx.variables.expandConfig(config), ctx);
       // A handler that needs to block returns a generator (see
       // interaction.ts); delegating rather than driving it here is what
       // lets the suspension travel out to whoever is pumping.
@@ -840,6 +846,35 @@ function actionModifyUnit(cfg: WmlConfig, ctx: EventContext): void {
   }
 }
 
+// --- runtime events: [event], [remove_event] (Phase 18c) ---
+
+/**
+ * `wml_actions.event` (`wml-tags.lua`) -> `wesnoth.game_events.add_wml`:
+ * an `[event]` inside an event body registers a new handler. Stored as
+ * written unless `delayed_variable_substitution=no`, in which case its
+ * variables are substituted now. The deprecated `remove=yes` form removes
+ * by id instead.
+ */
+function actionEvent(cfg: WmlConfig, ctx: EventContext): void {
+  if (ctx.variables.expandConfig(cfg).getBoolean('remove', false)) {
+    actionRemoveEvent(ctx.variables.expandConfig(cfg), ctx);
+    return;
+  }
+  const delayed = cfg.getBoolean('delayed_variable_substitution', true);
+  const handler = delayed ? cfg.clone() : ctx.variables.expandConfigDeep(cfg);
+  if (!ctx.addEvent(handler)) ctx.log('debug', `[event] ${handler.getString('name', '')} id=${handler.getString('id', '')} not added (duplicate id, or no name)`);
+}
+
+/** `wml_actions.remove_event`: every handler whose id is in `id=` (a comma list) is removed. */
+function actionRemoveEvent(cfg: WmlConfig, ctx: EventContext): void {
+  const ids = cfg.getString('id', '');
+  if (ids === '') {
+    ctx.log('error', '[remove_event] missing required id= key');
+    return;
+  }
+  for (const id of ids.split(',').map((v) => v.trim()).filter((v) => v !== '')) ctx.removeEvent(id);
+}
+
 // --- unit modifications: [object], [remove_object], [remove_trait], [transform_unit] (Phase 18c) ---
 
 /** What `[effect]`s applied from an event resolve against: this board, this scenario's types, the unit's side's recall cost. */
@@ -1013,6 +1048,36 @@ function placeNewUnit(cfg: WmlConfig, ctx: EventContext, unit: Unit, side: numbe
   return undefined;
 }
 
+/**
+ * A new real unit's creation-time draws (`unit::init(cfg)`), folded into its
+ * config before it is built -- so the traits take effect and every override
+ * the config gives (`max_hitpoints=`, `hitpoints=`) still applies on top, in
+ * upstream's order: a random gender only with `random_gender=yes`, traits
+ * unless `random_traits=no` (the config's own `[modifications]` traits
+ * count), a name unless it has one or `generate_name=no`.
+ */
+function withCreationRolls(cfg: WmlConfig, ctx: EventContext): WmlConfig {
+  if (!ctx.rng) return cfg;
+  const typeId = cfg.hasAttribute('parent_type') ? cfg.getString('parent_type') : cfg.getString('type');
+  const type = ctx.resolveType(typeId).variation(cfg.getString('variation', ''));
+  const existing = cfg.children('modifications').flatMap((m) => m.children('trait').map((t) => ({ kind: 'trait', cfg: t })));
+  const { gender, traits } = rollNewUnit(type, ctx.rng, {
+    ...(cfg.hasAttribute('gender') ? { gender: cfg.getString('gender') } : {}),
+    randomGender: cfg.getBoolean('random_gender', false),
+    existing,
+    randomTraits: cfg.getBoolean('random_traits', true),
+    canRecruit: cfg.getBoolean('canrecruit', false),
+    named: cfg.getString('name', '') !== '' || !cfg.getBoolean('generate_name', true),
+  });
+  const out = cfg.clone();
+  out.setAttribute('gender', gender);
+  if (traits.length > 0) {
+    const mods = out.child('modifications') ?? out.addChild('modifications');
+    for (const t of traits) mods.addChild('trait', t.cfg);
+  }
+  return out;
+}
+
 function* actionUnit(cfg: WmlConfig, ctx: EventContext): Flow {
   const side = cfg.getNumber('side', 1);
   const team = ctx.board.getTeam(side);
@@ -1022,26 +1087,12 @@ function* actionUnit(cfg: WmlConfig, ctx: EventContext): Flow {
   }
   let unit: Unit;
   try {
-    unit = Unit.fromConfig(cfg, ctx.resolveType);
+    unit = Unit.fromConfig(withCreationRolls(cfg, ctx), ctx.resolveType);
   } catch (e) {
     ctx.log('error', `Error occurred inside [unit]: ${e instanceof Error ? e.message : String(e)}`);
     return;
   }
-  // A new real unit gets upstream's creation-time draws (`unit::init(cfg)`):
-  // a random gender only with `random_gender=yes`, traits unless
-  // `random_traits=no`, a name unless it has one or `generate_name=no`.
-  if (ctx.rng) {
-    const { gender, traits } = rollNewUnit(unit.type, ctx.rng, {
-      ...(cfg.hasAttribute('gender') ? { gender: cfg.getString('gender') } : {}),
-      randomGender: cfg.getBoolean('random_gender', false),
-      existing: unit.modifications,
-      randomTraits: cfg.getBoolean('random_traits', true),
-      canRecruit: unit.canRecruit,
-      named: unit.name !== '' || !cfg.getBoolean('generate_name', true),
-    });
-    unit.gender = gender;
-    unit.modifications = [...unit.modifications, ...traits];
-  }
+  ctx.board.assignUnitId(unit);
   const placed = placeNewUnit(cfg, ctx, unit, side);
   if (placed) {
     unit.location = placed;
@@ -1616,6 +1667,8 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('allow_recruit', actionAllowRecruit);
   registry.register('disallow_recruit', actionDisallowRecruit);
   registry.register('object', actionObject);
+  registry.register('event', actionEvent);
+  registry.register('remove_event', actionRemoveEvent);
   registry.register('remove_object', actionRemoveObject);
   registry.register('remove_trait', actionRemoveTrait);
   registry.register('transform_unit', actionTransformUnit);

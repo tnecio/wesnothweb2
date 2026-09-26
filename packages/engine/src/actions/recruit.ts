@@ -418,6 +418,7 @@ export function* recruitUnitFlow(
 ): Flow<PlaceRecruitResult | null> {
   const { gender, traits } = rollNewUnit(type, rng, { randomGender: true, randomTraits: true, canRecruit: false, named: false });
   const unit = Unit.create(type, team.side, loc, { canRecruit: false, gender, modifications: traits });
+  board.assignUnitId(unit);
   return yield* placeRecruitFlow(board, team, unit, loc, from, type.cost, false, hooks);
 }
 
@@ -448,6 +449,7 @@ export function recruitUnit(board: GameBoard, team: Team, type: UnitType, loc: L
   // facing draw uses the unsynced generator, so it is not mirrored.
   const { gender, traits } = rollNewUnit(type, rng, { randomGender: true, randomTraits: true, canRecruit: false, named: false });
   const unit = Unit.create(type, team.side, loc, { canRecruit: false, gender, modifications: traits });
+  board.assignUnitId(unit);
   return placeRecruit(board, team, unit, loc, from, type.cost, false, false, undefined, raise);
 }
 

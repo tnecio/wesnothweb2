@@ -37,3 +37,16 @@ here and compares the board with the turn-2 snapshot.
 Made under Xvfb with `wesnoth --userdata-dir <scratch> --load <fixture>`,
 ending turns with Ctrl+Space (confirming the "you have not started your turn"
 prompt) and dismissing dialogue with Return.
+
+## Real AI game on 1.19 (Phase 18c)
+
+`dead-water-1-real-ai-turn{2,3,4,5}-1.19.21.gz` are autosaves written by a
+desktop build of the checked-out 1.19.21+dev source -- the same version as
+the port's data -- with side 1 ending its turns untouched and the real AI
+playing side 2 for four turns (84 commands: recruits, moves, the `capture`
+events that raise zombies). `replay.test.ts` replays the turn-5 log here and
+compares every unit (id, type, variation, hitpoints, hex) with each turn's
+autosave. Made with
+`wesnoth --data-dir <src> --userdata-dir <scratch> --campaign Dead_Water
+--campaign-difficulty 2 --campaign-skip-story` under Xvfb; 1.19 writes its
+saves to `<userdata>/sync/saves`.

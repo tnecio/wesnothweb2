@@ -27,7 +27,7 @@
 
 import type { WmlConfig } from '../wml/config.js';
 import type { EventContext } from './context.js';
-import { findUnits } from './filter.js';
+import { findLocations, findUnits } from './filter.js';
 
 /** Parses a WML count= range list ("1-infinity", "2", "1-3,5") the same way `have_unit`'s count= does. */
 function parseCounts(text: string): Array<[number, number]> {
@@ -93,6 +93,11 @@ function variableMatches(cfg: WmlConfig, ctx: EventContext): boolean {
 export const builtinConditions: Record<string, (cfg: WmlConfig, ctx: EventContext) => boolean> = {
   have_unit: haveUnit,
   variable: variableMatches,
+  // wml_conditionals.have_location: how many hexes match the location filter, against count= (default 1-infinity).
+  have_location: (cfg, ctx) => {
+    const counts = cfg.hasAttribute('count') ? parseCounts(cfg.getString('count')) : DEFAULT_COUNTS;
+    return inCounts(findLocations(ctx.board, cfg).length, counts);
+  },
   // object.lua's wml_conditionals.found_item: was the [object] with this id taken?
   found_item: (cfg, ctx) => ctx.usedItems.has(cfg.getString('id', '')),
 };

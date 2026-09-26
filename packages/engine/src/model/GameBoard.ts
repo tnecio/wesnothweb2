@@ -30,6 +30,24 @@ export class GameBoard {
   readonly tunnels = new TunnelManager();
 
   /**
+   * `n_unit::id_manager`'s counter (`next_underlying_unit_id` in a save):
+   * how many real unit ids have been handed out. `assignUnitId` gives the
+   * next one to a new unit.
+   */
+  nextUnitId = 0;
+
+  /**
+   * `unit::set_underlying_id`: a new unit without an `underlying_id` gets
+   * the next number, and one without an `id=` becomes `<type>-<number>`
+   * (upstream's "Merman Citizen-3"), so recalls and filters by id line up
+   * with the real game.
+   */
+  assignUnitId(unit: Unit): void {
+    if (unit.underlyingId === 0) unit.underlyingId = ++this.nextUnitId;
+    if (unit.id === '') unit.id = `${unit.type.id || 'Unit'}-${unit.underlyingId}`;
+  }
+
+  /**
    * Effective `lawful_bonus` at a hex (upstream's `tod_manager::get_illuminated_time_of_day`),
    * installed by whoever owns the schedule; `null` means neutral everywhere.
    * Lets board-level rules like `[filter_location] time_of_day=` avoid depending on the session.

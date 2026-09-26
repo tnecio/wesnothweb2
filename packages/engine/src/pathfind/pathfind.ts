@@ -481,7 +481,16 @@ export function findVacantTile(board: GameBoard, loc: Location, options: FindVac
   const castleOnly = options.castleOnly ?? false;
   const passCheck = options.passCheck;
 
-  const checked = new Set<string>();
+  // Upstream's tile sets are std::set<map_location>, which iterate sorted by
+  // (x, y) -- so among equally distant vacant hexes the lowest x (then y)
+  // wins. Iterating in insertion order instead put a Dead Water 1 zombie on
+  // a different hex than the real game did.
+  const byXY = (a: string, b: string) => {
+    const la = Location.fromKey(a);
+    const lb = Location.fromKey(b);
+    return la.x - lb.x || la.y - lb.y;
+  };
+  let checked = new Set<string>();
   let pending = new Set<string>([loc.key()]);
 
   for (let distance = 0; distance < 50; distance++) {
@@ -489,7 +498,7 @@ export function findVacantTile(board: GameBoard, loc: Location, options: FindVac
     const checking = pending;
     pending = new Set<string>();
 
-    for (const key of checking) {
+    for (const key of [...checking].sort(byXY)) {
       const here = Location.fromKey(key);
       if (castleOnly && !board.map.isCastle(here)) continue;
 
@@ -503,7 +512,8 @@ export function findVacantTile(board: GameBoard, loc: Location, options: FindVac
         if (!checked.has(adjKey) && !checking.has(adjKey)) pending.add(adjKey);
       }
     }
-    for (const key of checking) checked.add(key);
+    // `tiles_checked.swap(tiles_checking)`: only the ring just checked is remembered.
+    checked = checking;
   }
   return undefined;
 }

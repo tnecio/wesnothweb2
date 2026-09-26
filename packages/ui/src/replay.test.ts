@@ -406,14 +406,94 @@ describe('Phase 18b milestone 4: a replay recorded by the real Wesnoth 1.16.9 re
       .flatMap((side) => side.children('unit'))
       .filter((u) => u.hasAttribute('x'));
     expect(real.length).toBeGreaterThan(10);
-    const describe = (type: string, traits: string[], gender: string) => `${type} [${traits.join(',')}] ${gender}`;
+    const describe = (type: string, traits: string[], gender: string, id: string, hp: number) => `${id}: ${type} [${traits.join(',')}] ${gender} ${hp}hp`;
     for (const u of real) {
       const ours = session.board.unitAt(Location.fromWml(u.getNumber('x'), u.getNumber('y')));
       const realTraits = (u.child('modifications')?.children('trait') ?? []).map((t) => t.getString('id'));
-      expect(ours && describe(ours.type.id, ours.modifications.filter((m) => m.kind === 'trait').map((m) => m.cfg.getString('id')), ours.gender)).toBe(
-        describe(u.getString('type'), realTraits, u.getString('gender', 'male')),
-      );
+      // Phase 18c: the ids (upstream's unit id counter) and hitpoints (trait effects) match too.
+      expect(
+        ours && describe(ours.type.id, ours.modifications.filter((m) => m.kind === 'trait').map((m) => m.cfg.getString('id')), ours.gender, ours.id, ours.hitpoints),
+      ).toBe(describe(u.getString('type'), realTraits, u.getString('gender', 'male'), u.getString('id'), u.getNumber('hitpoints')));
     }
     expect(session.board.allUnits()).toHaveLength(real.length);
+  });
+});
+
+describe('Phase 18c milestone: a real Wesnoth 1.19 AI game replays here, unit for unit', () => {
+  const real19 = (turn: number) =>
+    parseConfig(gunzipSync(fs.readFileSync(path.join(repoRoot, `packages/ui/src/save/fixtures/dead-water-1-real-ai-turn${turn}-1.19.21.gz`))).toString('utf8'));
+
+  it('Dead Water 1, the real 1.19 AI playing side 2 for four turns: the whole log replays, and every turn starts on the real board', () => {
+    const top = real19(5);
+    expect(top.getString('version')).toBe('1.19.21+dev');
+    const { save } = fromWesnothSave(top);
+    const commands = save.replay!.commands;
+    expect(commands.length).toBeGreaterThan(80);
+    expect(save.replay!.readIssues).toBeUndefined();
+
+    const session = GameSession.forReplay(load('01_Invasion'), save)!;
+    const checkedTurns: number[] = [];
+    for (const rec of commands) {
+      expect(session.replayCommand(rec)).toBe(true);
+      expect(session.syncIssues).toEqual([]);
+      if (rec.command.kind !== 'init_side' || rec.command.side !== 1 || session.turnNumber < 2) continue;
+      // The real game's own autosave of this turn's start.
+      const real = real19(session.turnNumber)
+        .child('snapshot')!
+        .children('side')
+        .flatMap((side) => side.children('unit'))
+        .filter((u) => u.hasAttribute('x'));
+      const describe = (id: string, type: string, variation: string, hp: number, x: number, y: number) => `${id} ${type}${variation ? `:${variation}` : ''} ${hp}hp @${x},${y}`;
+      const theirs = real.map((u) => describe(u.getString('id'), u.getString('type'), u.getString('variation', ''), u.getNumber('hitpoints'), u.getNumber('x'), u.getNumber('y'))).sort();
+      const ours = session.board
+        .allUnits()
+        .map((u) => describe(u.id, u.type.id, u.variation, u.hitpoints, u.location.wmlX, u.location.wmlY))
+        .sort();
+      expect(ours).toEqual(theirs);
+      checkedTurns.push(session.turnNumber);
+    }
+    expect(checkedTurns).toEqual([2, 3, 4, 5]);
+  });
+});
+
+describe('Phase 18c: event state survives a save and a load', () => {
+  it('a spent first_time_only event stays spent, and a runtime event and a menu item survive', async () => {
+    const snapshot = load('synth_economy_01');
+    snapshot.scenarioConfigJson.children.push(
+      {
+        tag: 'event',
+        config: {
+          attrs: { name: 'moveto' },
+          children: [
+            { tag: 'set_variable', config: { attrs: { name: 'greeted', add: 1 }, children: [] } },
+            {
+              tag: 'event',
+              config: { attrs: { name: 'turn 2', id: 'added_later' }, children: [{ tag: 'set_variable', config: { attrs: { name: 'later', value: 'yes' }, children: [] } }] },
+            },
+            {
+              tag: 'set_menu_item',
+              config: { attrs: { id: 'wave', description: 'Wave' }, children: [{ tag: 'command', config: { attrs: {}, children: [] } }] },
+            },
+          ],
+        },
+      },
+    );
+    const session = new GameSession(snapshot, { seed: 1 });
+    await session.runStartupEvents();
+    const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
+    session.selectUnit(leader);
+    await session.handleHexClick(session.reachable[0]!.x, session.reachable[0]!.y);
+    expect(session.getVariable('greeted')).toBe(1);
+
+    const saved = JSON.parse(JSON.stringify(session.toSaveData())) as SaveGameData;
+    const reloaded = GameSession.fromSaveData(load('synth_economy_01'), saved);
+    expect(reloaded.menuItems.map((m) => m.id)).toEqual(['wave']);
+    await reloaded.endTurn();
+    await reloaded.endTurn();
+    expect(reloaded.getVariable('later')).toBe('yes'); // the runtime-added turn 2 event fired
+    const leader2 = reloaded.board.unitsForSide(1).find((u) => u.canRecruit)!;
+    reloaded.selectUnit(leader2);
+    await reloaded.handleHexClick(reloaded.reachable[0]!.x, reloaded.reachable[0]!.y);
+    expect(reloaded.getVariable('greeted')).toBe(1); // the one-time moveto did not fire again
   });
 });

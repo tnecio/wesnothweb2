@@ -223,3 +223,83 @@ describe('[remove_object], [remove_trait], [transform_unit], [modify_unit] modif
     expect(spearman.modifications).toEqual([]);
   });
 });
+
+describe('runtime [event] and [remove_event]', () => {
+  it('an [event] in an event body registers a handler, stored as written unless delayed_variable_substitution=no', () => {
+    const { pump } = setup(`
+      [event]
+        name=setup
+        [set_variable]
+          name=who
+          value=first
+        [/set_variable]
+        [event]
+          name=later
+          id=later_literal
+          [set_variable]
+            name=literal
+            value=$who
+          [/set_variable]
+        [/event]
+        [event]
+          name=later
+          id=later_now
+          delayed_variable_substitution=no
+          [set_variable]
+            name=substituted
+            value=$who
+          [/set_variable]
+        [/event]
+        [set_variable]
+          name=who
+          value=second
+        [/set_variable]
+      [/event]
+    `);
+    pump.fire('later');
+    expect(pump.ctx.variables.get('literal')).toBeUndefined();
+    pump.fire('setup');
+    pump.fire('later');
+    expect(pump.ctx.variables.get('literal')).toBe('second');
+    expect(pump.ctx.variables.get('substituted')).toBe('first');
+  });
+
+  it('[remove_event] id= removes handlers; a duplicate id is not added twice', () => {
+    const { pump } = setup(`
+      [event]
+        name=tick
+        id=counter
+        first_time_only=no
+        [set_variable]
+          name=ticks
+          add=1
+        [/set_variable]
+      [/event]
+      [event]
+        name=stop
+        [remove_event]
+          id=counter
+        [/remove_event]
+      [/event]
+      [event]
+        name=again
+        [event]
+          name=tick
+          id=counter
+          first_time_only=no
+          [set_variable]
+            name=ticks
+            add=100
+          [/set_variable]
+        [/event]
+      [/event]
+    `);
+    pump.fire('again'); // duplicate id while the original is live: ignored
+    pump.fire('tick');
+    expect(pump.ctx.variables.get('ticks')).toBe(1);
+    pump.fire('stop');
+    pump.fire('tick');
+    expect(pump.ctx.variables.get('ticks')).toBe(1);
+    expect(pump.manager.activeConfigs().some((c) => c.getString('id') === 'counter')).toBe(false);
+  });
+});

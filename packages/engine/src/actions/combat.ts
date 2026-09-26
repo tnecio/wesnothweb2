@@ -23,6 +23,7 @@
  */
 
 import { recalculateFog, type RaiseEvent } from './vision.js';
+import { rollNewUnit } from './recruit.js';
 import { Location, getAdjacentTiles, ALL_DIRECTIONS, distanceBetween, type Direction } from '../model/Location.js';
 import type { GameBoard } from '../model/GameBoard.js';
 import { Unit, UnitStatus } from '../model/Unit.js';
@@ -276,7 +277,11 @@ export function executeAttack(
       plagueSpawn = { type: plagueType, at: deadLoc, spawned: false };
       return;
     }
-    const spawned = Unit.create(type, killerUnit.side, deadLoc);
+    // attack::unit_killed: `unit::create(*reanimator, side, true, MALE)` --
+    // a real new unit, so it rolls its traits and name as any does.
+    const { traits } = rollNewUnit(type, rng, { gender: 'male', randomGender: false, randomTraits: true, canRecruit: false, named: false });
+    const spawned = Unit.create(type, killerUnit.side, deadLoc, { gender: 'male', modifications: traits });
+    board.assignUnitId(spawned);
     spawned.attacksLeft = 0;
     spawned.movesLeft = 0;
     board.addUnit(spawned);

@@ -261,6 +261,10 @@ export function fromWesnothSave(cfg: WmlConfig): ImportedWesnothSave {
       units,
       recall,
       variables: snapshot.child('variables')?.toJSON(),
+      // Phase 18c: the live handlers and the objects already taken, as the real game saved them.
+      events: snapshot.children('event').map((e) => e.toJSON()),
+      nextUnitId: snapshot.getNumber('next_underlying_unit_id', 0),
+      usedItems: (snapshot.child('used_items')?.attributeNames() ?? []).filter((id) => snapshot.child('used_items')!.getBoolean(id, false)),
       tunnels: snapshot.children('tunnel').map((t) => t.toJSON()),
       nextTeleportGroupId: snapshot.getNumber('next_teleport_group_id', 0),
       rng: {
@@ -530,6 +534,7 @@ export function toWesnothSave(
     'next_underlying_unit_id',
     Math.max(
       snapCfg.getNumber('next_underlying_unit_id', 0),
+      save.nextUnitId ?? 0,
       ...save.units.map((u) => u.underlyingId ?? 0),
       ...(save.recall ?? []).map((u) => u.underlyingId ?? 0),
     ),
@@ -543,6 +548,17 @@ export function toWesnothSave(
     snapCfg.setAttribute('random_calls', save.rng.calls);
   }
   if (save.variables) snapCfg.addChild('variables', WmlConfig.fromJSON(save.variables));
+  // Phase 18c: the handlers still live, not the scenario's originals --
+  // otherwise the real game would re-fire every spent one-time event.
+  if (save.events) {
+    snapCfg.removeChildren('event');
+    for (const e of save.events) snapCfg.addChild('event', WmlConfig.fromJSON(e));
+  }
+  if (save.usedItems && save.usedItems.length > 0) {
+    snapCfg.removeChildren('used_items');
+    const used = snapCfg.addChild('used_items');
+    for (const id of save.usedItems) used.setAttribute(id, true);
+  }
   // `pathfind::manager::to_config`, merged into the snapshot root.
   snapCfg.removeChildren('tunnel');
   for (const t of save.tunnels ?? []) snapCfg.addChild('tunnel', WmlConfig.fromJSON(t));

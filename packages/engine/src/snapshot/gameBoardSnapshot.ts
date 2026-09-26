@@ -635,6 +635,7 @@ export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBo
     // case, same as before this fix).
     if (u.experience !== undefined) unit.experience = u.experience;
     if (u.maxExperience !== undefined) unit.maxExperience = u.maxExperience;
+    board.assignUnitId(unit);
     board.addUnit(unit);
     // Mirrors `GameBoard.fromConfig`'s own initial-placement capture (real
     // `unit_creator`'s default `allow_get_village=true`) -- this snapshot's

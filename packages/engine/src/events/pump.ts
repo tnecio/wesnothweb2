@@ -125,6 +125,27 @@ export class EventManager {
   handlerById(id: string): WmlEventHandler | undefined {
     return this.getActive().find((h) => h.id === id);
   }
+
+  /** `manager::remove_event_handler(id)` (`[remove_event]`): the handler with this id stops handling anything. */
+  removeById(id: string): void {
+    for (const h of this.handlers) if (h.id === id) h.disabled = true;
+    this.handlers = this.handlers.filter((h) => !h.disabled);
+  }
+
+  /**
+   * The live handlers' configs, in order -- what a save records (upstream
+   * writes the current `[event]`s into `[snapshot]`: a spent
+   * `first_time_only` handler is gone, one added at run time is there).
+   */
+  activeConfigs(): WmlConfig[] {
+    return this.getActive().map((h) => h.rawCfg);
+  }
+
+  /** Replaces every handler with `cfgs`, as loading a save's `[event]`s does. */
+  replaceAll(cfgs: readonly WmlConfig[]): void {
+    this.handlers = [];
+    for (const cfg of cfgs) this.addFromWml(cfg);
+  }
 }
 
 export interface EventPumpOptions {
@@ -158,7 +179,7 @@ export class EventPump {
   readonly ctx: EventContext;
 
   constructor(
-    private readonly manager: EventManager,
+    readonly manager: EventManager,
     options: EventPumpOptions,
   ) {
     this.ctx = {
@@ -182,6 +203,8 @@ export class EventPump {
       },
       fireNow: (name, loc1 = Location.NULL, loc2 = Location.NULL, data = new WmlConfig(), id = '') =>
         this.fireNowFlow(name, loc1, loc2, data, id),
+      addEvent: (cfg) => this.manager.addFromWml(cfg) !== undefined,
+      removeEvent: (id) => this.manager.removeById(id),
       skipMessages: false,
       setUndoable: (undoable) => {
         this.undoDisabled[this.undoDisabled.length - 1] = !undoable;

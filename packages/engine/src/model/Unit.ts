@@ -164,8 +164,10 @@ export class Unit {
 
   private constructor(type: UnitType, side: number, location: Location, options: UnitOptions) {
     this.baseType = type;
-    this.variation = options.variation ?? '';
-    this.type = type.variation(this.variation);
+    this.type = type.variation(options.variation ?? '');
+    // advance_to: `variation_ = new_type.variation_id()` -- an unknown or
+    // `none` variation is no variation at all.
+    this.variation = this.type.variationId;
     this.side = side;
     this.location = location;
     this.experienceModifier = options.experienceModifier ?? 100;

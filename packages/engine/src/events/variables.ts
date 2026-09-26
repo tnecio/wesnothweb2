@@ -44,6 +44,7 @@
  *   filters) but wasn't needed by any real content exercised so far.
  */
 
+import { parseFormula } from '../formula/index.js';
 import { WmlConfig, type WmlAttributeValue } from '../wml/config.js';
 
 /** A mutable, freely-replaceable analogue of `WmlConfig`'s (attrs, named child-lists) shape. */
@@ -320,6 +321,9 @@ export class VariableStore {
    * simplified form (no `$(...)` formula substitution -- see module doc
    * comment).
    */
+  /** Where a `$( ... )` formula error is reported (upstream logs and substitutes nothing). */
+  onFormulaError?: (message: string) => void;
+
   substitute(text: string): string {
     let res = text;
     let searchFrom = res.length;
@@ -332,7 +336,33 @@ export class VariableStore {
       if (nameStart >= res.length) continue; // trailing '$' with nothing after it
 
       if (res[nameStart] === '(') {
-        // $(...) formula substitution: not implemented, left as-is (see module doc comment).
+        // $( ... ) evaluates a WFL formula (`do_interpolation`): the extent is
+        // found by paren nesting, ignoring parens inside 'strings' and #comments#.
+        // Anything inside was already substituted (this loop runs back to front),
+        // so "$($count % 5)" arrives here as "$(3 % 5)".
+        let depth = 0;
+        let inString = false;
+        let inComment = false;
+        let end = nameStart;
+        do {
+          const c = res[end];
+          if (c === '(' && !inString && !inComment) depth++;
+          else if (c === ')' && !inString && !inComment) depth--;
+          else if (c === '#' && !inString) inComment = !inComment;
+          else if (c === "'" && !inComment) inString = !inString;
+          end++;
+        } while (end < res.length && depth > 0);
+        let replacement = '';
+        if (depth > 0) {
+          this.onFormulaError?.(`Formula in WML string cannot be evaluated due to a missing closing parenthesis: "${res.slice(dollarIdx, end)}"`);
+        } else {
+          try {
+            replacement = parseFormula(res.slice(nameStart + 1, end - 1)).evaluate().stringCast();
+          } catch (e) {
+            this.onFormulaError?.(`Formula error in "${res.slice(dollarIdx, end)}": ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+        res = res.slice(0, dollarIdx) + replacement + res.slice(end);
         continue;
       }
 

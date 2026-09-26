@@ -229,6 +229,10 @@ export interface EventContext {
    * anything an undo would have to take back. See `EventPump.undoDisabled`.
    */
   setUndoable: (undoable: boolean) => void;
+  /** `wesnoth.game_events.add_wml`: registers an `[event]` at run time (a nested `[event]` tag). False if rejected (no name/id, or a duplicate id). */
+  addEvent: (cfg: WmlConfig) => boolean;
+  /** `wesnoth.game_events.remove`: the handler with this id stops handling events (`[remove_event]`). */
+  removeEvent: (id: string) => void;
   /**
    * `[on_undo]`: WML to run if the action that fired this event is undone.
    * Set by a host with an undo stack (`GameSession`); without one the tag
