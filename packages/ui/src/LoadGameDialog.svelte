@@ -10,6 +10,7 @@
    * owns storage and the Wesnoth-format conversion.
    */
   import Modal from './Modal.svelte';
+  import { fmt, formatDateTime, t, tw, tx } from './i18n/locale.js';
   import type { SaveMeta } from './persistence.js';
 
   let {
@@ -58,14 +59,13 @@
   }
 
   function kindLabel(kind: SaveMeta['kind']): string {
-    if (kind === 'autosave') return 'Auto';
-    if (kind === 'scenario-start') return 'Start';
+    if (kind === 'autosave') return tx('Auto');
+    if (kind === 'scenario-start') return tx('Start');
     return '';
   }
 
   function when(savedAt: number): string {
-    const d = new Date(savedAt);
-    return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    return formatDateTime(savedAt);
   }
 
   function select(name: string): void {
@@ -114,16 +114,16 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<Modal labelledBy="Load Game" onClose={onCancel} width="52rem">
+<Modal labelledBy={t('Load Game')} onClose={onCancel} width="52rem">
   {#snippet children()}
     <div class="header">
-      <span class="title">Load Game</span>
+      <span class="title">{t('Load Game')}</span>
       <div class="spacer"></div>
       {#if campaignsPresent.length > 1}
         <label class="filter">
-          Campaign
+          {t('Campaign')}
           <select bind:value={campaignFilter}>
-            <option value="">All</option>
+            <option value="">{tx('All')}</option>
             {#each campaignsPresent as id (id)}
               <option value={id}>{campaignLabel(id)}</option>
             {/each}
@@ -133,19 +133,19 @@
     </div>
 
     {#if saves.length === 0}
-      <p class="empty">No saved games yet. Use Save Game, or upload a Wesnoth save file.</p>
+      <p class="empty">{tx('No saved games yet. Use Save Game, or upload a Wesnoth save file.')}</p>
     {:else if filtered.length === 0}
-      <p class="empty">No saves for this campaign.</p>
+      <p class="empty">{tx('No saves for this campaign.')}</p>
     {:else}
       <div class="list">
         <table>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Campaign</th>
-              <th>Scenario</th>
-              <th>Turn</th>
-              <th>Saved</th>
+              <th>{t('Name')}</th>
+              <th>{t('Campaign')}</th>
+              <th>{t('Scenario')}</th>
+              <th>{t('Turn')}</th>
+              <th>{tw('Saved')}</th>
             </tr>
           </thead>
           <tbody>
@@ -182,20 +182,20 @@
             if (e.key === 'Escape') renaming = false;
           }}
         />
-        <button class="small" onclick={commitRename}>OK</button>
-        <button class="small" onclick={() => (renaming = false)}>Cancel</button>
+        <button class="small" onclick={commitRename}>{t('OK')}</button>
+        <button class="small" onclick={() => (renaming = false)}>{t('Cancel')}</button>
       </div>
     {/if}
 
     {#if confirmingDelete}
-      <p class="warning">Delete "{confirmingDelete}"? Press Delete again to confirm.</p>
+      <p class="warning">{fmt(tx('Delete "$name"? Press Delete again to confirm.'), { name: confirmingDelete })}</p>
     {/if}
 
     <div class="footer">
-      <button onclick={startRename} disabled={!selected || busy}>Rename</button>
-      <button onclick={handleDelete} disabled={!selected || busy}>Delete</button>
-      <button onclick={() => selected && onDownload(selected.name)} disabled={!selected || busy}>Download</button>
-      <button onclick={() => fileInput?.click()} disabled={busy}>Upload...</button>
+      <button onclick={startRename} disabled={!selected || busy}>{t('Rename')}</button>
+      <button onclick={handleDelete} disabled={!selected || busy}>{t('Delete')}</button>
+      <button onclick={() => selected && onDownload(selected.name)} disabled={!selected || busy}>{t('Download')}</button>
+      <button onclick={() => fileInput?.click()} disabled={busy}>{tx('Upload...')}</button>
       <input
         class="file-input"
         type="file"
@@ -210,12 +210,12 @@
       <div class="spacer"></div>
       <label class="filter replay-toggle">
         <input type="checkbox" bind:checked={showReplay} data-testid="show-replay" />
-        Show replay
+        {t('Show replay')}
       </label>
       <button class="primary" data-autofocus disabled={!selected || busy} onclick={() => selected && onLoad(selected.name, showReplay)}>
-        Load
+        {t('Load')}
       </button>
-      <button onclick={onCancel}>Cancel</button>
+      <button onclick={onCancel}>{t('Cancel')}</button>
     </div>
   {/snippet}
 </Modal>

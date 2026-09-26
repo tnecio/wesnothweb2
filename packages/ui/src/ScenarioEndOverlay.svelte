@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fmt, tw, tx } from './i18n/locale.js';
   /**
    * Full-screen, non-dismissable banner shown once `GameSession.
    * scenarioResult` latches (see `checkVictory`/`GameSession.
@@ -41,20 +42,20 @@
 
 <div class="end-overlay" class:victory={result === 'victory'} class:defeat={result === 'defeat'}>
   <div class="end-content">
-    <h1>{result === 'victory' ? 'Victory!' : 'Defeat...'}</h1>
+    <h1>{result === 'victory' ? tw('Victory') : tw('Defeat')}</h1>
     <p class="detail">
-      {result === 'victory' ? 'The enemy has been vanquished.' : 'Your forces have fallen.'}
+      {result === 'victory' ? tx('The enemy has been vanquished.') : tx('Your forces have fallen.')}
     </p>
-    <p class="stats">Turn {turnNumber} &middot; {gold} gold</p>
+    <p class="stats">{fmt(tx('Turn $turn · $gold gold'), { turn: turnNumber, gold })}</p>
     {#if nextScenarioAvailable}
       <button class="continue" onclick={onContinue} disabled={continuing}>
-        {continuing ? 'Loading next scenario...' : 'Continue to next scenario'}
+        {continuing ? tx('Loading next scenario...') : tx('Continue to next scenario')}
       </button>
       {#if continueError}
-        <p class="error">Failed to continue: {continueError}</p>
+        <p class="error">{tx('Failed to continue:')} {continueError}</p>
       {/if}
     {:else}
-      <p class="hint">Reload the page to play again.</p>
+      <p class="hint">{tx('Reload the page to play again.')}</p>
     {/if}
   </div>
 </div>

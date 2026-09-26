@@ -166,6 +166,8 @@ import {
 } from '@wesnothweb2/engine';
 // Deep import: lua-bridge's index also exports Node-only data loaders.
 import { createLuaConditionalEvaluator } from '@wesnothweb2/lua-bridge/src/conditionals.js';
+import { raceName, statusName } from './i18n/gameText.js';
+import { fmt, t, tx } from './i18n/locale.js';
 
 // `[lua]` conditions run in a real Lua VM (Fengari); see lua-bridge's conditionals.ts.
 setLuaConditionalEvaluator(createLuaConditionalEvaluator());
@@ -265,6 +267,8 @@ export interface CombatantPreview {
   weapon?: WeaponInfo;
   /** For the attack/damage-calculation dialogs' detail pane (`AttackDialog.svelte`/`CombatSimulationDialog.svelte`) -- real Wesnoth's `unit_attack.cpp` shows all of this alongside the combat odds. */
   typeId: string;
+  /** The type's display name, in the language it had when this preview was built. */
+  typeName: string;
   image: string | null;
   level: number;
   alignment: Alignment;
@@ -389,38 +393,12 @@ export function buildAbilityInfo(entry: RegistryEntry): AbilityInfo {
  * for the recruit/recall dialogs' detail pane (real Wesnoth shows
  * `[race] name=`/`plural_name=`, not the raw id). Real `[race]` WML isn't
  * parsed anywhere in this port (`UnitType.ts`'s own module doc comment
- * scopes race data to just the id string), so this is a small static map
- * covering every race real mainline campaigns in this project use --
- * falling back to capitalizing the raw id for anything else, rather than
- * failing or showing nothing.
+ * scopes race data to just the id string), so `i18n/gameText.ts` maps each
+ * race id to upstream's own `race^...` msgid, falling back to capitalizing
+ * the raw id for anything else, rather than failing or showing nothing.
  */
-const RACE_NAMES: Readonly<Record<string, string>> = {
-  human: 'Human',
-  elf: 'Elf',
-  orc: 'Orc',
-  orcish: 'Orc',
-  undead: 'Undead',
-  dwarf: 'Dwarf',
-  merman: 'Merfolk',
-  drake: 'Drake',
-  troll: 'Troll',
-  goblin: 'Goblin',
-  naga: 'Naga',
-  monster: 'Monster',
-  wose: 'Wose',
-  bats: 'Bat',
-  wolf: 'Wolf',
-  gryphon: 'Gryphon',
-  mechanical: 'Mechanical',
-  ogre: 'Ogre',
-  raven: 'Raven',
-  khalifate: 'Khalifate',
-  falcon: 'Falcon',
-  horse: 'Horse',
-};
-
 export function raceDisplayName(raceId: string): string {
-  return RACE_NAMES[raceId] ?? (raceId.length > 0 ? raceId[0]!.toUpperCase() + raceId.slice(1) : raceId);
+  return raceName(raceId);
 }
 
 /** The standard six real damage types (`data/core/macros/*.cfg` conventionally lists resistances in this order) -- shown as a fixed-column resistances table in the infobox, per `MoveType.resistanceAgainst`'s own doc comment: unlisted types simply default to 100 (normal), so every unit has a real (if often "normal") value for all six. */
@@ -453,16 +431,14 @@ export interface HoveredHexInfo {
   defensePercent: number | null;
 }
 
-const STATUS_NAMES: Readonly<Record<string, string>> = {
-  [UnitStatus.Slowed]: 'Slowed',
-  [UnitStatus.Poisoned]: 'Poisoned',
-  [UnitStatus.Petrified]: 'Petrified',
-};
+const STATUS_IDS: readonly string[] = [UnitStatus.Slowed, UnitStatus.Poisoned, UnitStatus.Petrified];
 
 /** A view-model of a unit, for the side panel -- deliberately plain data, not a live `Unit` reference. Used for both the currently-*selected* (your own, actionable) unit and any *inspected* unit (see `GameSession.inspectedUnit`) -- addresses "no way to see information about enemy units". */
 export interface SelectedUnitInfo {
   name: string;
   typeId: string;
+  /** The type's display name (`typeId` is the WML id, which is not language). */
+  typeName: string;
   side: number;
   x: number;
   y: number;
@@ -502,6 +478,7 @@ export function buildUnitInfo(board: GameBoard, unit: Unit, displayName: string,
   return {
     name: displayName,
     typeId: unit.type.id,
+    typeName: unit.type.name,
     side: unit.side,
     x: unit.location.x,
     y: unit.location.y,
@@ -523,7 +500,7 @@ export function buildUnitInfo(board: GameBoard, unit: Unit, displayName: string,
     raceId: unit.type.raceId,
     raceName: raceDisplayName(unit.type.raceId),
     resistances: DAMAGE_TYPES.map((damageType) => ({ damageType, resistance: unit.resistanceAgainst(damageType) })),
-    statuses: (Object.keys(STATUS_NAMES) as string[]).filter((status) => unit.hasStatus(status)).map((status) => STATUS_NAMES[status]!),
+    statuses: STATUS_IDS.filter((status) => unit.hasStatus(status)).map(statusName),
   };
 }
 
@@ -716,6 +693,8 @@ export interface RecruitOption {
  * saved hp/level) rather than a fresh type.
  */
 export interface RecallOption {
+  /** The type's display name (`typeId` is the WML id, which is not language). */
+  typeName: string;
   /**
    * This unit's position in `board.recallList(side)` at the moment this
    * list was computed -- used (not `Unit.underlyingId`) as the selection
@@ -844,13 +823,13 @@ function cloneRecordedCommand(rec: RecordedCommand): RecordedCommand {
 export function describeCommand(command: SyncedCommand): string {
   switch (command.kind) {
     case 'move':
-      return 'move';
+      return tx('move');
     case 'recruit':
-      return `recruit of ${command.type}`;
+      return fmt(tx('recruit of $type'), { type: command.type });
     case 'recall':
-      return `recall of ${command.id || 'a unit'}`;
+      return fmt(tx('recall of $unit'), { unit: command.id || tx('a unit') });
     case 'disband':
-      return `dismissal of ${command.id || 'a unit'}`;
+      return fmt(tx('dismissal of $unit'), { unit: command.id || tx('a unit') });
     case 'fire_event':
       return command.raise;
     default:
@@ -2405,13 +2384,13 @@ export class GameSession {
     const rows: { id: string; name: string; visible: boolean; side?: number }[] = [];
     for (const id of [...ids].sort()) {
       const visible = !this.hiddenLabelCategories.includes(id);
-      if (id === 'team') rows.push({ id, name: 'Team Labels', visible });
+      if (id === 'team') rows.push({ id, name: t('Team Labels'), visible });
       else if (id.startsWith('cat:')) rows.push({ id, name: id.slice(4), visible });
       else {
         const team = this.board.getTeam(Number(id.slice(5)));
         if (!team || team.hidden) continue;
-        const name = team.sideName || team.userTeamName || 'Unknown';
-        rows.push({ id, name: `Side ${team.side} (${name})`, visible, side: team.side });
+        const name = team.sideName || team.userTeamName || t('Unknown');
+        rows.push({ id, name: fmt(tx('Side $side ($name)'), { side: team.side, name }), visible, side: team.side });
       }
     }
     return rows;
@@ -2486,7 +2465,7 @@ export class GameSession {
     if (this.scenarioResult) return;
     this.scenarioResult = 'defeat';
     this.clearSelection();
-    this.log.unshift('Defeat... time has run out.');
+    this.log.unshift(tx('Defeat... time has run out.'));
   }
 
   /** Heal outcomes collected across one `endTurn()` call, for `lastHealAnimations`. */
@@ -2528,11 +2507,11 @@ export class GameSession {
         const name = this.unitDisplayName(outcome.unit);
         if (outcome.amount > 0) {
           const healerNote = outcome.healers.length > 0 ? ` (${outcome.healers.map((h) => this.unitDisplayName(h)).join(', ')})` : '';
-          this.log.unshift(`${name} heals ${outcome.amount} HP${healerNote}.`);
+          this.log.unshift(fmt(tx('$unit heals $amount HP$healers.'), { unit: name, amount: outcome.amount, healers: healerNote }));
         } else if (outcome.amount < 0) {
-          this.log.unshift(`${name} takes ${-outcome.amount} poison damage.`);
+          this.log.unshift(fmt(tx('$unit takes $amount poison damage.'), { unit: name, amount: -outcome.amount }));
         }
-        if (outcome.curePoison) this.log.unshift(`${name}'s poison is cured.`);
+        if (outcome.curePoison) this.log.unshift(fmt(tx("$unit's poison is cured."), { unit: name }));
       }
       this.healOutcomeSink?.push(...healOutcomes);
     }
@@ -2914,6 +2893,7 @@ export class GameSession {
         index,
         name: this.unitDisplayName(u),
         typeId: u.type.id,
+        typeName: u.type.name,
         image: snap?.image ?? null,
         hp: u.hitpoints,
         maxHp: u.maxHitpoints,
@@ -3010,15 +2990,15 @@ export class GameSession {
     const cost = typeSnap?.cost ?? 0;
 
     if (!this.recruitTiles.some((t) => t.x === loc.x && t.y === loc.y)) {
-      return `Cannot recruit ${name} there.`;
+      return fmt(tx('Cannot recruit $unit there.'), { unit: name });
     }
     if (team.gold < cost) {
-      return `Not enough gold to recruit ${name} (needs ${cost}, have ${team.gold}).`;
+      return fmt(tx('Not enough gold to recruit $unit (needs $cost, have $gold).'), { unit: name, cost, gold: team.gold });
     }
     const cmd: RecruitCommand = { kind: 'recruit', type: typeId, loc: hexOf(loc), from: hexOf(leader.location) };
     const done = yield* this.runSynced(cmd, (action) => this.execRecruit(cmd, action), { present: true });
-    if (!done) return `Cannot recruit ${name} there.`;
-    const message = `Recruited ${name} for ${done.result.cost} gold.`;
+    if (!done) return fmt(tx('Cannot recruit $unit there.'), { unit: name });
+    const message = fmt(tx('Recruited $unit for $cost gold.'), { unit: name, cost: done.result.cost });
     this.log.unshift(message);
     return message;
   }
@@ -3044,18 +3024,18 @@ export class GameSession {
     const cost = unit.recallCost >= 0 ? unit.recallCost : team.recallCost;
 
     if (!this.recruitTiles.some((t) => t.x === loc.x && t.y === loc.y)) {
-      return `Cannot recall ${name} there.`;
+      return fmt(tx('Cannot recall $unit there.'), { unit: name });
     }
     if (team.gold < cost) {
-      return `Not enough gold to recall ${name} (needs ${cost}, have ${team.gold}).`;
+      return fmt(tx('Not enough gold to recall $unit (needs $cost, have $gold).'), { unit: name, cost, gold: team.gold });
     }
     // The recall-list position is recorded alongside the id: most of this
     // port's recall-list units share `underlyingId=0` and may lack an id,
     // so the index is what reliably names the unit the player picked.
     const cmd: RecallCommand = { kind: 'recall', id: unit.id, index, loc: hexOf(loc), from: hexOf(leader.location) };
     const done = yield* this.runSynced(cmd, (action) => this.execRecall(cmd, action), { present: true });
-    if (!done) return `Cannot recall ${name} there.`;
-    const message = `Recalled ${name} for ${done.result.cost} gold.`;
+    if (!done) return fmt(tx('Cannot recall $unit there.'), { unit: name });
+    const message = fmt(tx('Recalled $unit for $cost gold.'), { unit: name, cost: done.result.cost });
     this.log.unshift(message);
     return message;
   }
@@ -3166,7 +3146,7 @@ export class GameSession {
     yield* this.runSynced({ kind: 'init_side', side }, (action) => this.execInitSide(side, action));
     if (this.scenarioResult) return null;
     const teamName = this.board.getTeam(side)?.teamName ?? String(side);
-    const message = `Turn ${this.turnNumber} -- side ${side} (${teamName})'s turn.`;
+    const message = fmt(tx("Turn $turn -- side $side ($team)'s turn."), { turn: this.turnNumber, side, team: teamName });
     this.log.unshift(message);
     return message;
   }
@@ -3396,6 +3376,7 @@ export class GameSession {
         deathChance: aCombatant.hpDist[0] ?? 0,
         weapon: buildWeaponInfo(attackerWeapon),
         typeId: attacker.type.id,
+        typeName: attacker.type.name,
         image: this.snapshot.unitTypes[attacker.type.id]?.image ?? null,
         level: attacker.level,
         alignment: attacker.alignment,
@@ -3422,6 +3403,7 @@ export class GameSession {
         deathChance: dCombatant.hpDist[0] ?? 0,
         weapon: defenderWeapon ? buildWeaponInfo(defenderWeapon) : undefined,
         typeId: defender.type.id,
+        typeName: defender.type.name,
         image: this.snapshot.unitTypes[defender.type.id]?.image ?? null,
         level: defender.level,
         alignment: defender.alignment,
@@ -3469,10 +3451,10 @@ export class GameSession {
     const result = done.outcome.result;
     const name = this.unitDisplayName(unit);
     const message = result.ambushed
-      ? `${name} was ambushed!`
+      ? fmt(tx('$unit was ambushed!'), { unit: name })
       : result.sightedStop
-        ? `${name} stopped: units sighted.`
-        : `${name} moved.`;
+        ? fmt(tx('$unit stopped: units sighted.'), { unit: name })
+        : fmt(tx('$unit moved.'), { unit: name });
     if (this.scenarioResult || this.board.unitAt(unit.location) !== unit) {
       this.clearSelection();
       this.log.unshift(message);
@@ -3541,7 +3523,7 @@ export class GameSession {
           const firstWeapon = this.viableAttackerWeaponIndices(sel)[0];
           if (firstWeapon === undefined) return null; // no usable weapon at this range -- shouldn't happen (computeAttackCandidates implies at least one), but don't throw on it.
           this.pendingAttack = this.buildPreview(sel, clickedUnit, firstWeapon);
-          return `${this.unitDisplayName(sel)} could attack ${this.unitDisplayName(clickedUnit)} -- review the prediction and confirm.`;
+          return fmt(tx('$attacker could attack $defender -- review the prediction and confirm.'), { attacker: this.unitDisplayName(sel), defender: this.unitDisplayName(clickedUnit) });
         }
         if (clickedUnit.side === this.activeSide) {
           this.selectUnit(clickedUnit);
@@ -3553,7 +3535,7 @@ export class GameSession {
         // Deliberately does NOT touch `sel`/`reachable`/`attackCandidates`:
         // the player's own selection and move/attack highlights stay put.
         this.inspectedUnit = clickedUnit;
-        return `Viewing ${this.unitDisplayName(clickedUnit)}.`;
+        return fmt(tx('Viewing $unit.'), { unit: this.unitDisplayName(clickedUnit) });
       }
 
       if (this.reachable.some((h) => h.x === x && h.y === y)) {
@@ -3569,7 +3551,7 @@ export class GameSession {
         this.selectUnit(clickedUnit);
       } else {
         this.inspectedUnit = clickedUnit;
-        return `Viewing ${this.unitDisplayName(clickedUnit)}.`;
+        return fmt(tx('Viewing $unit.'), { unit: this.unitDisplayName(clickedUnit) });
       }
     } else {
       this.inspectedUnit = null;
@@ -3588,18 +3570,19 @@ export class GameSession {
   private formatBlowMessage(blow: AttackBlowResult, attackerName: string, defenderName: string): string {
     const strikerName = blow.attackerTurn ? attackerName : defenderName;
     const targetName = blow.attackerTurn ? defenderName : attackerName;
+    const vars = { striker: strikerName, target: targetName, damage: blow.damage, chance: blow.chanceToHit, amount: Math.abs(blow.drainAmount) };
     let msg = blow.hit
-      ? `${strikerName} hits ${targetName} for ${blow.damage} damage (${blow.chanceToHit}% chance to hit).`
-      : `${strikerName} misses ${targetName} (${blow.chanceToHit}% chance to hit).`;
+      ? fmt(tx('$striker hits $target for $damage damage ($chance|% chance to hit).'), vars)
+      : fmt(tx('$striker misses $target ($chance|% chance to hit).'), vars);
     if (blow.drainAmount > 0) {
-      msg += ` ${strikerName} drains ${blow.drainAmount} HP.`;
+      msg += ' ' + fmt(tx('$striker drains $amount HP.'), vars);
     } else if (blow.drainAmount < 0) {
-      msg += blow.strikerDiedFromDrain ? ` ${strikerName} is destroyed by the drain!` : ` ${strikerName} loses ${-blow.drainAmount} HP to drain.`;
+      msg += ' ' + (blow.strikerDiedFromDrain ? fmt(tx('$striker is destroyed by the drain!'), vars) : fmt(tx('$striker loses $amount HP to drain.'), vars));
     }
-    if (blow.poisoned) msg += ` ${targetName} is poisoned.`;
-    if (blow.slowed) msg += ` ${targetName} is slowed.`;
-    if (blow.petrified) msg += ` ${targetName} is petrified!`;
-    if (blow.targetDied) msg += ` ${targetName} dies!`;
+    if (blow.poisoned) msg += ' ' + fmt(tx('$target is poisoned.'), vars);
+    if (blow.slowed) msg += ' ' + fmt(tx('$target is slowed.'), vars);
+    if (blow.petrified) msg += ' ' + fmt(tx('$target is petrified!'), vars);
+    if (blow.targetDied) msg += ' ' + fmt(tx('$target dies!'), vars);
     return msg;
   }
 
@@ -3630,9 +3613,9 @@ export class GameSession {
     const attackerName = pending.preview.attacker.name;
     const defenderName = pending.preview.defender.name;
     const hits = result.blows.filter((b) => b.hit).length;
-    let message = `${attackerName} attacked ${defenderName}: ${hits}/${result.blows.length} blows landed.`;
-    if (result.defenderDied) message += ` ${defenderName} was slain!`;
-    if (result.attackerDied) message += ` ${attackerName} was slain!`;
+    let message = fmt(tx('$attacker attacked $defender: $hits/$blows blows landed.'), { attacker: attackerName, defender: defenderName, hits, blows: result.blows.length });
+    if (result.defenderDied) message += ' ' + fmt(tx('$unit was slain!'), { unit: defenderName });
+    if (result.attackerDied) message += ' ' + fmt(tx('$unit was slain!'), { unit: attackerName });
 
     // One log line per blow, in the order they happened, under the summary
     // -- and both under anything the command logged itself (an advancement,
@@ -3762,13 +3745,13 @@ export class GameSession {
     const env = effectEnvFor(this.eventPump.ctx, unit);
     if (index < typeIds.length) {
       const result = advanceUnitTo(unit, this.resolveType(typeIds[index]!), 100, env);
-      this.log.unshift(`${before} advances to ${result.unit.type.name}!`);
+      this.log.unshift(fmt(tx('$unit advances to $type!'), { unit: before, type: result.unit.type.name }));
       if (result.canAdvanceAgain) this.advancementQueue.unshift(unit);
     } else {
       const amla = amlas[index - typeIds.length];
       if (!amla) return;
       const result = advanceUnitAmla(unit, amla, env);
-      this.log.unshift(`${before} gains ${amla.getString('description', '') || 'an advancement'}!`);
+      this.log.unshift(fmt(tx('$unit gains $advancement!'), { unit: before, advancement: amla.getString('description', '') || tx('an advancement') }));
       if (result.canAdvanceAgain) this.advancementQueue.unshift(unit);
     }
   }
@@ -3839,7 +3822,7 @@ export class GameSession {
   loadSaveData(data: SaveGameData): void {
     // Before units and village ownership: a changed map decides where the villages are.
     if (data.mapData !== undefined && !this.board.applyMapData(data.mapData)) {
-      this.log.unshift('This save\'s map does not fit the scenario\'s; the scenario map is kept.');
+      this.log.unshift(tx("This save's map does not fit the scenario's; the scenario map is kept."));
     }
     if (data.variables) this.eventPump.ctx.variables.replaceAll(WmlConfig.fromJSON(data.variables));
     this.eventPump.ctx.choices.splice(0, this.eventPump.ctx.choices.length, ...(data.choices ?? []).map((c) => ({ ...c })));
@@ -4048,7 +4031,7 @@ export class GameSession {
     else this.recorder.replaceAll(log.filter((c) => c !== container.command));
     this.clearSelection();
     this.syncVillageMemory();
-    const message = `Undid ${describeCommand(container.command.command)}.`;
+    const message = fmt(tx('Undid $action.'), { action: describeCommand(container.command.command) });
     this.log.unshift(message);
     return message;
   }
@@ -4069,7 +4052,7 @@ export class GameSession {
     } finally {
       this.redoing = false;
     }
-    const message = `Redid ${describeCommand(rec.command)}.`;
+    const message = fmt(tx('Redid $action.'), { action: describeCommand(rec.command) });
     this.log.unshift(message);
     return message;
   }
@@ -4119,7 +4102,7 @@ export class GameSession {
       this.syncIssues.push({
         index: this.recorder.length - 1,
         command: rec.command.kind,
-        message: 'the state after this command differs from the recorded game',
+        message: tx('the state after this command differs from the recorded game'),
       });
     }
     return done !== null;
@@ -4295,7 +4278,7 @@ export class GameSession {
     if (endLevel) {
       this.scenarioResult = endLevel.result;
       this.clearSelection();
-      this.log.unshift(endLevel.result === 'victory' ? 'Victory!' : 'Defeat.');
+      this.log.unshift(endLevel.result === 'victory' ? tx('Victory!') : tx('Defeat.'));
       this.playScenarioEndMusic();
       return;
     }
@@ -4304,7 +4287,7 @@ export class GameSession {
     this.scenarioResult = notDefeated.includes(this.playerSide) ? 'victory' : 'defeat';
     this.clearSelection();
     this.log.unshift(
-      this.scenarioResult === 'victory' ? 'Victory! The enemy has been defeated.' : 'Defeat... your side has fallen.',
+      this.scenarioResult === 'victory' ? tx('Victory! The enemy has been defeated.') : tx('Defeat... your side has fallen.'),
     );
     this.playScenarioEndMusic();
   }

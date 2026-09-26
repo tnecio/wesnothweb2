@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from './i18n/locale.js';
   /**
    * Phase 16 N7: the campaign outro (`gui2::dialogs::outro`,
    * `data/gui/themes/default/dialogs/outro.cfg`): black screen, centred
@@ -78,7 +79,7 @@
 <svelte:window onkeydown={onKeydown} />
 
 <!-- svelte-ignore a11y_click_events_have_key_events -- Escape is handled window-wide -->
-<div class="outro" role="dialog" aria-label="The End" tabindex="-1" onclick={finish}>
+<div class="outro" role="dialog" aria-label={t('The End')} tabindex="-1" onclick={finish}>
   {#if current}
     <div class="text" style:opacity={visible ? 1 : 0} style:transition-duration="{OUTRO_FADE_MS}ms">
       {#each current.lines as line, i (i)}
@@ -89,7 +90,7 @@
       {/each}
     </div>
   {/if}
-  <div class="skip">Press ESC to skip</div>
+  <div class="skip">{t('Press ESC to skip')}</div>
 </div>
 
 <style>

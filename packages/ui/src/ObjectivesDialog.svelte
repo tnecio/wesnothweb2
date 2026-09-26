@@ -16,6 +16,7 @@
   import type { ScenarioObjectives } from '@wesnothweb2/engine';
   import { turnCounterSuffix, OBJECTIVE_COLOR } from '@wesnothweb2/engine';
   import Modal from './Modal.svelte';
+  import { t } from './i18n/locale.js';
 
   let {
     scenarioName,
@@ -108,7 +109,7 @@
     {/if}
 
     <div class="footer">
-      <button class="advance" onclick={onClose}>OK</button>
+      <button class="advance" onclick={onClose}>{t('OK')}</button>
     </div>
   {/snippet}
 </Modal>

@@ -10,6 +10,8 @@
   import { hpColor } from '@wesnothweb2/renderer';
   import type { CombatantPreview } from './gameSession.js';
   import Modal from './Modal.svelte';
+  import { damageTypeName } from './i18n/gameText.js';
+  import { fmt, t, tx } from './i18n/locale.js';
 
   let {
     attacker,
@@ -40,7 +42,8 @@
   function resistanceLabel(c: CombatantPreview): string | null {
     if (c.resistanceModifier === undefined || c.resistanceModifier === 100 || !c.weapon) return null;
     const factor = (c.resistanceModifier / 100).toFixed(1);
-    return c.resistanceModifier > 100 ? `Vulnerability to ${c.weapon.type} ×${factor}` : `Resistance to ${c.weapon.type} ×${factor}`;
+    const type = damageTypeName(c.weapon.type);
+    return c.resistanceModifier > 100 ? fmt(tx('Vulnerability to $type ×$factor'), { type, factor }) : fmt(tx('Resistance to $type ×$factor'), { type, factor });
   }
 
   /**
@@ -53,31 +56,31 @@
    */
   function modifierLines(c: CombatantPreview): string[] {
     const lines: string[] = [];
-    if (c.lawfulBonus !== 0) lines.push(`Time of day: ${c.lawfulBonus > 0 ? '+' : ''}${c.lawfulBonus}% damage`);
-    if (c.leadershipBonus !== 0) lines.push(`Leadership: +${c.leadershipBonus}% damage`);
-    if (c.chargeActive) lines.push('Charge: ×2 damage (both sides)');
-    if (c.backstabActive) lines.push('Backstab: ×2 damage');
-    if (c.slowed) lines.push('Slowed: / 2 damage');
+    if (c.lawfulBonus !== 0) lines.push(fmt(tx('Time of day: $bonus|% damage'), { bonus: `${c.lawfulBonus > 0 ? '+' : ''}${c.lawfulBonus}` }));
+    if (c.leadershipBonus !== 0) lines.push(fmt(tx('Leadership: +$bonus|% damage'), { bonus: c.leadershipBonus }));
+    if (c.chargeActive) lines.push(tx('Charge: ×2 damage (both sides)'));
+    if (c.backstabActive) lines.push(tx('Backstab: ×2 damage'));
+    if (c.slowed) lines.push(tx('Slowed: / 2 damage'));
     return lines;
   }
 
   /** Real, reported bug (bugs4.md #10): `magical`/`marksman` override the chance to hit with a flat value, but nothing distinguished that from an ordinary terrain-defense roll. */
   function chanceToHitLabel(c: CombatantPreview): string {
-    if (c.chanceToHitSource === 'magical') return `${c.chanceToHit}% (magical)`;
-    if (c.chanceToHitSource === 'marksman') return `${c.chanceToHit}% (marksman)`;
+    if (c.chanceToHitSource === 'magical') return `${c.chanceToHit}% (${tx('magical')})`;
+    if (c.chanceToHitSource === 'marksman') return `${c.chanceToHit}% (${tx('marksman')})`;
     return `${c.chanceToHit}%`;
   }
 </script>
 
-<Modal title="Damage Calculations" width="40rem" onClose={onClose}>
+<Modal title={t('Damage Calculations')} width="40rem" onClose={onClose}>
   {#snippet children()}
     <div class="columns">
-      {#each [{ label: 'Attacker', c: attacker }, { label: 'Defender', c: defender }] as side (side.label)}
+      {#each [{ id: 'attacker', label: t('Attacker'), c: attacker }, { id: 'defender', label: t('Defender'), c: defender }] as side (side.id)}
         <div class="column">
           <div class="side-label">{side.label}</div>
           {#if side.c.weapon}
             <div class="line">
-              <span class="label">Base damage</span>
+              <span class="label">{t('Base damage')}</span>
               <span class="value">{side.c.baseDamage} <em>({side.c.weapon.name})</em></span>
             </div>
             {#if resistanceLabel(side.c)}
@@ -86,11 +89,11 @@
               </div>
             {/if}
             <div class="line total">
-              <span class="label">Total damage</span>
+              <span class="label">{t('Total damage')}</span>
               <span class="value total-value">{side.c.damagePerBlow}&times;{side.c.numBlows}</span>
             </div>
             <div class="line">
-              <span class="label">Chance to hit</span>
+              <span class="label">{t('Chance to hit')}</span>
               <span class="value hit">{chanceToHitLabel(side.c)}</span>
             </div>
             {#if side.c.weapon.specials.length > 0}
@@ -100,14 +103,14 @@
               <div class="modifier-line">{line}</div>
             {/each}
           {:else}
-            <p class="hint">No usable counter-weapon -- will not fight back.</p>
+            <p class="hint">{t('No usable weapon')}</p>
           {/if}
           <!-- Upstream (attack_predictions.cpp) shows these for a weaponless side too: it still takes damage (bugs6.md). -->
           <div class="line">
-            <span class="label">Chance to escape unscathed</span>
+            <span class="label">{t('Chance of being unscathed')}</span>
             <span class="value unscathed">{unscathedPercent(side.c)}%</span>
           </div>
-          <div class="outcome-label">Expected result (HP)</div>
+          <div class="outcome-label">{tx('Expected result (HP)')}</div>
           <div class="outcomes">
             {#each outcomes(side.c) as o (o.hp)}
               <div class="outcome-row">
@@ -123,7 +126,7 @@
       {/each}
     </div>
     <div class="footer">
-      <button class="primary" onclick={onClose}>Close</button>
+      <button class="primary" onclick={onClose}>{t('Close')}</button>
     </div>
   {/snippet}
 </Modal>

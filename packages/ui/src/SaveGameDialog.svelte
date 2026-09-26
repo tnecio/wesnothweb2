@@ -10,6 +10,7 @@
    * `GameShell` owns the storage.
    */
   import Modal from './Modal.svelte';
+  import { fmt, t, tx } from './i18n/locale.js';
 
   let {
     suggestedName,
@@ -46,10 +47,10 @@
   }
 </script>
 
-<Modal title="Save Game" onClose={onCancel} width="30rem">
+<Modal title={t('Save Game')} onClose={onCancel} width="30rem">
   {#snippet children()}
     <label class="field">
-      <span>Save as</span>
+      <span>{tx('Save as')}</span>
       <!-- svelte-ignore a11y_autofocus -- the one field in a dialog opened to type in it -->
       <input
         type="text"
@@ -62,17 +63,17 @@
     </label>
 
     {#if confirmingOverwrite}
-      <p class="warning">A save called "{trimmed}" already exists. Save again to overwrite it.</p>
+      <p class="warning">{fmt(tx('A save called "$name" already exists. Save again to overwrite it.'), { name: trimmed })}</p>
     {:else if overwrites}
-      <p class="hint">This will replace the existing save of the same name.</p>
+      <p class="hint">{tx('This will replace the existing save of the same name.')}</p>
     {/if}
 
     <div class="footer">
       <div class="spacer"></div>
       <button class="primary" disabled={trimmed === ''} onclick={submit}>
-        {confirmingOverwrite ? 'Overwrite' : 'Save'}
+        {confirmingOverwrite ? tx('Overwrite') : t('Save')}
       </button>
-      <button onclick={onCancel}>Cancel</button>
+      <button onclick={onCancel}>{t('Cancel')}</button>
     </div>
   {/snippet}
 </Modal>

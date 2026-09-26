@@ -9,7 +9,8 @@
    */
   import { imageUrl } from '@wesnothweb2/renderer';
   import type { CombatPreview, CombatantPreview, AttackerWeaponOption } from './gameSession.js';
-  import { raceDisplayName } from './gameSession.js';
+  import { alignmentName, damageTypeName, rangeName, raceName } from './i18n/gameText.js';
+  import { fmt, t, tx } from './i18n/locale.js';
   import { onPlainButton } from './commands.js';
   import Modal from './Modal.svelte';
   import CombatSimulationDialog from './CombatSimulationDialog.svelte';
@@ -31,7 +32,7 @@
   let showSimulation = $state(false);
 
   function rangeType(w: { range: string; type: string }): string {
-    return `${w.range}, ${w.type}`;
+    return `${rangeName(w.range)}, ${damageTypeName(w.type)}`;
   }
 
   /**
@@ -45,18 +46,18 @@
    */
   function modifierBadges(c: CombatantPreview): string[] {
     const badges: string[] = [];
-    if (c.lawfulBonus !== 0) badges.push(`Time of day ${c.lawfulBonus > 0 ? '+' : ''}${c.lawfulBonus}%`);
-    if (c.leadershipBonus !== 0) badges.push(`Leadership +${c.leadershipBonus}%`);
-    if (c.chargeActive) badges.push('Charge ×2');
-    if (c.backstabActive) badges.push('Backstab ×2');
-    if (c.slowed && c.weapon) badges.push('Slowed ÷2');
+    if (c.lawfulBonus !== 0) badges.push(fmt(tx('Time of day $bonus|%'), { bonus: `${c.lawfulBonus > 0 ? '+' : ''}${c.lawfulBonus}` }));
+    if (c.leadershipBonus !== 0) badges.push(fmt(tx('Leadership +$bonus|%'), { bonus: c.leadershipBonus }));
+    if (c.chargeActive) badges.push(tx('Charge ×2'));
+    if (c.backstabActive) badges.push(tx('Backstab ×2'));
+    if (c.slowed && c.weapon) badges.push(tx('Slowed ÷2'));
     return badges;
   }
 
   /** Real, reported bug (bugs4.md #10): `magical`/`marksman` set a FLAT chance-to-hit override, but the dialog only ever showed the resulting number, with nothing distinguishing it from an ordinary terrain-defense roll. */
   function chanceToHitSuffix(c: CombatantPreview): string {
-    if (c.chanceToHitSource === 'magical') return ' (magical)';
-    if (c.chanceToHitSource === 'marksman') return ' (marksman)';
+    if (c.chanceToHitSource === 'magical') return ` (${tx('magical')})`;
+    if (c.chanceToHitSource === 'marksman') return ` (${tx('marksman')})`;
     return '';
   }
 
@@ -84,9 +85,9 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<Modal width="46rem" labelledBy="Attack" onClose={onCancel}>
+<Modal width="46rem" labelledBy={t('Attack')} onClose={onCancel}>
   {#snippet children()}
-    <div class="title">Attack Enemy</div>
+    <div class="title">{t('Attack Enemy')}</div>
     <div class="combatants">
       {#each [preview.attacker, preview.defender] as c, i (i)}
         <div class="combatant" class:defender={i === 1}>
@@ -94,16 +95,16 @@
             <img class="portrait" src={imageUrl(c.image)} alt="" />
           {/if}
           <div class="name">{c.name}</div>
-          <div class="type-name">{c.typeId}</div>
+          <div class="type-name">{c.typeName}</div>
           <div class="subline">
-            <span>Lvl {c.level}</span>
-            <span>{c.alignment}</span>
-            <span>{raceDisplayName(c.raceId)}</span>
+            <span>{t('Lvl')} {c.level}</span>
+            <span>{alignmentName(c.alignment)}</span>
+            <span>{raceName(c.raceId)}</span>
           </div>
           {#if c.traits.length > 0}
             <div class="traits">{c.traits.join(', ')}</div>
           {/if}
-          <div class="hp">HP: {c.hp}/{c.maxHp}</div>
+          <div class="hp">{t('HP:')} {c.hp}/{c.maxHp}</div>
         </div>
       {/each}
     </div>
@@ -154,16 +155,16 @@
             <div class="modifier-badge">{badge}</div>
           {/each}
         {:else}
-          <div class="hint">No counter-attack</div>
+          <div class="hint">{tx('No counter-attack')}</div>
         {/if}
       </div>
     </div>
 
     <div class="footer">
-      <button class="simulation" onclick={() => (showSimulation = true)}>Damage Calculations</button>
+      <button class="simulation" onclick={() => (showSimulation = true)}>{t('Damage Calculations')}</button>
       <div class="spacer"></div>
-      <button class="primary" onclick={onConfirm}>Attack</button>
-      <button onclick={onCancel}>Cancel</button>
+      <button class="primary" onclick={onConfirm}>{t('Attack')}</button>
+      <button onclick={onCancel}>{t('Cancel')}</button>
     </div>
   {/snippet}
 </Modal>

@@ -1,6 +1,7 @@
 <script lang="ts">
   /** A yes/no question (`gui2::show_message` with `yes_no_buttons`). Presentational only. */
   import Modal from './Modal.svelte';
+  import { t } from './i18n/locale.js';
 
   let {
     title,
@@ -21,8 +22,8 @@
     <div class="footer">
       <div class="spacer"></div>
       <!-- svelte-ignore a11y_autofocus -- the default answer, as upstream's dialog focuses it -->
-      <button class="primary" data-autofocus autofocus onclick={onYes}>Yes</button>
-      <button onclick={onNo}>No</button>
+      <button class="primary" data-autofocus autofocus onclick={onYes}>{t('Yes')}</button>
+      <button onclick={onNo}>{t('No')}</button>
     </div>
   {/snippet}
 </Modal>

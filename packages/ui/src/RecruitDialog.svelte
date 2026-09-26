@@ -17,7 +17,8 @@
    */
   import { imageUrl } from '@wesnothweb2/renderer';
   import type { RecruitOption } from './gameSession.js';
-  import { raceDisplayName } from './gameSession.js';
+  import { alignmentName, damageTypeName, rangeName, raceName } from './i18n/gameText.js';
+  import { fmt, t, th, tx } from './i18n/locale.js';
   import { onPlainButton } from './commands.js';
   import Modal from './Modal.svelte';
 
@@ -37,7 +38,7 @@
   const selected = $derived(options.find((o) => o.typeId === selectedTypeId) ?? options[0] ?? null);
 
   function rangeType(w: { range: string; type: string }): string {
-    return `${w.range}, ${w.type}`;
+    return `${rangeName(w.range)}, ${damageTypeName(w.type)}`;
   }
 
   /**
@@ -68,9 +69,9 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<Modal width="34rem" labelledBy="Recruit unit" onClose={onCancel}>
+<Modal width="34rem" labelledBy={t('Recruit Unit')} onClose={onCancel}>
   {#snippet children()}
-    <div class="title">Recruit Unit</div>
+    <div class="title">{t('Recruit Unit')}</div>
     <div class="layout">
       <div class="detail">
         {#if selected}
@@ -79,18 +80,18 @@
           {/if}
           <div class="name">{selected.name}</div>
           <div class="subline">
-            <span class="level">Lvl {selected.level}</span>
-            <span class="alignment">{selected.alignment}</span>
-            <span class="race">{raceDisplayName(selected.raceId)}</span>
+            <span class="level">{t('Lvl')} {selected.level}</span>
+            <span class="alignment">{alignmentName(selected.alignment)}</span>
+            <span class="race">{raceName(selected.raceId)}</span>
           </div>
           <div class="stats">
-            <span class="hp">HP: {selected.hitpoints}</span>
+            <span class="hp">{t('HP:')} {selected.hitpoints}</span>
             <span class="sep">|</span>
-            <span class="moves">Moves: {selected.moves}</span>
+            <span class="moves">{th('Moves:')} {selected.moves}</span>
           </div>
           {#if selected.attacks.length > 0}
             <div class="attacks">
-              <div class="attacks-label">Attacks</div>
+              <div class="attacks-label">{t('Attacks')}</div>
               <ul>
                 <!-- Keyed by index, not atk.name -- see SidePanel.svelte's own comment (bugs4.md #9):
                      real units can have two same-named attacks (e.g. Peasant's melee + thrown "pitchfork"). -->
@@ -123,14 +124,14 @@
               data-list-option
               class:selected={selectedTypeId === opt.typeId}
               class:unaffordable={!opt.affordable}
-              title={opt.affordable ? undefined : `Not enough gold (needs ${opt.cost}, have ${gold})`}
+              title={opt.affordable ? undefined : fmt(tx('Not enough gold (needs $cost, have $gold)'), { cost: opt.cost, gold })}
               onclick={() => (selectedTypeId = opt.typeId)}
             >
               {#if opt.image}
                 <img class="thumb" src={imageUrl(opt.image)} alt="" />
               {/if}
               <span class="opt-name">{opt.name}</span>
-              <span class="opt-cost">{opt.cost}g</span>
+              <span class="opt-cost">{fmt(tx('$amount|g'), { amount: opt.cost })}</span>
             </button>
           </li>
         {/each}
@@ -142,9 +143,9 @@
         disabled={!selected || !selected.affordable}
         onclick={() => selected && onRecruit(selected.typeId)}
       >
-        Recruit
+        {t('Recruit')}
       </button>
-      <button onclick={onCancel}>Cancel</button>
+      <button onclick={onCancel}>{t('Cancel')}</button>
     </div>
   {/snippet}
 </Modal>

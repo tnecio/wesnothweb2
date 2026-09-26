@@ -16,6 +16,7 @@ import { createSubscriber } from 'svelte/reactivity';
 import {
   dsgettext,
   dsngettext,
+  formatMessage,
   setCatalogues,
   type Catalogue,
   type TString,
@@ -234,11 +235,36 @@ export class LocaleManager {
 
 export const locale = new LocaleManager(browserHost('/i18n/'));
 
-/** `wesnoth-lib`: where upstream's own dialogs keep their wording ("End Turn", "Recruit", ...). */
+/**
+ * Lookup helpers, one per textdomain, so a call names the catalogue upstream's own string lives in:
+ * `t` reads `wesnoth-lib` (upstream's dialogs: "End Turn", "Recruit", ...), `tw` reads `wesnoth`
+ * (game and hotkey wording), `th` reads `wesnoth-help`, and `tx` reads our own `wesnothweb` (port-only
+ * strings upstream has no counterpart for; English until someone translates them). Each is reactive:
+ * a component calling one re-renders when the language changes. The msgid is upstream's, verbatim,
+ * including `$name` placeholders (fill them with `fmt`) and `context^` prefixes. The audit test
+ * checks every literal msgid exists in its domain.
+ */
 export const t = (msgid: string): string => locale.translate('wesnoth-lib', msgid);
+export const tw = (msgid: string): string => locale.translate('wesnoth', msgid);
+export const th = (msgid: string): string => locale.translate('wesnoth-help', msgid);
+export const tx = (msgid: string): string => locale.translate('wesnothweb', msgid);
 export const tn = (singular: string, plural: string, n: number): string =>
   locale.translatePlural('wesnoth-lib', singular, plural, n);
-/** Any other domain, e.g. `wesnoth` for game rules text or `wesnothweb` for port-only strings. */
+export const twn = (singular: string, plural: string, n: number): string =>
+  locale.translatePlural('wesnoth', singular, plural, n);
+/** Any other domain (`wesnoth-units`, ...), when a call cannot use the shorthand above. */
 export const td = (domain: string, msgid: string): string => locale.translate(domain, msgid);
 /** A `TString`, translated in the current language and following a switch. */
 export const ts = (value: TString): string => locale.text(value);
+/** A date and time in the current language's own format (`pl-PL`: 26.09.2026, 21:30). Reactive. */
+export function formatDateTime(epochMs: number): string {
+  const tag = languageTag(locale.current);
+  try {
+    return new Intl.DateTimeFormat(tag, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(epochMs));
+  } catch {
+    return new Date(epochMs).toLocaleString();
+  }
+}
+
+/** Fills `$name` placeholders in already-translated text: translate first, then substitute. */
+export const fmt = formatMessage;

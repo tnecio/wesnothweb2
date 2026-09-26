@@ -8,7 +8,8 @@
    */
   import { imageUrl } from '@wesnothweb2/renderer';
   import type { RecallOption } from './gameSession.js';
-  import { raceDisplayName } from './gameSession.js';
+  import { alignmentName, damageTypeName, rangeName, raceName } from './i18n/gameText.js';
+  import { fmt, t, th, tx } from './i18n/locale.js';
   import { onPlainButton } from './commands.js';
   import Modal from './Modal.svelte';
 
@@ -34,7 +35,7 @@
   let renameValue = $state('');
 
   function rangeType(w: { range: string; type: string }): string {
-    return `${w.range}, ${w.type}`;
+    return `${rangeName(w.range)}, ${damageTypeName(w.type)}`;
   }
 
   function startRename(): void {
@@ -84,9 +85,9 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<Modal width="42rem" labelledBy="Recall unit" onClose={onCancel}>
+<Modal width="42rem" labelledBy={t('Recall Unit')} onClose={onCancel}>
   {#snippet children()}
-    <div class="title">Recall Unit</div>
+    <div class="title">{t('Recall Unit')}</div>
     <div class="layout">
       <div class="detail">
         {#if selected}
@@ -103,30 +104,30 @@
                   if (e.key === 'Escape') renaming = false;
                 }}
               />
-              <button class="small" onclick={confirmRename}>OK</button>
+              <button class="small" onclick={confirmRename}>{t('OK')}</button>
             </div>
           {:else}
             <div class="name">{selected.name}</div>
           {/if}
-          <div class="type-name">{selected.typeId}</div>
+          <div class="type-name">{selected.typeName}</div>
           <div class="subline">
-            <span class="level">Lvl {selected.level}</span>
-            <span class="alignment">{selected.alignment}</span>
-            <span class="race">{raceDisplayName(selected.raceId)}</span>
+            <span class="level">{t('Lvl')} {selected.level}</span>
+            <span class="alignment">{alignmentName(selected.alignment)}</span>
+            <span class="race">{raceName(selected.raceId)}</span>
           </div>
           <div class="stats">
-            <span class="hp">HP: {selected.hp}/{selected.maxHp}</span>
+            <span class="hp">{t('HP:')} {selected.hp}/{selected.maxHp}</span>
             <span class="sep">|</span>
-            <span class="moves">Moves: {selected.movesLeft}/{selected.maxMoves}</span>
+            <span class="moves">{th('Moves:')} {selected.movesLeft}/{selected.maxMoves}</span>
             <span class="sep">|</span>
-            <span class="xp">XP: {selected.xp}/{selected.maxXp}</span>
+            <span class="xp">{t('XP:')} {selected.xp}/{selected.maxXp}</span>
           </div>
           {#if selected.traits.length > 0}
-            <div class="traits">Traits: {selected.traits.join(', ')}</div>
+            <div class="traits">{t('Traits')}: {selected.traits.join(', ')}</div>
           {/if}
           {#if selected.attacks.length > 0}
             <div class="attacks">
-              <div class="attacks-label">Attacks</div>
+              <div class="attacks-label">{t('Attacks')}</div>
               <ul>
                 <!-- Keyed by index, not atk.name -- see SidePanel.svelte's own comment (bugs4.md #9):
                      real units can have two same-named attacks (e.g. Peasant's melee + thrown "pitchfork"). -->
@@ -145,11 +146,11 @@
         <thead>
           <tr>
             <th></th>
-            <th>Type</th>
-            <th>Name</th>
-            <th>Lvl</th>
-            <th>XP</th>
-            <th>Traits</th>
+            <th>{t('Type')}</th>
+            <th>{t('Name')}</th>
+            <th>{t('Lvl')}</th>
+            <th>{t('XP')}</th>
+            <th>{t('Traits')}</th>
           </tr>
         </thead>
         <tbody>
@@ -164,7 +165,7 @@
               }}
             >
               <td>{#if opt.image}<img class="thumb" src={imageUrl(opt.image)} alt="" />{/if}</td>
-              <td>{opt.typeId} <span class="cost">{opt.cost}g</span></td>
+              <td>{opt.typeName} <span class="cost">{fmt(tx('$amount|g'), { amount: opt.cost })}</span></td>
               <td>{opt.name}</td>
               <td>{opt.level}</td>
               <td class="xp-cell">{opt.xp}/{opt.maxXp}</td>
@@ -175,8 +176,8 @@
       </table>
     </div>
     <div class="footer">
-      <button onclick={startRename} disabled={!selected}>Rename</button>
-      <button onclick={handleDismiss} disabled={!selected}>Dismiss Unit</button>
+      <button onclick={startRename} disabled={!selected}>{t('Rename')}</button>
+      <button onclick={handleDismiss} disabled={!selected}>{t('Dismiss Unit')}</button>
       <div class="spacer"></div>
       <button
         class="primary"
@@ -184,9 +185,9 @@
         disabled={!selected || !selected.affordable}
         onclick={() => selected && onRecall(selected.index)}
       >
-        Recall
+        {t('Recall')}
       </button>
-      <button onclick={onCancel}>Cancel</button>
+      <button onclick={onCancel}>{t('Cancel')}</button>
     </div>
   {/snippet}
 </Modal>

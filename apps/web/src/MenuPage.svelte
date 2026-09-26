@@ -7,7 +7,7 @@
    * "only load assets needed for a given campaign once it's chosen"
    * requirement -- this component structurally can't preload anything.
    */
-  import { LanguageDialog, listSaves, t, type SaveMeta } from '@wesnothweb2/ui';
+  import { LanguageDialog, fmt, formatDateTime, listSaves, t, tx, type SaveMeta } from '@wesnothweb2/ui';
   import { fetchCampaigns, type Campaign } from './campaigns.js';
   import { router } from './router.svelte.js';
 
@@ -72,8 +72,7 @@
   }
 
   function when(savedAt: number): string {
-    const d = new Date(savedAt);
-    return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    return formatDateTime(savedAt);
   }
 </script>
 
@@ -83,9 +82,9 @@
     <button class="language" onclick={() => (languageOpen = true)} data-testid="menu-language">{t('Language')}...</button>
   </div>
   {#if status === 'loading'}
-    <p class="hint">Loading campaigns...</p>
+    <p class="hint">{tx('Loading campaigns...')}</p>
   {:else if status === 'error'}
-    <p class="hint error">Failed to load campaigns: {errorMessage}</p>
+    <p class="hint error">{tx('Failed to load campaigns:')} {errorMessage}</p>
   {:else}
     <ul class="campaign-list">
       {#each campaigns as campaign (campaign.id)}
@@ -99,7 +98,7 @@
     </ul>
 
     {#if saves.length > 0}
-      <h2>Saved games</h2>
+      <h2>{t('Saved Games')}</h2>
       <ul class="save-list">
         {#each saves.slice(0, 12) as save (save.name)}
           <li>
@@ -107,7 +106,7 @@
               <span class="name">{save.name}</span>
               <span class="description">
                 {save.scenarioName ?? save.scenarioId}
-                {#if save.turnNumber}&middot; turn {save.turnNumber}{/if}
+                {#if save.turnNumber}&middot; {fmt(tx('turn $turn'), { turn: save.turnNumber })}{/if}
                 &middot; {when(save.savedAt)}
               </span>
             </button>

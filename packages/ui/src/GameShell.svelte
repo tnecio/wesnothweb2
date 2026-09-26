@@ -118,7 +118,7 @@
   import StoryViewer from './StoryViewer.svelte';
   import AudioDialog from './AudioDialog.svelte';
   import LanguageDialog from './LanguageDialog.svelte';
-  import { locale } from './i18n/locale.js';
+  import { fmt, locale, t, tw, tx } from './i18n/locale.js';
   import { getAudioEngine } from './audio/audioEngine.js';
   import { installUiSounds } from './audio/uiSounds.js';
   import type { AudioSettings } from './audio/settings.js';
@@ -402,7 +402,7 @@
   let mapItems = $state(session.mapItems);
   let mapLabels = $state(session.mapLabels);
   let timeOfDay = $state<TimeOfDayEntry>(session.currentTimeOfDay);
-  let statusMessage = $state('Click one of your units to select it.');
+  let statusMessage = $state(tx('Click one of your units to select it.'));
   /** Phase 14: the infobox's "terrain info for the hovered hex" -- kept in sync by `GameBoardView`'s `onHexHoverChange`. */
   let hoveredHexInfo = $state<HoveredHexInfo | null>(null);
   /** Phase 14: the right-click context menu's position + which hex it's for, `null` when closed. */
@@ -509,19 +509,19 @@
     timeOfDay = session.currentTimeOfDay;
 
     if (session.scenarioResult) {
-      statusMessage = session.scenarioResult === 'victory' ? 'Victory!' : 'Defeat.';
+      statusMessage = session.scenarioResult === 'victory' ? tx('Victory!') : tx('Defeat.');
     } else if (message) {
       statusMessage = message;
     } else if (pendingPreview) {
-      statusMessage = 'Review the attack prediction, then confirm or cancel.';
+      statusMessage = tx('Review the attack prediction, then confirm or cancel.');
     } else if (pendingRecruitTypeId) {
-      statusMessage = 'Click a free castle tile to place your recruit.';
+      statusMessage = tx('Click a free castle tile to place your recruit.');
     } else if (pendingRecallIndex !== null) {
-      statusMessage = 'Click a free castle tile to place your recalled unit.';
+      statusMessage = tx('Click a free castle tile to place your recalled unit.');
     } else if (selected) {
-      statusMessage = `${selected.name} selected.`;
+      statusMessage = fmt(tx('$unit selected.'), { unit: selected.name });
     } else {
-      statusMessage = 'Click one of your units to select it.';
+      statusMessage = tx('Click one of your units to select it.');
     }
 
     // Latches once `session.checkForGameEnd()` (run after any kill --
@@ -1808,7 +1808,7 @@
     try {
       const found = await loadGame<SaveGameData>(name);
       if (!found) {
-        sync('That save no longer exists.');
+        sync(tx('That save no longer exists.'));
         return;
       }
       if (showReplay) {
@@ -1917,15 +1917,15 @@
   function replayStatus(): string {
     if (!replay) return '';
     const issue = session.syncIssues[0];
-    if (issue) return `Replay out of sync at action ${issue.index + 1} (${issue.command}): ${issue.message}`;
-    return replay.index >= replay.total ? 'Replay finished.' : `Replay: action ${replay.index} of ${replay.total}.`;
+    if (issue) return fmt(tx('Replay out of sync at action $index ($command): $message'), { index: issue.index + 1, command: issue.command, message: issue.message });
+    return replay.index >= replay.total ? tx('Replay finished.') : fmt(tx('Replay: action $index of $total.'), { index: replay.index, total: replay.total });
   }
 
   function toggleReplayPlaying(): void {
     if (!replay || replay.index >= replay.total) return;
     replay.playing = !replay.playing;
     if (replay.playing && !eventsRunning) replayLoop = runReplayLoop();
-    else sync(replay.playing ? replayStatus() : 'Replay paused.');
+    else sync(replay.playing ? replayStatus() : tx('Replay paused.'));
   }
 
   /** Back to the start: waits for the current action to finish, then rebuilds the session from the save's starting point. */
@@ -1943,7 +1943,7 @@
     if (!replay || replay.playing) return;
     replay = null;
     phase = session.scenarioResult ? 'ended' : 'playing';
-    sync('Playing on from the end of the replay.');
+    sync(tx('Playing on from the end of the replay.'));
   }
 
   /**
@@ -2105,7 +2105,7 @@
     try {
       const found = await loadGame<import('./gameSession.js').SaveGameData>(saveSlot);
       if (!found || found.meta.scenarioId !== activeSnapshot.scenario.id) {
-        sync('No save found.');
+        sync(tx('No save found.'));
         return;
       }
       session.loadSaveData(found.data);
@@ -2206,33 +2206,33 @@
   let menuCommands = $derived<Command[]>([
     {
       id: 'save',
-      label: 'Save Game...',
+      label: `${t('Save Game')}...`,
       enabled: phase === 'playing',
       handler: () => void openSaveManager('save'),
       hotkey: { key: 's', ctrl: true },
     },
     {
       id: 'load',
-      label: 'Load Game...',
+      label: `${t('Load Game')}...`,
       enabled: phase === 'playing' || phase === 'ended' || phase === 'replay',
       handler: () => void openSaveManager('load'),
       hotkey: { key: 'o', ctrl: true },
     },
     {
       id: 'mute',
-      label: audioSettings.muted ? 'Unmute' : 'Mute',
+      label: audioSettings.muted ? tx('Unmute') : t('Mute'),
       enabled: true,
       handler: () => changeAudio({ muted: !audioSettings.muted }),
     },
     {
       id: 'audio',
-      label: 'Audio...',
+      label: `${tx('Audio')}...`,
       enabled: true,
       handler: () => (audioDialogOpen = true),
     },
     {
       id: 'language',
-      label: 'Language...',
+      label: `${t('Language')}...`,
       enabled: true,
       handler: () => (languageDialogOpen = true),
     },
@@ -2240,7 +2240,7 @@
   let actionCommands = $derived<Command[]>([
     {
       id: 'recruit',
-      label: 'Recruit...',
+      label: `${t('Recruit')}...`,
       enabled: recruitOptions.length > 0,
       hotkey: { key: 'r', ctrl: true },
       handler: () => {
@@ -2250,7 +2250,7 @@
     },
     {
       id: 'recall',
-      label: 'Recall...',
+      label: `${t('Recall')}...`,
       enabled: recallOptions.length > 0,
       hotkey: { key: 'r', alt: true },
       handler: () => {
@@ -2260,42 +2260,42 @@
     },
     {
       id: 'label-team',
-      label: 'Place Label (Team)...',
+      label: `${tx('Place Label (Team)')}...`,
       enabled: phase === 'playing',
       hotkey: { key: 'l', ctrl: true },
       handler: () => openLabelDialog(lastHoveredHex ?? cursorHex, true),
     },
     {
       id: 'label',
-      label: 'Place Label...',
+      label: `${t('Place Label')}...`,
       enabled: phase === 'playing',
       hotkey: { key: 'l', alt: true },
       handler: () => openLabelDialog(lastHoveredHex ?? cursorHex, false),
     },
     {
       id: 'clear-labels',
-      label: 'Clear Labels',
+      label: t('Clear Labels'),
       enabled: phase === 'playing',
       hotkey: { key: 'c', ctrl: true },
       handler: () => (clearLabelsConfirmOpen = true),
     },
     {
       id: 'label-settings',
-      label: 'Label Settings...',
+      label: `${tx('Label Settings')}...`,
       enabled: phase === 'playing',
       handler: () => (labelSettingsOpen = true),
     },
     {
       id: 'objectives',
-      label: 'Objectives',
+      label: t('Objectives'),
       enabled: session.scenarioObjectives !== null,
       hotkey: { key: 'j', ctrl: true },
       handler: () => (objectivesDialogOpen = true),
     },
     // Upstream's own bindings (hotkeys.cfg: undo=u, redo=r).
-    { id: 'undo', label: 'Undo', enabled: phase === 'playing' && canUndo, handler: () => void handleUndo(), hotkey: { key: 'u' } },
-    { id: 'redo', label: 'Redo', enabled: phase === 'playing' && canRedo, handler: () => void handleRedo(), hotkey: { key: 'r' } },
-    { id: 'end-turn', label: 'End Turn', enabled: phase === 'playing', handler: handleEndTurn, hotkey: { key: ' ', ctrl: true } },
+    { id: 'undo', label: t('Undo'), enabled: phase === 'playing' && canUndo, handler: () => void handleUndo(), hotkey: { key: 'u' } },
+    { id: 'redo', label: t('Redo'), enabled: phase === 'playing' && canRedo, handler: () => void handleRedo(), hotkey: { key: 'r' } },
+    { id: 'end-turn', label: t('End Turn'), enabled: phase === 'playing', handler: handleEndTurn, hotkey: { key: ' ', ctrl: true } },
   ]);
 
   /**
@@ -2317,16 +2317,16 @@
       const isAttackTarget = attackTargets.some((h) => h.x === x && h.y === y);
       const isRecruitTile = recruitTiles.some((h) => h.x === x && h.y === y);
       if (unitHere && unitHere.side === activeSide && unitHere !== session.selectedUnit) {
-        hexCommands.push({ id: 'ctx-select', label: 'Select Unit', enabled: true, handler: () => handleHexClick(x, y) });
+        hexCommands.push({ id: 'ctx-select', label: tx('Select Unit'), enabled: true, handler: () => handleHexClick(x, y) });
       }
       if (unitHere && unitHere.side !== activeSide) {
-        hexCommands.push({ id: 'ctx-inspect', label: 'Unit Description', enabled: true, handler: () => handleHexClick(x, y) });
+        hexCommands.push({ id: 'ctx-inspect', label: tx('Unit Description'), enabled: true, handler: () => handleHexClick(x, y) });
       }
-      hexCommands.push({ id: 'ctx-move', label: 'Move Here', enabled: isReachable, handler: () => handleHexClick(x, y) });
-      hexCommands.push({ id: 'ctx-attack', label: 'Attack', enabled: isAttackTarget, handler: () => handleHexClick(x, y) });
+      hexCommands.push({ id: 'ctx-move', label: tx('Move Here'), enabled: isReachable, handler: () => handleHexClick(x, y) });
+      hexCommands.push({ id: 'ctx-attack', label: t('Attack'), enabled: isAttackTarget, handler: () => handleHexClick(x, y) });
       hexCommands.push({
         id: 'ctx-recruit',
-        label: 'Recruit...',
+        label: `${t('Recruit')}...`,
         enabled: recruitOptions.length > 0 && isRecruitTile,
         handler: () => {
           recruitOriginHex = { x, y }; // bugs4.md #5: place directly on the hex the menu was opened from
@@ -2335,14 +2335,14 @@
       });
       hexCommands.push({
         id: 'ctx-recall',
-        label: 'Recall...',
+        label: `${t('Recall')}...`,
         enabled: recallOptions.length > 0 && isRecruitTile,
         handler: () => {
           recruitOriginHex = { x, y };
           recallDialogOpen = true;
         },
       });
-      hexCommands.push({ id: 'ctx-label', label: 'Place Label...', enabled: true, handler: () => openLabelDialog({ x, y }, false) });
+      hexCommands.push({ id: 'ctx-label', label: `${t('Place Label')}...`, enabled: true, handler: () => openLabelDialog({ x, y }, false) });
       // Real `[set_menu_item]` entries the scenario's own WML declared --
       // see `GameSession.menuItems`'s own doc comment on why these are
       // offered unconditionally rather than per-hex-filtered.
@@ -2442,21 +2442,21 @@
    * they exist purely as hotkeys.
    */
   let hotkeyOnlyCommands = $derived<Command[]>([
-    { id: 'next-unit', label: 'Next Unit', enabled: phase === 'playing', hotkey: { key: 'n' }, handler: () => cycleUnit(1) },
-    { id: 'previous-unit', label: 'Previous Unit', enabled: phase === 'playing', hotkey: { key: 'n', shift: true }, handler: () => cycleUnit(-1) },
-    { id: 'leader', label: 'Scroll to Leader', enabled: phase === 'playing', hotkey: { key: 'l' }, handler: scrollToLeader },
-    { id: 'zoom-in', label: 'Zoom In', enabled: true, hotkey: { key: '=' }, handler: () => boardView?.zoomBy(1.25) },
+    { id: 'next-unit', label: t('Next Unit'), enabled: phase === 'playing', hotkey: { key: 'n' }, handler: () => cycleUnit(1) },
+    { id: 'previous-unit', label: t('Previous Unit'), enabled: phase === 'playing', hotkey: { key: 'n', shift: true }, handler: () => cycleUnit(-1) },
+    { id: 'leader', label: t('Scroll to Leader'), enabled: phase === 'playing', hotkey: { key: 'l' }, handler: scrollToLeader },
+    { id: 'zoom-in', label: t('Zoom In'), enabled: true, hotkey: { key: '=' }, handler: () => boardView?.zoomBy(1.25) },
     // Upstream binds zoomin twice, to both `=` and `+` (the shifted key on most layouts).
-    { id: 'zoom-in-shifted', label: 'Zoom In', enabled: true, hotkey: { key: '+', shift: true }, handler: () => boardView?.zoomBy(1.25) },
-    { id: 'zoom-out', label: 'Zoom Out', enabled: true, hotkey: { key: '-' }, handler: () => boardView?.zoomBy(0.8) },
-    { id: 'zoom-default', label: 'Reset Zoom', enabled: true, hotkey: { key: '0' }, handler: () => boardView?.zoomDefault() },
-    { id: 'cursor-left', label: 'Cursor Left', enabled: phase === 'playing', hotkey: { key: 'ArrowLeft' }, handler: () => moveCursor(-1, 0) },
-    { id: 'cursor-right', label: 'Cursor Right', enabled: phase === 'playing', hotkey: { key: 'ArrowRight' }, handler: () => moveCursor(1, 0) },
-    { id: 'cursor-up', label: 'Cursor Up', enabled: phase === 'playing', hotkey: { key: 'ArrowUp' }, handler: () => moveCursor(0, -1) },
-    { id: 'cursor-down', label: 'Cursor Down', enabled: phase === 'playing', hotkey: { key: 'ArrowDown' }, handler: () => moveCursor(0, 1) },
+    { id: 'zoom-in-shifted', label: t('Zoom In'), enabled: true, hotkey: { key: '+', shift: true }, handler: () => boardView?.zoomBy(1.25) },
+    { id: 'zoom-out', label: t('Zoom Out'), enabled: true, hotkey: { key: '-' }, handler: () => boardView?.zoomBy(0.8) },
+    { id: 'zoom-default', label: t('Default Zoom'), enabled: true, hotkey: { key: '0' }, handler: () => boardView?.zoomDefault() },
+    { id: 'cursor-left', label: tx('Cursor Left'), enabled: phase === 'playing', hotkey: { key: 'ArrowLeft' }, handler: () => moveCursor(-1, 0) },
+    { id: 'cursor-right', label: tx('Cursor Right'), enabled: phase === 'playing', hotkey: { key: 'ArrowRight' }, handler: () => moveCursor(1, 0) },
+    { id: 'cursor-up', label: tx('Cursor Up'), enabled: phase === 'playing', hotkey: { key: 'ArrowUp' }, handler: () => moveCursor(0, -1) },
+    { id: 'cursor-down', label: tx('Cursor Down'), enabled: phase === 'playing', hotkey: { key: 'ArrowDown' }, handler: () => moveCursor(0, 1) },
     {
       id: 'cursor-act',
-      label: 'Select / Move / Attack',
+      label: tx('Select / Move / Attack'),
       enabled: phase === 'playing' && cursorHex !== null,
       hotkey: { key: 'Enter' },
       // The same path a left click takes, so keyboard and mouse can never diverge.
@@ -2466,7 +2466,7 @@
     },
     {
       id: 'deselect',
-      label: 'Deselect',
+      label: tx('Deselect'),
       enabled: phase === 'playing',
       hotkey: { key: 'Escape' },
       handler: () => {
@@ -2689,8 +2689,8 @@
   {/if}
   {#if clearLabelsConfirmOpen}
     <ConfirmDialog
-      title="Clear Labels"
-      message="Are you sure you want to clear map labels?"
+      title={t('Clear Labels')}
+      message={tx('Are you sure you want to clear map labels?')}
       onYes={() => {
         clearLabelsConfirmOpen = false;
         session.clearLabels();
@@ -2779,15 +2779,15 @@
   <AdvancementDialog pending={pendingAdvancement} onChoose={handleChooseAdvancement} />
 
   {#if phase === 'replay' && replay}
-    <div class="replay-bar" role="toolbar" aria-label="Replay controls" data-testid="replay-bar">
-      <span class="replay-label">Replay</span>
+    <div class="replay-bar" role="toolbar" aria-label={tx('Replay controls')} data-testid="replay-bar">
+      <span class="replay-label">{t('Replay')}</span>
       <button onclick={toggleReplayPlaying} disabled={replay.index >= replay.total} data-testid="replay-play">
-        {replay.playing ? 'Pause' : 'Play'}
+        {replay.playing ? tx('Pause') : tw('Play')}
       </button>
-      <button onclick={() => void restartReplay()} data-testid="replay-restart">Restart</button>
+      <button onclick={() => void restartReplay()} data-testid="replay-restart">{tx('Restart')}</button>
       <span class="replay-progress" data-testid="replay-progress">{replay.index} / {replay.total}</span>
       {#if !replay.playing && replay.index >= replay.total}
-        <button onclick={continueFromReplay} data-testid="replay-continue">Continue playing</button>
+        <button onclick={continueFromReplay} data-testid="replay-continue">{tx('Continue playing')}</button>
       {/if}
     </div>
   {/if}

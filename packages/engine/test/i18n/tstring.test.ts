@@ -104,3 +104,12 @@ describe('TString', () => {
     expect(back.parts).toEqual(t.parts);
   });
 });
+
+describe('formatMessage', () => {
+  it('substitutes $name and $name| after translating', async () => {
+    const { formatMessage } = await import('../../src/i18n/format');
+    expect(formatMessage('Turn $turn of $max', { turn: 3, max: 30 })).toBe('Turn 3 of 30');
+    expect(formatMessage('$gold|g', { gold: 20 })).toBe('20g');
+    expect(formatMessage('Price: $$5 and $missing', {})).toBe('Price: $5 and $missing');
+  });
+});

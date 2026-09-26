@@ -1,6 +1,8 @@
 <script lang="ts">
   import { imageUrl } from '@wesnothweb2/renderer';
   import type { RecruitOption, RecallOption, SelectedUnitInfo, HoveredHexInfo } from './gameSession.js';
+  import { alignmentName, capitalizeFirst, damageTypeName, rangeName } from './i18n/gameText.js';
+  import { fmt, t, th, tw, tx } from './i18n/locale.js';
 
   let {
     selected,
@@ -36,11 +38,7 @@
 
   /** "melee, blade" style label for a weapon's range/damage type -- addresses "UI is missing information about weapon type". */
   function rangeType(w: { range: string; type: string }): string {
-    return `${w.range}, ${w.type}`;
-  }
-
-  function capitalize(s: string): string {
-    return s.length > 0 ? s[0]!.toUpperCase() + s.slice(1) : s;
+    return `${rangeName(w.range)}, ${damageTypeName(w.type)}`;
   }
 
   /** Real convention: resistance is shown as a signed percentage relative to normal (100) -- e.g. a `resistance` of 80 (20% resistant) shows as "+20%", 130 (30% weak) as "-30%". */
@@ -57,7 +55,7 @@
     <!-- Phase 14: real theme's always-on "terrain under the cursor" strip. -->
     <p class="hover-terrain">
       {hoveredHexInfo.terrainName} ({hoveredHexInfo.x}, {hoveredHexInfo.y}){#if hoveredHexInfo.defensePercent !== null}
-        &mdash; Defense: {hoveredHexInfo.defensePercent}%{/if}
+        &mdash; {th('Defense')}: {hoveredHexInfo.defensePercent}%{/if}
     </p>
   {/if}
 
@@ -77,41 +75,41 @@
             </span>
           {/if}
         </div>
-        <div class="sub">Level {info.level} {info.typeId} &middot; {info.raceName} &middot; {capitalize(info.alignment ?? 'neutral')}</div>
-        <div class="sub">Side {info.side} &middot; ({info.x}, {info.y})</div>
+        <div class="sub">{th('Level')} {info.level} {info.typeName} &middot; {info.raceName} &middot; {capitalizeFirst(alignmentName(info.alignment ?? 'neutral'))}</div>
+        <div class="sub">{t('Side')} {info.side} &middot; ({info.x}, {info.y})</div>
       </div>
     </div>
 
-    <div class="bar-row" title="Hitpoints">
-      <span class="bar-label">HP</span>
+    <div class="bar-row" title={tx('Hitpoints')}>
+      <span class="bar-label">{t('HP')}</span>
       <div class="bar hp"><div class="bar-fill" style={`width: ${info.maxHp > 0 ? (100 * info.hp) / info.maxHp : 0}%`}></div></div>
       <span class="bar-value">{info.hp}/{info.maxHp}</span>
     </div>
-    <div class="bar-row" title="Experience">
-      <span class="bar-label">XP</span>
+    <div class="bar-row" title={tx('Experience')}>
+      <span class="bar-label">{t('XP')}</span>
       <div class="bar xp"><div class="bar-fill" style={`width: ${info.maxXp > 0 ? (100 * info.xp) / info.maxXp : 0}%`}></div></div>
       <span class="bar-value">{info.xp}/{info.maxXp}</span>
     </div>
-    <div class="bar-row" title="Moves left">
-      <span class="bar-label">MP</span>
+    <div class="bar-row" title={tx('Moves left')}>
+      <span class="bar-label">{tw('MP')}</span>
       <div class="bar mp"><div class="bar-fill" style={`width: ${info.maxMoves > 0 ? (100 * info.movesLeft) / info.maxMoves : 0}%`}></div></div>
       <span class="bar-value">{info.movesLeft}/{info.maxMoves}</span>
     </div>
 
-    <div>Terrain: {info.terrainName} (Defense: {info.defensePercent}%)</div>
-    <div>Attacks left: {info.attacksLeft}</div>
+    <div>{th('Terrain')}: {info.terrainName} ({th('Defense')}: {info.defensePercent}%)</div>
+    <div>{tx('Attacks left:')} {info.attacksLeft}</div>
     {#if info.traits.length > 0}
       <!-- Real character traits (e.g. strong, intelligent) -- addresses "no information about character traits in the unit infobox". -->
-      <div>Traits: {info.traits.join(', ')}</div>
+      <div>{t('Traits')}: {info.traits.join(', ')}</div>
     {/if}
 
     <!-- Real resistances tooltip -- addresses "no way to see a unit's resistances". -->
     <div class="resistances">
-      <div class="attacks-label">Resistances:</div>
+      <div class="attacks-label">{t('Resistances:')}</div>
       <div class="resistance-grid">
         {#each info.resistances as r (r.damageType)}
           <span class="resistance-cell" class:weak={r.resistance > 100} class:strong={r.resistance < 100}>
-            {capitalize(r.damageType)}: {resistanceLabel(r.resistance)}
+            {capitalizeFirst(damageTypeName(r.damageType))}: {resistanceLabel(r.resistance)}
           </span>
         {/each}
       </div>
@@ -120,7 +118,7 @@
     {#if info.attacks.length > 0}
       <!-- Real weapon type/range/specials -- addresses "UI is missing information about weapon type/specials". -->
       <div class="attacks">
-        <div class="attacks-label">Attacks:</div>
+        <div class="attacks-label">{t('Attacks')}:</div>
         <ul>
           <!-- Keyed by index, NOT atk.name (bugs4.md #9): real units routinely have two attacks sharing
                one name (e.g. the real Peasant's melee + thrown "pitchfork", Drake Arbiter's twin "halberd"
@@ -144,7 +142,7 @@
     {#if info.abilities.length > 0}
       <!-- Real abilities (e.g. heals, skirmisher) -- addresses "UI is missing information about abilities". -->
       <div class="abilities">
-        <div class="attacks-label">Abilities:</div>
+        <div class="attacks-label">{t('Abilities:')}</div>
         <ul>
           {#each info.abilities as ab (ab.name)}
             <li title={ab.description}>{ab.name}</li>
@@ -168,23 +166,21 @@
       as its own section so it doesn't disturb the acting-unit display above.
     -->
     <section class="unit-info inspected">
-      <div class="role">(viewing)</div>
+      <div class="role">{tx('(viewing)')}</div>
       {@render unitInfo(inspected)}
     </section>
   {/if}
 
   {#if !selected && !inspected && recruitOptions.length === 0 && recallOptions.length === 0}
     <p class="hint">
-      Click one of your units to select it. The hexes it can move to are
-      brightened and show its defense there, from red (poor) through yellow
-      to green (good); adjacent enemies it can attack are marked red.
+      {tx('Click one of your units to select it. The hexes it can move to are brightened and show its defense there, from red (poor) through yellow to green (good); adjacent enemies it can attack are marked red.')}
     </p>
   {/if}
 
   <section class="log">
-    <h3>Log</h3>
+    <h3>{tx('Log')}</h3>
     {#if log.length === 0}
-      <p class="hint">Nothing has happened yet.</p>
+      <p class="hint">{tx('Nothing has happened yet.')}</p>
     {:else}
       <ul>
         {#each log as entry, i (i)}
@@ -195,7 +191,7 @@
   </section>
 
   <section class="turn-actions">
-    <button class="primary" onclick={onEndTurn}>End Turn</button>
+    <button class="primary" onclick={onEndTurn}>{t('End Turn')}</button>
   </section>
 </aside>
 

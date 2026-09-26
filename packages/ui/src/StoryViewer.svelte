@@ -20,6 +20,7 @@
    * `GameShell` owns what happens after the story (`onDone`).
    */
   import { onDestroy } from 'svelte';
+  import { t, tx } from './i18n/locale.js';
   import type { ResolvedStoryPart } from '@wesnothweb2/engine';
   import { layoutFloatingImage, layoutStoryPart, titleOrigin, type Size } from './story/storyLayout.js';
   import { pickStoryImage, GAME_IMAGES_BASE, type StoryAssets } from './story/storyImages.js';
@@ -295,7 +296,7 @@
 <svelte:window onkeydown={onKeydown} />
 
 {#if part}
-  <div class="story" role="dialog" aria-modal="true" aria-label="Story" bind:clientWidth={viewportW} bind:clientHeight={viewportH}>
+  <div class="story" role="dialog" aria-modal="true" aria-label={tx('Story')} bind:clientWidth={viewportW} bind:clientHeight={viewportH}>
     {#if layout}
       {#each layout.layers as layer, i (`${shownIndex}:${i}`)}
         {@const url = urlOf(layer.image, layer.w)}
@@ -320,7 +321,7 @@
     {/if}
 
     {#if showLoading}
-      <div class="loading" role="status">Loading…</div>
+      <div class="loading" role="status">{t('Loading...')}</div>
     {/if}
 
     <div class="title-decor" style:background-image="url('{ENGINE_IMAGES}/dialogs/story_title_decor.png')"></div>
@@ -352,7 +353,7 @@
       {/if}
 
       <div class="side" style:width="{sideWidth}px">
-        <button class="arrow" aria-label="Previous" disabled={partIndex === 0} onclick={() => navigate(-1)}>
+        <button class="arrow" aria-label={t('Previous')} disabled={partIndex === 0} onclick={() => navigate(-1)}>
           <img src="{ENGINE_IMAGES}/misc/ornate_big_arrow_decor_left.png" alt="" />
         </button>
       </div>
@@ -362,11 +363,11 @@
         <div class="text" role="button" tabindex="-1" style:opacity={alpha} style:text-align={part.textAlignment} onclick={() => navigate(1)}>
           {part.text}
         </div>
-        <button class="skip" onclick={close}>Skip</button>
+        <button class="skip" onclick={close}>{t('Skip')}</button>
       </div>
 
       <div class="side" style:width="{sideWidth}px">
-        <button class="arrow" aria-label="Next" onclick={() => navigate(1)}>
+        <button class="arrow" aria-label={t('Next')} onclick={() => navigate(1)}>
           <img src="{ENGINE_IMAGES}/misc/ornate_big_arrow_decor_right.png" alt="" />
         </button>
       </div>

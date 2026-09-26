@@ -5,6 +5,7 @@
    * in that side's colour). OK applies, Cancel leaves them as they were.
    */
   import Modal from './Modal.svelte';
+  import { t, tx } from './i18n/locale.js';
 
   let {
     categories,
@@ -26,7 +27,7 @@
   }
 </script>
 
-<Modal title="Label Settings" onClose={onCancel} width="24rem">
+<Modal title={tx('Label Settings')} onClose={onCancel} width="24rem">
   {#snippet children()}
     <ul>
       {#each categories as cat (cat.id)}
@@ -41,8 +42,8 @@
     <div class="footer">
       <div class="spacer"></div>
       <!-- svelte-ignore a11y_autofocus -- confirming is the usual answer -->
-      <button class="primary" data-autofocus autofocus onclick={apply}>OK</button>
-      <button onclick={onCancel}>Cancel</button>
+      <button class="primary" data-autofocus autofocus onclick={apply}>{t('OK')}</button>
+      <button onclick={onCancel}>{t('Cancel')}</button>
     </div>
   {/snippet}
 </Modal>

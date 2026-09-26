@@ -25,7 +25,8 @@
    */
   import { imageUrl } from '@wesnothweb2/renderer';
   import type { PendingAdvancement } from './gameSession.js';
-  import { raceDisplayName } from './gameSession.js';
+  import { alignmentName, damageTypeName, rangeName, raceName } from './i18n/gameText.js';
+  import { t, th, tx } from './i18n/locale.js';
   import { onPlainButton } from './commands.js';
   import Modal from './Modal.svelte';
 
@@ -42,7 +43,7 @@
   let selected = $derived(pending?.optionInfos.find((o) => o.typeId === selectedTypeId) ?? pending?.optionInfos[0] ?? null);
 
   function rangeType(w: { range: string; type: string }): string {
-    return `${w.range}, ${w.type}`;
+    return `${rangeName(w.range)}, ${damageTypeName(w.type)}`;
   }
 
   function handleKeydown(e: KeyboardEvent): void {
@@ -63,32 +64,32 @@
 <svelte:window onkeydown={handleKeydown} />
 
 {#if pending}
-  <Modal width="48rem" labelledBy="Unit advancement">
+  <Modal width="48rem" labelledBy={t('Advance Unit')}>
     {#snippet children()}
-      <div class="title">Advance Unit</div>
+      <div class="title">{t('Advance Unit')}</div>
       <div class="layout">
         <div class="detail">
           {#if pending.unitInfo.image}
             <img class="portrait" src={imageUrl(pending.unitInfo.image)} alt="" />
           {/if}
           <div class="name">{pending.unitInfo.name}</div>
-          <div class="type-name">{pending.unitInfo.typeId}</div>
+          <div class="type-name">{pending.unitInfo.typeName}</div>
           <div class="subline">
-            <span class="level">Lvl {pending.unitInfo.level}</span>
-            <span class="alignment">{pending.unitInfo.alignment}</span>
-            <span class="race">{raceDisplayName(pending.unitInfo.raceId)}</span>
+            <span class="level">{t('Lvl')} {pending.unitInfo.level}</span>
+            <span class="alignment">{alignmentName(pending.unitInfo.alignment ?? 'neutral')}</span>
+            <span class="race">{raceName(pending.unitInfo.raceId)}</span>
           </div>
           <div class="stats">
-            <span class="hp">HP: {pending.unitInfo.hp}/{pending.unitInfo.maxHp}</span>
+            <span class="hp">{t('HP:')} {pending.unitInfo.hp}/{pending.unitInfo.maxHp}</span>
             <span class="sep">|</span>
-            <span class="xp">XP: {pending.unitInfo.xp}/{pending.unitInfo.maxXp}</span>
+            <span class="xp">{t('XP:')} {pending.unitInfo.xp}/{pending.unitInfo.maxXp}</span>
           </div>
           {#if pending.unitInfo.traits.length > 0}
-            <div class="traits">Traits: {pending.unitInfo.traits.join(', ')}</div>
+            <div class="traits">{t('Traits')}: {pending.unitInfo.traits.join(', ')}</div>
           {/if}
           {#if pending.unitInfo.attacks.length > 0}
             <div class="attacks">
-              <div class="attacks-label">Attacks</div>
+              <div class="attacks-label">{t('Attacks')}</div>
               <ul>
                 <!-- Keyed by index, not atk.name -- see SidePanel.svelte's own comment (bugs4.md #9):
                      real units can have two same-named attacks (e.g. Peasant's melee + thrown "pitchfork"). -->
@@ -104,7 +105,7 @@
         </div>
 
         <div class="choices">
-          <div class="prompt">Choose which unit to advance to:</div>
+          <div class="prompt">{tx('Choose which unit to advance to:')}</div>
           <ul class="option-list">
             {#each pending.optionInfos as option (option.typeId)}
               <li>
@@ -119,7 +120,7 @@
                   <span class="option-text">
                     <span class="option-name">{option.name}</span>
                     <span class="option-stats">
-                      Level {option.level} &middot; {option.hitpoints} HP
+                      {th('Level')} {option.level} &middot; {option.hitpoints} {t('HP')}
                       {#each option.attacks as atk, i (i)}
                         <span class="option-attack">{atk.damage}&times;{atk.numAttacks} {atk.name}</span>
                       {/each}
@@ -135,7 +136,7 @@
       <div class="footer">
         <div class="spacer"></div>
         <button class="primary" data-autofocus disabled={!selected} onclick={() => selected && onChoose(selected.typeId)}>
-          OK
+          {t('OK')}
         </button>
       </div>
     {/snippet}

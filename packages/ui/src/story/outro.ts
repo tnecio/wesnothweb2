@@ -6,6 +6,7 @@
  * its first chunk only.
  */
 import type { CampaignCredits } from './storyImages.js';
+import { t } from '../i18n/locale.js';
 
 export interface OutroLine {
   readonly text: string;
@@ -25,7 +26,7 @@ export const OUTRO_DEFAULT_DURATION_MS = 3500;
 const CHUNK_SIZE = 5;
 
 export function buildOutroScreens(endText: string | undefined, showCredits: boolean, campaign: CampaignCredits | undefined): OutroScreen[] {
-  const screens: OutroScreen[] = [{ lines: [{ text: endText ? endText : 'The End', size: 'normal' }] }];
+  const screens: OutroScreen[] = [{ lines: [{ text: endText ? endText : t('The End'), size: 'normal' }] }];
   if (!showCredits || !campaign) return screens;
 
   screens.push({ lines: [{ text: campaign.name, size: 'large' }] });

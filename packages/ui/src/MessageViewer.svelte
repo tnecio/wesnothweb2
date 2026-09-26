@@ -25,6 +25,7 @@
   import { imageUrl } from '@wesnothweb2/renderer';
   import { pickStoryImage, type StoryAssets } from './story/storyImages.js';
   import { layoutMessage, scaledSizeFromPath, type Size } from './story/messageLayout.js';
+  import { tx } from './i18n/locale.js';
 
   let {
     interaction,
@@ -150,7 +151,7 @@
     <div
       class="window"
       role="dialog"
-      aria-label={msg.title || 'Message'}
+      aria-label={msg.title || tx('Message')}
       style:left="{area.x}px"
       style:top="{area.y}px"
       style:width="{area.w}px"
@@ -179,7 +180,7 @@
           {/if}
 
           {#if options.length > 0}
-            <ul class="options" role="listbox" aria-label="Choices" tabindex="-1">
+            <ul class="options" role="listbox" aria-label={tx('Choices')} tabindex="-1">
               {#each options as option, i (i)}
                 <li>
                   <button

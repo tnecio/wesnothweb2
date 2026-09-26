@@ -10,7 +10,7 @@
    * within-campaign concern, not a page/URL change).
    */
   import type { GameBoardSnapshot } from '@wesnothweb2/engine';
-  import { GameShell, fetchStoryAssets, loadGame, type StoryAssets, type SaveGameData } from '@wesnothweb2/ui';
+  import { GameShell, fetchStoryAssets, loadGame, tx, type StoryAssets, type SaveGameData } from '@wesnothweb2/ui';
   import { fetchCampaigns, type Campaign } from './campaigns.js';
   import { router } from './router.svelte.js';
 
@@ -95,11 +95,11 @@
 
 <main>
   {#if status === 'loading'}
-    <p class="loading">Loading scenario...</p>
+    <p class="loading">{tx('Loading scenario...')}</p>
   {:else if status === 'error'}
     <div class="loading">
-      <p>Failed to load: {errorMessage}</p>
-      <button onclick={() => router.navigate('/')}>Back to menu</button>
+      <p>{tx('Failed to load:')} {errorMessage}</p>
+      <button onclick={() => router.navigate('/')}>{tx('Back to menu')}</button>
     </div>
   {:else if snapshot}
     <!-- No {#key} needed here: App.svelte already keys PlayPage itself on

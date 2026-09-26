@@ -7,6 +7,7 @@
    * preferences screen comes with Phase 24.
    */
   import Modal from './Modal.svelte';
+  import { fmt, t, tx } from './i18n/locale.js';
   import type { AudioSettings } from './audio/settings.js';
 
   let {
@@ -20,25 +21,25 @@
   } = $props();
 
   const rows = [
-    { label: 'Music', on: 'musicOn', volume: 'musicVolume' },
-    { label: 'Sound effects', on: 'soundOn', volume: 'soundVolume' },
-    { label: 'User interface', on: 'uiOn', volume: 'uiVolume' },
-    { label: 'Turn bell', on: 'bellOn', volume: 'bellVolume' },
+    { label: () => t('Music'), on: 'musicOn', volume: 'musicVolume' },
+    { label: () => t('Sound effects'), on: 'soundOn', volume: 'soundVolume' },
+    { label: () => tx('User interface'), on: 'uiOn', volume: 'uiVolume' },
+    { label: () => t('Turn bell'), on: 'bellOn', volume: 'bellVolume' },
   ] as const;
 </script>
 
-<Modal title="Audio" onClose={onClose} width="26rem">
+<Modal title={tx('Audio')} onClose={onClose} width="26rem">
   {#snippet children()}
     <label class="mute">
       <input type="checkbox" checked={settings.muted} onchange={(e) => onChange({ muted: e.currentTarget.checked })} data-testid="audio-mute" />
-      <span>Mute everything</span>
+      <span>{tx('Mute everything')}</span>
     </label>
     <ul>
       {#each rows as row (row.on)}
         <li>
           <label class="on">
             <input type="checkbox" checked={settings[row.on]} onchange={(e) => onChange({ [row.on]: e.currentTarget.checked })} />
-            <span>{row.label}</span>
+            <span>{row.label()}</span>
           </label>
           <input
             class="volume"
@@ -47,7 +48,7 @@
             max="100"
             step="1"
             value={settings[row.volume]}
-            aria-label={`${row.label} volume`}
+            aria-label={fmt(tx('$name volume'), { name: row.label() })}
             oninput={(e) => onChange({ [row.volume]: Number(e.currentTarget.value) })}
           />
           <span class="percent">{settings[row.volume]}%</span>
@@ -56,12 +57,12 @@
     </ul>
     <label class="mute">
       <input type="checkbox" checked={settings.stopInBackground} onchange={(e) => onChange({ stopInBackground: e.currentTarget.checked })} />
-      <span>Pause the music while the window is hidden</span>
+      <span>{tx('Pause the music while the window is hidden')}</span>
     </label>
     <div class="footer">
       <div class="spacer"></div>
       <!-- svelte-ignore a11y_autofocus -- the only action -->
-      <button class="primary" data-autofocus autofocus onclick={onClose}>Close</button>
+      <button class="primary" data-autofocus autofocus onclick={onClose}>{t('Close')}</button>
     </div>
   {/snippet}
 </Modal>

@@ -19,6 +19,7 @@
   import type { TimeOfDayEntry } from '@wesnothweb2/engine';
   import type { EconomyInfo } from './gameSession.js';
   import { formatHotkey, type Command } from './commands.js';
+  import { fmt, t, tw, tx } from './i18n/locale.js';
 
   let {
     scenarioName,
@@ -84,7 +85,7 @@
 <header class="top-bar" bind:this={barEl}>
   <nav class="menus">
     <div class="menu-group">
-      <button class="menu-button" class:open={openMenu === 'menu'} onclick={() => toggle('menu')}>Menu</button>
+      <button class="menu-button" class:open={openMenu === 'menu'} onclick={() => toggle('menu')}>{tw('Menu')}</button>
       {#if openMenu === 'menu'}
         <div class="dropdown">
           {#each menuCommands as cmd (cmd.id)}
@@ -97,7 +98,7 @@
       {/if}
     </div>
     <div class="menu-group">
-      <button class="menu-button" class:open={openMenu === 'actions'} onclick={() => toggle('actions')}>Actions</button>
+      <button class="menu-button" class:open={openMenu === 'actions'} onclick={() => toggle('actions')}>{t('Actions')}</button>
       {#if openMenu === 'actions'}
         <div class="dropdown">
           {#each actionCommands as cmd (cmd.id)}
@@ -112,39 +113,39 @@
   </nav>
 
   {#if onToggleMute}
-    <button class="mute-button" class:muted title={muted ? 'Unmute' : 'Mute'} aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted} data-testid="mute-toggle" onclick={onToggleMute}>
+    <button class="mute-button" class:muted title={muted ? tx('Unmute') : t('Mute')} aria-label={muted ? tx('Unmute') : t('Mute')} aria-pressed={muted} data-testid="mute-toggle" onclick={onToggleMute}>
       {muted ? '\u{1F507}' : '\u{1F50A}'}
     </button>
   {/if}
 
   <div class="status">
-    <span class="stat" title="Turn / turn limit">
-      <span class="label">Turn</span>
+    <span class="stat" title={tx('Turn / turn limit')}>
+      <span class="label">{t('Turn')}</span>
       {turnNumber}{#if scenarioTurnsLimit !== null}/{scenarioTurnsLimit}{/if}
-      {#if activeSide !== undefined}<span class="dim">(side {activeSide})</span>{/if}
+      {#if activeSide !== undefined}<span class="dim">{fmt(tx('(side $side)'), { side: activeSide })}</span>{/if}
     </span>
-    <span class="stat" title="Gold">
-      <span class="label">Gold</span>
+    <span class="stat" title={t('Gold')}>
+      <span class="label">{t('Gold')}</span>
       {gold}
     </span>
-    <span class="stat" title="Villages owned">
-      <span class="label">Villages</span>
+    <span class="stat" title={tx('Villages owned')}>
+      <span class="label">{t('Villages')}</span>
       {economyInfo.villagesOwned}
     </span>
-    <span class="stat" title="Units">
-      <span class="label">Units</span>
+    <span class="stat" title={t('Units')}>
+      <span class="label">{t('Units')}</span>
       {economyInfo.unitCount}
     </span>
-    <span class="stat" title="Upkeep charged (raw total)">
-      <span class="label">Upkeep</span>
+    <span class="stat" title={tx('Upkeep charged (raw total)')}>
+      <span class="label">{t('Upkeep')}</span>
       {economyInfo.upkeepCharged} <span class="dim">({economyInfo.upkeepTotal})</span>
     </span>
-    <span class="stat" title="Income next turn">
-      <span class="label">Income</span>
+    <span class="stat" title={tx('Income next turn')}>
+      <span class="label">{t('Income')}</span>
       {economyInfo.netIncome >= 0 ? '+' : ''}{economyInfo.netIncome}
     </span>
     {#if timeOfDay && timeOfDay.id}
-      <span class="stat tod" title="Lawful bonus: {timeOfDay.lawfulBonus >= 0 ? '+' : ''}{timeOfDay.lawfulBonus}%">
+      <span class="stat tod" title="{t('Lawful Bonus:')} {timeOfDay.lawfulBonus >= 0 ? '+' : ''}{timeOfDay.lawfulBonus}%">
         {#if timeOfDay.image}
           <img class="tod-icon" src={imageUrl(timeOfDay.image)} alt="" />
         {/if}

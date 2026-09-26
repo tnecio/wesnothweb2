@@ -32,6 +32,7 @@
    * confirmed against a real browser in this environment -- see the
    * top-level report.
    */
+  import { fmt, th, tx } from './i18n/locale.js';
   import * as PIXI from 'pixi.js';
   import {
     SnapshotBoard,
@@ -121,7 +122,7 @@
 
   let canvasHost: HTMLDivElement | undefined = $state();
   /** Transient loading/error text only -- the ready-state label is `readyLabel` below, kept live via `$derived` rather than a one-time snapshot of `units.length` at mount (that used to freeze at the pre-events count, e.g. "2 units" even once the scenario's startup events had spawned nine more). */
-  let status = $state<string | null>('loading scenario...');
+  let status = $state<string | null>(tx('loading scenario...'));
   /** The hex the pointer is currently over, engine-convention (0-based) -- shown in the status line so positions are easy to read off and report precisely (e.g. describing a bug). `null` when the pointer isn't over the board at all. */
   let hoveredHex = $state<HexPoint | null>(null);
   /**
@@ -149,7 +150,7 @@
   let pixiApp: PIXI.Application | undefined = $state.raw();
   /** Phase 17 `[lock_view]`: the player's own pan/zoom is off while a cutscene owns the camera. */
   let viewLocked = false;
-  const readyLabel = $derived(`${snapshot.scenario.name} -- ${units.length} units, ${snapshot.map.width}x${snapshot.map.height} hexes`);
+  const readyLabel = $derived(fmt(tx('$name -- $units units, $width x $height hexes'), { name: snapshot.scenario.name, units: units.length, width: snapshot.map.width, height: snapshot.map.height }));
 
   $effect(() => {
     if (!canvasHost) return;
@@ -321,7 +322,7 @@
     })()
       .catch((err) => {
         console.error(err);
-        status = `failed to load: ${err instanceof Error ? err.message : String(err)}`;
+        status = fmt(tx('failed to load: $error'), { error: err instanceof Error ? err.message : String(err) });
       })
       .finally(() => markReady());
 
@@ -664,13 +665,13 @@
 
 <div class="board-view" data-board-ready={board ? 'true' : 'false'}>
   <p class="status">
-    {status ?? readyLabel} (drag to pan, scroll to zoom)
+    {status ?? readyLabel} {tx('(drag to pan, scroll to zoom)')}
     {#if hoveredHex}
-      &middot; Hex: ({hoveredHex.x}, {hoveredHex.y})
+      &middot; {tx('Hex')}: ({hoveredHex.x}, {hoveredHex.y})
       {#if hoverDefensePercent}
         {@const def = hoverDefensePercent(hoveredHex.x, hoveredHex.y)}
         {#if def !== null && def !== undefined}
-          &middot; Defense: {def}%
+          &middot; {th('Defense')}: {def}%
         {/if}
       {/if}
     {/if}

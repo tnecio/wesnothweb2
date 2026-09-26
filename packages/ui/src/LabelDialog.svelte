@@ -5,6 +5,7 @@
    * empty text removes the label. Presentational only; `GameShell` places it.
    */
   import Modal from './Modal.svelte';
+  import { t } from './i18n/locale.js';
 
   let {
     initialText,
@@ -33,22 +34,22 @@
   }
 </script>
 
-<Modal title="Place Label" onClose={onCancel} width="26rem">
+<Modal title={t('Place Label')} onClose={onCancel} width="26rem">
   {#snippet children()}
     <label class="field">
-      <span>Label</span>
+      <span>{t('Label:')}</span>
       <!-- svelte-ignore a11y_autofocus -- the one field in a dialog opened to type in it -->
       <input type="text" bind:value={text} data-autofocus autofocus maxlength="200" onkeydown={handleKeydown} />
     </label>
     <label class="check">
       <input type="checkbox" bind:checked={teamOnly} />
-      <span>Team only</span>
+      <span>{t('Team only')}</span>
     </label>
 
     <div class="footer">
       <div class="spacer"></div>
-      <button class="primary" onclick={submit}>OK</button>
-      <button onclick={onCancel}>Cancel</button>
+      <button class="primary" onclick={submit}>{t('OK')}</button>
+      <button onclick={onCancel}>{t('Cancel')}</button>
     </div>
   {/snippet}
 </Modal>
