@@ -4459,3 +4459,6 @@ not undoable, upstream's rule with automatic updates on).
   game's save of the end matches ours exactly apart from unsynced facings
   and one AI `stop_unit` (upstream does not record it). Checked with
   `packages/ui/scripts/compare-real-save.ts`.
+- **Save/load browser check after 18c** (`apps/web/scripts/save-load-playthrough.mjs`):
+  all checks pass (named slots, autosaves, reload, download as a real
+  Wesnoth `.gz`, upload, cross-campaign load), 818 s.
