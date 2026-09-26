@@ -116,7 +116,7 @@ export {
   chooseAnimation,
 } from './animation/unitAnimation'
 
-export { animationDurationMs } from './animation/playback'
+export { animationDurationMs, animationSoundCues, animationSoundFiles, type SoundCue } from './animation/playback'
 
 export {
   type UnitFrameDef,

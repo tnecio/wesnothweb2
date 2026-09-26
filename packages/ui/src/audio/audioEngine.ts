@@ -10,11 +10,14 @@
  * `window.__audio` -- what a headless browser check reads, since it cannot
  * hear anything.
  */
-import { MusicList } from '@wesnothweb2/engine';
+import { MusicList, type SoundRequest } from '@wesnothweb2/engine';
+import { squareParentheticalSplit } from '@wesnothweb2/renderer/src/animation/frame.js';
 import { audioExists, audioUrl } from './audioPaths.js';
 import { MusicPlayer } from './musicPlayer.js';
 import { busGains, loadAudioSettings, saveAudioSettings, type AudioSettings, type BusGains, type VolumeScale } from './settings.js';
+import { SoundPlayer } from './soundEffects.js';
 import { WebAudioMusicBackend } from './webAudioMusic.js';
+import { WebAudioSoundBackend } from './webAudioSounds.js';
 
 export interface AudioLogEntry {
   /** Milliseconds since the engine was made. */
@@ -47,6 +50,8 @@ export class AudioEngine {
   private master: GainNode | null = null;
   private buses: { music: GainNode; sound: GainNode; ui: GainNode; bell: GainNode } | null = null;
   private player: MusicPlayer | null = null;
+  private effects: SoundPlayer | null = null;
+  private pendingPreload: string[] = [];
   private backend: WebAudioMusicBackend | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private boardReady = false;
@@ -107,6 +112,40 @@ export class AudioEngine {
     if (this.boardReady) return;
     this.boardReady = true;
     this.startPlayer();
+    this.flushPreload();
+  }
+
+  /** Whether the player wants this kind of sound at all (`prefs::sound()`, `ui_sound_on()`, `turn_bell()`). */
+  private soundWanted(group: SoundRequest['group']): boolean {
+    const s = this.settingsValue;
+    if (group === 'ui') return s.uiOn;
+    if (group === 'bell' || group === 'timer') return s.bellOn;
+    return s.soundOn;
+  }
+
+  /** `sound::play_sound` and friends: a sound effect, dropped if the audio is not unlocked yet or the player has that kind off. */
+  playSound(request: SoundRequest): void {
+    if (!this.effects || !this.soundWanted(request.group)) return;
+    this.effects.play(request);
+  }
+
+  /** `sound::play_UI_sound`. */
+  playUi(file: string): void {
+    this.playSound({ files: file, repeats: 0, group: 'ui' });
+  }
+
+  /**
+   * Fetches and decodes sounds a scenario is likely to need, at low priority
+   * once the board has rendered, so the first fight does not wait for them.
+   */
+  preloadSounds(files: readonly string[]): void {
+    this.pendingPreload.push(...files);
+    this.flushPreload();
+  }
+
+  private flushPreload(): void {
+    if (!this.effects || !this.boardReady || this.pendingPreload.length === 0) return;
+    this.effects.preload(this.pendingPreload.splice(0));
   }
 
   /** A user gesture: browsers allow audio from here on. Safe to call repeatedly. */
@@ -133,7 +172,14 @@ export class AudioEngine {
     this.applyGains();
     void ctx.resume();
     this.record('unlock', { state: ctx.state });
+    this.effects = new SoundPlayer({
+      backend: new WebAudioSoundBackend(ctx, { sound: this.buses.sound, sources: this.buses.sound, ui: this.buses.ui, bell: this.buses.bell, timer: this.buses.bell }),
+      split: squareParentheticalSplit,
+      urlFor: (file) => audioUrl('sounds', file, this.campaign),
+      log: (event, detail) => this.record(`sound-${event}`, detail),
+    });
     this.startPlayer();
+    this.flushPreload();
   }
 
   /** For browser checks: jumps the playing track to `secondsBeforeEnd` from its end, to see the transition without waiting minutes. */
@@ -163,6 +209,7 @@ export function getAudioEngine(): AudioEngine {
         log: engine.log,
         state: () => engine!.state(),
         seekNearEnd: (seconds: number) => engine!.debugSeekNearEnd(seconds),
+        playSound: (files: string, group: SoundRequest['group'] = 'sound') => engine!.playSound({ files, repeats: 0, group }),
       };
   }
   return engine;

@@ -32,6 +32,7 @@
 
 import { Direction } from '@wesnothweb2/engine/src/model/Location.js';
 import {
+  squareParentheticalSplit,
   frameCenterPosition,
   resolveFrameImage,
   sampleProgressivePair,
@@ -269,4 +270,45 @@ export function sampleParticles(
     if (halo) out.push(halo);
   }
   return out;
+}
+
+// ── Sounds ───────────────────────────────────────────────────────────────────
+
+/** A sound to start when the animation clock reaches `atMs` (hits land at 0). */
+export interface SoundCue {
+  readonly atMs: number;
+  /** A `sound=` value: a comma list (with `[a,b]`/`[1~3]` brackets), one of which is picked when it plays. */
+  readonly files: string;
+}
+
+/**
+ * Every sound an animation makes: `unit_frame::redraw` plays a frame's
+ * `sound=` once, when the frame first draws ("stuff that should be done only
+ * once per frame"), the frame's own value winning over the animation-wide
+ * one (`merge_parameters`). Unit frames and particles (`[sound_frame]`, the
+ * built-in `_death_sound`/`_healed_sound`/`_poison_sound`) all count, in
+ * clock order.
+ */
+export function animationSoundCues(anim: UnitAnimationDef): SoundCue[] {
+  const cues: SoundCue[] = [];
+  const walk = (frames: readonly UnitFrameDef[], startMs: number, fallback: string): void => {
+    let at = startMs;
+    for (const frame of frames) {
+      const files = frame.sound || fallback;
+      if (files !== '') cues.push({ atMs: at, files });
+      at += frame.durationMs;
+    }
+  };
+  walk(anim.frames, anim.startTimeMs, anim.animationParams.sound);
+  for (const p of anim.particles) walk(p.frames, p.startTimeMs, p.params.sound);
+  return cues.sort((a, b) => a.atMs - b.atMs);
+}
+
+/** Every individual sound file any of `anims` can play (comma lists and `[a,b]`/`[1~3]` brackets expanded) -- what a preload should fetch. */
+export function animationSoundFiles(anims: readonly UnitAnimationDef[]): string[] {
+  const files = new Set<string>();
+  for (const anim of anims) {
+    for (const cue of animationSoundCues(anim)) for (const file of squareParentheticalSplit(cue.files)) if (file !== '') files.add(file);
+  }
+  return [...files];
 }

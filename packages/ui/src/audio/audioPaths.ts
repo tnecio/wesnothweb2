@@ -16,6 +16,7 @@ for (const kind of ['music', 'sounds'] as const) {
 export function audioUrl(kind: AudioKind, file: string, campaign?: string): string | null {
   if (campaign && index[kind][campaign]?.has(file)) return `/game-images/campaigns/${campaign}/${kind}/${file}`;
   if (index[kind]['core']?.has(file)) return `/game-images/core/${kind}/${file}`;
+  if (kind === 'sounds' && index[kind]['engine']?.has(file)) return `/game-sounds-engine/${file}`;
   return null;
 }
 

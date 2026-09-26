@@ -29,7 +29,8 @@ function list(root) {
   return files.sort();
 }
 
-const out = { music: { core: list(path.join(data, 'core/music')) }, sounds: { core: list(path.join(data, 'core/sounds')) } };
+// `sounds/` beside `data/` holds the engine's own sounds (turn bell, button and menu clicks), served at /game-sounds-engine.
+const out = { music: { core: list(path.join(data, 'core/music')) }, sounds: { core: list(path.join(data, 'core/sounds')), engine: list(path.join(data, '../sounds')) } };
 for (const c of campaigns) {
   if (!c.wesnothId) continue;
   const music = list(path.join(data, 'campaigns', c.wesnothId, 'music'));

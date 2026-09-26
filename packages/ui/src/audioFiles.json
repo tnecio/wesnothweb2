@@ -321,6 +321,27 @@
    "zombie-hit-5.ogg",
    "zombie-hit-6.ogg"
   ],
+  "engine": [
+   "arrive.wav",
+   "bell.wav",
+   "button.wav",
+   "chat-1.ogg",
+   "chat-2.ogg",
+   "chat-3.ogg",
+   "chat-friend.ogg",
+   "chat-highlight.ogg",
+   "checkbox.wav",
+   "contract.wav",
+   "expand.wav",
+   "gamestart.ogg",
+   "join.wav",
+   "leave.wav",
+   "receive.wav",
+   "select-unit.wav",
+   "select.wav",
+   "slider.wav",
+   "timer.wav"
+  ],
   "Under_the_Burning_Suns": [
    "tauroch-hit-1.ogg",
    "tauroch-hit-2.ogg",

@@ -88,7 +88,7 @@ import {
 import { ImageCache, hexedRef, setImageBaseUrl, setEngineImageBaseUrl } from './images/ImageCache.js';
 import { joinRef } from './images/ipf.js';
 import { resolveSideColorId } from './images/teamColor.js';
-import { sampleAnimation, animationDurationMs, animationTimeline, sampleParticles, sampleUnitHalo, type OverlaySample } from './animation/playback.js';
+import { sampleAnimation, animationDurationMs, animationTimeline, animationSoundCues, sampleParticles, sampleUnitHalo, type OverlaySample, type SoundCue } from './animation/playback.js';
 import { HEX_STEP_MS, type UnitAnimationDef } from './animation/unitAnimation.js';
 import { LABEL_FONT_SIZE, parseHaloFrames, type MapItemPoint, type MapLabelPoint } from './mapItems.js';
 import { makeLayerSprite } from './terrainPositioning.js';
@@ -464,6 +464,31 @@ export interface UnitAnimationCue {
    * synthetic fallback and the final resting position) when this is set.
    */
   readonly legs?: readonly { srcHex: HexPoint; dstHex: HexPoint; direction: Direction }[];
+  /**
+   * Phase 19: sounds to start when the hit lands (animation clock 0) on top of
+   * the animation's own frame sounds -- the status sounds of a blow that
+   * poisons, slows or petrifies (`unit_attack`'s `extra_hit_sounds`).
+   */
+  readonly extraSounds?: readonly string[];
+}
+
+/**
+ * The sounds one cue makes, in clock order: its animation's frame sounds (once
+ * per leg for a grouped multi-hex move, whose one running animation repeats
+ * per hex) and its `extraSounds` at the hit (clock 0).
+ */
+function soundCuesFor(cue: UnitAnimationCue, legs: number): SoundCue[] {
+  const own = cue.anim ? animationSoundCues(cue.anim) : [];
+  let cues = own;
+  if (cue.anim && legs > 1) {
+    const start = cue.anim.startTimeMs;
+    cues = [];
+    for (let leg = 0; leg < legs; leg++) {
+      for (const c of own) if (c.atMs - start < HEX_STEP_MS) cues.push({ atMs: c.atMs + leg * HEX_STEP_MS, files: c.files });
+    }
+  }
+  const extra = (cue.extraSounds ?? []).map((files): SoundCue => ({ atMs: 0, files }));
+  return [...cues, ...extra].sort((a, b) => a.atMs - b.atMs);
 }
 
 /** A stable per-unit key for sprite identity -- see `SnapshotUnit.underlyingId`'s own doc comment. Exported so callers building `UnitAnimationCue`s key them identically to how `renderUnits` will look them up. */
@@ -1393,6 +1418,13 @@ export class SnapshotBoard {
    * `animT` scaling below. Default 1 (real authored speed); `GameShell.
    * svelte` requests a faster one for movement specifically.
    */
+  /**
+   * Phase 19: where the sounds of animations being played go -- each frame's
+   * `sound=` when the frame starts (`unit_frame::redraw`'s `on_start_time`),
+   * plus a cue's `extraSounds`. The audio itself lives in `packages/ui`.
+   */
+  soundSink: ((files: string) => void) | null = null;
+
   async playAnimations(cues: readonly UnitAnimationCue[], defaultDurationMs = 400, speedMultiplier = 1): Promise<void> {
     const active = cues
       .map((cue) => {
@@ -1431,7 +1463,7 @@ export class SnapshotBoard {
         : a.timeline
           ? a.timeline.endMs - clockStart
           : defaultDurationMs;
-      return { ...a, duration: Math.max(1, internalMs / speedMultiplier) };
+      return { ...a, duration: Math.max(1, internalMs / speedMultiplier), sounds: soundCuesFor(a.cue, a.grouped ? a.legPixels!.length : 0), nextSound: 0 };
     });
 
     // Pre-resolve every real texture this playback will need up front, so
@@ -1468,12 +1500,19 @@ export class SnapshotBoard {
         const elapsed = performance.now() - start;
         const overlays: OverlaySample[] = [];
 
-        for (const { cue, visual, src, dst, legPixels, duration, grouped } of timed) {
+        for (const entry of timed) {
+          const { cue, visual, src, dst, legPixels, duration, grouped } = entry;
           // A visual replaced mid-animation (the unit changed or left -- e.g.
           // the dialogue it plays under was advanced): nothing left to move.
           // Touching it would throw and leave this promise unresolved.
           if (visual.container.destroyed) continue;
           const t = Math.min(elapsed, duration);
+          // Phase 19: frame sounds start when their frame first draws.
+          const soundClock = grouped && cue.anim ? t * speedMultiplier + cue.anim.startTimeMs : clockStart + t * speedMultiplier;
+          while (entry.nextSound < entry.sounds.length && entry.sounds[entry.nextSound]!.atMs <= soundClock) {
+            this.soundSink?.(entry.sounds[entry.nextSound]!.files);
+            entry.nextSound++;
+          }
           if (cue.anim) {
             // `t` is wall-clock time (already compressed by speedMultiplier);
             // scale it back up to the animation's own real internal

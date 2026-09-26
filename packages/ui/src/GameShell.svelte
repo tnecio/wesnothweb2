@@ -39,13 +39,14 @@
     CutsceneBeat,
     FakeUnitWalk,
   } from '@wesnothweb2/engine';
-  import { WmlConfig, playStoryMusic, directionBetween, relativeDirection, tilesAdjacent, Direction, Location, unitCanAct, parseConfig, writeWml } from '@wesnothweb2/engine';
+  import { WmlConfig, playStoryMusic, extraHitSounds, GAME_SOUNDS, directionBetween, relativeDirection, tilesAdjacent, Direction, Location, unitCanAct, parseConfig, writeWml } from '@wesnothweb2/engine';
   import {
     type HexPoint,
     type UnitAnimationCue,
     type AnimationContext,
     HEX_STEP_MS,
     animationDurationMs,
+    animationSoundFiles,
     parseUnitAnimations,
     chooseAnimation,
     buildAttackAnimationContexts,
@@ -117,6 +118,7 @@
   import StoryViewer from './StoryViewer.svelte';
   import AudioDialog from './AudioDialog.svelte';
   import { getAudioEngine } from './audio/audioEngine.js';
+  import { installUiSounds } from './audio/uiSounds.js';
   import type { AudioSettings } from './audio/settings.js';
   import MessageViewer from './MessageViewer.svelte';
   import AdvancementDialog from './AdvancementDialog.svelte';
@@ -207,7 +209,7 @@
    * every session, as upstream's global one survives scenarios.
    */
   const audio = getAudioEngine();
-  const SESSION_OPTIONS: GameSessionOptions = { actionSeeds: 'entropy', music: audio.music };
+  const SESSION_OPTIONS: GameSessionOptions = { actionSeeds: 'entropy', music: audio.music, onSound: (request) => audio.playSound(request) };
   // Resuming a save builds the session from it instead (Phase 26) -- see
   // the `initialSave` prop. `startupEventsRun` comes back true with it, so
   // `runStartupEvents` below is skipped as well.
@@ -244,6 +246,7 @@
     const unlock = (): void => audio.unlock();
     window.addEventListener('pointerdown', unlock, true);
     window.addEventListener('keydown', unlock, true);
+    const stopUiSounds = installUiSounds(audio);
     void (async () => {
       await tick();
       while (!boardView && !disposed) await new Promise((resolve) => setTimeout(resolve, 50));
@@ -254,6 +257,48 @@
       disposed = true;
       window.removeEventListener('pointerdown', unlock, true);
       window.removeEventListener('keydown', unlock, true);
+      stopUiSounds();
+    };
+  });
+
+  // Sounds the scenario is likely to need -- the frame sounds of every unit type on the board or
+  // recruitable, the status, bell and interface sounds -- decoded ahead of use, at idle priority and
+  // in small idle-time steps (parsing a type's animations is main-thread work), once the board is up.
+  $effect(() => {
+    const current = session;
+    let cancelled = false;
+    const typeIds = new Set<string>();
+    for (const unit of current.board.allUnits()) typeIds.add(unit.type.id);
+    for (const team of current.board.teams()) for (const id of team.canRecruit) typeIds.add(id);
+    const idle = (work: () => void): void => {
+      if (typeof requestIdleCallback === 'function') requestIdleCallback(work, { timeout: 2000 });
+      else setTimeout(work, 50);
+    };
+    void (async () => {
+      await tick();
+      while (!boardView && !cancelled) await new Promise((resolve) => setTimeout(resolve, 50));
+      if (boardView && !cancelled) await boardView.whenReady();
+      if (cancelled) return;
+      audio.preloadSounds(Object.values(GAME_SOUNDS));
+      // The time of day's ambient sounds (`[time] sound=`), the scenario's own and its `[time_area]`s'.
+      const scenario = WmlConfig.fromJSON(activeSnapshot.scenarioConfigJson);
+      audio.preloadSounds(
+        [...scenario.children('time'), ...scenario.children('time_area').flatMap((area) => area.children('time'))]
+          .map((time) => time.getString('sound', ''))
+          .filter((sound) => sound !== ''),
+      );
+      const queue = [...typeIds];
+      const step = (): void => {
+        const id = queue.shift();
+        if (id === undefined || cancelled) return;
+        const cfg = current.rawUnitTypeConfig(id);
+        if (cfg) audio.preloadSounds(animationSoundFiles(parseUnitAnimations(WmlConfig.fromJSON(cfg))));
+        idle(step);
+      };
+      idle(step);
+    })();
+    return () => {
+      cancelled = true;
     };
   });
 
@@ -386,7 +431,16 @@
   }
 
   /** Re-derives every `$state` view from `session`'s current (just-mutated) state. Call after every session mutation. */
+  /** The unit whose selection last made a sound. */
+  let lastSelectedForSound: object | null = null;
+
   function sync(message?: string | null): void {
+    // `mouse_events`: selecting one of your own units clicks (`select-unit.wav`, the UI group).
+    const selectedUnit = session.selectedUnit;
+    if (selectedUnit && selectedUnit !== lastSelectedForSound && selectedUnit.side === session.viewingSide && phase === 'playing') {
+      audio.playUi(GAME_SOUNDS.selectUnit);
+    }
+    lastSelectedForSound = selectedUnit ?? null;
     units = session.renderUnits;
     selected = selectedInfo();
     inspected = inspectedInfo();
@@ -964,9 +1018,12 @@
         ? { anims: attackerAnims, key: attackerKey, hex: attackerHex }
         : { anims: defenderAnims, key: defenderKey, hex: defenderHex };
 
-    const cues = contexts.map(({ attackerContext, defenderContext }) => {
+    const cues: UnitAnimationCue[][] = contexts.map(({ attackerContext, defenderContext }, blowIndex) => {
       const strikerRes = resourcesFor(attackerContext.myUnit);
       const receiverRes = resourcesFor(defenderContext.myUnit);
+      // `unit_attack`'s extra_hit_sounds: a hit that poisons, slows or petrifies says so once, as it lands.
+      const blow = info.result.blows[blowIndex];
+      const extraSounds = blow?.hit ? extraHitSounds(blow) : [];
       return [
         {
           key: strikerRes.key,
@@ -981,6 +1038,7 @@
           direction: defenderContext.myUnit.facing,
           srcHex: receiverRes.hex,
           dstHex: strikerRes.hex,
+          ...(extraSounds.length > 0 ? { extraSounds } : {}),
         },
       ];
     });
@@ -1776,7 +1834,7 @@
       if (!res.ok) throw new Error(`fetch scenarios/${scenarioId}.json: ${res.status}`);
       replaySnapshot = (await res.json()) as GameBoardSnapshot;
     }
-    const replaySession = GameSession.forReplay(replaySnapshot, data, SESSION_OPTIONS);
+    const replaySession = GameSession.forReplay(replaySnapshot, data, { ...SESSION_OPTIONS, onSound: undefined });
     if (!replaySession) return;
     activeSnapshot = replaySnapshot;
     session = replaySession;
@@ -2469,6 +2527,7 @@
       <GameBoardView
         bind:this={boardView}
         snapshot={activeSnapshot}
+        onSound={(files) => audio.playSound({ files, repeats: 0, group: 'sound' })}
         {units}
         {selectedHex}
         {cursorHex}

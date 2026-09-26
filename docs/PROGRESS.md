@@ -4571,3 +4571,45 @@ condition at the start; now 3 left, all owned by other phases:
   content-hashed). Vitest's ui run prints a `Timeout calling "onTaskUpdate"`
   error because the AI/replay tests block a worker for 40-70 s; it is the
   same on the commit before Phase 19.
+
+## 2026-09-26: Phase 19, stage 2 — sound effects
+
+- **Frame sounds.** A frame's `sound=` (the unit's own `[frame]`s and every
+  particle: the `[attack_sound_frame]`s the `SOUND:HIT_AND_MISS` macros make)
+  starts once when the frame first draws, the frame's value winning over the
+  animation-wide one (`unit_frame::redraw`/`merge_parameters`).
+  `playAnimations` reports them through `soundSink` on the animation clock.
+  The built-in sounds `add_anims` gives a unit type are ported: `die_sound`
+  on `[death]`, `heal.wav`/`healed_sound` on `[healed_anim]`, the poison
+  sound on `[poison_anim]`. A grouped multi-hex move repeats its sound per hex.
+- **Status sounds** (`unit_attack`'s `extra_hit_sounds`): a hit that
+  poisons, slows or petrifies plays the status sound as it lands.
+- **Game sounds** (`ctx.playSound`, recorded on the context and handed to
+  the app): `[sound] name= repeat=`; the turn bell when a human side's turn
+  begins (`before_human_turn`); the time of day's `sound=` once per turn
+  (`init_side_end`, in the sound-source group); `select-unit.wav` when you
+  select your own unit; the interface clicks (`button.wav`, `checkbox.wav`,
+  `slider.wav`, menu expand/contract/select) through one delegated listener.
+  The engine's own sounds (`wesnoth/sounds/`) are served at
+  `/game-sounds-engine` (a symlink like `game-images-engine`).
+- **Playback** (`ui/src/audio/soundEffects.ts`). `pick_one` (never the
+  previous pick of the same list); upstream's channel budget (32 channels:
+  20 effects, 8 sources, 2 UI, bell, timer) -- **a sound with no free channel
+  is skipped, not stolen** (the plan said "steals the oldest"; `sound.cpp`
+  says otherwise); effects decoded once with `decodeAudioData` into a
+  32 MB LRU. A sound not decoded yet is fetched at once and dropped if it
+  would start more than 150 ms late (hits and clicks only; ambience and the
+  bell play whenever). Preload: the frame sounds of every unit type on the
+  board or recruitable (parsed in idle-time steps), the status/bell/UI
+  sounds and the scenario's ambient sounds, fetched at low priority two at
+  a time once the board is ready and audio unlocked.
+- **Browser check** (`apps/web/scripts/sound-playthrough.mjs`): no sound file
+  before the first gesture; the bell and the dawn ambience play at Dead Water
+  1's start; menu clicks make their sounds; the sound-effects switch stops new
+  sounds and mute silences the master; at most 2 preload requests in flight;
+  a fight in synthetic_combat plays `spear.ogg`, `sword-1.ogg`, `orc-hit-1.ogg`,
+  `human-hit-5.ogg`, with no sound missing or late once the preload has run.
+- **Not done here.** `[harm_unit]` is Lua-only (Phase 29): when it lands it
+  must call `ctx.playSound` for its status sounds, as upstream's Lua does.
+  A story part's `sound=`/`voice=` and the countdown timer's sound follow
+  with the parts that own them (stage 3 for sound sources; `voice=` there too).

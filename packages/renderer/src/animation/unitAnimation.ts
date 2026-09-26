@@ -460,6 +460,16 @@ const SIMPLE_ANIM_TAGS: Readonly<Record<string, string>> = {
   victory_anim: 'victory',
 };
 
+/** `sub_anims_["_x_sound"].add_frame(1ms, frame_builder().sound(files))`: a one-millisecond sound-only particle at the animation clock's 0. */
+function withSound(anim: UnitAnimationDef, prefix: string, files: string): UnitAnimationDef {
+  if (files === '') return anim;
+  const cfg = new WmlConfig();
+  cfg.setAttribute('duration', 1);
+  cfg.setAttribute('sound', files);
+  const particle: ParticleDef = { prefix, frames: [parseFrame(cfg)], startTimeMs: 0, params: buildFrameFields(new WmlConfig(), 1), cycles: false };
+  return { ...anim, particles: [...anim.particles, particle] };
+}
+
 /**
  * TS port of `unit_animation::add_anims` (plus the "no `[standing_anim]` at
  * all" branch of `fill_initial_animations`): parses every `[*_anim]`/
@@ -496,14 +506,15 @@ export function parseUnitAnimations(unitTypeCfg: WmlConfig): UnitAnimationDef[] 
     bhas(branch, 'damage') ? { attrs: new Map(branch.attrs).set('value', battr(branch, 'damage')!), children: branch.children } : branch,
     ['healing'],
   )]);
-  forTag('healed_anim', (branch) => [buildAnimationDef(
+  // `add_anims` gives these three a sound frame of their own at the start (`_healed_sound`, `_poison_sound`, `_death_sound`).
+  forTag('healed_anim', (branch) => [withSound(buildAnimationDef(
     bhas(branch, 'healing') ? { attrs: new Map(branch.attrs).set('value', battr(branch, 'healing')!), children: branch.children } : branch,
     ['healed'],
-  )]);
-  forTag('poison_anim', (branch) => [buildAnimationDef(
+  ), '_healed_sound_', unitTypeCfg.getString('healed_sound', '') || 'heal.wav')]);
+  forTag('poison_anim', (branch) => [withSound(buildAnimationDef(
     bhas(branch, 'damage') ? { attrs: new Map(branch.attrs).set('value', battr(branch, 'damage')!), children: branch.children } : branch,
     ['poisoned'],
-  )]);
+  ), '_poison_sound_', 'poison.ogg')]);
 
   forTag('movement_anim', (branch) => [
     { ...buildAnimationDef(withDefaultOffset(branch, MOVEMENT_DEFAULT_OFFSET), ['movement']), usesDefaultMovementOffset: !bhas(branch, 'offset') },
@@ -511,7 +522,7 @@ export function parseUnitAnimations(unitTypeCfg: WmlConfig): UnitAnimationDef[] 
   forTag('attack_anim', (branch) => [
     buildAnimationDef(bchildren(branch, 'missile_frame').length > 0 ? withMissileDefaults(branch) : withDefaultOffset(branch, ATTACK_DEFAULT_OFFSET), ['attack']),
   ]);
-  forTag('death', (branch) => [buildAnimationDef(branch, ['death'])]);
+  forTag('death', (branch) => [withSound(buildAnimationDef(branch, ['death']), '_death_sound_', unitTypeCfg.getString('die_sound', ''))]);
   forTag('defend', buildDefendAnimations);
 
   forTag('extra_anim', (branch) => {

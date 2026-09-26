@@ -61,6 +61,7 @@
     items = [],
     labels = [],
     timeOfDay = undefined,
+    onSound,
     onHexClick,
     onHexRightClick,
     onHexHoverChange,
@@ -93,6 +94,8 @@
     items?: readonly { x: number; y: number; image: string; halo: string }[];
     /** Map labels the viewing side sees (`GameSession.mapLabels`). */
     labels?: readonly { x: number; y: number; text: string; color: string }[];
+    /** Phase 19: a frame sound (`sound=`) starts in an animation being played -- a comma list, one of which is picked. */
+    onSound?: (files: string) => void;
     /** The current global ToD's red=/green=/blue= colour shift -- see `SnapshotBoard.updateTimeOfDayTint`. Omit for no tint (a scenario with no [time] schedule). */
     timeOfDay?: Pick<TimeOfDayEntry, 'red' | 'green' | 'blue'>;
     onHexClick: (x: number, y: number) => void;
@@ -421,6 +424,10 @@
 
   $effect(() => {
     board?.updateLabels(labels);
+  });
+
+  $effect(() => {
+    if (board) board.soundSink = onSound ?? null;
   });
 
   $effect(() => {
