@@ -113,3 +113,16 @@ describe('formatMessage', () => {
     expect(formatMessage('Price: $$5 and $missing', {})).toBe('Price: $5 and $missing');
   });
 });
+
+describe('localizedPath', () => {
+  it('puts the localized twin under l10n/<code>/, with the suffix before the extension', async () => {
+    const { localizedPath, resourceLanguageCodes } = await import('../../src/i18n/localizedPath');
+    expect(localizedPath('campaigns/Dead_Water/images/maps/dw.webp', 'es')).toBe('campaigns/Dead_Water/images/maps/l10n/es/dw.webp');
+    expect(localizedPath('campaigns/Dead_Water/images/maps/dw.webp', 'es', '--overlay')).toBe('campaigns/Dead_Water/images/maps/l10n/es/dw--overlay.webp');
+    expect(localizedPath('logo.png', 'pl_PL')).toBe('l10n/pl_PL/logo.png');
+    expect(localizedPath('a/noext', 'it', '--overlay')).toBe('a/l10n/it/noext--overlay');
+    expect(resourceLanguageCodes('sv,da')).toEqual(['sv', 'da', 'en_US']);
+    expect(resourceLanguageCodes('en_US')).toEqual(['en_US']);
+    expect(resourceLanguageCodes('')).toEqual(['en_US']);
+  });
+});

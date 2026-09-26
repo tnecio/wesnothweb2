@@ -16,12 +16,17 @@
  * configs per side, as upstream's `scenario_objectives` table does.
  */
 
+import { formatMessage } from '../i18n/format.js';
+import { dsngettext } from '../i18n/gettext.js';
+import { TString } from '../i18n/tstring.js';
 import type { WmlConfig } from '../wml/config.js';
 
 export type ObjectiveCondition = 'win' | 'lose';
 
 export interface ScenarioObjectiveEntry {
+  /** The text in the current language (read when needed, so it follows a switch). */
   readonly description: string;
+  readonly descriptionT: TString;
   readonly condition: ObjectiveCondition;
   /** Real `show_turn_counter=` -- append "(N turns left)"/"(this turn left)" at render time, computed from the CURRENT turn/turn-limit, not baked in here (matches upstream reading `wesnoth.current.turn`/`wesnoth.scenario.turns` at generate_objectives() time, i.e. every time the dialog is actually shown). */
   readonly showTurnCounter: boolean;
@@ -42,14 +47,21 @@ export interface GoldCarryoverEntry {
  * etc.
  */
 export interface ScenarioObjectives {
+  /** Every text below has a plain form (the language now) and a `...T` form a display can hold across a language switch. */
   readonly summary: string;
+  readonly summaryT: TString;
   readonly victoryLabel: string;
+  readonly victoryLabelT: TString;
   readonly defeatLabel: string;
+  readonly defeatLabelT: TString;
   readonly goldCarryoverLabel: string;
+  readonly goldCarryoverLabelT: TString;
   readonly notesLabel: string;
+  readonly notesLabelT: TString;
   readonly objectives: readonly ScenarioObjectiveEntry[];
   readonly goldCarryover: readonly GoldCarryoverEntry[];
   readonly notes: readonly string[];
+  readonly notesT: readonly TString[];
   /** Real `silent=` -- when true, this firing updates the side's objectives WITHOUT popping the dialog (matches `team.objectives_changed = not silent`). */
   readonly silent: boolean;
 }
@@ -65,6 +77,15 @@ export const OBJECTIVE_COLOR = {
 /** A `[show_if]` test (`wml.eval_conditional`); entries without one always show. */
 export type ShowIf = (showIf: WmlConfig) => boolean;
 
+/**
+ * Adds the `...T` (translatable) twins to a model object as non-enumerable properties: they are for a display to read, and
+ * keep the plain fields the object is compared and serialised by exactly as they were.
+ */
+function withTranslatable<P extends object, T extends object>(plain: P, twins: T): P & T {
+  for (const [key, value] of Object.entries(twins)) Object.defineProperty(plain, key, { value, enumerable: false });
+  return plain as P & T;
+}
+
 const shown = (entries: WmlConfig[], passes?: ShowIf) =>
   entries.filter((e) => {
     const showIf = e.child('show_if');
@@ -77,11 +98,19 @@ function parseObjectiveEntries(cfg: WmlConfig, passes?: ShowIf): ScenarioObjecti
   for (const obj of shown(cfg.children('objective'), passes)) {
     const condition = obj.getString('condition', '');
     if (condition !== 'win' && condition !== 'lose') continue; // real Wesnoth wml.error()s; headless, just skip.
-    entries.push({
-      description: obj.getString('description', ''),
-      condition,
-      showTurnCounter: obj.getBoolean('show_turn_counter', false),
-    });
+    const descriptionT = obj.getTString('description') ?? TString.literal('');
+    entries.push(
+      withTranslatable(
+        {
+          get description() {
+            return descriptionT.str();
+          },
+          condition: condition as ObjectiveCondition,
+          showTurnCounter: obj.getBoolean('show_turn_counter', false),
+        },
+        { descriptionT },
+      ),
+    );
   }
   return entries;
 }
@@ -99,25 +128,51 @@ function parseGoldCarryoverEntries(cfg: WmlConfig, passes?: ShowIf): GoldCarryov
 }
 
 /** Mirrors `generate_objectives`'s per-`[note]` loop. */
-function parseNoteEntries(cfg: WmlConfig, passes?: ShowIf): string[] {
+function parseNoteEntries(cfg: WmlConfig, passes?: ShowIf): TString[] {
   return shown(cfg.children('note'), passes)
-    .map((n) => n.getString('description', ''))
-    .filter((d) => d.length > 0);
+    .map((n) => n.getTString('description') ?? TString.literal(''))
+    .filter((d) => !d.isEmpty());
+}
+
+/** `victory_string=` etc., or upstream's own default in the `wesnoth` domain (`objectives.lua`'s `_ "Victory:"`). */
+function labelT(cfg: WmlConfig, key: string, fallback: string): TString {
+  return cfg.getTString(key) ?? TString.translatable('wesnoth', fallback);
 }
 
 /** Parses a real `[objectives]` tag's config into a `ScenarioObjectives` model -- see this module's own doc comment for scope. */
 export function parseScenarioObjectives(cfg: WmlConfig, passes?: ShowIf): ScenarioObjectives {
-  return {
-    summary: cfg.getString('summary', ''),
-    victoryLabel: cfg.getString('victory_string', 'Victory:'),
-    defeatLabel: cfg.getString('defeat_string', 'Defeat:'),
-    goldCarryoverLabel: cfg.getString('gold_carryover_string', 'Gold carryover:'),
-    notesLabel: cfg.getString('notes_string', 'Notes:'),
-    objectives: parseObjectiveEntries(cfg, passes),
-    goldCarryover: parseGoldCarryoverEntries(cfg, passes),
-    notes: parseNoteEntries(cfg, passes),
-    silent: cfg.getBoolean('silent', false),
-  };
+  const summaryT = cfg.getTString('summary') ?? TString.literal('');
+  const victoryLabelT = labelT(cfg, 'victory_string', 'Victory:');
+  const defeatLabelT = labelT(cfg, 'defeat_string', 'Defeat:');
+  const goldCarryoverLabelT = labelT(cfg, 'gold_carryover_string', 'Gold carryover:');
+  const notesLabelT = labelT(cfg, 'notes_string', 'Notes:');
+  const notesT = parseNoteEntries(cfg, passes);
+  return withTranslatable(
+    {
+      get summary() {
+        return summaryT.str();
+      },
+      get victoryLabel() {
+        return victoryLabelT.str();
+      },
+      get defeatLabel() {
+        return defeatLabelT.str();
+      },
+      get goldCarryoverLabel() {
+        return goldCarryoverLabelT.str();
+      },
+      get notesLabel() {
+        return notesLabelT.str();
+      },
+      objectives: parseObjectiveEntries(cfg, passes),
+      goldCarryover: parseGoldCarryoverEntries(cfg, passes),
+      get notes() {
+        return notesT.map((n) => n.str());
+      },
+      silent: cfg.getBoolean('silent', false),
+    },
+    { summaryT, victoryLabelT, defeatLabelT, goldCarryoverLabelT, notesLabelT, notesT },
+  );
 }
 
 /**
@@ -131,5 +186,6 @@ export function parseScenarioObjectives(cfg: WmlConfig, passes?: ShowIf): Scenar
 export function turnCounterSuffix(currentTurn: number, turnLimit: number): string {
   if (turnLimit < currentTurn) return '';
   const remaining = turnLimit - currentTurn + 1;
-  return remaining === 1 ? ' (this turn left)' : ` (${remaining} turns left)`;
+  // `_("(this turn left)", "($remaining_turns turns left)", n)`, then `vformat`.
+  return ' ' + formatMessage(dsngettext('wesnoth', '(this turn left)', '($remaining_turns turns left)', remaining), { remaining_turns: remaining });
 }

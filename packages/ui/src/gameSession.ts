@@ -32,6 +32,8 @@
 
 import {
   plainJsonValue,
+  TString,
+  type TStringJson,
   GameBoard,
   Location,
   Unit,
@@ -851,7 +853,7 @@ function needsInput(interaction: Interaction): boolean {
 function savedUnitFields(u: Unit): SavedUnit {
   return {
     id: u.id || null,
-    name: u.name || null,
+    name: u.translatableName ? u.translatableName.toJSON() : u.name || null,
     typeId: u.type.id,
     side: u.side,
     canRecruit: u.canRecruit,
@@ -900,7 +902,8 @@ function savedUnitFields(u: Unit): SavedUnit {
  */
 export interface SavedUnit {
   id: string | null;
-  name: string | null;
+  /** Plain text, or the translatable `{"t": ...}` form while the unit still carries its WML name (so a load keeps it translatable). */
+  name: string | TStringJson | null;
   typeId: string;
   side: number;
   canRecruit: boolean;
@@ -1685,7 +1688,23 @@ export class GameSession {
    * `[if]`/`[switch]` must only see state carried into the scenario.
    */
   storyParts(): ResolvedStoryPart[] {
-    return resolveStory(WmlConfig.fromJSON(this.snapshot.scenarioConfigJson), this.snapshot.scenario.name, this.eventPump.ctx);
+    return resolveStory(WmlConfig.fromJSON(this.snapshot.scenarioConfigJson), this.scenarioNameT, this.eventPump.ctx);
+  }
+
+  private scenarioNameCache: TString | undefined;
+
+  /** The scenario's `name=` as a translatable string (read straight from the JSON: building a `WmlConfig` of the whole scenario for one attribute would be far too much). */
+  get scenarioNameT(): TString {
+    if (!this.scenarioNameCache) {
+      const raw = this.snapshot.scenarioConfigJson.attrs['name'];
+      this.scenarioNameCache = raw !== undefined && typeof raw === 'object' ? TString.fromJSON(raw) : TString.literal(this.snapshot.scenario.name);
+    }
+    return this.scenarioNameCache;
+  }
+
+  /** The scenario's name in the current language. */
+  get scenarioName(): string {
+    return this.scenarioNameT.str();
   }
 
   /**
@@ -2986,7 +3005,7 @@ export class GameSession {
     const team = this.board.getTeam(leader.side);
     if (!team) return null;
     const typeSnap = this.snapshot.unitTypes[typeId];
-    const name = typeSnap?.name ?? typeId;
+    const name = this.resolveType(typeId).name || typeSnap?.name || typeId;
     const cost = typeSnap?.cost ?? 0;
 
     if (!this.recruitTiles.some((t) => t.x === loc.x && t.y === loc.y)) {
@@ -3769,7 +3788,7 @@ export class GameSession {
       activeSide: this.activeSide,
       scenarioResult: this.scenarioResult,
       scenarioId: this.snapshot.scenario.id,
-      scenarioName: this.snapshot.scenario.name,
+      scenarioName: this.scenarioName,
       schedule: this.schedule.exportState(),
       variables,
       choices: this.eventPump.ctx.choices.map((c) => ({ ...c })),
@@ -4155,7 +4174,7 @@ export class GameSession {
   private unitFromSave(u: SavedUnit, location: Location): Unit {
     const unit = Unit.create(this.resolveType(u.typeId), u.side, location, {
       id: u.id ?? undefined,
-      name: u.name ?? undefined,
+      name: u.name === null ? undefined : typeof u.name === 'string' ? u.name : TString.fromJSON(u.name),
       canRecruit: u.canRecruit,
       role: u.role,
       hidden: u.hidden,

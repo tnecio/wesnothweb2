@@ -2,8 +2,26 @@
   "campaigns": [
     {
       "id": "dead_water",
-      "name": "Dead Water",
-      "description": "Mainline campaign: the merfolk of Jotha defend their home against an undead invasion.",
+      "name": {
+        "t": [
+          [
+            "wesnoth-dw",
+            "Dead Water"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-dw",
+            "You are Kai Krellis, son and heir of the last merman king but only a child. A necromancer is turning your subjects into undead slaves! Lead your people on a mission to convince a powerful mer-sorceress to help you repel the invasion. The oceans near the Far North are perilous, so you will need cunning and bravery to survive. But first you need to gain the respect of your troops!\n\n"
+          ],
+          [
+            "wesnoth-dw",
+            "(Intermediate level, 10 scenarios.)"
+          ]
+        ]
+      },
       "firstScenario": "01_Invasion",
       "wesnothId": "Dead_Water",
       "abbrev": "DW",
@@ -11,8 +29,32 @@
     },
     {
       "id": "two_brothers",
-      "name": "A Tale of Two Brothers",
-      "description": "Mainline campaign: a warrior is summoned home by his mage brother to drive off a dark mage's minions.",
+      "name": {
+        "t": [
+          [
+            "wesnoth-tb",
+            "A Tale of Two Brothers"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-tb",
+            "An evil mage is threatening the small village of Maghre and its inhabitants. The village’s mage sends to his warrior brother for help, but not all goes as planned. Can you help?"
+          ],
+          "\n\n<small>",
+          [
+            "wesnoth-tb",
+            "This campaign has two difficulties, with a large difference between them. The Grand Knight difficulty is intended for players who’ve already completed Liberty and Heir to the Throne."
+          ],
+          "</small>\n\n",
+          [
+            "wesnoth-tb",
+            "(Novice level, 4 scenarios.)"
+          ]
+        ]
+      },
       "firstScenario": "01_Rooting_Out_a_Mage",
       "wesnothId": "Two_Brothers",
       "abbrev": "AToTB",
@@ -20,8 +62,26 @@
     },
     {
       "id": "liberty",
-      "name": "Liberty",
-      "description": "Mainline campaign: a village militia leader rebels against increasingly tyrannical Wesnothian authority.",
+      "name": {
+        "t": [
+          [
+            "wesnoth-l",
+            "Liberty"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-l",
+            "As the shadow of civil war deepens across Wesnoth, a band of hardy marchlanders revolts against the governance of the new queen. To win their way to freedom, they must learn to use shadows and deception to rout the trained blades of the Wesnothian army.\n\n"
+          ],
+          [
+            "wesnoth-l",
+            "(Novice level, 7 scenarios.)"
+          ]
+        ]
+      },
       "firstScenario": "01_The_Raid",
       "wesnothId": "Liberty",
       "abbrev": "Liberty",
@@ -29,8 +89,31 @@
     },
     {
       "id": "under_the_burning_suns",
-      "name": "Under the Burning Suns",
-      "description": "Mainline campaign: the last Quenoth elves flee their dying oasis -- Phase 11/12 testbed (shroud, fog, sighted, time areas, the two-suns schedule).",
+      "name": {
+        "t": [
+          [
+            "wesnoth-utbs",
+            "Under the Burning Suns"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-utbs",
+            "In the distant future a small band of elves struggles to survive amidst the ruins of fallen empires. Lead your people out of the desert on an epic journey to find a new home.\n\n"
+          ],
+          [
+            "wesnoth-utbs",
+            "Note: This campaign changes some standard mechanics, such as the day/night cycle, recall costs and general approach to the difficulty levels. The Quenoth elves include units that can attack several times per turn, and others that can move after attacking."
+          ],
+          "\n\n",
+          [
+            "wesnoth-utbs",
+            "(Expert level, 10 scenarios.)"
+          ]
+        ]
+      },
       "firstScenario": "01_The_Morning_After",
       "wesnothId": "Under_the_Burning_Suns",
       "abbrev": "UtBS",

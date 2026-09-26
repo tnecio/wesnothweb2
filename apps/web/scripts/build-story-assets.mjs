@@ -3,7 +3,7 @@
  * Phase 16 N2: builds the story screen's assets from already-built scenario
  * snapshots (`apps/web/public/scenarios/*.json`, see build-scenario-snapshot.mjs).
  *
- *   node apps/web/scripts/build-story-assets.mjs [scenarioId ...]
+ *   node --import tsx apps/web/scripts/build-story-assets.mjs [scenarioId ...]
  *
  * For every real-campaign scenario:
  * - `public/story/<id>.json`: the scenario's `[story]` WML (possibly none)
@@ -25,8 +25,10 @@
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { localizedPath } from '../../../packages/engine/src/i18n/localizedPath.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../../..');
@@ -35,6 +37,21 @@ const publicDir = path.join(repoRoot, 'apps/web/public');
 const scenariosDir = path.join(publicDir, 'scenarios');
 const storyOutDir = path.join(publicDir, 'story');
 const derivedDir = path.join(publicDir, 'derived-images');
+
+/**
+ * Localized art (Phase 20, `get_localized_path`): a picture may have a translated twin at
+ * `<dir>/l10n/<code>/<name>.<ext>` or an overlay at `<dir>/l10n/<code>/<name>--overlay.<ext>`. The
+ * `wesnoth` submodule here is data-only and carries none of them, so they are looked up in the full
+ * upstream checkout (`$WESNOTH_DATA`, else `~/wesnothweb/wesnoth/data`) and copied (they are small)
+ * into `derived-images/`. `<code>` is each shipped language's `resourceLanguages` (`languages.json`).
+ */
+const l10nDataRoot = [process.env.WESNOTH_DATA, path.join(os.homedir(), 'wesnothweb/wesnoth/data')].find((d) => d && fs.existsSync(d));
+const resourceCodes = (() => {
+  const file = path.join(publicDir, 'i18n/languages.json');
+  if (!fs.existsSync(file)) return [];
+  const langs = JSON.parse(fs.readFileSync(file, 'utf8')).languages;
+  return [...new Set(langs.flatMap((l) => l.resourceLanguages ?? []))].sort();
+})();
 
 /** Variant widths in pixels; the viewer picks the smallest one covering viewport width x devicePixelRatio. */
 const VARIANT_WIDTHS = [960, 1920];
@@ -189,6 +206,30 @@ function buildVariants(rooted, size) {
   return variants;
 }
 
+/** Copies one localized file into `derived-images/` and describes it like an image entry that has a single variant. */
+function localizedEntry(rel) {
+  const source = path.join(l10nDataRoot, rel);
+  if (!fs.existsSync(source)) return null;
+  const out = path.join(derivedDir, rel);
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  fs.copyFileSync(source, out);
+  const size = imageSize(out);
+  const bytes = fs.statSync(out).size;
+  return { src: rel, w: size.w, h: size.h, bytes, variants: [{ src: rel, w: size.w, h: size.h, bytes }] };
+}
+
+/** `{ <code>: { image?, overlay? } }` for every shipped resource code that has a localized twin of `rooted`. */
+function buildLocalized(rooted) {
+  if (!l10nDataRoot) return undefined;
+  const out = {};
+  for (const code of resourceCodes) {
+    const image = localizedEntry(localizedPath(rooted, code));
+    const overlay = image ? null : localizedEntry(localizedPath(rooted, code, '--overlay'));
+    if (image || overlay) out[code] = { ...(image ? { image } : {}), ...(overlay ? { overlay } : {}) };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 fs.mkdirSync(storyOutDir, { recursive: true });
 /** rooted path -> image table entry, shared by every scenario in this run. */
 const imageInfoCache = new Map();
@@ -228,7 +269,8 @@ for (const file of fs.readdirSync(scenariosDir).sort()) {
     if (!info) {
       const size = imageSize(path.join(dataRoot, rooted));
       const bytes = fs.statSync(path.join(dataRoot, rooted)).size;
-      info = { src: rooted, w: size.w, h: size.h, bytes, variants: buildVariants(rooted, size) };
+      const localized = buildLocalized(rooted);
+      info = { src: rooted, w: size.w, h: size.h, bytes, variants: buildVariants(rooted, size), ...(localized ? { localized } : {}) };
       imageInfoCache.set(rooted, info);
     }
     const { variants } = info;

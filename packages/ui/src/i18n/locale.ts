@@ -32,6 +32,8 @@ export interface LanguageInfo {
   alternates: string[];
   rtl: boolean;
   percent: number;
+  /** `l10n/<code>/` art directories this language reads, in priority order (upstream's `language code for localized resources`). */
+  resourceLanguages?: string[];
   /** Domains that have a catalogue file for this language. */
   domains: string[];
 }
@@ -139,6 +141,12 @@ export class LocaleManager {
 
   get currentInfo(): LanguageInfo | undefined {
     return this.languages.find((l) => l.code === this.current);
+  }
+
+  /** The `l10n/` codes to look for localized art under, best first; `en_US` (the source art) is always last. Reactive. */
+  get resourceCodes(): readonly string[] {
+    const own = this.currentInfo?.resourceLanguages ?? [];
+    return own.includes('en_US') ? own : [...own, 'en_US'];
   }
 
   get rtl(): boolean {

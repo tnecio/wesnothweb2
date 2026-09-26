@@ -77,7 +77,9 @@ function writeTString(st: WriterState, indent: string, key: string, value: TStri
 
 function writeValue(st: WriterState, indent: string, key: string, value: WmlStoredValue): void {
   if (value instanceof TString) {
-    if (value.translatable) {
+    if (value.isInterpolated) {
+      st.out.push(`${indent}${key}=${formatScalar(value.str())}\n`);
+    } else if (value.translatable) {
       writeTString(st, indent, key, value);
     } else {
       st.out.push(`${indent}${key}=${formatScalar(value.baseStr())}\n`);

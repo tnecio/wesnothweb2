@@ -18,6 +18,7 @@ import type { VariableStore } from '@wesnothweb2/engine/src/events/variables.js'
 import { newLuaState, doString, type LuaState } from './luaEnv.js';
 import { BOOTSTRAP_LUA_SOURCE } from './bridges/bootstrap.js';
 import { installVariablesBridge } from './bridges/variables.js';
+import { installTextdomainBridge } from './bridges/textdomain.js';
 
 export function createLuaConditionalEvaluator(): (cfg: WmlConfig, ctx: EventContext) => boolean {
   const states = new WeakMap<VariableStore, LuaState>();
@@ -27,6 +28,7 @@ export function createLuaConditionalEvaluator(): (cfg: WmlConfig, ctx: EventCont
       L = newLuaState();
       doString(L, BOOTSTRAP_LUA_SOURCE, '=bootstrap');
       installVariablesBridge(L, store);
+      installTextdomainBridge(L, (source) => void doString(L!, source, '=textdomain'));
       states.set(store, L);
     }
     return L;

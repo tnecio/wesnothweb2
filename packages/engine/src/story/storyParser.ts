@@ -20,6 +20,7 @@
  */
 
 import type { EventContext } from '../events/context.js';
+import { TString } from '../i18n/tstring.js';
 import { conditionalPassed } from '../events/conditionalWml.js';
 import type { WmlConfig } from '../wml/config.js';
 
@@ -51,6 +52,9 @@ export interface ResolvedStoryPart {
   readonly showTitle: boolean;
   readonly title: string;
   readonly text: string;
+  /** `title`/`text` as translatable strings, so a part on screen follows a language switch. */
+  readonly titleT: TString;
+  readonly textT: TString;
   readonly textLayout: StoryTextLayout;
   readonly textAlignment: string;
   readonly titleAlignment: string;
@@ -104,6 +108,19 @@ class VAttrs {
 
   bool(key: string, fallback: boolean): boolean {
     return toBool(this.raw(key), fallback);
+  }
+
+  /**
+   * The value as a `TString`: translated, then `$variable`-substituted over a frozen copy of the
+   * variables (`interpolate_variables_into_tstring`, but still following the language).
+   */
+  strT(key: string): TString {
+    const raw = this.cfg.getTString(key);
+    if (!raw) return TString.literal('');
+    const text = raw.str();
+    if (this.ctx.variables.substitute(text) === text) return raw;
+    const vars = this.ctx.variables.snapshot();
+    return TString.interpolated(raw, (translated) => vars.substitute(translated));
   }
 }
 
@@ -221,7 +238,7 @@ function splitList(s: string): string[] {
     .filter((v) => v !== '');
 }
 
-function parsePart(cfg: WmlConfig, ctx: EventContext, scenarioName: string): ResolvedStoryPart {
+function parsePart(cfg: WmlConfig, ctx: EventContext, scenarioName: string | TString): ResolvedStoryPart {
   const a = new VAttrs(cfg, ctx);
 
   // Shortcut syntax -> the part's first background layer, always present.
@@ -257,9 +274,12 @@ function parsePart(cfg: WmlConfig, ctx: EventContext, scenarioName: string): Res
 
   let showTitle = a.has('show_title') ? a.bool('show_title', false) : false;
   const text = a.str('story');
+  const textT = a.strT('story');
   let title = '';
+  let titleT = TString.literal('');
   if (a.has('title')) {
     title = a.str('title');
+    titleT = a.strT('title');
     if (!a.has('show_title')) showTitle = true;
   }
   const textLayout = a.has('text_layout') ? textLayoutFrom(a.str('text_layout')) : 'bottom';
@@ -288,12 +308,17 @@ function parsePart(cfg: WmlConfig, ctx: EventContext, scenarioName: string): Res
     return false;
   });
 
-  if (showTitle && title === '') title = scenarioName;
+  if (showTitle && title === '') {
+    title = typeof scenarioName === 'string' ? scenarioName : scenarioName.str();
+    titleT = typeof scenarioName === 'string' ? TString.literal(scenarioName) : scenarioName;
+  }
 
   return {
     showTitle,
     title,
     text,
+    titleT,
+    textT,
     textLayout,
     textAlignment: a.has('text_alignment') ? a.str('text_alignment') : 'left',
     titleAlignment: a.has('title_alignment') ? a.str('title_alignment') : 'left',
@@ -312,7 +337,7 @@ function parsePart(cfg: WmlConfig, ctx: EventContext, scenarioName: string): Res
  * order. Evaluate this right before `prestart`, with the session's live
  * context, so `[if]`/`[switch]` see carried-over variables only.
  */
-export function resolveStory(scenarioCfg: WmlConfig, scenarioName: string, ctx: EventContext): ResolvedStoryPart[] {
+export function resolveStory(scenarioCfg: WmlConfig, scenarioName: string | TString, ctx: EventContext): ResolvedStoryPart[] {
   const parts: ResolvedStoryPart[] = [];
   for (const story of scenarioCfg.children('story')) {
     resolveFlow(story, ctx, (tag, node) => {

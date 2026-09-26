@@ -22,6 +22,11 @@ export interface StoryImageEntry {
   readonly bytes: number;
   /** Re-encoded copies, narrowest first. */
   readonly variants: readonly StoryImageVariant[];
+  /**
+   * Translated twins, by resource language code (`get_localized_path`): a standalone replacement
+   * (`image`) or an `overlay` drawn over this image (journey maps with place names in the language).
+   */
+  readonly localized?: Readonly<Record<string, { readonly image?: StoryImageEntry; readonly overlay?: StoryImageEntry }>>;
 }
 
 export interface StoryAssets {
@@ -79,4 +84,17 @@ export function pickStoryImage(entry: StoryImageEntry, drawnWidth: number, devic
   const pool = wideEnough.length > 0 ? wideEnough : candidates.filter((c) => c.w === Math.max(...candidates.map((x) => x.w)));
   const best = pool.reduce((a, b) => (b.w < a.w || (b.w === a.w && b.bytes < a.bytes) ? b : a));
   return { url: best.url, bytes: best.bytes };
+}
+
+/**
+ * `get_localized_path` over the built table: for the first of `codes` (the language's own list, then
+ * `en_US`) that has a localized twin, the standalone image replaces `entry`; an overlay is drawn over it.
+ */
+export function localizedEntry(entry: StoryImageEntry, codes: readonly string[]): { image: StoryImageEntry; overlay?: StoryImageEntry } {
+  for (const code of codes) {
+    const twin = entry.localized?.[code];
+    if (twin?.image) return { image: twin.image };
+    if (twin?.overlay) return { image: entry, overlay: twin.overlay };
+  }
+  return { image: entry };
 }

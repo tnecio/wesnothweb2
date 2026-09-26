@@ -58,6 +58,13 @@ export function newVarNode(): VarNode {
   return { attrs: new Map(), arrays: new Map() };
 }
 
+export function cloneVarNode(node: VarNode): VarNode {
+  const copy = newVarNode();
+  for (const [k, v] of node.attrs) copy.attrs.set(k, v);
+  for (const [tag, arr] of node.arrays) copy.arrays.set(tag, arr.map(cloneVarNode));
+  return copy;
+}
+
 /** Builds a `VarNode` from a parsed `WmlConfig` (e.g. a scenario's `[variables]` child). */
 export function varNodeFromConfig(cfg: WmlConfig): VarNode {
   const node = newVarNode();
@@ -332,6 +339,13 @@ export class VariableStore {
    * simplified form (no `$(...)` formula substitution -- see module doc
    * comment).
    */
+  /** A deep copy that later changes to this store do not reach (see `expandConfig`). */
+  snapshot(): VariableStore {
+    const copy = new VariableStore(cloneVarNode(this.root));
+    copy.onFormulaError = this.onFormulaError;
+    return copy;
+  }
+
   /** Where a `$( ... )` formula error is reported (upstream logs and substitutes nothing). */
   onFormulaError?: (message: string) => void;
 
@@ -444,15 +458,24 @@ export class VariableStore {
    * should call this again on that child at the point they read it.
    */
   expandConfig(cfg: WmlConfig): WmlConfig {
+    let frozen: VariableStore | undefined;
     const out = new WmlConfig();
     for (const name of cfg.attributeNames()) {
       const raw = cfg.getRaw(name)!;
       if (raw instanceof TString) {
         // `interpolate_variables_into_tstring`: translate, substitute, and keep the
-        // TString only when substitution changed nothing.
+        // TString only when substitution changed nothing. Where it did change something the
+        // result is a TString that redoes the substitution over a frozen copy of the variables
+        // after each translation, so a dialogue open across a language switch follows it.
         const text = raw.str();
         const expanded = this.substitute(text);
-        out.setAttribute(name, expanded === text ? raw : expanded);
+        if (expanded === text) {
+          out.setAttribute(name, raw);
+        } else {
+          frozen ??= this.snapshot();
+          const vars = frozen;
+          out.setAttribute(name, TString.interpolated(raw, (translated) => vars.substitute(translated)));
+        }
       } else {
         out.setAttribute(name, typeof raw === 'string' ? this.substitute(raw) : raw);
       }
@@ -465,15 +488,24 @@ export class VariableStore {
 
   /** `wml.parsed`: `expandConfig` applied through every nested child too -- for WML stored now and run later (`[on_undo]`). `[insert_tag]`s are resolved. */
   expandConfigDeep(cfg: WmlConfig): WmlConfig {
+    let frozen: VariableStore | undefined;
     const out = new WmlConfig();
     for (const name of cfg.attributeNames()) {
       const raw = cfg.getRaw(name)!;
       if (raw instanceof TString) {
         // `interpolate_variables_into_tstring`: translate, substitute, and keep the
-        // TString only when substitution changed nothing.
+        // TString only when substitution changed nothing. Where it did change something the
+        // result is a TString that redoes the substitution over a frozen copy of the variables
+        // after each translation, so a dialogue open across a language switch follows it.
         const text = raw.str();
         const expanded = this.substitute(text);
-        out.setAttribute(name, expanded === text ? raw : expanded);
+        if (expanded === text) {
+          out.setAttribute(name, raw);
+        } else {
+          frozen ??= this.snapshot();
+          const vars = frozen;
+          out.setAttribute(name, TString.interpolated(raw, (translated) => vars.substitute(translated)));
+        }
       } else {
         out.setAttribute(name, typeof raw === 'string' ? this.substitute(raw) : raw);
       }

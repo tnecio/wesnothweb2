@@ -35,6 +35,7 @@
  *    implement plain `advances_to=` leveling.
  */
 
+import type { TString } from '../i18n/tstring.js';
 import { WmlConfig } from '../wml/config.js';
 import { Location, Direction, parseDirection } from './Location.js';
 import type { TerrainCode } from './Terrain.js';
@@ -62,7 +63,8 @@ export interface UnitModification {
 
 export interface UnitOptions {
   id?: string;
-  name?: string;
+  /** The unit's name; a `TString` when the WML wrote it `_ "..."`, so it follows the language. */
+  name?: string | TString;
   facing?: Direction;
   canRecruit?: boolean;
   role?: string;
@@ -105,7 +107,6 @@ export class Unit {
   resting: boolean;
   hidden: boolean;
   id: string;
-  name: string;
   role: string;
   underlyingId: number;
   /** Weapons currently in effect (defaults to `type.attacks`; an override list may replace them). */
@@ -203,7 +204,12 @@ export class Unit {
     this.resting = false;
     this.hidden = options.hidden ?? false;
     this.id = options.id ?? '';
-    this.name = options.name ?? '';
+    const givenName = options.name ?? '';
+    if (typeof givenName === 'string') this.nameText = givenName;
+    else {
+      this.nameText = givenName.baseStr();
+      this.nameT = givenName.translatable ? givenName : undefined;
+    }
     this.role = options.role ?? '';
     this.underlyingId = options.underlyingId ?? 0;
     this.modifications = options.modifications ?? [];
@@ -400,7 +406,7 @@ export class Unit {
 
     const unit = new Unit(type, side, location, {
       id: cfg.getString('id', ''),
-      name: cfg.getString('name', ''),
+      name: cfg.isTranslatable('name') ? cfg.getTString('name') : cfg.getString('name', ''),
       role: cfg.getString('role', ''),
       canRecruit: cfg.getBoolean('canrecruit', false),
       hidden: cfg.getBoolean('hidden', false),
@@ -469,7 +475,7 @@ export class Unit {
     const cfg = new WmlConfig();
     cfg.setAttribute('type', this.type.id);
     cfg.setAttribute('id', this.id);
-    cfg.setAttribute('name', this.name);
+    cfg.setAttribute('name', this.nameT ?? this.nameText);
     cfg.setAttribute('role', this.role);
     cfg.setAttribute('side', this.side);
     if (this.location.valid()) {
@@ -537,6 +543,25 @@ export class Unit {
   /** Mirrors `unit::incapacitated()`: petrified or stone-like states prevent acting. */
   get incapacitated(): boolean {
     return this.petrified;
+  }
+
+  private nameText = '';
+  private nameT: TString | undefined;
+
+  /** The unit's name, in the current language while it is still the translatable one from WML. */
+  get name(): string {
+    return this.nameT ? this.nameT.str() : this.nameText;
+  }
+
+  /** A rename (or `[modify_unit] name=`) replaces the WML name with plain text. */
+  set name(value: string) {
+    this.nameText = value;
+    this.nameT = undefined;
+  }
+
+  /** The name as a `TString`, when it is still translatable. */
+  get translatableName(): TString | undefined {
+    return this.nameT;
   }
 
   /** Mirrors `unit::loyal()` (`upkeep_ == upkeep_loyal`): the loyal trait's `[effect] apply_to=loyal`, or `upkeep=loyal`. */

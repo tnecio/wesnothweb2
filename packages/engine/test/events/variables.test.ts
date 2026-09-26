@@ -138,7 +138,7 @@ describe('VariableStore', () => {
       }
     });
 
-    it('expandConfig keeps the TString when nothing was substituted, and a plain string when something was', () => {
+    it('expandConfig keeps the TString when nothing was substituted, and an interpolated one when something was', () => {
       const vars = new VariableStore();
       vars.set('who', 'Krellis');
       const cfg = new WmlConfig();
@@ -146,8 +146,18 @@ describe('VariableStore', () => {
       cfg.setAttribute('subst', TString.translatable('wesnoth', 'Hail, $who!'));
       const out = vars.expandConfig(cfg);
       expect(out.isTranslatable('plain')).toBe(true);
-      expect(out.isTranslatable('subst')).toBe(false);
       expect(out.getString('subst')).toBe('Hail, Krellis!');
+      // Interpolated text still follows the language, over the variables as they were then...
+      setCatalogue('wesnoth', { entries: { 'Hail, $who!': 'Witaj, $who!' } });
+      try {
+        vars.set('who', 'someone else');
+        expect(out.getString('subst')).toBe('Witaj, Krellis!');
+      } finally {
+        clearCatalogues();
+      }
+      // ...and is saved as the plain text it reads as, never as parts that would lose the substitution.
+      expect(out.toJSON().attrs['subst']).toBe('Hail, Krellis!');
+      expect(out.toJSON().attrs['plain']).toEqual({ t: [['wesnoth', 'Hello']] });
     });
 
     it('translates before substituting, as upstream does', () => {

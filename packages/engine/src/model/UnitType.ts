@@ -50,6 +50,7 @@
  *    wrongly get up to 2 slots instead of the race's real count.
  */
 
+import type { TString } from '../i18n/tstring.js';
 import { WmlConfig } from '../wml/config.js';
 import { MoveType } from './MoveType.js';
 import { mergeUnitTypeConfig } from './UnitTypeDatabase.js';
@@ -149,6 +150,7 @@ export interface UnitTypeExtras {
   readonly variationId?: string;
   readonly halo?: string;
   readonly makeVariation?: (id: string) => UnitType | undefined;
+  readonly nameT?: TString;
 }
 
 /**
@@ -162,7 +164,7 @@ export class AttackType {
     /** cfg["name"] -- yes, really; matches attack_type::id_. */
     public readonly id: string,
     /** cfg["description"], defaulting to `id`; matches attack_type::name(). */
-    public readonly name: string,
+    private readonly nameText: string,
     public readonly type: string,
     public readonly range: string,
     public readonly minRange: number,
@@ -180,7 +182,14 @@ export class AttackType {
     public readonly movementUsed: number = 100000,
     /** `attacks_used=`: how many of the unit's attacks this weapon spends. */
     public readonly attacksUsed: number = 1,
+    /** `description=` as the translatable string it is in WML, so the weapon's name follows the language. */
+    public readonly nameT?: TString,
   ) {}
+
+  /** The weapon's display name, in the current language. */
+  get name(): string {
+    return this.nameT ? this.nameT.str() : this.nameText;
+  }
 
   /**
    * `attack_type::matches_filter` (`matches_simple_filter` plus in-order
@@ -278,9 +287,10 @@ export class AttackType {
     if (str('set_attacks_used')) attacksUsed = cfg.getNumber('set_attacks_used');
     if (str('increase_attacks_used')) attacksUsed = applyModifier(attacksUsed, cfg.getString('increase_attacks_used'), 1);
     const alignment = str('set_alignment');
+    const newDescription = str('set_description');
     return new AttackType(
       str('set_name') ?? this.id,
-      str('set_description') ?? this.name,
+      newDescription ?? this.nameText,
       str('set_type') ?? this.type,
       str('set_range') ?? this.range,
       minRange,
@@ -336,6 +346,7 @@ export class AttackType {
       specials,
       cfg.getNumber('movement_used', 100000),
       cfg.getNumber('attacks_used', 1),
+      cfg.isTranslatable('description') ? cfg.getTString('description') : undefined,
     );
   }
 }
@@ -356,7 +367,7 @@ function parseGenders(raw: string): string[] {
 export class UnitType {
   constructor(
     public readonly id: string,
-    public readonly name: string,
+    private readonly nameText: string,
     public readonly raceId: string,
     public readonly alignment: Alignment,
     public readonly level: number,
@@ -419,6 +430,15 @@ export class UnitType {
     this.variationId = extras.variationId ?? '';
     this.halo = extras.halo ?? '';
     this.makeVariation = extras.makeVariation;
+    this.nameT = extras.nameT;
+  }
+
+  /** `name=` as the translatable string it is in WML, so the type's name follows the language. */
+  readonly nameT: TString | undefined;
+
+  /** The type's display name (`unit_type::type_name`), in the current language. */
+  get name(): string {
+    return this.nameT ? this.nameT.str() : this.nameText;
   }
 
   /** The `[units]` registries this type was built with, which `[effect]`s resolve `specials_list=`/`new_ability` against. */
@@ -537,6 +557,7 @@ export class UnitType {
         upkeep: cfg.getString('upkeep', 'full'),
         variationId: cfg.getString('variation_id', ''),
         halo: cfg.getString('halo', ''),
+        nameT: cfg.isTranslatable('name') ? cfg.getTString('name') : undefined,
         makeVariation: (variationId) => {
           const varCfg = cfg.children('variation').find((v) => v.getString('variation_id') === variationId);
           if (!varCfg) return undefined;

@@ -25,7 +25,7 @@
   import { imageUrl } from '@wesnothweb2/renderer';
   import { pickStoryImage, type StoryAssets } from './story/storyImages.js';
   import { layoutMessage, scaledSizeFromPath, type Size } from './story/messageLayout.js';
-  import { tx } from './i18n/locale.js';
+  import { ts, tx } from './i18n/locale.js';
 
   let {
     interaction,
@@ -51,6 +51,9 @@
 
   const msg = $derived(interaction.message);
   const options = $derived(interaction.options);
+  /** Text the dialogue shows, read through the lookup so it follows a language switch while it is open. */
+  const titleText = $derived(interaction.texts?.title ? ts(interaction.texts.title) : (msg?.title ?? ''));
+  const bodyText = $derived(interaction.texts ? ts(interaction.texts.body) : (msg?.message ?? ''));
   const textInput = $derived(interaction.textInput);
   const hasInput = $derived(options.length > 0 || textInput !== undefined);
 
@@ -151,7 +154,7 @@
     <div
       class="window"
       role="dialog"
-      aria-label={msg.title || tx('Message')}
+      aria-label={titleText || tx('Message')}
       style:left="{area.x}px"
       style:top="{area.y}px"
       style:width="{area.w}px"
@@ -160,14 +163,14 @@
       <div class="panel" style:background-image="url('{ENGINE_IMAGES}/dialogs/translucent65-background.png')">
         <div class="panel-border" style:background-image="url('{ENGINE_IMAGES}/dialogs/translucent65-border-top.png')"></div>
         <div class="content" style:margin-left="{layout.contentX}px" style:width="{layout.contentWidth}px">
-          {#if msg.title}
-            <div class="title">{msg.title}</div>
+          {#if titleText}
+            <div class="title">{titleText}</div>
           {/if}
-          <div class="text">{msg.message}</div>
+          <div class="text">{bodyText}</div>
 
           {#if textInput}
             <div class="text-input">
-              {#if textInput.label}<label for="wml-text-input">{textInput.label}</label>{/if}
+              {#if textInput.label}<label for="wml-text-input">{textInput.labelT ? ts(textInput.labelT) : textInput.label}</label>{/if}
               <input
                 id="wml-text-input"
                 type="text"
@@ -196,8 +199,8 @@
                     }}
                   >
                     {#if option.image}<img class="option-icon" src={imageUrl(option.image)} alt="" />{/if}
-                    <span class="option-label">{option.label}</span>
-                    {#if option.description}<span class="option-description">{option.description}</span>{/if}
+                    <span class="option-label">{option.labelT ? ts(option.labelT) : option.label}</span>
+                    {#if option.description}<span class="option-description">{option.descriptionT ? ts(option.descriptionT) : option.description}</span>{/if}
                   </button>
                 </li>
               {/each}

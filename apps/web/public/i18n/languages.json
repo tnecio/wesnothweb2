@@ -26,6 +26,9 @@
    ],
    "rtl": true,
    "percent": 88,
+   "resourceLanguages": [
+    "ar"
+   ],
    "domains": [
     "wesnoth",
     "wesnoth-lib",
@@ -45,6 +48,9 @@
    "alternates": [],
    "rtl": false,
    "percent": 89,
+   "resourceLanguages": [
+    "cs"
+   ],
    "domains": [
     "wesnoth",
     "wesnoth-lib",
@@ -74,6 +80,9 @@
    ],
    "rtl": false,
    "percent": 99,
+   "resourceLanguages": [
+    "en_GB"
+   ],
    "domains": [
     "wesnoth",
     "wesnoth-lib",
@@ -95,6 +104,7 @@
    ],
    "rtl": false,
    "percent": 100,
+   "resourceLanguages": [],
    "domains": []
   },
   {
@@ -123,6 +133,9 @@
    ],
    "rtl": false,
    "percent": 99,
+   "resourceLanguages": [
+    "es"
+   ],
    "domains": [
     "wesnoth",
     "wesnoth-lib",
@@ -141,6 +154,9 @@
    "alternates": [],
    "rtl": false,
    "percent": 96,
+   "resourceLanguages": [
+    "gl"
+   ],
    "domains": [
     "wesnoth",
     "wesnoth-lib",
@@ -159,6 +175,9 @@
    "alternates": [],
    "rtl": false,
    "percent": 99,
+   "resourceLanguages": [
+    "it"
+   ],
    "domains": [
     "wesnoth",
     "wesnoth-lib",
@@ -177,6 +196,9 @@
    "alternates": [],
    "rtl": false,
    "percent": 85,
+   "resourceLanguages": [
+    "hu"
+   ],
    "domains": [
     "wesnoth",
     "wesnoth-lib",
@@ -195,6 +217,9 @@
    "alternates": [],
    "rtl": false,
    "percent": 68,
+   "resourceLanguages": [
+    "pl_PL"
+   ],
    "domains": [
     "wesnoth",
     "wesnoth-lib",
@@ -213,6 +238,9 @@
    "alternates": [],
    "rtl": false,
    "percent": 84,
+   "resourceLanguages": [
+    "fi"
+   ],
    "domains": [
     "wesnoth",
     "wesnoth-lib",

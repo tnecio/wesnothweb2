@@ -31,6 +31,7 @@
  * produces.
  */
 
+import type { TString } from '../i18n/tstring.js';
 import type { WmlConfig } from '../wml/config.js';
 
 export type TerLayer = number; // uint32, held as a JS number via `>>> 0`
@@ -208,7 +209,7 @@ export type MergeMode = 'BOTH' | 'BASE' | 'OVERLAY';
 export class TerrainType {
   constructor(
     public readonly id: string,
-    public readonly name: string,
+    private readonly nameText: string,
     /** The terrain code this type is registered under (`string=` in WML). */
     public readonly code: TerrainCode,
     /** Alias list used to resolve movement cost (defaults to `[code]`, i.e. "not an alias"). */
@@ -226,7 +227,14 @@ export class TerrainType {
     public readonly lightModification: number,
     public readonly maxLight: number,
     public readonly minLight: number,
+    /** `name=` as the translatable string it is in WML, so the display name follows the language. */
+    public readonly nameT?: TString,
   ) {}
+
+  /** The display name, in the current language. */
+  get name(): string {
+    return this.nameT ? this.nameT.str() : this.nameText;
+  }
 
   /** Mirrors `terrain_type::is_indivisible()`: true if this code has no separate underlying alias. */
   isIndivisible(): boolean {
@@ -279,6 +287,7 @@ export class TerrainType {
       cfg.getNumber('light', 0),
       cfg.hasAttribute('max_light') ? cfg.getNumber('max_light') : cfg.getNumber('light', 0),
       cfg.hasAttribute('min_light') ? cfg.getNumber('min_light') : cfg.getNumber('light', 0),
+      cfg.isTranslatable('name') ? cfg.getTString('name') : undefined,
     );
   }
 
@@ -312,9 +321,10 @@ export class TerrainType {
    */
   static combine(base: TerrainType, overlay: TerrainType): TerrainType {
     const code = new TerrainCode(base.code.base, overlay.code.overlay);
+    const named = overlay.name ? overlay : base;
     return new TerrainType(
       `${base.id}^${overlay.id}`,
-      overlay.name || base.name,
+      named.nameText,
       code,
       mergeAliasList(overlay.mvtType, base.mvtType),
       mergeAliasList(overlay.defType, base.defType),
@@ -332,6 +342,7 @@ export class TerrainType {
       base.lightModification + overlay.lightModification,
       Math.max(base.maxLight, overlay.maxLight),
       Math.min(base.minLight, overlay.minLight),
+      named.nameT,
     );
   }
 }

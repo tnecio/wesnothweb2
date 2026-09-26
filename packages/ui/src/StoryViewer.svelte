@@ -20,10 +20,10 @@
    * `GameShell` owns what happens after the story (`onDone`).
    */
   import { onDestroy } from 'svelte';
-  import { t, tx } from './i18n/locale.js';
+  import { locale, t, ts, tx } from './i18n/locale.js';
   import type { ResolvedStoryPart } from '@wesnothweb2/engine';
   import { layoutFloatingImage, layoutStoryPart, titleOrigin, type Size } from './story/storyLayout.js';
-  import { pickStoryImage, GAME_IMAGES_BASE, type StoryAssets } from './story/storyImages.js';
+  import { pickStoryImage, localizedEntry, GAME_IMAGES_BASE, type StoryAssets } from './story/storyImages.js';
 
   let {
     parts,
@@ -72,7 +72,14 @@
 
   function urlOf(image: string, drawnWidth: number): string | undefined {
     const entry = assets?.images[image];
-    return entry ? pickStoryImage(entry, drawnWidth, dpr).url : undefined;
+    return entry ? pickStoryImage(localizedEntry(entry, locale.resourceCodes).image, drawnWidth, dpr).url : undefined;
+  }
+
+  /** The translated overlay over `image` (journey maps with place names in the player's language), if the language has one. */
+  function overlayUrlOf(image: string, drawnWidth: number): string | undefined {
+    const entry = assets?.images[image];
+    const overlay = entry ? localizedEntry(entry, locale.resourceCodes).overlay : undefined;
+    return overlay ? pickStoryImage(overlay, drawnWidth, dpr).url : undefined;
   }
 
   const layout = $derived(part && viewportW > 0 ? layoutStoryPart(part, viewport, sizeOf) : null);
@@ -82,7 +89,7 @@
     const p = parts[index];
     if (!p || viewportW <= 0) return [];
     const l = layoutStoryPart(p, viewport, sizeOf);
-    const urls = l.layers.map((layer) => urlOf(layer.image, layer.w)).filter((u): u is string => !!u);
+    const urls = l.layers.flatMap((layer) => [urlOf(layer.image, layer.w), overlayUrlOf(layer.image, layer.w)]).filter((u): u is string => !!u);
     for (const image of p.floatingImages) {
       const size = sizeOf(image.file);
       const url = size ? urlOf(image.file, size.w) : undefined;
@@ -313,6 +320,20 @@
             style:background-repeat={layer.tile ? 'repeat' : 'no-repeat'}
             style:background-position={layer.tile ? 'center' : '0 0'}
           ></div>
+          {@const overlay = overlayUrlOf(layer.image, layer.w)}
+          {#if overlay}
+            <div
+              class="layer"
+              style:left="{layer.x}px"
+              style:top="{layer.y}px"
+              style:width="{layer.w}px"
+              style:height="{layer.h}px"
+              style:background-image="url('{overlay}')"
+              style:background-size={layer.tile ? `${size.w}px ${size.h}px` : '100% 100%'}
+              style:background-repeat={layer.tile ? 'repeat' : 'no-repeat'}
+              style:background-position={layer.tile ? 'center' : '0 0'}
+            ></div>
+          {/if}
         {/if}
       {/each}
       {#each floating as image (`${shownIndex}:${image.key}`)}
@@ -336,7 +357,7 @@
         style:opacity={alpha}
         style:text-align={part.titleAlignment}
       >
-        {part.title}
+        {ts(part.titleT)}
       </div>
     {/if}
 
@@ -361,7 +382,7 @@
       <div class="middle">
         <!-- svelte-ignore a11y_click_events_have_key_events -- keyboard navigation is handled window-wide above -->
         <div class="text" role="button" tabindex="-1" style:opacity={alpha} style:text-align={part.textAlignment} onclick={() => navigate(1)}>
-          {part.text}
+          {ts(part.textT)}
         </div>
         <button class="skip" onclick={close}>{t('Skip')}</button>
       </div>

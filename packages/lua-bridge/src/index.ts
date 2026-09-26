@@ -5,3 +5,4 @@ export { installRequire, type ModuleSourceLookup } from './bridges/require.js';
 export { installVariablesBridge } from './bridges/variables.js';
 export { installUnitsBridge } from './bridges/units.js';
 export { createLuaConditionalEvaluator } from './conditionals.js';
+export { installTextdomainBridge, TEXTDOMAIN_LUA_SOURCE } from './bridges/textdomain.js';

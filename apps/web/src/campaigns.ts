@@ -6,10 +6,17 @@
  * enough to pick one and find its entry-point scenario snapshot under
  * `public/scenarios/<id>.json`.
  */
+import { TString, type TStringJson } from '@wesnothweb2/engine';
+
 export interface Campaign {
   id: string;
+  /** The English name (what a save file records). */
   name: string;
+  /** The English description. */
   description: string;
+  /** The name and description as translatable strings, for showing to the player. */
+  nameT: TString;
+  descriptionT: TString;
   /** The scenario id (matches a `public/scenarios/<id>.json` file) this campaign starts on. */
   firstScenario: string;
   /**
@@ -28,6 +35,11 @@ export interface Campaign {
 export async function fetchCampaigns(): Promise<Campaign[]> {
   const res = await fetch('/campaigns.json');
   if (!res.ok) throw new Error(`fetch campaigns.json: ${res.status}`);
-  const data = await res.json();
-  return data.campaigns as Campaign[];
+  const data = (await res.json()) as { campaigns: Array<Omit<Campaign, 'name' | 'description' | 'nameT' | 'descriptionT'> & { name: string | TStringJson; description: string | TStringJson }> };
+  const text = (v: string | TStringJson): TString => (typeof v === 'string' ? TString.literal(v) : TString.fromJSON(v));
+  return data.campaigns.map((c) => {
+    const nameT = text(c.name);
+    const descriptionT = text(c.description);
+    return { ...c, name: nameT.baseStr(), description: descriptionT.baseStr(), nameT, descriptionT };
+  });
 }

@@ -87,7 +87,8 @@ import type { Rng } from '../rng/Rng.js';
 import type { EffectEnv } from '../model/effects.js';
 import type { ActionHandler, EventContext, RecordedMessage } from './context.js';
 import { ActionRegistry } from './context.js';
-import { isFlow, runFlow, type Flow, type MessageOption, type Responder, type TextInputSpec } from './interaction.js';
+import { TString } from '../i18n/tstring.js';
+import { isFlow, runFlow, type Flow, type MessageOption, type MessageTexts, type Responder, type TextInputSpec } from './interaction.js';
 import { conditionalPassed } from './conditionalWml.js';
 import { findUnits, locationMatchesFilter, unitMatchesFilter } from './filter.js';
 import { actionLabel } from './labelsWml.js';
@@ -216,11 +217,11 @@ function noop(): void {
  * (first one only); `variable=`; `side_for=` gating for messages with no
  * input; Escape-skips-the-rest-of-this-event.
  *
- * NOT ported: `male_message=`/`female_message=` pick nothing, because
- * this port's `Unit` has no gender yet (Phase 1 deferred gender with
- * `[variation]`) -- the plain `message=` is used, and a message that
- * *only* has gendered text falls back to the male form, upstream's own
- * default gender. Unused by any campaign ported so far. The Pango
+ * `male_message=`/`female_message=` (and `male_voice=`/`female_voice=`)
+ * are picked by the speaker's gender, as in `message.lua`; a message with
+ * only gendered text and no speaker to choose by uses the male form. The
+ * text also travels as translatable strings (`MessageInteraction.texts`),
+ * so a dialogue that is open when the language changes follows it. The Pango
  * formatting attributes (`font=`, `color=`, `underline=`, ...) are not
  * applied either; `sound=`/`voice=` are carried on the recorded message
  * for Phase 19 rather than played.
@@ -241,6 +242,7 @@ function* actionMessage(cfg: WmlConfig, ctx: EventContext): Flow {
       maxLength = 256;
     }
     textInput = {
+      labelT: textInputCfg.getTString('label'),
       label: textInputCfg.getString('label', ''),
       text: textInputCfg.getString('text', ''),
       maxLength,
@@ -269,7 +271,10 @@ function* actionMessage(cfg: WmlConfig, ctx: EventContext): Flow {
       description = optionCfg.getString('description');
     }
 
+    const descriptionKey = hasMessage ? 'message' : hasDescription ? 'description' : '';
     options.push({
+      labelT: optionCfg.getTString('label'),
+      descriptionT: descriptionKey !== '' && !(hasMessage && hasDescription) ? optionCfg.getTString(descriptionKey) : undefined,
       label: optionCfg.getString('label', ''),
       description,
       image: optionCfg.getString('image', ''),
@@ -343,15 +348,23 @@ function* actionMessage(cfg: WmlConfig, ctx: EventContext): Flow {
 
   // get_caption
   let title = cfg.hasAttribute('caption') ? cfg.getString('caption') : '';
-  if (!cfg.hasAttribute('caption') && speakerUnit) title = speakerUnit.name !== '' ? speakerUnit.name : speakerUnit.type.name;
+  let titleT: TString | undefined = cfg.hasAttribute('caption') ? cfg.getTString('caption') : undefined;
+  if (!cfg.hasAttribute('caption') && speakerUnit) {
+    title = speakerUnit.name !== '' ? speakerUnit.name : speakerUnit.type.name;
+    titleT = speakerUnit.name !== '' ? speakerUnit.translatableName : speakerUnit.type.nameT;
+  }
 
-  // No gender in this port's model yet, so a message that only has
-  // gendered text falls back to the male form (upstream's default).
-  const body = cfg.hasAttribute('message')
-    ? cfg.getString('message')
-    : cfg.hasAttribute('male_message')
-      ? cfg.getString('male_message')
-      : cfg.getString('female_message', '');
+  // message.lua: the speaker's gender picks `male_message=`/`female_message=` over `message=`; a
+  // message with only gendered text and no speaker to pick by falls back to the male form.
+  let bodyKey = 'message';
+  if (speakerUnit && speakerUnit.gender === 'male' && cfg.hasAttribute('male_message')) bodyKey = 'male_message';
+  else if (speakerUnit && speakerUnit.gender === 'female' && cfg.hasAttribute('female_message')) bodyKey = 'female_message';
+  else if (!cfg.hasAttribute('message')) bodyKey = cfg.hasAttribute('male_message') ? 'male_message' : 'female_message';
+  const bodyT = cfg.getTString(bodyKey) ?? TString.literal('');
+  const body = bodyT.str();
+  let voiceKey = 'voice';
+  if (speakerUnit && speakerUnit.gender === 'male' && cfg.hasAttribute('male_voice')) voiceKey = 'male_voice';
+  else if (speakerUnit && speakerUnit.gender === 'female' && cfg.hasAttribute('female_voice')) voiceKey = 'female_voice';
 
   const message: RecordedMessage = {
     speaker: narrator ? 'narrator' : (speakerUnit?.id ?? ''),
@@ -368,11 +381,12 @@ function* actionMessage(cfg: WmlConfig, ctx: EventContext): Flow {
     scroll: cfg.getBoolean('scroll', true),
     highlight: cfg.getBoolean('highlight', true),
     sound: cfg.getString('sound', ''),
-    voice: cfg.getString('voice', ''),
+    voice: cfg.getString(voiceKey, ''),
   };
   ctx.messages.push(message);
 
-  const answer = yield { kind: 'message', message, options, textInput };
+  const texts: MessageTexts = { body: bodyT, ...(titleT ? { title: titleT } : {}) };
+  const answer = yield { kind: 'message', message, options, textInput, texts };
 
   // Escape on a message with nothing to answer: drop the rest of this
   // event's plain messages (`wesnoth.interface.skip_messages()`).

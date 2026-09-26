@@ -31,7 +31,27 @@ export class TString {
   private cached = '';
   private cachedGeneration = 0;
 
-  private constructor(readonly parts: readonly TStringPart[]) {}
+  private constructor(
+    readonly parts: readonly TStringPart[],
+    private readonly transform?: (translated: string) => string,
+  ) {}
+
+  /**
+   * `base` with `transform` applied to its translation each time the language
+   * changes: `$variable` substitution, done after translating (a translator can move
+   * a placeholder anywhere) but still following the language, which upstream's
+   * `interpolate_variables_into_tstring` cannot do since its result is plain
+   * text. `transform` must be pure (over a frozen copy of the variables): the
+   * result is cached, and it is not saved as a translatable string.
+   */
+  static interpolated(base: TString, transform: (translated: string) => string): TString {
+    return new TString(base.parts, transform);
+  }
+
+  /** True for a value made by `interpolated` -- translatable in the language, but not serialisable as parts. */
+  get isInterpolated(): boolean {
+    return this.transform !== undefined;
+  }
 
   static literal(text: string): TString {
     return new TString(text === '' ? [] : [text]);
@@ -67,7 +87,7 @@ export class TString {
     if (this.cachedGeneration !== gen) {
       let out = '';
       for (const p of this.parts) out += typeof p === 'string' ? p : dsgettext(p.domain, p.msgid);
-      this.cached = out;
+      this.cached = this.transform ? this.transform(out) : out;
       this.cachedGeneration = gen;
     }
     return this.cached;
@@ -94,6 +114,14 @@ export class TString {
 
   toJSON(): TStringJson {
     return { t: this.parts.map((p) => (typeof p === 'string' ? p : ([p.domain, p.msgid] as [string, string]))) };
+  }
+
+  /**
+   * What to store: the parts for an ordinary translatable string, or -- for an interpolated one,
+   * whose variables cannot travel with it -- the text as it reads now, as plain data.
+   */
+  serialize(): TStringJson | string {
+    return this.transform ? this.str() : this.toJSON();
   }
 
   static fromJSON(json: TStringJson): TString {

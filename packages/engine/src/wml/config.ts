@@ -167,7 +167,7 @@ export class WmlConfig {
 
   toJSON(): WmlConfigJson {
     return {
-      attrs: Object.fromEntries([...this.attrs].map(([k, v]) => [k, v instanceof TString ? v.toJSON() : v])),
+      attrs: Object.fromEntries([...this.attrs].map(([k, v]) => [k, v instanceof TString ? v.serialize() : v])),
       children: this.childEntries.map((e) => ({ tag: e.tag, config: e.config.toJSON() })),
     };
   }

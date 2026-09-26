@@ -8,13 +8,18 @@
  * cannot be exported as a file the real game would know what to do with.
  */
 
+import type { TString } from '@wesnothweb2/engine';
 import type { WesnothCampaignInfo } from './wesnothSave.js';
 
 export interface CampaignInfo {
   /** This project's own id, e.g. `dead_water`. */
   id: string;
+  /** The English name: what a save file records, whatever language the menu is in. */
   name: string;
   description?: string;
+  /** The name and description as upstream's translatable strings, for anything shown to the player. */
+  nameT?: TString;
+  descriptionT?: TString;
   firstScenario?: string;
   /** Upstream's `[campaign] id=`, e.g. `Dead_Water`. */
   wesnothId?: string;

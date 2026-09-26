@@ -4777,3 +4777,76 @@ Not yet done (Stage 3): the chrome and model text still read English except
 "Language" and "Close"; this stage built the machinery.
 
 Gates: engine 787+14, ui 284 (+14), 0 typecheck/svelte-check errors.
+
+## 2026-09-26: Phase 20, stage 3 — everything visible goes through the lookup
+
+- **UI chrome** (`t`/`tw`/`th`/`tx`/`tn`/`fmt` in `packages/ui/src/i18n/locale.ts`):
+  each helper reads one textdomain (`wesnoth-lib`, `wesnoth`, `wesnoth-help`, our
+  own `wesnothweb`), is reactive, and takes upstream's msgid verbatim. Every dialog,
+  the top bar, side panel, story viewer, both app pages and every menu and context
+  command label now use them. Where upstream has the wording (End Turn, Recruit,
+  Save Game, Objectives, Damage Calculations, the recruit/recall column headings,
+  "Lvl", "HP:", ...) that is what is shown, so every shipped language already has it.
+  Strings upstream has no counterpart for (about 140: status lines, the log, the
+  audio labels, save-manager hints) are `tx('...')` with `$name` placeholders.
+- **Audit** (`packages/ui/src/i18n/audit.test.ts`), so this stays true:
+  1. templates: no text node, `title`/`aria-label`/`placeholder`/`alt`, or literal in a
+     `{...}` expression outside a helper call has letters (parsed with the Svelte
+     compiler);
+  2. script: `label:`/`title:`/`message:`-style properties and status assignments hold
+     no bare English;
+  3. every literal msgid handed to a helper exists in that domain's upstream `.pot`
+     (a typo, or a string upstream reworded, fails here), and the generated
+     `apps/web/i18n/wesnothweb/wesnothweb.pot` (`extract-wesnothweb-pot.mjs`) lists
+     exactly the port-only msgids the code uses;
+  4. no helper is called with a non-literal msgid (nothing could extract it).
+- **Rules vocabulary** (`i18n/gameText.ts`): races (`race^Human`, `wesnoth-help`),
+  alignments, damage types, ranges and unit statuses were hardcoded English tables;
+  each entry is now an explicit upstream msgid.
+- **Engine-made text**: the session's log and status messages (recruit/recall, moves,
+  every blow, healing, advancement, undo/redo, victory/defeat) are built from `tx`
+  templates and `fmt`. They are written in the language in effect at the time, which
+  is the point of a log; the status line is recomputed on a switch.
+- **Model text keeps its `TString`** and is read when drawn: unit type names, weapon
+  names and terrain names (`UnitType.name`/`AttackType.name`/`TerrainType.name` are
+  getters over their `TString`), unit names (`Unit.name`, with a rename replacing it
+  by plain text), time-of-day names, the scenario name, story titles and text,
+  objectives (default labels are upstream's `_ "Victory:"` etc. in `wesnoth`; the
+  turn counter is `ngettext("(this turn left)", "($remaining_turns turns left)")`),
+  and campaign names and descriptions (now upstream's own, generated into
+  `campaigns.json` by `build-campaign-texts.mjs`). Trait and ability names were
+  already read from WML on access. Saves keep a unit's name translatable
+  (`SavedUnit.name` may be `{"t": ...}`, and it round-trips through the Wesnoth save
+  converter as `_ "..."`).
+- **Interpolation order** is upstream's: translate, then substitute. Where
+  substitution changes the text upstream returns plain text; here it is a
+  `TString.interpolated(...)` over a frozen copy of the variables, so a dialogue that
+  is open across a language switch re-translates with the same values, and it is saved
+  as the plain text it reads as (never as parts that would lose the substitution).
+- **Dialogues**: `[message]` carries its body, title, `[option]` labels and
+  `[text_input]` label as `TString`s (`MessageInteraction.texts`), and
+  `male_message=`/`female_message=`/`male_voice=`/`female_voice=` are chosen by the
+  speaker's gender as `message.lua` does. `MessageViewer` reads them through `ts()`.
+- **After a switch** `GameShell.refreshTexts()` re-reads the views that hold text
+  (selected and inspected unit, recruit/recall lists, time of day, hover info, status)
+  from a session that still holds the untranslated strings. It deliberately is not
+  `sync()`, which restarts sprite positions mid-animation.
+- **Localized images** (`get_localized_path`): `i18n/localizedPath.ts` names the
+  candidates (`dir/l10n/<code>/name.ext`, then `name--overlay.ext`, `en_US` last);
+  `languages.json` carries each language's `resourceLanguages` (from `wesnoth-lib`'s
+  `language code for localized resources^en_US`); `build-story-assets.mjs` copies
+  the twins that exist (only journey-map overlays for es, gl and it, in Dead Water,
+  Two Brothers and Liberty, among the shipped set; the full upstream checkout is the
+  source since the data submodule carries none) and the story viewer draws them.
+- **Lua**: `wesnoth.textdomain(domain)` returns a function yielding the translated
+  plain string (context stripped, plurals by the catalogue rule). Real `tstring`
+  userdata stays Phase 29.
+- **Browser check** (`apps/web/scripts/i18n-playthrough.mjs`, Dead Water 1, Polish): an
+  open dialogue line ("Is something wrong, priestess?") becomes the catalogue's
+  "Czy coś nie w porządku kapłanko?" and back, without a reload; End Turn, the menu
+  entries, a selected unit's type name ("Child King" to "Król dziecko"), and the open
+  objectives dialog's labels and text all match the shipped catalogue.
+- `apps/web/scripts/rebuild-snapshots.mjs` and `build-story-assets.mjs` now run under
+  `node --import tsx`.
+
+Gates: engine 791, ui 292, lua-bridge 38; 0 typecheck/svelte-check errors.

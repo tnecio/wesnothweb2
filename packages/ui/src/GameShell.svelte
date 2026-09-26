@@ -118,7 +118,7 @@
   import StoryViewer from './StoryViewer.svelte';
   import AudioDialog from './AudioDialog.svelte';
   import LanguageDialog from './LanguageDialog.svelte';
-  import { fmt, locale, t, tw, tx } from './i18n/locale.js';
+  import { fmt, locale, t, tw, ts, tx } from './i18n/locale.js';
   import { getAudioEngine } from './audio/audioEngine.js';
   import { installUiSounds } from './audio/uiSounds.js';
   import type { AudioSettings } from './audio/settings.js';
@@ -471,6 +471,40 @@
   /** The unit whose selection last made a sound. */
   let lastSelectedForSound: object | null = null;
 
+  /** The side panel's status line for the current state (a one-off `message` from an action wins). */
+  function statusFor(message?: string | null): string {
+    if (session.scenarioResult) return session.scenarioResult === 'victory' ? tx('Victory!') : tx('Defeat.');
+    if (message) return message;
+    if (pendingPreview) return tx('Review the attack prediction, then confirm or cancel.');
+    if (pendingRecruitTypeId) return tx('Click a free castle tile to place your recruit.');
+    if (pendingRecallIndex !== null) return tx('Click a free castle tile to place your recalled unit.');
+    if (selected) return fmt(tx('$unit selected.'), { unit: selected.name });
+    return tx('Click one of your units to select it.');
+  }
+
+  /**
+   * After a language switch: re-reads every view of the game that holds text (unit and type names, weapon and
+   * trait names, terrain, time of day, the status line), from a session that still holds the untranslated strings.
+   * Deliberately not `sync()`: nothing else changed, and `sync` restarts sprite positions mid-animation.
+   */
+  function refreshTexts(): void {
+    selected = selectedInfo();
+    inspected = inspectedInfo();
+    recruitOptions = session.recruitOptions;
+    recallOptions = session.recallOptions;
+    timeOfDay = session.currentTimeOfDay;
+    hoveredHexInfo = hoveredHexInfo ? session.hoveredHexInfo(hoveredHexInfo.x, hoveredHexInfo.y) : null;
+    statusMessage = statusFor();
+  }
+
+  let lastLanguage = locale.current;
+  $effect(() => {
+    const language = locale.current;
+    if (language === lastLanguage) return;
+    lastLanguage = language;
+    untrack(refreshTexts);
+  });
+
   function sync(message?: string | null): void {
     // `mouse_events`: selecting one of your own units clicks (`select-unit.wav`, the UI group).
     const selectedUnit = session.selectedUnit;
@@ -508,21 +542,7 @@
     mapLabels = session.mapLabels;
     timeOfDay = session.currentTimeOfDay;
 
-    if (session.scenarioResult) {
-      statusMessage = session.scenarioResult === 'victory' ? tx('Victory!') : tx('Defeat.');
-    } else if (message) {
-      statusMessage = message;
-    } else if (pendingPreview) {
-      statusMessage = tx('Review the attack prediction, then confirm or cancel.');
-    } else if (pendingRecruitTypeId) {
-      statusMessage = tx('Click a free castle tile to place your recruit.');
-    } else if (pendingRecallIndex !== null) {
-      statusMessage = tx('Click a free castle tile to place your recalled unit.');
-    } else if (selected) {
-      statusMessage = fmt(tx('$unit selected.'), { unit: selected.name });
-    } else {
-      statusMessage = tx('Click one of your units to select it.');
-    }
+    statusMessage = statusFor(message);
 
     // Latches once `session.checkForGameEnd()` (run after any kill --
     // see `confirmAttack`) sets a result; `phase` only ever moves forward
@@ -1746,9 +1766,9 @@
   function saveDetails(kind: SaveKind): SaveDetails {
     return {
       scenarioId: activeSnapshot.scenario.id,
-      scenarioName: activeSnapshot.scenario.name,
+      scenarioName: session.scenarioName,
       campaignId: campaign?.id,
-      label: scenarioLabel(campaignAbbrev(campaign), activeSnapshot.scenario.name),
+      label: scenarioLabel(campaignAbbrev(campaign), session.scenarioName),
       turnNumber: session.turnNumber,
       kind,
     };
@@ -1882,7 +1902,7 @@
     screenTint = null;
     phase = 'replay';
     replay = { data, index: 0, total: data.replay.commands.length, playing: true };
-    sync(`Replay of ${replaySnapshot.scenario.name}: ${replay.total} actions.`);
+    sync(fmt(tx('Replay of $name: $total actions.'), { name: session.scenarioName, total: replay.total }));
     await tick();
     replayLoop = runReplayLoop();
   }
@@ -1964,7 +1984,7 @@
     currentMessage = null;
     screenTint = null;
     phase = session.scenarioResult ? 'ended' : 'playing';
-    sync(`Loaded ${nextSnapshot.scenario.name} (turn ${data.turnNumber}).`);
+    sync(fmt(tx('Loaded $name (turn $turn).'), { name: session.scenarioName, turn: data.turnNumber }));
   }
 
   async function handleDeleteSave(name: string): Promise<void> {
@@ -2540,7 +2560,7 @@
 
 <div class="game-shell">
   <TopBar
-    scenarioName={activeSnapshot.scenario.name}
+    scenarioName={ts(session.scenarioNameT)}
     {turnNumber}
     {activeSide}
     {scenarioTurnsLimit}
@@ -2657,7 +2677,7 @@
   {#if objectivesDialogOpen && session.scenarioObjectives}
     <!-- Phase 14: reopened on demand from the top bar's Actions menu, independent of the `phase` state machine's own one-time automatic showing (below). -->
     <ObjectivesDialog
-      scenarioName={activeSnapshot.scenario.name}
+      scenarioName={ts(session.scenarioNameT)}
       objectives={session.scenarioObjectives}
       currentTurn={turnNumber}
       turnsLimit={scenarioTurnsLimit}
@@ -2702,7 +2722,7 @@
   {#if saveDialogOpen}
     <SaveGameDialog
       suggestedName={manualSaveName(
-        scenarioLabel(campaignAbbrev(campaign), activeSnapshot.scenario.name),
+        scenarioLabel(campaignAbbrev(campaign), session.scenarioName),
         session.turnNumber,
       )}
       existingNames={savesList.map((s) => s.name)}
@@ -2715,7 +2735,7 @@
     <LoadGameDialog
       saves={savesList}
       campaignNames={Object.fromEntries(
-        [...campaigns, ...(campaign ? [campaign] : [])].map((c) => [c.id, c.name]),
+        [...campaigns, ...(campaign ? [campaign] : [])].map((c) => [c.id, c.nameT ? ts(c.nameT) : c.name]),
       )}
       busy={saveBusy}
       onLoad={(name, showReplay) => void handleLoadNamed(name, showReplay)}
@@ -2740,7 +2760,7 @@
     {/key}
   {:else if phase === 'objectives' && session.scenarioObjectives}
     <ObjectivesDialog
-      scenarioName={activeSnapshot.scenario.name}
+      scenarioName={ts(session.scenarioNameT)}
       objectives={session.scenarioObjectives}
       currentTurn={turnNumber}
       turnsLimit={scenarioTurnsLimit}

@@ -108,6 +108,14 @@ for (const locale of SHIPPED_LOCALES) {
       domains.push(domain);
     }
   }
+  // `wesnoth-lib`'s `language code for localized resources^en_US`: which `l10n/<code>/` art dirs this
+  // language reads, in priority order (`get_localized_path`). Empty for English (the source art).
+  let resourceLanguages = [];
+  if (locale !== 'en_US') {
+    const file = poFile('wesnoth-lib', locale);
+    const entry = file ? readPo(file).entries.find((e) => e.msgid === 'language code for localized resources^en_US' && !e.fuzzy) : undefined;
+    resourceLanguages = (entry?.msgstr[0] ?? '').split(',').map((c) => c.trim()).filter(Boolean);
+  }
   languages.push({
     code: cfg.locale,
     name: cfg.name,
@@ -115,6 +123,7 @@ for (const locale of SHIPPED_LOCALES) {
     alternates: cfg.alternates,
     rtl: cfg.rtl,
     percent: cfg.percent,
+    resourceLanguages,
     domains,
   });
 }

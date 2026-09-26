@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ResolvedStoryPart, StoryBackgroundLayer, StoryFloatingImage } from '@wesnothweb2/engine';
+import { TString, type ResolvedStoryPart, type StoryBackgroundLayer, type StoryFloatingImage } from '@wesnothweb2/engine';
 import { layoutBackgroundLayer, layoutStoryPart, titleOrigin } from './storyLayout.js';
 
 function layer(over: Partial<StoryBackgroundLayer>): StoryBackgroundLayer {
@@ -15,6 +15,8 @@ function part(backgroundLayers: StoryBackgroundLayer[], floatingImages: StoryFlo
     showTitle: false,
     title: '',
     text: '',
+    titleT: TString.literal(''),
+    textT: TString.literal(''),
     textLayout: 'bottom',
     textAlignment: 'left',
     titleAlignment: 'left',

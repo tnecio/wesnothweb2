@@ -7,7 +7,7 @@
    * "only load assets needed for a given campaign once it's chosen"
    * requirement -- this component structurally can't preload anything.
    */
-  import { LanguageDialog, fmt, formatDateTime, listSaves, t, tx, type SaveMeta } from '@wesnothweb2/ui';
+  import { LanguageDialog, fmt, formatDateTime, listSaves, locale, t, ts, tx, type SaveMeta } from '@wesnothweb2/ui';
   import { fetchCampaigns, type Campaign } from './campaigns.js';
   import { router } from './router.svelte.js';
 
@@ -31,6 +31,10 @@
         if (cancelled) return;
         campaigns = data;
         status = 'ready';
+        // The campaigns' own names and descriptions live in their textdomains.
+        const domains = new Set<string>();
+        for (const c of data) for (const part of [...c.nameT.parts, ...c.descriptionT.parts]) if (typeof part !== 'string') domains.add(part.domain);
+        void locale.useDomains([...domains]);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -71,6 +75,11 @@
     router.navigate(`/play/${campaignId}?save=${encodeURIComponent(save.name)}`);
   }
 
+  /** Upstream's descriptions carry Pango markup (`<small>...</small>`); the menu shows plain text. */
+  function plainDescription(text: string): string {
+    return text.replace(/<[^>]+>/g, '').trim();
+  }
+
   function when(savedAt: number): string {
     return formatDateTime(savedAt);
   }
@@ -90,8 +99,8 @@
       {#each campaigns as campaign (campaign.id)}
         <li>
           <button class="campaign" onclick={() => pick(campaign)}>
-            <span class="name">{campaign.name}</span>
-            <span class="description">{campaign.description}</span>
+            <span class="name">{ts(campaign.nameT)}</span>
+            <span class="description">{plainDescription(ts(campaign.descriptionT))}</span>
           </button>
         </li>
       {/each}

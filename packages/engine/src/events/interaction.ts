@@ -26,12 +26,17 @@
  *   parks on a real dialog between steps.
  */
 
+import type { TString } from '../i18n/tstring.js';
 import type { Location } from '../model/Location.js';
 import type { Unit } from '../model/Unit.js';
 import type { RecordedMessage } from './context.js';
 
 /** One `[option]` of a `[message]`, after `[show_if]` filtering (see `message.lua`'s `wml_actions.message`). */
 export interface MessageOption {
+  /** `label=` as a translatable string (so an open dialogue follows a language switch). */
+  readonly labelT?: TString;
+  /** `message=`/`description=` as a translatable string. */
+  readonly descriptionT?: TString;
   /** `label=`: the row's own text. */
   readonly label: string;
   /** `message=`/`description=` (synonyms upstream): the longer body text under the label. */
@@ -44,6 +49,7 @@ export interface MessageOption {
 
 /** A `[message]`'s `[text_input]` child (only the first is honoured, as upstream). */
 export interface TextInputSpec {
+  readonly labelT?: TString;
   /** `label=`: caption above the box. */
   readonly label: string;
   /** `text=`: the initial contents. */
@@ -52,10 +58,18 @@ export interface TextInputSpec {
   readonly maxLength: number;
 }
 
+/** The translatable form of a `[message]`'s body and title (the plain strings on `RecordedMessage` are the language at the time it fired). */
+export interface MessageTexts {
+  readonly body: TString;
+  readonly title?: TString;
+}
+
 /** A `[message]` waiting to be shown; `options`/`textInput` are empty/absent for a plain "click to continue" line. */
 export interface MessageInteraction {
   readonly kind: 'message';
   readonly message: RecordedMessage;
+  /** The message's text as translatable strings, for a display that must follow the language while the dialogue is open. */
+  readonly texts?: MessageTexts;
   readonly options: readonly MessageOption[];
   readonly textInput?: TextInputSpec;
 }

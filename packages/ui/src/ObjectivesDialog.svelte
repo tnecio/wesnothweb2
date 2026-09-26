@@ -16,7 +16,7 @@
   import type { ScenarioObjectives } from '@wesnothweb2/engine';
   import { turnCounterSuffix, OBJECTIVE_COLOR } from '@wesnothweb2/engine';
   import Modal from './Modal.svelte';
-  import { t } from './i18n/locale.js';
+  import { fmt, t, ts, tw } from './i18n/locale.js';
 
   let {
     scenarioName,
@@ -43,13 +43,13 @@
   function goldCarryoverLine(entry: ScenarioObjectives['goldCarryover'][number]): string[] {
     const lines: string[] = [];
     if (entry.bonus !== undefined) {
-      lines.push(entry.bonus ? 'Early finish bonus.' : 'No early finish bonus.');
+      lines.push(entry.bonus ? tw('Early finish bonus.') : tw('No early finish bonus.'));
     }
     if (entry.carryoverPercentage !== undefined) {
       lines.push(
         entry.carryoverPercentage === 0
-          ? 'No gold carried over to the next scenario.'
-          : `${entry.carryoverPercentage}% of gold carried over to the next scenario.`,
+          ? tw('No gold carried over to the next scenario.')
+          : fmt(tw('$percent|% of gold carried over to the next scenario.'), { percent: entry.carryoverPercentage }),
       );
     }
     return lines;
@@ -59,15 +59,15 @@
 <Modal title={scenarioName} width="32rem" onClose={onClose}>
   {#snippet children()}
     {#if objectives.summary}
-      <p class="summary">{objectives.summary}</p>
+      <p class="summary">{ts(objectives.summaryT)}</p>
     {/if}
 
     {#if winObjectives.length > 0}
       <div class="section">
-        <div class="section-label">{objectives.victoryLabel}</div>
+        <div class="section-label">{ts(objectives.victoryLabelT)}</div>
         <ul>
           {#each winObjectives as obj, i (i)}
-            <li style:color={OBJECTIVE_COLOR.win}>{obj.description}{turnSuffix(obj.showTurnCounter)}</li>
+            <li style:color={OBJECTIVE_COLOR.win}>{ts(obj.descriptionT)}{turnSuffix(obj.showTurnCounter)}</li>
           {/each}
         </ul>
       </div>
@@ -75,10 +75,10 @@
 
     {#if loseObjectives.length > 0}
       <div class="section">
-        <div class="section-label">{objectives.defeatLabel}</div>
+        <div class="section-label">{ts(objectives.defeatLabelT)}</div>
         <ul>
           {#each loseObjectives as obj, i (i)}
-            <li style:color={OBJECTIVE_COLOR.lose}>{obj.description}{turnSuffix(obj.showTurnCounter)}</li>
+            <li style:color={OBJECTIVE_COLOR.lose}>{ts(obj.descriptionT)}{turnSuffix(obj.showTurnCounter)}</li>
           {/each}
         </ul>
       </div>
@@ -86,7 +86,7 @@
 
     {#if objectives.goldCarryover.length > 0}
       <div class="section">
-        <div class="section-label">{objectives.goldCarryoverLabel}</div>
+        <div class="section-label">{ts(objectives.goldCarryoverLabelT)}</div>
         <ul>
           {#each objectives.goldCarryover as entry, i (i)}
             {#each goldCarryoverLine(entry) as line (line)}
@@ -99,10 +99,10 @@
 
     {#if objectives.notes.length > 0}
       <div class="section">
-        <div class="section-label">{objectives.notesLabel}</div>
+        <div class="section-label">{ts(objectives.notesLabelT)}</div>
         <ul>
-          {#each objectives.notes as note (note)}
-            <li style:color={OBJECTIVE_COLOR.note}>{note}</li>
+          {#each objectives.notesT as note, i (i)}
+            <li style:color={OBJECTIVE_COLOR.note}>{ts(note)}</li>
           {/each}
         </ul>
       </div>

@@ -47,6 +47,7 @@
  */
 
 import {
+  TString,
   Location,
   WmlConfig,
   recordedCommandToWml,
@@ -142,7 +143,7 @@ function unitFromWml(unitCfg: WmlConfig, side: number): SavedUnit {
   const gotoY = unitCfg.getNumber('goto_y', 0);
   return {
     id: unitCfg.getString('id', '') || null,
-    name: unitCfg.getString('name', '') || null,
+    name: unitCfg.isTranslatable('name') ? unitCfg.getTString('name')!.toJSON() : unitCfg.getString('name', '') || null,
     // `parent_type=` is what a unit advanced beyond its base type records.
     typeId: unitCfg.hasAttribute('parent_type') ? unitCfg.getString('parent_type') : unitCfg.getString('type'),
     side: unitCfg.getNumber('side', side),
@@ -306,7 +307,7 @@ function unitToWml(u: SavedUnit, onBoard: boolean): WmlConfig {
   const cfg = u.wesnothExtras ? WmlConfig.fromJSON(u.wesnothExtras) : new WmlConfig();
   cfg.setAttribute('type', u.typeId);
   if (u.id) cfg.setAttribute('id', u.id);
-  if (u.name) cfg.setAttribute('name', u.name);
+  if (u.name) cfg.setAttribute('name', typeof u.name === 'string' ? u.name : TString.fromJSON(u.name));
   cfg.setAttribute('side', u.side);
   if (onBoard && u.x !== undefined && u.y !== undefined) {
     const loc = new Location(u.x, u.y);

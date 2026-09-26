@@ -57,7 +57,10 @@ export function parseTimes(cfg: WmlConfig): TimeOfDayEntry[] {
   return cfg.children('time').map(
     (t): TimeOfDayEntry => ({
       id: t.getString('id', ''),
-      name: t.getString('name', ''),
+      // A getter, so the name is read (and translated) when it is shown, not when the schedule was parsed.
+      get name(): string {
+        return t.getString('name', '');
+      },
       image: t.getString('image', ''),
       lawfulBonus: t.getNumber('lawful_bonus', 0),
       red: t.getNumber('red', 0),
