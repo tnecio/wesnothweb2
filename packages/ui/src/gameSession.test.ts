@@ -2256,3 +2256,22 @@ describe('Phase 18: map items', () => {
     expect(loaded.toSaveData().nextItemName).toBe(1);
   });
 });
+
+describe('Phase 18: map labels', () => {
+  it("the scenario's [label] shows; a team label covers it for that team only; both survive a load", async () => {
+    const snapshot = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/01_The_Raid.json'), 'utf8')) as GameBoardSnapshot;
+    expect(new GameSession(snapshot).mapLabels).toEqual([{ x: 10, y: 0, text: 'Dallben', color: '255,255,255', tooltip: '' }]);
+    const session0 = new GameSession(snapshot);
+    const myTeam = session0.board.getTeam(session0.viewingSide)!.teamName;
+    snapshot.scenarioConfigJson.children.push({
+      tag: 'event',
+      config: parseConfig(`[event]\nname=prestart\n[label]\nx=11\ny=1\ntext=Home\nteam_name=${myTeam}\n[/label]\n[label]\nx=5\ny=5\ntext=Secret\nteam_name=nobody\n[/label]\n[/event]`).child('event')!.toJSON(),
+    });
+    const session = new GameSession(snapshot);
+    await session.runStartupEvents();
+    expect(session.mapLabels.map((l) => l.text)).toEqual(['Home']);
+    const loaded = GameSession.fromSaveData(snapshot, session.toSaveData());
+    expect(loaded.mapLabels.map((l) => l.text)).toEqual(['Home']);
+    expect(loaded.toSaveData().labels).toHaveLength(3);
+  });
+});

@@ -59,6 +59,7 @@
     hexVisibility = [],
     terrain = null,
     items = [],
+    labels = [],
     timeOfDay = undefined,
     onHexClick,
     onHexRightClick,
@@ -90,6 +91,8 @@
     terrain?: readonly { x: number; y: number; code: string }[] | null;
     /** Map items the viewing side sees (`GameSession.mapItems`). */
     items?: readonly { x: number; y: number; image: string; halo: string }[];
+    /** Map labels the viewing side sees (`GameSession.mapLabels`). */
+    labels?: readonly { x: number; y: number; text: string; color: string }[];
     /** The current global ToD's red=/green=/blue= colour shift -- see `SnapshotBoard.updateTimeOfDayTint`. Omit for no tint (a scenario with no [time] schedule). */
     timeOfDay?: Pick<TimeOfDayEntry, 'red' | 'green' | 'blue'>;
     onHexClick: (x: number, y: number) => void;
@@ -414,6 +417,10 @@
 
   $effect(() => {
     void board?.updateItems(items);
+  });
+
+  $effect(() => {
+    board?.updateLabels(labels);
   });
 
   $effect(() => {

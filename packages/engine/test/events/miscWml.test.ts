@@ -464,3 +464,33 @@ describe('[item] / [remove_item] / [store_items] (items.lua)', () => {
     expect(pump.ctx.items.nextItemName).toBe(0);
   });
 });
+
+describe('[label] (map_labels)', () => {
+  it('one label per hex per team name; empty text removes; colour and side kept', () => {
+    const { pump } = setup(`
+      [label]
+        x=1,2
+        y=1,1
+        text=Ford
+        color=255,0,0
+      [/label]
+      [label]
+        x=1
+        y=1
+        text=Ours
+        team_name=good
+        side=1
+      [/label]
+      [label]
+        x=2
+        y=1
+        text=""
+      [/label]`);
+    const labels = pump.ctx.labels;
+    expect(labels.get(Location.fromWml(1, 1), '')!.text).toBe('Ford');
+    expect(labels.get(Location.fromWml(1, 1), '')!.color).toBe('255,0,0');
+    expect(labels.get(Location.fromWml(1, 1), 'good')!.creator).toBe(1);
+    expect(labels.get(Location.fromWml(2, 1), '')).toBeUndefined();
+    expect(labels.all()).toHaveLength(2);
+  });
+});

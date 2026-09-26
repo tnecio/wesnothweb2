@@ -274,6 +274,7 @@ export function fromWesnothSave(cfg: WmlConfig): ImportedWesnothSave {
       nextUnitId: snapshot.getNumber('next_underlying_unit_id', 0),
       turnLimit: snapshot.getNumber('turns', -1),
       items: snapshot.children('item').map((i) => i.toJSON()),
+      labels: snapshot.children('label').map((l) => l.toJSON()),
       nextItemName: snapshot.child('next_item_name')?.getNumber('next_item_name', 0) ?? 0,
       mapData: snapshot.getString('map_data', '') || undefined,
       usedItems: (snapshot.child('used_items')?.attributeNames() ?? []).filter((id) => snapshot.child('used_items')!.getBoolean(id, false)),
@@ -580,6 +581,11 @@ export function toWesnothSave(
   if (save.items !== undefined) {
     snapCfg.removeChildren('item');
     for (const item of save.items) snapCfg.addChild('item', WmlConfig.fromJSON(item));
+  }
+  // Phase 18: the live labels (map_labels::write), not the scenario's.
+  if (save.labels !== undefined) {
+    snapCfg.removeChildren('label');
+    for (const label of save.labels) snapCfg.addChild('label', WmlConfig.fromJSON(label));
   }
   if (save.nextItemName !== undefined) {
     snapCfg.removeChildren('next_item_name');

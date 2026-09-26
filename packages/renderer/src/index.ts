@@ -179,4 +179,4 @@ export {
 } from './SnapshotBoard'
 
 export { type HexVisibility, type FogShroudHex } from './fogShroud'
-export { parseHaloFrames, type MapItemPoint } from './mapItems.js';
+export { parseHaloFrames, LABEL_FONT_SIZE, type MapItemPoint, type MapLabelPoint } from './mapItems.js';

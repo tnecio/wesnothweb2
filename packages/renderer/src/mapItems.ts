@@ -20,3 +20,14 @@ export function parseHaloFrames(halo: string): { image: string; durationMs: numb
     return Number.isFinite(ms) ? { image: piece.slice(0, idx), durationMs: ms } : { image: piece, durationMs: 100 };
   });
 }
+
+/** One map label for `updateLabels` -- engine-convention (0-based) hex; `color` is `r,g,b`. */
+export interface MapLabelPoint {
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+}
+
+/** `font::SIZE_NORMAL`, the map labels' size at 100% zoom. */
+export const LABEL_FONT_SIZE = 17;

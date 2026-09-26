@@ -286,6 +286,7 @@
   let hexVisibility = $state<HexVisibilityPoint[]>(session.hexVisibility);
   let terrainHexes = $state(session.terrainHexes);
   let mapItems = $state(session.mapItems);
+  let mapLabels = $state(session.mapLabels);
   let timeOfDay = $state<TimeOfDayEntry>(session.currentTimeOfDay);
   let statusMessage = $state('Click one of your units to select it.');
   /** Phase 14: the infobox's "terrain info for the hovered hex" -- kept in sync by `GameBoardView`'s `onHexHoverChange`. */
@@ -363,6 +364,7 @@
     hexVisibility = session.hexVisibility;
     terrainHexes = session.terrainHexes;
     mapItems = session.mapItems;
+    mapLabels = session.mapLabels;
     timeOfDay = session.currentTimeOfDay;
 
     if (session.scenarioResult) {
@@ -2361,6 +2363,7 @@
         {villageOwners}
         terrain={terrainHexes}
         items={mapItems}
+        labels={mapLabels}
         {hexVisibility}
         {timeOfDay}
         onHexClick={handleHexClick}

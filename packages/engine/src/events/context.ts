@@ -14,6 +14,7 @@ import type { Location } from '../model/Location.js';
 import type { Schedule } from '../model/Schedule.js';
 import type { UnitType } from '../model/UnitType.js';
 import type { ItemStore } from './itemsWml.js';
+import type { LabelStore } from './labelsWml.js';
 import type { WmlConfig } from '../wml/config.js';
 import type { Rng } from '../rng/Rng.js';
 import type { VariableStore } from './variables.js';
@@ -195,6 +196,8 @@ export interface EventContext {
   objectivesChanged: Set<number>;
   /** Phase 18: the items on the map (`items.lua`'s `scenario_items`) and its name counter. */
   items: ItemStore;
+  /** Phase 18: map labels (`map_labels`). */
+  labels: LabelStore;
   /** `[cancel_action]` (`wml_event_pump::set_action_canceled`): the move firing this event stops at this hex. */
   actionCanceled: boolean;
   /**

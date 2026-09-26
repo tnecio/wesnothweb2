@@ -146,6 +146,8 @@ import {
   setLuaConditionalEvaluator,
   performMoveFlow,
   readPersistentItem,
+  labelFromConfig,
+  labelToConfig,
   itemToConfig,
   standardizeEventName,
 } from '@wesnothweb2/engine';
@@ -186,6 +188,14 @@ export function parseScenarioTurnsLimit(raw: WmlAttributeValue | undefined): num
 export interface HexPoint {
   x: number;
   y: number;
+}
+
+/** One map label as the board draws it -- see `GameSession.mapLabels`. */
+export interface MapLabelInfo extends HexPoint {
+  text: string;
+  /** `r,g,b`. */
+  color: string;
+  tooltip: string;
 }
 
 /** One map item as the board draws it -- see `GameSession.mapItems`. */
@@ -1051,6 +1061,8 @@ export interface SaveGameData {
   /** Phase 18: the items on the map, as upstream saves them (`[item]` tags), and its `next_item_name`. Absent: the scenario's own. */
   items?: WmlConfigJson[];
   nextItemName?: number;
+  /** Phase 18: the map labels (`[label]`s). Absent: the scenario's own. */
+  labels?: WmlConfigJson[];
   /** Phase 18d: the map as WML left it (`[terrain]`, `[terrain_mask]`), as `map_data=` text. Absent: the scenario's own map. */
   mapData?: string;
   /** Phase 18d: the turn limit as `[modify_turns]` left it (`-1`: none). Absent: the scenario's `turns=`. */
@@ -1524,9 +1536,11 @@ export class GameSession {
     this.board.lawfulBonusAt = (loc) => this.timeOfDayAt(loc).lawfulBonus;
     this.eventPump.ctx.turnLimit = parseScenarioTurnsLimit(snapshot.scenarioConfigJson.attrs['turns']) ?? -1;
     this.eventPump.ctx.turnNumber = () => this.turnNumber;
-    // The scenario's own `[item]`s, read as upstream's persistent tags are at scenario start.
+    // The scenario's own `[item]`s and `[label]`s, read as upstream does at scenario start.
     for (const { tag, config } of WmlConfig.fromJSON(snapshot.scenarioConfigJson).allChildren()) {
       if (tag === 'item') readPersistentItem(this.eventPump.ctx, config);
+      // map_labels::read(level): the scenario's own labels.
+      if (tag === 'label') this.eventPump.ctx.labels.set(labelFromConfig(config, this.eventPump.ctx));
     }
     this.eventPump.ctx.unitTypeConfig = (id) => {
       const json = this.snapshot.unitTypeConfigs?.[id];
@@ -2247,6 +2261,30 @@ export class GameSession {
     const key = JSON.stringify(items);
     if (this.mapItemsCache?.key !== key) this.mapItemsCache = { key, items };
     return this.mapItemsCache.items;
+  }
+
+  private mapLabelsCache: { key: string; labels: MapLabelInfo[] } | null = null;
+
+  /**
+   * The labels the viewing side sees (`terrain_label::viewable`/`hidden`):
+   * its own team's labels, and global ones its team has not covered on the
+   * same hex; not in fog unless `visible_in_fog=`, not under shroud unless
+   * `visible_in_shroud=`. A new array only when that changes.
+   */
+  get mapLabels(): MapLabelInfo[] {
+    const ctx = this.eventPump.ctx;
+    const myTeam = this.board.getTeam(this.viewingSide)?.teamName ?? '';
+    const labels: MapLabelInfo[] = [];
+    for (const label of ctx.labels.all()) {
+      if (label.teamName === '' ? ctx.labels.get(label.loc, myTeam) !== undefined && myTeam !== '' : label.teamName !== myTeam) continue;
+      if (!label.visibleInFog && this.board.isFogged(this.viewingSide, label.loc)) continue;
+      if (!label.visibleInShroud && this.board.isShrouded(this.viewingSide, label.loc)) continue;
+      labels.push({ x: label.loc.x, y: label.loc.y, text: label.text, color: label.color, tooltip: label.tooltip });
+    }
+    labels.sort((a, b) => a.x - b.x || a.y - b.y);
+    const key = JSON.stringify(labels);
+    if (this.mapLabelsCache?.key !== key) this.mapLabelsCache = { key, labels };
+    return this.mapLabelsCache.labels;
   }
 
   private terrainHexesCache: { version: number; hexes: TerrainHexInfo[] } | null = null;
@@ -3583,6 +3621,7 @@ export class GameSession {
       turnLimit: this.eventPump.ctx.turnLimit,
       items: this.eventPump.ctx.items.all().map((item) => itemToConfig(item).toJSON()),
       nextItemName: this.eventPump.ctx.items.nextItemName,
+      labels: this.eventPump.ctx.labels.all().map((label) => labelToConfig(label).toJSON()),
       mapData: this.board.terrainVersion > 0 ? this.board.map.write() : undefined,
       events: this.eventPump.manager.activeConfigs().map((c) => c.toJSON()),
       menuItems: [...this.eventPump.ctx.menuItems.values()].map((m) => ({ id: m.id, description: m.description, command: m.command.toJSON() })),
@@ -3660,6 +3699,10 @@ export class GameSession {
       for (const item of data.items) readPersistentItem(this.eventPump.ctx, WmlConfig.fromJSON(item));
     }
     if (data.nextItemName !== undefined) this.eventPump.ctx.items.nextItemName = data.nextItemName;
+    if (data.labels !== undefined) {
+      this.eventPump.ctx.labels.clear();
+      for (const label of data.labels) this.eventPump.ctx.labels.set(labelFromConfig(WmlConfig.fromJSON(label), this.eventPump.ctx));
+    }
     this.board.nextUnitId =
       data.nextUnitId ?? Math.max(0, ...[...data.units, ...(data.recall ?? [])].map((u) => u.underlyingId ?? 0));
     if (data.events) this.eventPump.manager.replaceAll(data.events.map((e) => WmlConfig.fromJSON(e)));

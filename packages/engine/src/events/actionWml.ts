@@ -90,6 +90,7 @@ import { ActionRegistry } from './context.js';
 import { isFlow, runFlow, type Flow, type MessageOption, type Responder, type TextInputSpec } from './interaction.js';
 import { conditionalPassed } from './conditionalWml.js';
 import { findUnits, locationMatchesFilter, unitMatchesFilter } from './filter.js';
+import { actionLabel } from './labelsWml.js';
 import { actionItem, actionRemoveItem, actionStoreItems } from './itemsWml.js';
 import { actionLiftFog, actionPlaceShroud, actionRemoveShroud, actionResetFog } from './shroudWml.js';
 import {
@@ -1825,6 +1826,7 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('cancel_action', actionCancelAction);
   registry.register('terrain_mask', actionTerrainMask);
   registry.register('item', actionItem);
+  registry.register('label', actionLabel);
   registry.register('remove_item', actionRemoveItem);
   registry.register('store_items', actionStoreItems);
   registry.register('unstore_unit', actionUnstoreUnit);
@@ -1867,7 +1869,7 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('on_undo', actionOnUndo);
   registerFlowActions((tag, handler) => registry.register(tag, handler));
 
-  for (const tag of ['music', 'sound', 'redraw', 'highlight', 'floating_text', 'label', 'select_unit', 'unit_overlay', 'remove_unit_overlay']) {
+  for (const tag of ['music', 'sound', 'redraw', 'highlight', 'floating_text', 'select_unit', 'unit_overlay', 'remove_unit_overlay']) {
     registry.register(tag, noop);
   }
   registerCutsceneActions((tag, handler) => registry.register(tag, handler));

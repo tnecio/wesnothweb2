@@ -49,6 +49,7 @@
  */
 
 import { ItemStore } from './itemsWml.js';
+import { LabelStore } from './labelsWml.js';
 import type { GameBoard } from '../model/GameBoard.js';
 import { Location } from '../model/Location.js';
 import { Schedule, DEFAULT_MAX_LIMINAL_BONUS } from '../model/Schedule.js';
@@ -198,6 +199,7 @@ export class EventPump {
       objectivesConfigBySide: new Map(),
       objectivesChanged: new Set(),
       items: new ItemStore(),
+      labels: new LabelStore(),
       objectivesBySide: new Map(),
       menuItems: new Map(),
       loc1: Location.NULL,

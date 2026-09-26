@@ -90,7 +90,7 @@ import { joinRef } from './images/ipf.js';
 import { resolveSideColorId } from './images/teamColor.js';
 import { sampleAnimation, animationDurationMs, animationTimeline, sampleParticles, sampleUnitHalo, type OverlaySample } from './animation/playback.js';
 import { HEX_STEP_MS, type UnitAnimationDef } from './animation/unitAnimation.js';
-import { parseHaloFrames, type MapItemPoint } from './mapItems.js';
+import { LABEL_FONT_SIZE, parseHaloFrames, type MapItemPoint, type MapLabelPoint } from './mapItems.js';
 import { makeLayerSprite } from './terrainPositioning.js';
 import type { BuildingRule } from './terrain/terrainGraphicsRules.js';
 import { layoutTerrain, type TerrainLayout } from './terrain/terrainLayout.js';
@@ -481,6 +481,8 @@ export class SnapshotBoard {
   /** Map items' halos: upstream's halo manager draws them over everything map-side, untinted -- as the animation overlays here. */
   private readonly itemHaloLayer = new PIXI.Container();
   private itemsUpdate: Promise<void> = Promise.resolve();
+  /** Map labels (`terrain_label`, drawn as floating labels over the map): above fog and the time-of-day tint. */
+  private readonly labelLayer = new PIXI.Container();
   private readonly highlightLayer = new PIXI.Container();
   /** Reachable hexes' defense numbers: above units and terrain overlays (castle towers, forest canopies), like upstream's `drawing_layer::move_info`. */
   private readonly moveInfoLayer = new PIXI.Container();
@@ -622,6 +624,7 @@ export class SnapshotBoard {
       this.fogShroudLayer,
       this.todTintLayer,
       this.itemHaloLayer,
+      this.labelLayer,
       this.animationOverlayLayer,
       this.selectionLayer,
       this.floatingLayer,
@@ -629,6 +632,7 @@ export class SnapshotBoard {
     this.animationOverlayLayer.eventMode = 'none';
     this.itemLayer.eventMode = 'none';
     this.itemHaloLayer.eventMode = 'none';
+    this.labelLayer.eventMode = 'none';
     this.moveInfoLayer.eventMode = 'none';
     this.hoverLayer.eventMode = 'none';
     this.todTintPositive.blendMode = 'add';
@@ -1798,6 +1802,35 @@ export class SnapshotBoard {
       }
     });
     return this.itemsUpdate;
+  }
+
+  /**
+   * Phase 18: draws (replacing any previous) the map labels the viewing
+   * side sees. As `terrain_label::recalculate`: centred on the hex, its
+   * middle `SIZE_NORMAL` above the hex's bottom edge, in the normal font
+   * size, in the label's colour. Pango markup is shown as plain text.
+   */
+  updateLabels(labels: readonly MapLabelPoint[]): void {
+    for (const child of this.labelLayer.removeChildren()) child.destroy();
+    for (const label of labels) {
+      const { x: cx, y: cy } = hexToPixel(toHexCoord(label.x, label.y));
+      const [r, g, b] = label.color.split(',').map(Number) as [number, number, number];
+      const text = new PIXI.Text({
+        text: label.text.replace(/<[^>]*>/g, ''),
+        style: {
+          fontFamily: 'sans-serif',
+          fontSize: LABEL_FONT_SIZE,
+          fill: (r << 16) | (g << 8) | b,
+          stroke: { color: 0x000000, width: 3 },
+          align: 'center',
+          wordWrap: true,
+          wordWrapWidth: LABEL_FONT_SIZE * 13,
+        },
+      });
+      text.anchor.set(0.5);
+      text.position.set(cx, cy + TILE_SIZE / 2 - LABEL_FONT_SIZE);
+      this.labelLayer.addChild(text);
+    }
   }
 
   updateVillageOwnership(owners: readonly VillageOwnerPoint[]): void {
