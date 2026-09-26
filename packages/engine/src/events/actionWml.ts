@@ -120,6 +120,7 @@ import { registerFlowActions } from './flowWml.js';
 import { playBeat, registerCutsceneActions } from './cutsceneWml.js';
 import { ShroudClearer } from '../actions/vision.js';
 import { applyMusicAction } from '../audio/musicList.js';
+import { soundSourceFromConfig } from '../audio/soundSources.js';
 
 // --- shared helpers ---
 
@@ -1661,7 +1662,46 @@ function actionSound(cfg: WmlConfig, ctx: EventContext): void {
     ctx.log('error', '[sound] missing required name= attribute');
     return;
   }
-  ctx.playSound({ files: name, repeats: Math.trunc(cfg.getNumber('repeat', 0)), group: 'sound' });
+  ctx.playSound({ files: name, repeats: Math.trunc(cfg.getNumber('repeat', 0)), group: 'sound', dropIfLate: false });
+}
+
+/** `[sound_source]` (`wesnoth.audio.sources[id] = cfg`): adds a source, or replaces the one with the same id. */
+function actionSoundSource(cfg: WmlConfig, ctx: EventContext): void {
+  if (cfg.getString('id', '') === '') {
+    ctx.log('error', '[sound_source] missing required id= attribute');
+    return;
+  }
+  ctx.soundSources.add(soundSourceFromConfig(cfg));
+}
+
+/** `[remove_sound_source] id=a,b`. */
+function actionRemoveSoundSource(cfg: WmlConfig, ctx: EventContext): void {
+  const ids = cfg.getString('id', '');
+  if (ids === '') {
+    ctx.log('error', '[remove_sound_source] missing required id= attribute');
+    return;
+  }
+  for (const id of ids.split(',')) ctx.soundSources.remove(id.trim());
+}
+
+/**
+ * `[volume] music= sound=`: percent (0-100) of the player's own setting
+ * (`tonumber(...) or 100`); `sound=` scales effects and sound sources, not the
+ * interface or the bell (`set_sound_volume`).
+ */
+function actionVolume(cfg: WmlConfig, ctx: EventContext): void {
+  const scale: { music?: number; sound?: number } = {};
+  for (const key of ['music', 'sound'] as const) {
+    if (!cfg.hasAttribute(key)) continue;
+    const parsed = Number(cfg.getString(key));
+    const percent = Number.isFinite(parsed) ? parsed : 100;
+    if (percent < 0 || percent > 100) {
+      ctx.log('error', `[volume] ${key}=: volume must be in range 0..100`);
+      continue;
+    }
+    scale[key] = percent;
+  }
+  ctx.onVolume?.(scale);
 }
 
 // --- [heal_unit] ---
@@ -1891,6 +1931,9 @@ export function createDefaultActionRegistry(): ActionRegistry {
 
   registry.register('music', (cfg, ctx) => applyMusicAction(ctx.music, cfg));
   registry.register('sound', actionSound);
+  registry.register('sound_source', actionSoundSource);
+  registry.register('remove_sound_source', actionRemoveSoundSource);
+  registry.register('volume', actionVolume);
   for (const tag of ['redraw', 'highlight', 'floating_text', 'select_unit', 'unit_overlay', 'remove_unit_overlay']) {
     registry.register(tag, noop);
   }

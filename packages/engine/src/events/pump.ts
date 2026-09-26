@@ -63,6 +63,7 @@ import { conditionalPassed } from './conditionalWml.js';
 import { unitMatchesFilter } from './filter.js';
 import type { VariableStore } from './variables.js';
 import { MusicList } from '../audio/musicList.js';
+import { SoundSourceStore } from '../audio/soundSources.js';
 
 /** Mirrors `event_handlers::standardize_name`: trim, then spaces -> underscores. */
 export function standardizeEventName(name: string): string {
@@ -207,6 +208,7 @@ export class EventPump {
       labels: new LabelStore(),
       music: options.music ?? new MusicList({ random: (max) => Math.floor(Math.random() * (max + 1)) }),
       sounds: [],
+      soundSources: new SoundSourceStore(),
       playSound: (request) => {
         this.ctx.sounds.push(request);
         if (this.ctx.sounds.length > MAX_RECORDED_SOUNDS) this.ctx.sounds.splice(0, this.ctx.sounds.length - MAX_RECORDED_SOUNDS);

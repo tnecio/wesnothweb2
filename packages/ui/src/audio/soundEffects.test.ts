@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { SoundGroup } from '@wesnothweb2/engine';
 import { squareParentheticalSplit } from '@wesnothweb2/renderer/src/animation/frame.js';
-import { CHANNELS, LATE_MS, SoundPlayer, type SoundBackend } from './soundEffects.js';
+import { CHANNELS, LATE_MS, SoundPlayer, type SoundBackend, type SoundHandle } from './soundEffects.js';
 
 class FakeBackend implements SoundBackend {
   readonly decoded = new Set<string>();
   readonly loads: { url: string; priority: string; resolve: (ok: boolean) => void }[] = [];
   readonly started: { url: string; group: SoundGroup; repeats: number; volume: number; end: () => void }[] = [];
   readonly stopped: string[] = [];
+  readonly volumes: { url: string; volume: number }[] = [];
 
   ready(url: string): boolean {
     return this.decoded.has(url);
@@ -15,11 +16,14 @@ class FakeBackend implements SoundBackend {
   load(url: string, priority: 'high' | 'low'): Promise<boolean> {
     return new Promise((resolve) => this.loads.push({ url, priority, resolve: (ok) => (ok && this.decoded.add(url), resolve(ok)) }));
   }
-  start(url: string, group: SoundGroup, repeats: number, volume: number, onEnded: () => void): () => void {
+  start(url: string, group: SoundGroup, repeats: number, volume: number, onEnded: () => void): SoundHandle {
     this.started.push({ url, group, repeats, volume, end: onEnded });
-    return () => {
-      this.stopped.push(url);
-      onEnded();
+    return {
+      stop: () => {
+        this.stopped.push(url);
+        onEnded();
+      },
+      setVolume: (v) => this.volumes.push({ url, volume: v }),
     };
   }
 }
@@ -115,6 +119,16 @@ describe('play', () => {
     expect(backend.started).toHaveLength(1);
   });
 
+  it('a request that says dropIfLate=false plays however late it arrives, and one that says true is dropped even in a lenient group', async () => {
+    const { player, backend, advance } = make();
+    player.play({ files: 'chest.wav', repeats: 0, group: 'sound', dropIfLate: false });
+    player.play({ files: 'wind.ogg', repeats: 0, group: 'sources', dropIfLate: true });
+    advance(LATE_MS * 10);
+    for (const load of backend.loads) load.resolve(true);
+    await flush();
+    expect(backend.started.map((s) => s.url)).toEqual(['/s/chest.wav']);
+  });
+
   it('ambience and the bell play whenever they arrive, however late', async () => {
     const { player, backend, advance } = make();
     player.play({ files: 'ambient/morning.ogg', repeats: 0, group: 'sources' });
@@ -148,6 +162,24 @@ describe('sound sources', () => {
     expect(player.isSourcePlaying('camp')).toBe(true);
     player.stopSource('camp');
     expect(backend.stopped).toEqual(['/s/fire.ogg']);
+    expect(player.isSourcePlaying('camp')).toBe(false);
+  });
+
+  it('setSourceVolume turns a playing source up and down', () => {
+    const { player, backend } = make({ decoded: ['fire.ogg'] });
+    player.play({ files: 'fire.ogg', repeats: -1, group: 'sources', sourceId: 'camp', volume: 100 });
+    player.setSourceVolume('camp', 40);
+    expect(backend.volumes).toEqual([{ url: '/s/fire.ogg', volume: 0.4 }]);
+  });
+
+  it('a source whose sound is still loading counts as playing, so it is not asked again', async () => {
+    const { player, backend } = make();
+    player.play({ files: 'fire.ogg', repeats: 0, group: 'sources', sourceId: 'camp' });
+    expect(player.isSourcePlaying('camp')).toBe(true);
+    backend.loads[0]!.resolve(true);
+    await flush();
+    expect(player.isSourcePlaying('camp')).toBe(true);
+    backend.started[0]!.end();
     expect(player.isSourcePlaying('camp')).toBe(false);
   });
 });

@@ -39,7 +39,7 @@
     CutsceneBeat,
     FakeUnitWalk,
   } from '@wesnothweb2/engine';
-  import { WmlConfig, playStoryMusic, extraHitSounds, GAME_SOUNDS, directionBetween, relativeDirection, tilesAdjacent, Direction, Location, unitCanAct, parseConfig, writeWml } from '@wesnothweb2/engine';
+  import { WmlConfig, type WmlConfigJson, playStoryMusic, extraHitSounds, GAME_SOUNDS, directionBetween, relativeDirection, tilesAdjacent, Direction, Location, unitCanAct, parseConfig, writeWml } from '@wesnothweb2/engine';
   import {
     type HexPoint,
     type UnitAnimationCue,
@@ -209,7 +209,7 @@
    * every session, as upstream's global one survives scenarios.
    */
   const audio = getAudioEngine();
-  const SESSION_OPTIONS: GameSessionOptions = { actionSeeds: 'entropy', music: audio.music, onSound: (request) => audio.playSound(request) };
+  const SESSION_OPTIONS: GameSessionOptions = { actionSeeds: 'entropy', music: audio.music, onSound: (request) => audio.playSound(request), onVolume: (scale) => audio.setVolumeScale(scale) };
   // Resuming a save builds the session from it instead (Phase 26) -- see
   // the `initialSave` prop. `startupEventsRun` comes back true with it, so
   // `runStartupEvents` below is skipped as well.
@@ -247,6 +247,12 @@
     window.addEventListener('pointerdown', unlock, true);
     window.addEventListener('keydown', unlock, true);
     const stopUiSounds = installUiSounds(audio);
+    // Sound sources measure from the middle of the viewed map and honour the viewing side's fog and shroud.
+    audio.setSourceHost({
+      viewCenter: () => boardView?.viewCenterHex() ?? null,
+      isFogged: (x, y) => session.board.isFogged(session.viewingSide, new Location(x, y)),
+      isShrouded: (x, y) => session.board.isShrouded(session.viewingSide, new Location(x, y)),
+    });
     void (async () => {
       await tick();
       while (!boardView && !disposed) await new Promise((resolve) => setTimeout(resolve, 50));
@@ -258,6 +264,8 @@
       window.removeEventListener('pointerdown', unlock, true);
       window.removeEventListener('keydown', unlock, true);
       stopUiSounds();
+      audio.setSourceHost(null);
+      audio.stopSoundSources();
     };
   });
 
@@ -280,6 +288,17 @@
       if (boardView && !cancelled) await boardView.whenReady();
       if (cancelled) return;
       audio.preloadSounds(Object.values(GAME_SOUNDS));
+      // The scenario's own `[sound]`s and sound sources, wherever they sit in its events.
+      const named: string[] = [];
+      const collect = (node: WmlConfigJson): void => {
+        for (const { tag, config } of node.children) {
+          if (tag === 'sound' && typeof config.attrs['name'] === 'string') named.push(config.attrs['name']);
+          if (tag === 'sound_source' && typeof config.attrs['sounds'] === 'string') named.push(config.attrs['sounds']);
+          collect(config);
+        }
+      };
+      collect(activeSnapshot.scenarioConfigJson);
+      audio.preloadSounds(named.filter((files) => !files.includes('$')));
       // The time of day's ambient sounds (`[time] sound=`), the scenario's own and its `[time_area]`s'.
       const scenario = WmlConfig.fromJSON(activeSnapshot.scenarioConfigJson);
       audio.preloadSounds(
@@ -431,6 +450,17 @@
   }
 
   /** Re-derives every `$state` view from `session`'s current (just-mutated) state. Call after every session mutation. */
+  /**
+   * `story_viewer::display_part`: a part's `music=` replaces the playlist and switches at once, its
+   * `sound=` plays, and its `voice=` speaks as sound source 255 (the previous voice is cut off).
+   */
+  function playStoryPartSounds(part: { music: string; sound: string; voice: string }): void {
+    playStoryMusic(session.music, part.music);
+    if (part.sound !== '') audio.playSound({ files: part.sound, repeats: 0, group: 'sound' });
+    audio.stopSource('voice');
+    if (part.voice !== '') audio.playSound({ files: part.voice, repeats: 0, group: 'sources', sourceId: 'voice' });
+  }
+
   /** The unit whose selection last made a sound. */
   let lastSelectedForSound: object | null = null;
 
@@ -441,6 +471,7 @@
       audio.playUi(GAME_SOUNDS.selectUnit);
     }
     lastSelectedForSound = selectedUnit ?? null;
+    audio.setSoundSources(session.soundSources);
     units = session.renderUnits;
     selected = selectedInfo();
     inspected = inspectedInfo();
@@ -1834,7 +1865,7 @@
       if (!res.ok) throw new Error(`fetch scenarios/${scenarioId}.json: ${res.status}`);
       replaySnapshot = (await res.json()) as GameBoardSnapshot;
     }
-    const replaySession = GameSession.forReplay(replaySnapshot, data, { ...SESSION_OPTIONS, onSound: undefined });
+    const replaySession = GameSession.forReplay(replaySnapshot, data, { ...SESSION_OPTIONS, onSound: undefined, onVolume: undefined });
     if (!replaySession) return;
     activeSnapshot = replaySnapshot;
     session = replaySession;
@@ -2688,7 +2719,7 @@
 
   {#if phase === 'story'}
     {#key session}
-      <StoryViewer parts={storyParts} assets={storyAssets} onDone={finishStory} onPartShown={(part) => playStoryMusic(session.music, part.music)} />
+      <StoryViewer parts={storyParts} assets={storyAssets} onDone={finishStory} onPartShown={playStoryPartSounds} />
     {/key}
   {:else if phase === 'objectives' && session.scenarioObjectives}
     <ObjectivesDialog

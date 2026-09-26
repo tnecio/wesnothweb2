@@ -22,6 +22,7 @@ import type { ScenarioObjectives } from './objectives.js';
 import type { Flow } from './interaction.js';
 import type { MusicList } from '../audio/musicList.js';
 import type { SoundRequest } from '../audio/sounds.js';
+import type { SoundSourceStore } from '../audio/soundSources.js';
 
 /**
  * One real `[set_menu_item]` declaration -- see `actionWml.ts`'s
@@ -212,6 +213,10 @@ export interface EventContext {
   onSound?: (request: SoundRequest) => void;
   /** Asks for a sound effect: records it and hands it to `onSound`. */
   playSound: (request: SoundRequest) => void;
+  /** Phase 19: the sound sources (`[sound_source]`); the app plays them by where the view is. */
+  soundSources: SoundSourceStore;
+  /** `[volume] music= sound=`: a scenario's scale (percent) on the player's own volumes. Not part of the game: upstream never saves it. */
+  onVolume?: (scale: { music?: number; sound?: number }) => void;
   /** `[cancel_action]` (`wml_event_pump::set_action_canceled`): the move firing this event stops at this hex. */
   actionCanceled: boolean;
   /**

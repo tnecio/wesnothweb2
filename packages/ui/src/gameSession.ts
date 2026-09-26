@@ -149,6 +149,8 @@ import {
   labelFromConfig,
   MusicList,
   GAME_SOUNDS,
+  soundSourceFromConfig,
+  type SoundSourceSpec,
   type SoundRequest,
   startScenarioMusic,
   selectEndMusic,
@@ -785,6 +787,8 @@ export interface GameSessionOptions {
   music?: MusicList;
   /** Phase 19: where sound effects go to be heard (the app's audio); without it they are only recorded on the context. */
   onSound?: (request: SoundRequest) => void;
+  /** Phase 19: `[volume]`, the scenario's percentages of the player's own music and sound volumes. */
+  onVolume?: (scale: { music?: number; sound?: number }) => void;
   /** Set by `fromSaveData`: the save's own playlist is applied by `loadSaveData`, not the scenario's. */
   deferMusic?: boolean;
 }
@@ -1085,6 +1089,8 @@ export interface SaveGameData {
   labels?: WmlConfigJson[];
   /** Phase 19: the music playlist as `[music]` tags (`write_music_play_list`): the first replaces, the rest append. Absent: the scenario's own. */
   music?: WmlConfigJson[];
+  /** Phase 19: the sound sources (`[sound_source]` tags, `write_sourcespecs`). Absent: the scenario's own. */
+  soundSources?: WmlConfigJson[];
   /** Phase 18d: the map as WML left it (`[terrain]`, `[terrain_mask]`), as `map_data=` text. Absent: the scenario's own map. */
   mapData?: string;
   /** Phase 18d: the turn limit as `[modify_turns]` left it (`-1`: none). Absent: the scenario's `turns=`. */
@@ -1557,6 +1563,7 @@ export class GameSession {
       music: options.music,
     });
     this.eventPump.ctx.onSound = options.onSound;
+    this.eventPump.ctx.onVolume = options.onVolume;
     if (!options.deferMusic) startScenarioMusic(this.music, WmlConfig.fromJSON(snapshot.scenarioConfigJson));
     this.board.lawfulBonusAt = (loc) => this.timeOfDayAt(loc).lawfulBonus;
     this.eventPump.ctx.turnLimit = parseScenarioTurnsLimit(snapshot.scenarioConfigJson.attrs['turns']) ?? -1;
@@ -1566,6 +1573,8 @@ export class GameSession {
       if (tag === 'item') readPersistentItem(this.eventPump.ctx, config);
       // map_labels::read(level): the scenario's own labels.
       if (tag === 'label') this.eventPump.ctx.labels.set(labelFromConfig(config, this.eventPump.ctx));
+      // play_controller::init: the scenario's own `[sound_source]`s.
+      if (tag === 'sound_source') this.eventPump.ctx.soundSources.add(soundSourceFromConfig(config));
     }
     this.eventPump.ctx.unitTypeConfig = (id) => {
       const json = this.snapshot.unitTypeConfigs?.[id];
@@ -1605,6 +1614,11 @@ export class GameSession {
     };
     registerAiWmlActions(this.eventPump.ctx.registry);
     this.eventPump.ctx.ai = aiWmlHooks;
+  }
+
+  /** Phase 19: the sound sources in effect, in id order; a replaced source is a new object (the app restarts it). */
+  get soundSources(): readonly SoundSourceSpec[] {
+    return this.eventPump.ctx.soundSources.all();
   }
 
   /** Phase 19: the music playlist (see `GameSessionOptions.music`). */
@@ -3787,6 +3801,7 @@ export class GameSession {
       nextItemName: this.eventPump.ctx.items.nextItemName,
       labels: this.eventPump.ctx.labels.all().map((label) => labelToConfig(label).toJSON()),
       music: this.music.write().map((m) => m.toJSON()),
+      soundSources: this.eventPump.ctx.soundSources.write().map((c) => c.toJSON()),
       mapData: this.board.terrainVersion > 0 ? this.board.map.write() : undefined,
       events: this.eventPump.manager.activeConfigs().map((c) => c.toJSON()),
       menuItems: [...this.eventPump.ctx.menuItems.values()].map((m) => ({ id: m.id, description: m.description, command: m.command.toJSON() })),
@@ -3869,6 +3884,10 @@ export class GameSession {
       for (const label of data.labels) this.eventPump.ctx.labels.set(labelFromConfig(WmlConfig.fromJSON(label), this.eventPump.ctx));
     }
     this.applySavedMusic(data.music);
+    if (data.soundSources !== undefined) {
+      this.eventPump.ctx.soundSources.clear();
+      for (const source of data.soundSources) this.eventPump.ctx.soundSources.add(soundSourceFromConfig(WmlConfig.fromJSON(source)));
+    }
     this.board.nextUnitId =
       data.nextUnitId ?? Math.max(0, ...[...data.units, ...(data.recall ?? [])].map((u) => u.underlyingId ?? 0));
     if (data.events) this.eventPump.manager.replaceAll(data.events.map((e) => WmlConfig.fromJSON(e)));

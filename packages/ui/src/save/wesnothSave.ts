@@ -276,6 +276,7 @@ export function fromWesnothSave(cfg: WmlConfig): ImportedWesnothSave {
       items: snapshot.children('item').map((i) => i.toJSON()),
       labels: snapshot.children('label').map((l) => l.toJSON()),
       music: snapshot.children('music').map((m) => m.toJSON()),
+      soundSources: snapshot.children('sound_source').map((c) => c.toJSON()),
       nextItemName: snapshot.child('next_item_name')?.getNumber('next_item_name', 0) ?? 0,
       mapData: snapshot.getString('map_data', '') || undefined,
       usedItems: (snapshot.child('used_items')?.attributeNames() ?? []).filter((id) => snapshot.child('used_items')!.getBoolean(id, false)),
@@ -592,6 +593,11 @@ export function toWesnothSave(
   if (save.music !== undefined) {
     snapCfg.removeChildren('music');
     for (const m of save.music) snapCfg.addChild('music', WmlConfig.fromJSON(m));
+  }
+  // Phase 19: the live sound sources (write_sourcespecs), not the scenario's.
+  if (save.soundSources !== undefined) {
+    snapCfg.removeChildren('sound_source');
+    for (const source of save.soundSources) snapCfg.addChild('sound_source', WmlConfig.fromJSON(source));
   }
   if (save.nextItemName !== undefined) {
     snapCfg.removeChildren('next_item_name');

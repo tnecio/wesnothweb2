@@ -43,6 +43,7 @@
     type UnitAnimationCue,
     type FogShroudHex,
     hexToPixel,
+    pixelToHex,
     unitBundleManifestUrl,
   } from '@wesnothweb2/renderer';
   import type { TimeOfDayEntry } from '@wesnothweb2/engine';
@@ -501,6 +502,19 @@
   }
 
   /**
+   * Phase 19: the hex at the centre of the viewed map area (engine 0-based) at the
+   * current pan/zoom -- where sound sources measure their distance from
+   * (`display::hex_clicked_on` at the middle of `map_area`). Null before the board exists.
+   */
+  export function viewCenterHex(): { x: number; y: number } | null {
+    if (!board || !canvasHost) return null;
+    const rect = canvasHost.getBoundingClientRect();
+    const scale = board.stage.scale.x || 1;
+    const coord = pixelToHex((rect.width / 2 - board.stage.x) / scale, (rect.height / 2 - board.stage.y) / scale);
+    return { x: coord.x - 1, y: coord.y - 1 };
+  }
+
+  /**
    * Phase 28a: for rendered-board screenshot comparisons only. Animated
    * terrain (water, lava...) is a ticker-driven `AnimatedSprite`, so two
    * captures of the same board otherwise land on different frames. Stops
@@ -537,6 +551,7 @@
     (window as unknown as { __wesnothDebug?: unknown }).__wesnothDebug = {
       imageCache: ImageCache,
       hexClientPoint,
+      viewCenterHex,
       freezeAnimationsForCapture,
       setRenderingPaused,
       /** Live sprite positions, for debugging movement animation glitches -- see `SnapshotBoard.unitSpritePositions`. */

@@ -29,8 +29,15 @@ export interface SoundBackend {
   ready(url: string): boolean;
   /** Fetches and decodes `url` (once); resolves whether it can now be played. */
   load(url: string, priority: 'high' | 'low'): Promise<boolean>;
-  /** Starts it; `onEnded` is called when it has finished or been stopped. Returns a function that stops it. */
-  start(url: string, group: SoundGroup, repeats: number, volume: number, onEnded: () => void): () => void;
+  /** Starts it; `onEnded` is called when it has finished or been stopped. */
+  start(url: string, group: SoundGroup, repeats: number, volume: number, onEnded: () => void): SoundHandle;
+}
+
+/** A playing sound: it can be silenced, or (for a sound source) turned up and down as the view moves. */
+export interface SoundHandle {
+  stop(): void;
+  /** 0-1. */
+  setVolume(volume: number): void;
 }
 
 export type SoundLogger = (event: string, detail?: Record<string, unknown>) => void;
@@ -49,7 +56,9 @@ export interface SoundPlayerOptions {
 
 export class SoundPlayer {
   private readonly active: Record<SoundGroup, number> = { sound: 0, sources: 0, ui: 0, bell: 0, timer: 0 };
-  private readonly stoppers = new Map<string, Set<() => void>>();
+  private readonly handles = new Map<string, Set<SoundHandle>>();
+  /** Sound sources with a sound being loaded, not yet started. */
+  private readonly pendingSources = new Map<string, number>();
   private readonly previousChoice = new Map<string, number>();
   private readonly missing = new Set<string>();
   private readonly preloadQueue: string[] = [];
@@ -103,12 +112,14 @@ export class SoundPlayer {
     }
     // Held while it loads, so a burst of misses cannot overshoot the group's channels.
     this.active[group]++;
+    if (request.sourceId) this.pendingSources.set(request.sourceId, (this.pendingSources.get(request.sourceId) ?? 0) + 1);
     const asked = this.now();
     void this.options.backend.load(url, 'high').then((ok) => {
       this.active[group]--;
+      if (request.sourceId) this.pendingSources.set(request.sourceId, (this.pendingSources.get(request.sourceId) ?? 1) - 1);
       if (!ok) {
         this.reportMissing(file);
-      } else if (TIMING_CRITICAL[group] && this.now() - asked > LATE_MS) {
+      } else if ((request.dropIfLate ?? TIMING_CRITICAL[group]) && this.now() - asked > LATE_MS) {
         this.log('late', { file, ms: Math.round(this.now() - asked) });
       } else {
         start();
@@ -119,29 +130,38 @@ export class SoundPlayer {
   private start(url: string, file: string, request: SoundRequest, volume: number): void {
     const { group } = request;
     this.active[group]++;
-    this.log('play', { file, group, repeats: request.repeats });
-    let stop: () => void = () => {};
+    this.log('play', { file, group, repeats: request.repeats, ...(request.sourceId ? { source: request.sourceId, volume: Math.round(volume * 100) } : {}) });
+    let handle: SoundHandle | null = null;
     const ended = (): void => {
       this.active[group]--;
-      if (request.sourceId) this.stoppers.get(request.sourceId)?.delete(stop);
+      if (request.sourceId && handle) this.handles.get(request.sourceId)?.delete(handle);
     };
-    stop = this.options.backend.start(url, group, request.repeats, volume, ended);
+    handle = this.options.backend.start(url, group, request.repeats, volume, ended);
     if (request.sourceId) {
-      let set = this.stoppers.get(request.sourceId);
-      if (!set) this.stoppers.set(request.sourceId, (set = new Set()));
-      set.add(stop);
+      let set = this.handles.get(request.sourceId);
+      if (!set) this.handles.set(request.sourceId, (set = new Set()));
+      set.add(handle);
     }
   }
 
   /** `stop_sound(id)`: silences whatever a sound source is playing. */
   stopSource(sourceId: string): void {
-    for (const stop of [...(this.stoppers.get(sourceId) ?? [])]) stop();
-    this.stoppers.delete(sourceId);
+    const handles = [...(this.handles.get(sourceId) ?? [])];
+    if (handles.length > 0) this.log('stop', { source: sourceId });
+    for (const handle of handles) handle.stop();
+    this.handles.delete(sourceId);
   }
 
-  /** Whether a sound source's sound is still playing (`is_sound_playing`). */
+  /** `reposition_sound`: a sound source's volume follows the view (0-100). */
+  setSourceVolume(sourceId: string, volume: number): void {
+    const handles = this.handles.get(sourceId);
+    if (handles && handles.size > 0) this.log('reposition', { source: sourceId, volume: Math.round(volume) });
+    for (const handle of handles ?? []) handle.setVolume(volume / 100);
+  }
+
+  /** Whether a sound source's sound is playing or about to (`is_sound_playing`). */
   isSourcePlaying(sourceId: string): boolean {
-    return (this.stoppers.get(sourceId)?.size ?? 0) > 0;
+    return (this.handles.get(sourceId)?.size ?? 0) > 0 || (this.pendingSources.get(sourceId) ?? 0) > 0;
   }
 
   /** Fetches and decodes sounds ahead of use, at low priority and a couple at a time. */

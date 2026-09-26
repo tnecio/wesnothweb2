@@ -5,7 +5,7 @@
  * Nothing here touches the image workers.
  */
 import type { SoundGroup } from '@wesnothweb2/engine';
-import type { SoundBackend } from './soundEffects.js';
+import type { SoundBackend, SoundHandle } from './soundEffects.js';
 
 /** How much decoded PCM to keep (upstream caches 256 chunks; this is the same idea in bytes). */
 export const SOUND_CACHE_BYTES = 32 * 1024 * 1024;
@@ -65,11 +65,11 @@ export class WebAudioSoundBackend implements SoundBackend {
     }
   }
 
-  start(url: string, group: SoundGroup, repeats: number, volume: number, onEnded: () => void): () => void {
+  start(url: string, group: SoundGroup, repeats: number, volume: number, onEnded: () => void): SoundHandle {
     const buffer = this.buffers.get(url);
     if (!buffer) {
       onEnded();
-      return () => {};
+      return { stop: () => {}, setVolume: () => {} };
     }
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
@@ -92,12 +92,15 @@ export class WebAudioSoundBackend implements SoundBackend {
     } else {
       source.start();
     }
-    return () => {
-      try {
-        source.stop();
-      } catch {
-        // Already stopped.
-      }
+    return {
+      stop: () => {
+        try {
+          source.stop();
+        } catch {
+          // Already stopped.
+        }
+      },
+      setVolume: (v) => gain.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02),
     };
   }
 }

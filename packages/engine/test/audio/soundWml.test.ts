@@ -26,7 +26,7 @@ describe('[sound]', () => {
   it('asks for the named sound, once by default', () => {
     const { pump, heard } = run('[sound]\nname=ram.wav\n[/sound]');
     expect(heard).toEqual(['sound:ram.wav:0']);
-    expect(pump.ctx.sounds).toEqual([{ files: 'ram.wav', repeats: 0, group: 'sound' }]);
+    expect(pump.ctx.sounds).toEqual([{ files: 'ram.wav', repeats: 0, group: 'sound', dropIfLate: false }]);
   });
 
   it('repeat= adds extra plays, and a comma list is left for the player to pick from', () => {

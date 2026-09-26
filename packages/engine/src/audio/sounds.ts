@@ -18,6 +18,12 @@ export interface SoundRequest {
   readonly sourceId?: string;
   /** 0-100: distance-based volume for a positioned sound (100 by default). */
   readonly volume?: number;
+  /**
+   * `false`: play it whenever it is ready, however late (a `[sound]` telling of something that
+   * happened). Left out, sound effects and clicks tied to what is on screen are dropped if they
+   * would start noticeably late.
+   */
+  readonly dropIfLate?: boolean;
 }
 
 /** `game_config::sounds` (`game_config.cfg`'s `[sounds]`, `game_config.cpp`). */

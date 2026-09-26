@@ -10,12 +10,13 @@
  * `window.__audio` -- what a headless browser check reads, since it cannot
  * hear anything.
  */
-import { MusicList, type SoundRequest } from '@wesnothweb2/engine';
+import { MusicList, type SoundRequest, type SoundSourceSpec } from '@wesnothweb2/engine';
 import { squareParentheticalSplit } from '@wesnothweb2/renderer/src/animation/frame.js';
 import { audioExists, audioUrl } from './audioPaths.js';
 import { MusicPlayer } from './musicPlayer.js';
 import { busGains, loadAudioSettings, saveAudioSettings, type AudioSettings, type BusGains, type VolumeScale } from './settings.js';
 import { SoundPlayer } from './soundEffects.js';
+import { SoundSourceManager, type SourceHost } from './soundSources.js';
 import { WebAudioMusicBackend } from './webAudioMusic.js';
 import { WebAudioSoundBackend } from './webAudioSounds.js';
 
@@ -30,6 +31,7 @@ export interface AudioLogEntry {
 
 const LOG_LIMIT = 500;
 const SYNC_INTERVAL_MS = 250;
+const SOURCE_INTERVAL_MS = 150;
 /** Time constant of a gain change: quick enough to feel immediate, slow enough not to click. */
 const GAIN_SMOOTHING = 0.015;
 
@@ -51,6 +53,10 @@ export class AudioEngine {
   private buses: { music: GainNode; sound: GainNode; ui: GainNode; bell: GainNode } | null = null;
   private player: MusicPlayer | null = null;
   private effects: SoundPlayer | null = null;
+  private sources: SoundSourceManager | null = null;
+  private sourceHost: SourceHost | null = null;
+  private sourceSpecs: readonly SoundSourceSpec[] = [];
+  private sourceTimer: ReturnType<typeof setInterval> | null = null;
   private pendingPreload: string[] = [];
   private backend: WebAudioMusicBackend | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -85,11 +91,52 @@ export class AudioEngine {
   updateSettings(patch: Partial<AudioSettings>): void {
     const before = this.settingsValue;
     this.settingsValue = { ...before, ...patch };
+    // Upstream: the player's own slider sets the mixer volume outright, ending any `[volume]` scale on it.
+    if (patch.musicVolume !== undefined) this.volumeScale = { ...this.volumeScale, music: 100 };
+    if (patch.soundVolume !== undefined) this.volumeScale = { ...this.volumeScale, sound: 100 };
     saveAudioSettings(this.settingsValue);
     this.applyGains();
     if (patch.musicOn !== undefined && patch.musicOn !== before.musicOn) this.player?.setMusicOn(patch.musicOn);
     if (patch.stopInBackground === false) this.player?.setBackgrounded(false);
     this.record('settings', { ...patch });
+  }
+
+  /** The game's sound sources (`GameSession.soundSources`) and where the view is; they play once the audio is unlocked. */
+  setSoundSources(specs: readonly SoundSourceSpec[]): void {
+    this.sourceSpecs = specs;
+    this.sources?.setSources(specs);
+  }
+
+  setSourceHost(host: SourceHost | null): void {
+    this.sourceHost = host;
+    this.startSources();
+  }
+
+  /** Silences every sound source (the game is being left). */
+  stopSoundSources(): void {
+    this.sourceSpecs = [];
+    this.sources?.stopAll();
+  }
+
+  /** `sound::stop_sound(id)`: silences what a sound source (or the story's voice) is playing. */
+  stopSource(sourceId: string): void {
+    this.effects?.stopSource(sourceId);
+  }
+
+  private startSources(): void {
+    if (this.sources || !this.effects || !this.sourceHost) return;
+    const effects = this.effects;
+    this.sources = new SoundSourceManager(
+      {
+        play: (request) => this.playSound(request),
+        stopSource: (id) => effects.stopSource(id),
+        isSourcePlaying: (id) => effects.isSourcePlaying(id),
+        setSourceVolume: (id, volume) => effects.setSourceVolume(id, volume),
+      },
+      { viewCenter: () => this.sourceHost?.viewCenter() ?? null, isFogged: (x, y) => this.sourceHost?.isFogged(x, y) ?? false, isShrouded: (x, y) => this.sourceHost?.isShrouded(x, y) ?? false },
+    );
+    this.sources.setSources(this.sourceSpecs);
+    this.sourceTimer = setInterval(() => this.sources?.tick(), SOURCE_INTERVAL_MS);
   }
 
   /** `[volume]`: the scenario's percentages of the player's own volumes. */
@@ -179,6 +226,7 @@ export class AudioEngine {
       log: (event, detail) => this.record(`sound-${event}`, detail),
     });
     this.startPlayer();
+    this.startSources();
     this.flushPreload();
   }
 

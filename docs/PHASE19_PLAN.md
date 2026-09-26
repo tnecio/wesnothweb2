@@ -1,4 +1,4 @@
-# Phase 19 — Audio & Music: working plan (draft for review, 2026-09-26)
+# Phase 19 — Audio & Music: working plan (delivered 2026-09-26; see `PROGRESS.md` for what was built and where it differs)
 
 Scope is the plan's Phase 19 section (`IMPLEMENTATION_PLAN.md`). This file
 is how I intend to build it, stage by stage, so it can be reviewed before
@@ -228,9 +228,10 @@ work starts.
 - Sound effects are decoded once into `AudioBuffer`s and cached (with an
   LRU cap), and played through the sound bus.
 - Channels: upstream has 32, with 8 reserved for sound sources, 2 for UI
-  and 1 for the bell. I'll mirror the budget: at most N concurrent sound
-  effects, where a new one steals the oldest, as SDL_mixer does when
-  channels run out. That stops mass combat from stacking up.
+  and 1 for the bell. I'll mirror the budget: at most 20 concurrent sound
+  effects; when a group has no free channel the new sound is skipped, as
+  `play_sound_internal` does (it does not steal the oldest). That stops
+  mass combat from stacking up.
 - `repeat=`: `AudioBufferSourceNode` loops `repeats` extra times.
 - UI sounds (button, checkbox, menu open, error) go through the UI bus,
   from the gui2 theme data. I'll check what the 1.19 GUI actually plays.

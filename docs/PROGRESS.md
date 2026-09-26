@@ -4613,3 +4613,53 @@ condition at the start; now 3 left, all owned by other phases:
   must call `ctx.playSound` for its status sounds, as upstream's Lua does.
   A story part's `sound=`/`voice=` and the countdown timer's sound follow
   with the parts that own them (stage 3 for sound sources; `voice=` there too).
+
+## 2026-09-26: Phase 19, stage 3 — sound sources and `[volume]`
+
+- **Sound sources** (`engine/src/audio/soundSources.ts`, `ui/src/audio/
+  soundSources.ts`; `soundsource.cpp`). `[sound_source]` adds or replaces one
+  by id, `[remove_sound_source id=a,b]` removes; the scenario's own
+  `[sound_source]`s are read at start; saved as `[sound_source]` tags (id
+  order, as upstream walks its map), in Wesnoth saves both ways. The game
+  holds the specs; the app plays them: each pass, once the `delay` (default
+  1000 ms) has passed and nothing of the source is playing, it rolls
+  `chance` (1-100) and plays -- from everywhere at full volume when it has
+  no `x`/`y`, else at the volume of the location nearest the *centre of the
+  view*: full within `full_range` (3), fading linearly over `fade_range`
+  (14) on SDL_mixer's 0-255 distance scale, silent beyond, and silent for a
+  fogged/shrouded location when `check_fogged`/`check_shrouded` say so.
+  A playing source follows the view (`update_positions`: a moved view
+  re-sets its volume, and stops it when it goes silent); a replaced source
+  restarts and silences its predecessor; removing one silences it. The view
+  centre is `GameBoardView.viewCenterHex()`.
+- **`[volume] music= sound=`**: percent (0-100) of the player's own setting,
+  `tonumber(...) or 100`, out-of-range refused. `sound=` scales effects and
+  sources, not the interface or the bell (`set_sound_volume` skips those
+  channels). Like upstream it is not saved, and the player's own slider
+  sets that channel outright, ending the scale (the plan's "restored
+  afterwards" was not what upstream does).
+- **Story parts** now also play their `sound=`, and their `voice=` as sound
+  source 255 (each part cuts the previous voice off).
+- **`[sound]`** plays however late it arrives (a `dropIfLate` flag on the
+  request); the scenario's static `[sound] name=` and sound-source files are
+  preloaded with the rest.
+- **New debug campaign** `synthetic_audio` (`synthetic-campaigns/audio/`):
+  a 38x7 map, a two-track playlist, two placed sources and one heard
+  everywhere, and a turn 2 that runs `[volume]`, `[remove_sound_source]`,
+  `[sound]` and `[music] immediate=yes ms_before=1500`. No shipped
+  campaign uses `[sound_source]`.
+- **Browser check** (`sound-playthrough.mjs`, extended): the source with no
+  location plays at full volume; the placed ones stay silent while the view
+  is mid-map; dragging the map to the camp starts it quietly and follows the
+  view up to close to full volume; dragging away stops it and starts the far
+  source; turn 2 removes the drums, plays `open-chest.wav` with its repeat,
+  scales music to 50% and effects to 20%, switches to `sad.ogg` with a
+  1.5 s fade-in; the player's own slider then replaces the music scale.
+
+### Phase 19 — what is left for you
+- One listen in a real browser (nothing can be heard headless): Dead Water 1
+  (music, the bell, dawn ambience, fights), Liberty's epilogue (story music),
+  and `[Debug] Audio` (drag the map toward the camp fire and the birds).
+- Not covered: main-menu music (Phase 21); `[harm_unit]` status sounds
+  (Phase 29, Lua); the countdown timer's sound (no turn timer exists yet);
+  the full preferences screen (Phase 24).

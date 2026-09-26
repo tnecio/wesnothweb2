@@ -83,6 +83,12 @@
       "name": "[Debug] Animation",
       "description": "An AI side that recruits and marches, a scripted spawn+move cutscene, a long Horseman ride and a fake unit -- each one click from a cold load, for debugging movement/appearance animation glitches.",
       "firstScenario": "synth_animation_01"
+    },
+    {
+      "id": "synthetic_audio",
+      "name": "[Debug] Audio",
+      "description": "A wide map with two placed sound sources and one heard everywhere, a two-track music playlist, and a turn 2 that changes the volumes, removes a source, plays a sound and switches the music -- for debugging Phase 19 audio.",
+      "firstScenario": "synth_audio_01"
     }
   ]
 }

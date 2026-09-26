@@ -1477,8 +1477,17 @@ gameplay-relevant remainder is:
 
 ## Phase 19 — Audio & Music (was Phase 13)
 
-**Status: not started.** Nothing in `packages/renderer` or `packages/ui`
-touches audio; this is a whole missing subsystem.
+**Status: delivered 2026-09-26** (`docs/PHASE19_PLAN.md`, `docs/PROGRESS.md`).
+The playlist, `[music]`, the victory/defeat stinger, `[sound]`, frame and
+status sounds, the turn bell and time-of-day sounds, interface clicks,
+sound sources and `[volume]` are in, all as upstream does them (ported from
+`sound.cpp`, `soundsource.cpp`, `lua_audio.cpp`, `wml-tags.lua`), with
+streamed music, decoded-once effects, a channel budget, autoplay handling,
+a mute toggle and a small Audio dialog. Where the text below differs from
+what upstream really does (a `[volume]` scale is not "restored afterwards":
+it lasts until the player moves that slider; a sound with no free channel
+is skipped, not stolen), upstream won. Main-menu (`title_music`) music
+belongs to Phase 21, which reuses the same audio engine and playlist.
 
 - `[music]` scenario playlists (`append=`/`immediate=`/`play_once=`/
   `ms_before=`/`ms_after=`), track transitions/crossfade, shuffle
@@ -1884,8 +1893,8 @@ pulled forward and delivered 2026-09-22.
    runtime `[event]`, unit ids) — delivered 2026-09-26.
 4. **Phase 18d** (missing WML action tags, from the audit) — delivered 2026-09-26.
 5. **Phase 18** (labels/items) — delivered 2026-09-26. **Phase 19**
-   (audio/music) ← **next**.
-6. **Phase 20** (localization/accessibility).
+   (audio/music) — delivered 2026-09-26.
+6. **Phase 20** (localization/accessibility) ← **next**.
 7. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).
 8. **Phase 25** (statistics & achievements).
 9. **Phase 27** (feature completeness assessment).
