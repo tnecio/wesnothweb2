@@ -27,6 +27,96 @@ work starts.
 - Each stage ends with all suites green, a browser check, a commit and a
   `PROGRESS.md` entry.
 
+## Loading, threading and formats (applies to all stages)
+
+**What we'd load.**
+- `core/music`: 43 tracks, 162 MB in all. They're Ogg Vorbis at about
+  160 kbps, 44.1 kHz stereo, typically 3–6 MB each and up to 11.5 MB
+  (`cry_from_elensefar.ogg`).
+- `core/sounds`: 8.1 MB, 232 Ogg Vorbis and 40 WAV files, mostly small.
+- None of the four campaigns ships its own music.
+
+**Music is streamed, never decoded in JS.**
+- Each track plays through an `HTMLAudioElement`: the browser fetches it
+  progressively (HTTP range requests) and decodes it on its own media
+  threads. The audio is routed into Web Audio with
+  `MediaElementAudioSourceNode`, only so that the gains (volume, fades,
+  mute) apply.
+- Mixing runs on the browser's audio rendering thread.
+- So neither the main thread nor our image compositor workers do any
+  music work, and a 10 MB track never sits decoded in memory. The
+  alternative, `decodeAudioData` on a whole track, would hold roughly
+  50 MB of PCM per track and stall until it finished; it's ruled out for
+  music.
+- Same-origin files (`/game-images/core/music/...`), so
+  `MediaElementSource` has no CORS problem.
+
+**Keeping music from competing with the board's images for bandwidth.**
+- Nothing is fetched before the board has rendered
+  (`data-board-ready`) and the user has made a gesture (autoplay policy).
+  Startup bandwidth stays with the terrain and unit bundles.
+- The current track uses `preload="auto"`. The *next* track is decided
+  early: `MusicList` can pick it ahead, as `choose_track` is
+  deterministic given its RNG draw. It's prefetched on a second, idle
+  element (`preload="auto"`) about 20 s before the current one ends, so
+  the switch is immediate.
+- Upstream doesn't crossfade consecutive tracks (`no_fading`), so a
+  near-gapless start is all "smooth" requires. Fades (`ms_before`/`ms_after`)
+  are gain ramps on the audio thread (`linearRampToValueAtTime`), not JS
+  timers.
+- At most one prefetch runs at a time, and it's cancelled if the
+  playlist changes (`[music] immediate=`).
+- Caching: long-lived `Cache-Control` for `/game-images/**/music|sounds`
+  in production, like the image bundles, so replaying a scenario doesn't
+  refetch.
+
+**Sound effects are small and decoded once.**
+- Sound effects are fetched and passed to `decodeAudioData`, which is
+  asynchronous; Chrome and Firefox decode off the main thread, and only
+  the resulting `AudioBuffer` comes back.
+- Buffers are cached by path, with an LRU byte cap of around 32 MB of PCM.
+- Preloading is per scenario, at idle priority after the board is ready:
+  the sounds referenced by the unit types present (attack, hit, miss, die
+  frames) plus the common ones (bell, UI).
+- It uses `fetch(…, { priority: 'low' })` with a concurrency cap of 2, so
+  it never competes with image bundles.
+- A sound needed before it's cached is fetched on demand and played when
+  ready, or dropped if it arrives more than ~150 ms late (a late hit sound
+  is worse than none). Each miss is logged once.
+- The image compositor worker pool is untouched: audio never goes through
+  it.
+
+**Formats.**
+- Ogg Vorbis plays natively in Chrome, Edge and Firefox on every platform,
+  and WAV plays everywhere, so the shipped files need **no conversion** for
+  the desktop browsers we test with.
+- Safari (and so every iOS browser, which all use WebKit) is the risk:
+  its Ogg Vorbis support is recent and has varied across macOS and iOS
+  versions.
+- Proposal:
+  - At startup, detect with `canPlayType('audio/ogg; codecs="vorbis"')`.
+    If Vorbis isn't supported, disable music and Ogg sound effects with a
+    single notice (WAV effects still play), rather than failing file by
+    file.
+  - Add an **optional** build step, `build:audio`, now or with Phase 23
+    (mobile). It would transcode `music/` and `sounds/` with ffmpeg into
+    a second format: Opus in WebM or Ogg for Safari 17+, and/or AAC `.m4a`
+    as a universal fallback. It would write a manifest (like
+    `campaignImages.json`) that maps each original path to its variants;
+    the player picks the first variant `canPlayType` accepts.
+  - A side benefit: Opus at ~96 kbps would roughly halve the music
+    download (162 MB → ~95 MB). That matters more on mobile than here.
+- This build step would be the only place ffmpeg is needed. I'd make it
+  opt-in so the default build keeps the original files untouched.
+
+**Checks for this part.**
+- In the Playwright run, the main thread's long tasks (`PerformanceObserver`,
+  `longtask`) are measured while a track starts and during a fight with
+  effects. No new long tasks may be attributable to audio.
+- The image bundle timings from `measure-load.mjs` must not regress with
+  audio on.
+- Network: no music request goes out before board-ready plus a gesture.
+
 ## Stage 1 — Music
 
 **Engine**
@@ -218,11 +308,11 @@ plus one manual listen by you in a real browser.
 
 ## Decisions I'd like you to confirm
 
-1. **Audio formats.** The data ships Ogg Vorbis (music and most effects)
-   and some WAV. Chrome and Firefox decode both. Safari's Ogg Vorbis
-   support is recent and patchy. Proposal: use the files as they are now,
-   and log failures. A build-time transcode (for example to Opus in WebM
-   or to AAC) waits until Safari matters, perhaps with Phase 23 (mobile).
+1. **Audio formats.** See "Loading, threading and formats". Proposal:
+   ship the Ogg/WAV files as they are, detect Vorbis support once, and
+   make the ffmpeg transcode (Opus and/or AAC, with a variant manifest) an
+   opt-in build step. It could land now or with Phase 23 (mobile); tell
+   me if you want it now.
 2. **Where the playlist lives.** Proposal: the engine `MusicList`, handed
    from session to session. The Phase 21 main menu, which plays
    `title_music`, will then reuse the same `AudioEngine` with its own
