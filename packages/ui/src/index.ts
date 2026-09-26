@@ -48,3 +48,20 @@ export {
 export { default as GameShell } from './GameShell.svelte';
 
 export { fetchStoryAssets, pickStoryImage, type StoryAssets, type StoryImageEntry } from './story/storyImages.js';
+
+// Phase 20: language and translation lookup.
+export { default as LanguageDialog } from './LanguageDialog.svelte';
+export {
+  locale,
+  LocaleManager,
+  detectLanguage,
+  languageTag,
+  t,
+  tn,
+  td,
+  ts,
+  CORE_DOMAINS,
+  SOURCE_LANGUAGE,
+  type LanguageInfo,
+  type LocaleHost,
+} from './i18n/locale.js';

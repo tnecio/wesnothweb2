@@ -267,6 +267,8 @@ export interface GameBoardSnapshot {
    * rather than working around it.
    */
   scenarioConfigJson: WmlConfigJson;
+  /** Every textdomain a translatable string in this snapshot belongs to: the catalogues to load for it. */
+  textdomains?: string[];
   /** The scenario's `[story][part]` blocks (real narrative text + background art, if any), meant to be shown as a click-through sequence before interactive play begins. Empty if the scenario has no `[story]`. */
   story?: StoryPart[];
   /**

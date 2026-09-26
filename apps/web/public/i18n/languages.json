@@ -1,0 +1,229 @@
+{
+ "languages": [
+  {
+   "code": "ar_AR",
+   "name": "العربية (al-ʿArabiyyah)",
+   "sortName": "Al-ʿArabiyyah",
+   "alternates": [
+    "ar_AE",
+    "ar_BH",
+    "ar_DZ",
+    "ar_EG",
+    "ar_IN",
+    "ar_IQ",
+    "ar_JO",
+    "ar_KW",
+    "ar_LB",
+    "ar_LY",
+    "ar_MA",
+    "ar_OM",
+    "ar_QA",
+    "ar_SA",
+    "ar_SD",
+    "ar_SY",
+    "ar_TN",
+    "ar_YE"
+   ],
+   "rtl": true,
+   "percent": 88,
+   "domains": [
+    "wesnoth",
+    "wesnoth-lib",
+    "wesnoth-units",
+    "wesnoth-help",
+    "wesnoth-dw",
+    "wesnoth-tb",
+    "wesnoth-l",
+    "wesnoth-utbs",
+    "wesnoth-sotbe"
+   ]
+  },
+  {
+   "code": "cs_CZ",
+   "name": "Čeština",
+   "sortName": "Cestina",
+   "alternates": [],
+   "rtl": false,
+   "percent": 89,
+   "domains": [
+    "wesnoth",
+    "wesnoth-lib",
+    "wesnoth-units",
+    "wesnoth-help",
+    "wesnoth-dw",
+    "wesnoth-tb",
+    "wesnoth-l",
+    "wesnoth-utbs",
+    "wesnoth-sotbe"
+   ]
+  },
+  {
+   "code": "en_GB",
+   "name": "English (GB)",
+   "alternates": [
+    "en_AG",
+    "en_AU",
+    "en_BW",
+    "en_IE",
+    "en_IN",
+    "en_NG",
+    "en_NZ",
+    "en_SG",
+    "en_ZA",
+    "en_ZW"
+   ],
+   "rtl": false,
+   "percent": 99,
+   "domains": [
+    "wesnoth",
+    "wesnoth-lib",
+    "wesnoth-units",
+    "wesnoth-help",
+    "wesnoth-dw",
+    "wesnoth-tb",
+    "wesnoth-l",
+    "wesnoth-utbs",
+    "wesnoth-sotbe"
+   ]
+  },
+  {
+   "code": "en_US",
+   "name": "English (US)",
+   "alternates": [
+    "C",
+    "en_PH"
+   ],
+   "rtl": false,
+   "percent": 100,
+   "domains": []
+  },
+  {
+   "code": "es_ES",
+   "name": "Español",
+   "alternates": [
+    "es_AR",
+    "es_BO",
+    "es_CL",
+    "es_CO",
+    "es_CR",
+    "es_DO",
+    "es_EC",
+    "es_GT",
+    "es_HN",
+    "es_MX",
+    "es_NI",
+    "es_PA",
+    "es_PE",
+    "es_PR",
+    "es_PY",
+    "es_SV",
+    "es_US",
+    "es_UY",
+    "es_VE"
+   ],
+   "rtl": false,
+   "percent": 99,
+   "domains": [
+    "wesnoth",
+    "wesnoth-lib",
+    "wesnoth-units",
+    "wesnoth-help",
+    "wesnoth-dw",
+    "wesnoth-tb",
+    "wesnoth-l",
+    "wesnoth-utbs",
+    "wesnoth-sotbe"
+   ]
+  },
+  {
+   "code": "gl_ES",
+   "name": "Galego",
+   "alternates": [],
+   "rtl": false,
+   "percent": 96,
+   "domains": [
+    "wesnoth",
+    "wesnoth-lib",
+    "wesnoth-units",
+    "wesnoth-help",
+    "wesnoth-dw",
+    "wesnoth-tb",
+    "wesnoth-l",
+    "wesnoth-utbs",
+    "wesnoth-sotbe"
+   ]
+  },
+  {
+   "code": "it_IT",
+   "name": "Italiano",
+   "alternates": [],
+   "rtl": false,
+   "percent": 99,
+   "domains": [
+    "wesnoth",
+    "wesnoth-lib",
+    "wesnoth-units",
+    "wesnoth-help",
+    "wesnoth-dw",
+    "wesnoth-tb",
+    "wesnoth-l",
+    "wesnoth-utbs",
+    "wesnoth-sotbe"
+   ]
+  },
+  {
+   "code": "hu_HU",
+   "name": "Magyar",
+   "alternates": [],
+   "rtl": false,
+   "percent": 85,
+   "domains": [
+    "wesnoth",
+    "wesnoth-lib",
+    "wesnoth-units",
+    "wesnoth-help",
+    "wesnoth-dw",
+    "wesnoth-tb",
+    "wesnoth-l",
+    "wesnoth-utbs",
+    "wesnoth-sotbe"
+   ]
+  },
+  {
+   "code": "pl_PL",
+   "name": "Polski",
+   "alternates": [],
+   "rtl": false,
+   "percent": 68,
+   "domains": [
+    "wesnoth",
+    "wesnoth-lib",
+    "wesnoth-units",
+    "wesnoth-help",
+    "wesnoth-dw",
+    "wesnoth-tb",
+    "wesnoth-l",
+    "wesnoth-utbs",
+    "wesnoth-sotbe"
+   ]
+  },
+  {
+   "code": "fi_FI",
+   "name": "Suomi",
+   "alternates": [],
+   "rtl": false,
+   "percent": 84,
+   "domains": [
+    "wesnoth",
+    "wesnoth-lib",
+    "wesnoth-units",
+    "wesnoth-help",
+    "wesnoth-dw",
+    "wesnoth-tb",
+    "wesnoth-l",
+    "wesnoth-utbs",
+    "wesnoth-sotbe"
+   ]
+  }
+ ]
+}

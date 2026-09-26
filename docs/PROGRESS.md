@@ -4727,3 +4727,53 @@ Gates: engine 787 (+22), ui, renderer and lua-bridge unchanged;
 0 typecheck/svelte-check errors. Browser: `measure-load.mjs` loads Dead Water
 1, Liberty 1 and UtBS 1 with no regressions in board-ready time, and
 `dialogue-playthrough.mjs` passes.
+
+## 2026-09-26: Phase 20, stage 2 — catalogues and runtime language switching
+
+- **Catalogues** (`apps/web/scripts/build-translations.mjs`, output
+  `apps/web/public/i18n/<locale>/<domain>.json` plus `languages.json`, 14 MB
+  raw for 9 languages): upstream `.po` files reduced to translated,
+  non-fuzzy entries that differ from the source, with the `Plural-Forms`
+  header. Domains: `wesnoth`, `wesnoth-lib`, `wesnoth-units`,
+  `wesnoth-help`, the campaigns' (`-dw`, `-tb`, `-l`, `-utbs`, `-sotbe`) and
+  our own `wesnothweb` (nothing in it yet). Polish's core three domains are
+  about 165 KB gzipped, and only the current language is ever fetched.
+- **Shipped languages** are one list in that script (`SHIPPED_LOCALES`):
+  en_US, it_IT, es_ES, en_GB, gl_ES, cs_CZ, ar_AR, hu_HU, fi_FI (upstream's
+  >= 80%) and pl_PL (68%, by request). Names, alternates, `dir=rtl` and
+  percentages come from upstream's own `data/languages/*.cfg`.
+- **`packages/ui/src/i18n/locale.ts`**: `LocaleManager` picks the saved
+  language, else the browser's (`navigator.languages`, matched on exact
+  locale, then `alternates`, then the same language, as upstream matches the
+  system locale), fetches only the domains in use, installs them in the
+  engine registry (which bumps the generation, so every live `TString`
+  retranslates on its next read), sets `<html lang dir>`, and remembers an
+  explicit choice in `localStorage`. Switches are serialised, fetches are
+  cached, a failed fetch leaves that domain in English, and an unreachable
+  language list leaves the whole game in English. Reactivity is
+  `createSubscriber`, so the module stays plain TypeScript and runs under
+  node. `t()`/`tn()` read `wesnoth-lib`, `td(domain, ...)` any other,
+  `ts(tstring)` a model string.
+- **Snapshots** now list the textdomains their strings use
+  (`textdomains`), so a scenario loads exactly its own catalogues; the shell
+  asks for them as each scenario opens.
+- **UI**: `LanguageDialog` (Menu > Language in a game, and a button on the
+  menu page) lists the shipped languages by their own names and switches at
+  once. The app waits for `locale.init()` before mounting, so a Polish
+  browser never flashes English.
+- **Tests**: 14 for the locale manager (detection, first-run vs remembered,
+  switching and switching back with a live `TString`, RTL, lazy scenario
+  domains, cache, failed fetches, racing switches) and a plural test over
+  every distinct header in the shipped catalogues and all upstream `.po`
+  headers (a few have no header, one has the unfilled template, and one
+  declares 3 forms but only ever picks 2).
+- **Browser check** (Chromium with a `pl-PL` locale): `<html lang="pl-PL">`,
+  the menu button reads "Język...", exactly `languages.json` plus the three
+  core Polish catalogues were fetched, the picker lists the 10 languages,
+  switching to Arabic gives `lang=ar-AR dir=rtl` and "اللغة...", and back to
+  English restores `ltr` and "Language...". No console errors.
+
+Not yet done (Stage 3): the chrome and model text still read English except
+"Language" and "Close"; this stage built the machinery.
+
+Gates: engine 787+14, ui 284 (+14), 0 typecheck/svelte-check errors.

@@ -7,7 +7,7 @@
    * "only load assets needed for a given campaign once it's chosen"
    * requirement -- this component structurally can't preload anything.
    */
-  import { listSaves, type SaveMeta } from '@wesnothweb2/ui';
+  import { LanguageDialog, listSaves, t, type SaveMeta } from '@wesnothweb2/ui';
   import { fetchCampaigns, type Campaign } from './campaigns.js';
   import { router } from './router.svelte.js';
 
@@ -22,6 +22,7 @@
    * property intact.
    */
   let saves = $state<SaveMeta[]>([]);
+  let languageOpen = $state(false);
 
   $effect(() => {
     let cancelled = false;
@@ -77,7 +78,10 @@
 </script>
 
 <div class="menu">
-  <h1>wesnothweb2</h1>
+  <div class="top">
+    <h1>wesnothweb2</h1>
+    <button class="language" onclick={() => (languageOpen = true)} data-testid="menu-language">{t('Language')}...</button>
+  </div>
   {#if status === 'loading'}
     <p class="hint">Loading campaigns...</p>
   {:else if status === 'error'}
@@ -114,6 +118,10 @@
   {/if}
 </div>
 
+{#if languageOpen}
+  <LanguageDialog onClose={() => (languageOpen = false)} />
+{/if}
+
 <style>
   .menu {
     max-width: 40rem;
@@ -122,9 +130,27 @@
     font-family: sans-serif;
     color: #eee;
   }
+  .top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+  }
   h1 {
     font-size: 1.5rem;
     color: #f1e6c8;
+  }
+  .language {
+    font: inherit;
+    padding: 0.3rem 0.8rem;
+    border-radius: 4px;
+    border: 1px solid #4a4432;
+    background: #23201a;
+    color: #eee;
+    cursor: pointer;
+  }
+  .language:hover {
+    border-color: #8a6a2e;
   }
   .hint {
     opacity: 0.75;

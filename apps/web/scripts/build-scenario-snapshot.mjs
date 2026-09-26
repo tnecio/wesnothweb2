@@ -597,6 +597,24 @@ const snapshot = {
   scenarioConfigJson: scenario.toJSON(),
 };
 
+/**
+ * Every textdomain a `{"t": [[domain, msgid], ...]}` marker in this snapshot names, so the browser fetches
+ * exactly the catalogues this scenario can need (Phase 20) instead of guessing from the campaign.
+ */
+function collectTextdomains(node, out) {
+  if (Array.isArray(node)) {
+    for (const n of node) collectTextdomains(n, out);
+  } else if (node && typeof node === 'object') {
+    if (Array.isArray(node.t) && Object.keys(node).length === 1) {
+      for (const part of node.t) if (Array.isArray(part)) out.add(part[0]);
+    } else {
+      for (const v of Object.values(node)) collectTextdomains(v, out);
+    }
+  }
+  return out;
+}
+snapshot.textdomains = [...collectTextdomains(snapshot, new Set())].sort();
+
 const outFile = path.join(repoRoot, 'apps/web/public/scenarios', `${snapshot.scenario.id}.json`);
 fs.mkdirSync(path.dirname(outFile), { recursive: true });
 fs.writeFileSync(outFile, JSON.stringify(snapshot));

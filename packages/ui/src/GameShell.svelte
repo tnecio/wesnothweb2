@@ -117,6 +117,8 @@
   import SidePanel from './SidePanel.svelte';
   import StoryViewer from './StoryViewer.svelte';
   import AudioDialog from './AudioDialog.svelte';
+  import LanguageDialog from './LanguageDialog.svelte';
+  import { locale } from './i18n/locale.js';
   import { getAudioEngine } from './audio/audioEngine.js';
   import { installUiSounds } from './audio/uiSounds.js';
   import type { AudioSettings } from './audio/settings.js';
@@ -181,6 +183,10 @@
   // and a deep proxy made every engine read of it go through Svelte proxy traps -- ~190 ms of main-thread time
   // plus GC while loading Dead Water 1 (Phase 28a P3 profile).
   let activeSnapshot = $state.raw(snapshot);
+  // Phase 20: fetch the translation catalogues this scenario's own text belongs to (its campaign's domain, ...).
+  $effect(() => {
+    void locale.useDomains(activeSnapshot.textdomains ?? []);
+  });
   /** Bound `GameBoardView` instance, so `handleConfirmAttack`/`handleHexClick` can await its imperative `playAnimationSequence` before applying a resolved attack's/move's final state -- see that method's own doc comment. Reassigned across a scenario transition (the `{#key}` block around `<GameBoardView>` remounts it), so `$state`, not a plain `let`, same reasoning as `board` in `GameBoardView.svelte` itself. */
   let boardView: GameBoardView | undefined = $state();
   /**
@@ -237,6 +243,7 @@
   });
   let audioSettings = $state<Readonly<AudioSettings>>(audio.settings);
   let audioDialogOpen = $state(false);
+  let languageDialogOpen = $state(false);
   function changeAudio(patch: Partial<AudioSettings>): void {
     audio.updateSettings(patch);
     audioSettings = audio.settings;
@@ -2223,6 +2230,12 @@
       enabled: true,
       handler: () => (audioDialogOpen = true),
     },
+    {
+      id: 'language',
+      label: 'Language...',
+      enabled: true,
+      handler: () => (languageDialogOpen = true),
+    },
   ]);
   let actionCommands = $derived<Command[]>([
     {
@@ -2484,6 +2497,7 @@
       clearLabelsConfirmOpen ||
       labelSettingsOpen ||
       audioDialogOpen ||
+      languageDialogOpen ||
       pendingAdvancement !== null ||
       pendingPreview !== null ||
       // Phase 17: a suspended event's own dialogue owns the keyboard
@@ -2713,6 +2727,9 @@
     />
   {/if}
 
+  {#if languageDialogOpen}
+    <LanguageDialog onClose={() => (languageDialogOpen = false)} />
+  {/if}
   {#if audioDialogOpen}
     <AudioDialog settings={audioSettings} onChange={changeAudio} onClose={() => (audioDialogOpen = false)} />
   {/if}
