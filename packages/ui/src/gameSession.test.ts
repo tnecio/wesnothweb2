@@ -10,6 +10,7 @@ import {
   getAdjacentTiles,
   ALL_DIRECTIONS,
   directionBetween,
+  distanceBetween,
   isBackstabActive,
   createTypeResolver,
   type GameBoardSnapshot,
@@ -2185,5 +2186,36 @@ describe('Phase 18d: a map changed by WML', () => {
     expect(loaded.board.map.isVillage(village)).toBe(false);
     expect(loaded.board.map.villages).toHaveLength(session.board.map.villages.length);
     expect(loaded.terrainHexes?.find((h) => h.x === village.x && h.y === village.y)?.code).toBe(session.board.map.getTerrain(plain).toString());
+  });
+});
+
+describe('Phase 18d: exit hex / enter hex fire mid-move; [cancel_action] stops the unit there', () => {
+  it('stops at the first hex whose enter hex event cancels -- the Liberty 3 water warning', async () => {
+    const snapshot = loadEconomySnapshot();
+    const unit0 = new GameSession(snapshot).board.unitsForSide(1).find((u) => !u.canRecruit) ?? new GameSession(snapshot).board.unitsForSide(1)[0]!;
+    const start = unit0.location;
+    snapshot.scenarioConfigJson.children.push({
+      tag: 'event',
+      config: WmlConfig.fromJSON({
+        attrs: { name: 'enter hex', first_time_only: false },
+        children: [
+          { tag: 'filter', config: { attrs: { side: 1 }, children: [{ tag: 'not', config: { attrs: { x: start.wmlX, y: start.wmlY }, children: [] } }] } },
+          { tag: 'cancel_action', config: { attrs: {}, children: [] } },
+          { tag: 'set_variable', config: { attrs: { name: 'stopped_at', value: '$x1,$y1' }, children: [] } },
+        ],
+      }).toJSON(),
+    });
+    const session = new GameSession(snapshot);
+    await session.runStartupEvents();
+    const unit = session.board.unitAt(start)!;
+    await session.handleHexClick(start.x, start.y);
+    const far = session.reachable.find((h) => distanceBetween(new Location(h.x, h.y), start) >= 3);
+    expect(far).toBeDefined();
+    const movesBefore = unit.movesLeft;
+    await session.handleHexClick(far!.x, far!.y);
+    expect(distanceBetween(unit.location, start)).toBe(1);
+    expect(session.getVariable('stopped_at')).toBe(`${unit.location.wmlX},${unit.location.wmlY}`);
+    expect(unit.movesLeft).toBeGreaterThan(0);
+    expect(unit.movesLeft).toBeLessThan(movesBefore);
   });
 });

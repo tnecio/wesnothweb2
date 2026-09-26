@@ -144,6 +144,8 @@ import {
   type InteractionResult,
   type Responder,
   setLuaConditionalEvaluator,
+  performMoveFlow,
+  standardizeEventName,
 } from '@wesnothweb2/engine';
 // Deep import: lua-bridge's index also exports Node-only data loaders.
 import { createLuaConditionalEvaluator } from '@wesnothweb2/lua-bridge/src/conditionals.js';
@@ -1896,7 +1898,23 @@ export class GameSession {
     const startingMoves = unit.movesLeft;
     const startingFacing = unit.facing;
     const ownersBefore = steps.map((loc) => this.board.villageOwner(loc) ?? 0);
-    const outcome = performMove(this.board, unit, steps, { raise: this.raiseEvent, viewingTeam: this.board.getTeam(unit.side) });
+    // Phase 18d: `exit hex`/`enter hex` fire mid-move, as upstream's mover
+    // does. Before one that has handlers, the walk so far is shown, so its
+    // dialogue finds the unit where it is.
+    let shownUpTo = 0;
+    const showWalk = function* (this: GameSession, upTo: Location): Flow {
+      const index = steps.findIndex((s, i) => i >= shownUpTo && s.equals(upTo));
+      if (!action.present || index <= shownUpTo) return;
+      yield { kind: 'beat', beat: { kind: 'moveUnit', unit, path: steps.slice(shownUpTo, index + 1) } };
+      shownUpTo = index;
+    }.bind(this);
+    const hexEvent = (name: 'exit hex' | 'enter hex', current: Location, other: Location): Flow<boolean> =>
+      this.hexEventFlow(name, current, other, showWalk);
+    const outcome = yield* performMoveFlow(this.board, unit, steps, {
+      raise: this.raiseEvent,
+      viewingTeam: this.board.getTeam(unit.side),
+      hexEvent,
+    });
     const path = outcome.result.path;
     // A move that could not take a single step changed nothing, and the
     // real game rejects a recorded route the unit cannot walk ("found
@@ -1915,9 +1933,27 @@ export class GameSession {
     // *before* whatever the `moveto`/`sighted` events it triggers have to
     // say -- the pump below would otherwise reach their dialogue while the
     // unit was still standing at its old hex on screen.
-    if (action.present && path.length > 1) yield { kind: 'beat', beat: { kind: 'moveUnit', unit, path } };
+    if (action.present && path.length > shownUpTo + 1) yield { kind: 'beat', beat: { kind: 'moveUnit', unit, path: path.slice(shownUpTo) } };
     yield* this.pumpEventsFlow();
     return { unit, outcome };
+  }
+
+  /**
+   * One `exit hex`/`enter hex` for a moving unit, fired now
+   * (`unit_mover::fire_hex_event`); true if its WML ran `[cancel_action]`.
+   * Nothing happens when no handler has that name.
+   */
+  private *hexEventFlow(name: 'exit hex' | 'enter hex', current: Location, other: Location, showWalk: (upTo: Location) => Flow): Flow<boolean> {
+    if (this.eventPump.manager.handlersForName(standardizeEventName(name)).length === 0) return false;
+    // The mover stands at `current` for both events.
+    yield* showWalk(current);
+    const ctx = this.eventPump.ctx;
+    const outer = ctx.actionCanceled;
+    ctx.actionCanceled = false;
+    yield* this.fireFlow(name, current, other);
+    const canceled = ctx.actionCanceled;
+    ctx.actionCanceled = outer;
+    return canceled;
   }
 
   /** Terrain/ToD inputs every attack between these two hexes is computed with. */

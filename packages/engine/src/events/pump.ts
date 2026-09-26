@@ -193,6 +193,7 @@ export class EventPump {
       choices: [],
       usedItems: new Set(),
       turnLimit: -1,
+      actionCanceled: false,
       objectivesBySide: new Map(),
       menuItems: new Map(),
       loc1: Location.NULL,

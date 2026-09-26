@@ -25,6 +25,9 @@
 import type { WmlConfig } from '../wml/config.js';
 import type { EventContext } from './context.js';
 import { conditionalPassed } from './conditionalWml.js';
+import { findLocations } from './filter.js';
+import { Location } from '../model/Location.js';
+import { MapFormulaCallable, Variant, parseFormula } from '../formula/index.js';
 import { runActionFlow } from './actionWml.js';
 import { newVarNode, varNodeFromConfig, varNodeToConfig, type VarNode } from './variables.js';
 import type { Flow } from './interaction.js';
@@ -41,9 +44,9 @@ type LoopStep =
   /** `[return]` (or anything else that unwinds): propagate out of the loop too. */
   | 'unwind';
 
-/** Runs every `[do]` child once, translating whatever the body signalled into a `LoopStep`. */
-function* runDoBodies(cfg: WmlConfig, ctx: EventContext): Flow<LoopStep> {
-  for (const doCfg of cfg.children('do')) {
+/** Runs every `[do]` (or `bodyTag`) child once, translating whatever the body signalled into a `LoopStep`. */
+function* runDoBodies(cfg: WmlConfig, ctx: EventContext, bodyTag = 'do'): Flow<LoopStep> {
+  for (const doCfg of cfg.children(bodyTag)) {
     yield* runActionFlow(doCfg, ctx);
     const exit = ctx.exit.type;
     if (exit === 'break') {
@@ -128,6 +131,98 @@ function* actionRepeat(cfg: WmlConfig, ctx: EventContext): Flow {
     const step = yield* runDoBodies(cfg, ctx);
     if (step === 'stop' || step === 'unwind') return;
   }
+}
+
+// --- [random_placement] ---
+
+/**
+ * `data/lua/wml/random_placement.lua`: `num_items=` times, picks a random
+ * hex among those `[filter_location]` matches (a synced draw,
+ * `mathx.random(size)`), writes it to `$variable.x/.y/.n/.terrain`, drops
+ * every candidate within `min_distance=` of it, and runs `[command]`.
+ * `num_items=` is a number, a WFL formula in parentheses with `size` (the
+ * candidate count), or `N%` -- which upstream reads as plain `N`. The
+ * variable is restored afterwards (`utils.scoped_var`).
+ */
+function* actionRandomPlacement(cfg: WmlConfig, ctx: EventContext): Flow {
+  if (!cfg.hasChild('command')) {
+    ctx.log('error', '[random_placement] missing required [command] subtag');
+    return;
+  }
+  if (!cfg.hasAttribute('num_items') || !cfg.hasAttribute('variable')) {
+    ctx.log('error', `[random_placement] missing required '${cfg.hasAttribute('num_items') ? 'variable' : 'num_items'}' attribute`);
+    return;
+  }
+  if (!ctx.rng) {
+    ctx.log('warn', '[random_placement] needs a game RNG -- skipped');
+    return;
+  }
+  const variable = cfg.getString('variable');
+  const distance = cfg.getNumber('min_distance', 0);
+  const allowLess = cfg.getBoolean('allow_less', false);
+  const filter = cfg.child('filter_location');
+  // `wesnoth.map.find`: sorted by (x, y), in WML coordinates.
+  const locs = (filter ? findLocations(ctx.board, ctx.variables.expandConfigDeep(filter)) : allLocations(ctx))
+    .sort((a, b) => a.x - b.x || a.y - b.y)
+    .map((l) => ({ x: l.wmlX, y: l.wmlY, loc: l }));
+
+  const raw = cfg.getString('num_items');
+  let numItems: number;
+  if (/^\s*\(.*\)\s*$/s.test(raw)) {
+    numItems = Math.floor(parseFormula(raw).evaluate(new MapFormulaCallable().add('size', Variant.int(locs.length))).asDecimal());
+  } else if (/^\d+%$/.test(raw)) {
+    numItems = Number(raw.slice(0, -1));
+  } else {
+    numItems = Math.floor(Number(raw));
+    if (Number.isNaN(numItems)) {
+      ctx.log('error', `[random_placement] num_items=${raw}: Lua expressions are not supported`);
+      return;
+    }
+  }
+
+  const restore = scopeVariable(ctx, variable);
+  try {
+    let size = locs.length;
+    for (let i = 1; i <= numItems; i++) {
+      if (size === 0) {
+        if (!allowLess) ctx.log('error', `[random_placement] failed to place items. only ${i} items were placed`);
+        return;
+      }
+      const index = ctx.rng.getRandomInt(1, size) - 1;
+      const point = locs[index]!;
+      ctx.variables.set(`${variable}.x`, point.x);
+      ctx.variables.set(`${variable}.y`, point.y);
+      ctx.variables.set(`${variable}.n`, i);
+      ctx.variables.set(`${variable}.terrain`, ctx.board.map.getTerrain(point.loc).toString());
+      if (distance === 0) {
+        locs[index] = locs[size - 1]!;
+        size--;
+      } else if (distance > 0) {
+        // Drop candidates within distance= (distance_between, done inline as the Lua does).
+        for (let j = size - 1; j >= 0; j--) {
+          const { x: x1, y: y1 } = locs[j]!;
+          let y2 = point.y;
+          const dx = Math.abs(x1 - point.x);
+          if (dx > distance) continue;
+          if (dx % 2 !== 0) y2 += x1 % 2 === 0 ? -0.5 : 0.5;
+          const dy = Math.abs(y1 - y2);
+          if (dx + 2 * dy > 2 * distance) continue;
+          locs[j] = locs[size - 1]!;
+          size--;
+        }
+      }
+      const step = yield* runDoBodies(cfg, ctx, 'command');
+      if (step !== 'next') return;
+    }
+  } finally {
+    restore();
+  }
+}
+
+function allLocations(ctx: EventContext): Location[] {
+  const out: Location[] = [];
+  for (let x = 0; x < ctx.board.map.w(); x++) for (let y = 0; y < ctx.board.map.h(); y++) out.push(new Location(x, y));
+  return out;
 }
 
 // --- [for] ---
@@ -252,6 +347,7 @@ export function registerFlowActions(register: (tag: string, handler: (cfg: WmlCo
   register('command', actionCommand);
   register('while', actionWhile);
   register('repeat', actionRepeat);
+  register('random_placement', actionRandomPlacement);
   register('for', actionFor);
   register('foreach', actionForeach);
   register('switch', actionSwitch);

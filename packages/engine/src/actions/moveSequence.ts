@@ -14,7 +14,8 @@
 import type { GameBoard } from '../model/GameBoard.js';
 import type { Unit } from '../model/Unit.js';
 import type { Location } from '../model/Location.js';
-import { executeMove, type ExecuteMoveOptions, type MoveResult } from './move.js';
+import { executeMoveFlow, type ExecuteMoveOptions, type MoveResult } from './move.js';
+import { runFlow, type Flow } from '../events/interaction.js';
 
 export interface PerformMoveResult {
   readonly result: MoveResult;
@@ -38,21 +39,33 @@ export function performMove(
   path: readonly Location[],
   options: ExecuteMoveOptions = {},
 ): PerformMoveResult {
+  return runFlow(performMoveFlow(board, unit, path, options));
+}
+
+/** `performMove` with the per-step hex events (`options.hexEvent`), which may block on WML dialogue. */
+export function* performMoveFlow(
+  board: GameBoard,
+  unit: Unit,
+  path: readonly Location[],
+  options: ExecuteMoveOptions = {},
+): Flow<PerformMoveResult> {
   const start = unit.location;
   // Captured before the move actually happens: village ownership at each
   // hex of the REQUESTED path, indexed by the ACTUAL stopping point below --
   // mirrors GameSession.moveSelectedTo's own `ownersBefore` snapshot, which
   // must run before executeMove mutates anything.
   const ownersBefore = path.map((step) => board.villageOwner(step));
-  const result = executeMove(board, unit, path, options);
+  const result = yield* executeMoveFlow(board, unit, path, options);
   const moved = result.path.length > 1;
+  const finalHex = result.path[result.path.length - 1]!;
   let captured = false;
   if (moved) {
     if (result.enteredVillage && ownersBefore[result.path.length - 1] !== unit.side) {
       captured = true;
-      options.raise?.('capture', unit.location, start);
+      options.raise?.('capture', finalHex, start);
     }
-    options.raise?.('moveto', unit.location, start);
+    // post_move fires `moveto` at the final hex even if WML removed the unit.
+    options.raise?.('moveto', finalHex, start);
   }
   return { result, captured, moved };
 }

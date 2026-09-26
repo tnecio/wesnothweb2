@@ -7,7 +7,9 @@ import { loadRealContent } from '../helpers/realContent.js';
 import { GameBoard } from '../../src/model/GameBoard.js';
 import { Team } from '../../src/model/Team.js';
 import { Unit, UnitStatus } from '../../src/model/Unit.js';
-import { Location } from '../../src/model/Location.js';
+import { Location, distanceBetween } from '../../src/model/Location.js';
+import { RngDeterministic } from '../../src/rng/RngDeterministic.js';
+import { MtRng } from '../../src/rng/MtRng.js';
 import { EventManager, EventPump } from '../../src/events/pump.js';
 import { VariableStore } from '../../src/events/variables.js';
 import { findSides } from '../../src/events/sideFilter.js';
@@ -239,5 +241,89 @@ describe('[terrain] (game_board::change_terrain)', () => {
     const again = board.map.parseSibling(board.map.write());
     expect(again.write()).toBe(board.map.write());
     expect(again.startingPosition(2).equals(Location.fromWml(3, 2))).toBe(true);
+  });
+});
+
+describe('[insert_tag] (vconfig)', () => {
+  it('inserts a tag built by an earlier action in the same body -- the UtBS 3 camp events', () => {
+    const { pump, vars } = setup(`
+      [set_variables]
+        name=camp_event
+        [value]
+          name=camp_reached
+          [set_variable]
+            name=reached
+            value=yes
+          [/set_variable]
+        [/value]
+      [/set_variables]
+      [insert_tag]
+        name=event
+        variable=camp_event
+      [/insert_tag]
+      [insert_tag]
+        name=set_variable
+        variable=nothing_here
+      [/insert_tag]`);
+    pump.fire('camp_reached');
+    expect(vars.get('reached')).toBe(true);
+  });
+});
+
+describe('[random_placement] (random_placement.lua)', () => {
+  const run = (body: string) => {
+    const board = new GameBoard(content.map(['Gg, Gg, Gg, Gg, Gg', 'Gg, Gg, Gg, Gg, Gg', 'Gg, Gg, Gg, Gg, Gg', 'Gg, Gg, Gg, Gg, Gg']));
+    const manager = new EventManager();
+    manager.addFromWml(parseWml(`[event]\nname=probe\n${body}\n[/event]`).child('event')!);
+    const pump = new EventPump(manager, {
+      board,
+      variables: new VariableStore(),
+      resolveType: (id) => content.unitType(id),
+      rng: new RngDeterministic(new MtRng(7)),
+    });
+    pump.ctx.variables.set('spot', 'kept');
+    pump.fire('probe');
+    return pump.ctx.variables;
+  };
+  const body = (numItems: string, distance: number) => `
+    [random_placement]
+      num_items=${numItems}
+      variable=spot
+      min_distance=${distance}
+      allow_less=yes
+      [command]
+        [set_variables]
+          name=placed
+          mode=append
+          [value]
+            x=$spot.x
+            y=$spot.y
+            n=$spot.n
+          [/value]
+        [/set_variables]
+      [/command]
+    [/random_placement]`;
+  const placed = (vars: VariableStore) =>
+    Array.from({ length: vars.arrayLength('placed') }, (_, i) => [vars.getNumber(`placed[${i}].x`), vars.getNumber(`placed[${i}].y`)]);
+
+  it('places distinct hexes, numbers them, and restores the variable', () => {
+    const vars = run(body('4', 0));
+    const spots = placed(vars);
+    expect(spots).toHaveLength(4);
+    expect(new Set(spots.map((s) => s.join(','))).size).toBe(4);
+    expect(vars.getNumber('placed[3].n')).toBe(4);
+    expect(vars.get('spot')).toBe('kept');
+  });
+
+  it('min_distance keeps items apart; allow_less stops quietly when space runs out', () => {
+    const spots = placed(run(body('(size)', 2)));
+    expect(spots.length).toBeGreaterThan(0);
+    expect(spots.length).toBeLessThan(20);
+    for (const [ax, ay] of spots) {
+      for (const [bx, by] of spots) {
+        if (ax === bx && ay === by) continue;
+        expect(distanceBetween(Location.fromWml(ax!, ay!), Location.fromWml(bx!, by!))).toBeGreaterThan(2);
+      }
+    }
   });
 });

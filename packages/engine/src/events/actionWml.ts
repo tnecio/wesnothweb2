@@ -92,6 +92,7 @@ import { conditionalPassed } from './conditionalWml.js';
 import { findUnits, locationMatchesFilter, unitMatchesFilter } from './filter.js';
 import { actionLiftFog, actionPlaceShroud, actionRemoveShroud, actionResetFog } from './shroudWml.js';
 import {
+  actionCancelAction,
   actionHideUnit,
   actionModifyTurns,
   actionPutToRecallList,
@@ -132,26 +133,41 @@ import { ShroudClearer } from '../actions/vision.js';
 const RAW_CONFIG_TAGS = new Set(['event']);
 
 export function* runActionFlow(body: WmlConfig, ctx: EventContext): Flow {
-  for (const { tag, config } of body.allChildren()) {
-    if (tag.startsWith('filter')) continue;
-    const handler = ctx.registry.get(tag);
-    if (!handler) {
-      ctx.log('warn', `[${tag}] not supported (skipped)`);
-      continue;
+  for (const child of body.allChildren()) {
+    // `[insert_tag]` is resolved when the iteration reaches it (vconfig's
+    // iterator), so an earlier action in this body can build its variable.
+    const run = child.tag === 'insert_tag' ? ctx.variables.childrenWithInserts(wrapChild(child)) : [child];
+    for (const { tag, config } of run) {
+      yield* runOneAction(tag, config, ctx);
+      if (ctx.exit.type !== 'none') return;
     }
-    try {
-      // A nested [event] is stored as written: its variables are substituted
-      // when it fires, not now (`delayed_variable_substitution` defaults to
-      // yes), so it must not get the usual attribute expansion either.
-      const result = handler(RAW_CONFIG_TAGS.has(tag) ? config : ctx.variables.expandConfig(config), ctx);
-      // A handler that needs to block returns a generator (see
-      // interaction.ts); delegating rather than driving it here is what
-      // lets the suspension travel out to whoever is pumping.
-      if (isFlow(result)) yield* result;
-    } catch (e) {
-      ctx.log('error', `Error occurred inside [${tag}]: ${e instanceof Error ? e.message : String(e)}`);
-    }
-    if (ctx.exit.type !== 'none') break;
+  }
+}
+
+function wrapChild(child: { tag: string; config: WmlConfig }): WmlConfig {
+  const holder = new WmlConfig();
+  holder.addChild(child.tag, child.config);
+  return holder;
+}
+
+function* runOneAction(tag: string, config: WmlConfig, ctx: EventContext): Flow {
+  if (tag.startsWith('filter')) return;
+  const handler = ctx.registry.get(tag);
+  if (!handler) {
+    ctx.log('warn', `[${tag}] not supported (skipped)`);
+    return;
+  }
+  try {
+    // A nested [event] is stored as written: its variables are substituted
+    // when it fires, not now (`delayed_variable_substitution` defaults to
+    // yes), so it must not get the usual attribute expansion either.
+    const result = handler(RAW_CONFIG_TAGS.has(tag) ? config : ctx.variables.expandConfig(config), ctx);
+    // A handler that needs to block returns a generator (see
+    // interaction.ts); delegating rather than driving it here is what
+    // lets the suspension travel out to whoever is pumping.
+    if (isFlow(result)) yield* result;
+  } catch (e) {
+    ctx.log('error', `Error occurred inside [${tag}]: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 
@@ -1770,6 +1786,7 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('modify_turns', actionModifyTurns);
   registry.register('wml_message', actionWmlMessage);
   registry.register('terrain', actionTerrain);
+  registry.register('cancel_action', actionCancelAction);
   registry.register('unstore_unit', actionUnstoreUnit);
   registry.register('kill', actionKill);
   registry.register('modify_unit', actionModifyUnit);

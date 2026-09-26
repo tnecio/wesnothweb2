@@ -444,15 +444,37 @@ export class VariableStore {
     return out;
   }
 
-  /** `wml.parsed`: `expandConfig` applied through every nested child too -- for WML stored now and run later (`[on_undo]`). */
+  /** `wml.parsed`: `expandConfig` applied through every nested child too -- for WML stored now and run later (`[on_undo]`). `[insert_tag]`s are resolved. */
   expandConfigDeep(cfg: WmlConfig): WmlConfig {
     const out = new WmlConfig();
     for (const name of cfg.attributeNames()) {
       const v = cfg.get(name)!;
       out.setAttribute(name, typeof v === 'string' ? this.substitute(v) : v);
     }
-    for (const { tag, config } of cfg.allChildren()) {
+    for (const { tag, config } of this.childrenWithInserts(cfg)) {
       out.addChild(tag, this.expandConfigDeep(config));
+    }
+    return out;
+  }
+
+  /**
+   * `cfg`'s children as `vconfig` iterates them: an `[insert_tag] name=
+   * variable=` stands for one `[name]` per element of the variable (the
+   * element's contents), or one empty `[name]` if it has none
+   * (`as_nonempty_range`).
+   */
+  childrenWithInserts(cfg: WmlConfig): Array<{ tag: string; config: WmlConfig }> {
+    const out: Array<{ tag: string; config: WmlConfig }> = [];
+    for (const child of cfg.allChildren()) {
+      if (child.tag !== 'insert_tag') {
+        out.push(child);
+        continue;
+      }
+      const name = this.substitute(child.config.getString('name', ''));
+      const variable = this.substitute(child.config.getString('variable', ''));
+      const n = this.arrayLength(variable);
+      if (n === 0) out.push({ tag: name, config: new WmlConfig() });
+      for (let i = 0; i < n; i++) out.push({ tag: name, config: this.getConfig(`${variable}[${i}]`) ?? new WmlConfig() });
     }
     return out;
   }

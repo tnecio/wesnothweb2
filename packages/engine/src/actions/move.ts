@@ -22,9 +22,11 @@
  *  - **Fog/shroud** IS handled: the unit steps hex by hex clearing fog
  *    (`handle_fog`), stops when units come into view at a reasonable stop,
  *    and hands `sighted` events to `options.raise` (no event pump here).
- *  - **WML event pump** (`enter_hex`/`exit_hex`/`sighted` events, and
- *    anything they could do to abort the move or move a different unit):
- *    out of scope for this actions-only task, see `IMPLEMENTATION_PLAN.md`.
+ *  - **`exit hex`/`enter hex`** (Phase 18d): `executeMoveFlow` fires them
+ *    around each step through `options.hexEvent`, exactly where
+ *    `try_actual_movement` does, and stops when WML cancels the move
+ *    (`[cancel_action]`) or removes the unit. `sighted`/`moveto`/`capture`
+ *    are still queued through `raise` for the caller to pump.
  *  - **Village capture** on arrival (`unit_mover::post_move`'s village
  *    handling / `actions::get_village`) IS handled here now that
  *    `GameBoard` tracks village ownership (`captureVillage`/`villageOwner`)
@@ -51,6 +53,7 @@ import { enemyZoc, hasSkirmisher } from '../pathfind/pathfind.js';
 import { getVisibleUnit, unitInvisible } from '../pathfind/visibility.js';
 import { ShroudClearer, actorSighted, getSidesNotSeeing, type RaiseEvent } from './vision.js';
 import { getTeleportLocations } from '../pathfind/teleport.js';
+import { runFlow, type Flow } from '../events/interaction.js';
 
 export interface PlanTurnMovementOptions {
   /** Only this team's visible units are considered for ZoC; omit for "see all" (matches `pathfind.ts`'s convention). */
@@ -198,11 +201,22 @@ export interface MoveResult {
   readonly undoBlocked: boolean;
   readonly enteredVillage: boolean;
   readonly facing: Direction;
+  /** WML stopped the move mid-route: `[cancel_action]` in a hex event, or the unit was removed. */
+  readonly wmlInterrupted?: boolean;
 }
+
+/**
+ * Fires `exit hex`/`enter hex` for the moving unit now (`unit_mover::
+ * fire_hex_event`: the mover at `current`, `other` the hex it came from or
+ * goes to), resolving true if WML cancelled the move (`[cancel_action]`).
+ */
+export type HexEventFirer = (name: 'exit hex' | 'enter hex', current: Location, other: Location) => Flow<boolean>;
 
 export interface ExecuteMoveOptions extends PlanTurnMovementOptions {
   /** Receives `sighted` events for the caller to pump; omit to drop them. */
   raise?: RaiseEvent;
+  /** Fires the per-step hex events; omit when no WML listens (nothing is fired). */
+  hexEvent?: HexEventFirer;
 }
 
 /** The facing after stepping `from` -> `to`: the hex direction for a walk, the general direction for a teleport. */
@@ -220,6 +234,11 @@ function directionTo(from: Location, to: Location): Direction {
  * revealed (`uncovered`), village capture and `not_moved` are updated.
  */
 export function executeMove(board: GameBoard, unit: Unit, path: readonly Location[], options: ExecuteMoveOptions = {}): MoveResult {
+  return runFlow(executeMoveFlow(board, unit, path, options));
+}
+
+/** `executeMove`, able to stop mid-route for the hex events' WML (which may block on dialogue). */
+export function* executeMoveFlow(board: GameBoard, unit: Unit, path: readonly Location[], options: ExecuteMoveOptions = {}): Flow<MoveResult> {
   const planned = planTurnMovement(board, unit, path, options);
   const team = board.getTeam(unit.side);
   const raise = options.raise;
@@ -274,13 +293,25 @@ export function executeMove(board: GameBoard, unit: Unit, path: readonly Locatio
   let sighted = false;
   let sightedStop = false;
   let fogChanged = false;
+  // wml_move_aborted_ / wml_removed_unit_: set by the hex events' WML.
+  let wmlAborted = false;
+  let wmlRemoved = false;
+  const hexEvent = options.hexEvent;
+  const fireHex = function* (name: 'exit hex' | 'enter hex', current: Location, other: Location): Flow<void> {
+    if (!hexEvent) return;
+    if (yield* hexEvent(name, current, other)) wmlAborted = true;
+    if (board.unitAt(unit.location) !== unit) wmlRemoved = true;
+  };
   for (let i = 1; i < limit; i++) {
     const from = planned.steps[i - 1]!;
+    if (wmlAborted || wmlRemoved) break;
     if (sighted && isReasonableStop(from)) {
       sightedStop = true;
       break;
     }
     const hex = planned.steps[i]!;
+    yield* fireHex('exit hex', from, hex);
+    if (wmlAborted || wmlRemoved) break;
     // units().move fails onto an occupied hex: passing through an ally leaves the mover where it was.
     if (!board.hasUnitAt(hex)) {
       board.moveUnit(unit.location, hex);
@@ -291,9 +322,34 @@ export function executeMove(board: GameBoard, unit: Unit, path: readonly Locatio
       if (clearer.clearUnit(hex, unit, team, undefined, counts)) fogChanged = true;
       sighted = counts.enemies !== 0 || counts.friends !== 0;
     }
+    // Not checked until the next pass: the unit has entered this hex either way.
+    yield* fireHex('enter hex', hex, from);
     if (isReasonableStop(hex)) pumpSighted();
   }
   pumpSighted();
+
+  if (wmlRemoved) {
+    // WML took the unit off the board mid-move: nothing more happens to it.
+    const walked = planned.steps.slice(0, reached + 1);
+    return {
+      path: walked,
+      movesLeft: unit.movesLeft,
+      stoppedEarly: true,
+      zocStopped: false,
+      ambushed: false,
+      ambusherLocations: [],
+      blocked: false,
+      teleportFailed: false,
+      sightedStop: false,
+      enemiesSighted: counts.enemies,
+      friendsSighted: counts.friends,
+      fogChanged,
+      undoBlocked: true,
+      enteredVillage: false,
+      facing: unit.facing,
+      wmlInterrupted: true,
+    };
+  }
 
   const finalHex = unit.location;
   const pathTaken = planned.steps.slice(0, reached + 1);
@@ -350,5 +406,6 @@ export function executeMove(board: GameBoard, unit: Unit, path: readonly Locatio
     undoBlocked: ambushed || blocked || teleportFailed || fogChanged,
     enteredVillage,
     facing: unit.facing,
+    wmlInterrupted: wmlAborted,
   };
 }

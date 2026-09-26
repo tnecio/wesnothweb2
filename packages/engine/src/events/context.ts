@@ -184,6 +184,8 @@ export interface EventContext {
    * twice, and `[found_item]` asks whether one was.
    */
   usedItems: Set<string>;
+  /** `[cancel_action]` (`wml_event_pump::set_action_canceled`): the move firing this event stops at this hex. */
+  actionCanceled: boolean;
   /**
    * `tod_manager::num_turns_`: the scenario's turn limit, `-1` for none.
    * `[modify_turns]` changes it, `[store_turns]` reads it, and the game

@@ -174,13 +174,16 @@ for (const file of scenarioFiles) {
   walkScenario(WmlConfig.fromJSON(snap.scenarioConfigJson), file.replace(/\.json$/, ''));
 }
 
+/** Not actions: resolved while an action body is iterated (`runActionFlow`, as upstream's vconfig iterator). */
+const RESOLVED_BY_ITERATION = new Set(['insert_tag']);
+
 type Status = 'implemented' | 'presentation no-op' | 'extension point' | 'campaign Lua' | 'MISSING';
 function actionStatus(tag: string): Status {
   if (EXTENSION.has(tag)) return 'extension point';
   if (NOOP.has(tag)) return 'presentation no-op';
   // A campaign's Lua may wrap a core tag (Two Brothers redefines [kill]);
   // what matters is whether the port has a handler at all.
-  if (registry.has(tag)) return 'implemented';
+  if (registry.has(tag) || RESOLVED_BY_ITERATION.has(tag)) return 'implemented';
   if (luaTags.has(tag)) return 'campaign Lua';
   return 'MISSING';
 }

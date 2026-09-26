@@ -275,3 +275,8 @@ export function actionTerrain(raw: WmlConfig, ctx: EventContext): void {
   for (const { tag, config } of cfg.allChildren()) filter.addChild(tag, config);
   for (const loc of findLocations(ctx.board, filter)) ctx.board.changeTerrain(loc, code, mode, replaceIfFailed);
 }
+
+/** `[cancel_action]`: stops the move whose `enter hex`/`exit hex` event is running (`wesnoth.cancel_action`). */
+export function actionCancelAction(_cfg: WmlConfig, ctx: EventContext): void {
+  ctx.actionCanceled = true;
+}
