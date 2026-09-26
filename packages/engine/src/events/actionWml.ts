@@ -102,6 +102,7 @@ import {
   actionStoreTurns,
   actionStoreUnitType,
   actionStoreVillages,
+  actionTerrain,
   actionUnhideUnit,
   actionUnitWorth,
   actionWmlMessage,
@@ -1287,6 +1288,92 @@ function actionRecall(cfg: WmlConfig, ctx: EventContext): void {
   ctx.log('warn', '[recall]: no recall-list unit on any side matched the filter');
 }
 
+// --- [role] ---
+
+/**
+ * `data/lua/wml/role.lua`: gives `role=` to the first unit the rest of the
+ * tag matches -- on the map first, then on the recall lists, trying each
+ * `type=` in the order given -- and `[auto_recall]` recalls a recall-list
+ * match. `reassign=no` keeps an existing holder of the role. When no unit
+ * matches, the `[else]` bodies run.
+ */
+function* actionRole(cfg: WmlConfig, ctx: EventContext): Flow {
+  const role = cfg.getString('role', '');
+  if (role === '') {
+    ctx.log('error', 'missing role= in [role]');
+    return;
+  }
+  const types = cfg.getString('type', '').split(',').map((t) => t.trim()).filter((t) => t !== '');
+  const filter = new WmlConfig();
+  for (const name of cfg.attributeNames()) if (name !== 'role' && name !== 'type') filter.setAttribute(name, cfg.getString(name));
+  for (const { tag, config } of cfg.allChildren()) if (tag !== 'auto_recall' && tag !== 'else') filter.addChild(tag, config);
+
+  let searchMap = true;
+  let searchRecall = true;
+  const searchRecallList = cfg.getString('search_recall_list', '');
+  if (searchRecallList === 'only') searchMap = false;
+  else if (searchRecallList !== '') searchRecall = cfg.getBoolean('search_recall_list');
+  const reassign = cfg.getBoolean('reassign', true);
+
+  // The [recall] an [auto_recall] asks for: only its recall-specific keys (role.lua keeps this in sync with C++).
+  const autoRecall = cfg.child('auto_recall');
+  const recallFor = (unit: Unit) => {
+    if (!autoRecall) return;
+    const recall = new WmlConfig();
+    for (const key of ['x', 'y', 'location_id', 'show', 'fire_event', 'check_passability', 'facing']) {
+      if (autoRecall.hasAttribute(key)) recall.setAttribute(key, autoRecall.getString(key));
+    }
+    recall.setAttribute('id', unit.id);
+    actionRecall(recall, ctx);
+  };
+  const onRecall = (f: WmlConfig) => {
+    for (const team of ctx.board.teams()) {
+      const u = ctx.board.recallList(team.side).find((r) => unitMatchesFilter(r, f, ctx.board));
+      if (u) return u;
+    }
+    return undefined;
+  };
+  const byRole = new WmlConfig();
+  byRole.setAttribute('role', role);
+
+  if (!reassign) {
+    if (searchMap && findUnits(ctx.board, byRole)[0]) return;
+    if (autoRecall && searchRecall) {
+      const u = onRecall(byRole);
+      if (u) {
+        recallFor(u);
+        return;
+      }
+    }
+  }
+  const attempts = types.length > 0 ? types : [null];
+  if (searchMap) {
+    for (const type of attempts) {
+      if (type !== null) filter.setAttribute('type', type);
+      const u = findUnits(ctx.board, filter)[0];
+      if (u) {
+        u.role = role;
+        return;
+      }
+    }
+  }
+  if (searchRecall) {
+    for (const type of attempts) {
+      if (type !== null) filter.setAttribute('type', type);
+      const u = onRecall(filter);
+      if (u) {
+        u.role = role;
+        recallFor(u);
+        return;
+      }
+    }
+  }
+  for (const elseBody of cfg.children('else')) {
+    yield* runActionFlow(elseBody, ctx);
+    if (ctx.exit.type !== 'none') return;
+  }
+}
+
 // --- [move_unit] ---
 
 /**
@@ -1682,6 +1769,7 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('put_to_recall_list', actionPutToRecallList);
   registry.register('modify_turns', actionModifyTurns);
   registry.register('wml_message', actionWmlMessage);
+  registry.register('terrain', actionTerrain);
   registry.register('unstore_unit', actionUnstoreUnit);
   registry.register('kill', actionKill);
   registry.register('modify_unit', actionModifyUnit);
@@ -1698,6 +1786,7 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('transform_unit', actionTransformUnit);
   registry.register('capture_village', actionCaptureVillage);
   registry.register('recall', actionRecall);
+  registry.register('role', actionRole);
   registry.register('move_unit', actionMoveUnit);
   registry.register('teleport', actionTeleport);
   registry.register('tunnel', actionTunnel);

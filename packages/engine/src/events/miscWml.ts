@@ -19,6 +19,7 @@ import { applyModifier } from '../model/UnitType.js';
 import { BASE_INCOME } from '../actions/carryover.js';
 import { findLocations, findUnits } from './filter.js';
 import { findSides } from './sideFilter.js';
+import { parseTerrainCode, type MergeMode } from '../model/Terrain.js';
 
 /** The tag's config with variables substituted throughout, filter children included (`wml.parsed`). */
 const parsed = (cfg: WmlConfig, ctx: EventContext) => ctx.variables.expandConfigDeep(cfg);
@@ -242,4 +243,35 @@ export function actionWmlMessage(raw: WmlConfig, ctx: EventContext): void {
   const logger = cfg.getString('logger', 'info');
   const level = logger.startsWith('err') ? 'error' : logger.startsWith('warn') ? 'warn' : logger === 'debug' ? 'debug' : 'info';
   ctx.log(level, cfg.getString('message', ''));
+}
+
+/**
+ * `[terrain]` (`wml-tags.lua`): sets `terrain=` on every hex the rest of the
+ * tag matches as a location filter, merged per `layer=` (both/base/overlay;
+ * `^` with `layer=overlay` removes the overlay) and `replace_if_failed=`,
+ * through `game_board::change_terrain`.
+ */
+export function actionTerrain(raw: WmlConfig, ctx: EventContext): void {
+  const cfg = parsed(raw, ctx);
+  const terrain = cfg.getString('terrain', '');
+  if (terrain === '') {
+    ctx.log('error', '[terrain] missing required terrain= attribute');
+    return;
+  }
+  const layer = cfg.getString('layer', 'both');
+  if (layer !== 'both' && layer !== 'base' && layer !== 'overlay') {
+    ctx.log('error', '[terrain] invalid layer=');
+    return;
+  }
+  const code = parseTerrainCode(terrain);
+  if (!(layer === 'overlay' && terrain === '^') && !ctx.board.map.isKnownTerrain(code)) {
+    ctx.log('error', `[terrain] invalid terrain=${terrain}`);
+    return;
+  }
+  const mode = layer.toUpperCase() as MergeMode;
+  const replaceIfFailed = cfg.getBoolean('replace_if_failed', false);
+  const filter = new WmlConfig();
+  for (const name of cfg.attributeNames()) if (name !== 'terrain') filter.setAttribute(name, cfg.getString(name));
+  for (const { tag, config } of cfg.allChildren()) filter.addChild(tag, config);
+  for (const loc of findLocations(ctx.board, filter)) ctx.board.changeTerrain(loc, code, mode, replaceIfFailed);
 }

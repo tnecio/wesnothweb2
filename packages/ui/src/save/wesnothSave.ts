@@ -273,6 +273,7 @@ export function fromWesnothSave(cfg: WmlConfig): ImportedWesnothSave {
       events: snapshot.children('event').map((e) => e.toJSON()),
       nextUnitId: snapshot.getNumber('next_underlying_unit_id', 0),
       turnLimit: snapshot.getNumber('turns', -1),
+      mapData: snapshot.getString('map_data', '') || undefined,
       usedItems: (snapshot.child('used_items')?.attributeNames() ?? []).filter((id) => snapshot.child('used_items')!.getBoolean(id, false)),
       tunnels: snapshot.children('tunnel').map((t) => t.toJSON()),
       nextTeleportGroupId: snapshot.getNumber('next_teleport_group_id', 0),
@@ -547,7 +548,7 @@ export function toWesnothSave(
   snapCfg.removeChildren('story');
   snapCfg.setAttribute('id', save.scenarioId ?? snapshot.scenario.id);
   snapCfg.setAttribute('name', save.scenarioName ?? snapshot.scenario.name);
-  snapCfg.setAttribute('map_data', snapshot.map.data);
+  snapCfg.setAttribute('map_data', save.mapData ?? snapshot.map.data);
   snapCfg.setAttribute('turn_at', save.turnNumber);
   // `playing_team` is a 0-based index; `next_player_number` is the 1-based
   // side that plays *after* the current one, wrapping round the side list.

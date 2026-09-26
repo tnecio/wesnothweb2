@@ -14,7 +14,7 @@ import { GameMap } from './Map.js';
 import { Team } from './Team.js';
 import { Unit } from './Unit.js';
 import { UnitType } from './UnitType.js';
-import { TerrainTypeData } from './Terrain.js';
+import { NONE_TERRAIN, TerrainTypeData, type MergeMode, type TerrainCode } from './Terrain.js';
 import type { WmlConfig } from '../wml/config.js';
 
 export class GameBoard {
@@ -136,6 +136,45 @@ export class GameBoard {
   /** The owning side of `loc`, or `undefined` if it's not a village or is unowned. Mirrors `team::owns_village`/the reverse lookup over `team::villages_`. */
   villageOwner(loc: Location): number | undefined {
     return this.villageOwners.get(loc.key());
+  }
+
+  /**
+   * Bumped by every `changeTerrain` -- lets a view know to redraw the map
+   * (upstream's display invalidates the changed hexes).
+   */
+  terrainVersion = 0;
+
+  /**
+   * `game_board::change_terrain`: merges `terrain` in per `mode`
+   * (`gamemap::set_terrain`); a hex that stops being a village is lost by
+   * its owner, and one that becomes a village is not captured by a unit
+   * standing on it. Returns false if the merge fails.
+   */
+  changeTerrain(loc: Location, terrain: TerrainCode, mode: MergeMode = 'BOTH', replaceIfFailed = false): boolean {
+    const { newTerrain, villageChange } = this.map.setTerrain(loc, terrain, mode, replaceIfFailed);
+    if (newTerrain.equals(NONE_TERRAIN)) return false;
+    if (villageChange === 'former_village') this.villageOwners.delete(loc.key());
+    this.terrainVersion++;
+    return true;
+  }
+
+  /**
+   * Restores a saved `map_data=` over the current map, hex by hex through
+   * `changeTerrain` (so village bookkeeping follows). Maps of another size
+   * are refused.
+   */
+  applyMapData(data: string): boolean {
+    const saved = this.map.parseSibling(data);
+    if (saved.w() !== this.map.w() || saved.h() !== this.map.h()) return false;
+    const b = this.map.borderSize;
+    for (let x = -b; x < this.map.w() + b; x++) {
+      for (let y = -b; y < this.map.h() + b; y++) {
+        const loc = new Location(x, y);
+        const code = saved.getTerrain(loc);
+        if (!code.equals(this.map.getTerrain(loc))) this.changeTerrain(loc, code);
+      }
+    }
+    return true;
   }
 
   /**

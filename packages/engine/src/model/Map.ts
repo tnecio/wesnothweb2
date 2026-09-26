@@ -17,7 +17,7 @@
  */
 
 import { Location } from './Location.js';
-import { NONE_TERRAIN, TerrainCode, TerrainTypeData, parseTerrainCode, type MergeMode } from './Terrain.js';
+import { NONE_TERRAIN, TerrainCode, TerrainTypeData, parseTerrainCode, writeTerrainCode, type MergeMode } from './Terrain.js';
 import type { WmlConfig } from '../wml/config.js';
 
 export type VillageChange = 'unchanged' | 'new_village' | 'former_village';
@@ -188,6 +188,30 @@ export class GameMap {
   }
 
   /**
+   * `gamemap::write` (`t_translation::write_game_map`): the map as
+   * `map_data=` text, border included -- rows of `, `-separated codes, a
+   * hex's special-location names before its code, and a final newline.
+   * `fromMapString(map.write())` gives the same map back.
+   */
+  write(): string {
+    const namesAt = new Map<string, string[]>();
+    for (const [name, loc] of this.startingPositions) {
+      const key = `${loc.x + this.borderSize},${loc.y + this.borderSize}`;
+      namesAt.set(key, [...(namesAt.get(key) ?? []), name]);
+    }
+    const rows: string[] = [];
+    for (let y = 0; y < this.totalHeightVal; y++) {
+      const row: string[] = [];
+      for (let x = 0; x < this.totalWidthVal; x++) {
+        const names = namesAt.get(`${x},${y}`) ?? [];
+        row.push([...names, writeTerrainCode(this.tiles[x * this.totalHeightVal + y]!)].join(' '));
+      }
+      rows.push(row.join(', '));
+    }
+    return rows.join('\n') + '\n';
+  }
+
+  /**
    * Builds a GameMap from a scenario config's `map_data=` attribute. Does
    * NOT resolve `map_file=` (see module doc comment) -- callers loading a
    * real scenario must have already inlined the referenced file's text into
@@ -272,6 +296,16 @@ export class GameMap {
 
     this.setTerrainRaw(loc, newTerrain);
     return { newTerrain, villageChange };
+  }
+
+  /** Parses `map_data=` text with this map's terrain types and border (for comparing or restoring a saved map). */
+  parseSibling(data: string): GameMap {
+    return GameMap.fromMapString(data, this.terrainData, this.borderSize);
+  }
+
+  /** `wesnoth.terrain_types[code]` exists: a terrain type this game knows. */
+  isKnownTerrain(code: TerrainCode): boolean {
+    return this.terrainData.isKnown(code);
   }
 
   isVillage(loc: Location): boolean {

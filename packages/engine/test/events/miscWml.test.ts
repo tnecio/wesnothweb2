@@ -164,3 +164,80 @@ describe('[modify_turns] / [store_turns]', () => {
     expect(r.turn).toBe(2);
   });
 });
+
+describe('[role] (role.lua)', () => {
+  it('tries type= in order on the map; reassign=no keeps an existing holder', () => {
+    const { corpse, spearman } = setup(`
+      [role]
+        role=hero
+        type=Walking Corpse,Spearman
+      [/role]
+      [role]
+        role=hero
+        type=Spearman
+        reassign=no
+      [/role]`);
+    expect(corpse.role).toBe('hero');
+    expect(spearman.role).not.toBe('hero');
+  });
+
+  it('falls back to the recall list, and runs [else] when nothing matches', () => {
+    const { board, pump, vars } = setup(
+      `
+      [role]
+        role=scout
+        type=Cavalryman
+      [/role]
+      [role]
+        role=king
+        type=Lich
+        [else]
+          [set_variable]
+            name=no_king
+            value=yes
+          [/set_variable]
+        [/else]
+      [/role]`,
+      false,
+    );
+    const cav = Unit.create(content.unitType('Cavalryman'), 1, Location.NULL, { id: 'cav' });
+    board.addToRecallList(1, cav);
+    pump.fire('probe');
+    expect(cav.role).toBe('scout');
+    expect(vars.get('no_king')).toBe(true);
+  });
+});
+
+describe('[terrain] (game_board::change_terrain)', () => {
+  it('replaces the matching hexes; a village that stops being one is lost by its owner', () => {
+    const { board } = setup(`
+      [terrain]
+        x=3
+        y=1
+        terrain=Gg
+      [/terrain]
+      [terrain]
+        x=1
+        y=3
+        terrain=^Vh
+        layer=overlay
+      [/terrain]`);
+    expect(board.map.getTerrain(Location.fromWml(3, 1)).toString()).toBe('Gg');
+    expect(board.villageOwner(Location.fromWml(3, 1))).toBeUndefined();
+    expect(board.map.getTerrain(Location.fromWml(1, 3)).toString()).toBe('Gg^Vh');
+    expect(board.map.villages.some((v) => v.equals(Location.fromWml(1, 3)))).toBe(true);
+    expect(board.terrainVersion).toBe(2);
+  });
+
+  it('an unknown terrain is an error and changes nothing', () => {
+    const { board } = setup('[terrain]\nx=1\ny=1\nterrain=Zz\n[/terrain]');
+    expect(board.terrainVersion).toBe(0);
+  });
+
+  it('GameMap.write round-trips real map data, starting positions included', () => {
+    const { board } = setup('');
+    const again = board.map.parseSibling(board.map.write());
+    expect(again.write()).toBe(board.map.write());
+    expect(again.startingPosition(2).equals(Location.fromWml(3, 2))).toBe(true);
+  });
+});

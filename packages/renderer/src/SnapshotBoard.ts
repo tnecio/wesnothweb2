@@ -745,16 +745,46 @@ export class SnapshotBoard {
     }
   }
 
+  /** The terrain as drawn: the snapshot's, until `updateTerrain` replaces it. */
+  private terrain: readonly SnapshotTerrainHex[] = [];
+  /** The last `updateFogShroud` input, re-applied after a terrain rebuild. */
+  private lastFogShroud: readonly FogShroudHex[] = [];
+  private terrainUpdate: Promise<void> = Promise.resolve();
+
+  /**
+   * Redraws the map after WML changed it (`[terrain]`, `[terrain_mask]`):
+   * `hexes` is the whole on-board terrain as it now is. The layout is
+   * recomputed in full -- terrain_graphics rules look at neighbours, and
+   * changes are rare -- and the fog/shroud overlay re-applied on top.
+   */
+  updateTerrain(hexes: readonly SnapshotTerrainHex[]): Promise<void> {
+    this.terrainUpdate = this.terrainUpdate.then(async () => {
+      this.terrain = hexes;
+      for (const layer of [this.terrainLayer, this.terrainForegroundLayer]) {
+        for (const child of layer.removeChildren()) child.destroy({ children: true });
+      }
+      this.terrainHexContainers.clear();
+      await this.drawTerrain();
+      this.updateFogShroud(this.lastFogShroud);
+    });
+    return this.terrainUpdate;
+  }
+
   private async renderTerrain(): Promise<void> {
     this.installHitArea();
+    this.terrain = this.snapshot.terrain;
+    await this.drawTerrain();
+  }
+
+  private async drawTerrain(): Promise<void> {
     const { width, height } = this.snapshot.map;
     // Phase 28a P3: measured by apps/web/scripts/measure-load.mjs.
     performance.mark('board:terrain-layout-start');
     const layout =
       this.terrainGraphicsRules && this.terrainGraphicsRules.length > 0
-        ? layoutTerrain(this.terrainGraphicsRules, this.snapshot.terrain, width, height)
+        ? layoutTerrain(this.terrainGraphicsRules, this.terrain, width, height)
         : this.terrainGraphicsRulesUrl
-          ? await computeTerrainLayout(this.terrainGraphicsRulesUrl, this.snapshot.terrain, width, height)
+          ? await computeTerrainLayout(this.terrainGraphicsRulesUrl, this.terrain, width, height)
           : null;
     performance.measure('board:terrain-layout', 'board:terrain-layout-start');
     if (!layout) {
@@ -766,7 +796,7 @@ export class SnapshotBoard {
 
   /** The pre-Phase-9 flat-coloured placeholder -- see `SnapshotBoardOptions.terrainGraphicsRules`'s own doc comment on when this still applies. */
   private renderTerrainFlat(): void {
-    for (const hex of this.snapshot.terrain) {
+    for (const hex of this.terrain) {
       const { x: cx, y: cy } = hexToPixel(toHexCoord(hex.x, hex.y));
       const g = new PIXI.Graphics();
       g.poly(hexCorners(cx, cy).flatMap((p) => [p.x, p.y]));
@@ -837,6 +867,7 @@ export class SnapshotBoard {
    * overlay and restore full terrain visibility.
    */
   updateFogShroud(hexes: readonly FogShroudHex[]): void {
+    this.lastFogShroud = hexes;
     if (hexes.length === 0) {
       this.fogShroudLayer.removeChildren();
       for (const c of this.terrainHexContainers.values()) {

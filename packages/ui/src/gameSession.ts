@@ -184,6 +184,11 @@ export interface HexPoint {
   y: number;
 }
 
+/** One hex's terrain code, for redrawing a map WML changed -- see `GameSession.terrainHexes`. */
+export interface TerrainHexInfo extends HexPoint {
+  code: string;
+}
+
 /** One currently-owned village, for the board's live ownership-flag rendering -- see `GameSession.villageOwnership`. */
 export interface VillageOwnerInfo extends HexPoint {
   side: number;
@@ -1031,6 +1036,8 @@ export interface SaveGameData {
   events?: WmlConfigJson[];
   /** Phase 18c: the unit id counter (upstream's `next_underlying_unit_id`). Absent: derived from the highest id in the save. */
   nextUnitId?: number;
+  /** Phase 18d: the map as WML left it (`[terrain]`, `[terrain_mask]`), as `map_data=` text. Absent: the scenario's own map. */
+  mapData?: string;
   /** Phase 18d: the turn limit as `[modify_turns]` left it (`-1`: none). Absent: the scenario's `turns=`. */
   turnLimit?: number;
   /** Phase 18c: `[set_menu_item]`s in effect (lost on reload before). */
@@ -2161,6 +2168,26 @@ export class GameSession {
       if (this.scenarioResult) return;
     }
     this.setActiveSide(order.next);
+  }
+
+  private terrainHexesCache: { version: number; hexes: TerrainHexInfo[] } | null = null;
+
+  /**
+   * The on-board terrain for the board view once WML has changed the map
+   * (`[terrain]`, `[terrain_mask]`, a save that carried a changed map);
+   * `null` while it is still the scenario's. A new array only after a change.
+   */
+  get terrainHexes(): TerrainHexInfo[] | null {
+    const version = this.board.terrainVersion;
+    if (version === 0) return null;
+    if (this.terrainHexesCache?.version !== version) {
+      const hexes: TerrainHexInfo[] = [];
+      for (let x = 0; x < this.board.map.w(); x++) {
+        for (let y = 0; y < this.board.map.h(); y++) hexes.push({ x, y, code: this.board.map.getTerrain(new Location(x, y)).toString() });
+      }
+      this.terrainHexesCache = { version, hexes };
+    }
+    return this.terrainHexesCache.hexes;
   }
 
   /** The scenario's turn limit (`turns=`, changed by `[modify_turns]`); `null` for none. */
@@ -3475,6 +3502,7 @@ export class GameSession {
       usedItems: [...this.eventPump.ctx.usedItems],
       nextUnitId: this.board.nextUnitId,
       turnLimit: this.eventPump.ctx.turnLimit,
+      mapData: this.board.terrainVersion > 0 ? this.board.map.write() : undefined,
       events: this.eventPump.manager.activeConfigs().map((c) => c.toJSON()),
       menuItems: [...this.eventPump.ctx.menuItems.values()].map((m) => ({ id: m.id, description: m.description, command: m.command.toJSON() })),
       objectives: [...this.eventPump.ctx.objectivesBySide].map(([side, objectives]) => ({ side, objectives })),
@@ -3507,6 +3535,10 @@ export class GameSession {
    * static factory below (a fresh session, pre-loaded).
    */
   loadSaveData(data: SaveGameData): void {
+    // Before units and village ownership: a changed map decides where the villages are.
+    if (data.mapData !== undefined && !this.board.applyMapData(data.mapData)) {
+      this.log.unshift('This save\'s map does not fit the scenario\'s; the scenario map is kept.');
+    }
     if (data.variables) this.eventPump.ctx.variables.replaceAll(WmlConfig.fromJSON(data.variables));
     this.eventPump.ctx.choices.splice(0, this.eventPump.ctx.choices.length, ...(data.choices ?? []).map((c) => ({ ...c })));
     for (const unit of [...this.board.allUnits()]) {

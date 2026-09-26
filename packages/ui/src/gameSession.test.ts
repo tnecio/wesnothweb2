@@ -2162,3 +2162,28 @@ describe('Phase 18d: the turn limit (play_controller::check_time_over)', () => {
     expect(session.scenarioResult).toBe('defeat');
   });
 });
+
+describe('Phase 18d: a map changed by WML', () => {
+  it("GameMap.write reproduces the real scenario's map_data exactly", () => {
+    const snapshot = loadSnapshot();
+    const session = new GameSession(snapshot);
+    expect(session.board.map.write().trim()).toBe(snapshot.map.data.trim());
+    expect(session.terrainHexes).toBeNull();
+  });
+
+  it('survives a save and a load, villages included', () => {
+    const snapshot = loadSnapshot();
+    const session = new GameSession(snapshot);
+    const village = session.board.map.villages[0]!;
+    const plain = new Location(0, 0);
+    session.board.changeTerrain(village, session.board.map.getTerrain(plain));
+    expect(session.terrainHexes).not.toBeNull();
+    const data = session.toSaveData();
+    expect(data.mapData).toBeDefined();
+
+    const loaded = GameSession.fromSaveData(snapshot, data);
+    expect(loaded.board.map.isVillage(village)).toBe(false);
+    expect(loaded.board.map.villages).toHaveLength(session.board.map.villages.length);
+    expect(loaded.terrainHexes?.find((h) => h.x === village.x && h.y === village.y)?.code).toBe(session.board.map.getTerrain(plain).toString());
+  });
+});

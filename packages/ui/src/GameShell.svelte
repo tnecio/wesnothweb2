@@ -274,6 +274,7 @@
   let economyInfo = $state<EconomyInfo>(session.economyInfo);
   let villageOwners = $state<VillageOwnerInfo[]>(session.villageOwnership);
   let hexVisibility = $state<HexVisibilityPoint[]>(session.hexVisibility);
+  let terrainHexes = $state(session.terrainHexes);
   let timeOfDay = $state<TimeOfDayEntry>(session.currentTimeOfDay);
   let statusMessage = $state('Click one of your units to select it.');
   /** Phase 14: the infobox's "terrain info for the hovered hex" -- kept in sync by `GameBoardView`'s `onHexHoverChange`. */
@@ -349,6 +350,7 @@
     economyInfo = session.economyInfo;
     villageOwners = session.villageOwnership;
     hexVisibility = session.hexVisibility;
+    terrainHexes = session.terrainHexes;
     timeOfDay = session.currentTimeOfDay;
 
     if (session.scenarioResult) {
@@ -2343,6 +2345,7 @@
         {reachable}
         {attackTargets}
         {villageOwners}
+        terrain={terrainHexes}
         {hexVisibility}
         {timeOfDay}
         onHexClick={handleHexClick}

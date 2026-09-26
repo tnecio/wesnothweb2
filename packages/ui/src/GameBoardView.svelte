@@ -57,6 +57,7 @@
     attackTargets = [],
     villageOwners = [],
     hexVisibility = [],
+    terrain = null,
     timeOfDay = undefined,
     onHexClick,
     onHexRightClick,
@@ -84,6 +85,8 @@
     villageOwners?: readonly VillageOwnerPoint[];
     /** Per-hex shroud/fog state for the board's fog overlay -- see `GameSession.hexVisibility`. Empty when the scenario uses neither. */
     hexVisibility?: readonly FogShroudHex[];
+    /** The whole on-board terrain once WML changed the map (`GameSession.terrainHexes`); `null` while it is the scenario's. */
+    terrain?: readonly { x: number; y: number; code: string }[] | null;
     /** The current global ToD's red=/green=/blue= colour shift -- see `SnapshotBoard.updateTimeOfDayTint`. Omit for no tint (a scenario with no [time] schedule). */
     timeOfDay?: Pick<TimeOfDayEntry, 'red' | 'green' | 'blue'>;
     onHexClick: (x: number, y: number) => void;
@@ -400,6 +403,10 @@
 
   $effect(() => {
     board?.updateFogShroud(hexVisibility);
+  });
+
+  $effect(() => {
+    if (terrain) void board?.updateTerrain(terrain);
   });
 
   $effect(() => {
