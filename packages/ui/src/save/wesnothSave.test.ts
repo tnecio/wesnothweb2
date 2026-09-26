@@ -88,6 +88,16 @@ describe('fromWesnothSave (importing a real 1.16.9 Wesnoth save)', () => {
     expect(withTraits[0]!.modifications!.some((m) => m.kind === 'trait')).toBe(true);
   });
 
+  it('reads `not_living` as the three statuses it stands for (upstream\'s legacy alias), and writes it back', () => {
+    const undead = imported.save.units.find((u) => u.statuses?.includes('unplagueable'));
+    expect(undead).toBeDefined();
+    expect(undead!.statuses).not.toContain('not_living');
+    expect(undead!.statuses).toEqual(expect.arrayContaining(['undrainable', 'unpoisonable', 'unplagueable']));
+    const again = toWesnothSave(imported.save, loadSnapshot(), DEAD_WATER).child('snapshot')!;
+    const statuses = again.children('side').flatMap((s) => s.children('unit')).map((u) => u.child('status'));
+    expect(statuses.some((st) => st?.getBoolean('not_living', false))).toBe(true);
+  });
+
   it('rejects a start-of-scenario save, which has no [snapshot] to resume from', () => {
     const startOnly = new WmlConfig();
     startOnly.setAttribute('campaign', 'Dead_Water');

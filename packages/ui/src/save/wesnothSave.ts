@@ -98,12 +98,20 @@ function campaignIdFromWesnoth(wesnothId: string): string | undefined {
 
 // ── import ──────────────────────────────────────────────────────────────
 
+const NOT_LIVING = ['undrainable', 'unpoisonable', 'unplagueable'] as const;
+
 /** Reads a `[status]` child as the flag names it sets (`poisoned=yes` -> `poisoned`). */
 function statusesFrom(unitCfg: WmlConfig): string[] | undefined {
   const status = unitCfg.child('status');
   if (!status) return undefined;
-  const flags = status.attributeNames().filter((name) => status.getBoolean(name, false));
-  return flags.length > 0 ? flags : undefined;
+  const flags = new Set<string>();
+  for (const name of status.attributeNames()) {
+    if (!status.getBoolean(name, false)) continue;
+    // Upstream's legacy alias (`unit::set_state`): stands for these three, never kept itself.
+    if (name === 'not_living') for (const s of NOT_LIVING) flags.add(s);
+    else flags.add(name);
+  }
+  return flags.size > 0 ? [...flags] : undefined;
 }
 
 function modificationsFrom(unitCfg: WmlConfig): SavedUnit['modifications'] {
@@ -332,6 +340,8 @@ function unitToWml(u: SavedUnit, onBoard: boolean): WmlConfig {
     cfg.removeChildren('status');
     const status = cfg.addChild('status');
     for (const flag of u.statuses) status.setAttribute(flag, true);
+    // `unit::get_states` writes the alias back whenever all three are set.
+    if (NOT_LIVING.every((s) => u.statuses!.includes(s))) status.setAttribute('not_living', true);
   }
   if (u.modifications && u.modifications.length > 0) {
     cfg.removeChildren('modifications');
@@ -413,6 +423,19 @@ function replayStartToWml(start: SaveGameData, scenarioCfg: WmlConfig, snapshot:
     const side = sideCfg.getNumber('side', 0);
     const team = start.teams.find((t) => t.side === side);
     if (team) sideCfg.setAttribute('gold', team.gold);
+    // As upstream writes a built side: its units -- the leader included --
+    // are explicit [unit]s at their hexes, and `no_leader=yes` so the side's
+    // own `type=` is not turned into a second leader. (A replay loaded from
+    // a save does not create the leader from `type=` at all: without this
+    // the real game had no leader to recruit with.)
+    sideCfg.setAttribute('no_leader', true);
+    sideCfg.removeChildren('unit');
+    for (const u of start.units) {
+      if (u.side !== side) continue;
+      const unitCfg = unitToWml(u, true);
+      unitCfg.setAttribute('random_traits', false);
+      sideCfg.addChild('unit', unitCfg);
+    }
     for (const u of start.recall ?? []) {
       if (u.side !== side) continue;
       const unitCfg = unitToWml(u, false);
@@ -420,6 +443,7 @@ function replayStartToWml(start: SaveGameData, scenarioCfg: WmlConfig, snapshot:
       sideCfg.addChild('unit', unitCfg);
     }
   }
+  cfg.setAttribute('next_underlying_unit_id', start.nextUnitId ?? 0);
   return cfg;
 }
 
@@ -427,8 +451,16 @@ function replayStartToWml(start: SaveGameData, scenarioCfg: WmlConfig, snapshot:
 function replayToWml(commands: readonly RecordedCommand[]): WmlConfig {
   const replay = new WmlConfig();
   replay.addChild('upload_log');
+  // Each server choice (a seed) carries the game's running request number,
+  // counted from 1 (`synced_context::ask_server_choice`); the real game warns
+  // on a mismatch.
+  let requestId = 0;
   for (const rec of commands) {
-    for (const block of recordedCommandToWml(rec)) replay.addChild('command', block);
+    for (const block of recordedCommandToWml(rec)) {
+      const seed = block.child('random_seed');
+      if (seed) seed.setAttribute('request_id', ++requestId);
+      replay.addChild('command', block);
+    }
   }
   return replay;
 }

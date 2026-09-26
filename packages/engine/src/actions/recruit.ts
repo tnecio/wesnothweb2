@@ -34,7 +34,7 @@
 
 import { isUnitVisibleToTeam } from '../pathfind/visibility.js';
 import { ShroudClearer, actorSighted, type RaiseEvent } from './vision.js';
-import { Location, getAdjacentTiles, oppositeDirection, Direction, ALL_DIRECTIONS, distanceBetween } from '../model/Location.js';
+import { Location, getAdjacentTiles, oppositeDirection, relativeDirection, type Direction, distanceBetween } from '../model/Location.js';
 import type { GameBoard } from '../model/GameBoard.js';
 import type { Team } from '../model/Team.js';
 import { Unit, type UnitModification } from '../model/Unit.js';
@@ -247,11 +247,6 @@ export function checkRecruitLocation(
 
 // --- facing ---
 
-function directionBetween(from: Location, to: Location): Direction | undefined {
-  const idx = getAdjacentTiles(from).findIndex((loc) => loc.equals(to));
-  return idx === -1 ? undefined : ALL_DIRECTIONS[idx];
-}
-
 /** Mirrors `set_recruit_facing`: face the closest visible enemy (weighted by level), else away from the recruiting leader, else towards the map center. */
 function computeRecruitFacing(board: GameBoard, unit: Unit, recruitLoc: Location, leaderLoc: Location | undefined): Direction {
   let minDist = Infinity;
@@ -267,16 +262,9 @@ function computeRecruitFacing(board: GameBoard, unit: Unit, recruitLoc: Location
       minLoc = other.location;
     }
   }
-  if (minLoc) {
-    const dir = directionBetween(recruitLoc, minLoc);
-    if (dir !== undefined) return dir;
-  }
-  if (leaderLoc) {
-    const dir = directionBetween(recruitLoc, leaderLoc);
-    if (dir !== undefined) return oppositeDirection(dir);
-  }
-  const center = new Location(Math.floor(board.map.w() / 2), Math.floor(board.map.h() / 2));
-  return directionBetween(recruitLoc, center) ?? Direction.South;
+  if (minLoc) return relativeDirection(recruitLoc, minLoc);
+  if (leaderLoc) return oppositeDirection(relativeDirection(recruitLoc, leaderLoc));
+  return relativeDirection(recruitLoc, new Location(Math.floor(board.map.w() / 2), Math.floor(board.map.h() / 2)));
 }
 
 // --- recruit / recall / dismiss ---

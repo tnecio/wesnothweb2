@@ -514,7 +514,8 @@ export class UnitType {
       cfg.getString('advances_to', '')
         .split(',')
         .map((s) => s.trim())
-        .filter((s) => s.length > 0),
+        // `advances_to=null` is "nowhere" (types.cpp: `advances_to_val != "null"`).
+        .filter((s) => s.length > 0 && s !== 'null'),
       cfg.getString('undead_variation', ''),
       cfg.hasAttribute('zoc') ? cfg.getBoolean('zoc') : level > 0,
       cfg.getBoolean('hide_help', false),

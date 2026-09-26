@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseWmlFile, preloadDefinesFromDir, type DefineMap } from '../../src/wml/index.js';
 import { WmlConfig } from '../../src/wml/config.js';
-import { Location } from '../../src/model/Location.js';
+import { Location, Direction } from '../../src/model/Location.js';
 import { GameMap } from '../../src/model/Map.js';
 import { TerrainTypeData } from '../../src/model/Terrain.js';
 import { GameBoard } from '../../src/model/GameBoard.js';
@@ -165,6 +165,23 @@ describe('recruit/recall/dismiss', () => {
     const globalIds = new Set(GLOBAL_TRAITS.map((t) => t.getString('id')));
     for (const id of traitIds) expect(globalIds.has(id)).toBe(true);
     expect(result.unit.traitNames).toEqual(traitIds); // strong/quick/intelligent/resilient display the same as their id
+  });
+});
+
+describe('recruit facing (set_recruit_facing)', () => {
+  it('faces the nearest enemy even when it is not adjacent -- real, found against the 1.19 build: recruits faced away from the leader instead', () => {
+    const terrainData = loadTerrainData();
+    const moveType = flatMoveType(terrainData);
+    const map = GameMap.fromMapString('Gg, Gg, Gg, Gg, Gg\nGg, Kh, Ch, Gg, Gg\nGg, Gg, Gg, Gg, Gg\nGg, Gg, Gg, Gg, Gg\nGg, Gg, Gg, Gg, Gg\nGg, Gg, Gg, Gg, Gg', terrainData);
+    const board = new GameBoard(map);
+    const team = new Team(1, { gold: 50 });
+    board.addTeam(team);
+    board.addTeam(new Team(2, { gold: 0, teamName: 'enemy' }));
+    board.addUnit(Unit.create(makeUnitType('leader', 30, moveType), 1, Location.fromWml(1, 1), { canRecruit: true }));
+    board.addUnit(Unit.create(makeUnitType('enemy', 30, moveType), 2, Location.fromWml(2, 4)));
+
+    const result = recruitUnit(board, team, makeUnitType('grunt', 20, moveType), Location.fromWml(2, 1), Location.fromWml(1, 1), new RngDeterministic(new MtRng(2026)));
+    expect(result.unit.facing).toBe(Direction.South);
   });
 });
 

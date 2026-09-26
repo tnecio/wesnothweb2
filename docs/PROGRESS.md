@@ -4415,3 +4415,47 @@ Also known: the XP thresholds in 1.16's data differ from the 1.19 data this
 port ships (Merman Netcaster 54 vs 80) -- a content-version gap, not a rules
 one. Delayed shroud updates are not ported (moves that reveal fog are simply
 not undoable, upstream's rule with automatic updates on).
+
+## 2026-09-26: Phase 18c — unit modifications, unit ids, verified against a real 1.19 build
+
+- **Desktop 1.19 build.** Per the user's go-ahead: built the checked-out
+  source (1.19.21+dev, the same version as the port's data) out of tree in
+  `~/wesnoth-desktop-build` (cmake + ninja, Release, game only); driven
+  headless under Xvfb 1920x1080 with `xdotool` (`--data-dir` the checkout,
+  `--no-log-to-file`, a scratch `--userdata-dir` binding `p` to playreplay;
+  1.19 saves land in `<userdata>/sync/saves`). It replaces the 1.16.9
+  package for verification: no content-version gap.
+- **Static WML audit** (`packages/ui/scripts/audit-wml.ts` →
+  `docs/WML_AUDIT.md`): every branch of every event in the 40 snapshots,
+  classified against the action registry. 81 action tags, 23 missing (now
+  Phase 18d); conditions: only one tag left unevaluated.
+- **Modifications** (`model/effects.ts`, `Unit.ts`): every `apply_to=` of
+  `unit::apply_builtin_effect`, `[filter]`/`times=`/gender effects;
+  per-unit copies of everything a modification can change (movetype,
+  abilities, alignment, zoc, vision, upkeep, advancements...);
+  `advance_to` with upstream's reset-then-reapply semantics; variations;
+  `expire_modifications` durations; `new_turn`/`end_turn`/`new_scenario`.
+- **WML**: `[object]`, `[remove_object]`, `[remove_trait]`,
+  `[transform_unit]`, `[modify_unit]`'s `[object]`/`[trait]`/`[advancement]`
+  /`[effect]`, runtime `[event]` (delayed substitution) and
+  `[remove_event]`, `$(formula)` substitution, `[have_location]`,
+  `[found_item]`. Event state survives save/load.
+- **Unit ids**: upstream's `underlying_id` counter and `Type-N` ids;
+  `find_vacant_tile`'s sorted iteration.
+- **AMLA**: `get_modification_advances` (`strict_amla`, `max_times`,
+  `require_amla`/`exclude_amla`; `[filter]` not evaluated) and
+  `get_amla_unit`; the advancement choice indexes types then AMLAs as
+  upstream's `[choose] value=` does, and the dialog lists AMLA rows.
+- **Found by the real-binary round trip, fixed:** replay sides written with
+  `no_leader=yes` and explicit `[unit]`s (the real game otherwise could not
+  find the recruiting leader); `[random_seed] request_id=`; recruit facing
+  towards a non-adjacent enemy (only adjacent hexes resolved before);
+  `advances_to=null` read as a type called "null" (all 40 snapshots
+  patched); `not_living` imported as the alias it is; the state digest's
+  variable hash made order-insensitive (upstream keeps attributes sorted).
+- **Milestones.** A real 1.19 AI game (new fixtures, turns 2–5) replays
+  here matching every unit at every turn start. A 3-turn AI game played
+  here replays through the real binary, all 160 actions, and the real
+  game's save of the end matches ours exactly apart from unsynced facings
+  and one AI `stop_unit` (upstream does not record it). Checked with
+  `packages/ui/scripts/compare-real-save.ts`.

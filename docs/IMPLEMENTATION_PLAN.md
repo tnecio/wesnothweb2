@@ -1381,7 +1381,19 @@ User decisions (2026-09-23):
 
 ## Phase 18c — Unit modifications: `[effect]`, traits, `[object]`, runtime `[event]`
 
-**Status: not started (found 2026-09-23 by Phase 18b's real-binary replays).**
+**Status: delivered 2026-09-26** (found 2026-09-23 by Phase 18b's real-binary
+replays). Both milestone directions verified against a desktop build of the
+checked-out 1.19.21+dev source: a real 1.19 AI game replays here unit for
+unit at every turn start, and a 3-turn AI game played here (130 commands,
+20 fights) replays through the real binary to a board identical in every
+unit's position, hp, xp, traits, statuses, gold, villages and variables.
+The only differences left are ones upstream does not sync: facings drawn
+from its unsynced RNG or set by the recruit animation, and moves an AI
+`stop_unit` removed (never recorded, so a real replay keeps them).
+`[filter]` inside an AMLA `[advancement]` is not evaluated. See
+`docs/PROGRESS.md`, 2026-09-26.
+
+Original scope:
 The port records traits and objects on a unit but applies none of their
 effects (`Unit.ts`'s own module comment: "a freshly-built Unit here has its
 listed traits' names but not their numeric effects"), `[object]` is an
@@ -1839,9 +1851,9 @@ pulled forward and delivered 2026-09-22.
 1. **Phase 18a** (teleport, hotseat viewing side) — delivered 2026-09-23.
 2. **Phase 18b** (replay, undo & redo) — delivered 2026-09-23.
 3. **Phase 18c** (unit modifications: `[effect]`, traits, `[object]`,
-   runtime `[event]`, unit ids) ← **current focus** (user go-ahead 2026-09-26): found by 18b; a gameplay
-   correctness gap as much as a replay one.
-4. **Phase 18d** (missing WML action tags, from the audit).
+   runtime `[event]`, unit ids) — delivered 2026-09-26.
+4. **Phase 18d** (missing WML action tags, from the audit) ← **current focus**
+   (after the save/load browser check).
 5. **Phase 18** (labels/items), then **Phase 19** (audio/music).
 6. **Phase 20** (localization/accessibility).
 7. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).

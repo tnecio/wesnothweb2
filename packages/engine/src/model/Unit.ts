@@ -433,7 +433,12 @@ export class Unit {
     const statusCfg = cfg.child('status');
     if (statusCfg) {
       for (const key of statusCfg.attributeNames()) {
-        if (statusCfg.getBoolean(key)) unit.statuses.add(key);
+        if (!statusCfg.getBoolean(key)) continue;
+        // `not_living` is upstream's legacy alias (`unit::set_state`): it
+        // stands for the three statuses below and is never kept itself --
+        // `get_states` only writes it back when all three are set.
+        if (key === 'not_living') for (const s of ['undrainable', 'unpoisonable', 'unplagueable']) unit.statuses.add(s);
+        else unit.statuses.add(key);
       }
     }
     if (cfg.getString('ai_special', '') === 'guardian') unit.statuses.add(UnitStatus.Guardian);
@@ -564,9 +569,41 @@ export class Unit {
     return Math.max(0, this.experience - this.maxExperience);
   }
 
-  /** True if this unit has enough XP AND has somewhere to advance to (plain leveling only; AMLA not ported). */
+  /** `unit::advances()`: enough XP, and somewhere to go -- a type in `advancesTo`, or an AMLA (`modificationAdvances`). */
   advances(): boolean {
-    return this.experience >= this.maxExperience && this.advancesTo.length > 0;
+    return this.experience >= this.maxExperience && (this.advancesTo.length > 0 || this.modificationAdvances().length > 0);
+  }
+
+  /** How many modifications of `kind` with `id=` this unit has (`unit::modification_count`). */
+  modificationCount(kind: string, id: string): number {
+    return this.modifications.filter((m) => m.kind === kind && m.cfg.getString('id', '') === id).length;
+  }
+
+  /**
+   * `unit::get_modification_advances`: the `[advancement]`s (AMLAs) this
+   * unit can take now -- not `strict_amla=yes` ones while it still has
+   * types to advance to, not ones already taken `max_times=` (default 1;
+   * negative is unlimited), and only if `require_amla=`/`exclude_amla=`
+   * (counted lists of AMLA ids) allow it. `[filter]` is not evaluated.
+   */
+  modificationAdvances(): WmlConfig[] {
+    const out: WmlConfig[] = [];
+    for (const adv of this.advancements) {
+      if (adv.getBoolean('strict_amla', false) && this.advancesTo.length > 0) continue;
+      const maxTimes = adv.getNumber('max_times', 1);
+      if (maxTimes >= 0 && this.modificationCount('advancement', adv.getString('id', '')) >= maxTimes) continue;
+      const counted = (list: string) => {
+        const counts = new Map<string, number>();
+        for (const id of list.split(',').map((v) => v.trim()).filter((v) => v !== '')) counts.set(id, (counts.get(id) ?? 0) + 1);
+        return counts;
+      };
+      const exclude = counted(adv.getString('exclude_amla', ''));
+      if ([...exclude].some(([id, n]) => this.modificationCount('advancement', id) >= n)) continue;
+      const require = counted(adv.getString('require_amla', ''));
+      if ([...require].some(([id, n]) => this.modificationCount('advancement', id) < n)) continue;
+      out.push(adv);
+    }
+    return out;
   }
 
   /**

@@ -399,7 +399,7 @@ function unitTypeFromSnapshot(snap: UnitTypeSnapshot, moveType: MoveType): UnitT
     snap.cost,
     snap.recallCost,
     snap.experienceNeededBase,
-    snap.advancesTo,
+    snap.advancesTo.filter((id) => id !== 'null'), // `advances_to=null` is "nowhere"
     snap.undeadVariation,
     snap.zoc,
     snap.hideHelp,

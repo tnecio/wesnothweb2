@@ -20,6 +20,7 @@ import { UnitStatus } from '../model/Unit.js';
 import type { Unit } from '../model/Unit.js';
 import type { UnitType } from '../model/UnitType.js';
 import type { EffectEnv } from '../model/effects.js';
+import type { WmlConfig } from '../wml/config.js';
 import type { Rng } from '../rng/Rng.js';
 
 /** Result of advancing a unit one level, mirroring `advance_unit`'s net effect. */
@@ -58,6 +59,18 @@ export function advanceUnitTo(unit: Unit, newType: UnitType, experienceModifierP
 }
 
 /**
+ * `get_amla_unit`: the unit takes an AMLA -- the XP overflow carries over and
+ * the `[advancement]` is added as a modification, its effects applied (the
+ * default AMLA's own `heal_full`/`increase_total` do the rest).
+ */
+export function advanceUnitAmla(unit: Unit, option: WmlConfig, env: EffectEnv = {}): AdvancementResult {
+  const fromTypeId = unit.type.id;
+  unit.experience = unit.experienceOverflow();
+  unit.addModification('advancement', option, env);
+  return { unit, fromTypeId, toTypeId: fromTypeId, canAdvanceAgain: unit.advances() };
+}
+
+/**
  * Picks which of `unit.advancesTo` to advance into, mirroring the AI/
  * random branch of `unit_advancement_choice::query_user` (`get_random_int
  * (0, options-1)`) -- the human-dialog branch is a UI concern out of scope
@@ -93,8 +106,13 @@ export function advanceUnitFully(
   const steps: AdvancementResult[] = [];
   let guard = 0;
   while (unit.advances() && guard < 20) {
-    const newType = chooseAdvancementRandomly(unit, rng, resolveType);
-    steps.push(advanceUnitTo(unit, newType, experienceModifierPercent));
+    if (unit.advancesTo.length === 0) {
+      // Only AMLAs left: take the first.
+      steps.push(advanceUnitAmla(unit, unit.modificationAdvances()[0]!));
+    } else {
+      const newType = chooseAdvancementRandomly(unit, rng, resolveType);
+      steps.push(advanceUnitTo(unit, newType, experienceModifierPercent));
+    }
     guard++;
   }
   return steps;

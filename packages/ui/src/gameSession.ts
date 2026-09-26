@@ -54,6 +54,7 @@ import {
   type AiAnimationEvent,
   type ScenarioObjectives,
   advanceUnitTo,
+  advanceUnitAmla,
   type AttackBlowResult,
   type AttackResult,
   buildBattleContext,
@@ -594,9 +595,14 @@ export interface AdvancementOption {
   readonly attacks: readonly WeaponInfo[];
 }
 
+/** `AdvancementOption.typeId` of an AMLA row: this prefix plus its index among `amlaOptions`. */
+export const AMLA_OPTION_PREFIX = 'amla:';
+
 export interface PendingAdvancement {
   readonly unit: Unit;
   readonly options: readonly UnitType[];
+  /** The AMLAs offered after `options` (`get_modification_advances`); `optionInfos` lists both, types first. */
+  readonly amlaOptions: readonly WmlConfig[];
   /**
    * The advancing unit as the dialog displays it (portrait, level,
    * alignment, race, HP/XP, traits, weapons) -- upstream's own advancement
@@ -1736,16 +1742,25 @@ export class GameSession {
    * Turn, side, result and a hash of the WML variables: the non-board state
    * a digest covers. `$x1`/`$y1`/`$x2`/`$y2` are left out: the pump rewrites
    * them for every event it processes, so they are scratch values an undo
-   * cannot and need not restore.
+   * cannot and need not restore. The hash is order-insensitive where WML
+   * order carries no meaning -- attributes (upstream keeps them in a sorted
+   * map) and which array was created first -- so a state imported from a
+   * real save hashes the same as the one this port reached.
    */
   private digestExtra(): Record<string, string | number | boolean | null> {
     const vars = this.eventPump.ctx.variables.toConfig().toJSON();
-    const kept = Object.entries(vars.attrs).filter(([k]) => !EVENT_LOCATION_VARIABLES.has(k));
+    const canonical = (cfg: WmlConfigJson, top: boolean): unknown => {
+      const attrs = Object.entries(cfg.attrs)
+        .filter(([k]) => !top || !EVENT_LOCATION_VARIABLES.has(k))
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+      const tags = [...new Set(cfg.children.map((c) => c.tag))].sort();
+      return [attrs, tags.map((tag) => [tag, cfg.children.filter((c) => c.tag === tag).map((c) => canonical(c.config, false))])];
+    };
     return {
       turn: this.turnNumber,
       side: this.activeSide,
       result: this.scenarioResult,
-      variables: fnv1a(JSON.stringify([kept, vars.children])),
+      variables: fnv1a(JSON.stringify(canonical(vars, true))),
     };
   }
 
@@ -3299,15 +3314,19 @@ export class GameSession {
     while (this.advancementQueue.length > 0) {
       const unit = this.advancementQueue.shift()!;
       if (!unit.advances()) continue; // healed/demoted by something else in between -- no longer eligible.
+      // Upstream's option list: `advances_to` types, then the AMLAs
+      // (`get_modification_advances`); `[choose] value=` indexes both.
       const optionIds = unit.advancesTo;
+      const amlas = unit.modificationAdvances();
+      const count = optionIds.length + amlas.length;
       let index = 0;
-      if (optionIds.length > 1) {
+      if (count > 1) {
         if (replay) {
           const dep = this.takeDependent(replay, 'choose');
           if (dep) replay.rec.dependents.push(dep);
-          index = dep && dep.value >= 0 && dep.value < optionIds.length ? dep.value : 0;
+          index = dep && dep.value >= 0 && dep.value < count ? dep.value : 0;
         } else if (this.isAiSide(unit.side)) {
-          index = this.rng.unsynced.getNextRandom() % optionIds.length;
+          index = this.rng.unsynced.getNextRandom() % count;
           rec?.dependents.push({ kind: 'choose', value: index, side: unit.side });
         } else {
           const options = optionIds.map((id) => this.resolveType(id));
@@ -3315,23 +3334,33 @@ export class GameSession {
           this.pendingAdvancement = {
             unit,
             options,
+            amlaOptions: amlas,
             unitInfo: this.unitInfo(unit),
-            optionInfos: options.map((type) => ({
-              typeId: type.id,
-              name: type.name,
-              level: type.level,
-              hitpoints: type.hitpoints,
-              image: this.snapshot.unitTypes[type.id]?.image ?? null,
-              attacks: type.attacks.map(buildWeaponInfo),
-            })),
+            optionInfos: [
+              ...options.map((type) => ({
+                typeId: type.id,
+                name: type.name,
+                level: type.level,
+                hitpoints: type.hitpoints,
+                image: this.snapshot.unitTypes[type.id]?.image ?? null,
+                attacks: type.attacks.map(buildWeaponInfo),
+              })),
+              // An AMLA row, as upstream's dialog shows it: the [advancement]'s
+              // own description and image, over the unit as it stands.
+              ...amlas.map((amla, i) => ({
+                typeId: `${AMLA_OPTION_PREFIX}${i}`,
+                name: amla.getString('description', '') || amla.getString('id', 'AMLA'),
+                level: unit.level,
+                hitpoints: unit.maxHitpoints,
+                image: amla.getString('image', '') || (this.snapshot.unitTypes[unit.type.id]?.image ?? null),
+                attacks: unit.attacks.map(buildWeaponInfo),
+              })),
+            ],
           };
           return;
         }
       }
-      const before = unit.type.name;
-      const result = advanceUnitTo(unit, this.resolveType(optionIds[index]!));
-      this.log.unshift(`${before} advances to ${result.unit.type.name}!`);
-      if (result.canAdvanceAgain) this.advancementQueue.unshift(unit);
+      this.applyAdvancementOption(unit, index, optionIds, amlas);
     }
     // Choices made after the action ended change what it left behind.
     if (!this.action && rec) rec.digest = this.stateDigest();
@@ -3346,18 +3375,36 @@ export class GameSession {
   chooseAdvancement(typeId: string): void {
     const pending = this.pendingAdvancement;
     if (!pending) return;
-    const index = pending.options.findIndex((t) => t.id === typeId);
-    const chosen = pending.options[index];
-    if (!chosen) return;
+    const index = pending.optionInfos.findIndex((o) => o.typeId === typeId);
+    if (index < 0) return;
     const rec = this.advancementRec;
     rec?.dependents.push({ kind: 'choose', value: index, side: pending.unit.side });
     this.advancementRec = null;
-    const before = pending.unit.type.name;
-    const result = advanceUnitTo(pending.unit, chosen);
-    this.log.unshift(`${before} advances to ${result.unit.type.name}!`);
     this.pendingAdvancement = null;
-    if (result.canAdvanceAgain) this.advancementQueue.unshift(pending.unit);
+    this.applyAdvancementOption(
+      pending.unit,
+      index,
+      pending.options.map((t) => t.id),
+      pending.amlaOptions,
+    );
     this.processAdvancementQueue(rec, null);
+  }
+
+  /** `animate_unit_advancement`'s choice: index < types is a type, the rest are AMLAs. Re-queues the unit if it can go again. */
+  private applyAdvancementOption(unit: Unit, index: number, typeIds: readonly string[], amlas: readonly WmlConfig[]): void {
+    const before = unit.type.name;
+    const env = effectEnvFor(this.eventPump.ctx, unit);
+    if (index < typeIds.length) {
+      const result = advanceUnitTo(unit, this.resolveType(typeIds[index]!), 100, env);
+      this.log.unshift(`${before} advances to ${result.unit.type.name}!`);
+      if (result.canAdvanceAgain) this.advancementQueue.unshift(unit);
+    } else {
+      const amla = amlas[index - typeIds.length];
+      if (!amla) return;
+      const result = advanceUnitAmla(unit, amla, env);
+      this.log.unshift(`${before} gains ${amla.getString('description', '') || 'an advancement'}!`);
+      if (result.canAdvanceAgain) this.advancementQueue.unshift(unit);
+    }
   }
 
   /**

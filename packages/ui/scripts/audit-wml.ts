@@ -48,7 +48,7 @@ const noopList = /for \(const tag of \[([^\]]*)\]\) \{\s*registry\.register\(tag
 const NOOP = new Set([...noopList.matchAll(/'([^']+)'/g)].map((m) => m[1]!));
 const EXTENSION = new Set([...actionSource.matchAll(/registry\.register\('([^']+)', extensionPoint\(/g)].map((m) => m[1]!));
 /** `conditionalWml.ts`'s `builtinConditions`, plus the connectives and literals it handles itself. */
-const CONDITIONS_EVALUATED = new Set(['have_unit', 'variable', 'true', 'false', 'and', 'or', 'not']);
+const CONDITIONS_EVALUATED = new Set(['have_unit', 'have_location', 'found_item', 'variable', 'true', 'false', 'and', 'or', 'not']);
 
 // ---------------------------------------------------------------------------
 // Which children of an action are themselves action bodies / conditions

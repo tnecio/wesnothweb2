@@ -11,6 +11,7 @@ import { WmlConfig } from '../../src/wml/config.js';
 import { parseWml } from '../../src/wml/index.js';
 import { applyModifier } from '../../src/model/UnitType.js';
 import { combatModifier } from '../../src/actions/combatStats.js';
+import { advanceUnitAmla } from '../../src/actions/advancement.js';
 
 const content = loadRealContent();
 const trait = (type: string, id: string) => {
@@ -170,5 +171,44 @@ blade=-20
     // matcher registered in this model-only test, so it is always applied --
     // the event-layer tests cover a real filter).
     expect(new WmlConfig()).toBeDefined();
+  });
+});
+
+describe('AMLA (get_modification_advances / get_amla_unit)', () => {
+  it('a unit with nowhere to advance takes the default AMLA: +3 max hp, healed, +20% max XP, overflow XP kept', () => {
+    const u = Unit.create(content.unitType('Royal Guard'), 1, Location.fromWml(1, 1));
+    expect(u.advancesTo).toEqual([]);
+    const options = u.modificationAdvances();
+    expect(options.map((a) => a.getString('id'))).toEqual(['amla_default']);
+    const hp = u.maxHitpoints;
+    const maxXp = u.maxExperience;
+    u.hitpoints = 10;
+    u.experience = maxXp + 5;
+    expect(u.advances()).toBe(true);
+
+    const result = advanceUnitAmla(u, options[0]!);
+    expect(u.maxHitpoints).toBe(hp + 3);
+    expect(u.hitpoints).toBe(u.maxHitpoints);
+    expect(u.maxExperience).toBe(applyModifier(maxXp, '20%'));
+    expect(u.experience).toBe(5);
+    expect(u.modificationCount('advancement', 'amla_default')).toBe(1);
+    expect(result.canAdvanceAgain).toBe(false);
+    // max_times=100: still on offer.
+    expect(u.modificationAdvances()).toHaveLength(1);
+  });
+
+  it('strict_amla hides the default AMLA while the unit still has types to advance to', () => {
+    const u = Unit.create(content.unitType('Spearman'), 1, Location.fromWml(1, 1));
+    expect(u.advancesTo.length).toBeGreaterThan(0);
+    expect(u.modificationAdvances()).toEqual([]);
+  });
+
+  it('max_times, require_amla and exclude_amla gate the options, counted per AMLA id', () => {
+    const u = Unit.create(content.unitType('Royal Guard'), 1, Location.fromWml(1, 1));
+    const adv = (attrs: string) => parseWml(`[advancement]\n${attrs}\n[/advancement]`).child('advancement')!;
+    u.advancements = [adv('id=a\nmax_times=1'), adv('id=b\nrequire_amla=a'), adv('id=c\nexclude_amla=a')];
+    expect(u.modificationAdvances().map((a) => a.getString('id'))).toEqual(['a', 'c']);
+    u.addModification('advancement', u.advancements[0]!);
+    expect(u.modificationAdvances().map((a) => a.getString('id'))).toEqual(['b']);
   });
 });
