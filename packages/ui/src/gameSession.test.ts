@@ -840,7 +840,7 @@ describe('GameSession recall UI (selectRecallUnit / recallOptions / handleHexCli
     const finished = new GameSession(loadSnapshot());
     await finished.runStartupEvents();
     const someSurvivor = finished.board.unitsForSide(1).find((u) => !u.canRecruit)!;
-    someSurvivor.hitpoints = 3; // distinct from max, so recall (not recruit) is what's under test -- recall keeps saved hp.
+    someSurvivor.hitpoints = 3;
     finished.board.getTeam(1)!.gold = 150;
     finished.turnNumber = 5;
     const enemyLeader = finished.board.unitsForSide(2).find((u) => u.canRecruit)!;
@@ -849,6 +849,11 @@ describe('GameSession recall UI (selectRecallUnit / recallOptions / handleHexCli
     finished.checkForGameEnd();
 
     const next = GameSession.startNextScenario(finished, loadNextSnapshot());
+    // Phase 18c: a carried-over unit starts the next scenario healed
+    // (`game_board::new_scenario` -> `unit::new_scenario`)...
+    expect(someSurvivor.hitpoints).toBe(someSurvivor.maxHitpoints);
+    // ...so damage it here instead: a recall (not a recruit) keeps its hp.
+    someSurvivor.hitpoints = 3;
     const beats = recordBeats(next);
     const leader = next.board.unitsForSide(1).find((u) => u.canRecruit)!;
     next.selectUnit(leader);
@@ -1226,7 +1231,7 @@ describe('GameSession.endTurn applies real healing (rest/heals-ability/poison) -
     await session.runStartupEvents();
     const cylanna = session.board.allUnits().find((u) => u.id === 'Cylanna')!;
     expect(cylanna).toBeDefined();
-    expect(cylanna.type.abilities.some((a) => a.tag === 'heals')).toBe(true); // sanity: the ability-matching fix itself.
+    expect(cylanna.abilities.some((a) => a.tag === 'heals')).toBe(true); // sanity: the ability-matching fix itself.
 
     const kaiKrellis = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
     // Real spawn positions place Kai Krellis and Cylanna adjacent already
@@ -1318,7 +1323,7 @@ describe('GameSession.unitInfo Phase 14 infobox fields (image/level/alignment/ra
     const info = session.unitInfo(kaiKrellis);
 
     expect(info.level).toBe(kaiKrellis.type.level);
-    expect(info.alignment).toBe(kaiKrellis.type.alignment);
+    expect(info.alignment).toBe(kaiKrellis.alignment);
     expect(info.raceId).toBe('merman');
     expect(info.raceName).toBe('Merfolk');
     expect(info.image).toBe(snapshot.unitTypes[kaiKrellis.type.id]?.image ?? null);
@@ -1673,7 +1678,7 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
 
   it('real, reported bug: a chaotic unit\'s displayed lawfulBonus is its own actual (sign-flipped) damage modifier, not the schedule\'s raw lawful_bonus -- a chaotic unit in daylight actually takes a damage PENALTY, so it must show negative, not the schedule\'s own positive value', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
-    expect(malKevek.type.alignment).toBe('chaotic'); // Dark Sorcerer
+    expect(malKevek.alignment).toBe('chaotic'); // Dark Sorcerer
 
     // Turn 1 is Dawn (lawful_bonus=0, real schedule) -- jump straight to
     // turn 2 (Morning, lawful_bonus=25) via `turnNumber` directly rather

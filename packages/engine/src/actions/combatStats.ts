@@ -276,7 +276,7 @@ export function computeUnitStats(
   const baseDamage = weapon.damage;
   let damageMultiplier = 100;
   const lawfulBonus = (isAttacker ? options.attackerLawfulBonus : options.defenderLawfulBonus) ?? 0;
-  damageMultiplier += combatModifier(lawfulBonus, weapon.alignment ?? unit.type.alignment, false, options.maxLiminalBonus ?? 0);
+  damageMultiplier += combatModifier(lawfulBonus, weapon.alignment ?? unit.alignment, unit.fearless, options.maxLiminalBonus ?? 0);
   const leadershipBonus = (isAttacker ? options.attackerLeadershipBonus : options.defenderLeadershipBonus) ?? 0;
   if (leadershipBonus !== 0) damageMultiplier += leadershipBonus;
   const resistanceModifier = (isAttacker ? options.attackerResistanceModifier : options.defenderResistanceModifier) ?? opponent.resistanceAgainst(weapon.type);

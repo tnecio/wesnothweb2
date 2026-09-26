@@ -49,7 +49,7 @@ export function rateTerrain(board: GameBoard, unit: Unit, loc: Location): number
   // Upstream checks `u.get_ability_bool("regenerate", loc)` (location-aware); this port's ability model has no
   // per-location filter evaluation yet, so it falls back to "has the regenerate ability at all" -- matches
   // `caHealing.ts`'s own established convention for the same ability.
-  if (board.map.givesHealing(loc) > 0 && !unit.type.abilities.some((a) => a.tag === 'regenerate')) {
+  if (board.map.givesHealing(loc) > 0 && !unit.abilities.some((a) => a.tag === 'regenerate')) {
     rating += healingValue;
   }
 
@@ -159,7 +159,7 @@ function doAttackAnalysis(
       if (!oppositeTile.equals(currentUnit) && isBackstabActive(board, tile, loc)) {
         if (backstab) backstabBonus = 2;
         const oppositeUnit = board.unitAt(oppositeTile);
-        if (oppositeUnit && !oppositeUnit.type.abilities.some((a) => a.tag === 'skirmisher')) {
+        if (oppositeUnit && !oppositeUnit.abilities.some((a) => a.tag === 'skirmisher')) {
           surroundBonus = 1.2;
         }
       }

@@ -150,7 +150,7 @@ export class AttackAnalysis {
     this.usesLeader = false;
 
     this.targetValue = defendUnit.type.cost;
-    const defendExperience = defendUnit.type.advancesTo.length > 0 ? defendUnit.experience : 0;
+    const defendExperience = defendUnit.advancesTo.length > 0 ? defendUnit.experience : 0;
     this.targetValue += (defendExperience / defendUnit.maxExperience) * this.targetValue;
     this.targetStartingDamage = defendUnit.maxHitpoints - defendUnit.hitpoints;
 
@@ -240,7 +240,7 @@ export class AttackAnalysis {
 
         let cost = up.type.cost;
         const onVillage = board.map.isVillage(m.to);
-        const upExperience = up.type.advancesTo.length > 0 ? up.experience : 0;
+        const upExperience = up.advancesTo.length > 0 ? up.experience : 0;
         cost += (upExperience / up.maxExperience) * cost;
         this.resourcesUsed += cost;
         this.avgLosses += cost * probDied;
@@ -256,7 +256,7 @@ export class AttackAnalysis {
         this.terrainQuality += (dStats.chanceToHit / 100) * cost * (onVillage ? 0.5 : 1.0);
 
         let advanceProb = 0;
-        if (up.type.advancesTo.length > 0) {
+        if (up.advancesTo.length > 0) {
           let xpForAdvance = up.experienceToAdvance();
           if (xpForAdvance === 0) xpForAdvance = 1;
           const fightXp = combatXp(defendUnit.level);
@@ -290,7 +290,7 @@ export class AttackAnalysis {
         }
       }
 
-      if (defendUnit.type.advancesTo.length > 0 && defAvgExperience >= defendUnit.experienceToAdvance()) {
+      if (defendUnit.advancesTo.length > 0 && defAvgExperience >= defendUnit.experienceToAdvance()) {
         this.chanceToKill = firstChanceKill;
         this.avgDamageInflicted += defendUnit.hitpoints - defendUnit.maxHitpoints;
       } else if (prevDef) {

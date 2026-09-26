@@ -134,6 +134,7 @@ import {
   type RegistryEntry,
   UnitStatus,
   runActionFlow,
+  effectEnvFor,
   runFlow,
   autoRespond,
   type ChoiceRecord,
@@ -467,11 +468,11 @@ export function buildUnitInfo(board: GameBoard, unit: Unit, displayName: string,
     terrainName: board.map.terrainName(unit.location),
     defensePercent: 100 - unit.defenseModifier(board.map.getTerrain(unit.location)),
     attacks: unit.attacks.map(buildWeaponInfo),
-    abilities: unit.type.abilities.map(buildAbilityInfo),
+    abilities: unit.abilities.map(buildAbilityInfo),
     traits: unit.traitNames,
     image,
     level: unit.type.level,
-    alignment: unit.type.alignment,
+    alignment: unit.alignment,
     raceId: unit.type.raceId,
     raceName: raceDisplayName(unit.type.raceId),
     resistances: DAMAGE_TYPES.map((damageType) => ({ damageType, resistance: unit.resistanceAgainst(damageType) })),
@@ -829,6 +830,7 @@ function savedUnitFields(u: Unit): SavedUnit {
     underlyingId: u.underlyingId,
     profile: u.profile,
     gender: u.gender,
+    variation: u.variation || undefined,
     statuses: [...u.statuses],
     modifications: u.modifications.map((m) => ({ kind: m.kind, cfg: m.cfg.toJSON() })),
     variables: u.variables?.toJSON(),
@@ -888,6 +890,8 @@ export interface SavedUnit {
   profile?: string;
   /** `gender=` (Phase 18b: recruits draw it, as upstream, so it has to survive). */
   gender?: string;
+  /** `variation=` (Phase 18c: an `[object]` can give one, e.g. Dead Water's swimmer corpses). */
+  variation?: string;
   /** `[status]`: `poisoned`, `slowed`, `guardian`, and any scenario-defined flag. */
   statuses?: readonly string[];
   /** `[modifications]`: traits, objects and advancements -- opaque WML this session only carries. */
@@ -1001,6 +1005,8 @@ export interface SaveGameData {
    * silently dropped. Nothing but `save/wesnothSave.ts` ever reads it.
    */
   wesnothExtras?: WmlConfigJson;
+  /** Phase 18c: `[object] id=`s already taken (upstream's `[used_items]`). */
+  usedItems?: string[];
   /** Phase 18b: upstream's `random_mode`; absent means `per_action`. */
   randomMode?: RandomMode;
   /** Upstream's `do_healing`: false only until the scenario's first side turn has started. Absent: true once startup events ran. */
@@ -2089,6 +2095,9 @@ export class GameSession {
    */
   private *execEndTurn(action: ActionState): Flow<void> {
     action.undoBlocked = true;
+    // game_board::end_turn: the ending side's units lose `duration=turn end`
+    // modifications and their slow, before the side-turn-end events.
+    for (const unit of this.board.unitsForSide(this.activeSide)) unit.endTurn(effectEnvFor(this.eventPump.ctx, unit));
     yield* this.fireSideTurnEndEvents(this.activeSide);
     if (this.scenarioResult) return;
     const order = this.sideAfter(this.activeSide);
@@ -2122,12 +2131,9 @@ export class GameSession {
     this.checkForGameEnd();
     if (this.scenarioResult) return;
     if (this.turnNumber > 1) {
-      for (const unit of this.board.unitsForSide(side)) {
-        // unit::new_turn: full moves and attacks, and ambushers revealed last turn can hide again.
-        unit.movesLeft = unit.maxMoves;
-        unit.attacksLeft = unit.maxAttacksPerTurn;
-        unit.setStatus('uncovered', false);
-      }
+      // unit::new_turn: `duration=turn` modifications expire, full moves and
+      // attacks, and ambushers revealed last turn can hide again.
+      for (const unit of this.board.unitsForSide(side)) unit.newTurn(effectEnvFor(this.eventPump.ctx, unit));
       // team::new_turn: income = income= + the hardcoded base + villages *
       // village_gold; then upkeep (a unit's level, 0 for leaders) beyond
       // what villages support (`play_controller.cpp`).
@@ -2327,7 +2333,7 @@ export class GameSession {
       experience: unit.experience,
       maxExperience: unit.maxExperience,
       level: unit.type.level,
-      canAdvance: unit.type.advancesTo.length > 0,
+      canAdvance: unit.advancesTo.length > 0,
       movesLeft: isOwnUnit ? unit.movesLeft : undefined,
       maxMoves: isOwnUnit ? unit.maxMoves : undefined,
       attacksLeft: isOwnUnit ? unit.attacksLeft : undefined,
@@ -2505,7 +2511,7 @@ export class GameSession {
     const team = this.board.getTeam(leader.side);
     if (!team) return [];
     return this.board.recallList(leader.side).map((u, index) => {
-      const cost = u.type.recallCost >= 0 ? u.type.recallCost : team.recallCost;
+      const cost = u.recallCost >= 0 ? u.recallCost : team.recallCost;
       const snap = this.snapshot.unitTypes[u.type.id];
       return {
         index,
@@ -2520,12 +2526,12 @@ export class GameSession {
         xp: u.experience,
         maxXp: u.maxExperience,
         traits: u.traitNames,
-        alignment: u.type.alignment,
+        alignment: u.alignment,
         raceId: u.type.raceId,
         movesLeft: u.movesLeft,
         maxMoves: u.maxMoves,
         attacks: u.attacks.map(buildWeaponInfo),
-        abilities: u.type.abilities.map(buildAbilityInfo),
+        abilities: u.abilities.map(buildAbilityInfo),
       };
     });
   }
@@ -2638,7 +2644,7 @@ export class GameSession {
     const unit = list[index];
     if (!unit) return null;
     const name = this.unitDisplayName(unit);
-    const cost = unit.type.recallCost >= 0 ? unit.type.recallCost : team.recallCost;
+    const cost = unit.recallCost >= 0 ? unit.recallCost : team.recallCost;
 
     if (!this.recruitTiles.some((t) => t.x === loc.x && t.y === loc.y)) {
       return `Cannot recall ${name} there.`;
@@ -2779,7 +2785,7 @@ export class GameSession {
   private upkeepExpenseFor(side: number): number {
     const team = this.board.getTeam(side);
     if (!team) return 0;
-    const upkeep = this.board.unitsForSide(side).reduce((sum, unit) => sum + (unit.canRecruit ? 0 : unit.level), 0);
+    const upkeep = this.board.unitsForSide(side).reduce((sum, unit) => sum + unit.upkeepCost, 0);
     const support = this.board.villageCount(side) * team.supportPerVillage;
     return upkeep - support;
   }
@@ -2788,7 +2794,7 @@ export class GameSession {
   get economyInfo(): EconomyInfo {
     const team = this.board.getTeam(this.activeSide);
     const expense = this.upkeepExpenseFor(this.activeSide);
-    const upkeepTotal = this.board.unitsForSide(this.activeSide).reduce((sum, unit) => sum + (unit.canRecruit ? 0 : unit.level), 0);
+    const upkeepTotal = this.board.unitsForSide(this.activeSide).reduce((sum, unit) => sum + unit.upkeepCost, 0);
     return {
       startGold: team?.startGold ?? 0,
       incomePerVillage: team?.incomePerVillage ?? 0,
@@ -2918,17 +2924,17 @@ export class GameSession {
     // daylight even though it was actually taking a REAL 25% damage
     // PENALTY that turn -- the damage number itself was always correct;
     // only this label read the wrong sign/magnitude. `weapon.alignment ??
-    // unit.type.alignment` and the hardcoded `false` (isFearless) mirror
+    // unit.alignment` and the unit's own fearless flag mirror
     // `computeUnitStats`'s own call exactly, so this is always the same
     // number that's actually folded into `damagePerBlow` above.
     const attackerToDModifier = combatModifier(
       attackerLawfulBonus,
-      attackerWeapon.alignment ?? attacker.type.alignment,
-      false,
+      attackerWeapon.alignment ?? attacker.alignment,
+      attacker.fearless,
       this.schedule.maxLiminalBonus,
     );
     const defenderToDModifier = defenderWeapon
-      ? combatModifier(defenderLawfulBonus, defenderWeapon.alignment ?? defender.type.alignment, false, this.schedule.maxLiminalBonus)
+      ? combatModifier(defenderLawfulBonus, defenderWeapon.alignment ?? defender.alignment, defender.fearless, this.schedule.maxLiminalBonus)
       : 0;
     // The real GEOMETRIC condition (a flanking ally-of-attacker on the far
     // side of the defender) -- feeds `buildBattleContext`'s own
@@ -2995,7 +3001,7 @@ export class GameSession {
         typeId: attacker.type.id,
         image: this.snapshot.unitTypes[attacker.type.id]?.image ?? null,
         level: attacker.level,
-        alignment: attacker.type.alignment,
+        alignment: attacker.alignment,
         raceId: attacker.type.raceId,
         traits: attacker.traitNames,
         resistanceModifier: computeResistanceModifier(this.board, defender, attackerWeapon.type, false, defender.location),
@@ -3021,7 +3027,7 @@ export class GameSession {
         typeId: defender.type.id,
         image: this.snapshot.unitTypes[defender.type.id]?.image ?? null,
         level: defender.level,
-        alignment: defender.type.alignment,
+        alignment: defender.alignment,
         raceId: defender.type.raceId,
         traits: defender.traitNames,
         resistanceModifier: defenderWeapon ? computeResistanceModifier(this.board, attacker, defenderWeapon.type, true, attacker.location) : undefined,
@@ -3277,7 +3283,7 @@ export class GameSession {
     while (this.advancementQueue.length > 0) {
       const unit = this.advancementQueue.shift()!;
       if (!unit.advances()) continue; // healed/demoted by something else in between -- no longer eligible.
-      const optionIds = unit.type.advancesTo;
+      const optionIds = unit.advancesTo;
       let index = 0;
       if (optionIds.length > 1) {
         if (replay) {
@@ -3360,6 +3366,7 @@ export class GameSession {
       goldCarryover: this.goldCarryover,
       tunnels: this.board.tunnels.toConfigs().map((c) => c.toJSON()),
       nextTeleportGroupId: this.board.tunnels.nextTeleportGroupId,
+      usedItems: [...this.eventPump.ctx.usedItems],
       randomMode: this.rng.mode,
       doHealing: this.doHealing,
       ...(this.replayStartData ? { replay: { start: this.replayStartData, commands: this.recorder.toJSON() } } : {}),
@@ -3421,6 +3428,7 @@ export class GameSession {
     if (data.goldCarryover !== undefined) this.goldCarryover = data.goldCarryover;
     this.board.tunnels.loadConfigs((data.tunnels ?? []).map((c) => WmlConfig.fromJSON(c)), data.nextTeleportGroupId ?? 0);
     this.rng.mode = data.randomMode ?? 'per_action';
+    this.eventPump.ctx.usedItems = new Set(data.usedItems ?? []);
     this.doHealing = data.doHealing ?? data.startupEventsRun;
     this.replayStartData = data.replay?.start ?? null;
     this.recorder.replaceAll(data.replay?.commands ?? []);
@@ -3695,6 +3703,7 @@ export class GameSession {
       facing: u.facing !== undefined ? parseDirection(u.facing) : undefined,
       profile: u.profile,
       gender: u.gender,
+      variation: u.variation,
       modifications: u.modifications?.map((m) => ({ kind: m.kind, cfg: WmlConfig.fromJSON(m.cfg) })),
       variables: u.variables !== undefined ? WmlConfig.fromJSON(u.variables) : undefined,
     });
@@ -3781,6 +3790,11 @@ export class GameSession {
     const team = session.board.getTeam(session.playerSide);
     if (team) team.gold = goldCarryover.nextScenarioGold;
     for (const unit of carriedOverUnits) {
+      // game_board::new_scenario: a carried-over unit starts the next
+      // scenario healed, unafflicted, with temporary modifications gone.
+      const env = effectEnvFor(session.eventPump.ctx, unit);
+      unit.newScenario(env);
+      unit.newTurn(env);
       session.board.addToRecallList(session.playerSide, unit);
     }
     // Phase 17: WML variables cross the scenario boundary, as upstream's

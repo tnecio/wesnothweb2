@@ -93,6 +93,8 @@ function variableMatches(cfg: WmlConfig, ctx: EventContext): boolean {
 export const builtinConditions: Record<string, (cfg: WmlConfig, ctx: EventContext) => boolean> = {
   have_unit: haveUnit,
   variable: variableMatches,
+  // object.lua's wml_conditionals.found_item: was the [object] with this id taken?
+  found_item: (cfg, ctx) => ctx.usedItems.has(cfg.getString('id', '')),
 };
 
 const CONNECTIVE_OR_BRANCH_TAGS = new Set(['then', 'else', 'elseif', 'not', 'and', 'or', 'do']);

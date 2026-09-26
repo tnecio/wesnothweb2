@@ -24,7 +24,7 @@ export class HealingCandidateAction extends CandidateAction {
     for (const unit of board.unitsForSide(this.ctx.side)) {
       if (this.ctx.isPassiveLeader(unit.id)) continue;
       if (!this.isAllowedUnit(unit)) continue;
-      if (unit.type.abilities.some((a) => a.tag === 'regenerate')) continue;
+      if (unit.abilities.some((a) => a.tag === 'regenerate')) continue;
       const damaged = unit.hitpoints < unit.maxHitpoints - POISON_AMOUNT / 2;
       if (!damaged && !unit.poisoned) continue;
 

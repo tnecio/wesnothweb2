@@ -52,6 +52,7 @@
 
 import { WmlConfig } from '../wml/config.js';
 import { MoveType } from './MoveType.js';
+import { mergeUnitTypeConfig } from './UnitTypeDatabase.js';
 import type { TerrainTypeData } from './Terrain.js';
 
 export type Alignment = 'lawful' | 'neutral' | 'chaotic' | 'liminal';
@@ -96,6 +97,40 @@ function globalTrait(id: string): WmlConfig {
 /** The 4 real traits ported verbatim from `{TRAIT_STRONG}`/`{TRAIT_QUICK}`/`{TRAIT_INTELLIGENT}`/`{TRAIT_RESILIENT}` (`data/core/macros/traits.cfg`), added to every unit type's trait pool by upstream's own `unit_type` constructor -- see `UnitType`'s module doc comment. */
 export const GLOBAL_TRAITS: readonly WmlConfig[] = [globalTrait('strong'), globalTrait('quick'), globalTrait('intelligent'), globalTrait('resilient')];
 
+/**
+ * `utils::apply_modifier`: `amount` is added to `number` -- or, ending in
+ * `%`, that percentage of it (rounded half away from zero, `div100rounded`)
+ * -- with the result raised to `minimum` when `minimum > 0`.
+ */
+export function applyModifier(number: number, amount: string, minimum = 0): number {
+  const parsed = Number.parseInt(amount.trim(), 10);
+  let value = Number.isNaN(parsed) ? 0 : parsed;
+  if (amount.trim().endsWith('%')) {
+    const n = number * value;
+    value = n < 0 ? -Math.trunc((-n + 50) / 100) : Math.trunc((n + 50) / 100);
+  }
+  value += number;
+  return minimum > 0 && value < minimum ? minimum : value;
+}
+
+/** `in_ranges` over `parse_ranges`: a comma list of numbers and `a-b` ranges (`b` may be `infinity`). */
+export function matchesRanges(value: number, list: string): boolean {
+  for (const part of list.split(',')) {
+    const token = part.trim();
+    if (token === '') continue;
+    const dash = token.indexOf('-', 1);
+    if (dash === -1) {
+      if (Number(token) === value) return true;
+      continue;
+    }
+    const lo = Number(token.slice(0, dash));
+    const hiText = token.slice(dash + 1);
+    const hi = hiText === 'infinity' ? Infinity : Number(hiText);
+    if (value >= lo && value <= hi) return true;
+  }
+  return false;
+}
+
 /** Resolves a comma-separated `*_list=` attribute value against a registry, mirroring `unit_type_data::add_registry_entries`'s id-resolution loop -- unknown ids are silently skipped (matches upstream's WRN-log-and-continue, not an error). */
 function resolveIdList(listValue: string, registry: ReadonlyMap<string, RegistryEntry>): RegistryEntry[] {
   return listValue
@@ -104,6 +139,16 @@ function resolveIdList(listValue: string, registry: ReadonlyMap<string, Registry
     .filter((s) => s.length > 0)
     .map((id) => registry.get(id))
     .filter((c): c is RegistryEntry => c !== undefined);
+}
+
+/** What `UnitType` keeps beyond its positional stats (see its constructor). */
+export interface UnitTypeExtras {
+  readonly registries?: { readonly weaponSpecials: ReadonlyMap<string, RegistryEntry>; readonly abilities: ReadonlyMap<string, RegistryEntry> };
+  readonly advancements?: readonly WmlConfig[];
+  readonly upkeep?: string;
+  readonly variationId?: string;
+  readonly halo?: string;
+  readonly makeVariation?: (id: string) => UnitType | undefined;
 }
 
 /**
@@ -131,7 +176,127 @@ export class AttackType {
     public readonly alignment: Alignment | undefined,
     /** Raw `[specials]` sub-tag configs (each e.g. `[damage]`, `[poison]`), unevaluated. */
     public readonly specials: readonly WmlConfig[],
+    /** `movement_used=`: movement an attack with this weapon spends (upstream default 100000, i.e. all of it). */
+    public readonly movementUsed: number = 100000,
+    /** `attacks_used=`: how many of the unit's attacks this weapon spends. */
+    public readonly attacksUsed: number = 1,
   ) {}
+
+  /**
+   * `attack_type::matches_filter` (`matches_simple_filter` plus in-order
+   * `[and]`/`[or]`/`[not]`) -- a weapon filter, e.g. `[effect]
+   * apply_to=attack`'s own attributes. `special_id`/`special_type` and the
+   * `*_active` forms check the weapon's own specials (not whether they are
+   * active in a given fight); `formula=` is not evaluated (matches nothing,
+   * as upstream does on a formula error).
+   */
+  matchesFilter(filter: WmlConfig): boolean {
+    let matches = this.matchesSimpleFilter(filter);
+    for (const { tag, config } of filter.allChildren()) {
+      if (tag === 'and') matches = matches && this.matchesFilter(config);
+      else if (tag === 'or') matches = matches || this.matchesFilter(config);
+      else if (tag === 'not') matches = matches && !this.matchesFilter(config);
+    }
+    return matches;
+  }
+
+  private matchesSimpleFilter(filter: WmlConfig): boolean {
+    const set = (key: string) => new Set(filter.getString(key, '').split(',').map((v) => v.trim()).filter((v) => v !== ''));
+    const inRanges = (value: number, key: string) => !filter.hasAttribute(key) || matchesRanges(value, filter.getString(key));
+    if (!inRanges(this.minRange, 'min_range') || !inRanges(this.maxRange, 'max_range')) return false;
+    const range = set('range');
+    if (range.size > 0 && !range.has(this.range)) return false;
+    if (!inRanges(this.damage, 'damage') || !inRanges(this.numAttacks, 'number')) return false;
+    if (!inRanges(this.accuracy, 'accuracy') || !inRanges(this.parry, 'parry')) return false;
+    if (!inRanges(this.movementUsed, 'movement_used') || !inRanges(this.attacksUsed, 'attacks_used')) return false;
+    const alignment = set('alignment');
+    if (alignment.size > 0 && !alignment.has(this.alignment ?? '')) return false;
+    const name = set('name');
+    if (name.size > 0 && !name.has(this.id)) return false;
+    const type = set('type');
+    if (type.size > 0 && !type.has(this.type)) return false;
+    const baseType = set('base_type');
+    if (baseType.size > 0 && !baseType.has(this.type)) return false;
+    const specialIds = new Set(this.specials.map((s) => s.getString('id', '')));
+    for (const key of ['special', 'special_id', 'special_type', 'special_active', 'special_id_active', 'special_type_active']) {
+      const wanted = set(key);
+      if (wanted.size > 0 && ![...wanted].some((id) => specialIds.has(id))) return false;
+    }
+    if (filter.hasAttribute('formula')) return false;
+    return true;
+  }
+
+  /**
+   * `attack_type::apply_effect`: this weapon with one `[effect]
+   * apply_to=attack` applied -- names, type, range, specials
+   * (`remove_specials=`, `[set_specials]` in `append`/`replace` mode),
+   * ranges, damage and strikes (never below 0; strikes via
+   * `apply_modifier`), accuracy, parry, movement/attacks used, weights.
+   * `specialsRegistry` resolves `[set_specials] specials_list=`.
+   */
+  withEffect(cfg: WmlConfig, specialsRegistry: ReadonlyMap<string, RegistryEntry> = EMPTY_REGISTRY): AttackType {
+    const str = (key: string) => (cfg.hasAttribute(key) && cfg.getString(key) !== '' ? cfg.getString(key) : null);
+    let specials = [...this.specials];
+    const removeIds = str('remove_specials');
+    if (removeIds) {
+      const ids = removeIds.split(',').map((v) => v.trim());
+      specials = specials.filter((sp) => !ids.includes(sp.getString('id', '')));
+    }
+    const setSpecials = cfg.child('set_specials');
+    if (setSpecials) {
+      if (setSpecials.getString('mode', '') !== 'append') specials = [];
+      specials.push(...resolveIdList(setSpecials.getString('specials_list', ''), specialsRegistry).map((e) => e.config));
+      specials.push(...setSpecials.allChildren().map((c) => c.config));
+    }
+    const removeSpecials = cfg.child('remove_specials');
+    if (removeSpecials) {
+      const ids = removeSpecials.getString('id', '').split(',').map((v) => v.trim()).filter((v) => v !== '');
+      if (ids.length > 0) specials = specials.filter((sp) => !ids.includes(sp.getString('id', '')));
+    }
+    let minRange = this.minRange;
+    if (str('set_min_range')) minRange = cfg.getNumber('set_min_range');
+    if (str('increase_min_range')) minRange = applyModifier(minRange, cfg.getString('increase_min_range'));
+    let maxRange = this.maxRange;
+    if (str('set_max_range')) maxRange = cfg.getNumber('set_max_range');
+    if (str('increase_max_range')) maxRange = applyModifier(maxRange, cfg.getString('increase_max_range'));
+    let damage = this.damage;
+    if (str('set_damage')) damage = Math.max(0, cfg.getNumber('set_damage'));
+    if (str('increase_damage')) damage = Math.max(0, applyModifier(damage, cfg.getString('increase_damage')));
+    let numAttacks = this.numAttacks;
+    if (str('set_attacks')) numAttacks = Math.max(0, cfg.getNumber('set_attacks'));
+    if (str('increase_attacks')) numAttacks = applyModifier(numAttacks, cfg.getString('increase_attacks'), 1);
+    let accuracy = this.accuracy;
+    if (str('set_accuracy')) accuracy = cfg.getNumber('set_accuracy');
+    if (str('increase_accuracy')) accuracy = applyModifier(accuracy, cfg.getString('increase_accuracy'));
+    let parry = this.parry;
+    if (str('set_parry')) parry = cfg.getNumber('set_parry');
+    if (str('increase_parry')) parry = applyModifier(parry, cfg.getString('increase_parry'));
+    let movementUsed = this.movementUsed;
+    if (str('set_movement_used')) movementUsed = cfg.getNumber('set_movement_used');
+    if (str('increase_movement_used')) movementUsed = applyModifier(movementUsed, cfg.getString('increase_movement_used'), 1);
+    let attacksUsed = this.attacksUsed;
+    if (str('set_attacks_used')) attacksUsed = cfg.getNumber('set_attacks_used');
+    if (str('increase_attacks_used')) attacksUsed = applyModifier(attacksUsed, cfg.getString('increase_attacks_used'), 1);
+    const alignment = str('set_alignment');
+    return new AttackType(
+      str('set_name') ?? this.id,
+      str('set_description') ?? this.name,
+      str('set_type') ?? this.type,
+      str('set_range') ?? this.range,
+      minRange,
+      maxRange,
+      damage,
+      numAttacks,
+      str('attack_weight') ? cfg.getNumber('attack_weight', 1) : this.attackWeight,
+      str('defense_weight') ? cfg.getNumber('defense_weight', 1) : this.defenseWeight,
+      accuracy,
+      parry,
+      alignment ? parseAlignment(alignment) : this.alignment,
+      specials,
+      movementUsed,
+      attacksUsed,
+    );
+  }
 
   /**
    * `specialsRegistry` resolves `specials_list=` (a comma-separated list of
@@ -169,6 +334,8 @@ export class AttackType {
       cfg.getNumber('parry', 0),
       alignmentStr === '' ? undefined : parseAlignment(alignmentStr),
       specials,
+      cfg.getNumber('movement_used', 100000),
+      cfg.getNumber('attacks_used', 1),
     );
   }
 }
@@ -243,7 +410,46 @@ export class UnitType {
     public readonly genders: readonly string[] = ['male'],
     /** Synced random numbers naming a new unit of this type consumes, per gender (see `nameDrawCount`). */
     public readonly nameDraws: { readonly male: number; readonly female: number } = { male: 0, female: 0 },
-  ) {}
+    /** The rest of what a unit takes from its type, and what effects need to resolve against (Phase 18c). */
+    extras: UnitTypeExtras = {},
+  ) {
+    this.registries = extras.registries ?? { weaponSpecials: EMPTY_REGISTRY, abilities: EMPTY_REGISTRY };
+    this.advancements = extras.advancements ?? [];
+    this.upkeep = extras.upkeep ?? 'full';
+    this.variationId = extras.variationId ?? '';
+    this.halo = extras.halo ?? '';
+    this.makeVariation = extras.makeVariation;
+  }
+
+  /** The `[units]` registries this type was built with, which `[effect]`s resolve `specials_list=`/`new_ability` against. */
+  readonly registries: { readonly weaponSpecials: ReadonlyMap<string, RegistryEntry>; readonly abilities: ReadonlyMap<string, RegistryEntry> };
+  /** `[advancement]`s (AMLA and advancement options), as configs. */
+  readonly advancements: readonly WmlConfig[];
+  /** `upkeep=`: `full` (the unit's level), `loyal` (none), or a number. */
+  readonly upkeep: string;
+  /** Which `[variation]` this type is (`variation_id=`); `''` for the base type. */
+  readonly variationId: string;
+  /** `halo=`. */
+  readonly halo: string;
+  private readonly makeVariation: ((id: string) => UnitType | undefined) | undefined;
+  private readonly variationCache = new Map<string, UnitType | undefined>();
+
+  /**
+   * `unit_type::get_variation`: the type a unit of this type with
+   * `variation=id` actually has -- the `[variation]` merged over this type
+   * when it says `inherit=yes` (`create_sub_type`), with its own movetype,
+   * hitpoints, attacks. This type itself for `''` or an unknown id.
+   */
+  variation(id: string): UnitType {
+    if (id === '' || id === this.variationId || !this.makeVariation) return this;
+    if (!this.variationCache.has(id)) this.variationCache.set(id, this.makeVariation(id));
+    return this.variationCache.get(id) ?? this;
+  }
+
+  /** Whether this type declares `[variation] variation_id=id`. */
+  hasVariation(id: string): boolean {
+    return id !== '' && this.variation(id) !== this;
+  }
 
   /** Mirrors `unit_type::experience_needed`: the modifier is the game-wide `[game_config] experience_modifier` (default 100 = unchanged). */
   experienceNeeded(experienceModifierPercent = 100): number {
@@ -324,6 +530,27 @@ export class UnitType {
       cfg.getString('image', ''),
       parseGenders(cfg.getString('gender', '')),
       { male: cfg.getNumber('name_draws_male', 0), female: cfg.getNumber('name_draws_female', 0) },
+      {
+        registries: { weaponSpecials: registries.weaponSpecials ?? EMPTY_REGISTRY, abilities: registries.abilities ?? EMPTY_REGISTRY },
+        advancements: cfg.children('advancement'),
+        upkeep: cfg.getString('upkeep', 'full'),
+        variationId: cfg.getString('variation_id', ''),
+        halo: cfg.getString('halo', ''),
+        makeVariation: (variationId) => {
+          const varCfg = cfg.children('variation').find((v) => v.getString('variation_id') === variationId);
+          if (!varCfg) return undefined;
+          // create_sub_type: inherit=yes merges the variation over the base
+          // (`inherit_from`); the sub-type keeps no [variation]s of its own.
+          const base = cfg.clone();
+          base.removeChildren('variation');
+          const merged = varCfg.getBoolean('inherit', false) ? mergeUnitTypeConfig(base, varCfg) : varCfg.clone();
+          merged.removeChildren('male');
+          merged.removeChildren('female');
+          merged.setAttribute('id', id);
+          merged.setAttribute('variation_id', variationId);
+          return UnitType.fromConfig(merged, movementTypes, terrainData, registries);
+        },
+      },
     );
   }
 }

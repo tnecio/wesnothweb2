@@ -19,7 +19,7 @@
  *    per-unit flag that *usually* mirrors `unit_type::has_zoc()` but can be
  *    overridden by WML (`[unit] emit_zoc=`) or in-game effects. `Unit.ts`
  *    doesn't model that per-unit override (only the type-level flag), so
- *    `emitsZoc()` below is `unit.type.zoc && !unit.incapacitated` --
+ *    `emitsZoc()` below is `unit.emitZoc && !unit.incapacitated` --
  *    correct for the overwhelmingly common case (no override), wrong only
  *    for the rare WML scenario that explicitly flips a unit's ZoC.
  *  - **Skirmisher (and any other ability) as a live, filter-evaluated
@@ -65,12 +65,12 @@ export type { PlainRoute } from './astar.js';
 
 /** Mirrors `unit::emits_zoc()` -- see module doc comment for the per-unit-override gap. */
 export function emitsZoc(unit: Unit): boolean {
-  return unit.type.zoc && !unit.incapacitated;
+  return unit.emitZoc && !unit.incapacitated;
 }
 
 /** Approximates `unit.get_ability_bool("skirmisher", loc)` -- see module doc comment. */
 export function hasSkirmisher(unit: Unit): boolean {
-  return unit.type.abilities.some((a) => a.tag === 'skirmisher');
+  return unit.abilities.some((a) => a.tag === 'skirmisher');
 }
 
 /** Mirrors `pathfind::enemy_zoc`. */
@@ -265,7 +265,7 @@ export class DestVect {
 
 /** Mirrors the parameters `pathfind::paths`' constructors funnel into `find_routes`. */
 export interface FindRoutesOptions {
-  /** Cost of entering a hex of the given terrain; mirrors `movetype::terrain_costs::cost`. Typically `unit.type.moveType.movementCost`. */
+  /** Cost of entering a hex of the given terrain; mirrors `movetype::terrain_costs::cost`. Typically `unit.moveType.movementCost`. */
   costFn: (terrain: TerrainCode, slowed: boolean) => number;
   slowed?: boolean;
   movesLeft: number;
@@ -443,7 +443,7 @@ export function reachableHexes(board: GameBoard, unit: Unit, options: ReachableH
   return findRoutes({
     board,
     origin: unit.location,
-    costFn: (terrain, slowed) => unit.type.moveType.movementCost(terrain, slowed),
+    costFn: (terrain, slowed) => unit.moveType.movementCost(terrain, slowed),
     slowed: unit.slowed,
     movesLeft: unit.movesLeft,
     maxMoves: unit.maxMoves,

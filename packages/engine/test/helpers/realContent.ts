@@ -13,6 +13,9 @@ import {
   collectSpecialRegistry,
   collectUnitTypeConfigs,
   flattenAllUnitTypes,
+  collectRaceConfigs,
+  collectGlobalTraits,
+  resolveTraitPools,
 } from '../../src/model/UnitTypeDatabase.js';
 import { GameMap } from '../../src/model/Map.js';
 
@@ -36,6 +39,8 @@ export function loadRealContent(): RealContent {
   const terrainData = TerrainTypeData.fromConfigs(terrainCfg.children('terrain_type'));
   const unitsCfg = parseWmlFile(path.join(dataRoot, 'core/units.cfg'), { dataRoot, defines: new Map(defines) });
   const flattened = flattenAllUnitTypes(collectUnitTypeConfigs(unitsCfg));
+  // As the snapshot builder does: each type's race folded in (trait pool, trait count, name draws).
+  resolveTraitPools(flattened, collectRaceConfigs(unitsCfg), collectGlobalTraits(unitsCfg));
   const moveTypes = collectMovementTypeConfigs(unitsCfg);
   const registries = {
     weaponSpecials: collectSpecialRegistry(unitsCfg, 'weapon_specials'),

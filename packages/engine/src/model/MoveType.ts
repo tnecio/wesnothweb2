@@ -222,6 +222,64 @@ export class MoveType {
     );
   }
 
+  /**
+   * `movetype::merge(new_cfg, applies_to, overwrite)`: this movetype with one
+   * `[effect]`'s `[movement_costs]`/`[vision_costs]`/`[jamming_costs]`/
+   * `[defense]`/`[resistance]` applied. Overwriting sets each listed value;
+   * otherwise (upstream's default for effects) each value is *added*: for a
+   * terrain table, to the old value's magnitude (missing counts as the
+   * table's maximum), clamped, keeping the old sign -- a defense cap stays a
+   * cap; for resistances, to the old value (missing is 100), never below 0.
+   */
+  merge(applyTo: string, cfg: WmlConfig, overwrite: boolean): MoveType {
+    const terrainTable = (table: ReadonlyMap<string, number>, min: number, max: number): Map<string, number> => {
+      const merged = new Map(table);
+      for (const key of cfg.attributeNames()) {
+        const change = cfg.getNumber(key);
+        if (overwrite) {
+          merged.set(key, change);
+          continue;
+        }
+        const old = table.get(key) ?? max;
+        const value = Math.max(min, Math.min(Math.abs(old) + change, max));
+        merged.set(key, old < 0 ? -value : value);
+      }
+      return merged;
+    };
+    const next = {
+      movement: this.movementTable,
+      vision: this.visionTable,
+      jamming: this.jammingTable,
+      defense: this.defenseTable,
+      resistances: this.resistances,
+    };
+    switch (applyTo) {
+      case 'movement_costs':
+        next.movement = terrainTable(this.movementTable, MOVEMENT_PARAMS.minValue, MOVEMENT_PARAMS.maxValue);
+        break;
+      case 'vision_costs':
+        next.vision = terrainTable(this.visionTable, MOVEMENT_PARAMS.minValue, MOVEMENT_PARAMS.maxValue);
+        break;
+      case 'jamming_costs':
+        next.jamming = terrainTable(this.jammingTable, JAMMING_PARAMS.minValue, JAMMING_PARAMS.maxValue);
+        break;
+      case 'defense':
+        next.defense = terrainTable(this.defenseTable, DEFENSE_MAX_PARAMS.minValue, DEFENSE_MAX_PARAMS.maxValue);
+        break;
+      case 'resistance': {
+        const merged = new Map(this.resistances.damageTable());
+        for (const key of cfg.attributeNames()) {
+          merged.set(key, overwrite ? cfg.getNumber(key) : Math.max(0, (merged.get(key) ?? 100) + cfg.getNumber(key)));
+        }
+        next.resistances = new Resistances(merged);
+        break;
+      }
+      default:
+        return this;
+    }
+    return new MoveType(this.flying, next.movement, next.vision, next.jamming, next.defense, next.resistances, this.terrainData);
+  }
+
   movementCost(terrain: TerrainCode, slowed = false): number {
     const result = resolveValue(terrain, this.movementTable, MOVEMENT_PARAMS, this.terrainData, undefined);
     return slowed && result !== UNREACHABLE ? 2 * result : result;

@@ -176,7 +176,7 @@ export function collectSpecialRegistry(
  * level (derived wins wherever set), child-tag-wholesale (derived's own
  * children for a tag name win outright if it has any, else base's).
  */
-function mergeUnitTypeConfig(base: WmlConfig, derived: WmlConfig): WmlConfig {
+export function mergeUnitTypeConfig(base: WmlConfig, derived: WmlConfig): WmlConfig {
   const merged = new WmlConfig();
 
   for (const key of base.attributeNames()) merged.setAttribute(key, base.get(key)!);

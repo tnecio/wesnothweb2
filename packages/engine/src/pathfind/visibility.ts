@@ -42,7 +42,7 @@ function filterLocationMatches(board: GameBoard, loc: Location, cfg: WmlConfig):
 
 /** Whether `unit` standing at `loc` has an active `hides` ability (`get_ability_bool("hides", loc)`). */
 export function hidesActive(board: GameBoard, unit: Unit, loc: Location = unit.location): boolean {
-  return unit.type.abilities.some((entry) => {
+  return unit.abilities.some((entry) => {
     if (entry.tag !== 'hides') return false;
     if (!entry.config.getBoolean('affect_self', true)) return false;
     const filter = entry.config.child('filter');

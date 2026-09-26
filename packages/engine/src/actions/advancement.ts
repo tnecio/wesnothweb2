@@ -19,6 +19,7 @@ import type { GameBoard } from '../model/GameBoard.js';
 import { UnitStatus } from '../model/Unit.js';
 import type { Unit } from '../model/Unit.js';
 import type { UnitType } from '../model/UnitType.js';
+import type { EffectEnv } from '../model/effects.js';
 import type { Rng } from '../rng/Rng.js';
 
 /** Result of advancing a unit one level, mirroring `advance_unit`'s net effect. */
@@ -37,9 +38,14 @@ export interface AdvancementResult {
  * cures all three, matching `get_advanced_unit`'s explicit `set_state`
  * calls).
  */
-export function advanceUnitTo(unit: Unit, newType: UnitType, experienceModifierPercent = 100): AdvancementResult {
+export function advanceUnitTo(unit: Unit, newType: UnitType, experienceModifierPercent = 100, env: EffectEnv = {}): AdvancementResult {
   const fromTypeId = unit.type.id;
-  unit.advanceTo(newType, experienceModifierPercent);
+  // get_advanced_unit: the XP overflow carries over, then advance_to (which
+  // re-applies traits and objects to the new type), then a full heal.
+  unit.experience = unit.experienceOverflow();
+  unit.experienceModifier = experienceModifierPercent;
+  unit.advanceTo(newType, env);
+  unit.healToFull();
   unit.setStatus(UnitStatus.Poisoned, false);
   unit.setStatus(UnitStatus.Slowed, false);
   unit.setStatus(UnitStatus.Petrified, false);
@@ -52,14 +58,14 @@ export function advanceUnitTo(unit: Unit, newType: UnitType, experienceModifierP
 }
 
 /**
- * Picks which of `unit.type.advancesTo` to advance into, mirroring the AI/
+ * Picks which of `unit.advancesTo` to advance into, mirroring the AI/
  * random branch of `unit_advancement_choice::query_user` (`get_random_int
  * (0, options-1)`) -- the human-dialog branch is a UI concern out of scope
  * here. Callers driving a human player's choice should call `advanceUnitTo`
  * directly with the player-picked type instead of this function.
  */
 export function chooseAdvancementRandomly(unit: Unit, rng: Rng, resolveType: (id: string) => UnitType): UnitType {
-  const options = unit.type.advancesTo;
+  const options = unit.advancesTo;
   if (options.length === 0) {
     throw new Error(`chooseAdvancementRandomly: ${unit.type.id} has no advances_to options`);
   }

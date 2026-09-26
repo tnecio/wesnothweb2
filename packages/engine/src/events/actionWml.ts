@@ -84,6 +84,7 @@ import { WmlConfig } from '../wml/config.js';
 import { checkRecruitLocation, recallUnit, rollNewUnit } from '../actions/recruit.js';
 import { findPath, findVacantTile } from '../pathfind/pathfind.js';
 import type { Rng } from '../rng/Rng.js';
+import type { EffectEnv } from '../model/effects.js';
 import type { ActionHandler, EventContext, RecordedMessage } from './context.js';
 import { ActionRegistry } from './context.js';
 import { isFlow, runFlow, type Flow, type MessageOption, type Responder, type TextInputSpec } from './interaction.js';
@@ -823,9 +824,141 @@ function actionModifyUnit(cfg: WmlConfig, ctx: EventContext): void {
       if (tag === 'set_variable') applySetVariable(expanded, unitVars, ctx.log);
       else if (tag === 'set_variables') actionSetVariables(expanded, subCtx);
       else if (tag === 'clear_variable') actionClearVariable(expanded, subCtx);
-      // [object]/[trait]/[advancement]/[effect] are NOT ported -- see module doc comment.
+      else if (tag === 'object' || tag === 'trait' || tag === 'advancement') {
+        // modify_unit.lua: unit:add_modification(tag, wml.parsed/literal(child)).
+        unit.addModification(tag, modificationBody(config, ctx), effectEnvFor(ctx, unit));
+      } else if (tag === 'effect') {
+        // modify_unit.lua: wesnoth.effects[apply_to](unit, effect) -- applied, not recorded.
+        const wrapper = new WmlConfig();
+        wrapper.addChild('effect', expanded);
+        const before = unit.modifications;
+        unit.addModification('object', wrapper, effectEnvFor(ctx, unit));
+        unit.modifications = before;
+      }
     }
     unit.variables = unitVars.toConfig();
+  }
+}
+
+// --- unit modifications: [object], [remove_object], [remove_trait], [transform_unit] (Phase 18c) ---
+
+/** What `[effect]`s applied from an event resolve against: this board, this scenario's types, the unit's side's recall cost. */
+export function effectEnvFor(ctx: EventContext, unit?: Unit): EffectEnv {
+  return {
+    board: ctx.board,
+    resolveType: ctx.resolveType,
+    teamRecallCost: unit ? ctx.board.getTeam(unit.side)?.recallCost : undefined,
+    log: (message) => ctx.log('warn', message),
+  };
+}
+
+/** `wml.parsed` unless `delayed_variable_substitution=yes` (`wml.literal`): how a modification is stored. */
+function modificationBody(cfg: WmlConfig, ctx: EventContext): WmlConfig {
+  return cfg.getBoolean('delayed_variable_substitution', false) ? cfg.clone() : ctx.variables.expandConfigDeep(cfg);
+}
+
+/** `gui.show_popup(name, text, image)`, as the message dialogue this port has. */
+function* popupFlow(ctx: EventContext, title: string, text: string, image: string): Flow {
+  const message: RecordedMessage = {
+    speaker: 'narrator',
+    message: text,
+    image: image === '' ? undefined : image,
+    caption: title,
+    portrait: image,
+    leftSide: true,
+    mirror: false,
+    secondPortrait: '',
+    secondMirror: false,
+    title,
+    speakerLocation: undefined,
+    scroll: false,
+    highlight: false,
+    sound: '',
+    voice: '',
+  };
+  ctx.messages.push(message);
+  yield { kind: 'message', message, options: [] };
+}
+
+/**
+ * `wml_actions.object` (`data/lua/wml/object.lua`): gives the first unit
+ * matching `[filter]` (or the event's unit) the object -- a modification
+ * whose `[effect]`s apply at once and last per `duration=` -- unless an
+ * object with this `id=` was already taken (`take_only_once`, default yes).
+ * Then shows its description (or `cannot_use_message=`) unless silent, and
+ * runs `[then]` or, when no unit took it, `[else]`.
+ */
+function* actionObject(cfg: WmlConfig, ctx: EventContext): Flow {
+  const unique = cfg.getBoolean('take_only_once', true);
+  const id = cfg.getString('id', '');
+  if (id !== '' && unique && ctx.usedItems.has(id)) return;
+
+  const filter = cfg.child('filter');
+  const unit = filter ? findUnits(ctx.board, ctx.variables.expandConfig(filter))[0] : ctx.board.unitAt(ctx.loc1);
+  const text = unit ? cfg.getString('description', '') : cfg.getString('cannot_use_message', '');
+  const silent = cfg.hasAttribute('silent') ? cfg.getBoolean('silent') : text === '';
+
+  if (unit) {
+    const body = modificationBody(cfg, ctx);
+    if (cfg.getBoolean('no_write', false)) {
+      // Deprecated upstream: the effects apply, the object is not recorded.
+      const scratch = body.clone();
+      const before = unit.modifications;
+      unit.addModification('object', scratch, effectEnvFor(ctx, unit));
+      unit.modifications = before;
+    } else {
+      unit.addModification('object', body, effectEnvFor(ctx, unit));
+    }
+    if (id !== '' && unique) ctx.usedItems.add(id);
+  }
+  if (!silent) yield* popupFlow(ctx, cfg.getString('name', ''), text, cfg.getString('image', ''));
+
+  for (const branch of cfg.children(unit ? 'then' : 'else')) {
+    yield* runActionFlow(branch, ctx);
+    if (ctx.exit.type !== 'none') break;
+  }
+}
+
+/** `wml_actions.remove_object`: every matching unit loses its `object_id=` objects and is rebuilt. */
+function actionRemoveObject(cfg: WmlConfig, ctx: EventContext): void {
+  const id = cfg.getString('object_id', '');
+  for (const unit of findUnits(ctx.board, cfg)) unit.removeModifications(id === '' ? {} : { id }, ['object'], effectEnvFor(ctx, unit));
+}
+
+/** `wml_actions.remove_trait`: every matching unit loses the `trait_id=` trait and is rebuilt. */
+function actionRemoveTrait(cfg: WmlConfig, ctx: EventContext): void {
+  const id = cfg.getString('trait_id', '');
+  for (const unit of findUnits(ctx.board, cfg)) unit.removeModifications(id === '' ? {} : { id }, ['trait'], effectEnvFor(ctx, unit));
+}
+
+/**
+ * `wml_actions.transform_unit`: each matching unit becomes `transform_to=`
+ * (`unit:transform` -> `advance_to`, keeping its traits and objects). With
+ * no `transform_to=`, upstream levels the unit up in place keeping its hit
+ * points and experience; that path advances to its first `advances_to=`.
+ */
+function actionTransformUnit(cfg: WmlConfig, ctx: EventContext): void {
+  const to = cfg.getString('transform_to', '');
+  for (const unit of findUnits(ctx.board, cfg)) {
+    const env = effectEnvFor(ctx, unit);
+    if (to !== '') {
+      let type;
+      try {
+        type = ctx.resolveType(to);
+      } catch {
+        ctx.log('error', `[transform_unit]: unknown unit type '${to}'`);
+        return;
+      }
+      unit.advanceTo(type, env);
+      continue;
+    }
+    const next = unit.advancesTo[0];
+    if (!next) continue;
+    const hitpoints = unit.hitpoints;
+    const experience = unit.experience;
+    unit.advanceTo(ctx.resolveType(next), env);
+    unit.hitpoints = Math.min(hitpoints, unit.maxHitpoints);
+    unit.experience = experience;
   }
 }
 
@@ -1482,6 +1615,10 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('store_gold', actionStoreGold);
   registry.register('allow_recruit', actionAllowRecruit);
   registry.register('disallow_recruit', actionDisallowRecruit);
+  registry.register('object', actionObject);
+  registry.register('remove_object', actionRemoveObject);
+  registry.register('remove_trait', actionRemoveTrait);
+  registry.register('transform_unit', actionTransformUnit);
   registry.register('capture_village', actionCaptureVillage);
   registry.register('recall', actionRecall);
   registry.register('move_unit', actionMoveUnit);

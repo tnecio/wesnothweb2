@@ -203,7 +203,7 @@ function affectsAdjacent(cfg: WmlConfig, receiver: Unit, at: Location, owner: Un
 export function getActiveAbilities(board: GameBoard, receiver: Unit, tag: string, at: Location = receiver.location): ActiveAbility[] {
   const result: ActiveAbility[] = [];
 
-  for (const entry of receiver.type.abilities) {
+  for (const entry of receiver.abilities) {
     if (entry.tag !== tag) continue;
     const { affectsSelf } = abilityAffectFlags(entry.config);
     if (!affectsSelf) continue;
@@ -214,7 +214,7 @@ export function getActiveAbilities(board: GameBoard, receiver: Unit, tag: string
 
   for (const owner of board.allUnits()) {
     if (owner === receiver || owner.incapacitated) continue;
-    for (const entry of owner.type.abilities) {
+    for (const entry of owner.abilities) {
       if (entry.tag !== tag) continue;
       if (!entry.config.allChildren().some((c) => c.tag === 'affect_adjacent')) continue;
       if (!affectsSide(entry.config, receiver.side, owner.side, board)) continue;

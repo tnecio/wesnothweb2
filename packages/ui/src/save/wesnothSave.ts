@@ -156,6 +156,7 @@ function unitFromWml(unitCfg: WmlConfig, side: number): SavedUnit {
     underlyingId: optNumber(unitCfg, 'underlying_id'),
     profile: optString(unitCfg, 'profile'),
     gender: optString(unitCfg, 'gender'),
+    variation: optString(unitCfg, 'variation'),
     statuses: statusesFrom(unitCfg),
     modifications: modificationsFrom(unitCfg),
     variables: unitCfg.child('variables')?.toJSON(),
@@ -314,6 +315,7 @@ function unitToWml(u: SavedUnit, onBoard: boolean): WmlConfig {
   if (u.role) cfg.setAttribute('role', u.role);
   if (u.profile) cfg.setAttribute('profile', u.profile);
   if (u.gender) cfg.setAttribute('gender', u.gender);
+  if (u.variation) cfg.setAttribute('variation', u.variation);
   if (u.goto) {
     const loc = new Location(u.goto.x, u.goto.y);
     cfg.setAttribute('goto_x', loc.wmlX);

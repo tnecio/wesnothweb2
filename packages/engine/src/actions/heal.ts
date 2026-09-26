@@ -74,7 +74,7 @@ export interface HealOutcome {
  * `id=` is "healing"/"curing", not "heals".
  */
 function hasAbility(unit: Unit, tag: string): WmlConfig[] {
-  return unit.type.abilities.filter((a) => a.tag === tag).map((a) => a.config);
+  return unit.abilities.filter((a) => a.tag === tag).map((a) => a.config);
 }
 
 /** Mirrors `poison_progress`: how far (if at all) `patient`'s poison is being treated this side's turn. */
@@ -211,9 +211,9 @@ export function calculateHealing(board: GameBoard, side: number): HealOutcome[] 
   return outcomes;
 }
 
-/** Mirrors `unit::is_healthy()`: has the "healthy" trait. `Unit.ts` doesn't track this specially, so it's read from `modifications` directly. */
+/** Mirrors `unit::is_healthy()`: the healthy trait's `[effect] apply_to=healthy` (Phase 18c: applied, not guessed from the trait id). */
 function isHealthy(unit: Unit): boolean {
-  return unit.modifications.some((m) => m.kind === 'trait' && m.cfg.getString('id', '') === 'healthy');
+  return unit.healthy;
 }
 
 /** Mirrors `do_heal`: applies one `HealOutcome` to its unit. */

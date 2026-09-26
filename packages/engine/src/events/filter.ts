@@ -36,6 +36,7 @@ import { Location, distanceBetween, getAdjacentTiles } from '../model/Location.j
 import { parseTerrainList, terrainMatches } from '../model/Terrain.js';
 import type { Unit } from '../model/Unit.js';
 import type { WmlConfig } from '../wml/config.js';
+import { setEffectUnitFilter } from '../model/effects.js';
 import { FormulaError, FunctionSymbolTable, MapFormulaCallable, parseFormula, Variant, type Callable, type Expression } from '../formula/index.js';
 import { isUnitVisibleToTeam } from '../pathfind/visibility.js';
 
@@ -220,7 +221,7 @@ export function unitMatchesFilter(unit: Unit, filterCfg: WmlConfig, board?: Game
   }
   if (filterCfg.hasAttribute('ability')) {
     const wanted = filterCfg.getString('ability').split(',').map((s) => s.trim());
-    const has = unit.type.abilities.some((a) => wanted.includes(a.config.getString('id', '')));
+    const has = unit.abilities.some((a) => wanted.includes(a.config.getString('id', '')));
     if (!has) return false;
   }
   if (filterCfg.hasAttribute('has_weapon')) {
@@ -409,3 +410,7 @@ export function findLocations(board: GameBoard, cfg: WmlConfig, refUnit?: Unit):
   return [...result.values()];
 }
 
+
+// `[effect][filter]` (model/effects.ts) matches with this module's unit
+// filter; the model layer cannot import it, so it is registered here.
+setEffectUnitFilter((unit, filter, board) => unitMatchesFilter(unit, filter, board));

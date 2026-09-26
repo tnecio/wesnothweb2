@@ -52,7 +52,7 @@ export function illuminatedLawfulBonus(board: GameBoard, loc: Location, baseLawf
 
   for (const unit of board.allUnits()) {
     if (unit.incapacitated) continue;
-    for (const entry of unit.type.abilities) {
+    for (const entry of unit.abilities) {
       if (entry.tag !== 'illuminates') continue;
       if (!entry.config.getBoolean('affect_self', true)) continue; // every real definition is self-centered; nothing else to check here.
       const radiusRaw = entry.config.getString('radius', '1');

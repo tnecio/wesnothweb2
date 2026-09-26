@@ -170,6 +170,7 @@ export class EventPump {
       rng: options.rng,
       messages: [] as RecordedMessage[],
       choices: [],
+      usedItems: new Set(),
       objectivesBySide: new Map(),
       menuItems: new Map(),
       loc1: Location.NULL,

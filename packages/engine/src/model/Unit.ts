@@ -38,7 +38,9 @@
 import { WmlConfig } from '../wml/config.js';
 import { Location, Direction, parseDirection } from './Location.js';
 import type { TerrainCode } from './Terrain.js';
-import { AttackType, UnitType } from './UnitType.js';
+import { AttackType, UnitType, type Alignment, type RegistryEntry } from './UnitType.js';
+import type { MoveType } from './MoveType.js';
+import { applyModificationEffects, type EffectEnv } from './effects.js';
 
 /** Built-in status/state ids, ported verbatim from `unit::known_boolean_state_names_`. */
 export const UnitStatus = {
@@ -71,6 +73,12 @@ export interface UnitOptions {
   profile?: string;
   /** `gender=`; defaults to the type's first gender. */
   gender?: string;
+  /** `variation=`: which of the type's `[variation]`s this unit is (the Walking Corpse's `swimmer`). */
+  variation?: string;
+  /** `[game_config] experience_modifier` percentage the unit's XP threshold is scaled by. */
+  experienceModifier?: number;
+  /** Where the modifications' `[effect]`s resolve filters and types (see `EffectEnv`). */
+  effectEnv?: EffectEnv;
 }
 
 /**
@@ -121,19 +129,73 @@ export class Unit {
   /** `[unit] gender=` (`unit::gender_`): `male` or `female`. */
   gender: string;
 
+  // --- Phase 18c: what a unit takes from its type, then its modifications change ---
+  /** The type before any variation (`type.variation(variation)` is `type`). */
+  baseType: UnitType;
+  /** `variation=`: the `[variation]` in effect, `''` for none. */
+  variation: string;
+  /** Movement costs, defense and resistances, after `[effect]`s. */
+  moveType: MoveType;
+  /** Abilities, after `new_ability`/`remove_ability` effects. */
+  abilities: readonly RegistryEntry[];
+  alignment: Alignment;
+  /** `unit::emit_zoc_`. */
+  emitZoc: boolean;
+  /** Vision range; negative means "same as `maxMoves`" (upstream's `vision_ < 0`). */
+  vision: number;
+  jamming: number;
+  advancesTo: readonly string[];
+  /** AMLA/advancement options (`[advancement]`). */
+  advancements: readonly WmlConfig[];
+  /** The fearless trait's effect: no penalty from an unfavourable time of day. */
+  fearless: boolean;
+  /** The healthy trait's effect: always rests-heals, and poison cannot kill it past 1 HP. */
+  healthy: boolean;
+  /** `full` (the unit's level), `loyal` (none) or a number. */
+  upkeep: string;
+  /** `recall_cost=`, -1 for the side's default. */
+  recallCost: number;
+  imageMods: string;
+  overlays: readonly string[];
+  halo: string;
+  ellipse: string;
+  /** `[game_config] experience_modifier` the XP threshold was computed with. */
+  experienceModifier: number;
+
   private constructor(type: UnitType, side: number, location: Location, options: UnitOptions) {
-    this.type = type;
+    this.baseType = type;
+    this.variation = options.variation ?? '';
+    this.type = type.variation(this.variation);
     this.side = side;
     this.location = location;
-    this.hitpoints = type.hitpoints;
-    this.maxHitpoints = type.hitpoints;
+    this.experienceModifier = options.experienceModifier ?? 100;
+    // Placeholders, all overwritten by resetFromType below.
+    this.hitpoints = 0;
+    this.maxHitpoints = 0;
     this.experience = 0;
-    this.maxExperience = type.experienceNeeded();
-    this.movesLeft = type.movement;
-    this.maxMoves = type.movement;
-    this.attacksLeft = type.maxAttacksPerTurn;
-    this.maxAttacksPerTurn = type.maxAttacksPerTurn;
-    this.level = type.level;
+    this.maxExperience = 0;
+    this.movesLeft = 0;
+    this.maxMoves = 0;
+    this.attacksLeft = 0;
+    this.maxAttacksPerTurn = 0;
+    this.level = 0;
+    this.moveType = type.moveType;
+    this.abilities = [];
+    this.alignment = type.alignment;
+    this.emitZoc = true;
+    this.vision = -1;
+    this.jamming = 0;
+    this.advancesTo = [];
+    this.advancements = [];
+    this.fearless = false;
+    this.healthy = false;
+    this.upkeep = 'full';
+    this.recallCost = -1;
+    this.imageMods = '';
+    this.overlays = [];
+    this.halo = '';
+    this.ellipse = '';
+    this.attacks = [];
     this.facing = options.facing ?? Direction.Indeterminate;
     this.canRecruit = options.canRecruit ?? false;
     this.resting = false;
@@ -142,13 +204,156 @@ export class Unit {
     this.name = options.name ?? '';
     this.role = options.role ?? '';
     this.underlyingId = options.underlyingId ?? 0;
-    this.attacks = type.attacks;
     this.modifications = options.modifications ?? [];
     this.statuses = new Set();
     this.variables = options.variables;
     this.goto = undefined;
     this.profile = options.profile ?? '';
     this.gender = options.gender ?? type.genders[0] ?? 'male';
+    // `unit::init`: the type's stats, then every modification's effects,
+    // then a new unit starts full (`movement_ = max_movement_` and friends).
+    this.resetFromType(this.type);
+    this.applyModifications(options.effectEnv ?? {});
+    this.hitpoints = this.maxHitpoints;
+    this.movesLeft = this.maxMoves;
+    this.attacksLeft = this.maxAttacksPerTurn;
+  }
+
+  /**
+   * The scalar half of `unit::advance_to`: every stat a unit takes from its
+   * type, reset to `type`'s -- before the unit's modifications are applied
+   * again on top (`applyModifications`). Leaves hitpoints, moves, attacks
+   * left, experience and statuses alone; `advanceTo` restores those.
+   */
+  resetFromType(type: UnitType): void {
+    this.type = type;
+    this.fearless = false;
+    this.healthy = false;
+    this.imageMods = '';
+    this.overlays = [];
+    this.ellipse = '';
+    this.halo = type.halo;
+    this.abilities = [...type.abilities];
+    this.advancements = [...type.advancements];
+    this.advancesTo = [...type.advancesTo];
+    this.maxExperience = type.experienceNeeded(this.experienceModifier);
+    this.level = type.level;
+    this.recallCost = type.recallCost;
+    this.alignment = type.alignment;
+    this.maxHitpoints = type.hitpoints;
+    this.maxMoves = type.movement;
+    this.vision = type.hasExplicitVision ? type.vision : -1;
+    this.jamming = type.jamming;
+    this.moveType = type.moveType;
+    this.emitZoc = type.zoc;
+    this.attacks = [...type.attacks];
+    this.maxAttacksPerTurn = type.maxAttacksPerTurn;
+    this.upkeep = type.upkeep;
+  }
+
+  /**
+   * `unit::apply_modifications`: every modification's `[effect]`s, in order,
+   * with `no_add` semantics (`apply_to=type`/`variation` skipped).
+   */
+  applyModifications(env: EffectEnv = {}): void {
+    for (const mod of this.modifications) applyModificationEffects(this, mod.cfg, true, env);
+  }
+
+  /**
+   * `unit::add_modification` for a new modification (an `[object]`, an
+   * advancement, a trait added later): recorded, then its effects applied to
+   * the unit as it stands.
+   */
+  addModification(kind: string, cfg: WmlConfig, env: EffectEnv = {}): void {
+    this.modifications = [...this.modifications, { kind, cfg }];
+    applyModificationEffects(this, cfg, false, env);
+  }
+
+  /**
+   * Rebuilds the unit from its type and modifications, keeping its current
+   * hitpoints, moves, attacks and experience (clamped to the new maximums)
+   * -- what upstream does after removing an `[object]` or a trait.
+   */
+  rebuild(env: EffectEnv = {}): void {
+    this.advanceTo(this.baseType, env);
+  }
+
+  /**
+   * `unit::expire_modifications(duration)`: drops every modification whose
+   * `duration=` matches -- `''` means every temporary one (anything but
+   * `forever` or unset), otherwise exactly that value (`turn`, `turn end`,
+   * `scenario`, `now`) -- then rebuilds the unit from its type, or from a
+   * removed modification's `prev_type=` (an `apply_to=type` object reverting).
+   */
+  expireModifications(duration: string, env: EffectEnv = {}): void {
+    const matches = (mod: UnitModification) => {
+      const d = mod.cfg.getString('duration', '');
+      return duration === '' ? d !== '' && d !== 'forever' : d === duration;
+    };
+    const expiring = this.modifications.filter(matches);
+    if (expiring.length === 0) return;
+    let rebuildFrom: UnitType = this.baseType;
+    for (const mod of expiring) {
+      const prev = mod.cfg.getString('prev_type', '');
+      if (prev !== '' && env.resolveType) {
+        try {
+          rebuildFrom = env.resolveType(prev);
+        } catch {
+          /* unknown type: keep the current one */
+        }
+      }
+    }
+    this.modifications = this.modifications.filter((m) => !matches(m));
+    this.advanceTo(rebuildFrom, env);
+  }
+
+  /**
+   * `wesnoth.units.remove_modifications(unit, filter, kinds)`: every
+   * modification of the given kinds (default `object`) whose attributes
+   * include all of `filter`'s is removed, and the unit rebuilt
+   * (`[remove_object] object_id=`, `[remove_trait] trait_id=`).
+   */
+  removeModifications(filter: Readonly<Record<string, string>>, kinds: readonly string[] = ['object'], env: EffectEnv = {}): void {
+    const hit = (mod: UnitModification) =>
+      kinds.includes(mod.kind) && Object.entries(filter).every(([k, v]) => mod.cfg.getString(k, '') === v);
+    if (!this.modifications.some(hit)) return;
+    this.modifications = this.modifications.map((m) => (hit(m) ? { kind: m.kind, cfg: m.cfg.clone().setAttribute('duration', 'now') } : m));
+    this.expireModifications('now', env);
+  }
+
+  /** `unit::new_turn`: `duration=turn` modifications expire; moves and attacks refill; an ambusher can hide again. */
+  newTurn(env: EffectEnv = {}): void {
+    this.expireModifications('turn', env);
+    this.movesLeft = this.maxMoves;
+    this.attacksLeft = this.maxAttacksPerTurn;
+    this.setStatus(UnitStatus.Uncovered, false);
+  }
+
+  /** `unit::end_turn` (at the end of the unit's own side's turn): `duration=turn end` modifications expire, and slow wears off. */
+  endTurn(env: EffectEnv = {}): void {
+    this.expireModifications('turn end', env);
+    this.setStatus(UnitStatus.Slowed, false);
+  }
+
+  /**
+   * `unit::new_scenario`: a unit carried into the next scenario loses its
+   * `goto`, every temporary modification, and its damage and afflictions.
+   */
+  newScenario(env: EffectEnv = {}): void {
+    this.goto = undefined;
+    this.expireModifications('', env);
+    this.healToFull();
+    this.setStatus(UnitStatus.Slowed, false);
+    this.setStatus(UnitStatus.Poisoned, false);
+    this.setStatus(UnitStatus.Petrified, false);
+    this.setStatus(UnitStatus.Guardian, false);
+  }
+
+  /** Must-have traits of the current type the unit lacks (`generate_traits(must_have_only=true)`). */
+  private addMustHaveTraits(): void {
+    const have = new Set(this.modifications.filter((m) => m.kind === 'trait').map((m) => m.cfg.getString('id')));
+    const add = this.type.possibleTraits.filter((t) => t.getString('availability', '') === 'musthave' && !have.has(t.getString('id')));
+    if (add.length > 0) this.modifications = [...this.modifications, ...add.map((cfg) => ({ kind: 'trait', cfg }))];
   }
 
   /**
@@ -202,13 +407,14 @@ export class Unit {
       variables: cfg.child('variables'),
       profile: cfg.getString('profile', ''),
       ...(cfg.hasAttribute('gender') ? { gender: cfg.getString('gender') } : {}),
+      variation: cfg.getString('variation', ''),
+      experienceModifier: experienceModifierPercent,
     });
 
     // Overrides applied on top of the base type, mirroring unit::init/unit's constructor tail.
     if (cfg.hasAttribute('max_hitpoints')) unit.maxHitpoints = Math.max(1, cfg.getNumber('max_hitpoints'));
     if (cfg.hasAttribute('max_moves')) unit.maxMoves = Math.max(0, cfg.getNumber('max_moves'));
     if (cfg.hasAttribute('max_experience')) unit.maxExperience = Math.max(1, cfg.getNumber('max_experience'));
-    else unit.maxExperience = type.experienceNeeded(experienceModifierPercent);
     if (cfg.hasAttribute('level')) unit.level = cfg.getNumber('level');
     if (cfg.hasAttribute('max_attacks')) unit.maxAttacksPerTurn = Math.max(0, cfg.getNumber('max_attacks'));
     if (cfg.hasChild('attack')) unit.attacks = cfg.children('attack').map((a) => AttackType.fromConfig(a));
@@ -281,6 +487,7 @@ export class Unit {
     cfg.setAttribute('underlying_id', this.underlyingId);
     if (this.profile !== '') cfg.setAttribute('profile', this.profile);
     cfg.setAttribute('gender', this.gender);
+    if (this.variation !== '') cfg.setAttribute('variation', this.variation);
     if (this.guardian) cfg.setAttribute('ai_special', 'guardian');
     if (this.goto) {
       cfg.setAttribute('goto_x', this.goto.wmlX);
@@ -325,18 +532,9 @@ export class Unit {
     return this.petrified;
   }
 
-  /**
-   * Mirrors `unit::loyal()` (`upkeep_ == upkeep_loyal`): true when a real
-   * `[trait] id=loyal` (e.g. the `{TRAIT_LOYAL}` macro, `wesnoth/data/core/
-   * macros/traits.cfg`) is among this unit's `modifications`. This project
-   * doesn't apply `[effect]`s generically (see this file's module doc
-   * comment), so unlike upstream this doesn't actually zero the unit's
-   * upkeep anywhere -- it's read only for the real loyal-icon overlay
-   * (`GameSession.renderUnits` -> `SnapshotUnit.loyal` ->
-   * `SnapshotBoard`'s `misc/loyal-icon.png`).
-   */
+  /** Mirrors `unit::loyal()` (`upkeep_ == upkeep_loyal`): the loyal trait's `[effect] apply_to=loyal`, or `upkeep=loyal`. */
   get loyal(): boolean {
-    return this.modifications.some((m) => m.kind === 'trait' && m.cfg.getString('id') === 'loyal');
+    return this.upkeep === 'loyal';
   }
 
   /**
@@ -366,58 +564,65 @@ export class Unit {
 
   /** True if this unit has enough XP AND has somewhere to advance to (plain leveling only; AMLA not ported). */
   advances(): boolean {
-    return this.experience >= this.maxExperience && this.type.advancesTo.length > 0;
+    return this.experience >= this.maxExperience && this.advancesTo.length > 0;
   }
 
   /**
-   * Advances this unit to `newType` in place: resets HP to the new type's
-   * full value (matching the "advancing heals fully" gameplay rule -- see
-   * `advancement.ts`'s `advanceUnitTo`, whose own doc comment cites
-   * `get_advanced_unit`'s explicit `heal_fully()` call) and carries over
-   * overflow XP into the new threshold. Does not apply `[effect]`
-   * modifications from traits/items -- see module doc comment.
-   *
-   * Moves/attacks are deliberately CARRIED OVER (clamped to the new type's
-   * max), not reset to full -- mirrors upstream's `unit::advance_to`
-   * exactly: its `stats_storage_resetter(*this, true)` snapshots the
-   * pre-advance `movement_left`/`attacks_left` and restores them clamped
-   * to the new max once the type swap is done, and `get_advanced_unit`
-   * only ever calls the separate `heal_fully()` on top of that -- it never
-   * touches moves/attacks. Real, reported bug: a unit used to get its full
-   * movement/attacks back the instant it advanced (typically mid-turn,
-   * right after the very attack that leveled it up), letting it act again
-   * for free the same turn.
+   * `unit::advance_to(newType)`: the unit becomes `newType` (in its current
+   * variation), every type-derived stat is reset and every modification
+   * re-applied, then hitpoints, moves and attacks left come back clamped
+   * to the new maximums and experience, slow and poison come back as they
+   * were (`stats_storage_resetter`). Advancing a unit a level is this plus
+   * a full heal and XP overflow (`advancement.ts`'s `advanceUnitTo`).
    */
-  advanceTo(newType: UnitType, experienceModifierPercent = 100): void {
-    const overflow = this.experienceOverflow();
-    const movesLeft = this.movesLeft;
-    const attacksLeft = this.attacksLeft;
-    this.type = newType;
-    this.level = newType.level;
-    this.hitpoints = newType.hitpoints;
-    this.maxHitpoints = newType.hitpoints;
-    this.maxExperience = newType.experienceNeeded(experienceModifierPercent);
-    this.experience = Math.min(overflow, this.maxExperience);
-    this.maxMoves = newType.movement;
-    this.movesLeft = Math.min(movesLeft, this.maxMoves);
-    this.maxAttacksPerTurn = newType.maxAttacksPerTurn;
-    this.attacksLeft = Math.min(attacksLeft, this.maxAttacksPerTurn);
-    this.attacks = newType.attacks;
+  advanceTo(newType: UnitType, env: EffectEnv = {}): void {
+    const hitpoints = this.hitpoints;
+    const moves = this.movesLeft;
+    const attacks = this.attacksLeft;
+    const experience = this.experience;
+    const slowed = this.slowed;
+    const poisoned = this.poisoned;
+    this.baseType = newType;
+    const type = newType.variation(this.variation);
+    this.variation = type.variationId;
+    this.resetFromType(type);
+    this.addMustHaveTraits();
+    this.applyModifications(env);
+    this.movesLeft = Math.min(this.maxMoves, moves);
+    this.hitpoints = Math.min(this.maxHitpoints, hitpoints);
+    this.attacksLeft = Math.min(this.maxAttacksPerTurn, attacks);
+    this.experience = experience;
+    this.setStatus(UnitStatus.Slowed, slowed && !this.hasStatus('unslowable'));
+    this.setStatus(UnitStatus.Poisoned, poisoned && !this.hasStatus('unpoisonable'));
+    if (this.hasStatus('unpetrifiable')) this.setStatus(UnitStatus.Petrified, false);
+  }
+
+  /** `unit::upkeep()`: what this unit costs its side each turn -- nothing for a leader or a loyal unit. */
+  get upkeepCost(): number {
+    if (this.canRecruit || this.upkeep === 'loyal') return 0;
+    if (this.upkeep === 'full' || this.upkeep === '') return this.level;
+    const n = Number.parseInt(this.upkeep, 10);
+    return Number.isNaN(n) ? this.level : n;
+  }
+
+  /** The vision range in movement points (`unit::vision()`: movement when not set separately). */
+  get visionRange(): number {
+    return this.vision < 0 ? this.maxMoves : this.vision;
   }
 
   // --- terrain-dependent stats (delegates to the unit_type's MoveType; no trait/effect modifiers applied) ---
 
   movementCost(terrain: TerrainCode): number {
-    return this.type.moveType.movementCost(terrain, this.slowed);
+    return this.moveType.movementCost(terrain, this.slowed);
   }
   defenseModifier(terrain: TerrainCode): number {
-    return this.type.moveType.defenseModifier(terrain);
+    return this.moveType.defenseModifier(terrain);
   }
   resistanceAgainst(damageType: string): number {
-    return this.type.moveType.resistanceAgainst(damageType);
+    return this.moveType.resistanceAgainst(damageType);
   }
   isFlying(): boolean {
-    return this.type.moveType.flying;
+    return this.moveType.flying;
   }
 
   /** Mirrors `unit::take_hit`: applies damage, returns true if this kills the unit. */

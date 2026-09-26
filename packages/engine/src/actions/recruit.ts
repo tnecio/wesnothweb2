@@ -430,7 +430,7 @@ export function* recallUnitFlow(
   from: Location,
   hooks: PlaceRecruitHooks,
 ): Flow<PlaceRecruitResult | null> {
-  const cost = unit.type.recallCost >= 0 ? unit.type.recallCost : team.recallCost;
+  const cost = unit.recallCost >= 0 ? unit.recallCost : team.recallCost;
   return yield* placeRecruitFlow(board, team, unit, loc, from, cost, true, hooks);
 }
 
@@ -458,7 +458,7 @@ export function recruitUnit(board: GameBoard, team: Team, type: UnitType, loc: L
  * otherwise the team's default.
  */
 export function recallUnit(board: GameBoard, team: Team, unit: Unit, loc: Location, from: Location, facing?: Direction, raise?: RaiseEvent): PlaceRecruitResult {
-  const cost = unit.type.recallCost >= 0 ? unit.type.recallCost : team.recallCost;
+  const cost = unit.recallCost >= 0 ? unit.recallCost : team.recallCost;
   return placeRecruit(board, team, unit, loc, from, cost, true, false, facing, raise);
 }
 

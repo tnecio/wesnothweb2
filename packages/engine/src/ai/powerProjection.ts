@@ -32,7 +32,7 @@ export interface PowerProjectionContext {
 function unitRating(board: GameBoard, unit: Unit, hex: Location, ctx: PowerProjectionContext): number {
   const defenseChanceToBeHit = 100 - unit.defenseModifier(board.map.getTerrain(hex));
   const lawfulBonus = ctx.lawfulBonusAt(hex);
-  const todModifier = combatModifier(lawfulBonus, unit.type.alignment, false, ctx.maxLiminalBonus);
+  const todModifier = combatModifier(lawfulBonus, unit.alignment, unit.fearless, ctx.maxLiminalBonus);
   let maxDamage = 0;
   for (const attack of unit.attacks) {
     maxDamage = Math.max(maxDamage, attack.damage * attack.numAttacks * (100 + todModifier));

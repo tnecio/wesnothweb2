@@ -17,6 +17,7 @@ export * from './model/MoveType.js';
 export * from './model/UnitType.js';
 export * from './model/UnitTypeDatabase.js';
 export * from './model/Unit.js';
+export * from './model/effects.js';
 export * from './model/Team.js';
 export * from './model/ShroudMap.js';
 export * from './model/GameBoard.js';

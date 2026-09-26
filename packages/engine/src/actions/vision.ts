@@ -24,12 +24,12 @@ export type RaiseEvent = (name: string, loc1: Location, loc2: Location) => void;
 
 /** `unit::vision()`: explicit `vision=` if set, otherwise the unit's max movement. */
 export function unitVisionRange(unit: Unit): number {
-  return unit.type.hasExplicitVision ? unit.type.vision : unit.maxMoves;
+  return unit.visionRange;
 }
 
 /** `unit::jamming()`. */
 export function unitJammingRange(unit: Unit): number {
-  return unit.type.jamming;
+  return unit.jamming;
 }
 
 /** Mirrors `jamming_path`: hexes `jammer` can jam from `loc`, one turn out, ignoring units. */
@@ -38,7 +38,7 @@ export function jammingPath(board: GameBoard, jammer: Unit, loc: Location = jamm
   return findRoutes({
     board,
     origin: loc,
-    costFn: (terrain, slowed) => jammer.type.moveType.jammingCost(terrain, slowed),
+    costFn: (terrain, slowed) => jammer.moveType.jammingCost(terrain, slowed),
     slowed: jammer.slowed,
     movesLeft: range,
     maxMoves: range,
@@ -83,7 +83,7 @@ export function visionPath(
 export function unitVisionPath(board: GameBoard, viewer: Unit, loc: Location, jamming: ReadonlyMap<string, number>): FindRoutesResult {
   return visionPath(
     board,
-    (terrain, slowed) => viewer.type.moveType.visionCost(terrain, slowed),
+    (terrain, slowed) => viewer.moveType.visionCost(terrain, slowed),
     viewer.slowed,
     unitVisionRange(viewer),
     loc,
@@ -211,7 +211,7 @@ export class ShroudClearer {
       viewer,
       unitVisionRange(viewer),
       viewer.slowed,
-      (terrain, slowed) => viewer.type.moveType.visionCost(terrain, slowed),
+      (terrain, slowed) => viewer.moveType.visionCost(terrain, slowed),
       viewer.location,
       knownUnits,
       counts,

@@ -179,6 +179,12 @@ export interface EventContext {
   /** Every `[option]`/`[text_input]` answer, oldest first -- see `ChoiceRecord`. */
   choices: ChoiceRecord[];
   /**
+   * `[object] id=`s already taken (`used_items` in `object.lua`, saved with
+   * the game as `[used_items]`): a `take_only_once` object is not given
+   * twice, and `[found_item]` asks whether one was.
+   */
+  usedItems: Set<string>;
+  /**
    * Real, reported bug (bugs3.md "objectives dialog"): `[objectives]` used
    * to be a plain no-op. Mirrors Lua's own `scenario_objectives` table
    * (`data/lua/wml/objectives.lua`), keyed by side -- `actionWml.ts`'s

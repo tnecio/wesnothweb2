@@ -626,14 +626,14 @@ export class RecruitmentCandidateAction extends CandidateAction {
   private recallUnitValue(recall: Unit): number {
     let avgCost = 0;
     let count = 0;
-    for (const advId of recall.type.advancesTo) {
+    for (const advId of recall.advancesTo) {
       const t = this.resolveType(advId);
       if (!t) continue;
       avgCost += t.cost;
       count++;
     }
     avgCost = count > 0 ? avgCost / count : recall.type.cost;
-    const recallCost = recall.type.recallCost >= 0 ? recall.type.recallCost : this.ctx.team().recallCost;
+    const recallCost = recall.recallCost >= 0 ? recall.recallCost : this.ctx.team().recallCost;
     return avgCost - recallCost;
   }
 
