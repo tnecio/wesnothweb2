@@ -1,4 +1,4 @@
-# Phase 20 — Localization & Accessibility: working plan (draft, 2026-09-26)
+# Phase 20 — Localization & Accessibility: working plan (decisions settled 2026-09-26)
 
 Scope is the plan's Phase 20 section (`IMPLEMENTATION_PLAN.md`). This file
 is how I intend to build it, stage by stage, so it can be reviewed before
@@ -43,7 +43,9 @@ work starts.
 | Upstream catalogues for de: `wesnoth` 106 KB, `wesnoth-lib` 80 KB, `wesnoth-units` 193 KB, `wesnoth-dw` 43 KB, `wesnoth-utbs` 280 KB (gzipped `.po`; msgstr-only JSON is smaller) | Fetch per language × domain, only when used. English fetches nothing |
 | Plural rules range from `nplurals=1` (ja) to 6 forms (ar) | A small C-expression evaluator, not `eval` |
 | Localized images exist (`images/misc/l10n/<lang>/`) | `get_localized_path` is a small port |
-| Upstream fonts: Lato (UI), WesScript (story), DejaVu Mono; CJK via NotoSansJP (9.1 MB) and DroidSansFallbackFull (5.3 MB); Lohit-Bengali (140 KB) | CJK font files are too big to load unconditionally |
+| Upstream fonts: Lato (UI), WesScript (story), DejaVu Mono; CJK via NotoSansJP (9.1 MB) and DroidSansFallbackFull (5.3 MB); Lohit-Bengali (140 KB) | No shipped language is CJK or Bengali (see below), so none of those files ship now |
+| Languages at upstream's 80 % (`data/languages/*.cfg`): en_US, it, es, en_GB, gl, cs, ar, hu, fi. **German is 76 %, Polish 68 %** | Shipped set = those plus pl_PL (your call). Arabic is the one RTL language. Polish per domain: `wesnoth` 1451/1465, `wesnoth-lib` 1349/1682, `wesnoth-dw` 426/475 translated |
+| `ar.po` translates `family_order` “Lato” as “لاتو” (no such font) | Arabic falls through to the next font; we ship DejaVu Sans, which has Arabic glyphs, as the fallback |
 | UI uses `px` everywhere and `font-family: sans-serif` in most components | Font scaling and the upstream font order both need a pass over the CSS |
 | Phase 15 delivered hotkeys; `keyboard-playthrough.mjs` covers recruit/move/attack/end turn only | The milestone needs a whole scenario (story, dialogue, options, objectives, advancement, victory) without the mouse |
 | `Modal.svelte` already has Escape, a focus trap, `aria-label`, `data-autofocus` | Screen-reader work is about roles, live regions and icon-button labels, not a rewrite |
@@ -101,9 +103,10 @@ work starts.
   the system locale. The choice is kept in `localStorage`, like the audio
   settings.
 - Minimal language picker: Menu > Language in game and an entry on the
-  menu page. It lists languages at ≥ 80 % unless “show all” is ticked,
-  as upstream's `language_selection` does. It moves into the Phase 24
-  preferences dialog later.
+  menu page. It lists the shipped set only: upstream's ≥ 80 % languages
+  plus Polish, with no “show all” toggle. The set is one list in
+  `build-translations.mjs`, so adding a language later is a one-line
+  change. It moves into the Phase 24 preferences dialog later.
 - Tests: plural evaluator over all 60 `Plural-Forms` headers, context
   stripping, fallback, and a TString concatenation relocalizing after a
   switch.
@@ -115,8 +118,11 @@ work starts.
   uses upstream's msgids verbatim, including `%s`/`$var` placeholders and
   `^` contexts. An audit test scans every `.svelte` file for bare English
   text nodes and `title`/`aria-label`/`placeholder` values that bypass
-  `t()`, and fails on new ones. A report lists port-only strings with no
-  upstream msgid; they stay English (see Decisions).
+  `t()`, and fails on new ones. Strings upstream has no msgid for go into
+  our own `wesnothweb` textdomain: an extract script writes
+  `i18n/wesnothweb.pot`, a translator can add `.po` files next to it, and
+  the build treats it like any upstream domain. It is English-only for
+  now.
 - **Engine-made text**: turn announcements, floating combat and heal
   labels, status and trait names, the “level up” text, and victory and
   defeat captions are all built with upstream's msgids and domains.
@@ -143,21 +149,22 @@ work starts.
 
 - **Fonts**: bundle upstream's Lato, WesScript and DejaVu Sans Mono as
   `@font-face`s, and take the font order from the translated
-  `family_order` in `fonts.cfg`, as upstream does. Load the CJK and Bengali
-  fonts only when the current language's `family_order` names them. The
-  whole file is used, not subsetted, because dialogue can contain any
-  character.
+  `family_order` in `fonts.cfg`, as upstream does, with DejaVu Sans as
+  the fallback (it covers Arabic, Cyrillic and Greek). The loader fetches
+  a font only when the current language's `family_order` names it, so a
+  CJK language added later would pull upstream's NotoSansJP/Droid files
+  on demand. None is in the shipped set, so no CJK file ships now.
 - **RTL (he, ar)**: text runs get `dir="auto"` and `<html dir="rtl">`, and
   the board, map and side panel stay left-to-right. Upstream renders bidi
   text through Pango but does not mirror its GUI, so this matches it.
-- **CJK wrapping**: set `line-break`/`word-break` so story and dialogue
-  text wraps between characters, and check the story viewer and message
-  box with long Japanese and Chinese strings.
+- **Wrapping**: set `line-break`/`word-break`/`hyphens` so story and
+  dialogue text wraps well, and check the story viewer and message box with
+  long Finnish and Hungarian compounds (the longest words in the set).
 - **Numbers**: upstream shows plain integers almost everywhere. Only the
   few places it formats numbers (percentages, `si_string`) get a locale
   formatter.
 - **Verification**: screenshots of dialogue, story, the recruit dialog
-  and the side panel in de, ja, zh_CN, he and ru at 1280×720 and at phone
+  and the side panel in pl, ar, fi, hu and cs at 1280×720 and at phone
   width.
 
 ## Stage 5 — Accessibility
@@ -188,10 +195,10 @@ work starts.
 ## Milestone (from the plan)
 
 1. `apps/web/scripts/i18n-playthrough.mjs` opens Dead Water 1 in English
-   and stops on a dialogue line. It then switches to German from the
+   and stops on a dialogue line. It then switches to Polish from the
    menu. It checks that the menu labels, an open dialog, the dialogue
    text, the unit names in the side panel and the objectives all change
-   to their known `de.po` msgstrs, and that the page did not reload (a
+   to their known `pl.po` msgstrs, and that the page did not reload (a
    marker set on `window` survives). It switches back and checks English
    returns.
 2. The keyboard-only mode of `keyboard-playthrough.mjs` plays a
@@ -199,28 +206,22 @@ work starts.
 3. The Stage 1 coverage script reports zero unknown msgids for every
    shipped campaign.
 4. A real-binary spot check: the same Dead Water 1 dialogue line and
-   recruit list in `wesnoth --language de_DE` (1.16.9 is installed) read
+   recruit list in `wesnoth --language pl_PL` (1.16.9 is installed) read
    the same as ours.
 
-## Decisions I'd like you to confirm
+## Decisions (settled 2026-09-26)
 
-1. **Languages shipped**: all 60 of upstream's languages, filtered at
-   upstream's 80 % by default with a “show all” toggle *(recommended)*, or
-   only a chosen few to keep the build small. Catalogues are fetched only
-   on use, so the cost of shipping all is build output, not download.
-2. **Colour-independent team identity**: upstream has no colourblind
-   mode, only configurable orb colours.
-   - **(a)** *(recommended)*: port the orb colours and name the side
-     wherever a colour identifies it.
-   - **(b)**: also add a small side-number badge on units on the board.
-     This is a port-only visual.
-3. **Port-only UI strings** (things upstream has no msgid for): stay
-   English in every language *(recommended, since we don't write
-   translations)*, or get a `wesnothweb` domain that someone could
-   translate later.
-4. **CJK fonts**: ship upstream's font files and load them on demand
-   *(recommended; matches upstream's look)*, or rely on the system's
-   fonts and ship nothing.
+1. **Languages**: upstream's ≥ 80 % set plus Polish, with no “show all”
+   toggle. Because German is 76 %, it is out, and the milestone uses
+   Polish instead.
+2. **Team identity**: option (a). Port upstream's orb colours and name the
+   side wherever a colour identifies it. No badge on the board.
+3. **Port-only UI strings**: collected into our own `wesnothweb`
+   textdomain with a generated `.pot`, English-only until someone
+   translates it.
+4. **Fonts**: ship upstream's font files and load them on demand. No
+   shipped language needs a CJK font, so only Lato, WesScript, DejaVu Sans
+   and DejaVu Sans Mono ship now; the on-demand path is there for later.
 
 ## Out of scope
 
