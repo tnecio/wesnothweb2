@@ -30,6 +30,8 @@
     economyInfo,
     menuCommands,
     actionCommands,
+    muted = false,
+    onToggleMute,
   }: {
     scenarioName: string;
     turnNumber?: number;
@@ -53,6 +55,9 @@
     menuCommands: readonly Command[];
     /** The "Actions" dropdown's commands (Recruit/Recall/Objectives/End Turn, ...). */
     actionCommands: readonly Command[];
+    /** Phase 19: whether all audio is muted, and the switch. */
+    muted?: boolean;
+    onToggleMute?: () => void;
   } = $props();
 
   let openMenu = $state<'menu' | 'actions' | null>(null);
@@ -106,6 +111,12 @@
     </div>
   </nav>
 
+  {#if onToggleMute}
+    <button class="mute-button" class:muted title={muted ? 'Unmute' : 'Mute'} aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted} data-testid="mute-toggle" onclick={onToggleMute}>
+      {muted ? '\u{1F507}' : '\u{1F50A}'}
+    </button>
+  {/if}
+
   <div class="status">
     <span class="stat" title="Turn / turn limit">
       <span class="label">Turn</span>
@@ -153,6 +164,21 @@
     font-family: sans-serif;
     font-size: 0.85rem;
     border-bottom: 1px solid #4a4432;
+  }
+  .mute-button {
+    font: inherit;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: inherit;
+    cursor: pointer;
+    padding: 0.1rem 0.4rem;
+  }
+  .mute-button:hover {
+    border-color: #4a8ab8;
+  }
+  .mute-button.muted {
+    opacity: 0.6;
   }
   .menus {
     display: flex;

@@ -28,11 +28,14 @@
     parts,
     assets,
     onDone,
+    onPartShown,
   }: {
     parts: readonly ResolvedStoryPart[];
     /** Rooted image table for this scenario; null renders text only. */
     assets: StoryAssets | null;
     onDone: () => void;
+    /** Called as each part is put on screen (`display_part`), for its `music=`. */
+    onPartShown?: (part: ResolvedStoryPart) => void;
   } = $props();
 
   const ENGINE_IMAGES = '/game-images-engine';
@@ -179,6 +182,8 @@
 
   function displayPart(): void {
     shownIndex = partIndex;
+    const shown = parts[partIndex];
+    if (shown) onPartShown?.(shown);
     revealed = 0;
     alpha = 0;
     beginFade(true);

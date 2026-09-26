@@ -39,7 +39,7 @@
     CutsceneBeat,
     FakeUnitWalk,
   } from '@wesnothweb2/engine';
-  import { WmlConfig, directionBetween, relativeDirection, tilesAdjacent, Direction, Location, unitCanAct, parseConfig, writeWml } from '@wesnothweb2/engine';
+  import { WmlConfig, playStoryMusic, directionBetween, relativeDirection, tilesAdjacent, Direction, Location, unitCanAct, parseConfig, writeWml } from '@wesnothweb2/engine';
   import {
     type HexPoint,
     type UnitAnimationCue,
@@ -115,6 +115,9 @@
   import GameBoardView from './GameBoardView.svelte';
   import SidePanel from './SidePanel.svelte';
   import StoryViewer from './StoryViewer.svelte';
+  import AudioDialog from './AudioDialog.svelte';
+  import { getAudioEngine } from './audio/audioEngine.js';
+  import type { AudioSettings } from './audio/settings.js';
   import MessageViewer from './MessageViewer.svelte';
   import AdvancementDialog from './AdvancementDialog.svelte';
   import ObjectivesDialog from './ObjectivesDialog.svelte';
@@ -199,7 +202,12 @@
    * upstream does, so reloading before an attack gives a new roll. (Headless
    * callers keep the default: seeds derived from the session seed.)
    */
-  const SESSION_OPTIONS: GameSessionOptions = { actionSeeds: 'entropy' };
+  /**
+   * Phase 19: the one audio engine of the app; its playlist is shared by
+   * every session, as upstream's global one survives scenarios.
+   */
+  const audio = getAudioEngine();
+  const SESSION_OPTIONS: GameSessionOptions = { actionSeeds: 'entropy', music: audio.music };
   // Resuming a save builds the session from it instead (Phase 26) -- see
   // the `initialSave` prop. `startupEventsRun` comes back true with it, so
   // `runStartupEvents` below is skipped as well.
@@ -217,6 +225,36 @@
     const id = campaign?.wesnothId;
     const files = id ? (campaignImages as Record<string, string[]>)[id] : undefined;
     setCampaignImages(id && files ? `campaigns/${id}/images` : null, files ?? []);
+  });
+
+  // Phase 19: the campaign's own music is searched before core's, and the audio starts on the
+  // first gesture once the board has rendered (browsers refuse earlier; music must not compete
+  // with the board's images for bandwidth).
+  $effect.pre(() => {
+    audio.campaign = campaign?.wesnothId;
+  });
+  let audioSettings = $state<Readonly<AudioSettings>>(audio.settings);
+  let audioDialogOpen = $state(false);
+  function changeAudio(patch: Partial<AudioSettings>): void {
+    audio.updateSettings(patch);
+    audioSettings = audio.settings;
+  }
+  $effect(() => {
+    let disposed = false;
+    const unlock = (): void => audio.unlock();
+    window.addEventListener('pointerdown', unlock, true);
+    window.addEventListener('keydown', unlock, true);
+    void (async () => {
+      await tick();
+      while (!boardView && !disposed) await new Promise((resolve) => setTimeout(resolve, 50));
+      if (boardView && !disposed) await boardView.whenReady();
+      if (!disposed) audio.setBoardReady();
+    })();
+    return () => {
+      disposed = true;
+      window.removeEventListener('pointerdown', unlock, true);
+      window.removeEventListener('keydown', unlock, true);
+    };
   });
 
   let scenarioTurnsLimit = $state<number | null>(session.turnLimit);
@@ -2084,6 +2122,18 @@
       handler: () => void openSaveManager('load'),
       hotkey: { key: 'o', ctrl: true },
     },
+    {
+      id: 'mute',
+      label: audioSettings.muted ? 'Unmute' : 'Mute',
+      enabled: true,
+      handler: () => changeAudio({ muted: !audioSettings.muted }),
+    },
+    {
+      id: 'audio',
+      label: 'Audio...',
+      enabled: true,
+      handler: () => (audioDialogOpen = true),
+    },
   ]);
   let actionCommands = $derived<Command[]>([
     {
@@ -2344,6 +2394,7 @@
       labelDialog !== null ||
       clearLabelsConfirmOpen ||
       labelSettingsOpen ||
+      audioDialogOpen ||
       pendingAdvancement !== null ||
       pendingPreview !== null ||
       // Phase 17: a suspended event's own dialogue owns the keyboard
@@ -2395,6 +2446,8 @@
     {economyInfo}
     {menuCommands}
     {actionCommands}
+    muted={audioSettings.muted}
+    onToggleMute={() => changeAudio({ muted: !audioSettings.muted })}
   />
   <div class="main">
     <!--
@@ -2570,9 +2623,13 @@
     />
   {/if}
 
+  {#if audioDialogOpen}
+    <AudioDialog settings={audioSettings} onChange={changeAudio} onClose={() => (audioDialogOpen = false)} />
+  {/if}
+
   {#if phase === 'story'}
     {#key session}
-      <StoryViewer parts={storyParts} assets={storyAssets} onDone={finishStory} />
+      <StoryViewer parts={storyParts} assets={storyAssets} onDone={finishStory} onPartShown={(part) => playStoryMusic(session.music, part.music)} />
     {/key}
   {:else if phase === 'objectives' && session.scenarioObjectives}
     <ObjectivesDialog

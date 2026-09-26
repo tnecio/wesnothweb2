@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WmlConfig } from '../../src/wml/config.js';
-import { MusicList, applyMusicAction } from '../../src/audio/musicList.js';
+import { MusicList, applyMusicAction, playStoryMusic } from '../../src/audio/musicList.js';
 
 /**
  * `MusicList` tests -- expectations follow `sound.cpp`'s `play_music_config`,
@@ -200,6 +200,51 @@ describe('MusicList track choice', () => {
   });
 });
 
+describe('MusicList.peekNext', () => {
+  function fiveTracks(seed: number): MusicList {
+    const list = new MusicList({ random: lcg(seed) });
+    for (const [i, n] of ['a', 'b', 'c', 'd', 'e'].entries()) list.playConfig(cfg({ name: `${n}.ogg`, append: i > 0 }), true);
+    list.commit();
+    return list;
+  }
+
+  it('names the track that follows, without changing the list', () => {
+    const list = fiveTracks(5);
+    const current = list.current;
+    const index = list.currentTrackIndex;
+    const seq = list.request!.seq;
+    const next = list.peekNext()!;
+    expect(list.current).toBe(current);
+    expect(list.currentTrackIndex).toBe(index);
+    expect(list.request!.seq).toBe(seq);
+    expect(list.peekNext()).toBe(next);
+    list.trackEnded();
+    expect(list.current).toBe(next);
+  });
+
+  it('matches what trackEnded would have chosen with the same random source', () => {
+    const peeked = fiveTracks(9);
+    const plain = fiveTracks(9);
+    for (let i = 0; i < 40; i++) {
+      peeked.peekNext();
+      peeked.trackEnded();
+      plain.trackEnded();
+      expect(peeked.current?.id).toBe(plain.current?.id);
+    }
+  });
+
+  it('is dropped when the list changes', () => {
+    const list = fiveTracks(2);
+    list.peekNext();
+    list.playConfig(cfg({ name: 'z.ogg', append: true, immediate: true }), true);
+    expect(list.current?.id).toBe('z.ogg');
+    const next = list.peekNext()!;
+    expect(next.id).not.toBe('z.ogg');
+    list.clear();
+    expect(list.peekNext()).toBeNull();
+  });
+});
+
 describe('MusicList.write', () => {
   it('writes the first entry as replacing and the rest as appended, and round-trips through playConfig', () => {
     const list = new MusicList({ random: scripted(0) });
@@ -259,5 +304,26 @@ describe('applyMusicAction ([music])', () => {
     applyMusicAction(list, cfg({ name: 'a.ogg', title: 'A' }));
     applyMusicAction(list, cfg({ name: 'a.ogg', append: true, title: 'Other' }));
     expect(list.track(0)?.title).toBe('A');
+  });
+});
+
+describe('playStoryMusic (a story part with music=)', () => {
+  it('replaces the playlist and switches at once, fading the old track out over 2 s', () => {
+    const list = new MusicList({ random: lcg(1) });
+    list.playConfig(cfg({ name: 'a.ogg' }), true);
+    list.commit();
+    playStoryMusic(list, 'sad.ogg');
+    expect(names(list)).toEqual(['sad.ogg']);
+    expect(list.current?.id).toBe('sad.ogg');
+    expect(list.track(0)?.msAfter).toBe(2000);
+    expect(list.request).toMatchObject({ fadeOutMs: 0, fadeInMs: 0 });
+    playStoryMusic(list, 'love_theme.ogg');
+    expect(list.request).toMatchObject({ fadeOutMs: 2000 });
+  });
+
+  it('does nothing for a part without music', () => {
+    const list = new MusicList({ random: lcg(1) });
+    playStoryMusic(list, '');
+    expect(list.length).toBe(0);
   });
 });

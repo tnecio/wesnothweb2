@@ -72,6 +72,8 @@ export class MusicList {
   private playedBefore: string[] = [];
   request: MusicRequest | null = null;
   private seq = 0;
+  /** `peekNext`'s choice, kept until the list or the current track changes. */
+  private planned: { track: MusicTrack; index: number } | null = null;
 
   constructor(private readonly options: MusicListOptions) {}
 
@@ -111,6 +113,7 @@ export class MusicList {
 
   /** `music_list.next`: skips to the list's next choice, fading the current track out. */
   next(): void {
+    this.planned = null;
     if (this.tracks.length === 0) return;
     this.setPrevious();
     this.current = this.chooseTrack();
@@ -119,6 +122,7 @@ export class MusicList {
 
   /** `play_music_once`: plays `id` now, off the list. */
   playOnce(id: string): void {
+    this.planned = null;
     const track = this.create(cfgOf({ name: id }));
     if (!track) return;
     this.setPrevious();
@@ -129,6 +133,7 @@ export class MusicList {
 
   /** `empty_playlist`. */
   clear(): void {
+    this.planned = null;
     this.tracks = [];
   }
 
@@ -140,6 +145,7 @@ export class MusicList {
    * track finish first.
    */
   playConfig(cfg: WmlConfig, allowInterrupt: boolean, at = -1): void {
+    this.planned = null;
     const track = this.create(cfg);
     if (!track) return;
     if (track.once) {
@@ -186,6 +192,35 @@ export class MusicList {
     return beforePrevious !== id;
   }
 
+  /** What `trackEnded` starts: the track `peekNext` chose ahead, if it still stands, else a fresh choice. */
+  private takeNext(): MusicTrack {
+    const plan = this.planned;
+    this.planned = null;
+    if (plan && this.tracks[plan.index] === plan.track) {
+      this.currentIndex = plan.index;
+      this.playedBefore.push(plan.track.id);
+      return plan.track;
+    }
+    return this.chooseTrack();
+  }
+
+  /**
+   * The track `trackEnded()` will start, chosen now so a player can fetch it
+   * before the current one ends. Choosing leaves the list's state as it was;
+   * any change to the list or the current track drops the choice.
+   */
+  peekNext(): MusicTrack | null {
+    if (this.tracks.length === 0) return null;
+    if (this.planned && this.tracks[this.planned.index] === this.planned.track) return this.planned.track;
+    const index = this.currentIndex;
+    const played = this.playedBefore.length;
+    const track = this.chooseTrack();
+    this.planned = { track, index: this.currentIndex };
+    this.currentIndex = index;
+    this.playedBefore.length = played;
+    return track;
+  }
+
   /** `choose_track`: the next in order, or a random acceptable one when the track at the index shuffles. */
   private chooseTrack(): MusicTrack {
     if (this.currentIndex >= this.tracks.length) this.currentIndex = 0;
@@ -208,6 +243,7 @@ export class MusicList {
    * still-listed current track, else switch to the list's choice.
    */
   commit(): void {
+    this.planned = null;
     this.playedBefore = [];
     if (this.current) {
       if (this.current.once) return;
@@ -228,7 +264,7 @@ export class MusicList {
   trackEnded(): void {
     if (this.tracks.length === 0) return;
     this.setPrevious();
-    this.current = this.chooseTrack();
+    this.current = this.takeNext();
     this.request = { seq: ++this.seq, track: this.current, fadeOutMs: 0, fadeInMs: 0 };
   }
 
@@ -317,4 +353,13 @@ export function playEndMusic(list: MusicList, track: string): void {
   if (track === '') return;
   list.clear();
   list.playOnce(track);
+}
+
+/**
+ * `story_viewer::display_part`: a story part with `music=` replaces the
+ * playlist and plays that track now, the old one fading out over 2 s.
+ */
+export function playStoryMusic(list: MusicList, track: string): void {
+  if (track === '') return;
+  list.playConfig(cfgOf({ name: track, ms_after: 2000, immediate: true }), false);
 }
