@@ -1405,9 +1405,40 @@ sync past the first fight (Phase 18b milestones 3–4).
 - `[object]` (with `duration=`, `[filter]`, `silent=`, `[then]`/`[else]`)
   and `[remove_object]`; `[modify_unit] [object]`.
 - Runtime `[event]` registration (and `[remove_event]`), `id=` dedupe.
+- `[remove_object]`, `[remove_trait]`, `[transform_unit]` (the audit's
+  other modification tags), and upstream's unit-id counter (`underlying_id`
+  from `next_underlying_unit_id`, `Type-N` ids for recruits) so recalls by
+  id line up with the real game.
 - **Milestone:** the Phase 18b real-AI fixture replays its whole log here
   in sync, and a replay recorded here replays in the real binary past the
-  first fight.
+  first fight. Verified against a desktop build of the checked-out 1.19
+  source (the same version as the port's data), not the 1.16.9 package.
+
+## Phase 18d — Missing WML action tags (from the 2026-09-26 audit)
+
+**Status: not started.** `packages/ui/scripts/audit-wml.ts` walks every
+branch of every event in the 40 shipped scenarios and checks each action
+and condition tag against what the port implements; the result is
+`docs/WML_AUDIT.md` (regenerate it after each change). After Phase 18c
+takes the modification tags and runtime `[event]`/`[remove_event]`, the
+gameplay-relevant remainder is:
+
+- `[store_starting_location]` (20 scenarios), `[store_locations]`,
+  `[store_unit_type]`, `[store_villages]`, `[store_side]`, `[store_turns]`.
+- `[terrain]` and `[terrain_mask]` (map changes, with the terrain-change
+  consequences for villages and castles), `[modify_turns]`,
+  `[set_recruit]`, `[role]`, `[hide_unit]`/`[unhide_unit]`,
+  `[random_placement]`, `[unit_worth]`, `[put_to_recall_list]`,
+  `[cancel_action]`, `[insert_tag]`, `[wml_message]`.
+- Conditions `[have_location]` (and, once Lua runs, `[lua]`): today an
+  unknown condition is treated as *passing*, so these silently take the
+  wrong branch -- a correctness bug to fix first, even before the tags
+  themselves (an unknown condition should warn and fail, as upstream's).
+- `[show_objectives]` belongs with the objectives UI; `[item]`/
+  `[remove_item]` stay in Phase 18 (labels/items); `[set_achievement]` in
+  Phase 25.
+- **Milestone:** the audit reports no missing gameplay tag in the shipped
+  scenarios.
 
 ## Phase 19 — Audio & Music (was Phase 13)
 
@@ -1798,7 +1829,7 @@ recruitment budgeting (`[recruitment_instructions]`/`[recruit]`/
 
 ---
 
-## Priority as of 2026-09-23
+## Priority as of 2026-09-26
 
 Explicit user direction (2026-09-23), superseding the 2026-09-12 list.
 Phases 0–5, 7, 9–17 are delivered (see each phase's status); Phase 6
@@ -1808,15 +1839,16 @@ pulled forward and delivered 2026-09-22.
 1. **Phase 18a** (teleport, hotseat viewing side) — delivered 2026-09-23.
 2. **Phase 18b** (replay, undo & redo) — delivered 2026-09-23.
 3. **Phase 18c** (unit modifications: `[effect]`, traits, `[object]`,
-   runtime `[event]`) ← **proposed next**: found by 18b; a gameplay
+   runtime `[event]`, unit ids) ← **current focus** (user go-ahead 2026-09-26): found by 18b; a gameplay
    correctness gap as much as a replay one.
-4. **Phase 18** (labels/items), then **Phase 19** (audio/music).
-5. **Phase 20** (localization/accessibility).
-6. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).
-7. **Phase 25** (statistics & achievements).
-8. **Phase 27** (feature completeness assessment).
-9. **Phase 28** (CI/CD/performance/platform).
-10. **Phase 29** (real AI: RCA framework + Lua on fengari) — underway
+4. **Phase 18d** (missing WML action tags, from the audit).
+5. **Phase 18** (labels/items), then **Phase 19** (audio/music).
+6. **Phase 20** (localization/accessibility).
+7. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).
+8. **Phase 25** (statistics & achievements).
+9. **Phase 27** (feature completeness assessment).
+10. **Phase 28** (CI/CD/performance/platform).
+11. **Phase 29** (real AI: RCA framework + Lua on fengari) — underway
    alongside the above rather than strictly after it (Phase 7's MVP
    heuristic AI remains playable throughout).
 
@@ -1834,7 +1866,7 @@ pulled forward and delivered 2026-09-22.
 | 16 Advanced Map Rendering | 18 (labels/items), 17 (camera scripting, screen fade), 22 (minimap/camera) |
 | 17 Advanced UI Shell | 13 (recruit/recall/combat), 14 (theme/context menu/menu items), 15 (hotkeys), 17 (`[option]`/`[text_input]`, message options), 21 (campaign list/difficulty/credits), 23 (mobile), 24 (preferences/help/unit list/stats dialog) |
 | 18 CI/CD, Performance & Platform | 28 |
-| — | 16 Narration (new), 18a Teleport & hotseat view (new), 18c Unit modifications (new), 26 Save games (new), 27 Completeness assessment (new) |
+| — | 16 Narration (new), 18a Teleport & hotseat view (new), 18c Unit modifications (new), 18d Missing WML tags (new), 26 Save games (new), 27 Completeness assessment (new) |
 
 ---
 
