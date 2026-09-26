@@ -91,6 +91,22 @@ import { isFlow, runFlow, type Flow, type MessageOption, type Responder, type Te
 import { conditionalPassed } from './conditionalWml.js';
 import { findUnits, locationMatchesFilter, unitMatchesFilter } from './filter.js';
 import { actionLiftFog, actionPlaceShroud, actionRemoveShroud, actionResetFog } from './shroudWml.js';
+import {
+  actionHideUnit,
+  actionModifyTurns,
+  actionPutToRecallList,
+  actionSetRecruit,
+  actionStoreLocations,
+  actionStoreSide,
+  actionStoreStartingLocation,
+  actionStoreTurns,
+  actionStoreUnitType,
+  actionStoreVillages,
+  actionUnhideUnit,
+  actionUnitWorth,
+  actionWmlMessage,
+  sidesFor,
+} from './miscWml.js';
 import { actionTimeArea, actionRemoveTimeArea, actionReplaceSchedule, actionStoreTimeOfDay } from './todWml.js';
 import { newVarNode, varNodeFromConfig, varNodeToConfig, VariableStore, type VarNode } from './variables.js';
 import { parseScenarioObjectives } from './objectives.js';
@@ -1115,15 +1131,9 @@ function* actionUnit(cfg: WmlConfig, ctx: EventContext): Flow {
 
 // --- side/team helpers shared by [gold]/[store_gold]/[allow_recruit] ---
 
+/** `side_filter` over the tag's config (`wesnoth.sides.find(cfg)`): every side when it names none. */
 function findSides(ctx: EventContext, cfg: WmlConfig): number[] {
-  if (cfg.hasAttribute('side')) {
-    return cfg
-      .getString('side')
-      .split(',')
-      .map((s) => Number(s.trim()))
-      .filter((n) => !Number.isNaN(n));
-  }
-  return ctx.board.teams().map((t) => t.side);
+  return sidesFor(ctx.variables.expandConfigDeep(cfg), ctx);
 }
 
 function actionGold(cfg: WmlConfig, ctx: EventContext): void {
@@ -1658,6 +1668,20 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('set_variables', actionSetVariables);
   registry.register('clear_variable', actionClearVariable);
   registry.register('store_unit', actionStoreUnit);
+  // Phase 18d (miscWml.ts).
+  registry.register('store_starting_location', actionStoreStartingLocation);
+  registry.register('store_locations', actionStoreLocations);
+  registry.register('store_villages', actionStoreVillages);
+  registry.register('store_unit_type', actionStoreUnitType);
+  registry.register('store_side', actionStoreSide);
+  registry.register('store_turns', actionStoreTurns);
+  registry.register('unit_worth', actionUnitWorth);
+  registry.register('set_recruit', actionSetRecruit);
+  registry.register('hide_unit', actionHideUnit);
+  registry.register('unhide_unit', actionUnhideUnit);
+  registry.register('put_to_recall_list', actionPutToRecallList);
+  registry.register('modify_turns', actionModifyTurns);
+  registry.register('wml_message', actionWmlMessage);
   registry.register('unstore_unit', actionUnstoreUnit);
   registry.register('kill', actionKill);
   registry.register('modify_unit', actionModifyUnit);

@@ -192,6 +192,7 @@ export class EventPump {
       messages: [] as RecordedMessage[],
       choices: [],
       usedItems: new Set(),
+      turnLimit: -1,
       objectivesBySide: new Map(),
       menuItems: new Map(),
       loc1: Location.NULL,

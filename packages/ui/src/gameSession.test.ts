@@ -14,6 +14,7 @@ import {
   createTypeResolver,
   type GameBoardSnapshot,
   type CutsceneBeat,
+  type WmlConfigJson,
 } from '@wesnothweb2/engine';
 import { GameSession } from './gameSession.js';
 
@@ -2125,5 +2126,39 @@ describe('GameSession.nextScenarioId: next_scenario=null ends the campaign (Phas
 
     const first = new GameSession(JSON.parse(fs.readFileSync(snapshotPath, 'utf8')) as GameBoardSnapshot);
     expect(first.nextScenarioId).toBe('02_Flight');
+  });
+});
+
+describe('Phase 18d: the turn limit (play_controller::check_time_over)', () => {
+  const withTurns = (turns: number, timeOverEvent?: WmlConfigJson) => {
+    const snapshot = loadEconomySnapshot();
+    snapshot.scenarioConfigJson.attrs['turns'] = turns;
+    if (timeOverEvent) snapshot.scenarioConfigJson.children.push({ tag: 'event', config: timeOverEvent });
+    return new GameSession(snapshot);
+  };
+
+  it('running past the last turn is a defeat -- real bug: turns= was never enforced', async () => {
+    const session = withTurns(1);
+    expect(session.turnLimit).toBe(1);
+    await session.endTurn();
+    expect(session.scenarioResult).toBeNull();
+    await session.endTurn(); // turn 1 wraps: time is up.
+    expect(session.scenarioResult).toBe('defeat');
+  });
+
+  it('a `time over` event that adds turns keeps the game going; [modify_turns] survives a save', async () => {
+    const session = withTurns(1, {
+      attrs: { name: 'time over' },
+      children: [{ tag: 'modify_turns', config: { attrs: { add: 1 }, children: [] } }],
+    });
+    await session.endTurn();
+    await session.endTurn();
+    expect(session.scenarioResult).toBeNull();
+    expect(session.turnNumber).toBe(2);
+    expect(session.turnLimit).toBe(2);
+    expect(session.toSaveData().turnLimit).toBe(2);
+    await session.endTurn();
+    await session.endTurn(); // first_time_only: the event does not fire again.
+    expect(session.scenarioResult).toBe('defeat');
   });
 });

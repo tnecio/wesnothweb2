@@ -272,6 +272,7 @@ export function fromWesnothSave(cfg: WmlConfig): ImportedWesnothSave {
       // Phase 18c: the live handlers and the objects already taken, as the real game saved them.
       events: snapshot.children('event').map((e) => e.toJSON()),
       nextUnitId: snapshot.getNumber('next_underlying_unit_id', 0),
+      turnLimit: snapshot.getNumber('turns', -1),
       usedItems: (snapshot.child('used_items')?.attributeNames() ?? []).filter((id) => snapshot.child('used_items')!.getBoolean(id, false)),
       tunnels: snapshot.children('tunnel').map((t) => t.toJSON()),
       nextTeleportGroupId: snapshot.getNumber('next_teleport_group_id', 0),
@@ -571,6 +572,7 @@ export function toWesnothSave(
       ...(save.recall ?? []).map((u) => u.underlyingId ?? 0),
     ),
   );
+  if (save.turnLimit !== undefined) snapCfg.setAttribute('turns', save.turnLimit);
   snapCfg.setAttribute('it_is_a_new_turn', false);
   snapCfg.setAttribute('do_healing', true);
   snapCfg.setAttribute('can_end_turn', true);

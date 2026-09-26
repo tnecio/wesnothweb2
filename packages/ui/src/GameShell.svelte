@@ -203,7 +203,8 @@
   let storyAssets = $state.raw(initialStoryAssets);
   /** Single fixed slot for MVP simplicity -- see persistence.ts's doc comment; keyed by scenario so a future multi-scenario build doesn't collide saves across scenarios. */
   let saveSlot = $derived(`quicksave:${activeSnapshot.scenario.id}`);
-  let scenarioTurnsLimit = $derived(parseScenarioTurnsLimit(activeSnapshot.scenarioConfigJson.attrs['turns']));
+  /** The live turn limit (`[modify_turns]` can change it); synced with the rest of the session state. */
+  let scenarioTurnsLimit = $state<number | null>(session.turnLimit);
 
   let continuing = $state(false);
   let continueError = $state<string | null>(null);
@@ -342,6 +343,7 @@
     canUndo = session.canUndo;
     canRedo = session.canRedo;
     turnNumber = session.turnNumber;
+    scenarioTurnsLimit = session.turnLimit;
     activeSide = session.activeSide;
     gold = session.board.getTeam(session.activeSide)?.gold ?? 0;
     economyInfo = session.economyInfo;

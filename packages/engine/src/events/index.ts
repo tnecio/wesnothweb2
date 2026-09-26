@@ -23,3 +23,4 @@ export type { Interaction, MessageInteraction, BeatInteraction, CutsceneBeat, Fa
 
 export { EventManager, EventPump, standardizeEventName } from './pump.js';
 export type { WmlEventHandler, QueuedEvent, EventPumpOptions } from './pump.js';
+export { findSides, sideMatchesFilter } from './sideFilter.js';

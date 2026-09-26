@@ -41,7 +41,7 @@ import { FormulaError, FunctionSymbolTable, MapFormulaCallable, parseFormula, Va
 import { isUnitVisibleToTeam } from '../pathfind/visibility.js';
 
 /** Parses WML's range-list syntax ("3", "3-7", "3,5,9-11") into inclusive [lo, hi] pairs. */
-function parseRanges(text: string): Array<[number, number]> {
+export function parseRanges(text: string): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
   for (const part of text.split(',')) {
     const token = part.trim();

@@ -185,6 +185,18 @@ export interface EventContext {
    */
   usedItems: Set<string>;
   /**
+   * `tod_manager::num_turns_`: the scenario's turn limit, `-1` for none.
+   * `[modify_turns]` changes it, `[store_turns]` reads it, and the game
+   * checks it when a turn wraps (`check_time_over`).
+   */
+  turnLimit: number;
+  /** `[modify_turns] current=`: move the game to that turn (`tod_manager::set_turn_by_wml`). Installed by the session. */
+  setTurnNumber?: (turn: number) => void;
+  /** A unit type's full config (`unit_type::get_cfg`, for `[store_unit_type]`). Installed by the session. */
+  unitTypeConfig?: (id: string) => WmlConfig | undefined;
+  /** The current turn (`tod_manager::turn`). Installed by the session; `$turn_number` otherwise. */
+  turnNumber?: () => number;
+  /**
    * Real, reported bug (bugs3.md "objectives dialog"): `[objectives]` used
    * to be a plain no-op. Mirrors Lua's own `scenario_objectives` table
    * (`data/lua/wml/objectives.lua`), keyed by side -- `actionWml.ts`'s

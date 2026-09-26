@@ -171,10 +171,9 @@ describe('Phase 17 milestone: Under the Burning Suns 1 prestart', () => {
     // `[foreach] array=elf_pool` walks the scenario's rescue pool in
     // prestart; it used to be skipped wholesale with this warning.
     expect(unsupported.some((m) => m.startsWith('[foreach]'))).toBe(false);
-    expect(session.getVariable('total_elf_pool_gold_value')).toBeDefined();
-    // Honest about what the loop still cannot finish: its body asks for
-    // `[store_unit_type]`, which this port does not have, so the total it
-    // accumulates stays 0. The loop itself runs.
-    expect(unsupported.some((m) => m.startsWith('[store_unit_type]'))).toBe(true);
+    // Its body's `[store_unit_type]` exists since Phase 18d, so the loop
+    // now adds up the pool's real unit costs (before it was stuck at 0).
+    expect(unsupported.some((m) => m.startsWith('[store_unit_type]'))).toBe(false);
+    expect(Number(session.getVariable('total_elf_pool_gold_value'))).toBeGreaterThan(0);
   });
 });

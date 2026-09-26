@@ -1031,6 +1031,8 @@ export interface SaveGameData {
   events?: WmlConfigJson[];
   /** Phase 18c: the unit id counter (upstream's `next_underlying_unit_id`). Absent: derived from the highest id in the save. */
   nextUnitId?: number;
+  /** Phase 18d: the turn limit as `[modify_turns]` left it (`-1`: none). Absent: the scenario's `turns=`. */
+  turnLimit?: number;
   /** Phase 18c: `[set_menu_item]`s in effect (lost on reload before). */
   menuItems?: { id: string; description: string; command: WmlConfigJson }[];
   /** Phase 18c: each side's current `[objectives]` (lost on reload before). */
@@ -1484,6 +1486,16 @@ export class GameSession {
       log: options.onLog,
     });
     this.board.lawfulBonusAt = (loc) => this.timeOfDayAt(loc).lawfulBonus;
+    this.eventPump.ctx.turnLimit = parseScenarioTurnsLimit(snapshot.scenarioConfigJson.attrs['turns']) ?? -1;
+    this.eventPump.ctx.turnNumber = () => this.turnNumber;
+    this.eventPump.ctx.unitTypeConfig = (id) => {
+      const json = this.snapshot.unitTypeConfigs?.[id];
+      return json ? WmlConfig.fromJSON(json) : undefined;
+    };
+    this.eventPump.ctx.setTurnNumber = (turn) => {
+      this.turnNumber = turn;
+      this.eventPump.ctx.variables.set('turn_number', turn);
+    };
     this.eventPump.ctx.addUndoCommands = (commands) => {
       this.action?.steps.push({ kind: 'event', commands, loc1: this.eventPump.ctx.loc1, loc2: this.eventPump.ctx.loc2 });
     };
@@ -2145,8 +2157,33 @@ export class GameSession {
       this.checkForGameEnd();
       if (this.scenarioResult) return;
       this.turnNumber += 1;
+      yield* this.checkTimeOver();
+      if (this.scenarioResult) return;
     }
     this.setActiveSide(order.next);
+  }
+
+  /** The scenario's turn limit (`turns=`, changed by `[modify_turns]`); `null` for none. */
+  get turnLimit(): number | null {
+    const limit = this.eventPump.ctx.turnLimit;
+    return limit < 0 ? null : limit;
+  }
+
+  /**
+   * `play_controller::check_time_over`, after the turn number moved on:
+   * past the limit, `time over` fires; unless it added turns, the game
+   * ends -- a victory if `check_victory` finds one, else a defeat.
+   */
+  private *checkTimeOver(): Flow<void> {
+    const timeLeft = () => this.eventPump.ctx.turnLimit < 0 || this.turnNumber <= this.eventPump.ctx.turnLimit;
+    if (timeLeft()) return;
+    yield* this.fireFlow('time over');
+    if (timeLeft() || this.scenarioResult) return;
+    this.checkForGameEnd();
+    if (this.scenarioResult) return;
+    this.scenarioResult = 'defeat';
+    this.clearSelection();
+    this.log.unshift('Defeat... time has run out.');
   }
 
   /** Heal outcomes collected across one `endTurn()` call, for `lastHealAnimations`. */
@@ -3437,6 +3474,7 @@ export class GameSession {
       nextTeleportGroupId: this.board.tunnels.nextTeleportGroupId,
       usedItems: [...this.eventPump.ctx.usedItems],
       nextUnitId: this.board.nextUnitId,
+      turnLimit: this.eventPump.ctx.turnLimit,
       events: this.eventPump.manager.activeConfigs().map((c) => c.toJSON()),
       menuItems: [...this.eventPump.ctx.menuItems.values()].map((m) => ({ id: m.id, description: m.description, command: m.command.toJSON() })),
       objectives: [...this.eventPump.ctx.objectivesBySide].map(([side, objectives]) => ({ side, objectives })),
@@ -3502,6 +3540,7 @@ export class GameSession {
     this.board.tunnels.loadConfigs((data.tunnels ?? []).map((c) => WmlConfig.fromJSON(c)), data.nextTeleportGroupId ?? 0);
     this.rng.mode = data.randomMode ?? 'per_action';
     this.eventPump.ctx.usedItems = new Set(data.usedItems ?? []);
+    if (data.turnLimit !== undefined) this.eventPump.ctx.turnLimit = data.turnLimit;
     this.board.nextUnitId =
       data.nextUnitId ?? Math.max(0, ...[...data.units, ...(data.recall ?? [])].map((u) => u.underlyingId ?? 0));
     if (data.events) this.eventPump.manager.replaceAll(data.events.map((e) => WmlConfig.fromJSON(e)));
@@ -3839,7 +3878,7 @@ export class GameSession {
       teamIncome: team?.income ?? 0,
       incomePerVillage: team?.incomePerVillage ?? 1,
       totalVillages: this.board.map.villages.length,
-      scenarioTurnsLimit: parseScenarioTurnsLimit(this.snapshot.scenarioConfigJson.attrs['turns']),
+      scenarioTurnsLimit: this.turnLimit,
       turnNumberAtVictory: this.turnNumber,
       endlevel,
       nextScenarioDeclaredGold: nextTeamCfg?.gold ?? 100,
