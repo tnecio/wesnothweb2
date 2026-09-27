@@ -159,7 +159,9 @@ async function libertyHard(browser) {
 
   await press(page, 'Control+o', 700);
   check('Ctrl+O opens the Load dialog', (await dialogs(page)).includes('Load Game') || (await dialogs(page)).some((l) => /Load/.test(l)), (await dialogs(page)).join());
-  check('...without a Show replay box (a replay opens inside a game)', (await page.$('[data-testid="show-replay"]')) === null);
+  // "Show replay" from here (like the in-game Load dialog's) is covered end to end in
+  // replay-from-menu-playthrough.mjs, including opening straight into the replay screen from a cold URL.
+  check('...with a Show replay box, same as the in-game Load dialog', (await page.$('[data-testid="show-replay"]')) !== null);
   await page.getByText('menu-milestone-hard').first().click();
   await page.getByRole('button', { name: 'Load', exact: true }).last().click();
   await page.waitForURL(/\/play\/liberty\?save=menu-milestone-hard/, { timeout: 15000 });

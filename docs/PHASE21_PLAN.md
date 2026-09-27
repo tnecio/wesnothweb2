@@ -352,7 +352,7 @@ Delivered in the commits listed in `docs/PROGRESS.md`. Where it differs from the
   overlay can carry per-entry patches to the unit-type tables as well as whole top-level keys.
 - **No tip hide button, no `encountered_units` filter:** neither exists in this version's `title_screen.cfg` /
   `tips.cfg`.
-- **Load from the title screen has no "Show replay"**: a replay opens inside a running game.
+- ~~Load from the title screen has no "Show replay"~~ -- fixed 2026-09-27, see `docs/PROGRESS.md`.
 - **The plan's "campaign with no difficulties gets a gold laurel" was wrong:** upstream gives gold only when the
   last of the listed difficulties was won, so a campaign with none gets silver (the rule is ported exactly, with
   tests).

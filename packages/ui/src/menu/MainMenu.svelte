@@ -35,7 +35,7 @@
     /** Start `campaign` at `difficulty` (undefined for a campaign with none). */
     onPlay: (campaign: Campaign, difficulty: string | undefined) => void;
     /** Resume save `saveName`, which belongs to `campaignId`. */
-    onResume: (campaignId: string, saveName: string) => void;
+    onResume: (campaignId: string, saveName: string, replay: boolean) => void;
   } = $props();
 
   type Dialog = 'campaigns' | 'load' | 'preferences' | 'credits' | 'language' | null;
@@ -111,16 +111,19 @@
   }
 
   /**
-   * Resumes a save. The campaign comes from the save itself; a save from before campaigns were recorded (or of
-   * a scenario opened directly) falls back to whichever campaign ships that scenario.
+   * Resumes a save, or opens it in the replay viewer if `replay` (upstream's "Show replay", the same
+   * checkbox the in-game Load dialog offers -- `LoadGameDialog`'s `allowReplay` is on here too, so loading
+   * from the title screen and from inside a game behave the same way). The campaign comes from the save
+   * itself; a save from before campaigns were recorded (or of a scenario opened directly) falls back to
+   * whichever campaign ships that scenario.
    */
-  function resume(name: string): void {
+  function resume(name: string, replay: boolean): void {
     const save = saves.find((s) => s.name === name);
     if (!save) return;
     const campaignId = save.campaignId ?? campaigns.find((c) => c.firstScenario === save.scenarioId)?.id ?? campaigns[0]?.id;
     if (!campaignId) return;
     dialog = null;
-    onResume(campaignId, name);
+    onResume(campaignId, name, replay);
   }
 
   async function guarded(work: () => Promise<void>, failure: string): Promise<void> {
@@ -162,8 +165,7 @@
     {saves}
     {campaignNames}
     busy={saveBusy}
-    allowReplay={false}
-    onLoad={(name) => resume(name)}
+    onLoad={resume}
     onDelete={(name) => void guarded(() => deleteSave(name), tx('Delete failed:'))}
     onRename={(from, to) => void guarded(() => renameSave(from, to), tx('Rename failed:'))}
     onDownload={(name) => void guarded(async () => void (await downloadSave(name, campaigns)), tx('Download failed:'))}

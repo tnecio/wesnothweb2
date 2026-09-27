@@ -5170,3 +5170,36 @@ alone. Wtf? That is obviously a huge problem."
 Gates: engine 800, ui 355 (plus the known vitest `onTaskUpdate` timeout from the AI/replay tests), renderer
 217, lua-bridge 38; 0 typecheck/svelte-check errors. `apps/web/public/atlases` (gitignored) and
 `derived-images` rebuilt from scratch and inspected directly, not just left to the test suite.
+
+## 2026-09-27: "Show replay" now works the same from the title screen as in-game (and a regression it surfaced)
+
+Asked directly, after the previous entry noted it as a known gap: "do you think you can fix that small
+issue with replays so we have consistent experience when loading from both main menu and from playpage?"
+
+- **The gap.** `startReplay()` needed a `GameShell` already mounted (it swaps the live `session`/`activeSnapshot`
+  and drives the replay loop through the already-bound `GameBoardView`); the title screen has none of that,
+  so `LoadGameDialog`'s "Show replay" checkbox was hidden there (`allowReplay={false}`).
+- **The fix.** `GameShell` gained `startInReplay`: when set alongside `initialSave`, the session is built
+  straight from `GameSession.forReplay` (not a normal resume then a switch-over, which would flash the wrong
+  phase -- the end screen, for a finished game -- for one frame first) and `phase`/`replay` are correct from
+  the very first render; `beginInitialReplay()` starts the playback loop once the board has its first paint.
+  Falls back to a normal resume, with the same message `startReplay`'s own guard shows, if the save predates
+  replay recording. `PlayPage` reads `?replay=1` alongside `?save=<name>` and passes it through -- the same
+  mechanism `?difficulty=`/`?scenario=` already use, so both entry points now go through one code path.
+- **A real regression this surfaced.** The in-game Load dialog's "Show replay", for a save belonging to a
+  DIFFERENT campaign than the one currently open, used to call `startReplay` directly and unconditionally.
+  Once Phase 21 nested scenario snapshots under their own campaign directory (`CampaignInfo.assetDir`),
+  that path was guaranteed to 404: `startReplay` fetches through `snapshotFor`, which always uses the
+  *currently open* campaign's directory, not the target save's own. Before that fix it happened to work by
+  accident (a flat, id-keyed namespace didn't care which campaign was "open"). Fixed by checking the
+  cross-campaign case first (as the non-replay path already did) and handing off through the same URL
+  mechanism (`onOpenSave(campaignId, name, replay)`) instead of calling `startReplay` on the wrong campaign.
+- New script `apps/web/scripts/replay-from-menu-playthrough.mjs`: a real recorded action (Ctrl+Space, saved
+  mid-game), then (1) title-screen Load with Show Replay checked opens straight into the replay screen with
+  the recorded action visible, not a resumed game; (2) the in-game Load dialog's Show Replay on a save from a
+  *different* campaign correctly reopens that save's own campaign and lands in its replay, not a 404 --
+  the exact case that regressed.
+
+Gates: engine 800, ui 355 (plus the known vitest `onTaskUpdate` timeout from the AI/replay tests), renderer
+217, lua-bridge 38; 0 typecheck/svelte-check errors. Browser: `replay-from-menu-playthrough.mjs` (new),
+`undo-replay-playthrough.mjs`, `save-load-playthrough.mjs`, `main-menu-playthrough.mjs` (both modes) all pass.

@@ -30,7 +30,7 @@
     campaignNames: Record<string, string>;
     /** A file operation is in flight; the list stays visible but actions are inert. */
     busy?: boolean;
-    /** Offer upstream's "Show replay" checkbox. The title screen does not (a replay opens inside a running game). */
+    /** Offer upstream's "Show replay" checkbox. Both callers (in-game and the title screen) do. */
     allowReplay?: boolean;
     /** `showReplay`: upstream's "Show replay" checkbox -- watch the game from its start instead of resuming it. */
     onLoad: (name: string, showReplay: boolean) => void;

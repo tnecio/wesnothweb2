@@ -147,6 +147,7 @@
     storyAssets: initialStoryAssets = null,
     campaign = null,
     initialSave = null,
+    startInReplay = false,
     onOpenSave = undefined,
     campaigns = [],
     onQuitToMenu = undefined,
@@ -170,14 +171,25 @@
      */
     initialSave?: SaveGameData | null;
     /**
+     * Open `initialSave` straight into its replay instead of resuming it (upstream's "Show replay",
+     * offered by the Load dialog both here and on the title screen -- see `LoadGameDialog`'s own
+     * `showReplay` checkbox). Ignored without `initialSave`, and falls back to a normal resume if the
+     * save has no recorded replay (made before replays were recorded), same as opening it normally and
+     * then choosing Show Replay from the in-game Load dialog would.
+     */
+    startInReplay?: boolean;
+    /**
      * Ask the host to open `saveName` in `campaignId` -- i.e. to put that
      * campaign and save in the URL and mount accordingly. Called when a
      * loaded save belongs to a different campaign (this component cannot
      * switch campaigns by itself: the campaign decides the abbreviation
      * saves are named with and the id they are filed under), and after
      * any load, so the address bar names the game that is actually open.
+     * `replay` carries a "Show replay" request across the handoff, so
+     * picking another campaign's save with the checkbox ticked still opens
+     * its replay once the host remounts this shell for that campaign.
      */
-    onOpenSave?: (campaignId: string, saveName: string) => void;
+    onOpenSave?: (campaignId: string, saveName: string, replay?: boolean) => void;
     /** Every campaign, so the load dialog can name the campaign a save belongs to even when it is not the one being played. */
     campaigns?: readonly Campaign[];
     /** Leave the game for the title screen (upstream's "Quit to Menu"). Without it the command is not offered. */
@@ -222,11 +234,20 @@
    */
   const audio = getAudioEngine();
   const SESSION_OPTIONS: GameSessionOptions = { actionSeeds: 'entropy', music: audio.music, onSound: (request) => audio.playSound(request), onVolume: (scale) => audio.setVolumeScale(scale) };
+  /**
+   * `startInReplay`'s session, built up front (rather than resumed normally and switched over after mount,
+   * the way `startReplay` does for an in-game "Show replay") so the very first render is already the
+   * replay screen -- resuming first would flash the wrong phase (the end screen, for a finished game) for
+   * one frame before `startReplay` could correct it. `null` when `startInReplay` was not asked for, or the
+   * save has no recorded replay to show (made before replays were recorded) -- the normal resume below is
+   * the fallback either way, same as `startReplay`'s own guard.
+   */
+  const initialReplaySession = initialSave && startInReplay ? GameSession.forReplay(activeSnapshot, initialSave, { ...SESSION_OPTIONS, onSound: undefined, onVolume: undefined }) : null;
   // Resuming a save builds the session from it instead (Phase 26) -- see
   // the `initialSave` prop. `startupEventsRun` comes back true with it, so
   // `runStartupEvents` below is skipped as well.
   let session = $state.raw(
-    initialSave ? GameSession.fromSaveData(activeSnapshot, initialSave, SESSION_OPTIONS) : new GameSession(activeSnapshot, SESSION_OPTIONS),
+    initialReplaySession ?? (initialSave ? GameSession.fromSaveData(activeSnapshot, initialSave, SESSION_OPTIONS) : new GameSession(activeSnapshot, SESSION_OPTIONS)),
   );
   /** Resolved once per scenario, before its startup events run -- see `GameSession.storyParts`. A resumed save has already been past all of this. */
   let storyParts = $state.raw(initialSave ? [] : session.storyParts());
@@ -345,7 +366,7 @@
   let quitConfirmOpen = $state(false);
 
   let phase = $state<'story' | 'objectives' | 'playing' | 'ended' | 'replay'>(
-    session.scenarioResult ? 'ended' : storyParts.length > 0 ? 'story' : 'playing',
+    initialReplaySession ? 'replay' : session.scenarioResult ? 'ended' : storyParts.length > 0 ? 'story' : 'playing',
   );
   /**
    * Phase 21: a campaign is completed by winning its last scenario (`playcampaign.cpp`: victory with no next
@@ -865,6 +886,14 @@
   // second time on top of the ones the save just restored.
   if (storyParts.length === 0 && !initialSave) {
     void runStartupEvents();
+  }
+
+  if (initialReplaySession) {
+    void beginInitialReplay();
+  } else if (startInReplay && initialSave) {
+    // Asked to open straight into replay, but this save predates replay recording -- fall back to the
+    // normal resume above and say why, same message `startReplay`'s own guard shows mid-game.
+    sync('This save has no replay to show (it was made before replays were recorded).');
   }
 
   /**
@@ -1878,24 +1907,27 @@
         sync(tx('That save no longer exists.'));
         return;
       }
-      if (showReplay) {
-        await startReplay(found.data);
-        return;
-      }
       // Real, reported bug: loading a save switched the scenario but left
       // the campaign alone -- the page URL still named the campaign the
       // session had been opened with, and since `saveDetails` reads the
       // campaign from that same context, the NEXT save was filed under
       // the wrong campaign (and named with its abbreviation). A save that
       // belongs to another campaign is therefore handed back to the host
-      // to open properly, rather than being squeezed into this one.
+      // to open properly, rather than being squeezed into this one --
+      // checked before `showReplay` below: `startReplay` fetches through
+      // *this* shell's own campaign directory (`snapshotFor`), which is
+      // wrong once the target save belongs to a different one.
       const targetCampaign = found.data.campaignId ?? found.meta.campaignId;
       if (targetCampaign && targetCampaign !== campaign?.id) {
         if (!onOpenSave) {
           sync(`"${name}" belongs to another campaign; open it from the main menu.`);
           return;
         }
-        onOpenSave(targetCampaign, name);
+        onOpenSave(targetCampaign, name, showReplay);
+        return;
+      }
+      if (showReplay) {
+        await startReplay(found.data);
         return;
       }
       const targetScenario = found.data.scenarioId ?? found.meta.scenarioId;
@@ -1922,9 +1954,22 @@
   // ---------------------------------------------------------------------------
 
   /** The replay being shown: the save it comes from, how far it has got, and whether it is running. */
-  let replay = $state<{ data: SaveGameData; index: number; total: number; playing: boolean } | null>(null);
+  let replay = $state<{ data: SaveGameData; index: number; total: number; playing: boolean } | null>(
+    initialReplaySession ? { data: initialSave!, index: 0, total: initialSave!.replay!.commands.length, playing: true } : null,
+  );
   /** The running playback loop, so Restart can wait for it to stop. */
   let replayLoop: Promise<void> | null = null;
+
+  /**
+   * Starts the loop for a replay `session`/`phase`/`replay` were already built into at mount (`startInReplay`),
+   * once the board has had its first render -- `startReplay` (below) does the same wait via `runStartupEvents`'s
+   * own `boardReady`, but this shell has no board yet at the point the constructor-time code above runs.
+   */
+  async function beginInitialReplay(): Promise<void> {
+    await boardReady();
+    sync(fmt(tx('Replay of $name: $total actions.'), { name: session.scenarioName, total: replay!.total }));
+    replayLoop = runReplayLoop();
+  }
 
   /** Opens `data`'s replay from its first command, paused at the start and then playing. */
   async function startReplay(data: SaveGameData): Promise<void> {

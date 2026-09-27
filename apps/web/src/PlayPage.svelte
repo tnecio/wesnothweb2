@@ -34,6 +34,8 @@
   let campaign = $state<Campaign | null>(null);
   /** The save being resumed, when the URL carries `?save=<name>` (Phase 26). */
   let initialSave = $state<SaveGameData | null>(null);
+  /** `?replay=1` alongside `?save=<name>`: open straight into that save's replay, matching the title screen's "Show replay" (Phase 26/21). */
+  let startInReplay = $state(false);
   /** Every campaign, so the in-game load dialog can name the campaign any save belongs to. */
   let allCampaigns = $state<Campaign[]>([]);
 
@@ -43,12 +45,13 @@
    * page remounts and the game reopens with the right campaign, which is
    * what stops the next save being filed under the old one. The same
    * campaign just updates the address bar; the game has already been
-   * loaded in place.
+   * loaded in place. `replay` carries a "Show replay" request across a
+   * cross-campaign handoff (see `GameShell`'s own `onOpenSave` doc comment).
    */
-  function openSave(campaignId: string, saveName: string): void {
+  function openSave(campaignId: string, saveName: string, replay = false): void {
     const target = campaignId || campaignInfoId();
     if (!target) return;
-    router.navigate(`/play/${target}?save=${encodeURIComponent(saveName)}`);
+    router.navigate(`/play/${target}?save=${encodeURIComponent(saveName)}${replay ? '&replay=1' : ''}`);
   }
 
   function campaignInfoId(): string {
@@ -63,6 +66,7 @@
     storyAssets = null;
     campaign = null;
     initialSave = null;
+    startInReplay = false;
     (async () => {
       const campaigns = await fetchCampaigns();
       const found = campaigns.find((c) => c.id === campaignId);
@@ -74,6 +78,9 @@
       const saveName = params.get('save');
       const save = saveName ? ((await loadGame<SaveGameData>(saveName))?.data ?? null) : null;
       if (saveName && !save) throw new Error(`No save called "${saveName}".`);
+      // `?replay=1` alongside `?save=<name>`: the title screen's "Show replay", matching the in-game Load
+      // dialog's own checkbox -- GameShell falls back to a normal resume if the save predates replays.
+      const replayRequested = save !== null && params.get('replay') === '1';
       // `?scenario=<id>` starts the campaign at a later scenario (debugging/verification, e.g. an epilogue's outro).
       const scenarioId = save?.scenarioId || params.get('scenario') || campaignInfo.firstScenario;
       // `?difficulty=<DEFINE>` (the campaign dialog's choice); a save remembers its own, and an old save or an
@@ -95,6 +102,7 @@
       campaign = campaignInfo;
       allCampaigns = campaigns;
       initialSave = save;
+      startInReplay = replayRequested;
       status = 'ready';
     })().catch((err) => {
       if (cancelled) return;
@@ -120,7 +128,7 @@
     <!-- No {#key} needed here: App.svelte already keys PlayPage itself on
          campaignId, so a campaign change always tears down this whole
          component (and GameShell inside it) from scratch. -->
-    <GameShell {snapshot} {storyAssets} {campaign} {initialSave} campaigns={allCampaigns} onOpenSave={openSave} onQuitToMenu={() => router.navigate('/')} />
+    <GameShell {snapshot} {storyAssets} {campaign} {initialSave} {startInReplay} campaigns={allCampaigns} onOpenSave={openSave} onQuitToMenu={() => router.navigate('/')} />
   {/if}
 </main>
 

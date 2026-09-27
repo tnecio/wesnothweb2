@@ -12,8 +12,8 @@
     router.navigate(`/play/${campaign.id}${difficulty ? `?difficulty=${encodeURIComponent(difficulty)}` : ''}`);
   }
 
-  function resume(campaignId: string, saveName: string): void {
-    router.navigate(`/play/${campaignId}?save=${encodeURIComponent(saveName)}`);
+  function resume(campaignId: string, saveName: string, replay: boolean): void {
+    router.navigate(`/play/${campaignId}?save=${encodeURIComponent(saveName)}${replay ? '&replay=1' : ''}`);
   }
 </script>
 
