@@ -2531,7 +2531,7 @@
       const { x, y } = at;
       const loc = new Location(x, y);
       const unitHere = session.board.unitAt(loc);
-      const isReachable = reachable.some((h) => h.x === x && h.y === y);
+      const isReachable = !!session.selectedUnit && reachable.some((h) => h.x === x && h.y === y);
       const isAttackTarget = attackTargets.some((h) => h.x === x && h.y === y);
       const isRecruitTile = recruitTiles.some((h) => h.x === x && h.y === y);
       if (unitHere && unitHere.side === activeSide && unitHere !== session.selectedUnit) {

@@ -2912,21 +2912,45 @@ export class GameSession {
     this.pendingRecallIndex = null;
     this.inspectedUnit = null;
     this.selectedUnit = unit;
-    if (unit.movesLeft > 0) {
-      const { destinations } = reachableHexes(this.board, unit, { viewingTeam: this.board.getTeam(unit.side) });
-      const ownLoc = unit.location;
-      this.reachable = destinations
-        .values()
-        .map((step) => ({
-          x: step.curr.x,
-          y: step.curr.y,
-          defensePercent: 100 - unit.defenseModifier(this.board.map.getTerrain(step.curr)),
-        }))
-        .filter((h) => !(h.x === ownLoc.x && h.y === ownLoc.y));
-    } else {
-      this.reachable = [];
-    }
+    this.reachable = this.reachOf(unit);
     this.attackCandidates = this.computeAttackCandidates(unit);
+  }
+
+  /**
+   * `mouse_handler::select_hex` on a unit the player can't move (an enemy's, an ally's): the panel shows it
+   * and the board highlights where it can go. A unit of a side other than the one moving has its moves
+   * back before it can use them, so its reach is shown with full moves (`unit_movement_resetter`), as
+   * upstream shows it.
+   */
+  inspectUnit(unit: Unit): void {
+    this.clearSelection();
+    this.inspectedUnit = unit;
+    if (unit.side === this.activeSide || unit.incapacitated) {
+      this.reachable = this.reachOf(unit);
+      return;
+    }
+    const saved = unit.movesLeft;
+    unit.movesLeft = unit.maxMoves;
+    try {
+      this.reachable = this.reachOf(unit);
+    } finally {
+      unit.movesLeft = saved;
+    }
+  }
+
+  /** The hexes `unit` can move to this turn (not its own), seen by its own side, with its defense on each. */
+  private reachOf(unit: Unit): ReachableHexPoint[] {
+    if (unit.movesLeft <= 0) return [];
+    const { destinations } = reachableHexes(this.board, unit, { viewingTeam: this.board.getTeam(unit.side) });
+    const ownLoc = unit.location;
+    return destinations
+      .values()
+      .map((step) => ({
+        x: step.curr.x,
+        y: step.curr.y,
+        defensePercent: 100 - unit.defenseModifier(this.board.map.getTerrain(step.curr)),
+      }))
+      .filter((h) => !(h.x === ownLoc.x && h.y === ownLoc.y));
   }
 
   clearSelection(): void {
@@ -3676,11 +3700,9 @@ export class GameSession {
           return null;
         }
         // An enemy (or an inactive side's unit) that isn't a valid attack
-        // target right now -- not actionable, but still worth showing its
-        // info (addresses "no way to see information about enemy units").
-        // Deliberately does NOT touch `sel`/`reachable`/`attackCandidates`:
-        // the player's own selection and move/attack highlights stay put.
-        this.inspectedUnit = clickedUnit;
+        // target right now: as upstream, it becomes the selection -- its
+        // info in the panel, its reach on the board -- in place of ours.
+        this.inspectUnit(clickedUnit);
         return fmt(tx('Viewing $unit.'), { unit: this.unitDisplayName(clickedUnit) });
       }
 
@@ -3696,11 +3718,12 @@ export class GameSession {
       if (clickedUnit.side === this.activeSide) {
         this.selectUnit(clickedUnit);
       } else {
-        this.inspectedUnit = clickedUnit;
+        this.inspectUnit(clickedUnit);
         return fmt(tx('Viewing $unit.'), { unit: this.unitDisplayName(clickedUnit) });
       }
     } else {
       this.inspectedUnit = null;
+      this.reachable = [];
     }
     return null;
   }

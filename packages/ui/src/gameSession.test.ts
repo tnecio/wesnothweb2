@@ -1558,21 +1558,38 @@ describe('GameSession unit inspection (real, reported bug: no way to see informa
     expect(session.unitInfo(session.inspectedUnit!).name).toBe(session.unitDisplayName(malKevek));
   });
 
-  it('clicking a non-attackable enemy while my own unit is selected inspects it WITHOUT disturbing the current selection/highlights', async () => {
+  it('clicking a non-attackable enemy while my own unit is selected selects it instead, showing its reach (select_hex)', async () => {
     const session = new GameSession(loadSnapshot());
     const kaiKrellis = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
     const malKevek = session.board.allUnits().find((u) => u.type.id === 'Dark Sorcerer')!;
     // Real content: not adjacent at t=0 -- so clicking Mal-Kevek here hits
     // the "enemy, but not an attack candidate" branch, not the attack branch.
     session.selectUnit(kaiKrellis);
-    const reachableBefore = session.reachable;
 
     const result = await session.handleHexClick(malKevek.location.x, malKevek.location.y);
 
     expect(session.inspectedUnit).toBe(malKevek);
-    expect(session.selectedUnit).toBe(kaiKrellis); // untouched
-    expect(session.reachable).toEqual(reachableBefore); // untouched
+    expect(session.selectedUnit).toBeNull();
+    expect(session.attackCandidates).toEqual([]);
+    expect(session.reachable.length).toBeGreaterThan(0);
     expect(result).toContain('Mal-Kevek');
+  });
+
+  it("an enemy's reach is shown with its full moves, as it gets them back before it moves again (unit_movement_resetter)", async () => {
+    const session = new GameSession(loadSnapshot());
+    const malKevek = session.board.allUnits().find((u) => u.type.id === 'Dark Sorcerer')!;
+    await session.handleHexClick(malKevek.location.x, malKevek.location.y);
+    const full = session.reachable.length;
+    expect(full).toBeGreaterThan(0);
+
+    malKevek.movesLeft = 0; // spent on its own turn
+    await session.handleHexClick(malKevek.location.x, malKevek.location.y);
+    expect(session.reachable.length).toBe(full);
+    expect(malKevek.movesLeft).toBe(0); // shown, not given back
+
+    const emptyLoc = new Location(0, 0);
+    await session.handleHexClick(emptyLoc.x, emptyLoc.y);
+    expect(session.reachable).toEqual([]);
   });
 
   it('selecting a different unit of mine clears any prior inspection', async () => {
