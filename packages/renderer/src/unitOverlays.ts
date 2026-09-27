@@ -126,6 +126,17 @@ export const ORB_COLOR_ID: Record<MovesOrbStatus, string> = {
   moved: 'red',
 };
 
+/**
+ * Sets the orb colours (upstream's `unmoved_orb_color`/`partial_orb_color`/`moved_orb_color` preferences) to
+ * team-colour ids. The next `updateIcons` redraws the orbs with them; the defaults above are what upstream ships.
+ */
+export function setOrbColorIds(colors: Partial<Record<MovesOrbStatus, string>>): void {
+  for (const status of ['unmoved', 'partial', 'moved'] as const) {
+    const id = colors[status];
+    if (id) ORB_COLOR_ID[status] = id;
+  }
+}
+
 /** Upstream's `blend_with`/`blend_ratio` pair: every pixel moves `ratio` of the way toward `color` (0xRRGGBB). */
 export interface StatusBlend {
   color: number;

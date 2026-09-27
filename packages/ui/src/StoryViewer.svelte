@@ -303,7 +303,7 @@
 <svelte:window onkeydown={onKeydown} />
 
 {#if part}
-  <div class="story" role="dialog" aria-modal="true" aria-label={tx('Story')} bind:clientWidth={viewportW} bind:clientHeight={viewportH}>
+  <div class="story" role="dialog" aria-modal="true" aria-label={tx('Story')} aria-describedby="story-text" bind:clientWidth={viewportW} bind:clientHeight={viewportH}>
     {#if layout}
       {#each layout.layers as layer, i (`${shownIndex}:${i}`)}
         {@const url = urlOf(layer.image, layer.w)}
@@ -382,7 +382,7 @@
       <div class="middle">
         <!-- svelte-ignore a11y_click_events_have_key_events -- keyboard navigation is handled window-wide above -->
         <div class="text" role="button" tabindex="-1" style:opacity={alpha} style:text-align={part.textAlignment} onclick={() => navigate(1)}>
-          <span dir="auto">{ts(part.textT)}</span>
+          <span dir="auto" id="story-text">{ts(part.textT)}</span>
         </div>
         <button class="skip" onclick={close}>{t('Skip')}</button>
       </div>
@@ -423,7 +423,7 @@
     padding: 4px 12px;
     border-radius: 3px;
     background: rgba(0, 0, 0, 0.6);
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale, 1));
     color: rgb(186, 172, 125);
     pointer-events: none;
     animation: loading-pulse 1.2s ease-in-out infinite;
@@ -448,7 +448,7 @@
   .title {
     position: absolute;
     font-family: var(--story-script-font);
-    font-size: 32px;
+    font-size: calc(32px * var(--font-scale, 1));
     line-height: 1.2;
     white-space: nowrap;
     color: rgb(215, 215, 215);
@@ -519,7 +519,7 @@
     max-height: 40vh;
     overflow-y: auto;
     white-space: pre-wrap;
-    font-size: 17px; /* GUI_FONT_SIZE_DEFAULT */
+    font-size: calc(17px * var(--font-scale, 1)); /* GUI_FONT_SIZE_DEFAULT */
     line-height: 1.45;
     cursor: pointer;
     outline: none;
@@ -551,7 +551,7 @@
     border: 0;
     background: none;
     font-family: var(--story-script-font);
-    font-size: 20px;
+    font-size: calc(20px * var(--font-scale, 1));
     color: rgba(215, 215, 215, 0.8);
     text-shadow: 0 0 2px #000, 0 0 2px #000;
     cursor: pointer;
@@ -570,7 +570,7 @@
     }
     .text {
       margin: 12px 4px;
-      font-size: 15px;
+      font-size: calc(15px * var(--font-scale, 1));
     }
   }
 </style>

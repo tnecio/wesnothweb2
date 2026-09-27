@@ -36,6 +36,8 @@ export {
   type MovesOrbStatus,
   movesOrbStatus,
   ORB_COLOR,
+  ORB_COLOR_ID,
+  setOrbColorIds,
   statusBlend,
   blendColorMatrix,
   type StatusBlend,

@@ -7,7 +7,7 @@
    * "only load assets needed for a given campaign once it's chosen"
    * requirement -- this component structurally can't preload anything.
    */
-  import { LanguageDialog, fmt, formatDateTime, listSaves, locale, t, ts, tx, type SaveMeta } from '@wesnothweb2/ui';
+  import { AccessibilityDialog, LanguageDialog, fmt, formatDateTime, listSaves, locale, t, ts, tx, type SaveMeta } from '@wesnothweb2/ui';
   import { fetchCampaigns, type Campaign } from './campaigns.js';
   import { router } from './router.svelte.js';
 
@@ -23,6 +23,7 @@
    */
   let saves = $state<SaveMeta[]>([]);
   let languageOpen = $state(false);
+  let accessibilityOpen = $state(false);
 
   $effect(() => {
     let cancelled = false;
@@ -88,7 +89,10 @@
 <div class="menu">
   <div class="top">
     <h1>wesnothweb2</h1>
-    <button class="language" onclick={() => (languageOpen = true)} data-testid="menu-language">{t('Language')}...</button>
+    <div class="prefs">
+      <button class="language" onclick={() => (accessibilityOpen = true)} data-testid="menu-accessibility">{tx('Accessibility')}...</button>
+      <button class="language" onclick={() => (languageOpen = true)} data-testid="menu-language">{t('Language')}...</button>
+    </div>
   </div>
   {#if status === 'loading'}
     <p class="hint">{tx('Loading campaigns...')}</p>
@@ -129,6 +133,9 @@
 {#if languageOpen}
   <LanguageDialog onClose={() => (languageOpen = false)} />
 {/if}
+{#if accessibilityOpen}
+  <AccessibilityDialog onClose={() => (accessibilityOpen = false)} />
+{/if}
 
 <style>
   .menu {
@@ -144,6 +151,10 @@
     align-items: baseline;
     justify-content: space-between;
     gap: 1rem;
+  }
+  .prefs {
+    display: flex;
+    gap: 0.5rem;
   }
   h1 {
     font-size: 1.5rem;

@@ -59,6 +59,7 @@
     sideColorRgb,
     ImageCache,
     setEngineImageBaseUrl,
+    setOrbColorIds,
   } from '@wesnothweb2/renderer';
   import {
     GameSession,
@@ -118,6 +119,8 @@
   import StoryViewer from './StoryViewer.svelte';
   import AudioDialog from './AudioDialog.svelte';
   import LanguageDialog from './LanguageDialog.svelte';
+  import AccessibilityDialog from './AccessibilityDialog.svelte';
+  import { accessibility } from './accessibility.js';
   import { fmt, locale, t, tw, ts, tx } from './i18n/locale.js';
   import { getAudioEngine } from './audio/audioEngine.js';
   import { installUiSounds } from './audio/uiSounds.js';
@@ -244,6 +247,7 @@
   let audioSettings = $state<Readonly<AudioSettings>>(audio.settings);
   let audioDialogOpen = $state(false);
   let languageDialogOpen = $state(false);
+  let accessibilityDialogOpen = $state(false);
   function changeAudio(patch: Partial<AudioSettings>): void {
     audio.updateSettings(patch);
     audioSettings = audio.settings;
@@ -405,6 +409,8 @@
   let statusMessage = $state(tx('Click one of your units to select it.'));
   /** Phase 14: the infobox's "terrain info for the hovered hex" -- kept in sync by `GameBoardView`'s `onHexHoverChange`. */
   let hoveredHexInfo = $state<HoveredHexInfo | null>(null);
+  /** What a screen reader says about the hex under the keyboard cursor; `describeHex`, updated as the cursor moves. */
+  let cursorAnnouncement = $state('');
   /** Phase 14: the right-click context menu's position + which hex it's for, `null` when closed. */
   let contextMenuAt = $state<{ x: number; y: number; clientX: number; clientY: number } | null>(null);
   /** Phase 18: the "Place Label" dialog's hex and initial state, `null` when closed. */
@@ -496,6 +502,15 @@
     hoveredHexInfo = hoveredHexInfo ? session.hoveredHexInfo(hoveredHexInfo.x, hoveredHexInfo.y) : null;
     statusMessage = statusFor();
   }
+
+  // Phase 20: the orb colours are a preference; the renderer redraws the orbs on the next `sync`.
+  let orbsApplied = false;
+  $effect(() => {
+    const colors = accessibility.current.orbColors;
+    setOrbColorIds(colors);
+    if (orbsApplied) untrack(sync);
+    orbsApplied = true;
+  });
 
   let lastLanguage = locale.current;
   $effect(() => {
@@ -2256,6 +2271,12 @@
       enabled: true,
       handler: () => (languageDialogOpen = true),
     },
+    {
+      id: 'accessibility',
+      label: `${tx('Accessibility')}...`,
+      enabled: true,
+      handler: () => (accessibilityDialogOpen = true),
+    },
   ]);
   let actionCommands = $derived<Command[]>([
     {
@@ -2453,6 +2474,7 @@
       };
     }
     hoveredHexInfo = session.hoveredHexInfo(cursorHex.x, cursorHex.y);
+    cursorAnnouncement = session.describeHex(cursorHex.x, cursorHex.y);
     boardView?.scrollToHexIfOffscreen(cursorHex.x, cursorHex.y);
   }
 
@@ -2493,6 +2515,7 @@
         session.clearSelection();
         cursorHex = null;
         hoveredHexInfo = null;
+        cursorAnnouncement = '';
         sync();
       },
     },
@@ -2518,6 +2541,7 @@
       labelSettingsOpen ||
       audioDialogOpen ||
       languageDialogOpen ||
+      accessibilityDialogOpen ||
       pendingAdvancement !== null ||
       pendingPreview !== null ||
       // Phase 17: a suspended event's own dialogue owns the keyboard
@@ -2549,6 +2573,10 @@
     // a suspended event's dialogue is handled by MessageViewer.
     if (phase !== 'playing' || eventsRunning) return;
     if (dialogOpen() || contextMenuAt !== null || isTypingTarget(e.target)) return;
+    // Enter or Space on a focused button is that button's own activation (a keyboard user who Tabbed to
+    // Menu or End Turn), not the cursor's "select / move / attack".
+    const target = e.target as HTMLElement | null;
+    if ((e.key === 'Enter' || e.key === ' ') && !e.ctrlKey && !e.metaKey && !e.altKey && target?.closest?.('button, a[href], [role="button"]')) return;
     const command = hotkeyCommands.find((c) => c.hotkey && matchesHotkey(e, c.hotkey));
     if (!command) return;
     e.preventDefault();
@@ -2559,6 +2587,8 @@
 <svelte:window onkeydown={handleGlobalKeydown} />
 
 <div class="game-shell">
+  <!-- Polite live region for the keyboard cursor's hex; visually hidden. -->
+  <div class="sr-only" role="status" aria-live="polite" aria-atomic="true" data-testid="cursor-announcement">{cursorAnnouncement}</div>
   <TopBar
     scenarioName={ts(session.scenarioNameT)}
     {turnNumber}
@@ -2750,6 +2780,9 @@
   {#if languageDialogOpen}
     <LanguageDialog onClose={() => (languageDialogOpen = false)} />
   {/if}
+  {#if accessibilityDialogOpen}
+    <AccessibilityDialog onClose={() => (accessibilityDialogOpen = false)} />
+  {/if}
   {#if audioDialogOpen}
     <AudioDialog settings={audioSettings} onChange={changeAudio} onClose={() => (audioDialogOpen = false)} />
   {/if}
@@ -2856,6 +2889,17 @@
     height: 100%;
     display: flex;
     flex-direction: column;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
   .main {
     flex: 1 1 auto;

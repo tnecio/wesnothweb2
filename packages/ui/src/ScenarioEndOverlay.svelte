@@ -38,17 +38,23 @@
     continueError: string | null;
     onContinue: () => void;
   } = $props();
+
+  /** The way on: focused as the screen appears, so Enter continues without a mouse. */
+  let continueButton: HTMLButtonElement | undefined = $state();
+  $effect(() => {
+    continueButton?.focus();
+  });
 </script>
 
-<div class="end-overlay" class:victory={result === 'victory'} class:defeat={result === 'defeat'}>
+<div class="end-overlay" class:victory={result === 'victory'} class:defeat={result === 'defeat'} role="alertdialog" aria-modal="true" aria-labelledby="end-title" aria-describedby="end-detail">
   <div class="end-content">
-    <h1>{result === 'victory' ? tw('Victory') : tw('Defeat')}</h1>
-    <p class="detail">
+    <h1 id="end-title">{result === 'victory' ? tw('Victory') : tw('Defeat')}</h1>
+    <p class="detail" id="end-detail">
       {result === 'victory' ? tx('The enemy has been vanquished.') : tx('Your forces have fallen.')}
     </p>
     <p class="stats">{fmt(tx('Turn $turn · $gold gold'), { turn: turnNumber, gold })}</p>
     {#if nextScenarioAvailable}
-      <button class="continue" onclick={onContinue} disabled={continuing}>
+      <button class="continue" bind:this={continueButton} onclick={onContinue} disabled={continuing}>
         {continuing ? tx('Loading next scenario...') : tx('Continue to next scenario')}
       </button>
       {#if continueError}

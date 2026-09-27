@@ -4898,3 +4898,88 @@ Gates: engine 791, ui 292, lua-bridge 38; 0 typecheck/svelte-check errors.
   measured widths are right.
 
 Gates: ui 298 (+5), 0 svelte-check errors.
+
+## 2026-09-27: Phase 20, stage 5 — accessibility; Phase 20 delivered
+
+- **Font size** (`accessibility.ts`, `AccessibilityDialog.svelte`; Menu > Accessibility... in
+  a game, and a button on the menu page): upstream's `font_scaling` range of 80-150 %, in
+  steps of 5, kept per browser. It sets the root font size, so everything sized in `rem` (the
+  dialogs, side panel, top bar) follows, and `--font-scale` for the story, dialogue and
+  outro text that is sized in pixels to upstream's metrics (`calc(22px * var(--font-scale))`).
+  Dialogs now re-flow to their own width with `@container` (the recruit, recall and
+  advancement detail panes go above the list, the attack and damage-calculation columns
+  stack) and their body scrolls when it does not fit, so at 150 % on a 390 px phone nothing
+  is clipped or lost. `i18n-screenshots.mjs --fast --scale 150` captures the menu, story,
+  dialogue, objectives, side panel and recruit dialog at desktop and phone size and checks
+  for overflow; looked at by eye too.
+- **Orb colours** (`unmoved`/`partial`/`moved`, upstream's `*_orb_color` preferences): the
+  three colours are settings, from the 18 team colours upstream's own preference list
+  offers, named through the `wesnoth` catalogue so every language already has them. The
+  renderer's `setOrbColorIds` changes them and the orbs redraw on the next sync.
+- **Team identity is no longer colour-only**: the attack dialog names each side
+  ("Side 1", "Side 2"), the side panel and the top bar already did, and the new hex
+  description below says "side N" for every unit. Together with the orb colour choice this
+  is decision 2 of the plan (settings plus a name wherever a colour identifies a side).
+- **Screen readers**:
+  - dialogs were already `role="dialog" aria-modal aria-label`; the dialogue box and story
+    now also `aria-describedby` their text, the scenario end screen is an
+    `alertdialog` labelled by its heading and described by its detail line, and focus
+    lands on its Continue button;
+  - closing a modal returns focus to what opened it;
+  - the side panel's status line is a live region (`role="status"`), which carries
+    every move, attack result, turn change and victory message;
+  - the menus have `aria-haspopup`/`aria-expanded`, the map is `role="application"`
+    with a label;
+  - **the keyboard cursor describes each hex** (`GameSession.describeHex`, spoken
+    through a polite live region): terrain and the selected unit's defense there, any
+    unit the player can see on it (name, type, side, hit points, moves), and whether
+    Enter would move there or attack it.
+- **A keyboard bug found by playing it**: the global hotkey handler swallowed Enter and
+  Space even when a Tabbed-to button (Menu, End Turn) had focus, so those buttons could
+  not be activated from the keyboard. An unmodified Enter or Space on a focused button is
+  now the button's own.
+- **Keyboard-only playthrough** (`keyboard-playthrough.mjs --keyboard-only`, on a new
+  synthetic scenario `synthetic-campaigns/keyboard/`): story (Escape), a message with an
+  `[option]` prompt (arrows, Enter), the objectives dialog (focus on OK, Enter), N to
+  select the hero, the cursor to a free hex (announcement says "you can move here", Enter),
+  Enter to select again, the cursor to the enemy ("you can attack it", Enter opens the
+  attack dialog naming both sides, Enter confirms), the advancement dialog (the hero was
+  one kill from levelling), the victory screen (an alert dialog, focus on Continue), Enter
+  into the next scenario, then Ctrl+S (focus in the name field), Ctrl+O, Tab to Menu,
+  Enter, Tab to Language, Enter, an arrow key switching the language live, and back. A
+  capture-phase listener counts every mouse, pointer and touch event (a keyboard-made
+  `click` has `detail` 0 and is not counted): the run fails unless the count is 0, and it
+  is 0. If the 3 % chance of a miss happens it ends the turn and tries again.
+
+### Phase 20 — milestones (all four met)
+1. **Runtime switch**: `i18n-playthrough.mjs` on Dead Water 1 in English, stopped on
+   "Is something wrong, priestess?", switches to Polish: the open line becomes the
+   catalogue's "Czy coś nie w porządku kapłanko?" with no reload (a marker on `window`
+   survives), and back again; the End Turn button, the menu entries, a selected unit's type
+   name and the open objectives dialog's labels and text all match the shipped catalogue.
+2. **Keyboard-only**: above.
+3. **Zero unknown msgids**: `i18n-coverage.mjs` reports 314,946 translatable parts, 3,129
+   distinct `(domain, msgid)` pairs across every shipped scenario and story, and every one
+   is in its domain's `.pot` except 22 recorded gaps (17 upstream never extracted, 5 our own
+   synthetic scenarios' text).
+4. **Real Wesnoth**: `i18n-real-binary-check.mjs` reads the installed 1.16.9's own
+   `wesnoth-*.mo` Polish catalogues, the files `wesnoth --language pl_PL` runs from, and
+   compares them with ours on all 1,419 distinct translatable strings of Dead Water 1
+   (dialogue, objectives, unit and terrain names, attacks): 1,058 identical, 0 that both
+   translate differently, 8 only in the real one and 1 only in ours (rewordings between
+   1.16 and 1.19), 352 untranslated in both. It does not drive the real GUI, which cannot
+   be done headless.
+
+### Phase 20 — what is left for you
+- A look at the real screens: `wesnoth`-side, nothing; ours, the menu page and a game in
+  Polish and Arabic (the screenshots in `i18n-screenshots/`, not committed, come from
+  `apps/web/scripts/i18n-screenshots.mjs`), and one pass with a real screen reader
+  (NVDA, VoiceOver, Orca), which cannot be done headless.
+- The port-only strings (`apps/web/i18n/wesnothweb/wesnothweb.pot`, about 150) are
+  English until a translator adds `<lang>.po` beside it; `build-translations.mjs`
+  picks it up.
+- Adding a language is one line in `SHIPPED_LOCALES` (`build-translations.mjs`) plus a
+  re-run; a CJK or Bengali one also needs its font added to `build-fonts.mjs` and
+  `ON_DEMAND_FONTS`.
+
+Gates: engine 793, ui 299, renderer 217, lua-bridge 38; 0 typecheck/svelte-check errors.

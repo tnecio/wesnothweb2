@@ -49,7 +49,9 @@ export { default as GameShell } from './GameShell.svelte';
 
 export { fetchStoryAssets, pickStoryImage, type StoryAssets, type StoryImageEntry } from './story/storyImages.js';
 
-// Phase 20: language and translation lookup.
+// Phase 20: accessibility preferences, language and translation lookup.
+export { default as AccessibilityDialog } from './AccessibilityDialog.svelte';
+export { accessibility, AccessibilityManager, FONT_SCALE_MIN, FONT_SCALE_MAX, DEFAULT_ORB_COLORS } from './accessibility.js';
 export { default as LanguageDialog } from './LanguageDialog.svelte';
 export {
   locale,

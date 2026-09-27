@@ -5,6 +5,12 @@
  *
  *   node apps/web/scripts/i18n-screenshots.mjs [--langs pl_PL,ar_AR,fi_FI,hu_HU,cs_CZ] [--base http://localhost:5173]
  *
+ * `--scale 150` also sets the font size preference (80-150 %) before loading, and `--fast` swaps Dead
+ * Water 1 for the small synthetic scenarios (`synthetic_keyboard` for the story and objectives,
+ * `synthetic_dialogue` for a dialogue line, `synthetic_economy` for the side panel and recruit dialog),
+ * which reach the same screens in seconds. The accessibility milestone runs
+ * `--fast --scale 150` in English and Polish at both sizes.
+ *
  * One Dead Water 1 load per language (the opening is slow on a cold image cache); each state is
  * captured at both sizes by resizing the viewport, so the two shots show the very same screen.
  *
@@ -27,6 +33,8 @@ const arg = (name, fallback) => {
 const base = arg('base', 'http://localhost:5173');
 const langs = arg('langs', 'pl_PL,ar_AR,fi_FI,hu_HU,cs_CZ').split(',');
 const outRoot = arg('out', 'i18n-screenshots');
+const scale = Number(arg('scale', '100'));
+const fast = args.includes('--fast');
 const SIZES = [
   { name: 'desktop', width: 1280, height: 720 },
   { name: 'phone', width: 390, height: 844 },
@@ -81,10 +89,13 @@ async function shoot(page, dir, name) {
 const browser = await chromium.launch();
 try {
   for (const lang of langs) {
-    const dir = path.join(outRoot, lang);
+    const dir = path.join(outRoot, fast || scale !== 100 ? `${lang}-${scale}${fast ? '-fast' : ''}` : lang);
     fs.mkdirSync(dir, { recursive: true });
     const context = await browser.newContext({ viewport: { width: SIZES[0].width, height: SIZES[0].height } });
-    await context.addInitScript((code) => localStorage.setItem('wesnothweb2.language', code), lang);
+    await context.addInitScript(([code, fontScale]) => {
+      localStorage.setItem('wesnothweb2.language', code);
+      if (fontScale !== 100) localStorage.setItem('wesnothweb2.accessibility', JSON.stringify({ fontScale }));
+    }, [lang, scale]);
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
@@ -95,48 +106,68 @@ try {
       await page.waitForSelector('.campaign-list');
       await shoot(page, dir, 'menu');
 
-      await openScenario(page, base, 'dead_water');
-      await waitBoardReady(page);
-      await page.waitForSelector('.story', { timeout: 60000 });
-      await page.waitForTimeout(1500);
-      await shoot(page, dir, 'story');
-      for (let i = 0; i < 15 && (await page.$('.story')); i++) {
+      if (fast) {
+        // story + objectives + the keyboard scenario's choice dialogue
+        await openScenario(page, base, 'synthetic_keyboard');
+        await waitBoardReady(page);
+        await page.waitForSelector('.story', { timeout: 60000 });
+        await page.waitForTimeout(800);
+        await shoot(page, dir, 'story');
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(350);
-      }
+        await page.waitForSelector('.window[role="dialog"]', { timeout: 30000 });
+        await shoot(page, dir, 'dialogue');
+        await page.keyboard.press('Enter');
+        await page.waitForSelector('.modal-box .advance', { timeout: 30000 });
+        await shoot(page, dir, 'objectives');
+        await page.keyboard.press('Enter');
+        await page.waitForTimeout(600);
+        await page.keyboard.press('n');
+        await page.waitForTimeout(500);
+        await shoot(page, dir, 'side-panel');
+      } else {
+        await openScenario(page, base, 'dead_water');
+        await waitBoardReady(page);
+        await page.waitForSelector('.story', { timeout: 60000 });
+        await page.waitForTimeout(1500);
+        await shoot(page, dir, 'story');
+        for (let i = 0; i < 15 && (await page.$('.story')); i++) {
+          await page.keyboard.press('Escape');
+          await page.waitForTimeout(350);
+        }
 
-      // the first dialogue line (the objectives dialog, if the scenario opens with it, is dismissed first)
-      for (let i = 0; i < 240 && !(await page.$('.window[role="dialog"]')); i++) {
-        if (await page.$('.modal-box .advance')) {
-          await shoot(page, dir, 'objectives-opening');
+        // the first dialogue line (the objectives dialog, if the scenario opens with it, is dismissed first)
+        for (let i = 0; i < 240 && !(await page.$('.window[role="dialog"]')); i++) {
+          if (await page.$('.modal-box .advance')) {
+            await shoot(page, dir, 'objectives-opening');
+            await page.locator('.modal-box .advance').first().click();
+          }
+          await page.waitForTimeout(500);
+        }
+        if (await page.$('.window[role="dialog"]')) await shoot(page, dir, 'dialogue');
+
+        // on to play
+        let quiet = 0;
+        for (let i = 0; i < 150 && quiet < 6; i++) {
+          if (await page.$('.story')) await page.keyboard.press('Escape'), (quiet = 0);
+          else if (await page.$('.window[role="dialog"]')) await page.keyboard.press('Enter'), (quiet = 0);
+          else if (await page.$('.modal-box .advance')) await page.locator('.modal-box .advance').first().click(), (quiet = 0);
+          else quiet++;
+          await page.waitForTimeout(400);
+        }
+        await page.keyboard.press('n');
+        await page.waitForTimeout(500);
+        await shoot(page, dir, 'side-panel');
+
+        // objectives, reopened from Actions (the 7th entry: Recruit, Recall, two Place Label, Clear Labels, Label Settings, Objectives)
+        await page.click('.menu-button >> nth=1');
+        await page.locator('.dropdown button').nth(6).click();
+        await page.waitForTimeout(600);
+        if (await page.$('.modal-box .section')) {
+          await shoot(page, dir, 'objectives');
           await page.locator('.modal-box .advance').first().click();
         }
-        await page.waitForTimeout(500);
-      }
-      if (await page.$('.window[role="dialog"]')) await shoot(page, dir, 'dialogue');
 
-      // on to play
-      let quiet = 0;
-      for (let i = 0; i < 150 && quiet < 6; i++) {
-        if (await page.$('.story')) await page.keyboard.press('Escape'), (quiet = 0);
-        else if (await page.$('.window[role="dialog"]')) await page.keyboard.press('Enter'), (quiet = 0);
-        else if (await page.$('.modal-box .advance')) await page.locator('.modal-box .advance').first().click(), (quiet = 0);
-        else quiet++;
-        await page.waitForTimeout(400);
       }
-      await page.keyboard.press('n');
-      await page.waitForTimeout(500);
-      await shoot(page, dir, 'side-panel');
-
-      // objectives, reopened from Actions (the 7th entry: Recruit, Recall, two Place Label, Clear Labels, Label Settings, Objectives)
-      await page.click('.menu-button >> nth=1');
-      await page.locator('.dropdown button').nth(6).click();
-      await page.waitForTimeout(600);
-      if (await page.$('.modal-box .section')) {
-        await shoot(page, dir, 'objectives');
-        await page.locator('.modal-box .advance').first().click();
-      }
-
       // recruit dialog: the economy debug scenario has a leader on a keep and a real recruit list
       await openScenario(page, base, 'synthetic_economy');
       await waitBoardReady(page);

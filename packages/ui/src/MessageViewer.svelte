@@ -155,6 +155,7 @@
       class="window"
       role="dialog"
       aria-label={titleText || tx('Message')}
+      aria-describedby="wml-message-text"
       style:left="{area.x}px"
       style:top="{area.y}px"
       style:width="{area.w}px"
@@ -166,7 +167,7 @@
           {#if titleText}
             <div class="title" dir="auto">{titleText}</div>
           {/if}
-          <div class="text" dir="auto">{bodyText}</div>
+          <div class="text" id="wml-message-text" dir="auto">{bodyText}</div>
 
           {#if textInput}
             <div class="text-input">
@@ -338,7 +339,7 @@
   /* GUI_FONT_SIZE_TITLE (22) in GUI__FONT_COLOR_ENABLED__TITLE; message text GUI_FONT_SIZE_DEFAULT (17). */
   .title {
     padding: 5px;
-    font-size: 22px;
+    font-size: calc(22px * var(--font-scale, 1));
     font-weight: 700;
     color: rgb(186, 172, 125);
   }
@@ -348,7 +349,7 @@
     max-height: 40vh;
     overflow-y: auto;
     white-space: pre-wrap;
-    font-size: 17px;
+    font-size: calc(17px * var(--font-scale, 1));
     line-height: 1.45;
     color: rgb(215, 215, 215);
   }

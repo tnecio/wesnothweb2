@@ -67,9 +67,14 @@
     // Phase 15: a dialog whose first focusable element isn't the one a
     // keyboard user wants (the recall list's first button is "Rename")
     // marks the right one with `data-autofocus`.
+    const previous = typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null);
     const preferred = boxEl?.querySelector<HTMLElement>('[data-autofocus]');
     const target = preferred ?? focusableElements()[0] ?? boxEl;
     target?.focus();
+    // Closing a dialog hands focus back to whatever opened it, so a keyboard or screen-reader user is not dropped at the top of the page.
+    return () => {
+      if (previous && previous !== document.body && document.contains(previous)) previous.focus?.();
+    };
   });
 </script>
 
@@ -108,6 +113,8 @@
     direction: ltr; /* Wesnoth does not mirror its GUI for right-to-left languages; text runs pick their own direction (dir="auto") */
     max-width: 95vw;
     max-height: 90vh;
+    /* Dialogs re-flow to their own width (`@container` in each), which is what a narrow screen or a large font needs. */
+    container-type: inline-size;
     display: flex;
     flex-direction: column;
     background: linear-gradient(#131722, #0a0d15);
@@ -129,7 +136,8 @@
   }
   .modal-body {
     padding: 1rem;
-    overflow-y: auto;
+    overflow: auto;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;

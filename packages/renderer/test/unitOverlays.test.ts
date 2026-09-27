@@ -123,3 +123,13 @@ describe('ENERGY_BAR real geometry constants (units/drawer.cpp)', () => {
     expect(ENERGY_BAR.spacing).toBe(5) // def_w + 1
   })
 })
+
+describe('setOrbColorIds', () => {
+  it('overrides the orb colours by status and can put the defaults back', async () => {
+    const { ORB_COLOR_ID, setOrbColorIds } = await import('../src/unitOverlays');
+    setOrbColorIds({ unmoved: 'blue', moved: 'purple' });
+    expect(ORB_COLOR_ID).toEqual({ unmoved: 'blue', partial: 'brightorange', moved: 'purple' });
+    setOrbColorIds({ unmoved: 'brightgreen', moved: 'red' });
+    expect(ORB_COLOR_ID).toEqual({ unmoved: 'brightgreen', partial: 'brightorange', moved: 'red' });
+  });
+});

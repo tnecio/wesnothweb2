@@ -49,7 +49,7 @@
 </script>
 
 <aside class="side-panel">
-  <p class="status" dir="auto">{statusMessage}</p>
+  <p class="status" dir="auto" role="status">{statusMessage}</p>
 
   {#if hoveredHexInfo}
     <!-- Phase 14: real theme's always-on "terrain under the cursor" strip. -->

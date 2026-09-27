@@ -1318,6 +1318,38 @@ export class GameSession {
   }
 
   /**
+   * A sentence describing a hex, for a screen reader (Phase 20): its terrain and the selected unit's defense
+   * there, any unit the player can see on it (name, type, side, hit points, moves) and whether Enter would
+   * move there or attack it. Keyboard play is usable without the canvas because the cursor announces this
+   * as it moves.
+   */
+  describeHex(x: number, y: number): string {
+    const loc = new Location(x, y);
+    if (!this.board.map.onBoard(loc)) return '';
+    const terrain = this.board.map.terrainName(loc);
+    const defense = this.defensePercentAt(x, y);
+    const parts = [defense === null ? terrain : fmt(tx('$terrain, $defense|% defense'), { terrain, defense })];
+    const unit = this.board.unitAt(loc);
+    const playerTeam = this.board.getTeam(this.viewingSide);
+    if (unit && (!playerTeam || isUnitVisibleToTeam(this.board, unit, playerTeam, false))) {
+      parts.push(
+        fmt(tx('$name, $type, side $side, $hp of $maxhp HP, $moves of $maxmoves moves'), {
+          name: this.unitDisplayName(unit),
+          type: unit.type.name,
+          side: unit.side,
+          hp: unit.hitpoints,
+          maxhp: unit.maxHitpoints,
+          moves: unit.movesLeft,
+          maxmoves: unit.maxMoves,
+        }),
+      );
+    }
+    if (this.reachable.some((h) => h.x === x && h.y === y)) parts.push(tx('you can move here'));
+    if (this.attackCandidates.some((u) => u.location.x === x && u.location.y === y)) parts.push(tx('you can attack it'));
+    return parts.join('. ') + '.';
+  }
+
+  /**
    * Phase 14: every real `[set_menu_item]` the scenario's WML has declared
    * (via `[event]`s already run by `runStartupEvents`, or any later event
    * -- `actionWml.ts`'s `actionSetMenuItem` mutates `eventPump.ctx.

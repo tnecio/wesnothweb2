@@ -109,17 +109,17 @@
   }
   .text {
     font-family: var(--font-script);
-    font-size: 60px;
+    font-size: calc(60px * var(--font-scale, 1));
     line-height: 1.15;
     text-align: center;
     transition-property: opacity;
     transition-timing-function: linear;
   }
   .line.large {
-    font-size: 72px;
+    font-size: calc(72px * var(--font-scale, 1));
   }
   .line.small {
-    font-size: 35px;
+    font-size: calc(35px * var(--font-scale, 1));
   }
   .gap {
     height: 0.6em;
@@ -129,17 +129,17 @@
     right: 20px;
     bottom: 20px;
     font-family: var(--font-ui);
-    font-size: 17px;
+    font-size: calc(17px * var(--font-scale, 1));
   }
   @media (max-width: 600px) {
     .text {
-      font-size: 40px;
+      font-size: calc(40px * var(--font-scale, 1));
     }
     .line.large {
-      font-size: 46px;
+      font-size: calc(46px * var(--font-scale, 1));
     }
     .line.small {
-      font-size: 24px;
+      font-size: calc(24px * var(--font-scale, 1));
     }
   }
 </style>

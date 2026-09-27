@@ -85,7 +85,7 @@
 <header class="top-bar" bind:this={barEl}>
   <nav class="menus">
     <div class="menu-group">
-      <button class="menu-button" class:open={openMenu === 'menu'} onclick={() => toggle('menu')}>{tw('Menu')}</button>
+      <button class="menu-button" class:open={openMenu === 'menu'} aria-haspopup="menu" aria-expanded={openMenu === 'menu'} onclick={() => toggle('menu')}>{tw('Menu')}</button>
       {#if openMenu === 'menu'}
         <div class="dropdown">
           {#each menuCommands as cmd (cmd.id)}
@@ -98,7 +98,7 @@
       {/if}
     </div>
     <div class="menu-group">
-      <button class="menu-button" class:open={openMenu === 'actions'} onclick={() => toggle('actions')}>{t('Actions')}</button>
+      <button class="menu-button" class:open={openMenu === 'actions'} aria-haspopup="menu" aria-expanded={openMenu === 'actions'} onclick={() => toggle('actions')}>{t('Actions')}</button>
       {#if openMenu === 'actions'}
         <div class="dropdown">
           {#each actionCommands as cmd (cmd.id)}

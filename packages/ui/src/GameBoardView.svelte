@@ -676,7 +676,7 @@
       {/if}
     {/if}
   </p>
-  <div class="canvas-host" bind:this={canvasHost}></div>
+  <div class="canvas-host" bind:this={canvasHost} role="application" aria-label={tx('Game board')} aria-roledescription={tx('map')}></div>
 </div>
 
 <style>

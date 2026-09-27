@@ -244,4 +244,10 @@
     background: #2a5a86;
     border-color: #4a8ab8;
   }
+
+  @container (max-width: 39rem) {
+    .columns {
+      flex-direction: column;
+    }
+  }
 </style>

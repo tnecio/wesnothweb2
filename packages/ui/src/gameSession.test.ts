@@ -2322,3 +2322,29 @@ describe('Phase 18: label settings (hidden_label_categories)', () => {
     expect(session.mapLabels.map((l) => l.text)).toEqual(['Dallben']);
   });
 });
+
+describe('GameSession.describeHex (Phase 20: what a screen reader hears for the keyboard cursor)', () => {
+  it('names the terrain, the unit standing there, and what Enter would do', () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    // Empty hex: terrain only (no unit is selected, so there is no defense to state).
+    const empty = session.describeHex(0, 0);
+    expect(empty).toMatch(/^[^.]+\.$/);
+
+    // The unit's own hex: name, type, side, hit points, moves.
+    const kaiHere = session.describeHex(kaiKrellis.location.x, kaiKrellis.location.y);
+    expect(kaiHere).toContain('Kai Krellis');
+    expect(kaiHere).toContain(`side ${kaiKrellis.side}`);
+    expect(kaiHere).toContain(`${kaiKrellis.hitpoints} of ${kaiKrellis.maxHitpoints} HP`);
+
+    // With Kai selected, an adjacent enemy can be attacked, and a free reachable hex can be moved to.
+    session.selectUnit(kaiKrellis);
+    const enemy = session.describeHex(malKevek.location.x, malKevek.location.y);
+    expect(enemy).toContain('you can attack it');
+    expect(enemy).toContain('% defense');
+    const reachable = session.reachable[0]!;
+    expect(session.describeHex(reachable.x, reachable.y)).toContain('you can move here');
+
+    // Off the board: nothing to say.
+    expect(session.describeHex(-5, 400)).toBe('');
+  });
+});

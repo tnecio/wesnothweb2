@@ -309,4 +309,15 @@
     opacity: 0.45;
     cursor: not-allowed;
   }
+
+  /* Narrow (a phone, or a large font size): the detail pane goes above the list instead of squeezing it. */
+  @container (max-width: 33rem) {
+    .layout {
+      flex-direction: column;
+      min-height: 0;
+    }
+    .detail {
+      flex: 0 0 auto;
+    }
+  }
 </style>

@@ -1519,32 +1519,42 @@ belongs to Phase 21, which reuses the same audio engine and playlist.
 
 ## Phase 20 — Localization & Accessibility (was Phase 14)
 
-**Status: not started beyond WML-syntax recognition.** Phase 1 already
-parses `_ "…"` and `#textdomain`/`[textdomain]` as syntax; nothing
-resolves an actual translation catalogue, switches locale at runtime, or
-addresses non-Latin text layout or accessibility.
+**Status: delivered 2026-09-27.** How it was built, the decisions taken, and
+what each stage proved are in `docs/PHASE20_PLAN.md` and the five Phase 20
+entries in `docs/PROGRESS.md`. The original scope, for reference:
 
-- Gettext `.po` catalogue loading per textdomain, resolving `_ "…"` values
-  at *display* time (not parse time) so a locale switch updates everything
-  live without a reload.
-- Runtime locale switching, plural-form rules, gendered strings
-  (`female_name=` and friends — connects to Phase 1's deferred
-  `[variation]`/gender work).
-- RTL and CJK (wide-glyph) text layout/wrapping, missing-translation
-  fallback to English, locale-aware number formatting where the UI needs
-  it.
-- Accessibility: colourblind-safe team identity (not colour-only), full
-  keyboard-only play path (built on Phase 15), font-size scaling that
-  doesn't break layout, screen-reader labels on modal dialogs.
-- Ordering note: the language picker lands here as a minimal selector and
-  moves into the Phase 24 preferences dialog later; UI built in Phases
-  13–18 should already route user-visible strings through the translation
-  lookup so this phase isn't a rewrite of them.
-- **Milestone**: switching the UI language at runtime (with one additional
-  language's `.po` file as a fixture) updates every visible string — menu
-  chrome, dialogs, in-scenario dialogue — without a page reload, and a
-  scripted keyboard-only playthrough of a small scenario succeeds without
-  touching the mouse.
+- Gettext catalogue loading per textdomain, resolving `_ "…"` values at
+  *display* time so a locale switch updates everything live without a reload.
+- Runtime locale switching, plural-form rules, gendered strings.
+- RTL text layout and wrapping, missing-translation fallback to English,
+  locale-aware formatting where the UI needs it.
+- Accessibility: colour-independent team identity, keyboard-only play,
+  font-size scaling that does not break layout, screen-reader labels.
+
+What was delivered, and where it differs from the sketch above:
+
+- `_ "…"` survives parsing as a `TString` stamped with the textdomain the
+  author wrote it under (per-macro and per-file scoping in the preprocessor,
+  as upstream), is stored in the built JSON as `{"t": [...]}`, and stays
+  translatable through variables, saves and the Wesnoth save converter.
+  Model text (unit, type, weapon and terrain names, story, objectives,
+  scenario and campaign names) is read when drawn.
+- Catalogues come from upstream's `.po` files, not our own translations: 10
+  languages (upstream's 80 %-translated set plus Polish), fetched per
+  language and domain, only when used. Strings upstream has no counterpart
+  for live in our own `wesnothweb` domain (`apps/web/i18n/wesnothweb/`).
+- **Not built, by decision:** CJK and Bengali fonts (none of the shipped
+  languages needs one; the on-demand loader is in place), a "show all
+  languages" toggle, and a mirrored right-to-left GUI (upstream does not
+  mirror it either).
+- **Deferred:** real `tstring` userdata in Lua (Phase 29; `wesnoth.textdomain`
+  returns plain translated strings), the full preferences dialog that will host
+  the language and accessibility settings (Phase 24), help-browser text.
+- **Milestones, all met:** the runtime switch (Dead Water 1 to Polish and back
+  mid-dialogue, no reload, exact catalogue strings), the whole-scenario
+  keyboard-only playthrough with zero pointer events, zero unknown msgids across
+  every shipped campaign, and the same Dead Water 1 strings agreeing 1058/1058
+  with the real Wesnoth 1.16.9 Polish catalogues.
 
 ## Phase 21 — Main menu
 
@@ -1894,7 +1904,7 @@ pulled forward and delivered 2026-09-22.
 4. **Phase 18d** (missing WML action tags, from the audit) — delivered 2026-09-26.
 5. **Phase 18** (labels/items) — delivered 2026-09-26. **Phase 19**
    (audio/music) — delivered 2026-09-26.
-6. **Phase 20** (localization/accessibility) ← **next**.
+6. **Phase 20** (localization/accessibility) — delivered.
 7. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).
 8. **Phase 25** (statistics & achievements).
 9. **Phase 27** (feature completeness assessment).

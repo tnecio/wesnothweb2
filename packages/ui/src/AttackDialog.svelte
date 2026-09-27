@@ -98,6 +98,7 @@
           <div class="type-name">{c.typeName}</div>
           <div class="subline">
             <span>{t('Lvl')} {c.level}</span>
+            <span>{t('Side')} {c.side}</span>
             <span>{alignmentName(c.alignment)}</span>
             <span>{raceName(c.raceId)}</span>
           </div>
@@ -319,5 +320,13 @@
   button.simulation {
     background: #1a2233;
     border-color: #4a4432;
+  }
+
+  @container (max-width: 45rem) {
+    .combatants,
+    .weapons-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
   }
 </style>

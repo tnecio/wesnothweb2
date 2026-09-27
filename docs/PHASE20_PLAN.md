@@ -231,3 +231,23 @@ work starts.
   but nothing shows it yet.
 - Mirroring the GUI layout for RTL: upstream doesn't.
 - Writing translations of our own.
+
+## Outcome (2026-09-27)
+
+Delivered as planned; see `docs/PROGRESS.md` (five entries) for what each stage did and
+proved. Where the build differed from this plan:
+
+- Stage 1 kept `WmlConfig.get()` returning plain (translated) text and added
+  `getRaw()`/`getTString()`, instead of `get()` returning a `TString`, so no existing
+  reader changed. `TString.interpolated()` (not in the plan) keeps a dialogue with `$variables`
+  translatable across a language switch.
+- Localized images turned out to be journey-map overlays for es, gl and it only, among
+  the shipped languages and campaigns; the data submodule carries none, so the build reads
+  the full upstream checkout.
+- The on-screen text refresh after a switch is `GameShell.refreshTexts()` (views that hold
+  text), not a remount.
+- The hex description for screen readers and the alert-dialog/focus work were added in
+  Stage 5 beyond the list above; a keyboard bug (hotkeys swallowing Enter and Space on
+  focused buttons) was found and fixed by the keyboard-only run.
+- The real-binary spot check compares the installed game's own compiled Polish catalogues
+  rather than driving its GUI.
