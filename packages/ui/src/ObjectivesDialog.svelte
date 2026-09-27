@@ -16,6 +16,7 @@
   import type { ScenarioObjectives } from '@wesnothweb2/engine';
   import { turnCounterSuffix, OBJECTIVE_COLOR } from '@wesnothweb2/engine';
   import Modal from './Modal.svelte';
+  import Markup from './markup/Markup.svelte';
   import { fmt, t, ts, tw } from './i18n/locale.js';
 
   let {
@@ -59,7 +60,7 @@
 <Modal title={scenarioName} width="32rem" onClose={onClose}>
   {#snippet children()}
     {#if objectives.summary}
-      <p class="summary" dir="auto">{ts(objectives.summaryT)}</p>
+      <p class="summary" dir="auto"><Markup text={ts(objectives.summaryT)} /></p>
     {/if}
 
     {#if winObjectives.length > 0}
@@ -67,7 +68,7 @@
         <div class="section-label">{ts(objectives.victoryLabelT)}</div>
         <ul>
           {#each winObjectives as obj, i (i)}
-            <li style:color={OBJECTIVE_COLOR.win}>{ts(obj.descriptionT)}{turnSuffix(obj.showTurnCounter)}</li>
+            <li style:color={OBJECTIVE_COLOR.win}><Markup text={ts(obj.descriptionT)} />{turnSuffix(obj.showTurnCounter)}</li>
           {/each}
         </ul>
       </div>
@@ -78,7 +79,7 @@
         <div class="section-label">{ts(objectives.defeatLabelT)}</div>
         <ul>
           {#each loseObjectives as obj, i (i)}
-            <li style:color={OBJECTIVE_COLOR.lose}>{ts(obj.descriptionT)}{turnSuffix(obj.showTurnCounter)}</li>
+            <li style:color={OBJECTIVE_COLOR.lose}><Markup text={ts(obj.descriptionT)} />{turnSuffix(obj.showTurnCounter)}</li>
           {/each}
         </ul>
       </div>
@@ -102,7 +103,7 @@
         <div class="section-label">{ts(objectives.notesLabelT)}</div>
         <ul>
           {#each objectives.notesT as note, i (i)}
-            <li style:color={OBJECTIVE_COLOR.note}>{ts(note)}</li>
+            <li style:color={OBJECTIVE_COLOR.note}><Markup text={ts(note)} /></li>
           {/each}
         </ul>
       </div>

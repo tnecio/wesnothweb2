@@ -21,6 +21,7 @@
    */
   import { onDestroy } from 'svelte';
   import { locale, t, ts, tx } from './i18n/locale.js';
+  import Markup from './markup/Markup.svelte';
   import type { ResolvedStoryPart } from '@wesnothweb2/engine';
   import { layoutFloatingImage, layoutStoryPart, titleOrigin, type Size } from './story/storyLayout.js';
   import { pickStoryImage, localizedEntry, GAME_IMAGES_BASE, type StoryAssets } from './story/storyImages.js';
@@ -357,7 +358,7 @@
         style:opacity={alpha}
         style:text-align={part.titleAlignment}
       >
-        <span dir="auto">{ts(part.titleT)}</span>
+        <span dir="auto"><Markup text={ts(part.titleT)} /></span>
       </div>
     {/if}
 
@@ -382,7 +383,7 @@
       <div class="middle">
         <!-- svelte-ignore a11y_click_events_have_key_events -- keyboard navigation is handled window-wide above -->
         <div class="text" role="button" tabindex="-1" style:opacity={alpha} style:text-align={part.textAlignment} onclick={() => navigate(1)}>
-          <span dir="auto" id="story-text">{ts(part.textT)}</span>
+          <span dir="auto" id="story-text"><Markup text={ts(part.textT)} /></span>
         </div>
         <button class="skip" onclick={close}>{t('Skip')}</button>
       </div>

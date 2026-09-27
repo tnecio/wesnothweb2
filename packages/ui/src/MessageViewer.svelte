@@ -27,6 +27,7 @@
   import { compactLayout } from './compactLayout.js';
   import { layoutMessage, scaledSizeFromPath, type Size } from './story/messageLayout.js';
   import { ts, tx } from './i18n/locale.js';
+  import Markup from './markup/Markup.svelte';
 
   let {
     interaction,
@@ -174,7 +175,7 @@
           {#if titleText}
             <div class="title" dir="auto">{titleText}</div>
           {/if}
-          <div class="text" id="wml-message-text" dir="auto">{bodyText}</div>
+          <div class="text" id="wml-message-text" dir="auto"><Markup text={bodyText} /></div>
 
           {#if textInput}
             <div class="text-input">
@@ -207,8 +208,8 @@
                     }}
                   >
                     {#if option.image}<img class="option-icon" src={imageUrl(option.image)} alt="" />{/if}
-                    <span class="option-label" dir="auto">{option.labelT ? ts(option.labelT) : option.label}</span>
-                    {#if option.description}<span class="option-description" dir="auto">{option.descriptionT ? ts(option.descriptionT) : option.description}</span>{/if}
+                    <span class="option-label" dir="auto"><Markup text={option.labelT ? ts(option.labelT) : option.label} /></span>
+                    {#if option.description}<span class="option-description" dir="auto"><Markup text={option.descriptionT ? ts(option.descriptionT) : option.description} /></span>{/if}
                   </button>
                 </li>
               {/each}
