@@ -1767,7 +1767,11 @@ thumbnail in the list below was not built.
 
 ## Phase 28 — CI/CD, Performance & Platform (was Phase 18)
 
-**Status: partially started informally.** Every engine/UI change already
+**Status: planned 2026-09-27** in `docs/PHASE28_PLAN.md`. The plan covers
+GitHub Actions CI, the production asset staging, Cloudflare hosting
+(recommended over GitHub Pages, which can't send the P7 cache headers),
+error reporting, budgets, cross-browser/offline and licence guards, in
+stages S0–S10. Before this plan, every engine/UI change already
 ships with real unit/integration tests and real-browser Playwright
 verification before a commit — but that's a per-session practice, not a
 CI pipeline, and none of the deployment/performance/cross-browser items
