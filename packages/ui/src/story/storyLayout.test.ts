@@ -50,9 +50,14 @@ describe('layoutBackgroundLayer', () => {
     expect(layoutBackgroundLayer(layer({ ...DW_FLAGS }), { w: 1920, h: 1080 }, { w: 4096, h: 2160 })).toMatchObject({ x: 0, y: 0, w: 1920, h: 1080 });
   });
 
-  it('on a phone viewport clamps the map to the screen width (dw.webp in 390x844)', () => {
-    // h = 844; w = min(trunc(1280 * 844 / 960) = 1125, 390) = 390.
-    expect(layoutBackgroundLayer(layer({ ...DW_FLAGS }), { w: 390, h: 844 }, { w: 1280, h: 960 })).toMatchObject({ x: 0, y: 0, w: 390, h: 844 });
+  it('Phase 23: on a phone the map keeps its shape instead of being squeezed (dw.webp in 390x844)', () => {
+    // Upstream: h = 844, w = min(1125, 390) = 390 -- 2.9x too tall. Kept: 390 x trunc(960 * 390 / 1280) = 292, centred.
+    expect(layoutBackgroundLayer(layer({ ...DW_FLAGS }), { w: 390, h: 844 }, { w: 1280, h: 960 })).toMatchObject({ x: 0, y: 276, w: 390, h: 292 });
+  });
+
+  it('Phase 23: ...while a backdrop layer covers the phone screen, centred and cropped', () => {
+    // scale = max(390 / 4096, 844 / 2160) = 0.3907: 1600 x 844, x = 195 - 800.
+    expect(layoutBackgroundLayer(layer({ ...DW_FLAGS }), { w: 390, h: 844 }, { w: 4096, h: 2160 }, false)).toMatchObject({ x: -605, y: 0, w: 1600, h: 844 });
   });
 
   it('fits both axes by default (scale=yes, keep_aspect_ratio=yes)', () => {
@@ -120,6 +125,23 @@ describe('layoutStoryPart', () => {
     );
     // w = h = trunc(30 * 1.125) = 33; centered offset 16.
     expect(layout.floating[0]).toEqual({ file: 'misc/new-battle.png', x: 240 - 16, y: -16, w: 33, h: 33, delay: 0 });
+  });
+
+  it('Phase 23: on a portrait screen the art moves clear of the text, floating images with it', () => {
+    const phone = { w: 412, h: 839 };
+    const bottom = layoutStoryPart(part([layer({ image: 'maps/dw.webp', ...DW_FLAGS })], [floating({ file: 'misc/new-battle.png', x: 100, y: 100 })]), phone, sizeOf);
+    // 1280x960 kept whole at 412 wide: 412x309, centred at y = 419 - 154 = 265; the text is at the bottom, so it goes to the top.
+    expect(bottom.layers[0]).toMatchObject({ x: 0, y: 0, w: 412, h: 309 });
+    expect(bottom.base.originY).toBe(0);
+    expect(bottom.floating[0]).toMatchObject({ y: Math.trunc(100 * (309 / 960)) });
+
+    const withBackdrop = layoutStoryPart(part([layer({ image: 'maps/background.webp', ...DW_FLAGS }), layer({ image: 'maps/dw.webp', ...DW_FLAGS, baseLayer: true })]), phone, sizeOf);
+    expect(withBackdrop.layers.map((l) => [l.y, l.h])).toEqual([[0, 839], [0, 309]]);
+
+    const top = layoutStoryPart({ ...part([layer({ image: 'maps/dw.webp', ...DW_FLAGS })]), textLayout: 'top' }, phone, sizeOf);
+    expect(top.layers[0]).toMatchObject({ y: 839 - 309 });
+    const middle = layoutStoryPart({ ...part([layer({ image: 'maps/dw.webp', ...DW_FLAGS })]), textLayout: 'middle' }, phone, sizeOf);
+    expect(middle.layers[0]).toMatchObject({ y: 265 });
   });
 
   it('skips images whose size is unknown', () => {

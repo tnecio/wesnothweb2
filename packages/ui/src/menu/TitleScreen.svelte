@@ -285,4 +285,13 @@
       margin-top: 12px;
     }
   }
+  /*
+   * Phase 23, a phone upright: fitted to the middle of a tall screen, the (landscape) map would sit
+   * behind the menu. At the top it is under the logo, as on a desktop, and in view above the panels.
+   */
+  @media (max-width: 720px) and (orientation: portrait) {
+    .picture {
+      object-position: center top;
+    }
+  }
 </style>
