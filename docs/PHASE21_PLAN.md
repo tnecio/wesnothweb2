@@ -65,7 +65,7 @@ reviewed before work starts.
 | Difficulties per campaign: DW 4, TB 2, Liberty 3, UtBS 4 (13 in all); the synthetic campaigns have none | Four campaigns need overlays. Campaigns without `[difficulty]` get upstream's behaviour: the menu is disabled and no define is set |
 | Scenario snapshots are fetched at four sites: `PlayPage.svelte:71` and `GameShell.svelte:1906, 1991, 2098` | One `fetchScenarioSnapshot(id, difficulty)` helper replaces them all |
 | `wesnothSave.ts:505` writes `difficulty=` as a hardcoded `NORMAL`. `SaveGameData` has no difficulty | A save has to carry its difficulty. A continuation has to keep it. Imported real saves have to read it |
-| Upstream shows `campaign_difficulty` when a loaded save has no difficulty (`savegame.cpp:86`) | That dialog becomes the upgrade path for existing port saves, as upstream does it |
+| Upstream shows `campaign_difficulty` when a loaded save has no difficulty (`savegame.cpp:86`) | Not ported (decided 2026-09-27): a save without one gets the campaign's default difficulty |
 | Completion is recorded in `playcampaign.cpp:205` as `add_completed_campaign(campaign, difficulty)`, only on a victory with no next scenario. It is stored as `completed_campaigns` (campaign id → set of difficulty defines) | Record it at the same point (our outro/end overlay). Store it through the existing `readSetting`/`writeSetting` (IndexedDB) |
 | Laurels: `misc/laurel-bronze.png` (easiest), `misc/laurel-silver.png` (middle), `misc/laurel.png` (hardest, or a campaign with a single difficulty) | Port the exact selection rules from both dialogs |
 | Campaign metadata (`icon`, `image`, `background`, `rank`, `year`/`start_year`/`end_year`, `[difficulty]`, `[about]`) comes from the `CAMPAIGN_DIFFICULTY` macros in `_main.cfg`, but `campaigns.json` has only name, description and the first scenario | A real preprocess of each `_main.cfg` at build time fills it in, keeping TStrings |
@@ -126,9 +126,9 @@ reviewed before work starts.
     import. The fixed `NORMAL` goes away.
   - The round-trip fixture test gains the field.
 - A save without a difficulty (every port save made before this phase)
-  opens `CampaignDifficultyDialog.svelte`, a port of `campaign_difficulty`
-  (list with image, label, grey `(description)`, laurel, and the default
-  preselected), as `savegame.cpp:86` does. Cancel aborts the load.
+  is treated as the campaign's default difficulty (decided 2026-09-27: no
+  difficulty-choice dialog on load; upstream's `campaign_difficulty`
+  dialog is not ported).
 - The URL is `/play/<id>?difficulty=<DEFINE>`, which `PlayPage` passes
   to `GameShell` and on to the session.
   - An unknown or missing value falls back to the campaign default and
@@ -312,7 +312,6 @@ their deep links, which stay): `i18n-screenshots`, `measure-story`,
 | `packages/ui/src/scenarioFetch.ts` | **new**: `fetchScenarioSnapshot` with overlay merge (S1) |
 | `packages/ui/src/gameSession.ts`, `save/wesnothSave.ts`, `GameShell.svelte` | Difficulty through saves and continuation, completion, Quit to Main Menu (S2) |
 | `packages/ui/src/menu/completion.ts` | **new**: completed campaigns and laurel rules (S2) |
-| `packages/ui/src/CampaignDifficultyDialog.svelte` | **new** (S2) |
 | `packages/lua-bridge/src/bridges/…` | `wesnoth.scenario.difficulty` (S2) |
 | `packages/ui/src/markup/pango.ts`, `Markup.svelte`, `images/ipfImage.ts`, `save/saveManager.ts` | **new** shared pieces (S3) |
 | `packages/ui/src/menu/TitleScreen.svelte`, `TipPanel.svelte` | **new** (S4) |
@@ -327,7 +326,7 @@ their deep links, which stay): `i18n-screenshots`, `measure-story`,
 |---|---|
 | A difficulty changes more than the overlay keys (a map, a unit type) | The build fails on any key outside the allow-list, and a golden test compares a merged overlay with a direct build |
 | Build time: 13 difficulty builds × about 10 scenarios is about 4× the current rebuild | `rebuild-snapshots.mjs` already runs jobs in parallel. Overlays are only regenerated when a snapshot is rebuilt |
-| Saves from before this phase have no difficulty | Handled the upstream way (the difficulty dialog), not by silently assuming `NORMAL`, which Two Brothers doesn't even have |
+| Saves from before this phase have no difficulty | They get the campaign's default difficulty (not a hardcoded `NORMAL`, which Two Brothers doesn't have) |
 | IPF helper drift from the renderer's own compositing | It reuses the renderer's parser and team-colour table, and the browser check covers every campaign and difficulty image |
 | Pango markup as an injection path | No `{@html}`. Unknown tags and attributes are shown as text, and colours and sizes are validated |
 | Autoplay: title music can't start before a gesture | Same mechanism as Phase 19. The track starts on the first key or click, and the menu works silently until then |
