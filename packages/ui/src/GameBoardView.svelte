@@ -656,6 +656,8 @@
       setRenderingPaused,
       /** Phase 22: where the camera is (stage position/scale, canvas size) and the zoom level in hex px. */
       camera: () => ({ ...viewState(), zoom: zoomLevel() }),
+      /** Phase 22: start a camera scroll to hex (x, y) (engine 0-based) the way `type` asks; resolves on arrival. */
+      scrollToHex: (x: number, y: number, type: ScrollType) => scrollToHex(x, y, type),
       /** Live sprite positions, for debugging movement animation glitches -- see `SnapshotBoard.unitSpritePositions`. */
       unitSpritePositions: () => board?.unitSpritePositions() ?? null,
       /** Filters per unit sprite, for checking status looks (slowed/poisoned/petrified). */

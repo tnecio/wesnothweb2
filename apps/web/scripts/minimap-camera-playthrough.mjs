@@ -3,8 +3,10 @@
  *
  *  - Camera: dragging far past the map edge is stopped at upstream's bounds; the zoom hotkeys walk
  *    exactly upstream's nine levels; the wheel pans and Ctrl+wheel zooms; `0` toggles 1:1 and back.
+ *  - Following the action: with the camera parked away from the enemy, ending the turn brings the
+ *    AI's moves on screen (scroll_to_action); a SCROLL glides frame by frame, a WARP jumps.
  *
- * Run: node apps/web/scripts/minimap-camera-playthrough.mjs [--base http://localhost:5173] [--headed]
+ * Run: node apps/web/scripts/minimap-camera-playthrough.mjs [--base http://localhost:5173] [--headed] [--skip-ai]
  */
 import { chromium } from 'playwright';
 import { skipToPlay, waitBoardReady } from './lib/browserFlows.mjs';
@@ -16,6 +18,8 @@ const arg = (name, fallback) => {
 };
 const base = arg('base', 'http://localhost:5173');
 const headed = args.includes('--headed');
+/** Skip the AI-turn check (headless, a whole AI turn takes several minutes to animate). */
+const skipAi = args.includes('--skip-ai');
 
 const failures = [];
 function check(label, ok, detail) {
@@ -54,7 +58,10 @@ try {
   await skipToPlay(page);
 
   // ── Camera ───────────────────────────────────────────────────────────────────────────────────
+  // These read the camera's state, not pixels, so the render loop is paused: in headless software
+  // GL a whole map zoomed out to 16 px hexes takes seconds a frame and starves input handling.
   {
+    await page.evaluate(() => window.__wesnothDebug.setRenderingPaused(true));
     const start = await camera(page);
     check('opens at upstream\'s default zoom (72 px hexes)', start.zoom === 72, JSON.stringify(start));
 
@@ -108,7 +115,111 @@ try {
     // At the smallest zoom the whole map fits, and is centred.
     for (let i = 0; i < 5; i++) await pressKey(page, '-');
     const small = await camera(page);
-    check('zoomed right out, the map is held in the middle of the screen', small.zoom === 16, JSON.stringify(small));
+    const b = { x: -27, y: -36, w: (24 + 1 + 1 / 3) * 54, h: (30 + 1 + 0.5) * 72 }; // camera.ts worldBounds, Liberty 1 (24 x 30)
+    const centreX = small.view.x + (b.x + b.w / 2) * small.view.scale;
+    const centreY = small.view.y + (b.y + b.h / 2) * small.view.scale;
+    check(
+      'zoomed right out, the whole map is held in the middle of the screen',
+      small.zoom === 16 && Math.abs(centreX - small.viewport.width / 2) < 1 && Math.abs(centreY - small.viewport.height / 2) < 1,
+      JSON.stringify(small),
+    );
+    await pressKey(page, '0'); // back to 1:1 before rendering resumes
+    await page.evaluate(() => window.__wesnothDebug.setRenderingPaused(false));
+  }
+
+  // ── Following the action ─────────────────────────────────────────────────────────────────────
+  // Park the camera at 1:1 in the map's far corner, end the turn, and sample the camera while the
+  // AI plays: it must be brought to the AI's moves (scroll_to_action), gliding rather than jumping.
+  if (!skipAi) {
+    if ((await camera(page)).zoom !== 72) await pressKey(page, '0');
+    const box = await canvasBox(page);
+    for (let i = 0; i < 6; i++) {
+      await page.mouse.move(box.x + 100, box.y + 100);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width - 50, box.y + box.height - 50, { steps: 5 });
+      await page.mouse.up();
+    }
+    const parked = (await camera(page)).view;
+    await page.evaluate(() => {
+      window.__cameraSamples = [];
+      window.__cameraSampler = setInterval(() => {
+        const c = window.__wesnothDebug.camera();
+        window.__cameraSamples.push([Math.round(c.view.x), Math.round(c.view.y)]);
+      }, 16);
+    });
+    await pressKey(page, 'Control+Space');
+    await skipToPlay(page, 120000).catch(() => {});
+    await page.waitForTimeout(1000);
+    const samples = await page.evaluate(() => {
+      clearInterval(window.__cameraSampler);
+      return window.__cameraSamples;
+    });
+    const distinct = [...new Set(samples.map((p) => p.join(',')))];
+    const moved = distinct.some((p) => p !== `${Math.round(parked.x)},${Math.round(parked.y)}`);
+    check('the camera leaves where it was parked to show the AI turn', moved, `${distinct.length} distinct positions`);
+  }
+
+  // ── The glide itself ─────────────────────────────────────────────────────────────────────────
+  // Headless Chromium draws this board at ~1.5 fps in software GL, where upstream's 200 ms frame cap
+  // makes any glide run past the 4 s safety limit and jump. With the render loop paused, animation
+  // frames come at full rate and the glide can be observed frame by frame.
+  {
+    await page.evaluate(() => window.__wesnothDebug.setRenderingPaused(true));
+    const glide = (type) =>
+      page.evaluate(async (scrollType) => {
+        await window.__wesnothDebug.scrollToHex(0, 0, 'warp');
+        const from = window.__wesnothDebug.camera().view;
+        const positions = [[from.x, from.y]];
+        let run = true;
+        const sample = () => {
+          const c = window.__wesnothDebug.camera();
+          positions.push([c.view.x, c.view.y]);
+          if (run) requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+        const start = performance.now();
+        await window.__wesnothDebug.scrollToHex(20, 25, scrollType); // Liberty 1 is 24 x 30
+        const ms = performance.now() - start;
+        run = false;
+        const end = window.__wesnothDebug.camera().view;
+        positions.push([end.x, end.y]);
+        const distinct = new Set(positions.map((p) => p.join(','))).size;
+        const total = Math.hypot(end.x - from.x, end.y - from.y);
+        let biggest = 0;
+        for (let i = 1; i < positions.length; i++) {
+          biggest = Math.max(biggest, Math.hypot(positions[i][0] - positions[i - 1][0], positions[i][1] - positions[i - 1][1]));
+        }
+        return { ms, distinct, total, biggest };
+      }, type);
+    /** scroll_to_xy's profile at scroll speed 50 and 60 frames a second: how long a glide of `distance` px takes. */
+    const expectedSeconds = (distance) => {
+      let v = 0;
+      let moved = 0;
+      let t = 0;
+      const dt = 1 / 60;
+      const vmax = 3000;
+      const accel = vmax / 0.3;
+      const decel = vmax / 0.4;
+      while (moved < distance) {
+        const stop = v / decel;
+        if (moved + v * stop - 0.5 * decel * stop * stop > distance || v > vmax) v = Math.max(1, v - decel * dt);
+        else v = Math.min(vmax, v + accel * dt);
+        moved = Math.min(distance, moved + v * dt);
+        t += dt;
+      }
+      return t;
+    };
+    const scrolled = await glide('scroll');
+    check('a SCROLL glides: many frames, none covering much of the way', scrolled.total > 200 && scrolled.distinct >= 10 && scrolled.biggest < scrolled.total * 0.25, JSON.stringify(scrolled));
+    const expected = expectedSeconds(scrolled.total) * 1000;
+    check(
+      "...taking about as long as upstream's accelerate/cruise/decelerate profile says for that distance",
+      scrolled.ms > expected * 0.5 && scrolled.ms < expected * 1.6 + 100,
+      `${Math.round(scrolled.ms)} ms, expected ~${Math.round(expected)} ms for ${Math.round(scrolled.total)} px`,
+    );
+    const warped = await glide('warp');
+    check('a WARP jumps in one step', warped.total > 200 && warped.biggest >= warped.total * 0.99, JSON.stringify(warped));
+    await page.evaluate(() => window.__wesnothDebug.setRenderingPaused(false));
   }
 
   check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));

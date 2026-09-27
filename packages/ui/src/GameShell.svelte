@@ -674,6 +674,35 @@
     });
   }
 
+  /**
+   * Phase 22: `unit_display`'s "follow the action" scrolls -- ONSCREEN,
+   * unforced (so `[lock_view]` and the "follow unit actions" preference
+   * turn them off), only over hexes the viewing side can see. Each waits
+   * for the camera before the animation it precedes, as upstream's
+   * blocking scroll does.
+   */
+  function followAction(hexes: readonly { x: number; y: number }[], options: { addSpacing?: number; onlyIfPossible?: boolean } = {}): Promise<void> {
+    return boardView?.scrollToHexes(visibleHexes(hexes), { type: 'onscreen', force: false, ...options }) ?? Promise.resolve();
+  }
+
+  /**
+   * `unit_mover::start`: the whole path if it fits on screen, else (the
+   * per-step scroll `proceed_to` falls back on) as much of it from the
+   * start as fits.
+   */
+  async function followMove(path: readonly { x: number; y: number }[]): Promise<void> {
+    if (!boardView) return;
+    const before = boardView.viewState()?.view;
+    await followAction(path, { onlyIfPossible: true });
+    const after = boardView.viewState()?.view;
+    if (before && after && before.x === after.x && before.y === after.y) await followAction(path);
+  }
+
+  /** `unit_attack`: both fighters, with at least half a hex around them. */
+  function followAttack(a: { x: number; y: number }, b: { x: number; y: number }): Promise<void> {
+    return followAction([a, b], { addSpacing: 0.5 });
+  }
+
   /** The player answered the message on screen (dismissed it, chose an option, typed something). */
   function answerMessage(result: InteractionResult): void {
     const resolve = answerInteraction;
@@ -776,6 +805,7 @@
         // selection ring don't follow it around (upstream clears both up
         // front -- see `syncHighlights`).
         syncHighlights();
+        await followMove(beat.path);
         if (boardView) await boardView.playAnimationSequence(buildMoveAnimationCues({ unit: beat.unit, path: beat.path }), 2);
         break;
       case 'moveFakeUnits':
@@ -795,6 +825,7 @@
           // The new unit has no visual until the next sync(), so give it
           // one first (bugs5.md #3) -- otherwise its own cue does nothing.
           await boardView.ensureUnitVisual(session.snapshotUnitFor(beat.unit));
+          await followAction(beat.by ? [beat.unit.location, beat.by.location] : [beat.unit.location]);
           await boardView.playAnimationSequence(
             beat.by
               ? buildRecruitAnimationCues({ unit: beat.unit, leader: beat.by, unitLocation: beat.unit.location, leaderLocation: beat.by.location })
@@ -1600,6 +1631,7 @@
         x: outcome.unit.location.x,
         y: outcome.unit.location.y,
       });
+      await followAction([outcome.unit.location]);
       await boardView.playAnimationSequence(buildHealAnimationCues(outcome), 1, () => {
         if (!boardView) return;
         boardView.previewHitpoints(key, outcome.unit.hitpoints);
@@ -1632,6 +1664,7 @@
       const anim = session.lastAttackAnimation;
       session.lastAttackAnimation = null;
       if (anim && boardView) {
+        await followAttack(anim.attacker.location, anim.defender.location);
         await boardView.playAnimationSequence(buildBlowAnimationCues(anim), 1, makeBlowPreview(anim));
       }
       return result;
@@ -1765,6 +1798,7 @@
     if (!boardView) return;
     for (const event of events) {
       if (event.kind === 'attack') {
+        await followAttack(event.attackerLocation, event.defenderLocation);
         await boardView.playAnimationSequence(buildBlowAnimationCues(event), 1, makeBlowPreview(event));
         // Real, reported bug (bugs4.md #3): without this, a unit that died
         // on an early event of this same AI turn kept its stale sprite on
@@ -1785,6 +1819,7 @@
           );
         }
       } else if (event.kind === 'move') {
+        await followMove(event.path);
         await boardView.playAnimationSequence(buildMoveAnimationCues(event), 2);
       } else {
         // Real, reported bug (bugs5.md #3): without this, an AI recruit's
@@ -1803,6 +1838,8 @@
         // and walk the route again -- the reported "jumps back and forth
         // between hexes" on Dead Water 1's first AI turn.
         await boardView.ensureUnitVisual(session.snapshotUnitFor(event.unit, event.unitLocation));
+        // unit_recruited: the new unit and its leader.
+        await followAction([event.unitLocation, event.leaderLocation]);
         await boardView.playAnimationSequence(buildRecruitAnimationCues(event));
       }
     }
@@ -2040,7 +2077,10 @@
         if (heals) await playHealAnimations(heals);
         const anim = session.lastAttackAnimation;
         session.lastAttackAnimation = null;
-        if (anim && boardView) await boardView.playAnimationSequence(buildBlowAnimationCues(anim), 1, makeBlowPreview(anim));
+        if (anim && boardView) {
+          await followAttack(anim.attacker.location, anim.defender.location);
+          await boardView.playAnimationSequence(buildBlowAnimationCues(anim), 1, makeBlowPreview(anim));
+        }
       } finally {
         eventsRunning = false;
       }
