@@ -867,7 +867,7 @@
         // front -- see `syncHighlights`).
         syncHighlights();
         await followMove(beat.path);
-        if (boardView) await boardView.playAnimationSequence(buildMoveAnimationCues({ unit: beat.unit, path: beat.path }), 2);
+        if (boardView) await boardView.playAnimationSequence(buildMoveAnimationCues({ unit: beat.unit, path: beat.path }));
         break;
       case 'moveFakeUnits':
         await playFakeWalks(beat.walks);
@@ -885,7 +885,7 @@
         if (boardView) {
           // The new unit has no visual until the next sync(), so give it
           // one first (bugs5.md #3) -- otherwise its own cue does nothing.
-          await boardView.ensureUnitVisual(session.snapshotUnitFor(beat.unit));
+          await boardView.ensureUnitVisual(session.snapshotUnitFor(beat.unit), { hidden: true });
           await followAction(beat.by ? [beat.unit.location, beat.by.location] : [beat.unit.location]);
           await boardView.playAnimationSequence(
             beat.by
@@ -982,9 +982,11 @@
           srcHex: { x: from.x, y: from.y },
           dstHex: { x: to.x, y: to.y },
           restAt: 'dst' as const,
+          // One hex on the per-hex clock, as a real move (see buildMoveAnimationCues).
+          legs: [{ srcHex: { x: from.x, y: from.y }, dstHex: { x: to.x, y: to.y }, direction: directionBetween(from, to) ?? Direction.SouthEast }],
         });
       }
-      if (cues.length > 0) await boardView.playAnimationSequence([cues], 2);
+      if (cues.length > 0) await boardView.playAnimationSequence([cues]);
     }
     for (const { snapshot } of visuals) boardView.removeUnitVisual(spriteKey(snapshot));
   }
@@ -1521,14 +1523,16 @@
           srcHex: { x: first.from.x, y: first.from.y },
           dstHex: { x: last.to.x, y: last.to.y },
           restAt: 'dst' as const,
-          legs:
-            group.length > 1
-              ? group.map((leg) => ({
-                  srcHex: { x: leg.from.x, y: leg.from.y },
-                  dstHex: { x: leg.to.x, y: leg.to.y },
-                  direction: leg.direction,
-                }))
-              : undefined,
+          // Always on the per-hex clock, even for one leg: upstream's move_unit_between gives every hex
+          // HEX_STEP_MS whatever the animation's own length ("round it to the next multiple of 200"). Timed
+          // by the animation instead, horses (whose movement animations are short) crossed a hex in 75-100 ms
+          // while units without one glided at the default 400 ms halved by a 2x movement speed-up. Every
+          // unit now takes upstream's 200 ms, and moves play at speed 1.
+          legs: group.map((leg) => ({
+            srcHex: { x: leg.from.x, y: leg.from.y },
+            dstHex: { x: leg.to.x, y: leg.to.y },
+            direction: leg.direction,
+          })),
         },
       ]);
       i += groupSize;
@@ -1914,7 +1918,7 @@
         }
       } else if (event.kind === 'move') {
         await followMove(event.path);
-        await boardView.playAnimationSequence(buildMoveAnimationCues(event), 2);
+        await boardView.playAnimationSequence(buildMoveAnimationCues(event));
       } else {
         // Real, reported bug (bugs5.md #3): without this, an AI recruit's
         // new unit had no visual until the WHOLE turn's worth of
@@ -1931,7 +1935,7 @@
         // of that march, flash back to the keep for its "recruited" cue,
         // and walk the route again -- the reported "jumps back and forth
         // between hexes" on Dead Water 1's first AI turn.
-        await boardView.ensureUnitVisual(session.snapshotUnitFor(event.unit, event.unitLocation));
+        await boardView.ensureUnitVisual(session.snapshotUnitFor(event.unit, event.unitLocation), { hidden: true });
         // unit_recruited: the new unit and its leader.
         await followAction([event.unitLocation, event.leaderLocation]);
         await boardView.playAnimationSequence(buildRecruitAnimationCues(event));

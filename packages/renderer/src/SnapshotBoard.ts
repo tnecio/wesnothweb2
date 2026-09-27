@@ -1487,8 +1487,11 @@ export class SnapshotBoard {
    * `spawnFloatingNumber`/`removeUnitVisual`'s "poke the renderer
    * directly, don't wait for the deferred sync" convention.
    */
-  async ensureUnitVisual(unit: SnapshotUnit): Promise<void> {
-    await this.updateOneUnit(unit);
+  async ensureUnitVisual(unit: SnapshotUnit, options: { hidden?: boolean } = {}): Promise<void> {
+    const visual = await this.updateOneUnit(unit);
+    // `unit_recruited`: the new unit stays hidden (`set_hidden(true)`) while the view scrolls to it and its
+    // frames load, and appears with the first frame of its "recruited" animation -- not standing there first.
+    if (options.hidden && !visual.container.destroyed) visual.container.visible = false;
   }
 
   private async renderUnits(): Promise<void> {
@@ -1496,7 +1499,9 @@ export class SnapshotBoard {
 
     for (const unit of this.units) {
       seen.add(spriteKey(unit));
-      await this.updateOneUnit(unit);
+      const visual = await this.updateOneUnit(unit);
+      // A recruit hidden for its animation (`ensureUnitVisual`) is shown by the next full pass at the latest.
+      if (!visual.container.destroyed) visual.container.visible = true;
     }
 
     for (const [key, visual] of this.unitVisuals) {
@@ -1621,6 +1626,8 @@ export class SnapshotBoard {
           // the dialogue it plays under was advanced): nothing left to move.
           // Touching it would throw and leave this promise unresolved.
           if (visual.container.destroyed) continue;
+          // A recruit is kept hidden until its animation draws (see `ensureUnitVisual`).
+          visual.container.visible = true;
           const t = Math.min(elapsed, duration);
           // Phase 19: frame sounds start when their frame first draws.
           const soundClock = grouped && cue.anim ? t * speedMultiplier + cue.anim.startTimeMs : clockStart + t * speedMultiplier;
@@ -1661,8 +1668,10 @@ export class SnapshotBoard {
               if (visual.container.destroyed) continue;
               if (texture && visual.sprite && visual.sprite.texture !== texture) visual.sprite.texture = texture;
             }
-            if (visual.sprite)
+            if (visual.sprite) {
               visual.sprite.scale.x = sample.hflip ? -Math.abs(visual.sprite.scale.x) : Math.abs(visual.sprite.scale.x);
+              visual.sprite.alpha = sample.alpha;
+            }
             visual.container.x = sample.x;
             visual.container.y = sample.y;
             this.applyBlend(visual, sample.blendRatio, sample.blendColor);
@@ -1704,6 +1713,8 @@ export class SnapshotBoard {
             const rest = cue.restAt === 'dst' ? dst : src;
             visual.container.x = rest.x;
             visual.container.y = rest.y;
+            visual.container.visible = true;
+            if (visual.sprite) visual.sprite.alpha = 1;
             if (visual.overlay) visual.overlay.alpha = 0;
           }
           resolve();

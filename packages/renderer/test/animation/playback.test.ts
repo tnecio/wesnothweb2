@@ -201,3 +201,22 @@ describe('particles and halos (bugs6.md: particle effects missing)', () => {
     expect(sampleUnitHalo(anim, Direction.North, 250, src)).toBeNull();
   });
 });
+
+describe('sampleAnimation alpha= (highlight_ratio)', () => {
+  it("fades the Skeleton's recruit animation in from transparent, then draws it opaque", () => {
+    const anims = parseUnitAnimations(loadUnitTypeCfg('core/units/undead/Skeleton.cfg'));
+    const recruit = anims.find((a) => a.events.includes('recruited'))!;
+    expect(recruit).toBeDefined();
+    const at = { x: 0, y: 0 };
+    // Frame 1 is `alpha="0~1:300"` from the animation's start (start_time=-200).
+    expect(sampleAnimation(recruit, Direction.South, 0, at, at).alpha).toBeCloseTo(0, 5);
+    expect(sampleAnimation(recruit, Direction.South, 150, at, at).alpha).toBeCloseTo(0.5, 1);
+    // Frame 2 sets no alpha: fully drawn.
+    expect(sampleAnimation(recruit, Direction.South, 350, at, at).alpha).toBe(1);
+  });
+
+  it('is 1 when nothing sets it', () => {
+    const at = { x: 0, y: 0 };
+    expect(sampleAnimation(makeTwoFrameAnim(), Direction.South, 10, at, at).alpha).toBe(1);
+  });
+});

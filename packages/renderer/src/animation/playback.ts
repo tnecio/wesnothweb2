@@ -81,6 +81,12 @@ export interface AnimationSample {
   readonly blendRatio: number;
   /** Parsed from `blend_color=`'s real `"r,g,b"` WML format into a `0xRRGGBB` value a renderer can hand straight to e.g. PixiJS `tint` -- `null` if unparseable or absent. */
   readonly blendColor: number | null;
+  /**
+   * The sprite's opacity, 0 to 1: `alpha=` (upstream's `highlight_ratio`), the frame's value when it is not 1,
+   * else the animation-wide one (`frame_parsed_parameters` merge). Upstream brightens above 1; that part is
+   * not drawn here.
+   */
+  readonly alpha: number;
 }
 
 /** Parses the real `blend_color=` WML format (`"r,g,b"`, each 0-255 -- mirrors `color_t::from_rgb_string`) into a `0xRRGGBB` number. */
@@ -105,7 +111,7 @@ export function sampleAnimation(
   dst: HexPixelPos,
 ): AnimationSample {
   const picked = frameAt(anim.frames, elapsedMs);
-  if (!picked) return { imagePath: null, hflip: false, x: src.x, y: src.y, blendRatio: 0, blendColor: null };
+  if (!picked) return { imagePath: null, hflip: false, x: src.x, y: src.y, blendRatio: 0, blendColor: null, alpha: 1 };
   const { frame, tInFrame } = picked;
 
   const resolvedImage = resolveFrameImage(frame, direction);
@@ -130,7 +136,12 @@ export function sampleAnimation(
   const blendColorRaw = frame.blendColor || anim.animationParams.blendColor;
   const blendColor = blendColorRaw ? parseBlendColor(blendColorRaw) : null;
 
-  return { imagePath, hflip: resolvedImage.hflip, x: pos.x, y: pos.y, blendRatio, blendColor };
+  const frameHighlight = frame.highlightRatio.length > 0 ? sampleProgressivePair(frame.highlightRatio, tInFrame) : 1;
+  const animHighlight = anim.animationParams.highlightRatio.length > 0 ? sampleProgressivePair(anim.animationParams.highlightRatio, elapsedMs) : 1;
+  const highlight = Math.abs(frameHighlight - 1) > 0.001 ? frameHighlight : animHighlight;
+  const alpha = Math.max(0, Math.min(1, highlight));
+
+  return { imagePath, hflip: resolvedImage.hflip, x: pos.x, y: pos.y, blendRatio, blendColor, alpha };
 }
 
 // ── Particles and halos ──────────────────────────────────────────────────────
