@@ -1767,11 +1767,19 @@ thumbnail in the list below was not built.
 
 ## Phase 28 — CI/CD, Performance & Platform (was Phase 18)
 
-**Status: planned 2026-09-27** in `docs/PHASE28_PLAN.md`. The plan covers
-GitHub Actions CI, the production asset staging, Cloudflare hosting
-(recommended over GitHub Pages, which can't send the P7 cache headers),
-error reporting, budgets, cross-browser/offline and licence guards, in
-stages S0–S10. Before this plan, every engine/UI change already
+**Status: planned 2026-09-27** in `docs/PHASE28_PLAN.md` (revised the same
+day). The plan covers:
+
+- GitHub Actions CI on `main` and PRs;
+- versioned, `immutable`-cached assets, with the game media in R2 because
+  of Workers' 20k-file limit;
+- data shrinking;
+- tag-only production deploys to Cloudflare Workers static assets, with no
+  staging environment and no oracle tests in CI;
+- error reporting, budgets, cross-browser and offline support, and licence
+  guards.
+
+The work is split into stages S0–S9; S0 (merge into `main`) is done. Before this plan, every engine/UI change already
 ships with real unit/integration tests and real-browser Playwright
 verification before a commit — but that's a per-session practice, not a
 CI pipeline, and none of the deployment/performance/cross-browser items
@@ -1779,8 +1787,8 @@ below exist yet.
 
 - CI pipeline: lint + unit + integration + UI suites on every commit, with
   clear failure reporting.
-- Staging deployment (auto-deploy from `main`) and tagged-release
-  deployment with versioning/rollback. Hosting must send these caching
+- Tagged-release deployment with versioning/rollback (no staging
+  environment, user's call 2026-09-27). Hosting must send these caching
   headers (from Phase 28a P7; the dev server already does the first):
   - `/atlases/**/*.<12 hex>.png` (content-hashed image bundles):
     `Cache-Control: public, max-age=31536000, immutable`.
@@ -1800,9 +1808,8 @@ below exist yet.
   attribution/licence files) and an explicit regression test that
   unmodified upstream campaign `.cfg` files load without local patching.
 - **Milestone**: pushing to `main` triggers a CI run covering all package
-  test suites plus a browser smoke test, a staging build is reachable at a
-  stable URL, and a deliberately-broken build fails CI before it can
-  deploy.
+  test suites plus a browser smoke test, a `v*` tag deploys to production, and a
+  deliberately-broken build fails CI before it can deploy.
 
 ### Phase 28b — Movement visualisation & multi-turn moves (added 2026-09-27)
 

@@ -1,291 +1,321 @@
 # Phase 28 — CI/CD, Platform, Performance
 
-Planned 2026-09-27, after Phase 23 and the bugs7 fixes. CI runs on GitHub
-Actions (user's call). This plan covers the pipeline, the production build,
-where the game is hosted, and the platform items from the Phase 28 list in
-`docs/IMPLEMENTATION_PLAN.md`: performance budgets, cross-browser support,
-error reporting, offline play and licence compliance.
+Planned 2026-09-27, after Phase 23 and the bugs7 fixes. Revised the same day
+after review. This plan covers:
+
+- CI on GitHub Actions;
+- a production build that serves the game data with long cache lifetimes;
+- tag-based deployment to Cloudflare;
+- the platform items from `docs/IMPLEMENTATION_PLAN.md`: performance budgets,
+  cross-browser support, error reporting, offline play and licence
+  compliance.
+
+## User decisions (2026-09-27)
+
+1. **Branch model: trunk-based on `main`.** Done. `main` was
+   fast-forwarded to `phase-17-events` (`ddda3a1`) and pushed. Both the
+   old local and remote `main` were ancestors, so no merge commit was needed.
+2. **The repo goes public before the first deployment.** GitHub Actions
+   minutes are then unmetered, and the GPL source offer is the repo link.
+3. **No staging environment.** Production deploys from `v*` tags only.
+4. **No oracle tests in CI.** The C++ image-oracle test stays skipped
+   there and is run locally when compositing code changes.
+5. **Ship (nearly) all of the game data.** Pruning to "what the four built
+   campaigns reference" is dropped, because Phase 28c and later content need
+   most of `data/`. Instead the data is made smaller (S4) and cached for a
+   long time (S3).
+6. **Heavy data is cached client-side with long lifetimes.** Anything
+   larger than a few KB is served from a versioned URL as `immutable`. Only
+   `index.html` and small manifests revalidate.
 
 ## Context: measured before planning
 
 | Fact | Consequence |
 |---|---|
-| All work since Phase 16 is on `phase-17-events`: 129 commits past local `main`, 103 of them not pushed. `origin/main` (`e2824c4`) differs from local `main` (`86ad438`). | "CI on `main`" first needs a branch model. Reconciling `main` is stage S0. |
-| `tnecio/wesnothweb2` is **private**; the `tnecio/wesnoth` fork, pinned at the pushed commit `357eb9f` on `wesnothweb2-oracle`, is public. | Actions minutes on a private repo are metered (the free plan allows 2,000 Linux minutes a month). GitHub Pages on a private repo needs a paid plan. A public deploy of this GPL-2 port must also offer its source (see S9). |
-| No `.github/` directory and no lint config. Checks today: `npm test`, `npm run typecheck` and `svelte-check` per workspace, plus 11 `*-playthrough.mjs` browser scripts. The playthrough scripts exit non-zero on failure. | The CI can call the existing commands directly. Lint is new work, kept small (S2). |
-| Unit suite times, run one after another on this VM (4 cores): engine 58 s (800 tests), renderer 11 s (263), ui 96 s (375), lua-bridge 5 s (38), oracle-tools 1 s (1 of 3 skipped: no C++ binary). All tests pass. **But the ui run exits 1**: vitest reports an unhandled `Timeout calling "onTaskUpdate"`, because `scripts/ai-benchmark.test.ts` blocks its worker for 93 s of synchronous AI turns. | Unit CI fits in about 5 minutes with one job per package. The RPC timeout would make CI flaky-red, so S1 fixes it first. The oracle tests stay skipped in CI (S10, optional). |
-| Tests and build read `wesnoth/data` from the submodule: 595 MB and 22.7k files. The whole submodule checkout is 2.8 GB. | CI checks out the submodule shallow and sparse (`data/`, `images/`, `sounds/`), cached by submodule SHA. |
-| `apps/web/public/game-images*` are **symlinks** into the submodule. Everything the atlases don't cover is fetched per file from there: music, sounds, portraits, story art and fallback images. | `vite build` must not copy 595 MB of raw data. A staging step copies only the files the game can request (S3). |
-| Generated build output: `atlases/` is 212 MB and 928 files, built by `prebuild` and not in git. Committed: `scenarios/` 155 MB of JSON (the largest file is 4.7 MB), `i18n/` 14 MB, `derived-images/` 12 MB, `terrain-graphics-rules.json` 18 MB. | The site is roughly 0.6–0.9 GB before pruning. **Liberty 1's snapshot compresses 3.55 MB → 0.26 MB with gzip -9**, so the host must compress JSON (Brotli or gzip). |
-| Candidate runtime files (core images/music/sounds, the images of the four built campaigns, engine images/sounds): 16.8k files, 341 MB. The largest music file is 11 MB. | This is close to Cloudflare's 20k files-per-deploy limit. Pruning to files that are actually referenced (S3) makes the count safe. The size of individual files is not a problem. |
-| Phase 28a P7 fixed the cache headers: hashed `atlases/**/*.png` get `immutable`; manifests and `game-images/**` get `no-cache` plus an `ETag`. The dev server gives music and sounds a day's cache. | The host must support custom headers. **This rules out GitHub Pages** (fixed `max-age=600`). |
-| Client-side router (`router.svelte.ts`, `pushState`): `/play/<campaign>?scenario=…&save=…`. | The host needs an SPA fallback to `index.html`. A hard refresh mid-scenario is checked by the S4 smoke test (more deep links in S8). |
-| No `window.onerror`, `unhandledrejection` handler or `<svelte:boundary>` anywhere. | A runtime error leaves a frozen or blank screen with nothing to report. That is S6. |
-| Snapshots, i18n catalogues, credits, tips and derived images are committed but can be regenerated by scripts. 32 commits have touched `scenarios/`. | CI can check they are in sync ("regenerate, then `git diff --exit-code`"). The repo is 217 MB of loose objects, mostly regenerated JSON. |
-| Headless Chromium on a GPU-less machine draws the board at about 1 fps (SwiftShader). GitHub's hosted runners have no GPU either. | Frame rate and animation timing **cannot** be CI gates. Gates use deterministic metrics (request counts, bytes, heap, bundle size, main-thread blocked time with slack). Frame rate is a manual check on real devices. |
-| `packages/lua-bridge` patches 8 upstream Lua files for Fengari, and a test already lists them. | The "unmodified upstream `.cfg` loads without local patching" test (S9) can use that list as its only allowed exceptions. |
+| No `.github/` and no lint config. Existing checks: `npm test`, `npm run typecheck` and `svelte-check` per workspace, plus 11 `*-playthrough.mjs` browser scripts, which exit non-zero on failure. | The CI calls the existing commands. Lint is new and kept small (S2). |
+| Unit suites, run one after another on this VM (4 cores): engine 58 s (800 tests), renderer 11 s (263), ui 96 s (375), lua-bridge 5 s (38), oracle-tools 1 s. All pass, **but the ui run exits 1**: vitest reports an unhandled `Timeout calling "onTaskUpdate"` because `scripts/ai-benchmark.test.ts` blocks its worker for 93 s. | One job per package keeps unit CI at a few minutes of wall time. The exit code must be fixed first (S1). |
+| The `wesnoth` submodule checkout is 2.8 GB. The build and tests need only `data/`, `images/` and `sounds/`. | CI checks the submodule out shallow and sparse, cached by submodule SHA. |
+| `apps/web/public/game-images*` are **symlinks** into the submodule. The browser fetches from them, one file at a time, everything the atlases don't cover: music, sounds, portraits, story art and fallback images. Lua is read from disk at build time (`dataLua.ts`), not fetched. | The deployed game data must be an explicit, versioned copy (S3), not whatever the symlink points at. |
+| **What `data/` holds** (595 MB, 22.7k files): see the table below. The media alone (png/webp/jpg/ogg/wav in `core/` and `campaigns/`) is 18.9k files and 536 MB. | Everything together is **over Cloudflare's 20k-files-per-deploy limit**, so the raw game data can't live in the Workers upload (S3 moves it to R2). |
+| **Our generated atlases are 212 MB**, 928 files, of which about 180 MB are per-scenario terrain atlases. That is more than the whole source `core/images/terrain` (38 MB) they are cut from. The biggest is 9.3 MB (UtBS 4). Each scenario's atlas repeats the same common tiles. | Each new scenario re-downloads its common tiles, and our PNG encoder compresses worse than upstream's optimised files. That is the largest avoidable cost per scenario for a player (S4). |
+| Snapshots are committed JSON, 155 MB; the largest file is 4.7 MB. **Liberty 1's snapshot compresses 3.55 MB → 0.26 MB with gzip -9.** | They must be served compressed. Pre-compressing with Brotli at build time beats relying on the edge (S3). |
+| The router is client-side (`pushState`): `/play/<campaign>?scenario=…&save=…`. | Needs an SPA fallback, which Workers provides natively. |
+| No `window.onerror`, `unhandledrejection` handler or `<svelte:boundary>` anywhere. | A runtime error leaves a frozen or blank screen with nothing to report (S6). |
+| Snapshots, i18n catalogues, credits, tips and derived images are committed and can be regenerated. | CI can check they are in sync. |
+| Headless Chromium without a GPU renders the board at about 1 fps (SwiftShader). GitHub's hosted runners have no GPU either. | Frame rate and animation timing cannot be CI gates. Deterministic metrics can. |
+| `packages/lua-bridge` patches 8 upstream Lua files for Fengari, and a test lists them. | The "upstream data unmodified" guard (S9) uses that list as its only allowed exceptions. |
 
-## Decisions I recommend (need your confirmation where marked)
+**Where the 595 MB of `data/` goes:**
 
-1. **Branch model: trunk-based on `main`** (you confirm). Merge
-   `phase-17-events` into `main`, protect `main` (required checks, no force
-   push), and do future work on short branches merged by PR. Stale remote
-   branches (`phase-11-fog` … `phase-16-narration`, `perf-image-pipeline`,
-   `fix-two-brothers-bugs`) are deleted once confirmed merged.
-2. **Hosting: Cloudflare Workers static assets, or Pages** (you confirm, and
-   it needs a Cloudflare account). The comparison is below. Staging deploys
-   automatically from `main`, production from `v*` tags, and every PR gets a
-   preview URL.
-3. **Repo visibility** (your call): making `wesnothweb2` public removes the
-   Actions minutes limit and makes the GPL source offer trivial. Keeping it
-   private means budgeting minutes (the nightly suite goes weekly) and
-   publishing a source archive with each release.
-4. **No third-party error tracking by default.** Errors are handled in-app
-   with a copyable report. An optional endpoint (Sentry, or a small
-   Cloudflare Worker that logs) can be added later, only with your go-ahead,
-   because it sends player data off-device.
-5. **Service worker last.** It comes after the pipeline, hosting and error
-   reporting, and is scoped to "a scenario you already opened works offline".
-   No full precache of 0.6 GB.
+| What | Size | Files | Note |
+|---|---|---|---|
+| Music (`*.ogg` under `music/`) | 229 MB | 52 | Vorbis at about 160 kbps, stereo, 44.1 kHz. `core/music` alone is 169 MB in 43 tracks. |
+| WebP art | 181 MB | 922 | Portraits 34 MB; story and campaign art (`The_Rise_Of_Wesnoth` alone 29 MB); maps 10 MB |
+| PNG | 100 MB | 17,969 | Terrain 38 MB (5.6k files), units 9 MB (7.1k files), campaign-specific images |
+| WAV | 19 MB | 73 | Uncompressed sound effects |
+| `.cfg` / `.map` / `.lua` / `.py` / other | ~66 MB | ~3.7k | Not fetched at runtime (baked into snapshots or read at build time) |
 
-## Deployment options
+## Deployment: Cloudflare Workers static assets, plus R2 for game data
 
-Free-tier limits below are from my knowledge (mid-2026) and must be checked
-against the providers' current pages in S5 before we commit.
+Workers static assets is Cloudflare's current recommendation for new
+projects, and Pages has the same limits. Its free tier, checked on
+Cloudflare's docs on 2026-09-27:
 
-| Option | Headers (`immutable`, `no-cache`) | SPA fallback | Limits that matter here | Previews per PR | Cost at hobby scale | Verdict |
-|---|---|---|---|---|---|---|
-| **Cloudflare Workers static assets / Pages** | yes, via a `_headers` file | yes (built in, or `not_found_handling`) | 20k files and 25 MiB per file on free; static traffic is not metered | yes (`wrangler` from Actions) | free | **Recommended** |
-| GitHub Pages | **no** (fixed `max-age=600`) | only through a `404.html` hack | 1 GB site, 100 GB/month soft bandwidth; private repo needs a paid plan | no | free (if the repo is public) | Rejected: breaks the P7 caching contract |
-| Netlify | yes (`_headers`) | yes | bandwidth is metered on free (each player downloads tens of MB) | yes | free, then paid | Viable second choice |
-| Vercel | yes (`vercel.json`) | yes | Hobby plan is non-commercial, bandwidth metered | yes | free, then paid | Viable, less suited to large static assets |
-| GCS bucket + Cloud CDN | yes (per-object metadata) | through a load balancer rule | none relevant | manual | load balancer ~$18/month plus egress | Overkill for now |
-| Self-host on the existing GCP VM (Caddy) | yes | yes | single VM; egress about $0.12/GB; you run TLS, updates and uptime | manual | VM plus egress | Fallback only |
-| Hybrid: app on Cloudflare, large media in R2 behind a custom domain | yes | yes | lifts the file-count limit if pruning isn't enough | yes | R2 has free egress; storage billed after 10 GB | Keep in reserve |
+| Limit (free) | Value | Problem for us? |
+|---|---|---|
+| Files per deployed version | **20,000** | **Yes.** The game media alone is 18.9k files; with the app, atlases, snapshots and i18n it goes over. That is why raw game data goes to R2 (below). With game data out, the Workers upload is about 1.5k files. |
+| Size per file | **25 MiB** | No. The largest are an 11 MB music track and a 9 MB atlas; after S4 both shrink. A guard in the build keeps it that way. |
+| Requests to static assets | **Free and unlimited**; they don't count against the 100k/day Worker request limit | No, as long as we deploy **no Worker script** (or never set `run_worker_first`). Requests that run a script count against 100k/day and get a 429 once over. |
+| `_headers` | 100 rules, 2,000 characters per line | No. About 10 rules are needed. |
+| Default caching | `public, max-age=0, must-revalidate` + ETag (every use revalidates) | That's why every heavy file gets a versioned path and an `immutable` rule. |
+| Compression | Negotiates Brotli/gzip/zstd for text types at the edge | The edge compresses at a moderate level. We ship pre-compressed `.br` snapshots to get the 14× ratio, and check the served `Content-Encoding` after deploy (S5). |
+| SPA fallback | `not_found_handling = "single-page-application"`: unknown paths get `index.html` with 200 | Also means a missing asset under an HTML `Accept` returns HTML. The smoke test checks asset responses by content type, not only status. |
+| Builds | Pages: 500 builds/month, 20 min timeout | Irrelevant: we build in GitHub Actions and upload with `wrangler`. |
+| Content terms | Cloudflare's service-specific CDN terms reserve the right to limit sites that use the CDN "without such Paid Services to serve video or a disproportionate percentage of pictures, audio files, or other large files". The Developer Platform (Workers, R2) is named as the kind of service meant for such content. | **The one real risk.** Serving media from Workers assets and R2 is the sanctioned route, rather than proxying another origin through the CDN, but the terms don't spell out the free tier. Mitigation: at hobby traffic it is unlikely to matter. If it ever does, Workers Paid ($5/month) removes the ambiguity. |
 
-Rollback: Cloudflare keeps previous deployments, so re-promoting one is
-instant. The release workflow can also redeploy any earlier tag.
+**R2 for game data** (free tier: 10 GB storage, 1M writes and 10M reads a
+month, **free egress**). We upload the media under a versioned prefix
+(`/data/<submodule-sha>/…`) to a public bucket on a custom domain, with
+`Cache-Control: public, max-age=31536000, immutable` set on each object, so
+Cloudflare's cache serves most requests. 10M reads a month is far more than
+we'll need, since cached hits don't count as reads. A new submodule SHA
+uploads under a new prefix; old prefixes are pruned after a release.
+
+Alternatives considered: GitHub Pages (no custom headers, 1 GB site limit),
+Netlify and Vercel (bandwidth metered on their free tiers), and our GCP VM
+(egress about $0.12/GB, plus we'd run TLS and uptime ourselves). Cloudflare is
+the only free option that meets the caching needs without a traffic bill.
 
 ## Stages
 
-Each stage is its own commit (or PR once S0 is done), ends green, and gets a
-dated entry in `docs/PROGRESS.md`.
+Each stage is its own PR, ends green, and gets a dated entry in
+`docs/PROGRESS.md`.
 
-### S0 — Branch reconciliation
+### S0 — Branch reconciliation: done 2026-09-27
 
-- Find out what `origin/main` (`e2824c4`) has that local `main` doesn't.
-  Merge `phase-17-events` into `main`; any conflict is resolved and reviewed
-  before the push. Nothing is force-pushed.
-- Push. Enable branch protection on `main` once S1's checks exist and have
-  passed at least once.
-- **Checkable:** `git log origin/main` contains `d6843e2`; the protection
-  rule lists the S1 checks as required.
+`main` is at `ddda3a1` on GitHub. Branch protection on `main` (S1's checks
+required, no force push) is enabled once S1 has passed. The stale remote
+branches (`phase-11-fog` … `phase-17-events`, `perf-image-pipeline`,
+`fix-two-brothers-bugs`) are all ancestors of `main` and get deleted after
+you confirm.
 
 ### S1 — Unit CI (`.github/workflows/ci.yml`)
 
-Runs on `push` to `main` and on every PR. Superseded runs are cancelled
-(`concurrency`).
+Runs on pushes to `main` and on PRs. Superseded runs are cancelled.
 
-- **Setup (a composite action):** `actions/checkout` with no submodules,
-  then init the submodule with `--depth 1` and a sparse checkout of
-  `data/ images/ sounds/`, cached by submodule SHA. Node from `.nvmrc` (the
-  VM runs 20). Run `npm ci` with the npm cache.
-- Jobs, run in parallel:
-  - `typecheck`: `npm run typecheck --workspaces` (includes `svelte-check`).
-  - `test`: one job per package (engine, renderer, ui, lua-bridge,
-    oracle-tools), so a failure names the package; vitest's JUnit reporter
-    feeds a check summary.
-  - First fix the ui suite's exit code: move `scripts/ai-benchmark.test.ts`
-    into a separate vitest project (`npm run test:slow`) that runs in its own
-    CI job, with a longer `teardownTimeout`, or have the benchmark yield
-    between turns. Then `npm test` for ui exits 0.
-  - `generated-in-sync`: rebuild scenario snapshots, i18n catalogues,
-    credits and tips, then `git diff --exit-code`. It may move to the
-    nightly workflow if it is slow.
-- **Checkable:** a deliberately failing test on a throwaway branch turns the
-  PR red, and the failing package and test name show in the check summary.
+- **Setup** (composite action): checkout, then a shallow, sparse submodule
+  checkout of `data/ images/ sounds/`, cached by SHA. Node from a new
+  `.nvmrc` (20). `npm ci` with the npm cache.
+- **Fix first:** make the ui suite exit 0. `ai-benchmark.test.ts` moves to
+  its own vitest project (`npm run test:slow`, its own CI job), or the
+  benchmark yields between turns.
+- **Jobs:** `typecheck` (includes `svelte-check`); `test` as one job per
+  package, with JUnit output in the check summary; `generated-in-sync`
+  (regenerate snapshots, i18n, credits and tips, then
+  `git diff --exit-code`).
+- **Checkable:** a deliberately failing test turns the PR red, and the check
+  names the package and the test.
 
 ### S2 — Lint (small)
 
-- ESLint flat config with `typescript-eslint` and `eslint-plugin-svelte`.
-  Only correctness rules: no floating promises in the event loops, no unused
-  variables, no restricted imports. No formatter, to avoid churn across the
-  whole codebase.
+- ESLint flat config (`typescript-eslint`, `eslint-plugin-svelte`) with
+  correctness rules only, and no formatter.
 - A restricted-import rule enforces the Phase 28a risk: the compositor and
   worker modules must not import `pixi.js`.
-- Existing violations are fixed or baselined in one commit.
-- **Checkable:** a `pixi.js` import in `compositor.ts` fails the `lint` job.
+- **Checkable:** adding a `pixi.js` import to `compositor.ts` fails the
+  `lint` job.
 
-### S3 — Production build and asset staging
+### S3 — Versioned, long-lived asset delivery
 
-- New `apps/web/scripts/stage-assets.mjs`: writes the runtime-reachable
-  subset of `wesnoth/data`, `images` and `sounds` into
-  `apps/web/dist/game-images*`, instead of relying on the symlinks. What
-  counts as reachable is computed from what we ship:
-  - every scenario snapshot's image, music and sound references;
-  - story assets;
-  - portraits and unit images of every unit type used;
-  - UI and engine images the code names (`misc/`, `flags/`, halos, …).
-  
-  It writes a manifest, which feeds the service worker in S8.
-- Build order: `build:atlases` → `vite build` → `stage-assets` → emit
-  `_headers` (the P7 rules plus a day's cache for music and sounds) and the
-  SPA fallback config.
-- A size report goes into the job summary: total bytes, file count, largest
-  file, and the compressed size of the snapshots. The build fails if the
-  count goes over 18k (margin under 20k) or a file is over 24 MiB.
-- **Checkable:** `vite preview` of `dist/` plays Dead Water 1 and Liberty 1
-  with zero 404s. That is verified by the S4 smoke test, which fails on any
-  404.
+The caching contract: **every file larger than a few KB is requested from a
+URL that changes whenever its content changes, and is served
+`public, max-age=31536000, immutable`.** Only `index.html` and small
+manifests are `no-cache` with an ETag. After the first visit, a player
+downloads a file again only when that file itself has changed.
 
-### S4 — Browser smoke test in CI
+| Asset | Today | After S3 |
+|---|---|---|
+| JS/CSS (Vite) | hashed file names | unchanged, `immutable` |
+| Atlases | hashed PNGs, fixed-name JSON manifests | Manifests hashed as well, referenced from one small root manifest (`assets.<hash>.json`, the only `no-cache` data file besides `index.html`) |
+| Game media (`game-images*`, music, sounds) | symlinks, unversioned, `no-cache` | Uploaded to R2 under `/data/<submodule-sha>/`, `immutable`. The app gets the prefix from the root manifest. |
+| Scenario snapshots, i18n, `terrain-graphics-rules.json`, story assets | fixed names, fetched uncompressed | Content-hashed names via the root manifest, pre-compressed `.br`, `immutable` |
 
-- New `apps/web/scripts/smoke-playthrough.mjs`, reusing `lib/browserFlows.mjs`,
-  run against `vite preview` of the **production build**. It covers:
-  - main menu, start Liberty, skip the story, board ready;
-  - one move and one attack (confirmed);
-  - End Turn and answer the confirm, wait for the AI turn;
-  - quicksave, reload the page, load the save;
-  - `/play/Liberty?scenario=01_The_Raid` hard refresh.
-  
-  It fails on any `pageerror`, `console.error`, failed request or 404.
-- It runs in Chromium in `ci.yml` and must finish within a few minutes,
-  despite the 1 fps render: it waits on state, not on animations.
-- On failure it uploads a Playwright trace, screenshots and the console log.
-- The existing playthrough scripts get a `--base` flag where they lack one,
-  so the nightly run (S7) can point them at the preview server.
-- **Checkable:** breaking the snapshot fetch path in a throwaway PR fails
-  the smoke test with the 404'd URL in the log.
-
-### S5 — Deploy (`.github/workflows/deploy.yml`)
-
-- Uses S3's `dist/` artifact from the CI run, so the build is the one the
-  smoke test checked. Deploys with `cloudflare/wrangler-action`, using an
-  API token stored as a repo secret.
-- Triggers:
-  - `main` green → **staging** (a stable URL);
-  - PR green → **preview** URL posted on the PR;
-  - `v*` tag → **production**.
-- Versioning: the build embeds `git describe` and the commit SHA, shown on
-  the title screen and in error reports. Releases are git tags with notes
-  generated from `docs/PROGRESS.md`.
-- A post-deploy check runs the smoke test against the deployed URL and
-  verifies the headers: an atlas PNG must be `immutable`, a manifest
-  `no-cache` with an `ETag`, and a snapshot must come back Brotli or gzip.
+- New `apps/web/scripts/stage-assets.mjs`, run after `vite build`:
+  - hashes and renames the data files;
+  - writes the root manifest;
+  - emits `_headers` and the Workers `wrangler.jsonc` (assets directory,
+    SPA fallback, no script);
+  - stages the media for R2: every png/webp/jpg/ogg/wav under `core/` and
+    `campaigns/`, **minus** data that is never fetched (`.cfg`, `.map`,
+    `.lua`, `.py`, `data/test`, `tools`, `schema`).
+- The dev server keeps working unchanged: the root manifest falls back to
+  the current paths when absent.
+- A report in the job summary lists total bytes, file count and the largest
+  file for each target. It fails if the Workers upload exceeds 18k files or
+  any file exceeds 24 MiB.
 - **Checkable:**
-  - pushing to `main` updates staging within about 15 minutes of the push;
-  - `curl -I` on an atlas shows `immutable`;
-  - re-promoting the previous deployment rolls back.
+  - a warm reload of Dead Water 1 in Playwright makes **zero** requests
+    besides `index.html` and the root manifest (both 304);
+  - changing one snapshot changes only that snapshot's URL and the root
+    manifest.
+
+### S4 — Shrink what players download
+
+These are measured one by one (bytes per scenario load, and total); each is
+kept only if it is lossless or you sign off on it.
+
+1. **Terrain atlases (lossless, largest win per scenario).**
+   - Replace per-scenario terrain atlases with shared ones: common tiles
+     (grass, hills, water, castles…) in bundles cached across all scenarios,
+     plus a small per-scenario remainder.
+   - Recompress the PNGs with `oxipng`, which is lossless.
+   - The Phase 28a golden hashes must still match exactly.
+   - Target: a second scenario downloads under 20% of the terrain bytes a
+     first scenario does.
+2. **PNG optimisation of staged media (lossless).** Run `oxipng` over the
+   staged PNGs, verified by comparing decoded RGBA hashes. The gain is
+   probably modest, since upstream already optimises many files; it is
+   measured first.
+3. **WAV → Ogg/Opus for sound effects (lossy, needs your sign-off):**
+   19 MB → about 2 MB.
+4. **Music (lossy, needs your sign-off).** 229 MB of Vorbis at 160 kbps.
+   Opus at 96 kbps is generally considered transparent for music at about
+   60% of the size. It needs a fallback for Safari versions without
+   Opus-in-Ogg, for example Vorbis at a lower quality, or AAC.
+   - Music is streamed per track and cached `immutable`, so this saves
+     bytes on the first play of each track only.
+   - **Recommendation:** leave music as upstream ships it unless a
+     measurement shows it dominates first-session downloads.
+5. **Portraits and story art** are already WebP. Leave them.
+
+### S5 — Browser smoke test and deployment
+
+- **Smoke test** (`apps/web/scripts/smoke-playthrough.mjs`, reusing
+  `lib/browserFlows.mjs`, in `ci.yml` on the **production build** via
+  `vite preview`):
+  - main menu → Liberty → skip story → one move, one confirmed attack →
+    End Turn (answering the confirm) → AI turn;
+  - quicksave → reload → load;
+  - a hard refresh on `/play/Liberty?scenario=01_The_Raid`.
+  
+  It fails on any `pageerror`, `console.error`, failed request, or an asset
+  response with the wrong content type. On failure it uploads a Playwright
+  trace, screenshots and the console log.
+- **Deploy** (`.github/workflows/deploy.yml`) runs on `v*` tags only:
+  - it builds and smoke-tests the tagged commit, uploads the new R2 prefix
+    (skipped if that submodule SHA is already there), then deploys the
+    Workers assets with `cloudflare/wrangler-action` (API token as a repo
+    secret);
+  - the build embeds the tag and SHA, shown on the title screen and in
+    error reports.
+- **Post-deploy check:** the smoke test runs against the production URL,
+  and `curl -I` confirms three things: an atlas and an R2 music file are
+  `immutable`, `index.html` is `no-cache`, and a snapshot is served with
+  Brotli encoding.
+- **Rollback:** `wrangler rollback`, or re-run the workflow on the previous
+  tag. Old R2 prefixes stay until the next release, so a rollback still
+  finds its data.
+- Per-PR preview deployments are free and could be added later; they are
+  left out for now, per decision 3.
+- **Checkable:** pushing tag `v0.1.0` deploys, and the post-deploy check
+  passes. A tag on a commit that breaks the smoke test does not deploy.
 
 ### S6 — Error reporting
 
-- Global `error` and `unhandledrejection` handlers, plus `<svelte:boundary>`
-  around `GameShell` and the menu.
-- A recoverable error screen with these actions:
-  - return to the menu;
-  - reload the last autosave (Phase 26 autosaves exist);
-  - copy or download a report: version, SHA, browser, scenario, turn, the
-    stack, the last N WML or Lua log lines, and optionally the current save
-    as JSON.
-- Errors in the AI, Lua or event path are caught per turn where possible:
+- Global `error` and `unhandledrejection` handlers, and
+  `<svelte:boundary>` around `GameShell` and the menu.
+- A recoverable error screen: back to menu, reload the last autosave, and
+  "Copy report" / "Download report". The report holds:
+  - version and SHA, browser, campaign / scenario / turn;
+  - the stack;
+  - the last N WML/Lua log lines;
+  - optionally, if the player ticks it, the current save as JSON.
+- Errors in the AI, Lua or event paths are caught per turn where possible:
   the turn ends with a visible warning instead of freezing.
-- A small ring buffer of recent errors, shown in a debug panel.
-- **Checkable:** a debug hotkey or query flag that throws inside an event
-  handler shows the error screen, the copied report includes the stack and
-  version, and "reload autosave" resumes play.
+- **Nothing is sent automatically** (see the explanation in the reply this
+  plan came with; an opt-in remote endpoint is a later, separate decision).
+- **Checkable:** a debug flag that throws inside an event handler shows the
+  error screen, the copied report contains the stack and version, and
+  "reload autosave" resumes play.
 
-### S7 — Performance budgets and a nightly run
+### S7 — Performance budgets and the nightly run
 
-- **Per PR** (`ci.yml`, Chromium, production build):
-  - `measure-load.mjs` for Dead Water 1 and Liberty 1, gated on metrics
-    that are stable on shared runners: image request count, bytes
-    transferred, JS bundle size (entry chunk and total), heap after load;
-  - main-thread blocked time with generous slack (2× the local baseline);
-  - numbers posted to the job summary and compared with `main`'s last run,
-    kept as an artifact.
-- **AI benchmark:** promote the Dead Water 12 AI-vs-AI benchmark (used for
-  the bugs7 AI speed-up) into `apps/web/scripts/bench-ai.mjs`. It gates on a
-  budget of 2× today's measurement on the runner.
-- **Nightly** (`nightly.yml`, cron plus manual dispatch):
-  - every `*-playthrough.mjs` script against the preview build;
-  - `check:image-golden`;
-  - the cross-browser matrix (S8);
-  - `generated-in-sync` if it moved out of S1.
+- **Per PR** (Chromium, production build): `measure-load.mjs` on Dead Water 1
+  and Liberty 1. Gates on metrics that are stable on shared runners:
+  - request count and bytes transferred;
+  - JS bundle size;
+  - heap after load;
+  - main-thread blocked time, with 2× slack.
   
+  The numbers go into the job summary next to `main`'s last run.
+- **AI benchmark:** the Dead Water 12 AI-vs-AI benchmark (the bugs7
+  speed-up) becomes `apps/web/scripts/bench-ai.mjs`, gated at 2× the
+  runner's baseline.
+- **Nightly** (cron plus manual dispatch): every `*-playthrough.mjs`,
+  `check:image-golden`, the cross-browser matrix (S8) and `test:slow`.
   Failures open or update a GitHub issue.
-- Frame rate stays a manual release check on real devices (a desktop GPU
-  and a mid-range Android phone). The steps live in `docs/RELEASE_CHECKLIST.md`.
-- Budgets are recorded in `docs/TESTING_STRATEGY.md` with today's numbers.
-- **Checkable:** a PR that adds a 1 MB dependency, or disables an atlas,
+- Frame rate stays a manual pre-release check on real devices, listed in
+  `docs/RELEASE_CHECKLIST.md`. Budgets are recorded in
+  `docs/TESTING_STRATEGY.md`.
+- **Checkable:** a PR that disables an atlas, or adds a 1 MB dependency,
   fails the budget step with a before/after table.
 
 ### S8 — Cross-browser and offline
 
 - **Nightly smoke matrix:**
-  - Playwright Chromium, Firefox and WebKit on desktop;
-  - Pixel 7 (Chromium) and iPhone (WebKit) device emulation, which runs the
-    mobile flow from `mobile-playthrough.mjs`.
+  - Chromium, Firefox and WebKit;
+  - Pixel 7 and iPhone emulation running the `mobile-playthrough.mjs`
+    flow.
   
-  Known gaps are listed in a compatibility table in
-  `docs/TESTING_STRATEGY.md`. Examples: OffscreenCanvas-in-worker fallback
-  on old Safari; the audio unlock gesture.
-- **Deep links:** the smoke test already checks a hard refresh on
-  `/play/...`. The nightly run adds `?save=` and `&replay=1`.
-- **Service worker** (Workbox-free, handwritten, small):
-  - precache the app shell and the S3 manifest's small core (UI images,
-    fonts, team colours);
-  - runtime cache-first for hashed atlases, stale-while-revalidate for
-    snapshots, music and `game-images`;
-  - versioned by SHA, old caches purged on activate, and an "update
-    available" toast instead of silently switching versions mid-game.
-- **Checkable:** after playing Liberty 1 once, the page and scenario reload
-  and play with the network disabled (Playwright `offline`).
+  Known gaps go in a compatibility table.
+- **Deep links:** `?save=` and `&replay=1` survive a hard refresh.
+- **Service worker** (handwritten, small):
+  - precache the app shell;
+  - cache-first for everything under the immutable rule, which after S3
+    is nearly everything;
+  - versioned by SHA, old caches purged on activate;
+  - an "update available" prompt applied only on the menu, never under a
+    running game.
+  
+  Scope: a scenario you have opened once plays again offline.
+- **Checkable:** after playing Liberty 1 once, it reloads and plays with the
+  network disabled.
 
 ### S9 — Licence compliance and upstream-fidelity guard
 
-- Ship the licence texts: `COPYING` (GPL-2, already in the repo), Wesnoth's
-  `copyrights.csv`, and the licence notes from the data, served under
-  `/licenses/`. The credits screen links to them.
-- Add a "Source code" link to the repo (or to a per-release source archive,
-  if the repo stays private) on the title screen and the About page.
-- A test asserts every staged `game-images` file comes from the pinned
-  submodule commit unmodified (a hash compare in `stage-assets`).
-- A test asserts the only modified upstream files are the 8 known Fengari
-  Lua patches. Every campaign `.cfg` the snapshots are built from must be
-  byte-identical to the submodule.
-- **Checkable:** editing a campaign `.cfg` in `wesnoth/` locally makes the
-  guard test fail and name the file.
+- **Licences:** ship `COPYING` (GPL-2), Wesnoth's `copyrights.csv` and the
+  data licence notes under `/licenses/`, linked from the credits screen. Add
+  a "Source code" link to the public repo on the title screen.
+- **Unmodified media:** `stage-assets` checks that every staged media file
+  matches the pinned submodule commit. The only exceptions are the S4
+  transformations, which are recorded per file with the source hash.
+- **Unmodified upstream `.cfg`:** every campaign `.cfg` a snapshot is built
+  from is byte-identical to the submodule. The only allowed deviations are
+  the 8 Fengari Lua patches.
+- **Checkable:** editing a campaign `.cfg` in `wesnoth/` locally fails the
+  guard, naming the file.
 
-### S10 — Optional: oracle tests in CI
+## Milestone
 
-- Build `wl-image-oracle` from the submodule (CMake, with `ccache` cached per
-  submodule SHA) in the nightly workflow only, so
-  `packages/oracle-tools/src/imageOracle.test.ts` stops being skipped there.
-- Only if the build time and minutes budget allow. Skip it if the repo stays
-  private.
+- Pushing to `main` or opening a PR runs every package suite plus the
+  browser smoke test on the production build.
+- A `v*` tag deploys to production and passes the post-deploy check.
+- A deliberately broken commit fails CI, and a broken tag does not deploy.
+- A warm reload makes no requests beyond `index.html` and the root manifest.
+- The S6–S9 checkables pass.
 
-## Milestone (from `IMPLEMENTATION_PLAN.md`)
+## Order
 
-Pushing to `main` triggers a CI run covering all package test suites plus a
-browser smoke test. A staging build is reachable at a stable URL. A
-deliberately broken build fails CI before it can deploy: the S1, S4 and S5
-checks. The platform items (budgets, cross-browser, errors, offline,
-licences) are the S6–S9 checkables.
-
-## Order and rough size
-
-S0 → S1 → S3 → S4 → S5 get to the milestone first, then S2, S6, S7, S8, S9,
-with S10 optional. S0–S5 are about one session. S6–S9 are about one session
-each, with S8's service worker the largest.
+S1 → S3 → S5 reach the milestone. Then S4 (shrinking), S2, S6, S7, S8, S9.
+The repo goes public before S5's first tag.
 
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
-| Actions minutes on a private repo | Per-PR work stays within about 10 minutes: parallel jobs, cached submodule and atlases (keyed by the hash of their inputs), smoke test in Chromium only. The nightly run becomes weekly if needed. Making the repo public removes the limit. |
-| Submodule checkout is slow or large | Shallow and sparse checkout plus an `actions/cache` keyed by SHA; the checkout drops from 2.8 GB to about 0.6 GB. |
-| Asset pruning misses a file only some path requests (a rare animation, a campaign-specific sound) | The smoke test and nightly scripts fail on any 404. The atlas builder already enumerates unit animation frames. As a fallback, a `--full` stage mode ships the whole `data/core` plus the built campaigns if the file count allows. |
-| Headless timing flakiness (1 fps) | Smoke and budget steps wait on state, never on durations. Only deterministic metrics are hard gates. One automatic retry, with the trace uploaded, and flakes are counted. |
-| Free-tier terms change | Hosting is behind one workflow file and a `_headers` file. Netlify, or R2 plus a VM, is the documented fallback. |
-| Error reports contain save data | The report is copied or downloaded by the player; nothing is sent automatically (decision 4). |
-| Service worker serving a stale build mid-game | Versioned caches, and an update prompt applied only on the menu or reload, never swapping code under a running game. |
+| Cloudflare content terms on media-heavy sites | Media served from R2 and Workers assets, the Developer Platform route the terms point to; Workers Paid ($5/month) if Cloudflare ever objects. The hosting setup is contained in one workflow file, one `_headers` file and one `wrangler.jsonc`. |
+| The 20k-file limit is hit again as campaigns are added (Phase 28c) | Game media is in R2, which has no file limit; the Workers upload holds only the app, atlases and hashed data (~1.5k files). A guard fails the build above 18k. |
+| A player downloads a whole new data prefix when the submodule is bumped | Submodule bumps are rare. If they become frequent, switch from a per-SHA prefix to per-file content hashes (the root manifest can map paths → hashes). |
+| Pre-compressed `.br` served with the wrong headers | The post-deploy `curl -I` check. The fallback is to let the edge compress (smaller win, still compressed). |
+| Headless timing flakiness at 1 fps | Smoke and budget steps wait on state, never on durations. Only deterministic metrics gate. One retry, with the trace uploaded. |
+| Service worker serving a stale build mid-game | Versioned caches, and updates only at the menu or on reload. |
