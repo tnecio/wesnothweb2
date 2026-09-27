@@ -174,7 +174,7 @@ try {
   await touch('touchEnd', []);
   await page.waitForTimeout(300);
   const z1 = (await camera()).zoom;
-  check('spreading two fingers zooms in, onto one of upstream\'s levels', z1 > z0 && [16, 24, 36, 52, 72, 100, 144, 216, 288].includes(z1), `${z0} -> ${z1}`);
+  check('spreading two fingers zooms in smoothly, no further than upstream\'s largest level', z1 > z0 && z1 <= 288, `${z0} -> ${z1}`);
   const before = (await camera()).view;
   await touch('touchStart', [{ x: mid.x - 60, y: mid.y }, { x: mid.x + 60, y: mid.y }]);
   for (let i = 1; i <= 5; i++) {

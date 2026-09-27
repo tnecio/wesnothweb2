@@ -2,7 +2,7 @@
  * Phase 22 milestone: the camera and the minimap, in a real browser.
  *
  *  - Camera: dragging far past the map edge is stopped at upstream's bounds; the zoom hotkeys walk
- *    exactly upstream's nine levels; the wheel pans and Ctrl+wheel zooms; `0` toggles 1:1 and back.
+ *    exactly upstream's nine levels; the wheel pans and Ctrl+wheel zooms smoothly; `0` toggles 1:1 and back.
  *  - Edge panning: the pointer at the window's edge pans, except over a control, under a dialog, or
  *    with Preferences > Advanced > "Mouse scrolling" off.
  *  - Minimap: clicking it centres the board on that hex, dragging pans; a captured village changes
@@ -90,15 +90,16 @@ try {
     const wheeled = await camera(page);
     check('the wheel pans the map', wheeled.view.y < dragged.view.y - 50 && wheeled.zoom === 72, `y ${dragged.view.y} -> ${wheeled.view.y}, zoom ${wheeled.zoom}`);
 
-    // Ctrl+wheel zooms one level per notch.
+    // Ctrl+wheel zooms smoothly (a deliberate departure from upstream's level steps): a notch is ~20%.
     await page.keyboard.down('Control');
     await page.mouse.wheel(0, -100);
     await page.keyboard.up('Control');
     await page.waitForTimeout(200);
     const zoomedIn = await camera(page);
-    check('Ctrl+wheel zooms in one level', zoomedIn.zoom === 100, `zoom ${zoomedIn.zoom}`);
+    check('Ctrl+wheel zooms in smoothly, between upstream\'s levels', zoomedIn.zoom > 80 && zoomedIn.zoom < 100, `zoom ${zoomedIn.zoom}`);
 
-    // Zoom hotkeys walk upstream's levels, both ways, stopping at the ends.
+    // Zoom hotkeys walk upstream's levels, both ways, stopping at the ends -- from between two levels, "-"
+    // snaps to the nearer one below (72).
     const seen = [];
     for (let i = 0; i < 10; i++) {
       await pressKey(page, '-');
@@ -394,6 +395,8 @@ try {
     check('side 1\'s own leader is on its minimap', !!heroColor1 && !same(heroColor1, [31, 31, 23]), `${heroColor1}`);
     check('side 2\'s leader, under side 1\'s shroud, is not', !same(villainColor1, heroColor1), `${villainColor1}`);
     await pressKey(pg, 'Control+Space');
+    // Nothing done this turn: End Turn asks first (menu_handler::end_turn); yes.
+    await pg.getByRole('button', { name: 'Yes', exact: true }).click({ timeout: 30000 }).catch(() => {});
     await skipToPlay(pg, 60000).catch(() => {});
     await pg.waitForFunction(() => window.__wesnoth.session.viewingSide === 2, null, { timeout: 60000 });
     await pg.waitForTimeout(500);

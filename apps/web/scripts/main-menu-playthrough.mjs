@@ -25,7 +25,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { chromium } from 'playwright';
-import { skipToPlay, waitBoardReady } from './lib/browserFlows.mjs';
+import { skipToPlay, waitBoardReady, confirmEndTurnIfAsked } from './lib/browserFlows.mjs';
 
 const args = process.argv.slice(2);
 const arg = (name, fallback) => {
@@ -251,6 +251,7 @@ async function winByKeys(page) {
     await press(page, 'Escape', 300);
     await press(page, 'Control+Space', 2500);
     await press(page, 'Control+Space', 2500);
+    await confirmEndTurnIfAsked(page);
     await press(page, 'n', 500);
     await press(page, 'ArrowRight', 300);
     await press(page, 'ArrowRight', 300);

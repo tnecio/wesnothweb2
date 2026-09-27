@@ -28,7 +28,7 @@
  * Exits non-zero if any step fails to change the game state it should.
  */
 import { chromium } from 'playwright';
-import { openScenario, skipToPlay, waitBoardReady } from './lib/browserFlows.mjs';
+import { openScenario, skipToPlay, waitBoardReady, confirmEndTurnIfAsked } from './lib/browserFlows.mjs';
 
 const args = process.argv.slice(2);
 const arg = (name, fallback) => {
@@ -149,6 +149,7 @@ async function keyboardOnly(browser) {
         await press(page, 'Escape', 300); // clear the selection
         await press(page, 'Control+Space', 2500); // end side 1's turn
         await press(page, 'Control+Space', 2500); // side 2 (also human) ends its own
+        await confirmEndTurnIfAsked(page); // ...having done nothing, so it is asked first
         await press(page, 'n', 500);
         await press(page, 'ArrowRight', 300);
         await press(page, 'ArrowRight', 300);

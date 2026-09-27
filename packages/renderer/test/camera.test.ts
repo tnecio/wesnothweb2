@@ -9,7 +9,8 @@ import {
   scrollTargetForHexes,
   scrollWarps,
   stepZoomIndex,
-  pinchZoomIndex,
+  pinchZoom,
+  stepZoom,
   worldBounds,
   zoomAbout,
   zoomIndexFor,
@@ -212,22 +213,22 @@ describe('ScrollAnimation (scroll_to_xy)', () => {
   })
 })
 
-describe('pinchZoomIndex (Phase 23)', () => {
-  const at72 = ZOOM_LEVELS.indexOf(72)
-  it('stays put until the fingers have moved far enough for the next level', () => {
-    expect(pinchZoomIndex(at72, 1)).toBe(at72)
-    expect(pinchZoomIndex(at72, 1.1)).toBe(at72)
-    expect(pinchZoomIndex(at72, 0.9)).toBe(at72)
+describe('continuous zoom (a deliberate departure from upstream)', () => {
+  it('a pinch scales the zoom it began at smoothly, within the smallest and largest levels', () => {
+    expect(pinchZoom(72, 1)).toBe(72)
+    expect(pinchZoom(72, 1.1)).toBeCloseTo(79.2)
+    expect(pinchZoom(72, 0.5)).toBe(36)
+    expect(pinchZoom(72, 100)).toBe(288)
+    expect(pinchZoom(72, 0.01)).toBe(16)
+    expect(pinchZoom(72, 0)).toBe(72)
+    expect(pinchZoom(72, NaN)).toBe(72)
   })
-  it('spreading zooms in and pinching zooms out, by as many levels as the scale says', () => {
-    expect(ZOOM_LEVELS[pinchZoomIndex(at72, 2)]).toBe(144)
-    expect(ZOOM_LEVELS[pinchZoomIndex(at72, 0.5)]).toBe(36)
-    expect(ZOOM_LEVELS[pinchZoomIndex(at72, 1.4)]).toBe(100)
-  })
-  it('clamps at the ends and ignores nonsense', () => {
-    expect(ZOOM_LEVELS[pinchZoomIndex(at72, 100)]).toBe(288)
-    expect(ZOOM_LEVELS[pinchZoomIndex(at72, 0.01)]).toBe(16)
-    expect(pinchZoomIndex(at72, 0)).toBe(at72)
-    expect(pinchZoomIndex(at72, NaN)).toBe(at72)
+  it('zoomin/zoomout from between two levels snap to the nearest level in that direction', () => {
+    expect(stepZoom(80, true)).toBe(100)
+    expect(stepZoom(80, false)).toBe(72)
+    expect(stepZoom(72, true)).toBe(100)
+    expect(stepZoom(72, false)).toBe(52)
+    expect(stepZoom(288, true)).toBe(288)
+    expect(stepZoom(16, false)).toBe(16)
   })
 })

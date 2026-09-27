@@ -76,18 +76,35 @@ export function zoomIndexFor(zoom: number): number {
 }
 
 /**
- * Phase 23, pinch zoom (ours; upstream has no touch zoom): the level nearest, on a log scale, to the
- * level the pinch began at scaled by how far the fingers have spread (`ratio` = current / starting
- * distance). Log scale, so spreading to 2x and pinching to 0.5x feel symmetric.
+ * Continuous zoom -- a deliberate departure from upstream (the user's call, 2026-09-27): upstream only
+ * ever shows one of `ZOOM_LEVELS`, and its steps felt jarring under a pinch. Pinch and Ctrl+wheel now
+ * scale smoothly; the hex size stays within upstream's smallest and largest levels. The `zoomin`/
+ * `zoomout` hotkeys and WML `[zoom]` still land on a level (`stepZoom`, `zoomIndexFor`).
  */
-export function pinchZoomIndex(startIndex: number, ratio: number): number {
-  if (!(ratio > 0) || !Number.isFinite(ratio)) return startIndex
-  const target = Math.log(ZOOM_LEVELS[startIndex]! * ratio)
-  let best = 0
-  for (let i = 1; i < ZOOM_LEVELS.length; i++) {
-    if (Math.abs(Math.log(ZOOM_LEVELS[i]!) - target) < Math.abs(Math.log(ZOOM_LEVELS[best]!) - target)) best = i
-  }
-  return best
+export const MIN_ZOOM = ZOOM_LEVELS[0]!
+export const MAX_ZOOM = ZOOM_LEVELS[ZOOM_LEVELS.length - 1]!
+
+export function clampZoom(zoom: number): number {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
+}
+
+/**
+ * Pinch zoom (ours; upstream has no touch zoom): the zoom the pinch began at, scaled by how far the fingers
+ * have spread (`ratio` = current / starting distance), clamped.
+ */
+export function pinchZoom(startZoom: number, ratio: number): number {
+  if (!(ratio > 0) || !Number.isFinite(ratio)) return startZoom
+  return clampZoom(startZoom * ratio)
+}
+
+/**
+ * `zoomin`/`zoomout` from a zoom that may lie between levels: the nearest level above (or below) it, so a
+ * smoothly zoomed view snaps back onto upstream's levels one step at a time.
+ */
+export function stepZoom(zoom: number, increase: boolean): number {
+  const EPS = 0.5
+  if (increase) return ZOOM_LEVELS.find((level) => level > zoom + EPS) ?? MAX_ZOOM
+  return [...ZOOM_LEVELS].reverse().find((level) => level < zoom - EPS) ?? MIN_ZOOM
 }
 
 /** `set_zoom(bool increase)`: one level in or out, clamped. */

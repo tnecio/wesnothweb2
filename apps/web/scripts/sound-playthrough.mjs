@@ -19,7 +19,7 @@
  * Exits non-zero on any failure.
  */
 import { chromium } from 'playwright';
-import { hexPoint, openScenario, performAttack, skipToPlay, waitBoardReady } from './lib/browserFlows.mjs';
+import { hexPoint, openScenario, performAttack, skipToPlay, waitBoardReady, confirmEndTurnIfAsked } from './lib/browserFlows.mjs';
 
 const args = process.argv.slice(2);
 const arg = (name, fallback) => {
@@ -176,6 +176,13 @@ try {
       const sourcePlays = async (id) => (await audioLog(page)).filter((e) => e.event === 'sound-play' && e.detail.source?.startsWith(`${id}#`));
       const stops = async (id) => (await audioLog(page)).filter((e) => e.event === 'sound-stop' && e.detail.source?.startsWith(`${id}#`));
 
+      // Zoom right in (upstream's largest level): since Phase 22 the camera stops at the map's edges, and at
+      // 72 px hexes this 38-hex strip keeps the view centre between x 11 and 26 -- never over either source.
+      for (let i = 0; i < 4; i++) {
+        await page.keyboard.press('Equal');
+        await page.waitForTimeout(400);
+      }
+      await page.waitForTimeout(800);
       const start = await centerX();
       check('the view starts mid-map', start !== null && start > 12 && start < 26, `centre x ${start}`);
       check('the source with no location plays, at full volume', (await sourcePlays('drums')).some((e) => e.detail.volume === 100));
@@ -202,8 +209,10 @@ try {
       // Turn 2: two End Turns (both sides are human).
       const before = (await audioLog(page)).length;
       await page.keyboard.press('Control+Space');
+      await confirmEndTurnIfAsked(page);
       await page.waitForTimeout(1500);
       await page.keyboard.press('Control+Space');
+      await confirmEndTurnIfAsked(page);
       await page.waitForTimeout(3000);
       const after = (await audioLog(page)).slice(before);
       check("turn 2 removes the drums", after.some((e) => e.event === 'sound-stop' && e.detail.source?.startsWith('drums#')));

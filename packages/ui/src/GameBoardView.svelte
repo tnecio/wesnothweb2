@@ -50,13 +50,14 @@
     zoomAbout,
     centerOn,
     zoomIndexFor,
-    stepZoomIndex,
     scaleForZoom,
-    pinchZoomIndex,
+    pinchZoom,
+    stepZoom,
+    clampZoom,
     scrollTargetForHexes,
     worldBounds,
     ZOOM_LEVELS,
-    DEFAULT_ZOOM_INDEX,
+    DEFAULT_ZOOM,
     ScrollAnimation,
     scrollWarps,
     edgeScrollAmount,
@@ -155,11 +156,12 @@
    * Phase 22: the camera. Every change to where the board sits goes through
    * `applyView`, which bounds-checks it (`camera.ts`'s port of upstream's
    * `bounds_check_position`), so no gesture, hotkey or script can lose the map
-   * off screen. Zoom walks upstream's nine discrete levels; `zoomIndex` is the
-   * current one, `lastZoomIndex` what `zoomdefault` toggles back to.
+   * off screen. `zoom` is the hex size in px -- continuous between upstream's
+   * smallest and largest levels, a deliberate departure (see `camera.ts`'s
+   * `pinchZoom`); `lastZoom` is what `zoomdefault` toggles back to.
    */
-  let zoomIndex = zoomIndexFor(displayPrefs.peek().zoom);
-  let lastZoomIndex = zoomIndex === DEFAULT_ZOOM_INDEX ? DEFAULT_ZOOM_INDEX : zoomIndex;
+  let zoom = clampZoom(displayPrefs.peek().zoom);
+  let lastZoom = zoom;
 
   function mapSize(): { w: number; h: number } {
     return { w: snapshot.map.width, h: snapshot.map.height };
@@ -189,19 +191,24 @@
     onViewChange?.({ view: v, viewport });
   }
 
-  /** `set_zoom(amount)` for a level index, keeping screen point `anchor` fixed (default: the centre). */
-  function setZoomIndex(index: number, anchor?: { x: number; y: number }): void {
+  /** `set_zoom`: to hex size `next` (clamped), keeping screen point `anchor` fixed (default: the centre). */
+  function setZoom(next: number, anchor?: { x: number; y: number }): void {
     const view = currentView();
     const viewport = viewportSize();
-    if (!view || !viewport || index === zoomIndex) return;
+    next = clampZoom(next);
+    if (!view || !viewport || Math.abs(next - zoom) < 0.01) return;
     cancelScroll();
-    zoomIndex = index;
-    if (index !== DEFAULT_ZOOM_INDEX) lastZoomIndex = index;
+    zoom = next;
+    if (next !== DEFAULT_ZOOM) lastZoom = next;
     const at = anchor ?? { x: viewport.width / 2, y: viewport.height / 2 };
-    applyView(zoomAbout(view, scaleForZoom(ZOOM_LEVELS[index]!), at, mapSize(), viewport));
-    // prefs::set_tile_size: the next game opens at this zoom.
-    displayPrefs.update({ zoom: ZOOM_LEVELS[index]! });
+    applyView(zoomAbout(view, scaleForZoom(next), at, mapSize(), viewport));
+    // prefs::set_tile_size: the next game opens at this zoom. Written once the zoom settles, not per frame of a pinch.
+    clearTimeout(saveZoomTimer);
+    saveZoomTimer = setTimeout(() => displayPrefs.update({ zoom }), 300);
   }
+  let saveZoomTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Ctrl+wheel: the zoom changes by e^(-delta * this) -- a ~100 px mouse notch is about 20%. */
+  const WHEEL_ZOOM_PER_PIXEL = 0.0022;
 
   let canvasHost: HTMLDivElement | undefined = $state();
   /** Transient loading/error text only -- the ready-state label is `readyLabel` below, kept live via `$derived` rather than a one-time snapshot of `units.length` at mount (that used to freeze at the pre-events count, e.g. "2 units" even once the scenario's startup events had spawned nine more). */
@@ -258,7 +265,7 @@
     const LONG_PRESS_MS = 500;
     const LONG_PRESS_SLOP_PX = 10;
     const pointers = new Map<number, { x: number; y: number }>();
-    let pinch: { startDistance: number; startIndex: number; lastMid: { x: number; y: number } } | null = null;
+    let pinch: { startDistance: number; startZoom: number; lastMid: { x: number; y: number } } | null = null;
     /** True from a pinch or long press until every finger has lifted: no hex tap comes out of it. */
     let gestureConsumed = false;
     let longPressTimer: ReturnType<typeof setTimeout> | undefined;
@@ -327,7 +334,7 @@
       dragActive = false;
       gestureConsumed = true;
       const two = twoFingers();
-      if (two) pinch = { startDistance: Math.max(1, two.distance), startIndex: zoomIndex, lastMid: two.mid };
+      if (two) pinch = { startDistance: Math.max(1, two.distance), startZoom: zoom, lastMid: two.mid };
     }
 
     function onPointerMove(e: PointerEvent): void {
@@ -342,8 +349,7 @@
         const scale = board.stage.scale.x;
         applyView({ x: board.stage.x + two.mid.x - pinch.lastMid.x, y: board.stage.y + two.mid.y - pinch.lastMid.y, scale });
         pinch.lastMid = two.mid;
-        const index = pinchZoomIndex(pinch.startIndex, two.distance / pinch.startDistance);
-        if (index !== zoomIndex) setZoomIndex(index, { x: two.mid.x - rect.left, y: two.mid.y - rect.top });
+        setZoom(pinchZoom(pinch.startZoom, two.distance / pinch.startDistance), { x: two.mid.x - rect.left, y: two.mid.y - rect.top });
         return;
       }
       if (!dragActive) return;
@@ -376,33 +382,19 @@
     /**
      * Phase 22, the user's call: the wheel pans, as upstream's
      * (`mouse_handler_base::mouse_wheel`: `scroll_speed` px per notch, Alt
-     * swaps the axes), and Ctrl+wheel zooms one level about the pointer.
-     * Browsers deliver a trackpad pinch as Ctrl+wheel in small steps, so
-     * those accumulate until they amount to one level; a mouse notch
-     * (|delta| >= 50 px) is a level on its own.
+     * swaps the axes), and Ctrl+wheel zooms about the pointer -- smoothly, by
+     * how far the wheel turned (a mouse notch is about a quarter, a trackpad
+     * pinch arrives as Ctrl+wheel in small steps), not upstream's level steps.
      */
-    let pinchAccum = 0;
     function onWheel(e: WheelEvent): void {
       if (!board || viewLocked) return;
       e.preventDefault();
       // deltaMode: 0 pixels (a notch is ~100), 1 lines (a notch is 3), 2 pages.
       const unit = e.deltaMode === 1 ? 100 / 3 : e.deltaMode === 2 ? 800 : 1;
       if (e.ctrlKey) {
-        const d = e.deltaY * unit;
-        let direction = 0;
-        if (Math.abs(d) >= 50) {
-          direction = Math.sign(d);
-          pinchAccum = 0;
-        } else {
-          pinchAccum += d;
-          if (Math.abs(pinchAccum) >= 30) {
-            direction = Math.sign(pinchAccum);
-            pinchAccum = 0;
-          }
-        }
-        if (direction === 0) return;
+        const d = Math.max(-300, Math.min(300, e.deltaY * unit));
         const rect = host.getBoundingClientRect();
-        setZoomIndex(stepZoomIndex(zoomIndex, direction < 0), { x: e.clientX - rect.left, y: e.clientY - rect.top });
+        setZoom(zoom * Math.exp(-d * WHEEL_ZOOM_PER_PIXEL), { x: e.clientX - rect.left, y: e.clientY - rect.top });
         return;
       }
       const perPixel = displayPrefs.peek().scrollSpeed / 100;
@@ -567,7 +559,7 @@
       app.stage.addChild(newBoard.stage);
 
       // Open at the saved zoom, centred on the map (clamped: a map smaller than the screen sits in its middle).
-      const openScale = scaleForZoom(ZOOM_LEVELS[zoomIndex]!);
+      const openScale = scaleForZoom(zoom);
       applyView(centerOn({ x: 0, y: 0, scale: openScale }, mapCentre(), mapSize(), { width: app.screen.width, height: app.screen.height }));
       // Re-bounds-check whenever the canvas changes size (window resize, side panel reflow).
       const resizeObserver = new ResizeObserver(() => {
@@ -873,9 +865,9 @@
     return canvasHost?.getBoundingClientRect() ?? null;
   }
 
-  /** Phase 15 `zoomin`/`zoomout` (Phase 22: one of upstream's levels at a time, about the viewport centre). */
+  /** Phase 15 `zoomin`/`zoomout`: to the next of upstream's levels in that direction, about the viewport centre (from between two levels, the nearer one that way). */
   export function zoomStep(increase: boolean): void {
-    setZoomIndex(stepZoomIndex(zoomIndex, increase));
+    setZoom(stepZoom(zoom, increase));
   }
 
   /**
@@ -883,12 +875,12 @@
    * result snaps to the nearest level (Phase 22), about the viewport centre.
    */
   export function zoomBy(factor: number): void {
-    setZoomIndex(zoomIndexFor(ZOOM_LEVELS[zoomIndex]! * factor));
+    setZoom(ZOOM_LEVELS[zoomIndexFor(zoom * factor)]!);
   }
 
   /** Phase 17 `[zoom] factor=`: an absolute scale, snapped the same way. */
   export function zoomTo(factor: number): void {
-    setZoomIndex(zoomIndexFor(factor * ZOOM_LEVELS[DEFAULT_ZOOM_INDEX]!));
+    setZoom(ZOOM_LEVELS[zoomIndexFor(factor * DEFAULT_ZOOM)]!);
   }
 
   /**
@@ -896,12 +888,12 @@
    * there -- back to the zoom it came from.
    */
   export function zoomDefault(): void {
-    setZoomIndex(zoomIndex !== DEFAULT_ZOOM_INDEX ? DEFAULT_ZOOM_INDEX : lastZoomIndex);
+    setZoom(zoom !== DEFAULT_ZOOM ? DEFAULT_ZOOM : lastZoom);
   }
 
   /** The current zoom as upstream's hex size in px (for checks and the status line). */
   export function zoomLevel(): number {
-    return ZOOM_LEVELS[zoomIndex]!;
+    return zoom;
   }
 
   /** Phase 17 `[scroll]`: shift the view by a pixel delta (upstream's own `display::scroll`), bounds-checked. */

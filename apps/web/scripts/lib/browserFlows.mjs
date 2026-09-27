@@ -78,3 +78,17 @@ export async function performAttack(page, from, to) {
     last = count;
   }
 }
+
+/**
+ * End Turn with nothing done this turn asks "You have not started your turn yet" (`menu_handler::end_turn`,
+ * upstream's default `confirm_end_turn=no_moves`). Call after pressing End Turn: answers Yes (Enter, the
+ * dialog's default) if the question is up, and does nothing otherwise.
+ */
+export async function confirmEndTurnIfAsked(page, wait = 800) {
+  await page.waitForTimeout(wait);
+  const text = await page.$eval('.modal-box', (e) => e.textContent ?? '').catch(() => '');
+  if (/not started your turn/.test(text)) {
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(500);
+  }
+}

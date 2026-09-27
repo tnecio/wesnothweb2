@@ -5305,3 +5305,22 @@ either orientation; tablets and desktops keep the full layout.
   timeout. The glides came with Phase 22. The test now waits for each line instead of 400 ms; it passes.
 - **Plan.** Phase 28 (CI/CD, platform) moves to right after Phase 23; new Phase 28b (movement
   visualisation, multi-turn moves) and Phase 28c (the remaining bundled single-player campaigns).
+
+## 2026-09-27 — End Turn states, unit line on a phone, smooth zoom
+
+- **End Turn** is greyed out while the other sides' turns are computed and becomes **Skip Animation**
+  while their moves are shown (finishes the animation on screen, cancels the glide, drops the rest;
+  the final sync shows the result). Checked on Dead Water 1: End Turn (disabled) > Skip Animation >
+  End Turn, on turn 2.
+- **"You have not started your turn yet"** (`menu_handler::end_turn`, default `confirm_end_turn=
+  no_moves`): ported `undo_list::committed_actions_`/`player_acted` (set by anything that clears the
+  undo stack, reset by `new_side_turn`, saved as `committed`); turn bookkeeping and labels don't count.
+  Browser scripts that end an untouched turn answer it (`confirmEndTurnIfAsked`).
+- The infobox hides abilities without a `name=` (upstream's `ability_tooltips`) and "Attacks left".
+- **Phone, infobox collapsed**: a selected or viewed unit shows as one line -- sprite, name, level, HP,
+  XP, defense, time-of-day bonus -- coloured like the map's bars and defense numbers.
+- **Smooth zoom, a deliberate exception to upstream** (user's call): pinch and Ctrl+wheel scale the hex
+  size continuously between upstream's smallest (16 px) and largest (288 px) levels; `+`/`-` step to the
+  nearest level in that direction, and WML `[zoom]` still snaps to a level.
+- Plan: Phase 28b records the move-and-attack order's requirements (touch and mouse).
+

@@ -16,7 +16,7 @@
  * Run: node apps/web/scripts/replay-from-menu-playthrough.mjs [--base http://localhost:5173] [--headed]
  */
 import { chromium } from 'playwright';
-import { skipToPlay, waitBoardReady } from './lib/browserFlows.mjs';
+import { skipToPlay, waitBoardReady, confirmEndTurnIfAsked } from './lib/browserFlows.mjs';
 
 const args = process.argv.slice(2);
 const arg = (name, fallback) => {
@@ -47,6 +47,7 @@ const waitSession = (page) => page.waitForFunction(() => window.__wesnoth?.sessi
  */
 async function recordOneAction(page) {
   await page.keyboard.press('Control+Space');
+  await confirmEndTurnIfAsked(page);
   await page.waitForTimeout(1500);
   await skipToPlay(page, 20000).catch(() => {}); // best-effort: some scenarios keep talking past one end-turn
 }

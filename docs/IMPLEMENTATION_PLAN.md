@@ -1672,6 +1672,12 @@ Phase 23 on a phone and on desktop:
 - Unit ellipses and animated village flags in the side's colour, as
   upstream draws them (Liberty's blue side showed grey dots and triangles).
 - Selecting an enemy highlights its reach (with full moves).
+- End Turn greyed out during the other sides' turns, Skip Animation while
+  their moves play, and upstream's "You have not started your turn yet".
+- Phone: a collapsed infobox shows the selected unit as one line.
+- **Deliberate departure from upstream** (user's call): zoom is continuous
+  between upstream's smallest and largest hex sizes (pinch, Ctrl+wheel);
+  the `+`/`-` hotkeys and WML `[zoom]` still land on upstream's levels.
 - `dialogue-playthrough.mjs` fixed: not a Phase 23 regression (fails the
   same on the pre-Phase-23 build); headless Chromium draws at ~1 fps and
   each glide to the next speaker hit its 4 s timeout, so the test now waits
