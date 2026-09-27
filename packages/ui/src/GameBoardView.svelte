@@ -84,6 +84,7 @@
     onHexClick,
     onHexRightClick,
     onHexHoverChange,
+    onViewportResize,
     hoverDefensePercent,
     paused = false,
     onViewChange,
@@ -142,6 +143,8 @@
     onHexRightClick?: (x: number, y: number, clientX: number, clientY: number) => void;
     /** Bubbles the hovered hex up to a caller that wants to show live terrain info elsewhere (the infobox's "hovered hex" section) -- `null` when the pointer leaves the board. Separate from `hoverDefensePercent` (used only for this component's own inline status line) so a caller doesn't need to reimplement hover tracking itself. */
     onHexHoverChange?: (hex: HexPoint | null) => void;
+    /** Called when the board's on-screen area changes size without the window resizing (e.g. a collapsed infobox), for overlays placed over it. */
+    onViewportResize?: () => void;
     /** Real terrain-defense percentage the currently selected unit would have at (x, y), for the hover status line -- `undefined`/`null` when nothing is selected or the hex is off-board. */
     hoverDefensePercent?: (x: number, y: number) => number | null;
   } = $props();
@@ -573,6 +576,7 @@
         app?.resize();
         const view = currentView();
         if (view) applyView(view);
+        onViewportResize?.();
       });
       resizeObserver.observe(host);
       disconnectResize = () => resizeObserver.disconnect();
@@ -1020,8 +1024,8 @@
 </script>
 
 <div class="board-view" data-board-ready={board ? 'true' : 'false'}>
-  <p class="status">
-    {status ?? readyLabel} {tx('(drag or scroll to pan, Ctrl+scroll to zoom)')}
+  <p class="status" class:busy={status !== null}>
+    {status ?? readyLabel} <span class="hint">{tx('(drag or scroll to pan, Ctrl+scroll to zoom)')}</span>
     {#if hoveredHex}
       &middot; {tx('Hex')}: ({hoveredHex.x}, {hoveredHex.y})
       {#if hoverDefensePercent}
@@ -1055,9 +1059,11 @@
     min-height: 0;
     touch-action: none;
   }
-  /* Phase 23, a phone: the line is about the mouse (there is no hover under a finger), and the infobox shows the tapped hex's terrain. */
+  /* Phase 23, a phone: the line is about the mouse (there is no hover under a finger), and the infobox shows the tapped hex's terrain.
+     While the scenario loads (or failed to), it stays, without the mouse advice: it is the only sign of progress. */
   @media (max-width: 720px), (max-height: 500px) {
-    .status {
+    .status:not(.busy),
+    .hint {
       display: none;
     }
   }

@@ -301,6 +301,17 @@
     .side-panel.collapsed > :not(.head) {
       display: none;
     }
+    /* No gap between the header's cells: the body scrolling under them would show through it. */
+    .side-panel {
+      column-gap: 0;
+    }
+    .side-panel > .status.head {
+      padding-right: 0.6rem;
+    }
+    /* While a [message] waits for a tap anywhere, the switch still works (it sits above the message's click catcher). */
+    :global(:root:has(.wml-message-open)) .side-panel > .collapse-toggle.head {
+      z-index: 150;
+    }
   }
   @media (max-width: 720px) {
     .side-panel {

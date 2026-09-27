@@ -95,6 +95,14 @@ const shown = (selector) =>
 
 try {
   await openScenario(page, base, 'synthetic_keyboard');
+  // While the map loads, its progress line stays (only the mouse advice is dropped on a phone).
+  const loadingShown = await page
+    .waitForFunction(() => {
+      const el = document.querySelector('.board-view .status.busy');
+      return !!el && getComputedStyle(el).display !== 'none' && /loading/i.test(el.textContent ?? '');
+    }, null, { timeout: 30000 })
+    .then(() => true, () => false);
+  check('while the scenario loads, "loading scenario..." is shown', loadingShown);
   await waitBoardReady(page);
 
   // --- story: a tap on Skip ---
@@ -105,6 +113,17 @@ try {
 
   // --- the prompt: tapping an option answers it ---
   await page.waitForSelector('.window[role="dialog"] .option', { timeout: 15000 });
+  // The collapse switches work while a message waits, and the message follows the board's new size.
+  const messageBox = () => page.$eval('.window[role="dialog"]', (w) => w.getBoundingClientRect().height);
+  const boardHeight = () => page.$eval('.canvas-host', (h) => h.getBoundingClientRect().height);
+  await tap('[data-testid="infobox-toggle"]', 800);
+  check('during a message, the infobox switch collapses the infobox', await page.$eval('[data-testid="side-panel"]', (p) => p.classList.contains('collapsed')));
+  check('...without answering the message', (await page.$('.window[role="dialog"] .option')) !== null);
+  check('...and the message covers the grown board', Math.abs((await messageBox()) - (await boardHeight())) < 2, `${await messageBox()} vs ${await boardHeight()}`);
+  await tap('[data-testid="top-bar-toggle"]', 800);
+  check('during a message, the top bar switch works too', await page.$eval('.top-bar', (b) => b.classList.contains('collapsed')) && (await page.$('.window[role="dialog"] .option')) !== null);
+  await tap('[data-testid="top-bar-toggle"]', 400);
+  await tap('[data-testid="infobox-toggle"]', 800);
   await tap('.window .option >> nth=1', 1000);
   check('tapping an option answers the prompt', (await page.$('.window[role="dialog"]')) === null);
 
@@ -120,6 +139,7 @@ try {
   const stats = await page.$$eval('.top-bar .stat', (els) => els.map((e) => { const r = e.getBoundingClientRect(); return r.right <= innerWidth && r.width > 0; }));
   check('every status figure in the top bar is on screen', stats.length >= 6 && stats.every(Boolean), `${stats.filter(Boolean).length}/${stats.length}`);
   check('End Turn is on screen without scrolling', await visible('.turn-actions button'));
+  check('no gap between the infobox header\'s cells for the body to show through', await page.$eval('[data-testid="side-panel"]', (p) => getComputedStyle(p).columnGap === '0px'));
   check('with nothing selected, the infobox shows the minimap', await shown('.top-slot canvas'));
 
   // --- select, then move with a confirming tap ---

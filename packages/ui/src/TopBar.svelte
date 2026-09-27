@@ -316,6 +316,11 @@
     color: inherit;
     cursor: pointer;
   }
+  /* While a [message] waits for a tap anywhere, the switch still works (it sits above the message's click catcher). */
+  :global(:root:has(.wml-message-open)) .collapse-toggle {
+    position: relative;
+    z-index: 150;
+  }
   /* Phase 23, a finger: menus and their entries are at least 44 px tall. */
   @media (pointer: coarse) {
     .menu-button,

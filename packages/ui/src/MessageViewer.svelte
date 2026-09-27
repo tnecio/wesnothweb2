@@ -34,6 +34,7 @@
     onAnswer,
     assets = null,
     getMapRect,
+    layoutTick = 0,
   }: {
     interaction: MessageInteraction;
     /** Hands the player's answer back to the suspended event. */
@@ -41,6 +42,8 @@
     assets?: StoryAssets | null;
     /** The board's on-screen rectangle; the dialog covers it. Falls back to the full window. */
     getMapRect?: () => DOMRect | null;
+    /** Changes whenever the board's rectangle may have changed without a window resize (Phase 23: the top bar or infobox collapsed), so the dialog re-measures it. */
+    layoutTick?: number;
   } = $props();
 
   const ENGINE_IMAGES = '/game-images-engine';
@@ -83,6 +86,7 @@
     // Re-measured when the window resizes or turns (the board's rect moves with it).
     void innerWidth;
     void innerHeight;
+    void layoutTick;
     const rect = getMapRect?.();
     // Phase 23, a phone: over the board only, so the panel sits at the board's foot and leaves the
     // infobox under it readable (upstream's message fills its map area the same way).
@@ -158,7 +162,7 @@
 
 {#if msg && layout}
   <!-- svelte-ignore a11y_click_events_have_key_events -- keys are handled window-wide above -->
-  <div class="dismiss" role="presentation" onclick={() => !hasInput && confirm()}>
+  <div class="dismiss wml-message-open" role="presentation" onclick={() => !hasInput && confirm()}>
     <div
       class="window"
       role="dialog"

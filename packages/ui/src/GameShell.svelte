@@ -264,6 +264,8 @@
   });
   /** Bound `GameBoardView` instance, so `handleConfirmAttack`/`handleHexClick` can await its imperative `playAnimationSequence` before applying a resolved attack's/move's final state -- see that method's own doc comment. Reassigned across a scenario transition (the `{#key}` block around `<GameBoardView>` remounts it), so `$state`, not a plain `let`, same reasoning as `board` in `GameBoardView.svelte` itself. */
   let boardView: GameBoardView | undefined = $state();
+  /** Bumped when the board's area changes size, so a message over it re-measures (see `MessageViewer`'s `layoutTick`). */
+  let boardResizeTick = $state(0);
   /**
    * `$state.raw`, not plain `$state`/a bare `let`: `GameSession` is a
    * deliberately rune-free plain-TS class (see `gameSession.ts`'s own doc
@@ -2802,6 +2804,7 @@
       <GameBoardView
         bind:this={boardView}
         snapshot={activeSnapshot}
+        onViewportResize={() => boardResizeTick++}
         onSound={(files) => audio.playSound({ files, repeats: 0, group: 'sound' })}
         {units}
         {selectedHex}
@@ -2889,6 +2892,7 @@
       onAnswer={answerMessage}
       assets={storyAssets}
       getMapRect={() => boardView?.viewportRect() ?? null}
+      layoutTick={boardResizeTick}
     />
   {/if}
 
