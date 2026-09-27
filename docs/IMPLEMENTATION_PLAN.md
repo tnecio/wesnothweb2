@@ -1607,8 +1607,10 @@ What was delivered, and where it differs from the sketch above:
 
 ## Phase 22 — Advanced map rendering: minimap & camera
 
-**Status: not started.** Remainder of the old Phase 16 after labels/
-items (Phase 18) and camera scripting (Phase 17) moved out.
+**Status: planned 2026-09-27** (`docs/PHASE22_PLAN.md`). Remainder of the
+old Phase 16 after labels/items (Phase 18) and camera scripting (Phase 17)
+moved out. Terrain-help data moved to Phase 24 (user's call, 2026-09-27):
+it has no consumer until the help browser exists.
 
 - Minimap: downscaled terrain-colour map with unit dots and village-flag
   markers, click/drag-to-navigate, viewport rectangle, reflecting only the
@@ -1616,8 +1618,7 @@ items (Phase 18) and camera scripting (Phase 17) moved out.
 - Camera: smooth scroll-to on selection/next-unit, follow-unit-on-move,
   edge-of-screen panning, keyboard panning, zoom levels matching
   upstream's, map-bounds clamping.
-- Grid overlay toggle, show-enemy-moves overlay, terrain-help data for
-  Phase 24's help browser.
+- Grid overlay toggle, show-enemy-moves overlay.
 - **Milestone**: the minimap accurately reflects the live board including
   village ownership and fog, and clicking it recentres the camera.
 
@@ -1648,7 +1649,7 @@ chasing a moving one.
   selector), advanced — persisted.
 - Unit list dialog (sortable, click-to-centre), in-game help/encyclopedia
   (`[topic]`/`[section]`/`[toplevel]`/`[open_help]`; unit/terrain/ability
-  pages), statistics dialog (feeds off Phase 25's statistics), advancement-choice
+  pages, including the terrain-help data moved here from Phase 22), statistics dialog (feeds off Phase 25's statistics), advancement-choice
   dialog polish (preview the resulting unit).
 - **Milestone**: the help browser opens a real unit's stat/ability page,
   animation speed changes take effect immediately, and a rebound hotkey
