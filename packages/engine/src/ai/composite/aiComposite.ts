@@ -69,9 +69,10 @@ export class AiComposite {
     }
   }
 
-  /** Mirrors `ai_composite::new_turn`: invalidates cached move maps (this port doesn't cache resolved aspects or keeps/defensive-position data yet -- see `composite/aspect.ts`'s own module doc comment on why that's a documented, not silent, simplification). */
+  /** Mirrors `ai_composite::new_turn`: invalidates cached move maps and defensive positions (this port doesn't cache resolved aspects or keeps yet -- see `composite/aspect.ts`'s own module doc comment on why that's a documented, not silent, simplification). */
   newTurn(): void {
     this.ctx.invalidateMoveMaps();
+    this.ctx.invalidateDefensivePositionCache();
     this.ctx.clearRecentAttacks();
   }
 }

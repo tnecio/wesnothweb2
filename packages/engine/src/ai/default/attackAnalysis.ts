@@ -30,7 +30,6 @@ import { Combatant, simulateCombat } from '../../actions/attackPrediction.js';
 import { isBackstabActive } from '../../actions/combat.js';
 import { computeLeadershipBonus, computeResistanceModifier } from '../../actions/abilityEffects.js';
 import { POISON_AMOUNT, killXp, combatXp } from '../../actions/gameConfig.js';
-import { bestDefensivePosition } from '../powerProjection.js';
 import type { MoveMap } from '../moveMaps.js';
 import type { AiContext } from '../context.js';
 
@@ -163,7 +162,7 @@ export class AttackAnalysis {
       if (!att) continue;
       const cost = att.type.cost;
       costSum += cost;
-      const pos = bestDefensivePosition(board, m.from, srcDst, dstSrc, enemyDstSrc, ppCtx);
+      const pos = ctx.bestDefensivePosition(m.from, srcDst, dstSrc, enemyDstSrc);
       this.alternativeTerrainQuality += cost * pos.chanceToHit;
     }
     this.alternativeTerrainQuality /= costSum * 100;

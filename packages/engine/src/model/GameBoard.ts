@@ -97,14 +97,19 @@ export class GameBoard {
 
   addUnit(unit: Unit): void {
     this.unitsByLocation.set(unit.location.key(), unit);
+    this.unitsVersion++;
   }
 
   removeUnitAt(loc: Location): Unit | undefined {
     const key = loc.key();
     const unit = this.unitsByLocation.get(key);
     this.unitsByLocation.delete(key);
+    this.unitsVersion++;
     return unit;
   }
+
+  /** Bumped whenever a unit is placed, moved or removed, for caches over where units stand. */
+  unitsVersion = 0;
 
   /** Mirrors `game_board::find_unit`/`unit_map::find(loc)`: no visibility filtering. */
   unitAt(loc: Location): Unit | undefined {
@@ -125,6 +130,11 @@ export class GameBoard {
 
   allUnits(): Unit[] {
     return [...this.unitsByLocation.values()];
+  }
+
+  /** Every unit on the board, without copying (the board must not change while iterating). */
+  unitsIterable(): IterableIterator<Unit> {
+    return this.unitsByLocation.values();
   }
 
   unitsForSide(side: number): Unit[] {

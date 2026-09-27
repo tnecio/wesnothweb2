@@ -443,6 +443,18 @@ export class TerrainTypeData {
    * pure-overlay terrain_type (e.g. `Dd` + `^Vda` -> `Dd^Vda`).
    */
   findOrCreate(code: TerrainCode): TerrainType | undefined {
+    // The map shares one code object per terrain, and the table only ever gains combinations, so each
+    // code object resolves once (the AI asks this of every hex it rates).
+    const known = this.byObject.get(code);
+    if (known !== undefined) return known ?? undefined;
+    const found = this.resolve(code);
+    this.byObject.set(code, found ?? null);
+    return found;
+  }
+
+  private readonly byObject = new WeakMap<TerrainCode, TerrainType | null>();
+
+  private resolve(code: TerrainCode): TerrainType | undefined {
     const exact = this.byCode.get(code.key());
     if (exact) return exact;
 

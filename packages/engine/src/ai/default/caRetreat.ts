@@ -15,7 +15,6 @@ import { findPath } from '../../pathfind/pathfind.js';
 import { locationMatchesFilterOnBoard } from '../../events/filter.js';
 import { CandidateAction } from '../composite/rca.js';
 import { calculateMoves, type MoveMap } from '../moveMaps.js';
-import { bestDefensivePosition } from '../powerProjection.js';
 
 export class RetreatCandidateAction extends CandidateAction {
   private pending: { unit: Unit; dest: Location } | undefined;
@@ -25,8 +24,7 @@ export class RetreatCandidateAction extends CandidateAction {
     if (caution <= 0) return false;
     const board = this.ctx.board;
     const enemyDstSrc = this.ctx.getEnemyDstSrc();
-    const ppCtx = { turnNumber: this.ctx.turnNumber(), lawfulBonusAt: this.ctx.host.lawfulBonusAt, maxLiminalBonus: this.ctx.host.maxLiminalBonus };
-    const pos = bestDefensivePosition(board, unit.location, fullSrcDst, fullDstSrc, enemyDstSrc, ppCtx);
+    const pos = this.ctx.bestDefensivePosition(unit.location, fullSrcDst, fullDstSrc, enemyDstSrc);
 
     const optimalTerrain = pos.chanceToHit / 100;
     const proposedTerrain = unit.defenseModifier(board.map.getTerrain(unit.location)) / 100;

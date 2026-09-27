@@ -299,13 +299,23 @@ export class MoveType {
   }
 
   defenseModifier(terrain: TerrainCode): number {
-    // Real, reported bug (bugs6.md): with one plain table, mounted units'
-    // `forest=-70` cap clamped to 0 -- 100% defense in every forest.
-    return Math.max(
-      resolveValue(terrain, this.defenseTable, DEFENSE_MIN_PARAMS, this.terrainData, undefined),
-      resolveValue(terrain, this.defenseTable, DEFENSE_MAX_PARAMS, this.terrainData, undefined),
-    );
+    // A movetype never changes (effects build a new one), so each terrain resolves once. The AI asks this
+    // for every candidate hex of every unit (`power_projection`), which made the resolution its hot spot.
+    let value = this.defenseCache.get(terrain);
+    if (value === undefined) {
+      // Real, reported bug (bugs6.md): with one plain table, mounted units'
+      // `forest=-70` cap clamped to 0 -- 100% defense in every forest.
+      value = Math.max(
+        resolveValue(terrain, this.defenseTable, DEFENSE_MIN_PARAMS, this.terrainData, undefined),
+        resolveValue(terrain, this.defenseTable, DEFENSE_MAX_PARAMS, this.terrainData, undefined),
+      );
+      this.defenseCache.set(terrain, value);
+    }
+    return value;
   }
+
+  /** `defenseModifier` per terrain code object (the map shares one object per code). */
+  private readonly defenseCache = new Map<TerrainCode, number>();
 
   resistanceAgainst(damageType: string): number {
     return this.resistances.resistanceAgainst(damageType);

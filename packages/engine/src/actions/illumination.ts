@@ -25,6 +25,8 @@
 import { distanceBetween, type Location } from '../model/Location.js';
 import type { GameBoard } from '../model/GameBoard.js';
 import type { Schedule, TimeOfDayEntry } from '../model/Schedule.js';
+import type { RegistryEntry } from '../model/UnitType.js';
+import { currentAbilitiesEpoch, type Unit } from '../model/Unit.js';
 
 /** Mirrors `utils::bounded_add`: `base + increment`, clamped so it never crosses `maxSum` (if increment >= 0) or `minSum` (if increment < 0) -- but never pulled back past `base` itself either. */
 function boundedAdd(base: number, increment: number, maxSum: number, minSum: number): number {
@@ -36,6 +38,63 @@ interface IlluminatesContribution {
   readonly mod: number;
   readonly max: number;
   readonly min: number;
+}
+
+interface IlluminatesSource {
+  readonly radius: number;
+  readonly contribution: IlluminatesContribution;
+}
+
+/**
+ * The `[illuminates]` abilities in a unit's ability list, parsed once per list. Effects replace a unit's
+ * `abilities` array rather than editing it, so the array itself is the cache key. This runs for every hex
+ * the AI rates (`power_projection`), where re-reading every unit's ability configs dominated its time.
+ */
+const illuminatesCache = new WeakMap<readonly RegistryEntry[], readonly IlluminatesSource[]>();
+
+interface Illuminator {
+  readonly unit: Unit;
+  readonly sources: readonly IlluminatesSource[];
+}
+
+/**
+ * The units on `board` with an `[illuminates]` ability (usually none), rebuilt only when a unit was placed,
+ * moved or removed, or any unit's abilities changed. The AI asks for the lawful bonus of every hex it rates,
+ * and walking every unit's abilities each time was most of an AI turn on a big map.
+ */
+const illuminatorsCache = new WeakMap<GameBoard, { version: number; epoch: number; list: readonly Illuminator[] }>();
+
+function illuminatorsOn(board: GameBoard): readonly Illuminator[] {
+  const cached = illuminatorsCache.get(board);
+  const epoch = currentAbilitiesEpoch();
+  if (cached && cached.version === board.unitsVersion && cached.epoch === epoch) return cached.list;
+  const list: Illuminator[] = [];
+  for (const unit of board.unitsIterable()) {
+    const sources = illuminatesOf(unit.abilities);
+    if (sources.length > 0) list.push({ unit, sources });
+  }
+  illuminatorsCache.set(board, { version: board.unitsVersion, epoch, list });
+  return list;
+}
+
+function illuminatesOf(abilities: readonly RegistryEntry[]): readonly IlluminatesSource[] {
+  let sources = illuminatesCache.get(abilities);
+  if (!sources) {
+    const list: IlluminatesSource[] = [];
+    for (const entry of abilities) {
+      if (entry.tag !== 'illuminates') continue;
+      if (!entry.config.getBoolean('affect_self', true)) continue; // every real definition is self-centered; nothing else to check here.
+      const radiusRaw = entry.config.getString('radius', '1');
+      const radius = radiusRaw === 'all_map' ? Infinity : (entry.config.getNumber('radius', 1) ?? 1);
+      const mod = entry.config.getNumber('value', 0);
+      const max = entry.config.hasAttribute('max_value') ? entry.config.getNumber('max_value') : Number.POSITIVE_INFINITY;
+      const min = entry.config.hasAttribute('min_value') ? entry.config.getNumber('min_value') : Number.NEGATIVE_INFINITY;
+      list.push({ radius, contribution: { mod, max, min } });
+    }
+    sources = list;
+    illuminatesCache.set(abilities, sources);
+  }
+  return sources;
 }
 
 /**
@@ -50,19 +109,12 @@ export function illuminatedLawfulBonus(board: GameBoard, loc: Location, baseLawf
   let mostAdd = 0;
   let mostSub = 0;
 
-  for (const unit of board.allUnits()) {
+  for (const { unit, sources } of illuminatorsOn(board)) {
     if (unit.incapacitated) continue;
-    for (const entry of unit.abilities) {
-      if (entry.tag !== 'illuminates') continue;
-      if (!entry.config.getBoolean('affect_self', true)) continue; // every real definition is self-centered; nothing else to check here.
-      const radiusRaw = entry.config.getString('radius', '1');
-      const radius = radiusRaw === 'all_map' ? Infinity : (entry.config.getNumber('radius', 1) ?? 1);
+    for (const { radius, contribution } of sources) {
       if (distanceBetween(unit.location, loc) > radius) continue;
-
-      const mod = entry.config.getNumber('value', 0);
-      const max = entry.config.hasAttribute('max_value') ? entry.config.getNumber('max_value') : Number.POSITIVE_INFINITY;
-      const min = entry.config.hasAttribute('min_value') ? entry.config.getNumber('min_value') : Number.NEGATIVE_INFINITY;
-      contributions.push({ mod, max, min });
+      contributions.push(contribution);
+      const mod = contribution.mod;
       if (mod > mostAdd) mostAdd = mod;
       else if (mod < mostSub) mostSub = mod;
     }

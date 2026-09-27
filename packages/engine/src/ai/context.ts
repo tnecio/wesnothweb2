@@ -30,7 +30,7 @@ import type { UnitType } from '../model/UnitType.js';
 import type { AiHost, AiAction } from './types.js';
 import { isAspectActive, type CompositeAspect } from './composite/aspect.js';
 import { calculateMoves, type MoveMap } from './moveMaps.js';
-import { powerProjection as powerProjectionFn } from './powerProjection.js';
+import { powerProjection as powerProjectionFn, bestDefensivePosition as bestDefensivePositionFn, type DefensivePosition } from './powerProjection.js';
 import { nearestKeep as nearestKeepFn, suitableKeep as suitableKeepFn } from './keeps.js';
 import { analyzeTargets } from './default/aspectAttacks.js';
 import type { AttackAnalysis } from './default/attackAnalysis.js';
@@ -176,6 +176,31 @@ export class AiContext {
   suitableKeep(leaderLoc: Location, leaderDestinations: DestVect): Location | undefined {
     return suitableKeepFn(this.host.board, leaderLoc, leaderDestinations);
   }
+
+  /**
+   * `readonly_context_impl::best_defensive_position`, with its `defensive_position_cache_`: the first answer
+   * for a hex stands until `invalidateDefensivePositionCache` (once per turn, `ai_composite::new_turn`), even
+   * across the moves made meanwhile, exactly as upstream. Attack analysis asks this for every attacker of every
+   * attack combination, so without the cache it was most of an AI turn.
+   */
+  bestDefensivePosition(loc: Location, srcDst: MoveMap, dstSrc: MoveMap, enemyDstSrc: MoveMap): DefensivePosition {
+    const ppCtx = { turnNumber: this.turnNumber(), lawfulBonusAt: this.host.lawfulBonusAt, maxLiminalBonus: this.host.maxLiminalBonus };
+    if (!this.host.board.unitAt(loc)) return bestDefensivePositionFn(this.host.board, loc, srcDst, dstSrc, enemyDstSrc, ppCtx);
+    const key = loc.key();
+    let pos = this.defensivePositionCache.get(key);
+    if (!pos) {
+      pos = bestDefensivePositionFn(this.host.board, loc, srcDst, dstSrc, enemyDstSrc, ppCtx);
+      this.defensivePositionCache.set(key, pos);
+    }
+    return pos;
+  }
+
+  /** `invalidate_defensive_position_cache`. */
+  invalidateDefensivePositionCache(): void {
+    this.defensivePositionCache.clear();
+  }
+
+  private readonly defensivePositionCache = new Map<string, DefensivePosition>();
 
   powerProjection(loc: Location, dstSrc: MoveMap): number {
     return powerProjectionFn(this.host.board, loc, dstSrc, {

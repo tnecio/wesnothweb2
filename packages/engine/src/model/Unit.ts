@@ -83,6 +83,13 @@ export interface UnitOptions {
   effectEnv?: EffectEnv;
 }
 
+let abilitiesEpoch = 0;
+
+/** Counts every change to any unit's ability list, so a cache over abilities (`illumination.ts`) knows when it is stale. */
+export function currentAbilitiesEpoch(): number {
+  return abilitiesEpoch;
+}
+
 /**
  * A live unit instance on (or off, e.g. on a recall list) the board.
  * Mirrors `unit`'s non-display state.
@@ -137,8 +144,15 @@ export class Unit {
   variation: string;
   /** Movement costs, defense and resistances, after `[effect]`s. */
   moveType: MoveType;
-  /** Abilities, after `new_ability`/`remove_ability` effects. */
-  abilities: readonly RegistryEntry[];
+  /** Abilities, after `new_ability`/`remove_ability` effects. Replaced, never edited in place: see `abilitiesEpoch`. */
+  get abilities(): readonly RegistryEntry[] {
+    return this.abilityList;
+  }
+  set abilities(list: readonly RegistryEntry[]) {
+    this.abilityList = list;
+    abilitiesEpoch++;
+  }
+  private abilityList: readonly RegistryEntry[] = [];
   alignment: Alignment;
   /** `unit::emit_zoc_`. */
   emitZoc: boolean;

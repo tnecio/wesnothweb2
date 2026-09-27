@@ -83,9 +83,8 @@ export interface DefensivePosition {
  * breaking ties by the highest (support - vulnerability). Used by
  * `attack_analysis::analyze`'s `alternative_terrain_quality` (Phase 29 S2)
  * to compare an attack's actual terrain against "what if this unit just
- * repositioned instead". Not cached (documented simplification, matches
- * `composite/aspect.ts`'s own note on why this port skips upstream's
- * invalidate-on-gamestate-change caching).
+ * repositioned instead". Uncached here; the AI asks through
+ * `AiContext.bestDefensivePosition`, which keeps upstream's per-turn cache.
  */
 export function bestDefensivePosition(
   board: GameBoard,
