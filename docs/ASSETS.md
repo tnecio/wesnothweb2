@@ -6,7 +6,7 @@ this checkout:
 - file sizes on disk;
 - JSON analysis of every snapshot and atlas manifest;
 - a Playwright trace of a cold session against the dev server: the title
-  screen, Liberty 1, Liberty 2, Dead Water 1.
+  screen, Liberty 1, Liberty 2.
 
 The dev server doesn't compress, so the trace shows raw bytes; compressed
 sizes are given where they matter.
