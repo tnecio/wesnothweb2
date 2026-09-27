@@ -1616,7 +1616,7 @@ it has no consumer until the help browser exists.
   markers, click/drag-to-navigate, viewport rectangle, reflecting only the
   viewing side's knowledge under Phase 11's fog/shroud.
 - Camera: smooth scroll-to on selection/next-unit, follow-unit-on-move,
-  edge-of-screen panning, keyboard panning, zoom levels matching
+  edge-of-screen panning (arrow keys stay on the hex cursor), zoom levels matching
   upstream's, map-bounds clamping.
 - Grid overlay toggle, show-enemy-moves overlay.
 - **Milestone**: the minimap accurately reflects the live board including
