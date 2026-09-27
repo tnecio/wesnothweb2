@@ -535,6 +535,16 @@ export class SnapshotBoard {
    */
   private readonly terrainForegroundLayer = new PIXI.Container();
   /**
+   * Phase 22: the grid overlay (`prefs::grid`), upstream's two images per
+   * hex on their own drawing layers: `grid_top` just over the terrain,
+   * `grid_bottom` over the terrain's foreground pieces. Both lie under the
+   * time-of-day tint, as upstream draws them `TOD_COLORED`. Built on first
+   * use, then only shown or hidden.
+   */
+  private readonly gridTopLayer = new PIXI.Container();
+  private readonly gridBottomLayer = new PIXI.Container();
+  private gridBuilt: Promise<void> | null = null;
+  /**
    * Holds ONLY the selected-unit ring, added to the stage AFTER
    * `unitLayer` -- see `setHighlights`' doc comment on why this is a
    * separate layer from `highlightLayer` (which stays under `unitLayer`,
@@ -645,11 +655,13 @@ export class SnapshotBoard {
     this.teamColor = new Map(snapshot.teams.map((t) => [t.side, t.color]));
     this.stage.addChild(
       this.terrainLayer,
+      this.gridTopLayer,
       this.itemLayer,
       this.villageLayer,
       this.highlightLayer,
       this.unitLayer,
       this.terrainForegroundLayer,
+      this.gridBottomLayer,
       this.moveInfoLayer,
       this.hoverLayer,
       this.fogShroudLayer,
@@ -661,6 +673,10 @@ export class SnapshotBoard {
       this.floatingLayer,
     );
     this.animationOverlayLayer.eventMode = 'none';
+    this.gridTopLayer.eventMode = 'none';
+    this.gridBottomLayer.eventMode = 'none';
+    this.gridTopLayer.visible = false;
+    this.gridBottomLayer.visible = false;
     this.itemLayer.eventMode = 'none';
     this.itemHaloLayer.eventMode = 'none';
     this.labelLayer.eventMode = 'none';
@@ -679,6 +695,37 @@ export class SnapshotBoard {
     this.todTintNegative.blendMode = 'subtract';
     this.todTintLayer.addChild(this.todTintPositive, this.todTintNegative);
     this.todTintLayer.eventMode = 'none';
+  }
+
+  /**
+   * Phase 22: shows or hides the grid overlay (`togglegrid`). Upstream
+   * draws it over every hex it draws, the half-hex border included.
+   */
+  async setGridVisible(visible: boolean): Promise<void> {
+    this.gridTopLayer.visible = visible;
+    this.gridBottomLayer.visible = visible;
+    if (!visible) return;
+    this.gridBuilt ??= (async () => {
+      const [top, bottom] = await Promise.all([ImageCache.resolve('terrain/grid-top.png'), ImageCache.resolve('terrain/grid-bottom.png')]);
+      for (let x = -1; x <= this.snapshot.map.width; x++) {
+        for (let y = -1; y <= this.snapshot.map.height; y++) {
+          const { x: cx, y: cy } = hexToPixel(toHexCoord(x, y));
+          for (const [texture, layer] of [[top, this.gridTopLayer], [bottom, this.gridBottomLayer]] as const) {
+            if (!texture) continue;
+            const sprite = new PIXI.Sprite(texture);
+            sprite.anchor.set(0.5);
+            sprite.position.set(cx, cy);
+            layer.addChild(sprite);
+          }
+        }
+      }
+    })();
+    await this.gridBuilt;
+  }
+
+  /** Phase 22, for checks: whether the grid overlay is showing, and how many hexes it covers. */
+  gridState(): { visible: boolean; hexes: number } {
+    return { visible: this.gridTopLayer.visible, hexes: this.gridTopLayer.children.length };
   }
 
   /**

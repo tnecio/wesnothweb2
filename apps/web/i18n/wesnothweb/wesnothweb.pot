@@ -18,7 +18,7 @@ msgstr ""
 msgid "$attacker could attack $defender -- review the prediction and confirm."
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:221
+#: packages/ui/src/GameBoardView.svelte:231
 msgid "$name -- $units units, $width x $height hexes"
 msgstr ""
 
@@ -90,7 +90,7 @@ msgstr ""
 msgid "$unit moved."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:574
+#: packages/ui/src/GameShell.svelte:597
 msgid "$unit selected."
 msgstr ""
 
@@ -114,7 +114,7 @@ msgstr ""
 msgid "$unit's poison is cured."
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:847
+#: packages/ui/src/GameBoardView.svelte:919
 msgid "(drag or scroll to pan, Ctrl+scroll to zoom)"
 msgstr ""
 
@@ -134,7 +134,7 @@ msgstr ""
 msgid "All"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2883
+#: packages/ui/src/GameShell.svelte:2918
 msgid "Are you sure you want to clear map labels?"
 msgstr ""
 
@@ -182,15 +182,15 @@ msgstr ""
 msgid "Choose which unit to advance to:"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:573
+#: packages/ui/src/GameShell.svelte:596
 msgid "Click a free castle tile to place your recalled unit."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:572
+#: packages/ui/src/GameShell.svelte:595
 msgid "Click a free castle tile to place your recruit."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:496 packages/ui/src/GameShell.svelte:575
+#: packages/ui/src/GameShell.svelte:519 packages/ui/src/GameShell.svelte:598
 msgid "Click one of your units to select it."
 msgstr ""
 
@@ -198,7 +198,7 @@ msgstr ""
 msgid "Click one of your units to select it. The hexes it can move to are brightened and show its defense there, from red (poor) through yellow to green (good); adjacent enemies it can attack are marked red."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2981
+#: packages/ui/src/GameShell.svelte:3016
 msgid "Continue playing"
 msgstr ""
 
@@ -206,19 +206,19 @@ msgstr ""
 msgid "Continue to next scenario"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2614
+#: packages/ui/src/GameShell.svelte:2647
 msgid "Cursor Down"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2611
+#: packages/ui/src/GameShell.svelte:2644
 msgid "Cursor Left"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2612
+#: packages/ui/src/GameShell.svelte:2645
 msgid "Cursor Right"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2613
+#: packages/ui/src/GameShell.svelte:2646
 msgid "Cursor Up"
 msgstr ""
 
@@ -226,7 +226,7 @@ msgstr ""
 msgid "Debug campaigns"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:569 packages/ui/src/gameSession.ts:4426
+#: packages/ui/src/GameShell.svelte:592 packages/ui/src/gameSession.ts:4426
 msgid "Defeat."
 msgstr ""
 
@@ -246,7 +246,7 @@ msgstr ""
 msgid "Delete failed:"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2627
+#: packages/ui/src/GameShell.svelte:2660
 msgid "Deselect"
 msgstr ""
 
@@ -278,11 +278,11 @@ msgstr ""
 msgid "Font size"
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:858
+#: packages/ui/src/GameBoardView.svelte:930
 msgid "Game board"
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:849
+#: packages/ui/src/GameBoardView.svelte:921
 msgid "Hex"
 msgstr ""
 
@@ -294,7 +294,7 @@ msgstr ""
 msgid "Income next turn"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2440 packages/ui/src/LabelSettingsDialog.svelte:30
+#: packages/ui/src/GameShell.svelte:2471 packages/ui/src/LabelSettingsDialog.svelte:30
 msgid "Label Settings"
 msgstr ""
 
@@ -306,7 +306,7 @@ msgstr ""
 msgid "Leadership: +$bonus|% damage"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2182
+#: packages/ui/src/GameShell.svelte:2210
 msgid "Loaded $name (turn $turn)."
 msgstr ""
 
@@ -334,11 +334,11 @@ msgstr ""
 msgid "Message"
 msgstr ""
 
-#: packages/ui/src/Minimap.svelte:203
+#: packages/ui/src/Minimap.svelte:234
 msgid "Minimap"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2481
+#: packages/ui/src/GameShell.svelte:2512
 msgid "Move Here"
 msgstr ""
 
@@ -358,7 +358,7 @@ msgstr ""
 msgid "No counter-attack"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2259
+#: packages/ui/src/GameShell.svelte:2287
 msgid "No save found."
 msgstr ""
 
@@ -402,7 +402,7 @@ msgstr ""
 msgid "Overwrite"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2976
+#: packages/ui/src/GameShell.svelte:3011
 msgid "Pause"
 msgstr ""
 
@@ -414,11 +414,11 @@ msgstr ""
 msgid "Pause the music while the window is hidden"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2419
+#: packages/ui/src/GameShell.svelte:2450
 msgid "Place Label (Team)"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2162
+#: packages/ui/src/GameShell.svelte:2190
 msgid "Playing on from the end of the replay."
 msgstr ""
 
@@ -442,27 +442,27 @@ msgstr ""
 msgid "Rename failed:"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2973
+#: packages/ui/src/GameShell.svelte:3008
 msgid "Replay controls"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2137
+#: packages/ui/src/GameShell.svelte:2165
 msgid "Replay finished."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2072 packages/ui/src/GameShell.svelte:2098
+#: packages/ui/src/GameShell.svelte:2100 packages/ui/src/GameShell.svelte:2126
 msgid "Replay of $name: $total actions."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2136
+#: packages/ui/src/GameShell.svelte:2164
 msgid "Replay out of sync at action $index ($command): $message"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2144
+#: packages/ui/src/GameShell.svelte:2172
 msgid "Replay paused."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2137
+#: packages/ui/src/GameShell.svelte:2165
 msgid "Replay: action $index of $total."
 msgstr ""
 
@@ -470,7 +470,7 @@ msgstr ""
 msgid "Resistance to $type ×$factor"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2978
+#: packages/ui/src/GameShell.svelte:3013
 msgid "Restart"
 msgstr ""
 
@@ -478,7 +478,7 @@ msgstr ""
 msgid "Resume scrolling"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:571
+#: packages/ui/src/GameShell.svelte:594
 msgid "Review the attack prediction, then confirm or cancel."
 msgstr ""
 
@@ -486,11 +486,11 @@ msgstr ""
 msgid "Save as"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2617
+#: packages/ui/src/GameShell.svelte:2650
 msgid "Select / Move / Attack"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2476
+#: packages/ui/src/GameShell.svelte:2507
 msgid "Select Unit"
 msgstr ""
 
@@ -498,7 +498,7 @@ msgstr ""
 msgid "Select a campaign to see its description."
 msgstr ""
 
-#: packages/ui/src/PreferencesDialog.svelte:74
+#: packages/ui/src/PreferencesDialog.svelte:97
 msgid "Show the tip of the day"
 msgstr ""
 
@@ -522,7 +522,7 @@ msgstr ""
 msgid "Story"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2009
+#: packages/ui/src/GameShell.svelte:2037
 msgid "That save no longer exists."
 msgstr ""
 
@@ -570,7 +570,7 @@ msgstr ""
 msgid "Undid $action."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2479
+#: packages/ui/src/GameShell.svelte:2510
 msgid "Unit Description"
 msgstr ""
 
@@ -578,7 +578,7 @@ msgstr ""
 msgid "Units show an orb that says whether they can still act. Pick colours you can tell apart."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2378 packages/ui/src/TopBar.svelte:116 packages/ui/src/TopBar.svelte:116
+#: packages/ui/src/GameShell.svelte:2406 packages/ui/src/TopBar.svelte:116 packages/ui/src/TopBar.svelte:116
 msgid "Unmute"
 msgstr ""
 
@@ -598,7 +598,7 @@ msgstr ""
 msgid "User interface"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:569 packages/ui/src/gameSession.ts:4426
+#: packages/ui/src/GameShell.svelte:592 packages/ui/src/gameSession.ts:4426
 msgid "Victory!"
 msgstr ""
 
@@ -634,11 +634,11 @@ msgstr ""
 msgid "dismissal of $unit"
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:427
+#: packages/ui/src/GameBoardView.svelte:489
 msgid "failed to load: $error"
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:193
+#: packages/ui/src/GameBoardView.svelte:203
 msgid "loading scenario..."
 msgstr ""
 
@@ -646,7 +646,7 @@ msgstr ""
 msgid "magical"
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:858
+#: packages/ui/src/GameBoardView.svelte:930
 msgid "map"
 msgstr ""
 

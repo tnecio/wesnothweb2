@@ -7,6 +7,8 @@
  *    with Preferences > Advanced > "Mouse scrolling" off.
  *  - Minimap: clicking it centres the board on that hex, dragging pans; a captured village changes
  *    colour at once; under fog/shroud it shows only what the viewing side knows (hotseat, both ways).
+ *  - Grid and enemy reach: Ctrl+G toggles the grid over every hex; Ctrl+V / Ctrl+B show the enemy's
+ *    reach (normal / ignoring units) until the pointer moves to another hex.
  *  - Following the action: with the camera parked away from the enemy, ending the turn brings the
  *    AI's moves on screen (scroll_to_action); a SCROLL glides frame by frame, a WARP jumps.
  *
@@ -195,6 +197,32 @@ try {
     await page.mouse.up();
     const dragged = await viewCenter();
     check('dragging on the minimap pans the board along with the pointer', near(dragged, { x: 16, y: 22 }), JSON.stringify(dragged));
+  }
+
+  // ── Grid and enemy reach ─────────────────────────────────────────────────────────────────────
+  {
+    const grid = () => page.evaluate(() => window.__wesnothDebug.grid());
+    check('the grid is off by default (upstream prefs::grid)', (await grid())?.visible === false);
+    await pressKey(page, 'Control+g');
+    await page.waitForFunction(() => window.__wesnothDebug.grid()?.hexes > 0, null, { timeout: 30000 }).catch(() => {});
+    const on = await grid();
+    // Upstream draws it on every hex it draws: the 24 x 30 map and the border ring around it.
+    check('Ctrl+G shows the grid over every hex, border included', on?.visible === true && on.hexes === 26 * 32, JSON.stringify(on));
+    await pressKey(page, 'Control+g');
+    check('...and Ctrl+G again hides it', (await grid())?.visible === false);
+
+    const expected = await page.evaluate(() => window.__wesnoth.session.enemyReach(false).length);
+    await page.mouse.move(640, 400);
+    await pressKey(page, 'Control+v');
+    const shown = await page.evaluate(() => window.__wesnoth.enemyReach()?.length ?? 0);
+    check('Ctrl+V shows every hex the enemy can reach', expected > 0 && shown === expected, `${shown} of ${expected}`);
+    await page.mouse.move(700, 450);
+    await page.waitForTimeout(300);
+    check('...until the pointer moves to another hex', (await page.evaluate(() => window.__wesnoth.enemyReach())) === null);
+    const best = await page.evaluate(() => window.__wesnoth.session.enemyReach(true).length);
+    await pressKey(page, 'Control+b');
+    const bestShown = await page.evaluate(() => window.__wesnoth.enemyReach()?.length ?? 0);
+    check('Ctrl+B shows the best possible enemy moves (ignoring units)', bestShown === best && best >= expected, `${bestShown} (${best}) vs ${expected}`);
   }
 
   // ── Following the action ─────────────────────────────────────────────────────────────────────

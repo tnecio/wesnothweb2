@@ -216,6 +216,29 @@
    * camera (every pan, zoom and glide) for the minimap's outline.
    */
   let minimapInput = $state.raw<MinimapInput | null>(null);
+  /**
+   * Phase 22: "Show Enemy Moves" / "Best Possible Enemy Moves"
+   * (`menu_handler::show_enemy_moves`): every hex an enemy could reach, shown
+   * in place of the selection's reach until the pointer moves to another hex
+   * or the player clicks. `shownAt` is the hex the pointer was on then.
+   */
+  let enemyReach = $state.raw<{ hexes: { x: number; y: number }[]; shownAt: HexPoint | null } | null>(null);
+
+  function showEnemyMoves(ignoreUnits: boolean): void {
+    enemyReach = { hexes: session.enemyReach(ignoreUnits), shownAt: lastHoveredHex };
+    refreshMinimap();
+  }
+
+  function clearEnemyMoves(): void {
+    if (!enemyReach) return;
+    enemyReach = null;
+    refreshMinimap();
+  }
+
+  /** The minimap's reach overlay is whatever reach the board is showing (`reach_map`). */
+  function refreshMinimap(): void {
+    minimapInput = session.minimapInput(new Set((enemyReach?.hexes ?? reachable).map((h) => `${h.x},${h.y}`)));
+  }
   let cameraState = $state.raw<{ view: View; viewport: { width: number; height: number } } | null>(null);
   let teamColors = $state.raw<ColorData | null>(null);
   void fetchTeamColors().then((colors) => (teamColors = colors));
@@ -643,7 +666,7 @@
     mapItems = session.mapItems;
     mapLabels = session.mapLabels;
     timeOfDay = session.currentTimeOfDay;
-    minimapInput = session.minimapInput(new Set(reachable.map((h) => `${h.x},${h.y}`)));
+    refreshMinimap();
 
     statusMessage = statusFor(message);
 
@@ -1044,6 +1067,7 @@
 
   async function handleHexClick(x: number, y: number): Promise<void> {
     if (!canAct()) return;
+    clearEnemyMoves();
     // Phase 17: the walk and the new recruit's appearance are cutscene
     // beats yielded by the click's own flow (see
     // `GameSession.moveSelectedTo`), so they play at the point the WML
@@ -1099,6 +1123,8 @@
 
   /** `GameBoardView`'s `onHexHoverChange` -- keeps the infobox's hovered-hex terrain section live. */
   function handleHexHoverChange(hex: HexPoint | null): void {
+    // "A single pixel move would remove the enemy movement highlights" -- a move to another hex does.
+    if (enemyReach && hex && (enemyReach.shownAt === null || hex.x !== enemyReach.shownAt.x || hex.y !== enemyReach.shownAt.y)) clearEnemyMoves();
     hoveredHexInfo = hex ? session.hoveredHexInfo(hex.x, hex.y) : null;
     if (hex) lastHoveredHex = hex;
   }
@@ -1154,6 +1180,8 @@
         return session;
       },
       clickHex: (x: number, y: number) => handleHexClick(x, y),
+      /** Phase 22: the hexes "Show Enemy Moves" is showing, or null when it isn't. */
+      enemyReach: () => enemyReach?.hexes ?? null,
     };
   }
 
@@ -2414,6 +2442,9 @@
         recallDialogOpen = true;
       },
     },
+    // Upstream's Actions menu lists these right after recruit/recall (`data/themes/default.cfg`).
+    { id: 'show-enemy-moves', label: t('Show Enemy Moves'), enabled: phase === 'playing', hotkey: { key: 'v', ctrl: true }, handler: () => showEnemyMoves(false) },
+    { id: 'best-enemy-moves', label: t('Best Possible Enemy Moves'), enabled: phase === 'playing', hotkey: { key: 'b', ctrl: true }, handler: () => showEnemyMoves(true) },
     {
       id: 'label-team',
       label: `${tx('Place Label (Team)')}...`,
@@ -2608,6 +2639,8 @@
     { id: 'zoom-in-shifted', label: t('Zoom In'), enabled: true, hotkey: { key: '+', shift: true }, handler: () => boardView?.zoomStep(true) },
     { id: 'zoom-out', label: t('Zoom Out'), enabled: true, hotkey: { key: '-' }, handler: () => boardView?.zoomStep(false) },
     { id: 'zoom-default', label: t('Default Zoom'), enabled: true, hotkey: { key: '0' }, handler: () => boardView?.zoomDefault() },
+    // The game theme has no menu entry for the grid either; upstream's is a hotkey (and a preference).
+    { id: 'toggle-grid', label: t('Toggle Grid'), enabled: true, hotkey: { key: 'g', ctrl: true }, handler: () => displayPrefs.update({ grid: !displayPrefs.peek().grid }) },
     { id: 'cursor-left', label: tx('Cursor Left'), enabled: phase === 'playing', hotkey: { key: 'ArrowLeft' }, handler: () => moveCursor(-1, 0) },
     { id: 'cursor-right', label: tx('Cursor Right'), enabled: phase === 'playing', hotkey: { key: 'ArrowRight' }, handler: () => moveCursor(1, 0) },
     { id: 'cursor-up', label: tx('Cursor Up'), enabled: phase === 'playing', hotkey: { key: 'ArrowUp' }, handler: () => moveCursor(0, -1) },
@@ -2742,8 +2775,9 @@
         {units}
         {selectedHex}
         {cursorHex}
-        {reachable}
+        reachable={enemyReach?.hexes ?? reachable}
         {attackTargets}
+        grid={displayPrefs.value.grid}
         {villageOwners}
         terrain={terrainHexes}
         items={mapItems}

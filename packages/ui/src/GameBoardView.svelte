@@ -87,6 +87,7 @@
     paused = false,
     onViewChange,
     edgeScroll = false,
+    grid = false,
   }: {
     /**
      * Phase 16: stop rendering while something covers the whole board (the
@@ -100,6 +101,8 @@
      * play and no dialog covers it). The "Mouse scrolling" preference and `[lock_view]` apply on top.
      */
     edgeScroll?: boolean;
+    /** Phase 22: the grid overlay (`prefs::grid`, toggled by Ctrl+G). */
+    grid?: boolean;
     /** Phase 22: the camera moved (pan, zoom, glide, resize) -- the minimap's outline follows it. */
     onViewChange?: (state: { view: View; viewport: { width: number; height: number } }) => void;
     /** Static parts (terrain/teams/scenario/map) -- read once at mount, never re-applied after. */
@@ -579,6 +582,10 @@
   });
 
   $effect(() => {
+    void board?.setGridVisible(grid);
+  });
+
+  $effect(() => {
     board?.updateFogShroud(hexVisibility);
   });
 
@@ -723,6 +730,8 @@
       setRenderingPaused,
       /** Phase 22: where the camera is (stage position/scale, canvas size) and the zoom level in hex px. */
       camera: () => ({ ...viewState(), zoom: zoomLevel() }),
+      /** Phase 22: whether the grid overlay shows, over how many hexes. */
+      grid: () => board?.gridState() ?? null,
       /** Phase 22: start a camera scroll to hex (x, y) (engine 0-based) the way `type` asks; resolves on arrival. */
       scrollToHex: (x: number, y: number, type: ScrollType) => scrollToHex(x, y, type),
       /** Live sprite positions, for debugging movement animation glitches -- see `SnapshotBoard.unitSpritePositions`. */
