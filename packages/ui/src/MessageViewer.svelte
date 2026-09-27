@@ -24,6 +24,7 @@
   import type { MessageInteraction, InteractionResult } from '@wesnothweb2/engine';
   import { imageUrl } from '@wesnothweb2/renderer';
   import { pickStoryImage, type StoryAssets } from './story/storyImages.js';
+  import { compactLayout } from './compactLayout.js';
   import { layoutMessage, scaledSizeFromPath, type Size } from './story/messageLayout.js';
   import { ts, tx } from './i18n/locale.js';
 
@@ -78,9 +79,15 @@
 
   const area = $derived.by(() => {
     void interaction;
+    // Re-measured when the window resizes or turns (the board's rect moves with it).
+    void innerWidth;
+    void innerHeight;
     const rect = getMapRect?.();
-    // Deviation for small screens: when the board is squeezed narrower than a readable dialog
-    // (the in-game layout is not mobile-ready yet, Phase 23), cover the whole window instead.
+    // Phase 23, a phone: over the board only, so the panel sits at the board's foot and leaves the
+    // infobox under it readable (upstream's message fills its map area the same way).
+    if (rect && compactLayout.current) return { x: rect.left, y: rect.top, w: rect.width, h: rect.height };
+    // Deviation for other small windows: when the board is squeezed narrower than a readable
+    // dialog, cover the whole window instead.
     return rect && rect.width >= 600
       ? { x: rect.left, y: rect.top, w: rect.width, h: innerHeight - rect.top }
       : { x: 0, y: 0, w: innerWidth, h: innerHeight };

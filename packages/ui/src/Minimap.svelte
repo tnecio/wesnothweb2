@@ -304,6 +304,18 @@
     height: 25px;
     pointer-events: none;
   }
+  /* Phase 23, a finger: upstream's 25 px squares drawn at 40 px, spaced apart. */
+  @media (pointer: coarse) {
+    .buttons {
+      gap: 4px;
+    }
+    .buttons button,
+    .buttons img {
+      width: 40px;
+      height: 40px;
+      background-size: 40px 40px;
+    }
+  }
   .buttons button:focus-visible {
     outline: 2px solid #ffd54a;
     outline-offset: 1px;

@@ -337,6 +337,19 @@
   .spacer {
     flex: 1 1 auto;
   }
+  .footer :global(button) {
+    white-space: nowrap;
+  }
+  /* Phase 23, a phone: the buttons wrap onto more rows, and the campaign column (the filter says it) gives way. */
+  @container (max-width: 32rem) {
+    .footer {
+      flex-wrap: wrap;
+    }
+    th:nth-child(2),
+    td:nth-child(2) {
+      display: none;
+    }
+  }
   .replay-toggle {
     display: flex;
     align-items: center;

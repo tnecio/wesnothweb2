@@ -316,6 +316,18 @@
     color: inherit;
     cursor: pointer;
   }
+  /* Phase 23, a finger: menus and their entries are at least 44 px tall. */
+  @media (pointer: coarse) {
+    .menu-button,
+    .mute-button,
+    .collapse-toggle,
+    .dropdown button {
+      min-height: 44px;
+    }
+    .mute-button {
+      min-width: 44px;
+    }
+  }
   /*
    * Phase 23, a phone: nothing scrolls sideways any more. The status wraps under the menus onto as
    * many lines as it needs (every figure stays readable), or collapses to the essentials.

@@ -86,4 +86,10 @@
     opacity: 0.4;
     cursor: not-allowed;
   }
+  /* Phase 23, a finger (the menu opens on a long press): entries at least 44 px tall. */
+  @media (pointer: coarse) {
+    .context-menu button {
+      min-height: 44px;
+    }
+  }
 </style>

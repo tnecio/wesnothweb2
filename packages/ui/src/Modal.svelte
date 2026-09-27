@@ -142,4 +142,30 @@
     flex-direction: column;
     gap: 0.75rem;
   }
+  /*
+   * Phase 23, a phone: a dialog takes the whole screen (its width is the caller's desktop choice, so
+   * it is overridden), and scrolls within it; there is no room to spare around a box.
+   */
+  @media (max-width: 720px), (max-height: 500px) {
+    .modal-box {
+      width: 100vw !important;
+      max-width: 100vw;
+      height: 100dvh;
+      max-height: 100dvh;
+      border: none;
+      border-radius: 0;
+    }
+    .modal-body {
+      flex: 1 1 auto;
+      padding: 0.75rem;
+    }
+  }
+  /* A finger: every control in a dialog is at least 44 px tall (WCAG 2.5.5). */
+  @media (pointer: coarse) {
+    .modal-body :global(button),
+    .modal-body :global(select),
+    .modal-body :global(input:not([type='checkbox'], [type='radio'], [type='range'])) {
+      min-height: 44px;
+    }
+  }
 </style>

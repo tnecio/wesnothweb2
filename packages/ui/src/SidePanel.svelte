@@ -242,6 +242,12 @@
   .collapse-toggle {
     display: none;
   }
+  /* Phase 23, a finger: End Turn at least 44 px tall. */
+  @media (pointer: coarse) {
+    .turn-actions button {
+      min-height: 44px;
+    }
+  }
   .top-slot.hidden {
     display: none;
   }
