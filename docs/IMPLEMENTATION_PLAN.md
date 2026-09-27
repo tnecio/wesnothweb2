@@ -1813,9 +1813,36 @@ below exist yet.
   gets another order, is double-clicked, or the move is interrupted (an
   ambush, a sighted enemy, the path blocked). Saves already carry
   `goto_x`/`goto_y`.
+- **Move-and-attack in one order** (user's requirements, 2026-09-27):
+  - *Touch*: with an own unit selected, tapping a reachable hex adjacent
+    to an enemy and then tapping that enemy means "move to that hex and
+    attack the enemy from it". (Today the first tap arms a move -- the
+    confirm tap -- and tapping the enemy then targets it from where the
+    unit stands, if adjacent.)
+  - *Mouse*: with an own unit selected, moving the cursor onto an enemy
+    from a reachable hex next to it targets the enemy from that hex (the
+    hex the cursor came from is the attack position, as upstream's
+    `mouse_handler::current_unit_attacks_from`); clicking the enemy
+    starts the combined order.
+  - Either way the attack dialog opens first, showing the prediction as
+    fought **from the chosen hex** (its terrain, time of day there,
+    leadership, backstab/flanking there), and the unit does **not move
+    yet**. Confirming the attack performs the move, then the attack.
+    Dismissing the dialog does nothing at all: no move, the selection
+    stays as it was.
+  - The move is a normal move and can be interrupted as usual (an ambush,
+    a sighted enemy, an event); if it is, the unit stops where the
+    interruption left it and **the attack does not happen**. The attack
+    also does not happen if, after the move, the target is no longer
+    adjacent or attackable.
+  - Undo treats the move as any move (upstream: the move is undoable
+    until the attack commits; the attack is not).
 - **Milestone**: a Playwright script hovers an enemy and sees its reach,
   previews a three-turn route with turn numbers, queues it, and watches
-  the unit continue on the next two turns until a new order cancels it.
+  the unit continue on the next two turns until a new order cancels it;
+  a second one (touch and mouse) moves-and-attacks, checks that a
+  dismissed dialog leaves the unit where it was, and that an ambush on
+  the way cancels the attack.
 
 ### Phase 28c — The rest of the bundled single-player campaigns (added 2026-09-27)
 

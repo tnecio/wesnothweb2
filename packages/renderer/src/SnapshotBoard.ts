@@ -1545,7 +1545,18 @@ export class SnapshotBoard {
    */
   soundSink: ((files: string) => void) | null = null;
 
+  /**
+   * Skip Animation: every animation playing now jumps to its end (and plays no more sounds); later
+   * `playAnimations` calls play normally.
+   */
+  skipAnimations(): void {
+    this.skipGeneration++;
+  }
+
+  private skipGeneration = 0;
+
   async playAnimations(cues: readonly UnitAnimationCue[], defaultDurationMs = 400, speedMultiplier = 1): Promise<void> {
+    const skipAt = this.skipGeneration;
     const active = cues
       .map((cue) => {
         const visual = this.unitVisuals.get(cue.key);
@@ -1617,7 +1628,8 @@ export class SnapshotBoard {
 
     await new Promise<void>((resolve) => {
       const tick = async (): Promise<void> => {
-        const elapsed = performance.now() - start;
+        const skipped = this.skipGeneration !== skipAt;
+        const elapsed = skipped ? totalMs : performance.now() - start;
         const overlays: OverlaySample[] = [];
 
         for (const entry of timed) {
@@ -1632,7 +1644,7 @@ export class SnapshotBoard {
           // Phase 19: frame sounds start when their frame first draws.
           const soundClock = grouped && cue.anim ? t * speedMultiplier + cue.anim.startTimeMs : clockStart + t * speedMultiplier;
           while (entry.nextSound < entry.sounds.length && entry.sounds[entry.nextSound]!.atMs <= soundClock) {
-            this.soundSink?.(entry.sounds[entry.nextSound]!.files);
+            if (!skipped) this.soundSink?.(entry.sounds[entry.nextSound]!.files);
             entry.nextSound++;
           }
           if (cue.anim) {

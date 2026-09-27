@@ -404,6 +404,14 @@ export function buildAbilityInfo(entry: RegistryEntry): AbilityInfo {
 }
 
 /**
+ * The abilities a player is shown: upstream lists only those with a `name=` (`unit::ability_tooltips`),
+ * so helper abilities that exist for the engine's sake (Liberty's `outlaw_type_hack`) stay hidden.
+ */
+export function visibleAbilityInfos(entries: readonly RegistryEntry[]): AbilityInfo[] {
+  return entries.filter((entry) => entry.config.getString('name', '') !== '').map(buildAbilityInfo);
+}
+
+/**
  * A unit type's `raceId` (e.g. `human`, `undead`) as a player-facing name,
  * for the recruit/recall dialogs' detail pane (real Wesnoth shows
  * `[race] name=`/`plural_name=`, not the raw id). Real `[race]` WML isn't
@@ -468,6 +476,8 @@ export interface SelectedUnitInfo {
   terrainName: string;
   /** Real terrain defense on the unit's own hex, as the player-facing percentage (`100 - defenseModifier`, since `defenseModifier` is upstream's "chance to be hit" convention -- lower is better). */
   defensePercent: number;
+  /** The time of day's effect on this unit's damage at its own hex, in percent (`combat_modifier`: +25 for a lawful unit at day, -25 at night, 0 when neutral). */
+  todBonus: number;
   /** This unit type's real weapons, each with its damage type/range/specials -- addresses "UI is missing information about weapon type/specials". */
   attacks: readonly WeaponInfo[];
   /** This unit type's real abilities (e.g. heals, skirmisher) -- addresses "UI is missing information about abilities and specials". */
@@ -489,7 +499,7 @@ export interface SelectedUnitInfo {
 }
 
 /** Builds a `SelectedUnitInfo` view-model for any live `Unit` -- shared by `GameSession.selectedUnitInfo`/`inspectedUnitInfo` (`GameShell.svelte` used to build this itself, inline, only for `selectedUnit`; centralised here so both selection and inspection stay in sync with each other and with `WeaponInfo`/`AbilityInfo`). `image` is passed in separately since it comes from the scenario snapshot's `unitTypes` table, which this module-level function (deliberately just `GameBoard`/`Unit`) has no access to -- see call sites. */
-export function buildUnitInfo(board: GameBoard, unit: Unit, displayName: string, image: string | null = null): SelectedUnitInfo {
+export function buildUnitInfo(board: GameBoard, unit: Unit, displayName: string, image: string | null = null, todBonus = 0): SelectedUnitInfo {
   return {
     name: displayName,
     typeId: unit.type.id,
@@ -506,8 +516,9 @@ export function buildUnitInfo(board: GameBoard, unit: Unit, displayName: string,
     attacksLeft: unit.attacksLeft,
     terrainName: board.map.terrainName(unit.location),
     defensePercent: 100 - unit.defenseModifier(board.map.getTerrain(unit.location)),
+    todBonus,
     attacks: unit.attacks.map(buildWeaponInfo),
-    abilities: unit.abilities.map(buildAbilityInfo),
+    abilities: visibleAbilityInfos(unit.abilities),
     traits: unit.traitNames,
     image,
     level: unit.type.level,
@@ -819,7 +830,12 @@ export type SavedUndoStep =
 export interface SavedUndoStack {
   undo: { steps: SavedUndoStep[]; command: RecordedCommand }[];
   redo: RecordedCommand[];
+  /** Upstream's `[undo] committed=`: the side already did something irreversible this turn. */
+  committed?: boolean;
 }
+
+/** Synced commands that are not the side acting on the game (turn bookkeeping, map labels), so they never count as having started the turn (see `UndoList.clear`). */
+const TURN_BOOKKEEPING_COMMANDS: ReadonlySet<string> = new Set(['start', 'init_side', 'end_turn', 'label', 'clear_labels']);
 
 /** What a replay or redo found that did not match the recorded game. */
 export interface SyncIssue {
@@ -1999,7 +2015,7 @@ export class GameSession {
       this.reportSync(action, `${action.source.length} recorded dependent(s) left unused`);
     }
     const eventsDisabledUndo = this.eventPump.takeUndoDisabled();
-    if (action.undoBlocked || eventsDisabledUndo || this.scenarioResult) this.undoList.clear();
+    if (action.undoBlocked || eventsDisabledUndo || this.scenarioResult) this.undoList.clear(!TURN_BOOKKEEPING_COMMANDS.has(command.kind));
     else this.undoList.push({ steps: action.steps, command: rec });
     rec.digest = this.stateDigest();
     return result;
@@ -2549,6 +2565,8 @@ export class GameSession {
    */
   private *execInitSide(side: number, action: ActionState): Flow<void> {
     action.undoBlocked = true;
+    // play_controller::do_init_side: `undo_stack().new_side_turn(current_side())`.
+    this.undoList.newSideTurn();
     if (side !== this.activeSide) {
       if (action.source) this.reportSync(action, `[init_side] for side ${side}, but side ${this.activeSide} is playing`);
       this.setActiveSide(side);
@@ -2814,7 +2832,8 @@ export class GameSession {
 
   /** Builds a `SelectedUnitInfo` view-model for any live unit currently on the board -- see `buildUnitInfo`. */
   unitInfo(u: Unit): SelectedUnitInfo {
-    return buildUnitInfo(this.board, u, this.unitDisplayName(u), this.snapshot.unitTypes[u.type.id]?.image ?? null);
+    const todBonus = combatModifier(this.timeOfDayAt(u.location).lawfulBonus, u.alignment, u.fearless, this.schedule.maxLiminalBonus);
+    return buildUnitInfo(this.board, u, this.unitDisplayName(u), this.snapshot.unitTypes[u.type.id]?.image ?? null, todBonus);
   }
 
   private computeAttackCandidates(unit: Unit): Unit[] {
@@ -3033,7 +3052,7 @@ export class GameSession {
         hitpoints: type.hitpoints,
         moves: type.movement,
         attacks: type.attacks.map(buildWeaponInfo),
-        abilities: type.abilities.map(buildAbilityInfo),
+        abilities: visibleAbilityInfos(type.abilities),
       };
     });
   }
@@ -3078,7 +3097,7 @@ export class GameSession {
         movesLeft: u.movesLeft,
         maxMoves: u.maxMoves,
         attacks: u.attacks.map(buildWeaponInfo),
-        abilities: u.abilities.map(buildAbilityInfo),
+        abilities: visibleAbilityInfos(u.abilities),
       };
     });
   }
@@ -4103,6 +4122,7 @@ export class GameSession {
     return {
       undo: this.undoList.undoEntries.map((c) => ({ steps: c.steps.map(saveStep), command: cloneRecordedCommand(c.command) })),
       redo: this.undoList.redoEntries.map(cloneRecordedCommand),
+      ...(this.undoList.committed ? { committed: true } : {}),
     };
   }
 
@@ -4151,7 +4171,7 @@ export class GameSession {
           }
         }),
       }));
-      this.undoList.restore(undos, saved.redo.map(cloneRecordedCommand));
+      this.undoList.restore(undos, saved.redo.map(cloneRecordedCommand), saved.committed ?? false);
     } catch (e) {
       this.eventPump.ctx.log('warn', `discarding the saved undo stack: ${(e as Error).message}`);
     }
@@ -4171,6 +4191,14 @@ export class GameSession {
   /** Whether the player can undo now: something on the stack, it is a human side's turn, nothing is running. */
   get canUndo(): boolean {
     return this.undoList.canUndo && this.canUseUndoStack();
+  }
+
+  /**
+   * `undo_list::player_acted`: whether the side whose turn it is has done anything yet -- what End Turn's
+   * "You have not started your turn yet" confirmation asks (`menu_handler::end_turn`).
+   */
+  get playerActed(): boolean {
+    return this.undoList.playerActed;
   }
 
   get canRedo(): boolean {

@@ -220,6 +220,28 @@ describe('Phase 18b milestone 2: undo and redo', () => {
     expect(session.canUndo).toBe(true);
   });
 
+  it("player_acted: a turn starts untouched; a move counts until undone; an irreversible recruit counts for good; the next turn starts fresh", async () => {
+    const session = await economySession();
+    expect(session.playerActed).toBe(false);
+    const leader = session.board.unitsForSide(1).find((u) => u.canRecruit)!;
+    session.selectUnit(leader);
+    const [dest] = session.reachable;
+    await session.handleHexClick(dest!.x, dest!.y);
+    expect(session.playerActed).toBe(true);
+    session.undo();
+    expect(session.playerActed).toBe(false);
+
+    const option = session.recruitOptions.find((o) => o.affordable)!;
+    session.selectRecruitType(option.typeId);
+    const tile = session.autoRecruitTile!;
+    await session.handleHexClick(tile.x, tile.y);
+    expect(session.canUndo).toBe(false);
+    expect(session.playerActed).toBe(true);
+
+    await session.endTurn();
+    expect(session.playerActed).toBe(false);
+  });
+
   it('a recruit draws its traits at random and so cannot be undone (upstream: "Removed the possibility to undo unit recruits")', async () => {
     const session = await economySession();
     const option = session.recruitOptions.find((o) => o.affordable)!;

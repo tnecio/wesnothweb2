@@ -232,8 +232,26 @@ try {
     for (let i = 0; i < 20 && !(await page.$('.end-overlay')) && (await page.$('.window[role="dialog"]')); i++) await tap('.window[role="dialog"]', 800);
     ended = (await page.$('.end-overlay')) !== null;
     if (!ended) {
-      await tap('.turn-actions button', 2500);
-      await tap('.turn-actions button', 2500);
+      // Watch the turn button through the other sides' turn: greyed out while they think.
+      await page.evaluate(() => {
+        window.__turnButtonStates = [];
+        const record = () => {
+          const b = document.querySelector('[data-testid="turn-button"]');
+          if (b) window.__turnButtonStates.push(`${b.textContent.trim()}${b.disabled ? ' (disabled)' : ''}`);
+        };
+        new MutationObserver(record).observe(document.querySelector('.turn-actions'), { subtree: true, childList: true, attributes: true, characterData: true });
+      });
+      const buttonReady = () => page.waitForFunction(() => { const b = document.querySelector('[data-testid="turn-button"]'); return b && !b.disabled && /End Turn/.test(b.textContent); }, null, { timeout: 60000 });
+      await tap('[data-testid="turn-button"]', 300);
+      await buttonReady();
+      const states = await page.evaluate(() => window.__turnButtonStates);
+      // Side 2 is a second human here (hotseat): end its turn too, which -- nothing done -- asks first.
+      for (let i = 0; i < 3 && (await page.evaluate(() => window.__wesnoth.session.activeSide)) !== 1; i++) {
+        await tap('[data-testid="turn-button"]', 600);
+        if (/not started your turn/.test(await page.$eval('.modal-box', (e) => e.textContent ?? '').catch(() => ''))) await tap('.modal-box button:text-is("Yes")', 600);
+        await buttonReady();
+      }
+      if (attempt === 0) check("during the other sides' turn End Turn is greyed out, then comes back", states.includes('End Turn (disabled)') && states[states.length - 1] === 'End Turn', states.join(' > '));
     }
   }
   check('the fight ends the scenario: the victory screen shows', ended);
@@ -259,6 +277,19 @@ try {
   // The drawn canvas, not just its host: Pixi follows window resizes only, and collapsing is not one.
   const drawn = await page.evaluate(() => { const host = document.querySelector('.canvas-host').getBoundingClientRect(); const canvas = document.querySelector('.canvas-host canvas').getBoundingClientRect(); return { host: host.height, canvas: canvas.height, camera: window.__wesnothDebug.camera().viewport.height }; });
   check('...and the board is drawn over most of the screen', drawn.canvas > 839 * 0.75 && Math.abs(drawn.canvas - drawn.host) < 2 && Math.abs(drawn.camera - drawn.host) < 2, JSON.stringify(drawn));
+  // Collapsed, a selected unit is summed up in the header in place of the status text.
+  const own = (await units()).find((u) => u.side === 1);
+  await tapHex(own);
+  const summary = await page.$eval('[data-testid="unit-summary"]', (e) => e.innerText.replace(/\s+/g, ' ').trim()).catch(() => null);
+  check('collapsed, a selected unit is summed up in one line: name, level, HP, XP, defense, time of day', !!summary && /\d+ \d+\/\d+ \d+\/\d+ \d+% [+-]?\d+%/.test(summary), summary ?? 'none');
+  await tapHex(own);
+  check('...and deselected, the status text is back', (await page.$('[data-testid="unit-summary"]')) === null);
+  // End Turn before doing anything asks first (upstream's default confirm_end_turn=no_moves); No keeps the turn.
+  const turnBefore = await page.evaluate(() => window.__wesnoth.session.turnNumber);
+  await tap('[data-testid="turn-button"]', 800);
+  check('End Turn with nothing done this turn asks first', /not started your turn/.test(await page.$eval('.modal-box', (e) => e.textContent ?? '').catch(() => '')));
+  await tap('.modal-box button:text-is("No")', 800);
+  check('...and No keeps the turn', (await page.$('.modal-box')) === null && (await page.evaluate(() => window.__wesnoth.session.turnNumber)) === turnBefore);
   const state = () => page.evaluate(() => { const s = window.__wesnoth.session; return JSON.stringify({ turn: s.turnNumber, units: s.board.allUnits().map((u) => `${u.id}@${u.location.x},${u.location.y}:${u.hitpoints}`).sort(), gold: s.board.getTeam(1)?.gold }); });
   const s0 = await state();
   await page.setViewportSize({ width: 839, height: 412 });

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { imageUrl } from '@wesnothweb2/renderer';
+  import { imageUrl, hpColor, xpColor, redToGreen } from '@wesnothweb2/renderer';
   import type { RecruitOption, RecallOption, SelectedUnitInfo, HoveredHexInfo } from './gameSession.js';
   import { alignmentName, capitalizeFirst, damageTypeName, rangeName } from './i18n/gameText.js';
   import { fmt, t, th, tw, tx } from './i18n/locale.js';
@@ -15,6 +15,8 @@
     recallOptions,
     hoveredHexInfo = null,
     onEndTurn,
+    turnButton = 'end',
+    onSkipAnimation,
     top,
     collapsed = false,
     onToggleCollapsed,
@@ -39,6 +41,12 @@
     /** Phase 14: the real theme's "terrain under the cursor" strip -- see `GameSession.hoveredHexInfo`. */
     hoveredHexInfo?: HoveredHexInfo | null;
     onEndTurn: () => void;
+    /**
+     * The turn button: End Turn ('end'); greyed out while the other sides' turns are being computed
+     * ('wait'); Skip Animation while their moves are shown ('skip').
+     */
+    turnButton?: 'end' | 'wait' | 'skip';
+    onSkipAnimation?: () => void;
     /** Phase 22: what sits at the top of the panel, above everything else -- the minimap, as in upstream's theme. */
     top?: Snippet;
     /**
@@ -51,6 +59,21 @@
 
   /** Phase 23: on a phone, a selected or inspected unit's card takes the minimap's place; deselecting brings the minimap back. */
   const unitShown = $derived(compactLayout.current && (selected !== null || inspected !== null));
+
+  /**
+   * Phase 23, a phone with the infobox collapsed: the selected (or viewed) unit in one line in place of the
+   * status text -- sprite, name, level, HP, XP, defense here and the time of day's effect, coloured as the
+   * map shows them (the HP and XP bars, the defense numbers of the move highlights).
+   */
+  const summaryUnit = $derived(compactLayout.current && collapsed ? (selected ?? inspected) : null);
+
+  function cssColor(rgb: number): string {
+    return `#${rgb.toString(16).padStart(6, '0')}`;
+  }
+
+  function todLabel(bonus: number): string {
+    return `${bonus > 0 ? '+' : ''}${bonus}%`;
+  }
 
   /** "melee, blade" style label for a weapon's range/damage type -- addresses "UI is missing information about weapon type". */
   function rangeType(w: { range: string; type: string }): string {
@@ -77,7 +100,26 @@
   {/if}
   <!-- Kept mounted while a unit card covers it, so the minimap needn't rebuild each time. -->
   <div class="top-slot" class:hidden={unitShown}>{@render top?.()}</div>
-  <p class="status head" dir="auto" role="status">{statusMessage}</p>
+  {#if summaryUnit}
+    <p class="status head unit-summary" data-testid="unit-summary" title={statusMessage}>
+      {#if summaryUnit.image}<img class="summary-sprite" src={imageUrl(summaryUnit.image)} alt="" />{/if}
+      <span class="summary-name" dir="auto">{summaryUnit.name}</span>
+      <b class="summary-level" title={th('Level')}>{summaryUnit.level}</b>
+      <span title={tx('Hitpoints')} style:color={cssColor(hpColor(summaryUnit.hp, summaryUnit.maxHp))}>{summaryUnit.hp}/{summaryUnit.maxHp}</span>
+      <span title={tx('Experience')} style:color={cssColor(xpColor(summaryUnit.maxXp - summaryUnit.xp))}>{summaryUnit.xp}/{summaryUnit.maxXp}</span>
+      <span title={th('Defense')} style:color={cssColor(redToGreen(summaryUnit.defensePercent))}>{summaryUnit.defensePercent}%</span>
+      <span
+        title={tx('Time of day')}
+        class="summary-tod"
+        class:good={summaryUnit.todBonus > 0}
+        class:bad={summaryUnit.todBonus < 0}>{todLabel(summaryUnit.todBonus)}</span
+      >
+      <!-- The status text stays for screen readers. -->
+      <span class="visually-hidden" role="status">{statusMessage}</span>
+    </p>
+  {:else}
+    <p class="status head" dir="auto" role="status">{statusMessage}</p>
+  {/if}
 
   {#if hoveredHexInfo}
     <!-- Phase 14: real theme's always-on "terrain under the cursor" strip. -->
@@ -125,7 +167,6 @@
     </div>
 
     <div>{th('Terrain')}: {info.terrainName} ({th('Defense')}: {info.defensePercent}%)</div>
-    <div>{tx('Attacks left:')} {info.attacksLeft}</div>
     {#if info.traits.length > 0}
       <!-- Real character traits (e.g. strong, intelligent) -- addresses "no information about character traits in the unit infobox". -->
       <div>{t('Traits')}: {info.traits.join(', ')}</div>
@@ -219,7 +260,11 @@
   </section>
 
   <section class="turn-actions head">
-    <button class="primary" onclick={onEndTurn}>{t('End Turn')}</button>
+    {#if turnButton === 'skip'}
+      <button class="primary" data-testid="turn-button" onclick={() => onSkipAnimation?.()}>{tx('Skip Animation')}</button>
+    {:else}
+      <button class="primary" data-testid="turn-button" disabled={turnButton === 'wait'} onclick={onEndTurn}>{t('End Turn')}</button>
+    {/if}
   </section>
 </aside>
 
@@ -346,6 +391,48 @@
     margin: 0;
     color: #f1e6c8;
     font-style: italic;
+  }
+  .unit-summary {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-style: normal;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .summary-sprite {
+    /* Unit sprites are 72 px with a lot of empty space around the figure. */
+    width: 40px;
+    height: 40px;
+    margin: -8px -6px;
+    object-fit: contain;
+    flex: 0 0 auto;
+  }
+  .summary-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .summary-level {
+    color: #fff;
+  }
+  .summary-tod {
+    color: #999;
+  }
+  .summary-tod.good {
+    color: #3ddc3d;
+  }
+  .summary-tod.bad {
+    color: #ff5a5a;
+  }
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .hover-terrain {
     margin: 0;

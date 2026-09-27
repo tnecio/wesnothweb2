@@ -734,6 +734,12 @@
    * default 1 (real authored speed); `GameShell.svelte` requests a
    * faster one for movement specifically.
    */
+  /** Skip Animation: the animation and camera glide in progress end at once. */
+  export function skipAnimations(): void {
+    board?.skipAnimations();
+    cancelScroll();
+  }
+
   export async function playAnimationSequence(
     beats: readonly UnitAnimationCue[][],
     speedMultiplier = 1,

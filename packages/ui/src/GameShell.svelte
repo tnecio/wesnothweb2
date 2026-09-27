@@ -423,6 +423,17 @@
 
   /** Phase 21: the "Do you really want to quit?" question behind Quit to Menu. */
   let quitConfirmOpen = $state(false);
+  /** `menu_handler::end_turn`'s "You have not started your turn yet" question is open. */
+  let endTurnConfirmOpen = $state(false);
+  /**
+   * What the other sides' turns are doing after End Turn: the AI computing ('thinking' -- End Turn is greyed
+   * out), or their moves being shown ('animating' -- the button becomes Skip Animation). `null` on the
+   * player's own turn.
+   */
+  let otherSidesTurn = $state<'thinking' | 'animating' | null>(null);
+  /** Set by Skip Animation: the rest of this batch of the other sides' animations is not played. */
+  let skipOtherSidesAnimations = false;
+  const turnButton = $derived<'end' | 'wait' | 'skip'>(otherSidesTurn === 'animating' ? 'skip' : otherSidesTurn === 'thinking' ? 'wait' : 'end');
 
   let phase = $state<'story' | 'objectives' | 'playing' | 'ended' | 'replay'>(
     initialReplaySession ? 'replay' : session.scenarioResult ? 'ended' : storyParts.length > 0 ? 'story' : 'playing',
@@ -1723,6 +1734,7 @@
   async function playHealAnimations(outcomes: readonly HealOutcome[]): Promise<void> {
     if (!boardView) return;
     for (const outcome of outcomes) {
+      if (skipOtherSidesAnimations) return;
       const key = spriteKey({
         underlyingId: session.renderKeyFor(outcome.unit),
         typeId: outcome.unit.type.id,
@@ -1895,6 +1907,8 @@
   async function playAiAnimations(events: readonly AiAnimationEvent[]): Promise<void> {
     if (!boardView) return;
     for (const event of events) {
+      // Skip Animation: the final sync() shows where everything ended up.
+      if (skipOtherSidesAnimations) return;
       if (event.kind === 'attack') {
         await followAttack(event.attackerLocation, event.defenderLocation);
         await boardView.playAnimationSequence(buildBlowAnimationCues(event), 1, makeBlowPreview(event));
@@ -1943,21 +1957,56 @@
     }
   }
 
+  /**
+   * `menu_handler::end_turn`: asks first when the side has not done anything yet this turn and still has
+   * units (upstream's default `confirm_end_turn=no_moves`).
+   */
+  function requestEndTurn(): void {
+    if (!canAct()) return;
+    const side = session.activeSide;
+    if (!session.playerActed && session.board.unitsForSide(side).length > 0) {
+      endTurnConfirmOpen = true;
+      return;
+    }
+    void handleEndTurn();
+  }
+
+  /** Skip Animation: finish the animation on screen at once and drop the rest of the other sides' moves. */
+  function skipAnimations(): void {
+    if (otherSidesTurn !== 'animating') return;
+    skipOtherSidesAnimations = true;
+    boardView?.skipAnimations();
+  }
+
   async function handleEndTurn(): Promise<void> {
     if (!canAct()) return;
     const message = await runPlayerAction(async () => {
-      const result = await session.endTurn();
-      const healOutcomes = session.lastHealAnimations;
-      session.lastHealAnimations = null;
-      // Heals/poison happen at the START of each side's turn, before that
-      // side's own actions -- played first, ahead of aiAnimations below (see
-      // `lastHealAnimations`'s own doc comment on why this isn't fully
-      // interleaved turn-by-turn across multiple AI sides).
-      if (healOutcomes) await playHealAnimations(healOutcomes);
-      const aiAnimations = session.lastAiAnimations;
-      session.lastAiAnimations = null;
-      if (aiAnimations) await playAiAnimations(aiAnimations);
-      return result;
+      otherSidesTurn = 'thinking';
+      skipOtherSidesAnimations = false;
+      try {
+        // The AI computes synchronously inside endTurn: let the greyed-out button paint first.
+        // (A hidden tab gets no animation frames, hence the timeout.)
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 100);
+          requestAnimationFrame(() => requestAnimationFrame(() => (clearTimeout(timer), resolve())));
+        });
+        const result = await session.endTurn();
+        otherSidesTurn = 'animating';
+        const healOutcomes = session.lastHealAnimations;
+        session.lastHealAnimations = null;
+        // Heals/poison happen at the START of each side's turn, before that
+        // side's own actions -- played first, ahead of aiAnimations below (see
+        // `lastHealAnimations`'s own doc comment on why this isn't fully
+        // interleaved turn-by-turn across multiple AI sides).
+        if (healOutcomes) await playHealAnimations(healOutcomes);
+        const aiAnimations = session.lastAiAnimations;
+        session.lastAiAnimations = null;
+        if (aiAnimations) await playAiAnimations(aiAnimations);
+        return result;
+      } finally {
+        otherSidesTurn = null;
+        skipOtherSidesAnimations = false;
+      }
     });
     sync(message);
     await showDeferredInteractions();
@@ -2517,7 +2566,7 @@
     // Upstream's own bindings (hotkeys.cfg: undo=u, redo=r).
     { id: 'undo', label: t('Undo'), enabled: phase === 'playing' && canUndo, handler: () => void handleUndo(), hotkey: { key: 'u' } },
     { id: 'redo', label: t('Redo'), enabled: phase === 'playing' && canRedo, handler: () => void handleRedo(), hotkey: { key: 'r' } },
-    { id: 'end-turn', label: t('End Turn'), enabled: phase === 'playing', handler: handleEndTurn, hotkey: { key: ' ', ctrl: true } },
+    { id: 'end-turn', label: t('End Turn'), enabled: phase === 'playing' && otherSidesTurn === null, handler: requestEndTurn, hotkey: { key: ' ', ctrl: true } },
   ]);
 
   /**
@@ -2722,6 +2771,7 @@
       loadDialogOpen ||
       labelDialog !== null ||
       clearLabelsConfirmOpen ||
+      endTurnConfirmOpen ||
       quitConfirmOpen ||
       labelSettingsOpen ||
       preferencesOpen ||
@@ -2831,7 +2881,7 @@
         edgeScroll={(phase === 'playing' || phase === 'replay') && !dialogOpen() && contextMenuAt === null}
       />
     {/key}
-    <SidePanel {selected} {inspected} {statusMessage} {log} {recruitOptions} {recallOptions} {hoveredHexInfo} onEndTurn={handleEndTurn}
+    <SidePanel {selected} {inspected} {statusMessage} {log} {recruitOptions} {recallOptions} {hoveredHexInfo} onEndTurn={requestEndTurn} {turnButton} onSkipAnimation={skipAnimations}
       collapsed={displayPrefs.value.infoboxCollapsed}
       onToggleCollapsed={() => displayPrefs.update({ infoboxCollapsed: !displayPrefs.peek().infoboxCollapsed })}
     >
@@ -2952,6 +3002,17 @@
         onQuitToMenu?.();
       }}
       onNo={() => (quitConfirmOpen = false)}
+    />
+  {/if}
+  {#if endTurnConfirmOpen}
+    <ConfirmDialog
+      title={t('End Turn')}
+      message={tw('You have not started your turn yet. Do you really want to end your turn?')}
+      onYes={() => {
+        endTurnConfirmOpen = false;
+        void handleEndTurn();
+      }}
+      onNo={() => (endTurnConfirmOpen = false)}
     />
   {/if}
   {#if clearLabelsConfirmOpen}

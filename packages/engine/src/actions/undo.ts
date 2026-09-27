@@ -144,6 +144,24 @@ function undoStep(board: GameBoard, step: UndoStep, runEvent: UndoEventRunner): 
 export class UndoList {
   private readonly undos: UndoContainer[] = [];
   private readonly redos: RecordedCommand[] = [];
+  /** `committed_actions_`: the side did something this turn that can no longer be undone. */
+  private committedActions = false;
+
+  /** `undo_list::player_acted`: the side has done something this turn (undoable or not). */
+  get playerActed(): boolean {
+    return this.committedActions || this.undos.length > 0;
+  }
+
+  get committed(): boolean {
+    return this.committedActions;
+  }
+
+  /** `new_side_turn`: a side's turn starts with nothing done yet. */
+  newSideTurn(): void {
+    this.undos.length = 0;
+    this.redos.length = 0;
+    this.committedActions = false;
+  }
 
   get canUndo(): boolean {
     return this.undos.length > 0;
@@ -172,8 +190,13 @@ export class UndoList {
     this.redos.length = 0;
   }
 
-  /** `undo_list::clear`: after an action that cannot be undone, nothing before it can be either. */
-  clear(): void {
+  /**
+   * `undo_list::clear`: after an action that cannot be undone, nothing before it can be either. `commit`
+   * records that the side acted (upstream: "the fact that this function was called indicates that something
+   * was done"); the engine's own turn bookkeeping (`[init_side]`, end of turn) passes false.
+   */
+  clear(commit = true): void {
+    if (commit) this.committedActions = true;
     this.undos.length = 0;
     this.redos.length = 0;
   }
@@ -200,7 +223,8 @@ export class UndoList {
   }
 
   /** Re-populates both stacks (a loaded save's `[undo_stack]`). */
-  restore(undos: readonly UndoContainer[], redos: readonly RecordedCommand[]): void {
+  restore(undos: readonly UndoContainer[], redos: readonly RecordedCommand[], committed = false): void {
+    this.committedActions = committed;
     this.undos.splice(0, this.undos.length, ...undos);
     this.redos.splice(0, this.redos.length, ...redos);
   }
