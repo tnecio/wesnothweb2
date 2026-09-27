@@ -39,7 +39,7 @@
     CutsceneBeat,
     FakeUnitWalk,
   } from '@wesnothweb2/engine';
-  import { WmlConfig, type WmlConfigJson, playStoryMusic, extraHitSounds, GAME_SOUNDS, directionBetween, relativeDirection, tilesAdjacent, Direction, Location, unitCanAct, parseConfig, writeWml } from '@wesnothweb2/engine';
+  import { WmlConfig, type WmlConfigJson, playStoryMusic, extraHitSounds, GAME_SOUNDS, directionBetween, relativeDirection, tilesAdjacent, Direction, Location, unitCanAct } from '@wesnothweb2/engine';
   import {
     type HexPoint,
     type UnitAnimationCue,
@@ -96,15 +96,13 @@
   import { type CampaignInfo as Campaign, campaignAbbrev, defaultDifficulty, wesnothCampaignInfo } from './save/campaign.js';
   import { fetchScenarioSnapshot } from './scenarioFetch.js';
   import { markCampaignCompleted } from './menu/completedStore.js';
-  import { fromWesnothSave, toWesnothSave } from './save/wesnothSave.js';
+  import { downloadSave, importSaveFile } from './save/saveManager.js';
   import {
     scenarioLabel,
     autosaveName,
     manualSaveName,
     scenarioStartSaveName,
     autosavesToDelete,
-    downloadFileName,
-    uniqueName,
     DEFAULT_AUTO_SAVE_MAX,
   } from './save/naming.js';
   import SaveGameDialog from './SaveGameDialog.svelte';
@@ -2037,33 +2035,12 @@
     }
   }
 
-  /**
-   * Downloads a save as a real Wesnoth `.gz` file -- converted on the way
-   * out (`save/wesnothSave.ts`), so what lands in the browser's downloads
-   * folder is a file the actual game can open, not this port's JSON.
-   *
-   * Needs the save's own scenario snapshot for the scenario config a
-   * `[snapshot]` embeds, which is why this fetches rather than assuming
-   * the save belongs to the scenario on screen.
-   */
+  /** Downloads a save as a real Wesnoth `.gz` file (`save/saveManager.ts`). */
   async function handleDownloadSave(name: string): Promise<void> {
     saveBusy = true;
     try {
-      const found = await loadGame<SaveGameData>(name);
-      if (!found) throw new Error('that save no longer exists');
-      const wesnoth = wesnothCampaignInfo(campaignFor(found.meta.campaignId ?? found.data.campaignId));
-      if (!wesnoth) {
-        throw new Error('this campaign has no Wesnoth counterpart, so its saves cannot be exported');
-      }
-      const scenarioId = found.data.scenarioId ?? found.meta.scenarioId;
-      const snapshotForSave =
-        scenarioId === activeSnapshot.scenario.id && savedDifficulty(found.data) === activeSnapshot.difficulty
-          ? activeSnapshot
-          : await snapshotFor(scenarioId, savedDifficulty(found.data));
-      const text = writeWml(toWesnothSave(found.data, snapshotForSave, wesnoth));
-      const gz = await gzipText(text);
-      downloadBlob(gz, downloadFileName(name));
-      sync(`Downloaded "${downloadFileName(name)}".`);
+      const file = await downloadSave(name, [...campaigns, ...(campaign ? [campaign] : [])], activeSnapshot);
+      sync(`Downloaded "${file}".`);
     } catch (err) {
       sync(`Download failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -2071,39 +2048,13 @@
     }
   }
 
-  /**
-   * Uploads a save file. Accepts a real Wesnoth `.gz` (gzipped WML) or
-   * one of this port's own saves, sniffed by content rather than by
-   * extension: both are gzip, and what is inside tells them apart.
-   */
+  /** Uploads a save file: a real Wesnoth `.gz` or one of this port's own (`save/saveManager.ts`). */
   async function handleUploadSave(file: File): Promise<void> {
     saveBusy = true;
     try {
-      const text = await gunzipToText(file);
-      const trimmed = text.trimStart();
-      let data: SaveGameData;
-      let name: string;
-      if (trimmed.startsWith('{')) {
-        data = JSON.parse(text) as SaveGameData;
-        name = file.name.replace(/\.gz$/i, '');
-      } else {
-        const imported = fromWesnothSave(parseConfig(text));
-        data = imported.save;
-        name = imported.label || file.name.replace(/\.gz$/i, '');
-      }
-      if (!data.scenarioId) throw new Error('that file has no scenario in it');
-      const existing = await listSaves();
-      const unique = uniqueName(name, existing.map((s) => s.name));
-      await saveGame(unique, {
-        scenarioId: data.scenarioId,
-        scenarioName: data.scenarioName,
-        campaignId: data.campaignId,
-        label: name,
-        turnNumber: data.turnNumber,
-        kind: 'manual',
-      }, data);
+      const { name, data } = await importSaveFile(file);
       savesList = await listSaves();
-      sync(`Imported "${unique}" (turn ${data.turnNumber}).`);
+      sync(`Imported "${name}" (turn ${data.turnNumber}).`);
     } catch (err) {
       sync(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -2119,41 +2070,6 @@
   /** `scenarioId`'s snapshot at `difficulty` (default: this game's own), through the overlay-aware fetch. */
   function snapshotFor(scenarioId: string, difficulty: string | undefined = activeSnapshot.difficulty): Promise<GameBoardSnapshot> {
     return fetchScenarioSnapshot(scenarioId, difficulty, defaultDifficulty(campaign));
-  }
-
-  /** The campaign a save belongs to -- the one being played, when they match. */
-  function campaignFor(campaignId: string | undefined): Campaign | null {
-    return campaignId && campaign?.id !== campaignId ? null : campaign;
-  }
-
-  /** Same native `CompressionStream` route `persistence.ts` uses -- no gzip library anywhere in this project. */
-  async function gzipText(text: string): Promise<Blob> {
-    const cs = new CompressionStream('gzip');
-    const writer = cs.writable.getWriter();
-    void writer.write(new TextEncoder().encode(text)).then(() => writer.close());
-    return await new Response(cs.readable).blob();
-  }
-
-  async function gunzipToText(blob: Blob): Promise<string> {
-    return await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text();
-  }
-
-  function downloadBlob(blob: Blob, filename: string): void {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    // Must be in the document: a detached anchor's click is ignored by
-    // some browsers (and by headless Chromium, which is how this is
-    // verified). Revoking is deferred for the same reason -- revoking the
-    // URL in the same tick can cancel the download that just started.
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      a.remove();
-      URL.revokeObjectURL(url);
-    }, 30_000);
   }
 
   async function handleLoad(): Promise<void> {

@@ -21,7 +21,7 @@ export {
   setEngineImageBaseUrl,
   setCampaignImages,
 } from './images/ImageCache'
-export { unitBundleManifestUrl } from './images/compositor'
+export { unitBundleManifestUrl, Compositor, type CompositedImage } from './images/compositor'
 
 // ── Unit HP/XP bar, moves orb, status tint ──────────────────────────────────
 export {

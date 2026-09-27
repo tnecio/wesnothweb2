@@ -5032,3 +5032,25 @@ value falls back, a debug campaign has none.
 
 Gates: engine 799, ui 321 (plus the known vitest `onTaskUpdate` timeout from the AI/replay tests), renderer 217,
 lua-bridge 38; 0 typecheck/svelte-check errors.
+
+## 2026-09-27: Phase 21, stage 3 — shared pieces: markup, image path functions, save file handling
+
+- **Pango markup** (`markup/pango.ts`, `Markup.svelte`): campaign descriptions and tips carry
+  `<small>`, `<i>`, `<b>`; the old menu stripped them. A tokenizer for the subset Wesnoth text uses
+  (`b i u s big small sub sup tt span`, span `color size weight style underline font_family bgcolor`,
+  entities incl. numeric) builds a tree, rendered as DOM nodes; never `{@html}`. Unknown tags, stray `<`,
+  a close with no open and invalid or unrecognised span attributes are kept as text or dropped, so a
+  description can never produce a script or an unexpected element. Tests parse all four campaigns'
+  descriptions and all of upstream's tips.
+- **Menu images with path functions** (`images/ipfImage.ts`, `IpfImage.svelte`): a campaign's `icon=`
+  and each difficulty's `image=` carry `~RC(magenta>red)`, `~CROP(...)`, `~SCALE(...)` and the laurel is
+  blitted over them. The renderer's own `Compositor` (now exported) runs them on the main thread with the
+  same team-colour tables and returns an object URL, cached by reference; a plain path is just its file.
+  `data/campaigns/...` paths as `[campaign]` writes them are re-rooted first (`rootMenuImage`, tested).
+- **Save files** (`save/saveManager.ts`): the download/upload/gzip handlers moved out of `GameShell` so
+  the title screen's Load dialog runs the same code. Download now finds the save's campaign among *all*
+  campaigns (it could only export saves of the campaign being played) and fetches the snapshot at the
+  save's own difficulty.
+
+Checked: `save-load-playthrough.mjs` passes end to end on the refactored code (save, autosave, download
+as a Wesnoth `.gz`, upload, reload, cross-campaign load).
