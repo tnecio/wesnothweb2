@@ -118,11 +118,11 @@ msgstr ""
 msgid "(drag or scroll to pan, Ctrl+scroll to zoom)"
 msgstr ""
 
-#: packages/ui/src/TopBar.svelte:125
+#: packages/ui/src/TopBar.svelte:134
 msgid "(side $side)"
 msgstr ""
 
-#: packages/ui/src/SidePanel.svelte:174
+#: packages/ui/src/SidePanel.svelte:197
 msgid "(viewing)"
 msgstr ""
 
@@ -134,11 +134,11 @@ msgstr ""
 msgid "All"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2918
+#: packages/ui/src/GameShell.svelte:2923
 msgid "Are you sure you want to clear map labels?"
 msgstr ""
 
-#: packages/ui/src/SidePanel.svelte:105
+#: packages/ui/src/SidePanel.svelte:128
 msgid "Attacks left:"
 msgstr ""
 
@@ -194,11 +194,11 @@ msgstr ""
 msgid "Click one of your units to select it."
 msgstr ""
 
-#: packages/ui/src/SidePanel.svelte:181
+#: packages/ui/src/SidePanel.svelte:204
 msgid "Click one of your units to select it. The hexes it can move to are brightened and show its defense there, from red (poor) through yellow to green (good); adjacent enemies it can attack are marked red."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3016
+#: packages/ui/src/GameShell.svelte:3021
 msgid "Continue playing"
 msgstr ""
 
@@ -258,7 +258,7 @@ msgstr ""
 msgid "Expected result (HP)"
 msgstr ""
 
-#: packages/ui/src/SidePanel.svelte:93
+#: packages/ui/src/SidePanel.svelte:116
 msgid "Experience"
 msgstr ""
 
@@ -286,11 +286,15 @@ msgstr ""
 msgid "Hex"
 msgstr ""
 
-#: packages/ui/src/SidePanel.svelte:88
+#: packages/ui/src/SidePanel.svelte:72 packages/ui/src/SidePanel.svelte:73
+msgid "Hide the infobox"
+msgstr ""
+
+#: packages/ui/src/SidePanel.svelte:111
 msgid "Hitpoints"
 msgstr ""
 
-#: packages/ui/src/TopBar.svelte:143
+#: packages/ui/src/TopBar.svelte:152
 msgid "Income next turn"
 msgstr ""
 
@@ -322,7 +326,7 @@ msgstr ""
 msgid "Loading..."
 msgstr ""
 
-#: packages/ui/src/SidePanel.svelte:186
+#: packages/ui/src/SidePanel.svelte:209
 msgid "Log"
 msgstr ""
 
@@ -334,7 +338,7 @@ msgstr ""
 msgid "Message"
 msgstr ""
 
-#: packages/ui/src/Minimap.svelte:234
+#: packages/ui/src/Minimap.svelte:249
 msgid "Minimap"
 msgstr ""
 
@@ -342,7 +346,7 @@ msgstr ""
 msgid "Move Here"
 msgstr ""
 
-#: packages/ui/src/SidePanel.svelte:98
+#: packages/ui/src/SidePanel.svelte:121
 msgid "Moves left"
 msgstr ""
 
@@ -382,7 +386,7 @@ msgstr ""
 msgid "Not enough gold to recruit $unit (needs $cost, have $gold)."
 msgstr ""
 
-#: packages/ui/src/SidePanel.svelte:188
+#: packages/ui/src/SidePanel.svelte:211
 msgid "Nothing has happened yet."
 msgstr ""
 
@@ -402,7 +406,7 @@ msgstr ""
 msgid "Overwrite"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3011
+#: packages/ui/src/GameShell.svelte:3016
 msgid "Pause"
 msgstr ""
 
@@ -442,7 +446,7 @@ msgstr ""
 msgid "Rename failed:"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3008
+#: packages/ui/src/GameShell.svelte:3013
 msgid "Replay controls"
 msgstr ""
 
@@ -470,7 +474,7 @@ msgstr ""
 msgid "Resistance to $type ×$factor"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3013
+#: packages/ui/src/GameShell.svelte:3018
 msgid "Restart"
 msgstr ""
 
@@ -496,6 +500,18 @@ msgstr ""
 
 #: packages/ui/src/menu/CampaignSelectionDialog.svelte:215
 msgid "Select a campaign to see its description."
+msgstr ""
+
+#: packages/ui/src/TopBar.svelte:170 packages/ui/src/TopBar.svelte:171
+msgid "Show less of the status"
+msgstr ""
+
+#: packages/ui/src/TopBar.svelte:170 packages/ui/src/TopBar.svelte:171
+msgid "Show the full status"
+msgstr ""
+
+#: packages/ui/src/SidePanel.svelte:72 packages/ui/src/SidePanel.svelte:73
+msgid "Show the infobox"
 msgstr ""
 
 #: packages/ui/src/PreferencesDialog.svelte:97
@@ -562,7 +578,7 @@ msgstr ""
 msgid "Turn $turn · $gold gold"
 msgstr ""
 
-#: packages/ui/src/TopBar.svelte:122
+#: packages/ui/src/TopBar.svelte:131
 msgid "Turn / turn limit"
 msgstr ""
 
@@ -578,11 +594,11 @@ msgstr ""
 msgid "Units show an orb that says whether they can still act. Pick colours you can tell apart."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2406 packages/ui/src/TopBar.svelte:116 packages/ui/src/TopBar.svelte:116
+#: packages/ui/src/GameShell.svelte:2406 packages/ui/src/TopBar.svelte:125 packages/ui/src/TopBar.svelte:125
 msgid "Unmute"
 msgstr ""
 
-#: packages/ui/src/TopBar.svelte:139
+#: packages/ui/src/TopBar.svelte:148
 msgid "Upkeep charged (raw total)"
 msgstr ""
 
@@ -610,7 +626,7 @@ msgstr ""
 msgid "Viewing $unit."
 msgstr ""
 
-#: packages/ui/src/TopBar.svelte:131
+#: packages/ui/src/TopBar.svelte:140
 msgid "Villages owned"
 msgstr ""
 

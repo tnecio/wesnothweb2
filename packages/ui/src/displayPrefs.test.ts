@@ -21,4 +21,9 @@ describe('parseDisplayPrefs', () => {
     expect(p.minimap).toEqual({ ...DEFAULT_DISPLAY_PREFS.minimap, drawUnits: false });
     expect(p.mouseScrolling).toBe(true);
   });
+
+  it('Phase 23: the phone layout opens the top bar and infobox unless they were collapsed', () => {
+    expect(parseDisplayPrefs(null)).toMatchObject({ topBarCollapsed: false, infoboxCollapsed: false });
+    expect(parseDisplayPrefs('{"infoboxCollapsed": true, "topBarCollapsed": "yes"}')).toMatchObject({ topBarCollapsed: false, infoboxCollapsed: true });
+  });
 });

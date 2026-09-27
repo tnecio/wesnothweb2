@@ -10,6 +10,8 @@
  *  - `zoom` (`tile_size`, 72): the hex size the map opens at -- upstream saves every zoom change.
  *  - `minimap`: the five minimap buttons (`minimap_draw_terrain`, `minimap_terrain_coding`,
  *    `minimap_draw_units`, `minimap_movement_coding`, `minimap_draw_villages`), all on.
+ *  - Phase 23, ours (upstream has no phone layout): `topBarCollapsed` and `infoboxCollapsed`, whether
+ *    the compact layout shows the top bar's full status and the infobox's body. Both open by default.
  *
  * `parseDisplayPrefs` is pure (tested in node); `displayPrefs` is the live, reactive store.
  */
@@ -30,6 +32,8 @@ export interface DisplayPrefs {
   grid: boolean;
   zoom: number;
   minimap: MinimapPrefs;
+  topBarCollapsed: boolean;
+  infoboxCollapsed: boolean;
 }
 
 export const DEFAULT_DISPLAY_PREFS: Readonly<DisplayPrefs> = {
@@ -39,6 +43,8 @@ export const DEFAULT_DISPLAY_PREFS: Readonly<DisplayPrefs> = {
   grid: false,
   zoom: 72,
   minimap: { drawTerrain: true, terrainCoding: true, drawUnits: true, movementCoding: true, drawVillages: true },
+  topBarCollapsed: false,
+  infoboxCollapsed: false,
 };
 
 export const DISPLAY_PREFS_KEY = 'wesnothweb2.display';
@@ -71,6 +77,8 @@ export function parseDisplayPrefs(raw: string | null | undefined): DisplayPrefs 
       movementCoding: bool(mini['movementCoding'], d.minimap.movementCoding),
       drawVillages: bool(mini['drawVillages'], d.minimap.drawVillages),
     },
+    topBarCollapsed: bool(data['topBarCollapsed'], d.topBarCollapsed),
+    infoboxCollapsed: bool(data['infoboxCollapsed'], d.infoboxCollapsed),
   };
 }
 

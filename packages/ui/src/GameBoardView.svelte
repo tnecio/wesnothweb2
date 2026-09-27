@@ -950,6 +950,12 @@
     min-height: 0;
     touch-action: none;
   }
+  /* Phase 23, a phone: the line is about the mouse (there is no hover under a finger), and the infobox shows the tapped hex's terrain. */
+  @media (max-width: 720px), (max-height: 500px) {
+    .status {
+      display: none;
+    }
+  }
   /* A phone: the board shares the column with the side panel (see GameShell), so it must be able to shrink. */
   @media (max-width: 720px) {
     .board-view {

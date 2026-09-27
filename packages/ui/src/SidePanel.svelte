@@ -4,6 +4,7 @@
   import type { RecruitOption, RecallOption, SelectedUnitInfo, HoveredHexInfo } from './gameSession.js';
   import { alignmentName, capitalizeFirst, damageTypeName, rangeName } from './i18n/gameText.js';
   import { fmt, t, th, tw, tx } from './i18n/locale.js';
+  import { compactLayout } from './compactLayout.js';
 
   let {
     selected,
@@ -15,6 +16,8 @@
     hoveredHexInfo = null,
     onEndTurn,
     top,
+    collapsed = false,
+    onToggleCollapsed,
   }: {
     selected: SelectedUnitInfo | null;
     /** A unit clicked purely to view its info (any side) -- see `GameSession.inspectedUnit`. Shown alongside `selected`, addressing "no way to see information about enemy units". */
@@ -38,7 +41,16 @@
     onEndTurn: () => void;
     /** Phase 22: what sits at the top of the panel, above everything else -- the minimap, as in upstream's theme. */
     top?: Snippet;
+    /**
+     * Phase 23, the compact (phone) layout only: whether the infobox shows just its header (the status
+     * text and End Turn) and the switch. On wider screens the panel is always open.
+     */
+    collapsed?: boolean;
+    onToggleCollapsed?: () => void;
   } = $props();
+
+  /** Phase 23: on a phone, a selected or inspected unit's card takes the minimap's place; deselecting brings the minimap back. */
+  const unitShown = $derived(compactLayout.current && (selected !== null || inspected !== null));
 
   /** "melee, blade" style label for a weapon's range/damage type -- addresses "UI is missing information about weapon type". */
   function rangeType(w: { range: string; type: string }): string {
@@ -52,9 +64,20 @@
   }
 </script>
 
-<aside class="side-panel">
-  {@render top?.()}
-  <p class="status" dir="auto" role="status">{statusMessage}</p>
+<aside class="side-panel" class:collapsed data-testid="side-panel">
+  {#if onToggleCollapsed}
+    <button
+      class="collapse-toggle head"
+      aria-expanded={!collapsed}
+      aria-label={collapsed ? tx('Show the infobox') : tx('Hide the infobox')}
+      title={collapsed ? tx('Show the infobox') : tx('Hide the infobox')}
+      data-testid="infobox-toggle"
+      onclick={onToggleCollapsed}>{collapsed ? '\u{25B4}' : '\u{25BE}'}</button
+    >
+  {/if}
+  <!-- Kept mounted while a unit card covers it, so the minimap needn't rebuild each time. -->
+  <div class="top-slot" class:hidden={unitShown}>{@render top?.()}</div>
+  <p class="status head" dir="auto" role="status">{statusMessage}</p>
 
   {#if hoveredHexInfo}
     <!-- Phase 14: real theme's always-on "terrain under the cursor" strip. -->
@@ -195,7 +218,7 @@
     {/if}
   </section>
 
-  <section class="turn-actions">
+  <section class="turn-actions head">
     <button class="primary" onclick={onEndTurn}>{t('End Turn')}</button>
   </section>
 </aside>
@@ -216,10 +239,90 @@
     flex-direction: column;
     gap: 0.75rem;
   }
+  .collapse-toggle {
+    display: none;
+  }
+  .top-slot.hidden {
+    display: none;
+  }
+  /*
+   * Phase 23, a phone. The infobox's header -- the status text, End Turn, and the switch that
+   * collapses the rest -- stays in view at the top while the body (minimap or unit card, terrain,
+   * log) scrolls under it. A grid, so the same elements serve both layouts: on a desktop they keep
+   * their places in the column.
+   */
+  @media (max-width: 720px), (max-height: 500px) {
+    .side-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-content: start;
+      align-items: center;
+      padding: 0 0.6rem 0.6rem;
+    }
+    .side-panel > * {
+      grid-column: 1 / -1;
+    }
+    .side-panel > .head {
+      grid-row: 1;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      align-self: stretch;
+      display: flex;
+      align-items: center;
+      background: #1c1a16;
+      padding: 0.4rem 0;
+    }
+    .side-panel > .status.head {
+      grid-column: 1;
+      line-height: 1.25;
+    }
+    .side-panel > .turn-actions.head {
+      grid-column: 2;
+      margin: 0;
+      border-top: none;
+    }
+    .side-panel > .collapse-toggle.head {
+      grid-column: 3;
+      justify-content: center;
+      min-width: 2.75rem;
+      font: inherit;
+      font-size: 1.1rem;
+      border: none;
+      color: inherit;
+      cursor: pointer;
+    }
+    .side-panel.collapsed > :not(.head) {
+      display: none;
+    }
+  }
   @media (max-width: 720px) {
     .side-panel {
       width: auto;
       max-height: 42vh;
+      border-top: 1px solid #4a4432;
+    }
+  }
+  /* A phone on its side: a narrower column at the right, which collapses to just its buttons. */
+  @media (max-height: 500px) and (min-width: 721px) {
+    .side-panel {
+      width: 16rem;
+    }
+    .side-panel.collapsed {
+      width: auto;
+      grid-template-columns: auto;
+      padding: 0 0.4rem;
+    }
+    .side-panel.collapsed > .status.head {
+      display: none;
+    }
+    .side-panel.collapsed > .turn-actions.head,
+    .side-panel.collapsed > .collapse-toggle.head {
+      grid-column: 1;
+      grid-row: auto;
+    }
+    .side-panel.collapsed > .collapse-toggle.head {
+      grid-row: 1;
     }
   }
   .status {

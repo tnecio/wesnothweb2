@@ -2750,6 +2750,8 @@
     {actionCommands}
     muted={audioSettings.muted}
     onToggleMute={() => changeAudio({ muted: !audioSettings.muted })}
+    collapsed={displayPrefs.value.topBarCollapsed}
+    onToggleCollapsed={() => displayPrefs.update({ topBarCollapsed: !displayPrefs.peek().topBarCollapsed })}
   />
   <div class="main">
     <!--
@@ -2793,7 +2795,10 @@
         edgeScroll={(phase === 'playing' || phase === 'replay') && !dialogOpen() && contextMenuAt === null}
       />
     {/key}
-    <SidePanel {selected} {inspected} {statusMessage} {log} {recruitOptions} {recallOptions} {hoveredHexInfo} onEndTurn={handleEndTurn}>
+    <SidePanel {selected} {inspected} {statusMessage} {log} {recruitOptions} {recallOptions} {hoveredHexInfo} onEndTurn={handleEndTurn}
+      collapsed={displayPrefs.value.infoboxCollapsed}
+      onToggleCollapsed={() => displayPrefs.update({ infoboxCollapsed: !displayPrefs.peek().infoboxCollapsed })}
+    >
       {#snippet top()}
         <Minimap
           input={minimapInput}

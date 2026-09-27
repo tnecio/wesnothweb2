@@ -33,6 +33,8 @@
     actionCommands,
     muted = false,
     onToggleMute,
+    collapsed = false,
+    onToggleCollapsed,
   }: {
     scenarioName: string;
     turnNumber?: number;
@@ -59,6 +61,13 @@
     /** Phase 19: whether all audio is muted, and the switch. */
     muted?: boolean;
     onToggleMute?: () => void;
+    /**
+     * Phase 23: in the compact (phone) layout the status wraps onto as many lines as it needs, and
+     * this collapses it to the essentials (turn, gold, time of day). Ignored on wider screens, where
+     * everything fits on one line.
+     */
+    collapsed?: boolean;
+    onToggleCollapsed?: () => void;
   } = $props();
 
   let openMenu = $state<'menu' | 'actions' | null>(null);
@@ -82,7 +91,7 @@
 
 <svelte:window onclick={handleWindowClick} onkeydown={handleKeydown} />
 
-<header class="top-bar" bind:this={barEl}>
+<header class="top-bar" class:collapsed bind:this={barEl}>
   <nav class="menus">
     <div class="menu-group">
       <button class="menu-button" class:open={openMenu === 'menu'} aria-haspopup="menu" aria-expanded={openMenu === 'menu'} onclick={() => toggle('menu')}>{tw('Menu')}</button>
@@ -122,25 +131,25 @@
     <span class="stat" title={tx('Turn / turn limit')}>
       <span class="label">{t('Turn')}</span>
       {turnNumber}{#if scenarioTurnsLimit !== null}/{scenarioTurnsLimit}{/if}
-      {#if activeSide !== undefined}<span class="dim">{fmt(tx('(side $side)'), { side: activeSide })}</span>{/if}
+      {#if activeSide !== undefined}<span class="dim secondary">{fmt(tx('(side $side)'), { side: activeSide })}</span>{/if}
     </span>
     <span class="stat" title={t('Gold')}>
       <span class="label">{t('Gold')}</span>
       {gold}
     </span>
-    <span class="stat" title={tx('Villages owned')}>
+    <span class="stat secondary" title={tx('Villages owned')}>
       <span class="label">{t('Villages')}</span>
       {economyInfo.villagesOwned}
     </span>
-    <span class="stat" title={t('Units')}>
+    <span class="stat secondary" title={t('Units')}>
       <span class="label">{t('Units')}</span>
       {economyInfo.unitCount}
     </span>
-    <span class="stat" title={tx('Upkeep charged (raw total)')}>
+    <span class="stat secondary" title={tx('Upkeep charged (raw total)')}>
       <span class="label">{t('Upkeep')}</span>
       {economyInfo.upkeepCharged} <span class="dim">({economyInfo.upkeepTotal})</span>
     </span>
-    <span class="stat" title={tx('Income next turn')}>
+    <span class="stat secondary" title={tx('Income next turn')}>
       <span class="label">{t('Income')}</span>
       {economyInfo.netIncome >= 0 ? '+' : ''}{economyInfo.netIncome}
     </span>
@@ -149,11 +158,21 @@
         {#if timeOfDay.image}
           <img class="tod-icon" src={imageUrl(timeOfDay.image)} alt="" />
         {/if}
-        {timeOfDay.name}
+        <span class="tod-name">{timeOfDay.name}</span>
       </span>
     {/if}
-    <span class="scenario-name">{scenarioName}</span>
+    <span class="scenario-name secondary">{scenarioName}</span>
   </div>
+  {#if onToggleCollapsed}
+    <button
+      class="collapse-toggle"
+      aria-expanded={!collapsed}
+      aria-label={collapsed ? tx('Show the full status') : tx('Show less of the status')}
+      title={collapsed ? tx('Show the full status') : tx('Show less of the status')}
+      data-testid="top-bar-toggle"
+      onclick={onToggleCollapsed}>{collapsed ? '\u{25BE}' : '\u{25B4}'}</button
+    >
+  {/if}
 </header>
 
 <style>
@@ -285,5 +304,68 @@
     margin-left: auto;
     font-style: italic;
     opacity: 0.75;
+  }
+  .collapse-toggle {
+    display: none;
+    font: inherit;
+    font-size: 1.1rem;
+    min-width: 2.75rem;
+    border: none;
+    border-left: 1px solid #4a4432;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+  /*
+   * Phase 23, a phone: nothing scrolls sideways any more. The status wraps under the menus onto as
+   * many lines as it needs (every figure stays readable), or collapses to the essentials.
+   */
+  @media (max-width: 720px), (max-height: 500px) {
+    .top-bar {
+      flex-wrap: wrap;
+      position: relative;
+    }
+    .status {
+      flex-wrap: wrap;
+      column-gap: 0.9rem;
+      row-gap: 0.2rem;
+      padding: 0.3rem 0.6rem;
+      overflow-x: visible;
+    }
+    .scenario-name {
+      margin-left: 0;
+    }
+    .collapsed .secondary {
+      display: none;
+    }
+    .collapse-toggle {
+      display: block;
+    }
+  }
+  @media (max-width: 720px) {
+    /* Portrait: the menus keep the first line and the status has a line (or more) of its own. */
+    .status {
+      order: 3;
+      flex-basis: 100%;
+      border-top: 1px solid #4a4432;
+    }
+    .collapse-toggle {
+      margin-left: auto;
+    }
+    /* Collapsed, the essentials fit on the menus' line. */
+    .collapsed .status {
+      order: 0;
+      flex: 1 1 0;
+      flex-wrap: nowrap;
+      overflow: hidden;
+      border-top: none;
+    }
+    .collapsed .collapse-toggle {
+      margin-left: 0;
+    }
+    /* The icon says it; the name doesn't fit beside the menus. */
+    .collapsed .tod-name {
+      display: none;
+    }
   }
 </style>
