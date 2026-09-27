@@ -236,8 +236,9 @@ try {
   await tap('[data-testid="infobox-toggle"]', 600);
   check('collapsed, the top bar keeps turn and gold on one line', await page.evaluate(() => { const bar = document.querySelector('.top-bar'); return bar.getBoundingClientRect().height < 60 && [...bar.querySelectorAll('.stat')].filter((s) => getComputedStyle(s).display !== 'none').length === 2; }));
   check('collapsed, the infobox is just its header (End Turn still there)', await visible('.turn-actions button') && !(await shown('.top-slot canvas')));
-  const hostCollapsed = await page.locator('.canvas-host').boundingBox();
-  check('...and the board has most of the screen', hostCollapsed.height > 839 * 0.75, `${hostCollapsed.height.toFixed(0)} px`);
+  // The drawn canvas, not just its host: Pixi follows window resizes only, and collapsing is not one.
+  const drawn = await page.evaluate(() => { const host = document.querySelector('.canvas-host').getBoundingClientRect(); const canvas = document.querySelector('.canvas-host canvas').getBoundingClientRect(); return { host: host.height, canvas: canvas.height, camera: window.__wesnothDebug.camera().viewport.height }; });
+  check('...and the board is drawn over most of the screen', drawn.canvas > 839 * 0.75 && Math.abs(drawn.canvas - drawn.host) < 2 && Math.abs(drawn.camera - drawn.host) < 2, JSON.stringify(drawn));
   const state = () => page.evaluate(() => { const s = window.__wesnoth.session; return JSON.stringify({ turn: s.turnNumber, units: s.board.allUnits().map((u) => `${u.id}@${u.location.x},${u.location.y}:${u.hitpoints}`).sort(), gold: s.board.getTeam(1)?.gold }); });
   const s0 = await state();
   await page.setViewportSize({ width: 839, height: 412 });

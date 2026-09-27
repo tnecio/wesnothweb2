@@ -568,6 +568,9 @@
       applyView(centerOn({ x: 0, y: 0, scale: openScale }, mapCentre(), mapSize(), { width: app.screen.width, height: app.screen.height }));
       // Re-bounds-check whenever the canvas changes size (window resize, side panel reflow).
       const resizeObserver = new ResizeObserver(() => {
+        // Pixi's `resizeTo` follows window resizes only; the canvas must also follow its host when the
+        // layout around it changes (Phase 23: collapsing the infobox grows the board, no window resize).
+        app?.resize();
         const view = currentView();
         if (view) applyView(view);
       });

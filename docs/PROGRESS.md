@@ -5268,5 +5268,10 @@ either orientation; tablets and desktops keep the full layout.
   the layout, the confirm tap, pinch, two-finger pan, long press, collapsing, and turning the phone both
   ways with the game state unchanged. Passes. `keyboard-playthrough.mjs` and
   `minimap-camera-playthrough.mjs --skip-ai` still pass.
-- **Found, not caused here**: `dialogue-playthrough.mjs` fails "the scenario reaches play after its
-  cutscene" (Dead Water 5) -- identically with the pre-Phase-23 source, so it is an existing regression.
+- **Open: `dialogue-playthrough.mjs` fails** "the scenario reaches play after its cutscene" (Dead Water 5:
+  the loop sees one line, then no dialog for 400 ms, but a dialog is up again at the final check). It fails
+  on the Phase 23 code, reproducibly, with a fresh dev server. **Not yet known whether Phase 23 caused
+  it**: an earlier claim that it "fails identically on the pre-Phase-23 source" is void -- that run swapped
+  `packages/ui/src` and `packages/renderer/src` to e98ccc6 with `git checkout` under the shared :5173 Vite,
+  which kept serving stale modules (it did not pick up the git-rewritten files until restarted). To settle
+  it: a separate worktree at e98ccc6 with its own Vite on another port, never the shared tree.

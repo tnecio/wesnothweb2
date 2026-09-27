@@ -138,6 +138,9 @@
     color: #eee;
     background: #181818;
     height: 100vh;
+    /* Phase 23: the visible viewport -- on a phone `100vh` includes the browser's bars (Firefox's bottom
+       toolbar hid End Turn and the infobox's lower edge). */
+    height: 100dvh;
     display: flex;
     flex-direction: column;
   }
