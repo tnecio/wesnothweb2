@@ -667,6 +667,7 @@
     mapLabels = session.mapLabels;
     timeOfDay = session.currentTimeOfDay;
     refreshMinimap();
+    armedMove = null;
 
     statusMessage = statusFor(message);
 
@@ -1063,6 +1064,34 @@
       });
     }
     sync();
+  }
+
+  /**
+   * Phase 23: the hex a finger has chosen for the selected unit's move, waiting for the confirming
+   * second tap. The mouse moves on the first click, as upstream's; a finger can't hover to see where
+   * it is about to go, so the first tap only marks the hex (shown as the cursor). Cleared by any
+   * change to the game (`sync`) and by a tap anywhere else.
+   */
+  let armedMove = $state<HexPoint | null>(null);
+
+  /** `GameBoardView`'s `onHexClick`: a finger's tap on a move destination asks for a second tap first. */
+  function handleBoardHexClick(x: number, y: number, input?: { touch: boolean }): void {
+    const armed = armedMove;
+    armedMove = null;
+    if (input?.touch && canAct() && isPlainMoveTarget(x, y) && !(armed && armed.x === x && armed.y === y)) {
+      armedMove = { x, y };
+      hoveredHexInfo = session.hoveredHexInfo(x, y);
+      statusMessage = tx('Tap again to move here.');
+      return;
+    }
+    void handleHexClick(x, y);
+  }
+
+  /** A hex the selected unit can move to with nothing (visible) standing on it, and no recruit/recall/attack waiting. */
+  function isPlainMoveTarget(x: number, y: number): boolean {
+    if (!session.selectedUnit || pendingRecruitTypeId || pendingRecallIndex !== null || pendingPreview) return false;
+    if (!reachable.some((h) => h.x === x && h.y === y)) return false;
+    return !units.some((u) => u.x === x && u.y === y);
   }
 
   async function handleHexClick(x: number, y: number): Promise<void> {
@@ -2776,7 +2805,7 @@
         onSound={(files) => audio.playSound({ files, repeats: 0, group: 'sound' })}
         {units}
         {selectedHex}
-        {cursorHex}
+        cursorHex={cursorHex ?? armedMove}
         reachable={enemyReach?.hexes ?? reachable}
         {attackTargets}
         grid={displayPrefs.value.grid}
@@ -2786,7 +2815,7 @@
         labels={mapLabels}
         {hexVisibility}
         {timeOfDay}
-        onHexClick={handleHexClick}
+        onHexClick={handleBoardHexClick}
         onHexRightClick={handleHexRightClick}
         onHexHoverChange={handleHexHoverChange}
         hoverDefensePercent={(x, y) => session.defensePercentAt(x, y)}

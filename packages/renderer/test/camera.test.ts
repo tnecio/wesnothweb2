@@ -9,6 +9,7 @@ import {
   scrollTargetForHexes,
   scrollWarps,
   stepZoomIndex,
+  pinchZoomIndex,
   worldBounds,
   zoomAbout,
   zoomIndexFor,
@@ -208,5 +209,25 @@ describe('ScrollAnimation (scroll_to_xy)', () => {
     expect(scrollWarps('scroll', 100, 1, false)).toBe(true)
     expect(scrollWarps('scroll', 50, 3, false)).toBe(true)
     expect(scrollWarps('scroll', 50, 1, true)).toBe(true)
+  })
+})
+
+describe('pinchZoomIndex (Phase 23)', () => {
+  const at72 = ZOOM_LEVELS.indexOf(72)
+  it('stays put until the fingers have moved far enough for the next level', () => {
+    expect(pinchZoomIndex(at72, 1)).toBe(at72)
+    expect(pinchZoomIndex(at72, 1.1)).toBe(at72)
+    expect(pinchZoomIndex(at72, 0.9)).toBe(at72)
+  })
+  it('spreading zooms in and pinching zooms out, by as many levels as the scale says', () => {
+    expect(ZOOM_LEVELS[pinchZoomIndex(at72, 2)]).toBe(144)
+    expect(ZOOM_LEVELS[pinchZoomIndex(at72, 0.5)]).toBe(36)
+    expect(ZOOM_LEVELS[pinchZoomIndex(at72, 1.4)]).toBe(100)
+  })
+  it('clamps at the ends and ignores nonsense', () => {
+    expect(ZOOM_LEVELS[pinchZoomIndex(at72, 100)]).toBe(288)
+    expect(ZOOM_LEVELS[pinchZoomIndex(at72, 0.01)]).toBe(16)
+    expect(pinchZoomIndex(at72, 0)).toBe(at72)
+    expect(pinchZoomIndex(at72, NaN)).toBe(at72)
   })
 })

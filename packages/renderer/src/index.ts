@@ -83,6 +83,7 @@ export {
   DEFAULT_ZOOM_INDEX,
   scaleForZoom,
   zoomIndexFor,
+  pinchZoomIndex,
   stepZoomIndex,
   worldBounds,
   clampView,

@@ -52,6 +52,7 @@
     zoomIndexFor,
     stepZoomIndex,
     scaleForZoom,
+    pinchZoomIndex,
     scrollTargetForHexes,
     worldBounds,
     ZOOM_LEVELS,
@@ -128,7 +129,8 @@
     onSound?: (files: string) => void;
     /** The current global ToD's red=/green=/blue= colour shift -- see `SnapshotBoard.updateTimeOfDayTint`. Omit for no tint (a scenario with no [time] schedule). */
     timeOfDay?: Pick<TimeOfDayEntry, 'red' | 'green' | 'blue'>;
-    onHexClick: (x: number, y: number) => void;
+    /** A click or tap on hex (x, y). `touch` (Phase 23): it was a finger (or pen), which may want a confirming second tap. */
+    onHexClick: (x: number, y: number, input?: { touch: boolean }) => void;
     /**
      * Phase 14: real Wesnoth's right-click context menu -- called with a
      * hex's engine-convention (0-based) (x,y) AND raw viewport
@@ -244,39 +246,128 @@
     let suppressNextClick = false;
     let disconnectResize = (): void => {};
 
+    /*
+     * Phase 23, touch. Every finger on the board is tracked; one drags the map as the mouse does,
+     * two pinch (the level nearest the spread, `pinchZoomIndex`, anchored between them) and pan
+     * (their midpoint). Holding one still for `LONG_PRESS_MS` opens the context menu, as a
+     * right-click does. A gesture that became a pinch or a long press taps nothing when it ends.
+     */
+    const LONG_PRESS_MS = 500;
+    const LONG_PRESS_SLOP_PX = 10;
+    const pointers = new Map<number, { x: number; y: number }>();
+    let pinch: { startDistance: number; startIndex: number; lastMid: { x: number; y: number } } | null = null;
+    /** True from a pinch or long press until every finger has lifted: no hex tap comes out of it. */
+    let gestureConsumed = false;
+    let longPressTimer: ReturnType<typeof setTimeout> | undefined;
+    /** How the last press on the board was made, handed on with the hex tap it produces. */
+    let lastPointerType = 'mouse';
+
+    function cancelLongPress(): void {
+      clearTimeout(longPressTimer);
+      longPressTimer = undefined;
+    }
+
     function wrappedOnHexClick(x: number, y: number): void {
-      if (suppressNextClick) {
+      if (suppressNextClick || gestureConsumed) {
         suppressNextClick = false;
         return;
       }
-      onHexClick(x, y);
+      onHexClick(x, y, { touch: lastPointerType !== 'mouse' });
+    }
+
+    function twoFingers(): { mid: { x: number; y: number }; distance: number } | null {
+      const [a, b] = [...pointers.values()];
+      if (!a || !b) return null;
+      return { mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, distance: Math.hypot(a.x - b.x, a.y - b.y) };
+    }
+
+    /** Opens the context menu for the hex under client point (x, y) -- a long press. */
+    function longPress(x: number, y: number): void {
+      longPressTimer = undefined;
+      if (!board || !onHexRightClick || pointers.size !== 1 || dragDistance > LONG_PRESS_SLOP_PX) return;
+      gestureConsumed = true;
+      dragActive = false;
+      const rect = host.getBoundingClientRect();
+      const scale = board.stage.scale.x;
+      const hex = pixelToHex((x - rect.left - board.stage.x) / scale, (y - rect.top - board.stage.y) / scale);
+      if (hex.x < 1 || hex.y < 1 || hex.x > snapshot.map.width || hex.y > snapshot.map.height) return;
+      // The finger lifting afterwards makes a click; it must not land on the menu's "click outside closes me".
+      const swallow = (e: Event): void => {
+        e.stopPropagation();
+        e.preventDefault();
+      };
+      window.addEventListener('click', swallow, { capture: true, once: true });
+      setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 700);
+      onHexRightClick(hex.x - 1, hex.y - 1, x, y);
     }
 
     function onPointerDown(e: PointerEvent): void {
-      if (e.button !== 0 || !board || viewLocked) return;
-      dragActive = true;
-      dragDistance = 0;
-      dragStart = { x: e.clientX, y: e.clientY };
-      dragOrigin = { x: board.stage.x, y: board.stage.y };
+      lastPointerType = e.pointerType;
+      if (!board || viewLocked) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (pointers.size === 0) gestureConsumed = false;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       cancelScroll();
+      if (pointers.size === 1) {
+        dragActive = true;
+        dragDistance = 0;
+        dragStart = { x: e.clientX, y: e.clientY };
+        dragOrigin = { x: board.stage.x, y: board.stage.y };
+        if (e.pointerType !== 'mouse') {
+          const { clientX, clientY } = e;
+          longPressTimer = setTimeout(() => longPress(clientX, clientY), LONG_PRESS_MS);
+        }
+        return;
+      }
+      // A second finger: the drag becomes a pinch.
+      cancelLongPress();
+      dragActive = false;
+      gestureConsumed = true;
+      const two = twoFingers();
+      if (two) pinch = { startDistance: Math.max(1, two.distance), startIndex: zoomIndex, lastMid: two.mid };
     }
 
     function onPointerMove(e: PointerEvent): void {
-      if (!dragActive || !board) return;
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (!board) return;
+      if (pinch) {
+        const two = twoFingers();
+        if (!two) return;
+        const rect = host.getBoundingClientRect();
+        // Pan with the midpoint, then zoom about it.
+        const scale = board.stage.scale.x;
+        applyView({ x: board.stage.x + two.mid.x - pinch.lastMid.x, y: board.stage.y + two.mid.y - pinch.lastMid.y, scale });
+        pinch.lastMid = two.mid;
+        const index = pinchZoomIndex(pinch.startIndex, two.distance / pinch.startDistance);
+        if (index !== zoomIndex) setZoomIndex(index, { x: two.mid.x - rect.left, y: two.mid.y - rect.top });
+        return;
+      }
+      if (!dragActive) return;
       const dx = e.clientX - dragStart.x;
       const dy = e.clientY - dragStart.y;
       dragDistance = Math.max(dragDistance, Math.hypot(dx, dy));
+      if (dragDistance > LONG_PRESS_SLOP_PX) cancelLongPress();
       applyView({ x: dragOrigin.x + dx, y: dragOrigin.y + dy, scale: board.stage.scale.x });
     }
 
-    function onPointerUpCapture(): void {
-      if (!dragActive) return;
-      dragActive = false;
-      if (dragDistance > DRAG_THRESHOLD_PX) suppressNextClick = true;
+    /** A finger lifting: the gesture it belonged to ends when the last one does. */
+    function releasePointer(e: PointerEvent): void {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinch = null;
+      if (pointers.size === 0) {
+        cancelLongPress();
+        dragActive = false;
+      }
     }
 
-    function onWindowPointerUp(): void {
-      dragActive = false;
+    function onPointerUpCapture(e: PointerEvent): void {
+      if (dragActive && dragDistance > DRAG_THRESHOLD_PX) suppressNextClick = true;
+      releasePointer(e);
+    }
+
+    function onWindowPointerUp(e: PointerEvent): void {
+      releasePointer(e);
     }
 
     /**
@@ -326,6 +417,7 @@
     host.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onWindowPointerUp);
+    window.addEventListener('pointercancel', onWindowPointerUp);
     // Capture phase, and on `host` (an ancestor of the PixiJS canvas) --
     // see module doc comment on why this ordering matters.
     host.addEventListener('pointerup', onPointerUpCapture, true);
@@ -341,6 +433,9 @@
     // `onHexRightClick`, matching a real game window's behavior).
     function onContextMenu(e: MouseEvent): void {
       e.preventDefault();
+      // Phase 23: a browser's own long-press `contextmenu` (Android) must not reach the menu we opened
+      // for the same press -- it closes on any context menu event outside itself.
+      if (pointers.size > 0 || lastPointerType !== 'mouse') e.stopPropagation();
     }
     host.addEventListener('contextmenu', onContextMenu);
 
@@ -359,6 +454,11 @@
     let edgeLast = 0;
     let edgeFrame = 0;
     function onWindowPointerMoveForEdge(e: PointerEvent): void {
+      // A finger near the edge is dragging or tapping, not resting there.
+      if (e.pointerType !== 'mouse') {
+        edgePointer = null;
+        return;
+      }
       const target = e.target instanceof Element ? e.target : null;
       edgePointer = { x: e.clientX, y: e.clientY, overControl: !!target?.closest('button, a, input, select, textarea, [role="menu"], [role="menuitem"]') };
     }
@@ -496,6 +596,8 @@
       host.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onWindowPointerUp);
+      window.removeEventListener('pointercancel', onWindowPointerUp);
+      cancelLongPress();
       host.removeEventListener('pointerup', onPointerUpCapture, true);
       host.removeEventListener('wheel', onWheel);
       host.removeEventListener('pointerleave', onPointerLeave);

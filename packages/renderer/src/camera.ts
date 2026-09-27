@@ -75,6 +75,21 @@ export function zoomIndexFor(zoom: number): number {
   return i
 }
 
+/**
+ * Phase 23, pinch zoom (ours; upstream has no touch zoom): the level nearest, on a log scale, to the
+ * level the pinch began at scaled by how far the fingers have spread (`ratio` = current / starting
+ * distance). Log scale, so spreading to 2x and pinching to 0.5x feel symmetric.
+ */
+export function pinchZoomIndex(startIndex: number, ratio: number): number {
+  if (!(ratio > 0) || !Number.isFinite(ratio)) return startIndex
+  const target = Math.log(ZOOM_LEVELS[startIndex]! * ratio)
+  let best = 0
+  for (let i = 1; i < ZOOM_LEVELS.length; i++) {
+    if (Math.abs(Math.log(ZOOM_LEVELS[i]!) - target) < Math.abs(Math.log(ZOOM_LEVELS[best]!) - target)) best = i
+  }
+  return best
+}
+
 /** `set_zoom(bool increase)`: one level in or out, clamped. */
 export function stepZoomIndex(index: number, increase: boolean): number {
   return Math.min(ZOOM_LEVELS.length - 1, Math.max(0, index + (increase ? 1 : -1)))
