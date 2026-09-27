@@ -93,7 +93,9 @@
     type SaveKind,
     type SaveMeta,
   } from './persistence.js';
-  import { type CampaignInfo as Campaign, campaignAbbrev, wesnothCampaignInfo } from './save/campaign.js';
+  import { type CampaignInfo as Campaign, campaignAbbrev, defaultDifficulty, wesnothCampaignInfo } from './save/campaign.js';
+  import { fetchScenarioSnapshot } from './scenarioFetch.js';
+  import { markCampaignCompleted } from './menu/completedStore.js';
   import { fromWesnothSave, toWesnothSave } from './save/wesnothSave.js';
   import {
     scenarioLabel,
@@ -149,6 +151,7 @@
     initialSave = null,
     onOpenSave = undefined,
     campaigns = [],
+    onQuitToMenu = undefined,
   }: {
     snapshot: GameBoardSnapshot;
     /** `/story/<id>.json` for `snapshot`'s scenario (see `fetchStoryAssets`); null shows the story without images. */
@@ -179,6 +182,8 @@
     onOpenSave?: (campaignId: string, saveName: string) => void;
     /** Every campaign, so the load dialog can name the campaign a save belongs to even when it is not the one being played. */
     campaigns?: readonly Campaign[];
+    /** Leave the game for the title screen (upstream's "Quit to Menu"). Without it the command is not offered. */
+    onQuitToMenu?: () => void;
   } = $props();
 
   /** The scenario currently being played -- reassigned by `continueToNextScenario`. Everything below that used to read the `snapshot` prop directly now reads this instead. */
@@ -339,9 +344,23 @@
   /** Phase 16 N7: set once the campaign outro has played (or was skipped). */
   let outroDone = $state(false);
 
+  /** Phase 21: the "Do you really want to quit?" question behind Quit to Menu. */
+  let quitConfirmOpen = $state(false);
+
   let phase = $state<'story' | 'objectives' | 'playing' | 'ended' | 'replay'>(
     session.scenarioResult ? 'ended' : storyParts.length > 0 ? 'story' : 'playing',
   );
+  /**
+   * Phase 21: a campaign is completed by winning its last scenario (`playcampaign.cpp`: victory with no next
+   * scenario), recorded per difficulty for the campaign dialog's laurels -- whether or not the credits roll.
+   */
+  let completionRecorded = false;
+  $effect(() => {
+    if (phase !== 'ended' || completionRecorded || !campaign) return;
+    if (session.scenarioResult !== 'victory' || session.nextScenarioId !== null) return;
+    completionRecorded = true;
+    void markCampaignCompleted(campaign.id, activeSnapshot.difficulty ?? '').catch((err) => console.error('[menu] could not record completion:', err));
+  });
   /** Upstream shows the outro only for a victory with no next scenario, and only when `end_credits` is not turned off. */
   const showOutro = $derived(
     phase === 'ended' &&
@@ -1867,7 +1886,7 @@
         return;
       }
       const targetScenario = found.data.scenarioId ?? found.meta.scenarioId;
-      if (targetScenario && targetScenario !== activeSnapshot.scenario.id) {
+      if (targetScenario && (targetScenario !== activeSnapshot.scenario.id || savedDifficulty(found.data) !== activeSnapshot.difficulty)) {
         await loadIntoScenario(targetScenario, found.data);
       } else {
         session.loadSaveData(found.data);
@@ -1902,10 +1921,8 @@
     }
     const scenarioId = data.scenarioId ?? activeSnapshot.scenario.id;
     let replaySnapshot = activeSnapshot;
-    if (scenarioId !== activeSnapshot.scenario.id) {
-      const res = await fetch(`/scenarios/${scenarioId}.json`);
-      if (!res.ok) throw new Error(`fetch scenarios/${scenarioId}.json: ${res.status}`);
-      replaySnapshot = (await res.json()) as GameBoardSnapshot;
+    if (scenarioId !== activeSnapshot.scenario.id || savedDifficulty(data) !== activeSnapshot.difficulty) {
+      replaySnapshot = await snapshotFor(scenarioId, savedDifficulty(data));
     }
     const replaySession = GameSession.forReplay(replaySnapshot, data, { ...SESSION_OPTIONS, onSound: undefined, onVolume: undefined });
     if (!replaySession) return;
@@ -1988,9 +2005,7 @@
    * state) and minus the story screen (this game is in progress).
    */
   async function loadIntoScenario(scenarioId: string, data: SaveGameData): Promise<void> {
-    const [res, assets] = await Promise.all([fetch(`/scenarios/${scenarioId}.json`), fetchStoryAssets(scenarioId)]);
-    if (!res.ok) throw new Error(`fetch scenarios/${scenarioId}.json: ${res.status}`);
-    const nextSnapshot = (await res.json()) as GameBoardSnapshot;
+    const [nextSnapshot, assets] = await Promise.all([snapshotFor(scenarioId, savedDifficulty(data)), fetchStoryAssets(scenarioId)]);
     activeSnapshot = nextSnapshot;
     session = GameSession.fromSaveData(nextSnapshot, data, SESSION_OPTIONS);
     session.interactionHost = interactionHost;
@@ -2042,7 +2057,9 @@
       }
       const scenarioId = found.data.scenarioId ?? found.meta.scenarioId;
       const snapshotForSave =
-        scenarioId === activeSnapshot.scenario.id ? activeSnapshot : await fetchSnapshot(scenarioId);
+        scenarioId === activeSnapshot.scenario.id && savedDifficulty(found.data) === activeSnapshot.difficulty
+          ? activeSnapshot
+          : await snapshotFor(scenarioId, savedDifficulty(found.data));
       const text = writeWml(toWesnothSave(found.data, snapshotForSave, wesnoth));
       const gz = await gzipText(text);
       downloadBlob(gz, downloadFileName(name));
@@ -2094,10 +2111,14 @@
     }
   }
 
-  async function fetchSnapshot(scenarioId: string): Promise<GameBoardSnapshot> {
-    const res = await fetch(`/scenarios/${scenarioId}.json`);
-    if (!res.ok) throw new Error(`fetch scenarios/${scenarioId}.json: ${res.status}`);
-    return (await res.json()) as GameBoardSnapshot;
+  /** The difficulty a save was played at: its own, else the campaign's default (a save from before difficulties; a debug scenario has none). */
+  function savedDifficulty(data: SaveGameData): string | undefined {
+    return data.difficulty ?? defaultDifficulty(campaign);
+  }
+
+  /** `scenarioId`'s snapshot at `difficulty` (default: this game's own), through the overlay-aware fetch. */
+  function snapshotFor(scenarioId: string, difficulty: string | undefined = activeSnapshot.difficulty): Promise<GameBoardSnapshot> {
+    return fetchScenarioSnapshot(scenarioId, difficulty, defaultDifficulty(campaign));
   }
 
   /** The campaign a save belongs to -- the one being played, when they match. */
@@ -2192,14 +2213,8 @@
     continuing = true;
     continueError = null;
     try {
-      const [nextSnapshot, nextStoryAssets] = await Promise.all([
-        (async () => {
-          const res = await fetch(`/scenarios/${nextId}.json`);
-          if (!res.ok) throw new Error(`fetch scenarios/${nextId}.json: ${res.status}`);
-          return (await res.json()) as GameBoardSnapshot;
-        })(),
-        fetchStoryAssets(nextId),
-      ]);
+      // The campaign carries its difficulty into every following scenario, as the real game does.
+      const [nextSnapshot, nextStoryAssets] = await Promise.all([snapshotFor(nextId), fetchStoryAssets(nextId)]);
       const nextSession = GameSession.startNextScenario(session, nextSnapshot, SESSION_OPTIONS);
       const nextStoryParts = nextSession.storyParts();
 
@@ -2253,6 +2268,16 @@
       handler: () => void openSaveManager('load'),
       hotkey: { key: 'o', ctrl: true },
     },
+    ...(onQuitToMenu
+      ? [
+          {
+            id: 'quit-to-menu',
+            label: t('Quit to Menu'),
+            enabled: true,
+            handler: () => (quitConfirmOpen = true),
+          },
+        ]
+      : []),
     {
       id: 'mute',
       label: audioSettings.muted ? tx('Unmute') : t('Mute'),
@@ -2538,6 +2563,7 @@
       loadDialogOpen ||
       labelDialog !== null ||
       clearLabelsConfirmOpen ||
+      quitConfirmOpen ||
       labelSettingsOpen ||
       audioDialogOpen ||
       languageDialogOpen ||
@@ -2737,6 +2763,17 @@
       onCancel={() => (labelSettingsOpen = false)}
     />
   {/if}
+  {#if quitConfirmOpen}
+    <ConfirmDialog
+      title={tw('Quit')}
+      message={tw('Do you really want to quit?')}
+      onYes={() => {
+        quitConfirmOpen = false;
+        onQuitToMenu?.();
+      }}
+      onNo={() => (quitConfirmOpen = false)}
+    />
+  {/if}
   {#if clearLabelsConfirmOpen}
     <ConfirmDialog
       title={t('Clear Labels')}
@@ -2825,6 +2862,7 @@
         {continuing}
         {continueError}
         onContinue={continueToNextScenario}
+        {onQuitToMenu}
       />
     {/if}
   {/if}

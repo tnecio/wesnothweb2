@@ -4983,3 +4983,52 @@ Gates: ui 298 (+5), 0 svelte-check errors.
   `ON_DEMAND_FONTS`.
 
 Gates: engine 793, ui 299, renderer 217, lua-bridge 38; 0 typecheck/svelte-check errors.
+
+## 2026-09-27: Phase 21, stages 1-2 — campaign difficulty, completion, quit to menu
+
+Plan: `docs/PHASE21_PLAN.md`.
+
+- **Difficulty is a build option, shipped as overlays.** The preprocessor resolves
+  `#ifdef EASY`, so each difficulty is its own build of a scenario. `build-scenario-snapshot.mjs`
+  takes the difficulty as an argument (default: the campaign's `default=yes`, read from
+  `campaigns.json`), and `rebuild-snapshots.mjs` ships the default whole (`<id>.json`) and every
+  other one as `<id>@<DEFINE>.json`: only the top-level keys that differ (`teams`, `units`,
+  `scenarioConfigJson`, ...) plus per-entry patches to the unit-type tables (Under the Burning
+  Suns changes a few units per difficulty). Overlays are 50-280 KB against a 3.4 MB snapshot;
+  72 in all. `engine/snapshot/snapshotOverlay.ts` refuses to build one that changes a key it
+  does not carry, so the assumption cannot go wrong silently (the UtBS unit-type changes were
+  found exactly that way).
+- **Bug fixed:** Two Brothers was built at `NORMAL`, which it does not have, so its scenarios took
+  the `#ifndef EASY` branches, the Grand Knight campaign, where upstream defaults to Horseman.
+- `fetchScenarioSnapshot(id, difficulty, default)` is the one way scenarios are fetched now (the
+  play page and the four sites in `GameShell`). `?difficulty=<DEFINE>` selects it; an unknown one
+  falls back to the campaign's default with a console warning.
+- `build-campaigns.mjs` (was `build-campaign-texts.mjs`) preprocesses each campaign's `_main.cfg`
+  and writes rank, year(s), icon, image, background, `[difficulty]` list and `debug: true` for
+  the synthetic ones into `campaigns.json`, and `credits.json` (core groups + each campaign's
+  `[about]`) for the credits screen. The campaign model and manifest loader moved from `apps/web`
+  into `packages/ui` (`campaigns.ts`) so the menu components can share them.
+- Saves carry `difficulty` (`SaveGameData`, the real `difficulty=` in exported Wesnoth saves and
+  read back on import). A save without one, i.e. every save from before this phase, gets the
+  campaign's default (decided 2026-09-27: no difficulty dialog on load). A continuation keeps the
+  difficulty; loading a save made at another difficulty fetches that build.
+- **Completion**, as `playcampaign.cpp`: a victory with no next scenario records
+  `(campaign, difficulty)` in the settings store (`menu/completedStore.ts`), before and
+  regardless of the credits. `menu/completion.ts` ports upstream's laurel and filter rules
+  exactly (gold = the last *listed* difficulty, so UtBS's HARD, listed after NIGHTMARE; bronze =
+  only the first of several; silver otherwise), 12 unit tests.
+- **Quit to Menu** (upstream's `quit` command with its "Do you really want to quit?" question) is
+  in the in-game menu, and a finished campaign or a lost scenario now ends on a Quit to Menu button
+  instead of "Reload the page to play again". Ctrl+W is the browser's, so it has no key.
+- **Not done:** `wesnoth.scenario.difficulty` in Lua. The bridge has no scenario table at all
+  (its per-state data is the variable store only), and no shipped scenario reads it; it belongs to
+  Phase 29's host API.
+- Known and unchanged: two campaigns ship a `13_Epilogue` (Dead Water's and UtBS's) and the
+  snapshot is named by scenario id, so UtBS's last scenario resolves to Dead Water's.
+
+Checked in a browser: `/play/liberty?difficulty=HARD` opens the HARD build (`session.snapshot.difficulty`,
+and a save records it), Two Brothers opens EASY, Dead Water NIGHTMARE has its own starting gold, a bogus
+value falls back, a debug campaign has none.
+
+Gates: engine 799, ui 321 (plus the known vitest `onTaskUpdate` timeout from the AI/replay tests), renderer 217,
+lua-bridge 38; 0 typecheck/svelte-check errors.

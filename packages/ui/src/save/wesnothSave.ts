@@ -80,7 +80,7 @@ export interface WesnothCampaignInfo {
    * first campaign-specific unit ("unknown unit type: Merman Child King").
    */
   define: string;
-  /** `EASY`/`NORMAL`/`HARD`; this port has no difficulty selection yet, so `NORMAL` unless told otherwise. */
+  /** `EASY`/`NORMAL`/`HARD`: the fallback when the save itself records no difficulty (`SaveGameData.difficulty`). */
   difficulty?: string;
 }
 
@@ -266,6 +266,8 @@ export function fromWesnothSave(cfg: WmlConfig): ImportedWesnothSave {
       scenarioId: snapshot.getString('id', ''),
       scenarioName: snapshot.getString('name', ''),
       campaignId: campaignIdFromWesnoth(cfg.getString('campaign', '')),
+      // `game_classification::difficulty`: the campaign difficulty define the save was played at.
+      difficulty: cfg.getString('difficulty', '') || undefined,
       teams,
       units,
       recall,
@@ -502,7 +504,7 @@ export function toWesnothSave(
     out.setAttribute('campaign', campaign.wesnothId);
     out.setAttribute('campaign_name', campaign.name);
     out.setAttribute('abbrev', campaign.abbrev);
-    out.setAttribute('difficulty', campaign.difficulty ?? 'NORMAL');
+    out.setAttribute('difficulty', save.difficulty ?? campaign.difficulty ?? 'NORMAL');
     out.setAttribute('label', label);
     out.setAttribute('end_credits', true);
     // See `WesnothCampaignInfo.define`: without these the game loads the

@@ -135,7 +135,8 @@
  * exactly like the previously-hardcoded `CAMPAIGN_DEAD_WATER`. Difficulty
  * defaults to `NORMAL` for every real campaign (matching Dead_Water's own
  * prior hardcoded choice) since this script has no difficulty-picker UI
- * to ask. Everything else (image rooting, unit-type/movement-type
+ * to ask. [Phase 21: the difficulty is now an argument, defaulting to the
+ * campaign's own default; see `difficulty` below.] Everything else (image rooting, unit-type/movement-type
  * collection, `spawnUnitsFromTree: false`) is identical to the
  * Dead_Water path -- Dead_Water is no longer special-cased, just the
  * default when `argv[2]` is a bare filename.
@@ -202,6 +203,21 @@ function readCampaignDefine(dir) {
 const campaignDefine = isRealCampaign ? readCampaignDefine(campaignDir) : null;
 const campaignName = isRealCampaign ? path.basename(campaignDir) : null;
 
+/**
+ * The difficulty define this build is for (Phase 21): `argv[3]` (`EASY`, `HARD`, ...), else the campaign's
+ * `default=yes` difficulty from `public/campaigns.json` (built by `build-campaigns.mjs`), else `NORMAL`.
+ * Difficulty is resolved by the preprocessor (`#ifdef EASY`), so each one is its own build; see
+ * `rebuild-snapshots.mjs`, which turns the non-default builds into small overlays.
+ * `argv[4]`, when given, is the output file instead of `public/scenarios/<id>.json`.
+ */
+function defaultDifficulty() {
+  const manifest = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/campaigns.json'), 'utf8'));
+  const entry = manifest.campaigns.find((c) => c.wesnothId === campaignName);
+  return entry?.difficulties?.find((d) => d.default)?.define ?? entry?.difficulties?.[0]?.define ?? 'NORMAL';
+}
+const difficulty = isRealCampaign ? (process.argv[3] || defaultDifficulty()) : null;
+const outArg = process.argv[4];
+
 const { parseWmlFile, preloadDefines, preloadDefinesFromDir } = await import(
   path.join(repoRoot, 'packages/engine/src/wml/index.ts')
 );
@@ -229,7 +245,7 @@ function loadDefines() {
   // NORMAL (no difficulty-picker UI here to ask, see module doc comment).
   if (isRealCampaign) {
     if (campaignDefine) flag(campaignDefine);
-    flag('NORMAL');
+    flag(difficulty);
   }
   preloadDefinesFromDir(path.join(dataRoot, 'core'), defines, { dataRoot });
   if (isRealCampaign) {
@@ -574,6 +590,7 @@ const abilityConfigsJson = Object.fromEntries([...abilityRegistry].map(([id, ent
 
 const snapshot = {
   generatedBy: 'apps/web/scripts/build-scenario-snapshot.mjs (see file header)',
+  ...(difficulty ? { difficulty } : {}),
   scenario: { id: scenario.getString('id'), name: scenario.getString('name') },
   map: {
     width: board.map.w(),
@@ -615,7 +632,7 @@ function collectTextdomains(node, out) {
 }
 snapshot.textdomains = [...collectTextdomains(snapshot, new Set())].sort();
 
-const outFile = path.join(repoRoot, 'apps/web/public/scenarios', `${snapshot.scenario.id}.json`);
+const outFile = outArg ? path.resolve(outArg) : path.join(repoRoot, 'apps/web/public/scenarios', `${snapshot.scenario.id}.json`);
 fs.mkdirSync(path.dirname(outFile), { recursive: true });
 fs.writeFileSync(outFile, JSON.stringify(snapshot));
 console.log(

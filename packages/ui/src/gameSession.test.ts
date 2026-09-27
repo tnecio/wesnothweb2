@@ -531,6 +531,16 @@ describe('GameSession.toSaveData / loadSaveData (round-trip, see persistence.ts 
     expect(reloadedUnit?.type.id).toBe(someUnit.type.id);
   });
 
+  it('records the difficulty the scenario was built for (Phase 21), so a load fetches the same build', () => {
+    const session = new GameSession(loadSnapshot());
+    expect(session.toSaveData().difficulty).toBe('NORMAL');
+    const hard = { ...loadSnapshot(), difficulty: 'HARD' };
+    expect(new GameSession(hard).toSaveData().difficulty).toBe('HARD');
+    // A debug scenario has none: the field is absent, not "undefined" in the JSON.
+    const { difficulty: _unused, ...debug } = loadSnapshot();
+    expect('difficulty' in new GameSession(debug as GameBoardSnapshot).toSaveData()).toBe(false);
+  });
+
   it('round-trips a latched scenarioResult and keeps the loaded session blocked from further input', async () => {
     const session = new GameSession(loadSnapshot());
     const kaiKrellis = session.board.unitsForSide(1).find((u) => u.canRecruit)!;

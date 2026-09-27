@@ -32,7 +32,9 @@ export {
 // module that knows the real save format; `campaign.ts` carries the
 // upstream identity a file needs, from `campaigns.json`.
 export { fromWesnothSave, toWesnothSave, type WesnothCampaignInfo, type ImportedWesnothSave } from './save/wesnothSave.js';
-export { wesnothCampaignInfo, campaignAbbrev, type CampaignInfo } from './save/campaign.js';
+export { wesnothCampaignInfo, campaignAbbrev, defaultDifficulty, type CampaignInfo, type CampaignDifficulty } from './save/campaign.js';
+export { fetchCampaigns, parseCampaigns, type Campaign } from './campaigns.js';
+export { fetchScenarioSnapshot } from './scenarioFetch.js';
 export {
   scenarioLabel,
   autosaveName,

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fmt, tw, tx } from './i18n/locale.js';
+  import { fmt, t, tw, tx } from './i18n/locale.js';
   /**
    * Full-screen, non-dismissable banner shown once `GameSession.
    * scenarioResult` latches (see `checkVictory`/`GameSession.
@@ -26,6 +26,7 @@
     continuing,
     continueError,
     onContinue,
+    onQuitToMenu = undefined,
   }: {
     result: 'victory' | 'defeat';
     turnNumber: number;
@@ -37,12 +38,15 @@
     /** Set if the last `onContinue` attempt failed (e.g. the next snapshot's fetch failed) -- shown so the player can retry rather than being stuck silently. */
     continueError: string | null;
     onContinue: () => void;
+    /** Back to the title screen. Offered when there is no way on (the campaign is over, or the scenario was lost). */
+    onQuitToMenu?: () => void;
   } = $props();
 
   /** The way on: focused as the screen appears, so Enter continues without a mouse. */
   let continueButton: HTMLButtonElement | undefined = $state();
+  let menuButton: HTMLButtonElement | undefined = $state();
   $effect(() => {
-    continueButton?.focus();
+    (continueButton ?? menuButton)?.focus();
   });
 </script>
 
@@ -60,6 +64,8 @@
       {#if continueError}
         <p class="error">{tx('Failed to continue:')} {continueError}</p>
       {/if}
+    {:else if onQuitToMenu}
+      <button class="continue" bind:this={menuButton} onclick={onQuitToMenu} data-testid="end-quit-to-menu">{t('Quit to Menu')}</button>
     {:else}
       <p class="hint">{tx('Reload the page to play again.')}</p>
     {/if}

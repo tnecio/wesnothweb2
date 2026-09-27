@@ -985,6 +985,12 @@ export interface SaveGameData {
   scenarioId?: string;
   scenarioName?: string;
   campaignId?: string;
+  /**
+   * The campaign difficulty define this game is played at (`EASY`, `HARD`, ...; Phase 21). The preprocessor
+   * resolved the scenario's `#ifdef <difficulty>` with it, so loading has to fetch that build. Absent in a
+   * save made before difficulties (and for a debug scenario): the campaign's default.
+   */
+  difficulty?: string;
   teams: readonly {
     side: number;
     gold: number;
@@ -3821,6 +3827,7 @@ export class GameSession {
       scenarioResult: this.scenarioResult,
       scenarioId: this.snapshot.scenario.id,
       scenarioName: this.scenarioName,
+      ...(this.snapshot.difficulty ? { difficulty: this.snapshot.difficulty } : {}),
       schedule: this.schedule.exportState(),
       variables,
       choices: this.eventPump.ctx.choices.map((c) => ({ ...c })),

@@ -25,7 +25,95 @@
       "firstScenario": "01_Invasion",
       "wesnothId": "Dead_Water",
       "abbrev": "DW",
-      "define": "CAMPAIGN_DEAD_WATER"
+      "define": "CAMPAIGN_DEAD_WATER",
+      "icon": "units/undead/soulless-swimmer.png~RC(magenta>blue)",
+      "image": "data/campaigns/Dead_Water/images/campaign_image.png",
+      "rank": 110,
+      "startYear": "626 YW",
+      "endYear": "627 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-dw",
+                "Citizen"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-dw",
+                "Easy"
+              ]
+            ]
+          },
+          "image": "units/merfolk/citizen.png~RC(magenta>red)"
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-dw",
+                "Fighter"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-dw",
+                "Normal"
+              ]
+            ]
+          },
+          "image": "units/merfolk/fighter.png~RC(magenta>red)",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-dw",
+                "Warrior"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-dw",
+                "Challenging"
+              ]
+            ]
+          },
+          "image": "units/merfolk/warrior.png~RC(magenta>red)"
+        },
+        {
+          "define": "NIGHTMARE",
+          "label": {
+            "t": [
+              [
+                "wesnoth-dw",
+                "Triton"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-dw",
+                "Difficult"
+              ]
+            ]
+          },
+          "image": "units/merfolk/triton.png~RC(magenta>red)"
+        }
+      ]
     },
     {
       "id": "two_brothers",
@@ -41,12 +129,12 @@
         "t": [
           [
             "wesnoth-tb",
-            "An evil mage is threatening the small village of Maghre and its inhabitants. The village\u2019s mage sends to his warrior brother for help, but not all goes as planned. Can you help?"
+            "An evil mage is threatening the small village of Maghre and its inhabitants. The village’s mage sends to his warrior brother for help, but not all goes as planned. Can you help?"
           ],
           "\n\n<small>",
           [
             "wesnoth-tb",
-            "This campaign has two difficulties, with a large difference between them. The Grand Knight difficulty is intended for players who\u2019ve already completed Liberty and Heir to the Throne."
+            "This campaign has two difficulties, with a large difference between them. The Grand Knight difficulty is intended for players who’ve already completed Liberty and Heir to the Throne."
           ],
           "</small>\n\n",
           [
@@ -58,7 +146,54 @@
       "firstScenario": "01_Rooting_Out_a_Mage",
       "wesnothId": "Two_Brothers",
       "abbrev": "AToTB",
-      "define": "CAMPAIGN_TWO_BROTHERS"
+      "define": "CAMPAIGN_TWO_BROTHERS",
+      "icon": "units/human-loyalists/knight/knight.png~RC(magenta>red)~CROP(6,4,72,72)",
+      "background": "data/campaigns/Two_Brothers/images/story/Two_Brothers_M2P1.webp",
+      "rank": 70,
+      "year": "363 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-tb",
+                "Horseman"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-tb",
+                "Beginner"
+              ]
+            ]
+          },
+          "image": "units/human-loyalists/horseman/horseman.png~RC(magenta>red)",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-tb",
+                "Grand Knight"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-tb",
+                "Challenging"
+              ]
+            ]
+          },
+          "image": "units/human-loyalists/grand-knight/grand-knight.png~RC(magenta>red)"
+        }
+      ]
     },
     {
       "id": "liberty",
@@ -85,7 +220,75 @@
       "firstScenario": "01_The_Raid",
       "wesnothId": "Liberty",
       "abbrev": "Liberty",
-      "define": "CAMPAIGN_LIBERTY"
+      "define": "CAMPAIGN_LIBERTY",
+      "icon": "units/human-outlaws/fugitive.png~RC(magenta>red)",
+      "image": "data/campaigns/Liberty/images/portraits/baldras.webp~SCALE(300,300)",
+      "background": "data/campaigns/The_Rise_Of_Wesnoth/images/story/trow_intro_02.webp",
+      "rank": 50,
+      "year": "501 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-l",
+                "Easy"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-l",
+                "1x enemies"
+              ]
+            ]
+          },
+          "image": "units/human-peasants/peasant.png~RC(magenta>red)"
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-l",
+                "Normal"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-l",
+                "2x enemies"
+              ]
+            ]
+          },
+          "image": "units/human-outlaws/outlaw.png~RC(magenta>red)",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-l",
+                "Hard"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-l",
+                "3x enemies"
+              ]
+            ]
+          },
+          "image": "units/human-outlaws/fugitive.png~RC(magenta>red)"
+        }
+      ]
     },
     {
       "id": "under_the_burning_suns",
@@ -117,67 +320,164 @@
       "firstScenario": "01_The_Morning_After",
       "wesnothId": "Under_the_Burning_Suns",
       "abbrev": "UtBS",
-      "define": "CAMPAIGN_UNDER_THE_BURNING_SUNS"
+      "define": "CAMPAIGN_UNDER_THE_BURNING_SUNS",
+      "icon": "data/campaigns/Under_the_Burning_Suns/images/units/quenoth/kaleh.png~RC(magenta>red)",
+      "image": "data/campaigns/Under_the_Burning_Suns/images/campaign_image.png",
+      "rank": 205,
+      "year": "1000 AF",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-utbs",
+                "Fighter"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-utbs",
+                "Challenging"
+              ]
+            ]
+          },
+          "image": "data/campaigns/Under_the_Burning_Suns/images/units/quenoth/fighter.png~RC(magenta>red)"
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-utbs",
+                "Warrior"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-utbs",
+                "Difficult"
+              ]
+            ]
+          },
+          "image": "data/campaigns/Under_the_Burning_Suns/images/units/quenoth/warrior.png~RC(magenta>red)",
+          "default": true
+        },
+        {
+          "define": "NIGHTMARE",
+          "label": {
+            "t": [
+              [
+                "wesnoth-utbs",
+                "Champion"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-utbs",
+                "Apocalyptic"
+              ]
+            ]
+          },
+          "image": "data/campaigns/Under_the_Burning_Suns/images/units/quenoth/champion.png~RC(magenta>black)"
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-utbs",
+                "Champion"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-utbs",
+                "Nightmare"
+              ]
+            ]
+          },
+          "image": "data/campaigns/Under_the_Burning_Suns/images/units/quenoth/champion.png~RC(magenta>red)"
+        }
+      ]
     },
     {
       "id": "synthetic_combat",
       "name": "[Debug] Combat",
       "description": "Two adjacent leaders on a tiny grassland map -- for fast combat-math debugging, no setup turns needed.",
-      "firstScenario": "synth_combat_01"
+      "firstScenario": "synth_combat_01",
+      "debug": true
     },
     {
       "id": "synthetic_economy",
       "name": "[Debug] Economy & Recruit",
       "description": "A leader on a keep with a full castle ring, gold, and a short recruit list -- for fast economy/recruit debugging.",
-      "firstScenario": "synth_economy_01"
+      "firstScenario": "synth_economy_01",
+      "debug": true
     },
     {
       "id": "synthetic_progression",
       "name": "[Debug] Scenario Progression",
       "description": "Two tiny scenarios chained by next_scenario=, with a real gold/recall carryover setup -- for fast progression debugging.",
-      "firstScenario": "synth_progression_01"
+      "firstScenario": "synth_progression_01",
+      "debug": true
     },
     {
       "id": "synthetic_abilities",
       "name": "[Debug] Abilities & Specials",
       "description": "15 real mainline units, each demonstrating one weapon special or ability (poison, drains, berserk, firststrike, marksman, magical, backstab, charge, swarm, plague, heals, regenerate, skirmisher, leadership, illuminates) -- for fast specials/abilities debugging.",
-      "firstScenario": "synth_abilities_01"
+      "firstScenario": "synth_abilities_01",
+      "debug": true
     },
     {
       "id": "synthetic_advancement",
       "name": "[Debug] Unit Advancement",
       "description": "Two real units one combat-XP gain from leveling up -- one with a single real advances_to= option (advances immediately), one with three (opens the real advancement-choice dialog) -- for fast advancement debugging.",
-      "firstScenario": "synth_advancement_01"
+      "firstScenario": "synth_advancement_01",
+      "debug": true
     },
     {
       "id": "synthetic_fog",
       "name": "[Debug] Fog of War",
       "description": "Two leaders on opposite corners of an empty board, each with fog=yes/shroud=yes, and two unexplored villages in the middle -- for fast shroud/fog debugging, no story setup needed.",
-      "firstScenario": "synth_fog_01"
+      "firstScenario": "synth_fog_01",
+      "debug": true
     },
     {
       "id": "synthetic_dialogue",
       "name": "[Debug] Dialogue & Choices",
       "description": "A blocking [message], a [move_unit_fake] flight, an [option] prompt that branches the scenario, a [text_input] and a [foreach] -- for fast Phase 17 event/dialogue debugging.",
-      "firstScenario": "synth_dialogue_01"
+      "firstScenario": "synth_dialogue_01",
+      "debug": true
     },
     {
       "id": "synthetic_animation",
       "name": "[Debug] Animation",
       "description": "An AI side that recruits and marches, a scripted spawn+move cutscene, a long Horseman ride and a fake unit -- each one click from a cold load, for debugging movement/appearance animation glitches.",
-      "firstScenario": "synth_animation_01"
+      "firstScenario": "synth_animation_01",
+      "debug": true
     },
     {
       "id": "synthetic_audio",
       "name": "[Debug] Audio",
       "description": "A wide map with two placed sound sources and one heard everywhere, a two-track music playlist, and a turn 2 that changes the volumes, removes a source, plays a sound and switches the music -- for debugging Phase 19 audio.",
-      "firstScenario": "synth_audio_01"
+      "firstScenario": "synth_audio_01",
+      "debug": true
     },
     {
       "id": "synthetic_keyboard",
       "name": "[Debug] Keyboard Play",
       "description": "A story, an objectives dialog, a choice, a fight, an advancement and a victory, all playable with the keyboard alone -- for the keyboard-only milestone.",
-      "firstScenario": "synth_keyboard_01"
+      "firstScenario": "synth_keyboard_01",
+      "debug": true
     }
   ]
 }

@@ -43,6 +43,14 @@ describe('fromWesnothSave (importing a real 1.16.9 Wesnoth save)', () => {
   const original = loadRealSave();
   const imported = fromWesnothSave(original);
 
+  it('reads the difficulty the real game recorded, and writes back the save\'s own rather than a fixed one', () => {
+    expect(imported.save.difficulty).toBe(original.getString('difficulty'));
+    const fresh = { ...imported.save, wesnothExtras: undefined, difficulty: 'HARD' };
+    const out = toWesnothSave(fresh, loadSnapshot(), DEAD_WATER);
+    expect(out.getString('difficulty')).toBe('HARD');
+    expect(toWesnothSave({ ...fresh, difficulty: undefined }, loadSnapshot(), DEAD_WATER).getString('difficulty')).toBe('NORMAL');
+  });
+
   it('reads the scenario, campaign and turn the file actually says', () => {
     expect(imported.version).toBe('1.16.9');
     expect(imported.label).toBe('DW-Invasion!');

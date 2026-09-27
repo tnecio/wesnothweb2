@@ -10,12 +10,20 @@
  * synthetic ones for that id. `13_Epilogue` exists in two campaigns; the
  * checked-in one is Dead Water's.
  *
+ * Phase 21: a campaign's difficulty is resolved by the preprocessor, so each difficulty is its own build.
+ * The campaign's default difficulty (`default=yes`, from `campaigns.json`) is written whole as
+ * `<id>.json`; every other one is built to a scratch file and written as `<id>@<DEFINE>.json`, holding
+ * only the top-level keys that differ (`snapshotOverlay.ts` refuses a difference outside its allow-list).
+ * Debug scenarios have no difficulties and are built once.
+ *
  * Run: npx tsx apps/web/scripts/rebuild-snapshots.mjs [id ...]   (no ids = all)
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import * as os from 'node:os';
+import { diffSnapshots } from '../../../packages/engine/src/snapshot/snapshotOverlay.ts';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const outDir = path.join(repoRoot, 'apps/web/public/scenarios');
@@ -56,7 +64,7 @@ function indexScenarios() {
 
 const byId = indexScenarios();
 const wanted = process.argv.slice(2);
-const ids = (wanted.length ? wanted : fs.readdirSync(outDir).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5))).sort();
+const ids = (wanted.length ? wanted : fs.readdirSync(outDir).filter((f) => f.endsWith('.json') && !f.includes('@')).map((f) => f.slice(0, -5))).sort();
 
 const jobs = ids.map((id) => {
   const candidates = byId.get(id) ?? [];
@@ -65,17 +73,54 @@ const jobs = ids.map((id) => {
   return { id, arg: pick };
 });
 
-function run(job) {
+const manifest = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/campaigns.json'), 'utf8'));
+
+/** [defaultDefine, ...otherDefines] for the real campaign `arg` (a path under wesnoth/data/campaigns) belongs to; [] for a debug scenario. */
+function difficultiesFor(arg) {
+  if (path.isAbsolute(arg) || arg.startsWith('synthetic-campaigns')) return [];
+  const entry = manifest.campaigns.find((c) => c.wesnothId === arg.split(path.sep)[0]);
+  const all = (entry?.difficulties ?? []).map((d) => d.define);
+  if (all.length === 0) return [];
+  const def = entry.difficulties.find((d) => d.default)?.define ?? all[0];
+  return [def, ...all.filter((d) => d !== def)];
+}
+
+function build(arg, difficulty, out) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, ['--import', 'tsx', path.join(repoRoot, 'apps/web/scripts/build-scenario-snapshot.mjs'), job.arg], {
-      cwd: repoRoot,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const args = ['--import', 'tsx', path.join(repoRoot, 'apps/web/scripts/build-scenario-snapshot.mjs'), arg];
+    if (difficulty) args.push(difficulty);
+    if (out) args.push(out);
+    const child = spawn(process.execPath, args, { cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'] });
     let err = '';
     child.stderr.on('data', (d) => (err += d));
     child.stdout.on('data', () => {});
-    child.on('close', (code) => resolve({ ...job, code, err }));
+    child.on('close', (code) => resolve({ code, err }));
   });
+}
+
+async function run(job) {
+  const [def, ...others] = difficultiesFor(job.arg);
+  const base = await build(job.arg, def, undefined);
+  if (base.code !== 0) return { ...job, ...base };
+  const baseFile = path.join(outDir, `${job.id}.json`);
+  const wanted = new Set(others.map((d) => `${job.id}@${d}.json`));
+  for (const f of fs.readdirSync(outDir)) if (f.startsWith(`${job.id}@`) && !wanted.has(f)) fs.rmSync(path.join(outDir, f));
+  if (others.length === 0) return { ...job, ...base };
+  const baseSnap = JSON.parse(fs.readFileSync(baseFile, 'utf8'));
+  for (const difficulty of others) {
+    const scratch = path.join(os.tmpdir(), `${job.id}@${difficulty}.${process.pid}.json`);
+    const r = await build(job.arg, difficulty, scratch);
+    if (r.code !== 0) return { ...job, ...r };
+    try {
+      const overlay = diffSnapshots(baseSnap, JSON.parse(fs.readFileSync(scratch, 'utf8')));
+      fs.writeFileSync(path.join(outDir, `${job.id}@${difficulty}.json`), JSON.stringify(overlay));
+    } catch (e) {
+      return { ...job, code: 1, err: `${difficulty}: ${e instanceof Error ? e.message : e}` };
+    } finally {
+      fs.rmSync(scratch, { force: true });
+    }
+  }
+  return { ...job, code: 0, err: '' };
 }
 
 const CONCURRENCY = 4;

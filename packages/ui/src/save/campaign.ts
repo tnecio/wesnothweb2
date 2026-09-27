@@ -27,6 +27,40 @@ export interface CampaignInfo {
   abbrev?: string;
   /** Upstream's `[campaign] define=`, e.g. `CAMPAIGN_DEAD_WATER`. */
   define?: string;
+  /** A synthetic debug campaign: kept and playable, but listed apart from the real ones. */
+  debug?: boolean;
+  /** `[campaign] rank=`: the order upstream lists campaigns in (lowest first). */
+  rank?: number;
+  /** Image paths from `[campaign]` (image path functions intact): list `icon`, description `image`, dialog `background`. */
+  icon?: string;
+  image?: string;
+  background?: string;
+  /** Dates for the Timeline sort: `year`, or `startYear` (and `endYear`), e.g. `501 YW`. */
+  year?: string;
+  startYear?: string;
+  endYear?: string;
+  /** `[campaign] description_alignment=`. */
+  descriptionAlignment?: string;
+  /** `[difficulty]` blocks in file order (easiest first); absent for a campaign with no difficulty choice. */
+  difficulties?: readonly CampaignDifficulty[];
+}
+
+/** One `[difficulty]` of a campaign. `define` is the preprocessor symbol (`EASY`, `HARD`, ...) its scenarios are built with. */
+export interface CampaignDifficulty {
+  define: string;
+  label: TString;
+  description: TString;
+  image?: string;
+  default?: boolean;
+  /** `auto_markup=no`: the description is shown as written, not wrapped in grey parentheses. */
+  autoMarkup?: boolean;
+}
+
+/** The difficulty a campaign starts at when none is chosen (`default=yes`, else the first); undefined without difficulties. */
+export function defaultDifficulty(campaign: CampaignInfo | null | undefined): string | undefined {
+  const all = campaign?.difficulties;
+  if (!all || all.length === 0) return undefined;
+  return (all.find((d) => d.default) ?? all[0]!).define;
 }
 
 /**

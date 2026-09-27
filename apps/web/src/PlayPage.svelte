@@ -10,8 +10,18 @@
    * within-campaign concern, not a page/URL change).
    */
   import type { GameBoardSnapshot } from '@wesnothweb2/engine';
-  import { GameShell, fetchStoryAssets, loadGame, tx, type StoryAssets, type SaveGameData } from '@wesnothweb2/ui';
-  import { fetchCampaigns, type Campaign } from './campaigns.js';
+  import {
+    GameShell,
+    defaultDifficulty,
+    fetchCampaigns,
+    fetchScenarioSnapshot,
+    fetchStoryAssets,
+    loadGame,
+    tx,
+    type Campaign,
+    type SaveGameData,
+    type StoryAssets,
+  } from '@wesnothweb2/ui';
   import { router } from './router.svelte.js';
 
   let { campaignId }: { campaignId: string } = $props();
@@ -66,14 +76,16 @@
       if (saveName && !save) throw new Error(`No save called "${saveName}".`);
       // `?scenario=<id>` starts the campaign at a later scenario (debugging/verification, e.g. an epilogue's outro).
       const scenarioId = save?.scenarioId || params.get('scenario') || campaignInfo.firstScenario;
-      const [data, assets] = await Promise.all([
-        (async () => {
-          const res = await fetch(`/scenarios/${scenarioId}.json`);
-          if (!res.ok) throw new Error(`fetch scenarios/${scenarioId}.json: ${res.status}`);
-          return (await res.json()) as GameBoardSnapshot;
-        })(),
-        fetchStoryAssets(scenarioId),
-      ]);
+      // `?difficulty=<DEFINE>` (the campaign dialog's choice); a save remembers its own, and an old save or an
+      // unknown value gets the campaign's default. A campaign with no difficulties has none to choose.
+      const fallback = defaultDifficulty(campaignInfo);
+      const requested = save?.difficulty ?? params.get('difficulty') ?? fallback;
+      let difficulty = requested;
+      if (requested && !campaignInfo.difficulties?.some((d) => d.define === requested)) {
+        if (fallback) console.warn(`[play] campaign ${campaignInfo.id} has no difficulty "${requested}"; using ${fallback}`);
+        difficulty = fallback;
+      }
+      const [data, assets] = await Promise.all([fetchScenarioSnapshot(scenarioId, difficulty, fallback), fetchStoryAssets(scenarioId)]);
       if (cancelled) return;
       snapshot = data;
       storyAssets = assets;
@@ -105,7 +117,7 @@
     <!-- No {#key} needed here: App.svelte already keys PlayPage itself on
          campaignId, so a campaign change always tears down this whole
          component (and GameShell inside it) from scratch. -->
-    <GameShell {snapshot} {storyAssets} {campaign} {initialSave} campaigns={allCampaigns} onOpenSave={openSave} />
+    <GameShell {snapshot} {storyAssets} {campaign} {initialSave} campaigns={allCampaigns} onOpenSave={openSave} onQuitToMenu={() => router.navigate('/')} />
   {/if}
 </main>
 

@@ -7,8 +7,7 @@
    * "only load assets needed for a given campaign once it's chosen"
    * requirement -- this component structurally can't preload anything.
    */
-  import { AccessibilityDialog, LanguageDialog, fmt, formatDateTime, listSaves, locale, t, ts, tx, type SaveMeta } from '@wesnothweb2/ui';
-  import { fetchCampaigns, type Campaign } from './campaigns.js';
+  import { AccessibilityDialog, LanguageDialog, fetchCampaigns, fmt, formatDateTime, listSaves, locale, t, ts, tx, type Campaign, type SaveMeta } from '@wesnothweb2/ui';
   import { router } from './router.svelte.js';
 
   let status = $state<'loading' | 'ready' | 'error'>('loading');
