@@ -5238,3 +5238,35 @@ keys stay on the hex cursor; terrain-help data moves to Phase 24), then implemen
   read camera state pause the render loop (`--skip-ai` leaves out the multi-minute AI turn). The minimap
   was compared by eye against the real 1.16.9 game on Dead Water 1 (`Xvfb` recipe): the buttons moved
   from a column of glyphs to upstream's row of real icons as a result.
+
+## 2026-09-27: Phase 23 -- mobile UI
+
+Plan and decisions: `docs/PHASE23_PLAN.md`. "Compact" = `(max-width: 720px), (max-height: 500px)`, a phone in
+either orientation; tablets and desktops keep the full layout.
+
+- **M1, layout**: the top bar wraps instead of scrolling sideways (every figure readable on a 412 px screen)
+  and collapses to turn, gold and the time-of-day icon; the infobox has a sticky header (status text, End
+  Turn, collapse switch) and, while a unit is selected or inspected, shows its card in the minimap's place
+  (the minimap stays mounted, hidden). Both collapse states persist (`displayPrefs`). The board's mouse hint
+  line is hidden on phones. On its side the infobox is a 16rem column that collapses to its buttons.
+- **M2, dialogs and targets**: `Modal` fills a phone's screen; under `(pointer: coarse)` menu entries,
+  dialog controls, End Turn and the minimap buttons are at least 44 px. Messages sit over the board rather
+  than the whole window, so the infobox stays readable; Load Game's buttons wrap.
+- **M3, touch**: two fingers pinch (onto upstream's nine levels, `pinchZoomIndex`, 3 node tests) and pan; a
+  500 ms long press opens the context menu (its lifting click, and Android's native `contextmenu`, kept
+  from closing it); a finger's tap on a move destination marks it and a second tap moves (the mouse still
+  moves on the first click; attacks already confirm in their dialog); edge panning ignores fingers.
+- **M4, art**: the title map sits under the logo when upright. Story art: upstream clamps a scaled picture's
+  one side and keeps the other full, which on a portrait phone squeezed Dead Water's map to a third of its
+  width; past 1.25x distortion a keep_aspect_ratio picture now keeps its shape (the base layer fits whole,
+  a backdrop covers), and on a portrait screen the art moves to the end the text panel leaves free.
+  Desktop layouts are unchanged (the few-percent squeeze of the wooden backdrop stays, as upstream's).
+- **Not done**: the conditional audio transcode -- no real-world mobile test has shown the download to be
+  a problem; music streams per track already.
+- **Milestone**: `apps/web/scripts/mobile-playthrough.mjs` -- an emulated Pixel 7 plays `synthetic_keyboard`
+  from the story to victory and into scenario 2 with touch alone (zero mouse presses or wheels), and checks
+  the layout, the confirm tap, pinch, two-finger pan, long press, collapsing, and turning the phone both
+  ways with the game state unchanged. Passes. `keyboard-playthrough.mjs` and
+  `minimap-camera-playthrough.mjs --skip-ai` still pass.
+- **Found, not caused here**: `dialogue-playthrough.mjs` fails "the scenario reaches play after its
+  cutscene" (Dead Water 5) -- identically with the pre-Phase-23 source, so it is an existing regression.

@@ -48,3 +48,17 @@ Baseline, measured on a Pixel 7 viewport (412×915 CSS px, touch) before any cha
 | M3 | Touch input in `GameBoardView`: pinch zoom, two-finger pan, long-press menu, pointer type passed with each hex tap; confirm tap for moves in `GameShell`; tap shows the hex's terrain info | unit tests for the pinch-level maths; the browser checks below |
 | M4 | Visuals: title-screen illustration and story art placed and scaled for portrait | screenshots |
 | M5 | Milestone script `apps/web/scripts/mobile-playthrough.mjs`: Pixel 7 emulation with touch, `synthetic_keyboard` from story to victory with taps only (counts mouse events: must be zero), plus pinch, long-press, collapse and orientation change without losing state | passes |
+
+## Outcome (2026-09-27)
+
+All five stages delivered as planned, commits `Phase 23 M1`..`M4` plus this one. Two findings changed the
+detail:
+
+- The "stretched" story art was upstream's own formula: with `scale_vertically` and `keep_aspect_ratio`, it
+  clamps the width to the window but keeps the full height, a 2.9x squeeze on a phone held upright. The
+  fix is a threshold (1.25x), so desktop layouts stay exactly upstream's.
+- A long press must also stop Android's native `contextmenu` and the finger's lifting `click` from
+  reaching the context menu's "close when something outside is clicked".
+
+The milestone passes. `dialogue-playthrough.mjs` fails one Dead Water 5 check, identically on the
+pre-phase source (an existing regression, recorded in PROGRESS).

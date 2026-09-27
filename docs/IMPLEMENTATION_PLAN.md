@@ -1632,9 +1632,12 @@ Verified by `apps/web/scripts/minimap-camera-playthrough.mjs`.
 
 ## Phase 23 — Mobile UI
 
-**Status: not started.** Sequenced after the desktop layout (Phases
-13–15, 21, 22) has settled, so it adapts a stable design instead of
-chasing a moving one.
+**Status: delivered 2026-09-27** (`docs/PHASE23_PLAN.md`; the Phase 23
+entry in `docs/PROGRESS.md`). Phone layout in both orientations, full-screen
+dialogs, 44 px touch targets, pinch/two-finger pan/long press, a confirm tap
+for moves, and title/story art kept undistorted and in view. The audio
+transcode was not needed. Verified by `apps/web/scripts/mobile-playthrough.mjs`
+(a whole scenario on an emulated Pixel 7, touch only). Original scope:
 
 - Responsive layout: collapsible infobox, full-screen modals on
   narrow viewports, larger tap targets.
