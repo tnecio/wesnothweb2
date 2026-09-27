@@ -2361,3 +2361,75 @@ describe('GameSession.describeHex (Phase 20: what a screen reader hears for the 
     expect(session.describeHex(-5, 400)).toBe('');
   });
 });
+
+describe('GameSession.enemyReach (Phase 22: upstream\'s "Show Enemy Moves" / "Best Possible Enemy Moves")', () => {
+  it('is the union of every visible enemy\'s full-movement reach, and leaves their movement as it was', async () => {
+    const { reachableHexes } = await import('@wesnothweb2/engine');
+    const session = new GameSession(loadSnapshot());
+    const viewer = session.board.getTeam(session.viewingSide)!;
+    const enemies = session.board.allUnits().filter((u) => viewer.isEnemy(session.board.getTeam(u.side)!));
+    expect(enemies.length).toBeGreaterThan(0);
+    // Spend some of one enemy's movement: upstream resets it to full for the calculation only.
+    enemies[0]!.movesLeft = 0;
+
+    const expected = new Set<string>();
+    for (const u of enemies) {
+      const saved = u.movesLeft;
+      u.movesLeft = u.maxMoves;
+      for (const step of reachableHexes(session.board, u, { viewingTeam: viewer }).destinations.values()) expected.add(`${step.curr.x},${step.curr.y}`);
+      u.movesLeft = saved;
+    }
+    const reach = session.enemyReach(false);
+    expect(new Set(reach.map((h) => `${h.x},${h.y}`))).toEqual(expected);
+    expect(enemies[0]!.movesLeft).toBe(0);
+  });
+
+  it('"best possible" ignores units: an enemy held by a zone of control reaches further', () => {
+    const { session, malKevek } = withAdjacentLeaders();
+    // Viewed from Mal-Kevek's enemy's side, Mal-Kevek sits in Kai Krellis's zone of control.
+    expect(malKevek.side).not.toBe(session.viewingSide);
+    const normal = new Set(session.enemyReach(false).map((h) => `${h.x},${h.y}`));
+    const best = new Set(session.enemyReach(true).map((h) => `${h.x},${h.y}`));
+    for (const hex of normal) expect(best.has(hex)).toBe(true);
+    expect(best.size).toBeGreaterThan(normal.size);
+  });
+
+  it('an enemy the viewing side cannot see (under fog) contributes nothing', () => {
+    const session = new GameSession(loadSnapshot());
+    const viewer = session.board.getTeam(session.viewingSide)!;
+    viewer.fog.enabled = true; // never cleared: every hex is fogged
+    expect(session.enemyReach(false)).toEqual([]);
+  });
+});
+
+describe('GameSession.minimapInput (Phase 22)', () => {
+  it('describes the live board: size, terrain, villages with owners, and every unit', () => {
+    const session = new GameSession(loadSnapshot());
+    const input = session.minimapInput();
+    expect(input.width).toBe(session.board.map.w());
+    expect(input.height).toBe(session.board.map.h());
+    expect(input.terrainAt(0, 0)).toBe(session.board.map.getTerrain(new Location(0, 0)).toString());
+    expect(input.villages).toHaveLength(session.board.map.villages.length);
+    expect(input.units).toHaveLength(session.board.allUnits().length);
+    expect(input.viewingSide).toBe(session.viewingSide);
+    // No fog or shroud in Dead Water 1: nothing to hide, so no per-hex visibility at all.
+    expect(input.visibility).toBeUndefined();
+  });
+
+  it('reports a captured village\'s new owner', () => {
+    const session = new GameSession(loadSnapshot());
+    const village = session.board.map.villages[0]!;
+    session.board.captureVillage(village, session.viewingSide);
+    const entry = session.minimapInput().villages.find((v) => v.x === village.x && v.y === village.y)!;
+    expect(entry.owner).toBe(session.viewingSide);
+  });
+
+  it('under fog, reports hexes as fogged and enemies as unseen', () => {
+    const session = new GameSession(loadSnapshot());
+    session.board.getTeam(session.viewingSide)!.fog.enabled = true;
+    const input = session.minimapInput();
+    expect(input.visibility!(0, 0)).toBe('fogged');
+    const enemy = input.units.find((u) => input.isEnemy(u.side))!;
+    expect(enemy.invisible).toBe(true);
+  });
+});

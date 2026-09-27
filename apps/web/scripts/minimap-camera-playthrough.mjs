@@ -3,6 +3,8 @@
  *
  *  - Camera: dragging far past the map edge is stopped at upstream's bounds; the zoom hotkeys walk
  *    exactly upstream's nine levels; the wheel pans and Ctrl+wheel zooms; `0` toggles 1:1 and back.
+ *  - Minimap: clicking it centres the board on that hex, dragging pans; a captured village changes
+ *    colour at once; under fog/shroud it shows only what the viewing side knows (hotseat, both ways).
  *  - Following the action: with the camera parked away from the enemy, ending the turn brings the
  *    AI's moves on screen (scroll_to_action); a SCROLL glides frame by frame, a WARP jumps.
  *
@@ -127,6 +129,27 @@ try {
     await page.evaluate(() => window.__wesnothDebug.setRenderingPaused(false));
   }
 
+  // ── Minimap: click and drag ──────────────────────────────────────────────────────────────────
+  // Clicking the minimap centres the board on the hex drawn there; dragging across it pans along.
+  {
+    const viewCenter = () => page.evaluate(() => window.__wesnothDebug.viewCenterHex());
+    const mini = (x, y) => page.evaluate(([hx, hy]) => window.__wesnothMinimap.clientPointOfHex(hx, hy), [x, y]);
+    await page.waitForFunction(() => window.__wesnothMinimap?.clientPointOfHex(0, 0), null, { timeout: 30000 });
+    const near = (a, b) => Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1;
+    const target = await mini(12, 15);
+    await page.mouse.click(target.x, target.y);
+    const clicked = await viewCenter();
+    check('clicking the minimap centres the board on that hex (within one hex)', near(clicked, { x: 12, y: 15 }), JSON.stringify(clicked));
+    const from = await mini(6, 8);
+    const to = await mini(16, 22);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 8 });
+    await page.mouse.up();
+    const dragged = await viewCenter();
+    check('dragging on the minimap pans the board along with the pointer', near(dragged, { x: 16, y: 22 }), JSON.stringify(dragged));
+  }
+
   // ── Following the action ─────────────────────────────────────────────────────────────────────
   // Park the camera at 1:1 in the map's far corner, end the turn, and sample the camera while the
   // AI plays: it must be brought to the AI's moves (scroll_to_action), gliding rather than jumping.
@@ -224,6 +247,88 @@ try {
 
   check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await context.close();
+
+  const colorAt = (page, x, y) => page.evaluate(([hx, hy]) => window.__wesnothMinimap.colorAtHex(hx, hy), [x, y]);
+  const same = (a, b) => !!a && !!b && a.every((v, i) => Math.abs(v - b[i]) <= 2);
+  async function openDebug(campaign) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const pg = await ctx.newPage();
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push(String(e)));
+    pg.on('console', (m) => m.type() === 'error' && errs.push(m.text()));
+    await pg.goto(`${base}/play/${campaign}`);
+    await waitBoardReady(pg);
+    await skipToPlay(pg);
+    await pg.waitForFunction(() => window.__wesnothMinimap?.colorAtHex(0, 0), null, { timeout: 30000 });
+    return { ctx, pg, errs };
+  }
+
+  // ── Minimap: a captured village changes colour ───────────────────────────────────────────────
+  {
+    const { ctx, pg, errs } = await openDebug('synthetic_economy');
+    const plan = await pg.evaluate(() => {
+      const s = window.__wesnoth.session;
+      const side = s.viewingSide;
+      const unit = s.board.unitsForSide(side).find((u) => u.movesLeft > 0);
+      s.selectUnit(unit);
+      const village = s.board.map.villages.find((v) => s.board.villageOwner(v) !== side && s.reachable.some((h) => h.x === v.x && h.y === v.y));
+      s.clearSelection();
+      return { unit: { x: unit.location.x, y: unit.location.y }, village: village && { x: village.x, y: village.y } };
+    });
+    check('the economy debug map has a village the player can reach this turn', !!plan.village, JSON.stringify(plan));
+    const before = await colorAt(pg, plan.village.x, plan.village.y);
+    const unitColor = await colorAt(pg, plan.unit.x, plan.unit.y);
+    await pg.evaluate(async ([u, v]) => {
+      await window.__wesnoth.clickHex(u.x, u.y);
+      await window.__wesnoth.clickHex(v.x, v.y);
+    }, [plan.unit, plan.village]);
+    const captured = await pg
+      .waitForFunction(
+        (v) => {
+          const s = window.__wesnoth.session;
+          const loc = s.board.map.villages.find((l) => l.x === v.x && l.y === v.y);
+          return s.board.villageOwner(loc) === s.viewingSide;
+        },
+        plan.village,
+        { timeout: 30000 },
+      )
+      .then(() => true, () => false);
+    check('the move captured the village', captured);
+    await pg.waitForTimeout(500);
+    const after = await colorAt(pg, plan.village.x, plan.village.y);
+    // Upstream marks an unowned village with the `white` range's min, a dark grey (30, 30, 30).
+    check('an unowned village is marked in upstream\'s unowned grey', same(before, [30, 30, 30]), `${before}`);
+    check('...and once captured, in the player\'s side colour, without a reload', same(after, unitColor), `${after} vs ${unitColor}`);
+    check('no page errors (economy)', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await ctx.close();
+  }
+
+  // ── Minimap: only what the viewing side knows ────────────────────────────────────────────────
+  // Fog debug: two leaders in opposite corners of a shrouded 10 x 10 map, both sides human (hotseat).
+  {
+    const { ctx, pg, errs } = await openDebug('synthetic_fog');
+    const leaders = await pg.evaluate(() => {
+      const s = window.__wesnoth.session;
+      return s.board.allUnits().map((u) => ({ side: u.side, x: u.location.x, y: u.location.y }));
+    });
+    const hero = leaders.find((l) => l.side === 1);
+    const villain = leaders.find((l) => l.side === 2);
+    const heroColor1 = await colorAt(pg, hero.x, hero.y);
+    const villainColor1 = await colorAt(pg, villain.x, villain.y);
+    // Side 1 cannot see side 2's corner: that hex is drawn as shroud, not as a unit.
+    check('side 1\'s own leader is on its minimap', !!heroColor1 && !same(heroColor1, [31, 31, 23]), `${heroColor1}`);
+    check('side 2\'s leader, under side 1\'s shroud, is not', !same(villainColor1, heroColor1), `${villainColor1}`);
+    await pressKey(pg, 'Control+Space');
+    await skipToPlay(pg, 60000).catch(() => {});
+    await pg.waitForFunction(() => window.__wesnoth.session.viewingSide === 2, null, { timeout: 60000 });
+    await pg.waitForTimeout(500);
+    const villainColor2 = await colorAt(pg, villain.x, villain.y);
+    const heroColor2 = await colorAt(pg, hero.x, hero.y);
+    check('in hotseat, side 2\'s turn shows side 2\'s leader...', !!villainColor2 && !same(villainColor2, villainColor1), `${villainColor1} -> ${villainColor2}`);
+    check('...and no longer shows side 1\'s, now under side 2\'s shroud', !same(heroColor2, heroColor1), `${heroColor1} -> ${heroColor2}`);
+    check('no page errors (fog)', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await ctx.close();
+  }
 } finally {
   await browser.close();
 }

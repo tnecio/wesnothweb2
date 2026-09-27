@@ -167,6 +167,7 @@ import {
   standardizeEventName,
 } from '@wesnothweb2/engine';
 // Deep import: lua-bridge's index also exports Node-only data loaders.
+import type { MinimapInput } from '@wesnothweb2/renderer';
 import { createLuaConditionalEvaluator } from '@wesnothweb2/lua-bridge/src/conditionals.js';
 import { raceName, statusName } from './i18n/gameText.js';
 import { fmt, t, tx } from './i18n/locale.js';
@@ -234,6 +235,18 @@ export interface VillageOwnerInfo extends HexPoint {
 }
 
 /** Mirrors `Team.shrouded`/`fogged`'s three-state result for one hex, from `playerSide`'s perspective -- see `GameSession.hexVisibility`. */
+/**
+ * `unit_orb_status` for one of the viewing side's units, as `SnapshotBoard`
+ * draws its orb (the renderer's `movesOrbStatus`, restated here so this
+ * module keeps no renderer dependency): untouched, spent, or in between.
+ */
+function orbStatusOf(u: SnapshotUnit): 'unmoved' | 'partial' | 'moved' | undefined {
+  if (u.movesLeft === undefined || u.maxMoves === undefined || u.attacksLeft === undefined || u.maxAttacksPerTurn === undefined) return undefined;
+  if (u.movesLeft === u.maxMoves && u.attacksLeft === u.maxAttacksPerTurn) return 'unmoved';
+  if (!(u.canMove ?? u.movesLeft > 0) && !(u.canAttackHere ?? u.attacksLeft > 0)) return 'moved';
+  return 'partial';
+}
+
 export type HexVisibility = 'shrouded' | 'fogged' | 'clear';
 
 export interface HexVisibilityPoint extends HexPoint {
@@ -2814,6 +2827,80 @@ export class GameSession {
       if (otherTeam && team.isEnemy(otherTeam)) targets.push(other);
     }
     return targets;
+  }
+
+  /**
+   * Phase 22: upstream's "Show Enemy Moves" (`ignoreUnits` false) and "Best
+   * Possible Enemy Moves" (true), `menu_handler::show_enemy_moves`: every
+   * hex some enemy of the viewing side could reach this turn with full
+   * movement. Only enemies the viewing side can see (not fogged, not hidden
+   * by an ability) and that can act count; each is pathfound with the
+   * viewing side's knowledge, its movement reset only for the calculation
+   * (`unit_movement_resetter`).
+   */
+  enemyReach(ignoreUnits: boolean): { x: number; y: number }[] {
+    const viewer = this.board.getTeam(this.viewingSide);
+    if (!viewer) return [];
+    const hexes = new Map<string, { x: number; y: number }>();
+    for (const unit of this.board.allUnits()) {
+      const team = this.board.getTeam(unit.side);
+      if (!team || !viewer.isEnemy(team) || unit.incapacitated) continue;
+      if (!isUnitVisibleToTeam(this.board, unit, viewer, false)) continue;
+      const saved = unit.movesLeft;
+      unit.movesLeft = unit.maxMoves;
+      try {
+        for (const step of reachableHexes(this.board, unit, { viewingTeam: viewer, ignoreUnits }).destinations.values()) {
+          hexes.set(step.curr.key(), { x: step.curr.x, y: step.curr.y });
+        }
+      } finally {
+        unit.movesLeft = saved;
+      }
+    }
+    return [...hexes.values()];
+  }
+
+  /**
+   * Phase 22: the live board as the minimap needs it (`buildMinimap`'s
+   * input). Everything is included; the minimap itself filters out what the
+   * viewing side may not know, as upstream's does. `visibility` is omitted
+   * when the viewing side uses neither fog nor shroud.
+   */
+  minimapInput(reach?: ReadonlySet<string>): MinimapInput {
+    const board = this.board;
+    const map = board.map;
+    const viewer = board.getTeam(this.viewingSide);
+    const side = this.viewingSide;
+    return {
+      width: map.w(),
+      height: map.h(),
+      terrainAt: (x, y) => map.getTerrain(new Location(x, y)).toString(),
+      visibility:
+        viewer && viewer.fogOrShroud()
+          ? (x, y) => {
+              const loc = new Location(x, y);
+              return board.isShrouded(side, loc) ? 'shrouded' : board.isFogged(side, loc) ? 'fogged' : 'clear';
+            }
+          : undefined,
+      viewingSide: viewer ? side : null,
+      isEnemy: (other) => {
+        const team = board.getTeam(other);
+        return !!viewer && !!team && viewer.isEnemy(team);
+      },
+      villages: map.villages.map((loc) => ({ x: loc.x, y: loc.y, owner: board.villageOwner(loc) ?? 0 })),
+      units: board.allUnits().map((u) => {
+        const snap = u.side === side ? this.toSnapshotUnit(u, u.location.x, u.location.y, u.hitpoints) : null;
+        return {
+          x: u.location.x,
+          y: u.location.y,
+          side: u.side,
+          hidden: u.hidden,
+          // Fog is the minimap's own check; this is only the hides-ability half.
+          invisible: !!viewer && !isUnitVisibleToTeam(board, u, viewer, false),
+          orb: snap ? orbStatusOf(snap) : undefined,
+        };
+      }),
+      reach,
+    };
   }
 
   /** Selects `unit` and (re)computes its move/attack/recruit options. Clears any pending attack/recruit, and any unrelated unit inspection. */

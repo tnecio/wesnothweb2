@@ -17,7 +17,7 @@
  */
 
 import { Location } from './Location.js';
-import { NONE_TERRAIN, TerrainCode, TerrainTypeData, parseTerrainCode, terrainMatches, writeTerrainCode, type MergeMode } from './Terrain.js';
+import { NONE_TERRAIN, TerrainCode, TerrainTypeData, type TerrainType, parseTerrainCode, terrainMatches, writeTerrainCode, type MergeMode } from './Terrain.js';
 import type { WmlConfig } from '../wml/config.js';
 
 export type VillageChange = 'unchanged' | 'new_village' | 'former_village';
@@ -269,6 +269,11 @@ export class GameMap {
   }
 
   /** Looks up terrain at `loc`; off-map (but within the emulated border) hexes return their border terrain. */
+  /** The `[terrain_type]` behind `code` (`gamemap::get_terrain_info`), for callers outside the engine (the minimap's colour coding). */
+  terrainInfoFor(code: TerrainCode): TerrainType {
+    return this.terrainData.getTerrainInfo(code);
+  }
+
   getTerrain(loc: Location): TerrainCode {
     if (!this.onBoardWithBorder(loc)) return NONE_TERRAIN;
     const x = loc.x + this.borderSize;

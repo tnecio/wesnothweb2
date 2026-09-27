@@ -95,6 +95,28 @@ export {
   edgeScrollAmount,
 } from './camera'
 
+// ── Phase 22: the minimap ───────────────────────────────────────────────────
+export {
+  type MinimapRgb,
+  type MinimapVisibility,
+  type MinimapUnit,
+  type MinimapInput,
+  type MinimapOptions,
+  type MinimapStyle,
+  type MinimapTerrainCell,
+  type MinimapDrawList,
+  MINIMAP_FOG_IMAGE,
+  MINIMAP_HIGHLIGHT_IMAGE,
+  VOID_TERRAIN,
+  minimapScale,
+  minimapHexRect,
+  buildMinimap,
+  fitMinimap,
+  minimapViewRect,
+  minimapPointToHex,
+  minimapPointToBoard,
+} from './minimap'
+
 // ── Terrain hex-cropping / per-layer positioning ────────────────────────────
 export {
   type TerrainFrame,
@@ -207,4 +229,4 @@ export {
 
 export { type HexVisibility, type FogShroudHex } from './fogShroud'
 export { parseHaloFrames, LABEL_FONT_SIZE, type MapItemPoint, type MapLabelPoint } from './mapItems.js';
-export { sideColorRgb } from './images/teamColor';
+export { sideColorRgb, resolveSideColorId } from './images/teamColor';

@@ -84,6 +84,7 @@
     onHexHoverChange,
     hoverDefensePercent,
     paused = false,
+    onViewChange,
   }: {
     /**
      * Phase 16: stop rendering while something covers the whole board (the
@@ -92,6 +93,8 @@
      * map every frame and starves the overlay's own timers and input.
      */
     paused?: boolean;
+    /** Phase 22: the camera moved (pan, zoom, glide, resize) -- the minimap's outline follows it. */
+    onViewChange?: (state: { view: View; viewport: { width: number; height: number } }) => void;
     /** Static parts (terrain/teams/scenario/map) -- read once at mount, never re-applied after. */
     snapshot: ScenarioSnapshot;
     /** Live unit positions/HP -- re-applied to the board whenever this changes. */
@@ -168,6 +171,7 @@
     board.stage.x = v.x;
     board.stage.y = v.y;
     board.stage.scale.set(v.scale);
+    onViewChange?.({ view: v, viewport });
   }
 
   /** `set_zoom(amount)` for a level index, keeping screen point `anchor` fixed (default: the centre). */
@@ -840,7 +844,7 @@
 
 <div class="board-view" data-board-ready={board ? 'true' : 'false'}>
   <p class="status">
-    {status ?? readyLabel} {tx('(drag to pan, scroll to zoom)')}
+    {status ?? readyLabel} {tx('(drag or scroll to pan, Ctrl+scroll to zoom)')}
     {#if hoveredHex}
       &middot; {tx('Hex')}: ({hoveredHex.x}, {hoveredHex.y})
       {#if hoverDefensePercent}

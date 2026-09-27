@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { imageUrl } from '@wesnothweb2/renderer';
   import type { RecruitOption, RecallOption, SelectedUnitInfo, HoveredHexInfo } from './gameSession.js';
   import { alignmentName, capitalizeFirst, damageTypeName, rangeName } from './i18n/gameText.js';
@@ -13,6 +14,7 @@
     recallOptions,
     hoveredHexInfo = null,
     onEndTurn,
+    top,
   }: {
     selected: SelectedUnitInfo | null;
     /** A unit clicked purely to view its info (any side) -- see `GameSession.inspectedUnit`. Shown alongside `selected`, addressing "no way to see information about enemy units". */
@@ -34,6 +36,8 @@
     /** Phase 14: the real theme's "terrain under the cursor" strip -- see `GameSession.hoveredHexInfo`. */
     hoveredHexInfo?: HoveredHexInfo | null;
     onEndTurn: () => void;
+    /** Phase 22: what sits at the top of the panel, above everything else -- the minimap, as in upstream's theme. */
+    top?: Snippet;
   } = $props();
 
   /** "melee, blade" style label for a weapon's range/damage type -- addresses "UI is missing information about weapon type". */
@@ -49,6 +53,7 @@
 </script>
 
 <aside class="side-panel">
+  {@render top?.()}
   <p class="status" dir="auto" role="status">{statusMessage}</p>
 
   {#if hoveredHexInfo}

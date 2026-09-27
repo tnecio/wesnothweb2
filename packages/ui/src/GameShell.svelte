@@ -39,7 +39,7 @@
     CutsceneBeat,
     FakeUnitWalk,
   } from '@wesnothweb2/engine';
-  import { WmlConfig, type WmlConfigJson, playStoryMusic, extraHitSounds, GAME_SOUNDS, directionBetween, relativeDirection, tilesAdjacent, Direction, Location, unitCanAct } from '@wesnothweb2/engine';
+  import { WmlConfig, type WmlConfigJson, playStoryMusic, extraHitSounds, GAME_SOUNDS, directionBetween, relativeDirection, tilesAdjacent, Direction, Location, unitCanAct, parseTerrainCode } from '@wesnothweb2/engine';
   import {
     type HexPoint,
     type UnitAnimationCue,
@@ -60,6 +60,10 @@
     ImageCache,
     setEngineImageBaseUrl,
     setOrbColorIds,
+    resolveSideColorId,
+    type ColorData,
+    type MinimapInput,
+    type View,
   } from '@wesnothweb2/renderer';
   import {
     GameSession,
@@ -117,6 +121,10 @@
   import LabelSettingsDialog from './LabelSettingsDialog.svelte';
   import GameBoardView from './GameBoardView.svelte';
   import SidePanel from './SidePanel.svelte';
+  import Minimap from './Minimap.svelte';
+  import { createMinimapStyle } from './minimapStyle.js';
+  import { displayPrefs } from './displayPrefs.js';
+  import { fetchTeamColors } from './teamColorsCache.js';
   import StoryViewer from './StoryViewer.svelte';
   import PreferencesDialog from './PreferencesDialog.svelte';
   import LanguageDialog from './LanguageDialog.svelte';
@@ -201,6 +209,32 @@
   // and a deep proxy made every engine read of it go through Svelte proxy traps -- ~190 ms of main-thread time
   // plus GC while loading Dead Water 1 (Phase 28a P3 profile).
   let activeSnapshot = $state.raw(snapshot);
+
+  /**
+   * Phase 22: the minimap's inputs. `minimapInput` is refreshed by `sync()`
+   * with everything else the board shows; `cameraState` follows the board's
+   * camera (every pan, zoom and glide) for the minimap's outline.
+   */
+  let minimapInput = $state.raw<MinimapInput | null>(null);
+  let cameraState = $state.raw<{ view: View; viewport: { width: number; height: number } } | null>(null);
+  let teamColors = $state.raw<ColorData | null>(null);
+  void fetchTeamColors().then((colors) => (teamColors = colors));
+  const minimapStyle = $derived(
+    createMinimapStyle({
+      terrainTypeConfigs: (activeSnapshot.terrainTypeConfigs ?? []) as { attrs?: Record<string, unknown> }[],
+      colors: teamColors,
+      sideColorId: (side) => resolveSideColorId(session.board.getTeam(side)?.color ?? '', side, teamColors?.defaultColors ?? []),
+      orbColorIds: accessibility.current.orbColors,
+      terrainInfo: (code) => {
+        try {
+          const info = session.board.map.terrainInfoFor(parseTerrainCode(code));
+          return { id: info.id, unionType: info.unionType.map((c) => c.toString()) };
+        } catch {
+          return null;
+        }
+      },
+    }),
+  );
   // Phase 20: fetch the translation catalogues this scenario's own text belongs to (its campaign's domain, ...).
   $effect(() => {
     void locale.useDomains(activeSnapshot.textdomains ?? []);
@@ -609,6 +643,7 @@
     mapItems = session.mapItems;
     mapLabels = session.mapLabels;
     timeOfDay = session.currentTimeOfDay;
+    minimapInput = session.minimapInput(new Set(reachable.map((h) => `${h.x},${h.y}`)));
 
     statusMessage = statusFor(message);
 
@@ -2720,9 +2755,22 @@
         onHexHoverChange={handleHexHoverChange}
         hoverDefensePercent={(x, y) => session.defensePercentAt(x, y)}
         paused={phase === 'story'}
+        onViewChange={(state) => (cameraState = state)}
       />
     {/key}
-    <SidePanel {selected} {inspected} {statusMessage} {log} {recruitOptions} {recallOptions} {hoveredHexInfo} onEndTurn={handleEndTurn} />
+    <SidePanel {selected} {inspected} {statusMessage} {log} {recruitOptions} {recallOptions} {hoveredHexInfo} onEndTurn={handleEndTurn}>
+      {#snippet top()}
+        <Minimap
+          input={minimapInput}
+          options={displayPrefs.value.minimap}
+          style={minimapStyle}
+          camera={cameraState}
+          onNavigate={(point) => boardView?.centerOnWorldPoint(point)}
+          onToggle={(key) => displayPrefs.update({ minimap: { [key]: !displayPrefs.peek().minimap[key] } })}
+          onZoomDefault={() => boardView?.zoomDefault()}
+        />
+      {/snippet}
+    </SidePanel>
   </div>
 
   {#if contextMenuAt}
