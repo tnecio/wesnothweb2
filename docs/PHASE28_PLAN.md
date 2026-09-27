@@ -37,7 +37,7 @@ after review. This plan covers:
 | The `wesnoth` submodule checkout is 2.8 GB. The build and tests need only `data/`, `images/` and `sounds/`. | CI checks the submodule out shallow and sparse, cached by submodule SHA. |
 | `apps/web/public/game-images*` are **symlinks** into the submodule. The browser fetches from them, one file at a time, everything the atlases don't cover: music, sounds, portraits, story art and fallback images. Lua is read from disk at build time (`dataLua.ts`), not fetched. | The deployed game data must be an explicit, versioned copy (S3), not whatever the symlink points at. |
 | **What `data/` holds** (595 MB, 22.7k files): see the table below. The media alone (png/webp/jpg/ogg/wav in `core/` and `campaigns/`) is 18.9k files and 536 MB. | Everything together is **over Cloudflare's 20k-files-per-deploy limit**, so the raw game data can't live in the Workers upload (S3 moves it to R2). |
-| **Our generated atlases are 212 MB**, 928 files, of which about 180 MB are per-scenario terrain atlases. That is more than the whole source `core/images/terrain` (38 MB) they are cut from. The biggest is 9.3 MB (UtBS 4). Each scenario's atlas repeats the same common tiles. | Each new scenario re-downloads its common tiles, and our PNG encoder compresses worse than upstream's optimised files. That is the largest avoidable cost per scenario for a player (S4). |
+| **Our generated atlases are 212 MB**, 928 files, of which about 180 MB are per-scenario terrain atlases. That is more than the whole source `core/images/terrain` (38 MB) they are cut from. The biggest is 9.3 MB (UtBS 4). Each scenario's atlas repeats the same common tiles. | Each new scenario re-downloads its common tiles: 44 atlases hold 13k image slots but only 1.7k distinct images. Separately, unit bundles are 3× their palette-PNG sources. See `docs/ASSETS.md` §4 (S4). |
 | Snapshots are committed JSON, 155 MB; the largest file is 4.7 MB. **Liberty 1's snapshot compresses 3.55 MB → 0.26 MB with gzip -9.** | They must be served compressed. Pre-compressing with Brotli at build time beats relying on the edge (S3). |
 | The router is client-side (`pushState`): `/play/<campaign>?scenario=…&save=…`. | Needs an SPA fallback, which Workers provides natively. |
 | No `window.onerror`, `unhandledrejection` handler or `<svelte:boundary>` anywhere. | A runtime error leaves a frozen or blank screen with nothing to report (S6). |
@@ -160,6 +160,10 @@ downloads a file again only when that file itself has changed.
     manifest.
 
 ### S4 — Shrink what players download
+
+`docs/ASSETS.md` has the full measured walkthrough and the proposed
+core / campaign / scenario split. It supersedes the item list below where
+they differ: unit bundles and snapshots dominate, not music.
 
 These are measured one by one (bytes per scenario load, and total); each is
 kept only if it is lossless or you sign off on it.
