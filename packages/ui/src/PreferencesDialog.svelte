@@ -1,8 +1,10 @@
 <script lang="ts">
   /**
    * Preferences (`gui2::dialogs::preferences_dialog`), the interim form (Phase 21): upstream's tab strip with
-   * the tabs that have content today. Display holds the accessibility settings (font size, orb colours) and,
-   * on the title screen, whether the tip of the day shows; Sound holds the audio settings. Phase 24 adds the
+   * the tabs that have content today. General holds the scroll speed (Phase 22); Display the accessibility
+   * settings (font size, orb colours), the grid overlay (Phase 22) and, on the title screen, whether the tip
+   * of the day shows; Sound the audio settings; Advanced the two map-view entries upstream keeps in its
+   * advanced list, "Mouse scrolling" and "Follow unit actions" (Phase 22). Phase 24 adds the
    * remaining tabs (general, hotkeys, advanced, ...) to this same dialog. Language keeps its own dialog, as
    * upstream's does (a button on the title screen, a menu entry in a game).
    */
@@ -10,10 +12,11 @@
   import AccessibilityPanel from './AccessibilityPanel.svelte';
   import AudioPanel from './AudioPanel.svelte';
   import { menuPrefs } from './menu/menuPrefs.js';
-  import { t, tx } from './i18n/locale.js';
+  import { displayPrefs } from './displayPrefs.js';
+  import { t, tw, tx } from './i18n/locale.js';
   import type { AudioSettings } from './audio/settings.js';
 
-  type PreferencesTab = 'display' | 'sound';
+  type PreferencesTab = 'general' | 'display' | 'sound' | 'advanced';
 
   let {
     audioSettings,
@@ -31,8 +34,10 @@
   } = $props();
 
   const tabs: ReadonlyArray<{ id: PreferencesTab; label: () => string }> = [
+    { id: 'general', label: () => t('General') },
     { id: 'display', label: () => t('Display') },
     { id: 'sound', label: () => t('Sound') },
+    { id: 'advanced', label: () => t('Advanced') },
   ];
 
   let tab = $state<PreferencesTab>(initialTab);
@@ -66,16 +71,43 @@
     </div>
 
     <div class="panel" id={`prefs-panel-${tab}`} role="tabpanel" aria-labelledby={`prefs-tab-${tab}`}>
-      {#if tab === 'display'}
+      {#if tab === 'general'}
+        <label class="slider" title={t('Change the speed of scrolling around the map')}>
+          <span>{t('Scroll speed:')}</span>
+          <input
+            type="range"
+            min="1"
+            max="100"
+            step="1"
+            value={displayPrefs.value.scrollSpeed}
+            oninput={(e) => displayPrefs.update({ scrollSpeed: Number(e.currentTarget.value) })}
+            data-testid="prefs-scroll-speed"
+          />
+          <span class="value">{displayPrefs.value.scrollSpeed}</span>
+        </label>
+      {:else if tab === 'display'}
         <AccessibilityPanel />
+        <label class="check" title={t('Overlay a grid over the map')}>
+          <input type="checkbox" checked={displayPrefs.value.grid} onchange={(e) => displayPrefs.update({ grid: e.currentTarget.checked })} data-testid="prefs-grid" />
+          <span>{t('Grid overlay')}</span>
+        </label>
         {#if showTipsToggle}
           <label class="check">
             <input type="checkbox" checked={menuPrefs.showTips} onchange={(e) => menuPrefs.setShowTips(e.currentTarget.checked)} data-testid="prefs-show-tips" />
             <span>{tx('Show the tip of the day')}</span>
           </label>
         {/if}
-      {:else}
+      {:else if tab === 'sound'}
         <AudioPanel settings={audioSettings} onChange={onAudioChange} />
+      {:else}
+        <label class="check">
+          <input type="checkbox" checked={displayPrefs.value.mouseScrolling} onchange={(e) => displayPrefs.update({ mouseScrolling: e.currentTarget.checked })} data-testid="prefs-mouse-scrolling" />
+          <span>{tw('Mouse scrolling')}</span>
+        </label>
+        <label class="check" title={tw('Choose whether the map view should scroll to a unit when an action or move is animated')}>
+          <input type="checkbox" checked={displayPrefs.value.scrollToAction} onchange={(e) => displayPrefs.update({ scrollToAction: e.currentTarget.checked })} data-testid="prefs-scroll-to-action" />
+          <span>{tw('Follow unit actions')}</span>
+        </label>
       {/if}
     </div>
 
@@ -116,6 +148,19 @@
     align-items: center;
     gap: 0.45rem;
     margin-top: 0.9rem;
+  }
+  .slider {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.9rem;
+  }
+  .slider input {
+    flex: 1 1 auto;
+  }
+  .slider .value {
+    width: 2.5rem;
+    text-align: right;
   }
   .footer {
     display: flex;

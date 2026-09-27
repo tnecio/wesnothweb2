@@ -2756,6 +2756,7 @@
         hoverDefensePercent={(x, y) => session.defensePercentAt(x, y)}
         paused={phase === 'story'}
         onViewChange={(state) => (cameraState = state)}
+        edgeScroll={(phase === 'playing' || phase === 'replay') && !dialogOpen() && contextMenuAt === null}
       />
     {/key}
     <SidePanel {selected} {inspected} {statusMessage} {log} {recruitOptions} {recallOptions} {hoveredHexInfo} onEndTurn={handleEndTurn}>

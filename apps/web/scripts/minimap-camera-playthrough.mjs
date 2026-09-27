@@ -3,6 +3,8 @@
  *
  *  - Camera: dragging far past the map edge is stopped at upstream's bounds; the zoom hotkeys walk
  *    exactly upstream's nine levels; the wheel pans and Ctrl+wheel zooms; `0` toggles 1:1 and back.
+ *  - Edge panning: the pointer at the window's edge pans, except over a control, under a dialog, or
+ *    with Preferences > Advanced > "Mouse scrolling" off.
  *  - Minimap: clicking it centres the board on that hex, dragging pans; a captured village changes
  *    colour at once; under fog/shroud it shows only what the viewing side knows (hotseat, both ways).
  *  - Following the action: with the camera parked away from the enemy, ending the turn brings the
@@ -126,6 +128,51 @@ try {
       JSON.stringify(small),
     );
     await pressKey(page, '0'); // back to 1:1 before rendering resumes
+    await page.evaluate(() => window.__wesnothDebug.setRenderingPaused(false));
+  }
+
+  // ── Edge-of-screen panning ───────────────────────────────────────────────────────────────────
+  // Pointer resting within 10 px of the window's edge pans the map; not with "Mouse scrolling" off,
+  // not while a dialog is open, and not over a control.
+  // (Render loop paused: at ~1.5 fps headless, a live board gives the pan one frame per check.)
+  {
+    await page.evaluate(() => window.__wesnothDebug.setRenderingPaused(true));
+    await page.evaluate(() => window.__wesnothDebug.scrollToHex(12, 15, 'warp'));
+    const rest = async (x, y, ms = 600) => {
+      const before = (await camera(page)).view;
+      await page.mouse.move(x, y);
+      await page.waitForTimeout(ms);
+      const after = (await camera(page)).view;
+      await page.mouse.move(640, 400);
+      await page.waitForTimeout(200);
+      return { dx: after.x - before.x, dy: after.y - before.y };
+    };
+    const left = await rest(3, 400);
+    check('resting the pointer at the left edge pans the map left', left.dx > 50 && Math.abs(left.dy) < 1, JSON.stringify(left));
+    const bottom = await rest(400, 797);
+    check('...and at the bottom edge, down', bottom.dy < -50 && Math.abs(bottom.dx) < 1, JSON.stringify(bottom));
+    const inside = await rest(400, 400);
+    check('away from the edges it stays put', inside.dx === 0 && inside.dy === 0, JSON.stringify(inside));
+    const menuButton = await page.getByRole('button', { name: 'Menu', exact: true }).boundingBox();
+    const overButton = await rest(menuButton.x + 5, 3);
+    check('not over a control at the edge (upstream: not over its menu buttons)', overButton.dx === 0 && overButton.dy === 0, JSON.stringify(overButton));
+    // Turn "Mouse scrolling" off the way a player would; the dialog itself must also stop it.
+    await page.getByRole('button', { name: 'Menu', exact: true }).click();
+    await page.getByRole('button', { name: /Preferences\.\.\./ }).click();
+    await page.getByRole('tab', { name: 'Advanced' }).click();
+    await page.locator('[data-testid="prefs-mouse-scrolling"]').uncheck();
+    const underDialog = await rest(3, 400);
+    check('not while a dialog is open', underDialog.dx === 0, JSON.stringify(underDialog));
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    const off = await rest(3, 400);
+    check('not with "Mouse scrolling" turned off in Preferences > Advanced', off.dx === 0, JSON.stringify(off));
+    await page.getByRole('button', { name: 'Menu', exact: true }).click();
+    await page.getByRole('button', { name: /Preferences\.\.\./ }).click();
+    await page.getByRole('tab', { name: 'Advanced' }).click();
+    await page.locator('[data-testid="prefs-mouse-scrolling"]').check();
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
     await page.evaluate(() => window.__wesnothDebug.setRenderingPaused(false));
   }
 

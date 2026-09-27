@@ -58,6 +58,7 @@
     DEFAULT_ZOOM_INDEX,
     ScrollAnimation,
     scrollWarps,
+    edgeScrollAmount,
     type View,
     type ScrollType,
   } from '@wesnothweb2/renderer';
@@ -85,6 +86,7 @@
     hoverDefensePercent,
     paused = false,
     onViewChange,
+    edgeScroll = false,
   }: {
     /**
      * Phase 16: stop rendering while something covers the whole board (the
@@ -93,6 +95,11 @@
      * map every frame and starves the overlay's own timers and input.
      */
     paused?: boolean;
+    /**
+     * Phase 22: whether resting the pointer at the window's edge may pan the map now (the game is in
+     * play and no dialog covers it). The "Mouse scrolling" preference and `[lock_view]` apply on top.
+     */
+    edgeScroll?: boolean;
     /** Phase 22: the camera moved (pan, zoom, glide, resize) -- the minimap's outline follows it. */
     onViewChange?: (state: { view: View; viewport: { width: number; height: number } }) => void;
     /** Static parts (terrain/teams/scenario/map) -- read once at mount, never re-applied after. */
@@ -334,6 +341,58 @@
     }
     host.addEventListener('contextmenu', onContextMenu);
 
+    /*
+     * Phase 22: edge-of-screen panning, `controller_base::handle_scroll`:
+     * with the pointer within 10 px (`mouse_scroll_threshold`) of the
+     * window's edge, pan that way at `scroll_speed * 0.036` px/ms, starting
+     * from a 1 ms step so a brush past the edge barely moves. Upstream turns
+     * it off over its menu buttons; here, over any control, so reaching for
+     * a button at the edge doesn't drag the map along. Nothing happens once
+     * the pointer leaves the page or the window loses focus.
+     */
+    const EDGE_THRESHOLD = 10;
+    let edgePointer: { x: number; y: number; overControl: boolean } | null = null;
+    let edgeScrolling = false;
+    let edgeLast = 0;
+    let edgeFrame = 0;
+    function onWindowPointerMoveForEdge(e: PointerEvent): void {
+      const target = e.target instanceof Element ? e.target : null;
+      edgePointer = { x: e.clientX, y: e.clientY, overControl: !!target?.closest('button, a, input, select, textarea, [role="menu"], [role="menuitem"]') };
+    }
+    function clearEdgePointer(): void {
+      edgePointer = null;
+    }
+    function onDocumentMouseOut(e: MouseEvent): void {
+      if (!e.relatedTarget) edgePointer = null;
+    }
+    function edgeTick(now: number): void {
+      edgeFrame = requestAnimationFrame(edgeTick);
+      const p = edgePointer;
+      let dx = 0;
+      let dy = 0;
+      if (p && !p.overControl && edgeScroll && !viewLocked && !dragActive && board && displayPrefs.peek().mouseScrolling && document.hasFocus()) {
+        if (p.y < EDGE_THRESHOLD) dy -= 1;
+        if (p.y > window.innerHeight - EDGE_THRESHOLD) dy += 1;
+        if (p.x < EDGE_THRESHOLD) dx -= 1;
+        if (p.x > window.innerWidth - EDGE_THRESHOLD) dx += 1;
+      }
+      if (dx === 0 && dy === 0) {
+        edgeScrolling = false;
+        return;
+      }
+      // If we weren't scrolling already, start small.
+      const dt = edgeScrolling ? now - edgeLast : 1;
+      edgeScrolling = true;
+      edgeLast = now;
+      const amount = edgeScrollAmount(dt, displayPrefs.peek().scrollSpeed);
+      cancelScroll();
+      scrollByPixels(dx * amount, dy * amount);
+    }
+    window.addEventListener('pointermove', onWindowPointerMoveForEdge);
+    window.addEventListener('blur', clearEdgePointer);
+    document.addEventListener('mouseout', onDocumentMouseOut);
+    edgeFrame = requestAnimationFrame(edgeTick);
+
     (async () => {
       // Deliberately NO PixiJS CullerPlugin here: tried for the real
       // terrain layer (~8,700 sprites) and it made every frame ~10x SLOWER
@@ -438,6 +497,10 @@
       host.removeEventListener('wheel', onWheel);
       host.removeEventListener('pointerleave', onPointerLeave);
       host.removeEventListener('contextmenu', onContextMenu);
+      cancelAnimationFrame(edgeFrame);
+      window.removeEventListener('pointermove', onWindowPointerMoveForEdge);
+      window.removeEventListener('blur', clearEdgePointer);
+      document.removeEventListener('mouseout', onDocumentMouseOut);
       pixiApp = undefined;
       // `app` may exist but not be initialised yet: `new PIXI.Application()`
       // returns immediately and `app.init()` is awaited inside the IIFE
