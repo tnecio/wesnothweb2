@@ -516,6 +516,8 @@ const teams = board.teams().map((t) => ({
   gold: t.gold,
   teamName: t.teamName,
   color: t.color,
+  // `[side] flag=` (the village flag animation), only when the side sets one.
+  ...(t.flag ? { flag: t.flag } : {}),
   recruit: [...t.canRecruit],
   // Real [side] income=/village_gold= -- see GameBoardSnapshot.SnapshotTeam's
   // own doc comment for the real bug this fixes (gold-carryover finishing

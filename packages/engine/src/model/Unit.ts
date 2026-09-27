@@ -253,7 +253,7 @@ export class Unit {
     this.healthy = false;
     this.imageMods = '';
     this.overlays = [];
-    this.ellipse = '';
+    this.ellipse = type.ellipse;
     this.halo = type.halo;
     this.abilities = [...type.abilities];
     this.advancements = [...type.advancements];
@@ -446,6 +446,7 @@ export class Unit {
     unit.hitpoints = cfg.getNumber('hitpoints', unit.maxHitpoints);
     unit.experience = cfg.getNumber('experience', 0);
     unit.resting = cfg.getBoolean('resting', false);
+    if (cfg.hasAttribute('ellipse')) unit.ellipse = cfg.getString('ellipse');
 
     const facing = parseDirection(cfg.getString('facing', ''));
     unit.facing = facing; // upstream falls back to a *random* facing; left Indeterminate here (a rendering concern -- see module doc comment on what's display-only).
@@ -513,6 +514,7 @@ export class Unit {
     cfg.setAttribute('hidden', this.hidden);
     cfg.setAttribute('underlying_id', this.underlyingId);
     if (this.profile !== '') cfg.setAttribute('profile', this.profile);
+    if (this.ellipse !== '') cfg.setAttribute('ellipse', this.ellipse);
     cfg.setAttribute('gender', this.gender);
     if (this.variation !== '') cfg.setAttribute('variation', this.variation);
     if (this.guardian) cfg.setAttribute('ai_special', 'guardian');

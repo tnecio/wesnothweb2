@@ -15,6 +15,8 @@
  * otherwise use).
  */
 
+import { rootedImagePath } from './images/compositor.js';
+
 /** `units/drawer.cpp`'s `energy_bar` struct constants (all in real, unscaled 72px-hex pixels). */
 export const ENERGY_BAR = {
   originX: 14,
@@ -191,4 +193,20 @@ export function blendColorMatrix(blend: StatusBlend): number[] {
     0, 0, k, 0, channel(0),
     0, 0, 0, 1, 0,
   ];
+}
+
+/**
+ * `unit_drawer::draw_ellipses`' image name, without its `-top.png`/
+ * `-bottom.png` suffix: the unit's `ellipse=` (default `misc/ellipse`),
+ * then `-leader`, `-nozoc` and `-selected` as they apply. `null` for
+ * `ellipse=none`. The stock ellipses are engine images (`wesnoth/images`),
+ * hence the `engine/` prefix unless the campaign ships its own.
+ */
+export function ellipseImageBase(unit: { readonly ellipse?: string; readonly canRecruit: boolean; readonly emitsZoc?: boolean }, selected: boolean): string | null {
+  if (unit.ellipse === 'none') return null;
+  let path = unit.ellipse || 'misc/ellipse';
+  if (unit.canRecruit) path += '-leader';
+  if (unit.emitsZoc === false) path += '-nozoc';
+  if (selected) path += '-selected';
+  return rootedImagePath(`${path}-top.png`).startsWith('campaigns/') ? path : `engine/${path}`;
 }

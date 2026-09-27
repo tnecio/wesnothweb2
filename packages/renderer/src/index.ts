@@ -41,6 +41,7 @@ export {
   statusBlend,
   blendColorMatrix,
   type StatusBlend,
+  ellipseImageBase,
 } from './unitOverlays'
 
 export { RED_GREEN_SCALE, RED_GREEN_SCALE_TEXT, redToGreen } from './colorScales'

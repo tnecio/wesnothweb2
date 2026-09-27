@@ -149,6 +149,7 @@ export interface UnitTypeExtras {
   readonly upkeep?: string;
   readonly variationId?: string;
   readonly halo?: string;
+  readonly ellipse?: string;
   readonly makeVariation?: (id: string) => UnitType | undefined;
   readonly nameT?: TString;
 }
@@ -429,6 +430,7 @@ export class UnitType {
     this.upkeep = extras.upkeep ?? 'full';
     this.variationId = extras.variationId ?? '';
     this.halo = extras.halo ?? '';
+    this.ellipse = extras.ellipse ?? '';
     this.makeVariation = extras.makeVariation;
     this.nameT = extras.nameT;
   }
@@ -451,6 +453,8 @@ export class UnitType {
   readonly variationId: string;
   /** `halo=`. */
   readonly halo: string;
+  /** `ellipse=` (`unit_type::ellipse`). */
+  readonly ellipse: string;
   private readonly makeVariation: ((id: string) => UnitType | undefined) | undefined;
   private readonly variationCache = new Map<string, UnitType | undefined>();
 
@@ -557,6 +561,7 @@ export class UnitType {
         upkeep: cfg.getString('upkeep', 'full'),
         variationId: cfg.getString('variation_id', ''),
         halo: cfg.getString('halo', ''),
+        ellipse: cfg.getString('ellipse', ''),
         nameT: cfg.isTranslatable('name') ? cfg.getTString('name') : undefined,
         makeVariation: (variationId) => {
           const varCfg = cfg.children('variation').find((v) => v.getString('variation_id') === variationId);

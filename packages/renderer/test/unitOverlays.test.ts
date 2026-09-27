@@ -13,6 +13,7 @@ import {
   ORB_COLOR_ID,
   statusBlend,
   blendColorMatrix,
+  ellipseImageBase,
 } from '../src/unitOverlays'
 
 /**
@@ -131,5 +132,18 @@ describe('setOrbColorIds', () => {
     expect(ORB_COLOR_ID).toEqual({ unmoved: 'blue', partial: 'brightorange', moved: 'purple' });
     setOrbColorIds({ unmoved: 'brightgreen', moved: 'red' });
     expect(ORB_COLOR_ID).toEqual({ unmoved: 'brightgreen', partial: 'brightorange', moved: 'red' });
+  });
+});
+
+describe('ellipseImageBase (unit_drawer::draw_ellipses)', () => {
+  it('builds the stock ellipse name from leader, zoc and selection', () => {
+    expect(ellipseImageBase({ canRecruit: false }, false)).toBe('engine/misc/ellipse');
+    expect(ellipseImageBase({ canRecruit: true }, false)).toBe('engine/misc/ellipse-leader');
+    expect(ellipseImageBase({ canRecruit: true, emitsZoc: false }, true)).toBe('engine/misc/ellipse-leader-nozoc-selected');
+    expect(ellipseImageBase({ canRecruit: false, ellipse: 'misc/ellipse-hero' }, true)).toBe('engine/misc/ellipse-hero-selected');
+  });
+
+  it('draws nothing for ellipse=none', () => {
+    expect(ellipseImageBase({ canRecruit: true, ellipse: 'none' }, true)).toBeNull();
   });
 });

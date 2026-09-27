@@ -2788,6 +2788,8 @@ export class GameSession {
       canAttackHere,
       statuses: [...unit.statuses],
       loyal: unit.loyal,
+      ellipse: unit.ellipse,
+      emitsZoc: unit.emitZoc,
       underlyingId: this.renderKeyFor(unit),
     };
   }

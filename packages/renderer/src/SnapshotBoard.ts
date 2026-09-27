@@ -87,7 +87,8 @@ import {
 } from './hexGeometry.js';
 import { ImageCache, hexedRef, setImageBaseUrl, setEngineImageBaseUrl } from './images/ImageCache.js';
 import { joinRef } from './images/ipf.js';
-import { resolveSideColorId } from './images/teamColor.js';
+import { resolveSideColorId, sideColorRgb } from './images/teamColor.js';
+import { squareParentheticalSplit } from './animation/frame.js';
 import { sampleAnimation, animationDurationMs, animationTimeline, animationSoundCues, sampleParticles, sampleUnitHalo, type OverlaySample, type SoundCue } from './animation/playback.js';
 import { HEX_STEP_MS, type UnitAnimationDef } from './animation/unitAnimation.js';
 import { LABEL_FONT_SIZE, parseHaloFrames, type MapItemPoint, type MapLabelPoint } from './mapItems.js';
@@ -107,6 +108,7 @@ import {
   ORB_COLOR_ID,
   statusBlend,
   blendColorMatrix,
+  ellipseImageBase,
 } from './unitOverlays.js';
 import { redToGreen } from './colorScales.js';
 
@@ -185,6 +187,9 @@ export interface SnapshotUnit {
   statuses?: readonly string[];
   /** `Unit.loyal` -- whether to draw the real loyal-icon overlay (`misc/loyal-icon.png`). */
   loyal?: boolean;
+  /** `unit::image_ellipse` (`''` = `misc/ellipse`, `none` = no ellipse) and `emits_zoc` -- see `ellipseRef`. */
+  ellipse?: string;
+  emitsZoc?: boolean;
   /**
    * A stable per-instance key for sprite identity across `updateUnits`
    * calls (see that method's own doc comment on why this replaced full
@@ -211,6 +216,8 @@ export interface SnapshotTeam {
   gold: number;
   teamName: string;
   color: string;
+  /** `[side] flag=` -- see `villageFlagFrames`. */
+  flag?: string;
   /** Recruitable unit type ids (engine `SnapshotTeam.recruit`); their image bundles are registered up front. */
   recruit?: string[];
 }
@@ -240,7 +247,10 @@ interface UnitVisual {
   /** Holds `marker` (+ `sprite`, if any) -- repositioned/moved as one unit so the marker stays glued to the sprite during animation. */
   readonly container: PIXI.Container;
   sprite: PIXI.Sprite | null;
-  marker: PIXI.Graphics;
+  /** The side-coloured ellipse under the unit (`unit_drawer::draw_ellipses`), or a plain dot when the unit has no sprite. See `updateEllipse`. */
+  marker: PIXI.Container;
+  /** What `marker` currently shows (`ellipseImageBase` plus the side's colour id), so `updateEllipse` only reloads on a change. */
+  lastEllipseKey: string | null;
   /**
    * A same-texture, tinted, alpha-modulated copy of `sprite`, drawn on
    * top -- the real `blend_with`/`blend_ratio` hit-flash mechanism
@@ -613,6 +623,15 @@ export class SnapshotBoard {
   private readonly animationOverlayLayer = new PIXI.Container();
   private units: SnapshotUnit[];
   private readonly teamColor: Map<number, string>;
+  /** `[side] flag=` per side (`''` = the default flag). */
+  private readonly teamFlag: Map<number, string>;
+  /** Village flag animation frames per side and colour -- see `villageFlagFrames`. */
+  private readonly flagFrames = new Map<string, Promise<PIXI.FrameObject[]>>();
+  /** Each side's flag animation phase, as a fraction of its frames. */
+  private readonly flagStart = new Map<number, number>();
+  private villageFlagsGeneration = 0;
+  /** `x,y` of the hex `setHighlights` last marked selected, whose unit gets the `-selected` ellipse. */
+  private selectedHexKey: string | null = null;
   private readonly onHexClick?: (x: number, y: number) => void;
   private readonly onHexHover?: (x: number, y: number) => void;
   private readonly onHexRightClick?: (x: number, y: number, clientX: number, clientY: number) => void;
@@ -653,6 +672,7 @@ export class SnapshotBoard {
     this.terrainGraphicsRulesUrl = options.terrainGraphicsRulesUrl;
     this.units = snapshot.units;
     this.teamColor = new Map(snapshot.teams.map((t) => [t.side, t.color]));
+    this.teamFlag = new Map(snapshot.teams.map((t) => [t.side, t.flag ?? '']));
     this.stage.addChild(
       this.terrainLayer,
       this.gridTopLayer,
@@ -1031,10 +1051,51 @@ export class SnapshotBoard {
    * sprite was already correctly recolored.
    */
   private teamColoredRef(imagePath: string, side: number, flagRgb: string | undefined): string {
+    const colorId = this.sideColorId(side);
+    return colorId ? joinRef(imagePath, `RC(${flagRgb ?? 'magenta'}>${colorId})`) : imagePath;
+  }
+
+  /** `team::get_side_color_id`: the side's colour range id (`blue`, `red`, ...), or `''` before the colour data has loaded. */
+  private sideColorId(side: number): string {
     const colorData = ImageCache.getColorData();
     const rawColor = this.teamColor.get(side);
-    const colorId = colorData && rawColor !== undefined ? resolveSideColorId(rawColor, side, colorData.defaultColors) : '';
-    return colorId ? joinRef(imagePath, `RC(${flagRgb ?? 'magenta'}>${colorId})`) : imagePath;
+    return colorData && rawColor !== undefined ? resolveSideColorId(rawColor, side, colorData.defaultColors) : '';
+  }
+
+  /** The side's colour (its range's `mid`) as a number, grey when unknown. */
+  private sideColor(side: number): number {
+    const rgb = sideColorRgb(ImageCache.getColorData(), this.teamColor.get(side) ?? '', side);
+    if (!rgb) return 0xcccccc;
+    const [r, g, b] = rgb.split(',').map(Number) as [number, number, number];
+    return (r << 16) | (g << 8) | b;
+  }
+
+  /**
+   * `unit_drawer::draw_ellipses`: the `-top`/`-bottom` ellipse images under
+   * the unit, recoloured `~RC(ellipse_red>side colour)`, and drawn over the
+   * whole hex. The image name says whether the unit is a leader, emits no
+   * zone of control, or is selected -- see `ellipseImageBase`.
+   */
+  private async updateEllipse(visual: UnitVisual, unit: SnapshotUnit): Promise<void> {
+    if (!visual.sprite) return;
+    const base = ellipseImageBase(unit, this.selectedHexKey === `${unit.x},${unit.y}`);
+    const colorId = this.sideColorId(unit.side);
+    const key = base === null ? null : `${base}|${colorId}`;
+    if (key === visual.lastEllipseKey) return;
+    visual.lastEllipseKey = key;
+    const refs = base === null ? [] : ['-top.png', '-bottom.png'].map((part) => (colorId ? joinRef(base + part, `RC(ellipse_red>${colorId})`) : base + part));
+    const textures = await Promise.all(refs.map((ref) => ImageCache.resolve(ref)));
+    // A newer call (a selection change, a side change) took over meanwhile.
+    if (visual.container.destroyed || visual.lastEllipseKey !== key) return;
+    for (const child of visual.marker.removeChildren()) child.destroy();
+    for (const texture of textures) {
+      if (!texture) continue;
+      const part = new PIXI.Sprite(texture);
+      part.anchor.set(0.5);
+      part.width = TILE_SIZE;
+      part.height = TILE_SIZE;
+      visual.marker.addChild(part);
+    }
   }
 
   /**
@@ -1047,7 +1108,7 @@ export class SnapshotBoard {
    */
   private async buildUnitVisual(unit: SnapshotUnit): Promise<UnitVisual> {
     const container = new PIXI.Container();
-    const marker = new PIXI.Graphics();
+    const marker = new PIXI.Container();
     let sprite: PIXI.Sprite | null = null;
 
     if (unit.image) {
@@ -1068,17 +1129,14 @@ export class SnapshotBoard {
       }
     }
 
-    // A small side-colour marker dot underneath every sprite -- kept even
-    // now that recoloring is real (some unit art has little/no magenta
-    // area, e.g. mostly-metal or all-white sprites, where the recolor
-    // alone can be easy to miss at a glance). No sprite at all (image
-    // missing/unresolvable) -- fall back to a bigger, undecorated dot so
-    // the unit is still visible and clickable-by-proxy.
+    // Under the sprite: the side-coloured ellipse, filled in by
+    // `updateEllipse`. No sprite at all (image missing/unresolvable) -- a
+    // plain dot in the side's colour instead, so the unit is still visible
+    // and clickable-by-proxy.
     if (sprite) {
-      marker.circle(0, 28, 6).fill({ color: sideMarkerColor(this.teamColor.get(unit.side)) });
       container.addChild(marker, sprite);
     } else {
-      marker.circle(0, 0, 16).fill({ color: sideMarkerColor(this.teamColor.get(unit.side)) });
+      marker.addChild(new PIXI.Graphics().circle(0, 0, 16).fill({ color: this.sideColor(unit.side) }));
       container.addChild(marker);
     }
 
@@ -1089,6 +1147,7 @@ export class SnapshotBoard {
       container,
       sprite,
       marker,
+      lastEllipseKey: null,
       overlay: null,
       lastImage: unit.image,
       lastSide: unit.side,
@@ -1367,6 +1426,7 @@ export class SnapshotBoard {
       visual.container.addChild(...rebuilt.container.removeChildren());
       visual.sprite = rebuilt.sprite;
       visual.marker = rebuilt.marker;
+      visual.lastEllipseKey = null;
       visual.bars = rebuilt.bars;
       visual.overlay = null; // the old overlay sprite (if any) was just destroyed along with its old container children.
       visual.crownIcon = null; // ditto for the crown/loyal/orb icons, if any.
@@ -1378,6 +1438,8 @@ export class SnapshotBoard {
     }
     if (visual.overlay) visual.overlay.alpha = 0; // a hit-flash should never outlive the animation that caused it.
     visual.lastUnit = unit;
+    await this.updateEllipse(visual, unit);
+    if (visual.container.destroyed) return visual;
     this.updateOverlays(visual, unit);
     await this.updateIcons(visual, unit);
     // Defensive: `updateIcons` just awaited (a real texture load, in the
@@ -1925,25 +1987,62 @@ export class SnapshotBoard {
     }
   }
 
-  updateVillageOwnership(owners: readonly VillageOwnerPoint[]): void {
-    this.villageLayer.removeChildren();
-    for (const v of owners) {
-      const coord = toHexCoord(v.x, v.y);
-      const { x: cx, y: cy } = hexToPixel(coord);
-      const flag = new PIXI.Graphics();
-      // A small flag: a pole plus a triangular pennant, near the top of
-      // the hex (matches real Wesnoth's village-flag placement) -- offsets
-      // relative to HEX_SIZE so it scales with the same tile size
-      // everything else on this board uses.
-      const poleTop = cy - HEX_SIZE * 0.85;
-      const poleBottom = cy - HEX_SIZE * 0.15;
-      const poleX = cx - HEX_SIZE * 0.15;
-      flag.moveTo(poleX, poleTop).lineTo(poleX, poleBottom).stroke({ width: 2, color: 0x000000, alpha: 0.8 });
-      flag.poly([poleX, poleTop, poleX + HEX_SIZE * 0.4, poleTop + HEX_SIZE * 0.18, poleX, poleTop + HEX_SIZE * 0.36]);
-      flag.fill({ color: sideMarkerColor(this.teamColor.get(v.side)) });
-      flag.stroke({ width: 1, color: 0x000000, alpha: 0.7 });
-      this.villageLayer.addChild(flag);
+  updateVillageOwnership(owners: readonly VillageOwnerPoint[]): Promise<void> {
+    const generation = ++this.villageFlagsGeneration;
+    return (async () => {
+      const framesBySide = new Map<number, PIXI.FrameObject[]>();
+      for (const side of new Set(owners.map((v) => v.side))) framesBySide.set(side, await this.villageFlagFrames(side));
+      if (generation !== this.villageFlagsGeneration) return; // a newer ownership update replaced this one
+      for (const child of this.villageLayer.removeChildren()) child.destroy();
+      for (const v of owners) {
+        const frames = framesBySide.get(v.side) ?? [];
+        if (frames.length === 0) continue;
+        const { x: cx, y: cy } = hexToPixel(toHexCoord(v.x, v.y));
+        const flag = new PIXI.AnimatedSprite(frames);
+        flag.anchor.set(0.5);
+        flag.position.set(cx, cy);
+        flag.width = TILE_SIZE;
+        flag.height = TILE_SIZE;
+        // One phase per side, as upstream animates one flag per side.
+        flag.gotoAndPlay(this.flagStartFrame(v.side, frames.length));
+        if (frames.length === 1) flag.stop();
+        this.villageLayer.addChild(flag);
+      }
+    })();
+  }
+
+  /**
+   * `display::reinit_flags_for_team`: the side's `[side] flag=` animation (by
+   * default `game_config::images::flag`, `flags/flag-[1~4].png:150`), each
+   * frame recoloured `~RC(flag_rgb>side colour)`.
+   */
+  private villageFlagFrames(side: number): Promise<PIXI.FrameObject[]> {
+    const colorId = this.sideColorId(side);
+    const key = `${side}|${colorId}`;
+    let frames = this.flagFrames.get(key);
+    if (!frames) {
+      const flag = this.teamFlag.get(side) || DEFAULT_FLAG;
+      frames = Promise.all(
+        squareParentheticalSplit(flag).map(async (item) => {
+          const parts = item.split(':');
+          const image = parts.length > 1 ? parts[0]! : item;
+          const time = parts.length > 1 ? Math.max(1, Number.parseInt(parts[parts.length - 1]!, 10) || 100) : 100;
+          const texture = await ImageCache.resolve(colorId ? joinRef(image, `RC(${FLAG_RGB}>${colorId})`) : image);
+          return texture ? { texture, time } : null;
+        }),
+      ).then((list) => list.filter((f): f is PIXI.FrameObject => f !== null));
+      this.flagFrames.set(key, frames);
     }
+    return frames;
+  }
+
+  private flagStartFrame(side: number, frameCount: number): number {
+    let start = this.flagStart.get(side);
+    if (start === undefined) {
+      start = Math.random();
+      this.flagStart.set(side, start);
+    }
+    return Math.floor(start * frameCount);
   }
 
   /**
@@ -1960,6 +2059,15 @@ export class SnapshotBoard {
    * tint the empty hexes around a unit, not obscure sprites.
    */
   setHighlights(state: HighlightState): void {
+    const selectedKey = state.selected ? `${state.selected.x},${state.selected.y}` : null;
+    if (selectedKey !== this.selectedHexKey) {
+      const previous = this.selectedHexKey;
+      this.selectedHexKey = selectedKey;
+      for (const visual of this.unitVisuals.values()) {
+        const at = `${visual.lastUnit.x},${visual.lastUnit.y}`;
+        if (at === previous || at === selectedKey) void this.updateEllipse(visual, visual.lastUnit);
+      }
+    }
     this.highlightLayer.removeChildren();
     this.moveInfoLayer.removeChildren().forEach((child) => child.destroy());
     this.selectionLayer.removeChildren();
@@ -2053,15 +2161,8 @@ export class SnapshotBoard {
   }
 }
 
-function sideMarkerColor(colorName: string | undefined): number {
-  switch (colorName) {
-    case '1':
-      return 0xe61c1c; // red -- Wesnoth's side-1 default
-    case 'teal':
-      return 0x1ca7a7;
-    case '2':
-      return 0x1c4fe6;
-    default:
-      return 0xcccccc;
-  }
-}
+/** `game_config::flag_rgb`: the palette the flag images are drawn in. */
+const FLAG_RGB = 'flag_green';
+/** `game_config::images::flag` (`data/game_config.cfg`). */
+const DEFAULT_FLAG = 'flags/flag-[1~4].png:150';
+
