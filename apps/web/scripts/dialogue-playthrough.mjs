@@ -160,15 +160,18 @@ try {
     check('the ghost speaks only after its flight', /Found\. Them\./.test(first?.text ?? ''), first?.text.slice(0, 60));
     await page.screenshot({ path: path.join(outDir, 'dw5-first-line.png') });
 
+    // Between two lines the view glides to the next speaker. Like upstream, a glide advances at most 200 ms
+    // per frame, and headless Chromium draws this board at about 1 frame a second (software WebGL), so a
+    // glide can take its full 4 s timeout here: wait for each line rather than assume a short gap.
     const lines = [];
     for (let i = 0; i < 25; i++) {
-      const dialog = await currentDialog(page);
+      const dialog = await waitForDialog(page, 12000);
       if (!dialog) break;
       lines.push(dialog.text.slice(0, 40));
       await page.keyboard.press('Enter');
       await page.waitForTimeout(400);
     }
-    check('the scenario reaches play after its cutscene', (await currentDialog(page)) === null, `${lines.length} lines shown`);
+    check('the scenario reaches play after its cutscene', lines.length >= 10 && (await currentDialog(page)) === null, `${lines.length} lines shown`);
   });
 
   // ---- Dead Water 1: dialogue interleaved with the units it spawns ------

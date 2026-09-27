@@ -1655,6 +1655,28 @@ transcode was not needed. Verified by `apps/web/scripts/mobile-playthrough.mjs`
 - **Milestone**: a full scenario is playable start-to-finish on a phone-
   sized viewport using only touch input.
 
+## Phase 23a — Playtest fixes (bugs7.md, 2026-09-27)
+
+**Status: delivered 2026-09-27** (docs/PROGRESS.md). Found playtesting
+Phase 23 on a phone and on desktop:
+
+- Phone: the "loading scenario..." line was hidden; the collapse switches
+  did not work while a `[message]` waited for a tap; a gap in the infobox
+  header let the scrolling body show through.
+- AI turns on big maps looked like a hang: upstream's
+  `defensive_position_cache_` ported, illuminators and terrain/defense
+  lookups cached (Dead Water 12, 30 AI side turns: 167 s -> 34 s).
+- Pango markup in messages, story text and objectives.
+- Recruits hidden until their animation starts; frame `alpha=`; every unit
+  moves at upstream's 200 ms per hex (horses were twice as fast).
+- Unit ellipses and animated village flags in the side's colour, as
+  upstream draws them (Liberty's blue side showed grey dots and triangles).
+- Selecting an enemy highlights its reach (with full moves).
+- `dialogue-playthrough.mjs` fixed: not a Phase 23 regression (fails the
+  same on the pre-Phase-23 build); headless Chromium draws at ~1 fps and
+  each glide to the next speaker hit its 4 s timeout, so the test now waits
+  for each line.
+
 ## Phase 24 — Advanced UI features
 
 **Status: not started.** The rest of the old Phase 17.
@@ -1771,6 +1793,53 @@ below exist yet.
   test suites plus a browser smoke test, a staging build is reachable at a
   stable URL, and a deliberately-broken build fails CI before it can
   deploy.
+
+### Phase 28b — Movement visualisation & multi-turn moves (added 2026-09-27)
+
+**Status: not started.** Directly after Phase 28 (user's call). Upstream's
+`mouse_handler` reach and route display, and `goto` moves:
+
+- Hovering any unit (own or enemy, nothing selected) highlights its reach;
+  an enemy's with full moves (`unit_movement_resetter`), as when selected.
+- With a unit selected, hovering any hex previews the route to it
+  (footsteps, `marked_route`).
+- Hexes beyond this turn's reach still get a route preview, with the
+  defense on each hex and the number of turns needed to get there (the
+  route's turn markers, as upstream's `display::draw_movement_info`).
+- Clicking an unreachable hex with an own unit selected queues a
+  multi-turn move (`unit::goto`): the unit goes as far as it can now and
+  continues along the planned path at the start of each later turn
+  (`play_controller`'s "continue move"). The plan is dropped when the unit
+  gets another order, is double-clicked, or the move is interrupted (an
+  ambush, a sighted enemy, the path blocked). Saves already carry
+  `goto_x`/`goto_y`.
+- **Milestone**: a Playwright script hovers an enemy and sees its reach,
+  previews a three-turn route with turn numbers, queues it, and watches
+  the unit continue on the next two turns until a new order cancels it.
+
+### Phase 28c — The rest of the bundled single-player campaigns (added 2026-09-27)
+
+**Status: not started.** After Phase 28b. Built today: Dead Water (13
+scenarios), Liberty (8), Two Brothers (5), Under the Burning Suns (5 of
+15). Still to build: the other ten UtBS scenarios and Descent into
+Darkness, Dusk of Dawn, Eastern Invasion, Heir to the Throne (and its
+Classic version), Legend of Wesmere, Northern Rebirth, Of Pearls and
+Pirates, Sceptre of Fire, Secrets of the Ancients, Son of the Black Eye,
+The Deceiver's Gambit, The Hammer of Thursagan, The Rise of Wesnoth, The
+South Guard and Winds of Fate. World Conquest (random maps, mostly Lua)
+and WL_Test are assessed separately.
+
+- Mostly the existing build steps (`build-scenario-snapshot.mjs`/
+  `rebuild-snapshots.mjs`, campaign images, story assets, translations,
+  `campaigns.json`).
+- First, a check for features the port doesn't support: run every
+  scenario's WML through the preprocessor and list unknown action tags,
+  `[lua]`/`[micro_ai]` code paths (most campaigns have some: HttT 25
+  files, Eastern Invasion 16, The Deceiver's Gambit 15), custom units,
+  terrains and images; each gap becomes a fix or a recorded limitation.
+- **Milestone**: every scenario of every added campaign loads, its opening
+  events run to play without errors, and one scenario per campaign is
+  played headless to its end (AI against AI, as `replay.test.ts` does).
 
 ### Phase 28a — Image pipeline performance (planned 2026-09-14)
 
@@ -1961,7 +2030,7 @@ after CI/CD (28) and the AI (29) — makes sure it is not forgotten.
 
 ---
 
-## Priority as of 2026-09-26
+## Priority as of 2026-09-27
 
 Explicit user direction (2026-09-23), superseding the 2026-09-12 list.
 Phases 0–5, 7, 9–17 are delivered (see each phase's status); Phase 6
@@ -1977,11 +2046,14 @@ pulled forward and delivered 2026-09-22.
    (audio/music) — delivered 2026-09-26.
 6. **Phase 20** (localization/accessibility) — delivered.
 7. **Phase 21** (main menu) — delivered 2026-09-27. **Phase 22**
-   (minimap/camera) — delivered 2026-09-27. **Phases 23–24**
-   (minimap/camera, mobile, advanced UI).
-8. **Phase 25** (statistics & achievements).
-9. **Phase 27** (feature completeness assessment).
-10. **Phase 28** (CI/CD/performance/platform).
+   (minimap/camera) — delivered 2026-09-27. **Phase 23** (mobile) and
+   **23a** (bugs7.md playtest fixes) — delivered 2026-09-27.
+8. **Phase 28** (CI/CD/performance/platform) — brought forward to right
+   after Phase 23 and its fixes (user's call, 2026-09-27).
+9. **Phase 28b** (movement visualisation & multi-turn moves), then
+   **Phase 28c** (the rest of the bundled single-player campaigns).
+10. **Phase 24** (advanced UI), **Phase 25** (statistics & achievements),
+   **Phase 27** (feature completeness assessment).
 11. **Phase 29** (real AI: RCA framework + Lua on fengari) — underway
    alongside the above rather than strictly after it (Phase 7's MVP
    heuristic AI remains playable throughout).

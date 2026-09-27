@@ -5268,10 +5268,40 @@ either orientation; tablets and desktops keep the full layout.
   the layout, the confirm tap, pinch, two-finger pan, long press, collapsing, and turning the phone both
   ways with the game state unchanged. Passes. `keyboard-playthrough.mjs` and
   `minimap-camera-playthrough.mjs --skip-ai` still pass.
-- **Open: `dialogue-playthrough.mjs` fails** "the scenario reaches play after its cutscene" (Dead Water 5:
-  the loop sees one line, then no dialog for 400 ms, but a dialog is up again at the final check). It fails
-  on the Phase 23 code, reproducibly, with a fresh dev server. **Not yet known whether Phase 23 caused
-  it**: an earlier claim that it "fails identically on the pre-Phase-23 source" is void -- that run swapped
-  `packages/ui/src` and `packages/renderer/src` to e98ccc6 with `git checkout` under the shared :5173 Vite,
-  which kept serving stale modules (it did not pick up the git-rewritten files until restarted). To settle
-  it: a separate worktree at e98ccc6 with its own Vite on another port, never the shared tree.
+- `dialogue-playthrough.mjs` failed "the scenario reaches play after its cutscene" (Dead Water 5).
+  **Resolved in the bugs7.md entry below**: not a Phase 23 regression.
+
+## 2026-09-27 — bugs7.md: playtest fixes (Phase 23a) and plan update
+
+- **Phone.** The board's "loading scenario..." line was hidden with the mouse-oriented status line; it
+  now stays while loading. The top bar and infobox collapse switches sit above a `[message]`'s
+  tap-anywhere catcher (they were swallowed by it), and the message re-measures the board when it
+  changes size. The infobox header's column gap is gone. `mobile-playthrough.mjs` checks all three.
+- **AI speed.** A big scenario's AI turn looked like a hang. Profiling Dead Water 12 AI-vs-AI (62
+  units): `best_defensive_position` was recomputed for every attacker of every attack combination, and
+  each rating re-walked every unit's abilities for `[illuminates]`. Ported upstream's
+  `defensive_position_cache_` (cleared in `new_turn`, exactly as upstream), listed illuminators once
+  per board state, and cached movetype defense and terrain-type lookups per terrain-code object. 30 AI
+  side turns: 167 s -> 34 s. Engine tests and the real-AI replay tests unchanged.
+- **Markup.** `[message]` text and options, story titles/text and objectives go through the existing
+  Pango renderer.
+- **Animations.** A recruit stood in its resting pose while the view scrolled and its frames loaded,
+  then played "recruited" (the Skeleton in Dead Water 1): it is now hidden until its animation draws
+  (`unit_recruited`'s `set_hidden`). Frame `alpha=` is applied, so the Skeleton fades in. Horses
+  crossed a hex in 75-100 ms because a leg was timed by its (short) movement animation, while units
+  without one took 400 ms halved by a 2x speed-up: every leg now takes upstream's 200 ms
+  (`move_unit_between`) and moves play at speed 1. Measured in the browser: a Horseman at ~210 ms/hex.
+- **Side markers.** The dot under units and the triangle on villages were placeholders coloured from a
+  three-entry table, so Liberty's blue side was grey. Now upstream's `misc/ellipse*` images
+  (-leader/-nozoc/-selected, the unit's `ellipse=`) and the animated `flags/flag-[1~4].png` (or the
+  side's `flag=`), recoloured `ellipse_red`/`flag_green` -> side colour. Snapshots now carry `[side]
+  flag=` (all rebuilt; the only change is that key).
+- **Enemy reach.** Clicking an enemy selects it for viewing and highlights its reach with full moves
+  (`select_hex`, `unit_movement_resetter`), replacing the own selection as upstream does.
+- **`dialogue-playthrough.mjs`.** Settled with a separate worktree at e98ccc6 and its own Vite on
+  :5174: it fails the same there, so Phase 23 did not cause it. Each Dead Water 5 line took ~4.5 s
+  to appear: headless Chromium (SwiftShader) draws the board at ~1 fps, and the glide to the next
+  speaker advances at most 200 ms per frame (as upstream's `scroll_to_xy`), so it ran into its 4 s
+  timeout. The glides came with Phase 22. The test now waits for each line instead of 400 ms; it passes.
+- **Plan.** Phase 28 (CI/CD, platform) moves to right after Phase 23; new Phase 28b (movement
+  visualisation, multi-turn moves) and Phase 28c (the remaining bundled single-player campaigns).

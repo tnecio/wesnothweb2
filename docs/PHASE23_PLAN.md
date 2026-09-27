@@ -60,5 +60,6 @@ detail:
 - A long press must also stop Android's native `contextmenu` and the finger's lifting `click` from
   reaching the context menu's "close when something outside is clicked".
 
-The milestone passes. `dialogue-playthrough.mjs` fails one Dead Water 5 check; whether Phase 23 caused
-it is still open (the "fails on the pre-phase source too" check was invalid -- see PROGRESS).
+The milestone passes. `dialogue-playthrough.mjs` failed one Dead Water 5 check; it was not caused by
+this phase (it fails the same on the pre-phase build, tested on its own server) but by the test's timing
+under headless Chromium -- see the bugs7.md entry in PROGRESS.
