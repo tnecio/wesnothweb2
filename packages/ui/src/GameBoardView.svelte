@@ -46,7 +46,22 @@
     hexToPixel,
     pixelToHex,
     unitBundleManifestUrl,
+    clampView,
+    zoomAbout,
+    centerOn,
+    zoomIndexFor,
+    stepZoomIndex,
+    scaleForZoom,
+    scrollTargetForHexes,
+    worldBounds,
+    ZOOM_LEVELS,
+    DEFAULT_ZOOM_INDEX,
+    ScrollAnimation,
+    scrollWarps,
+    type View,
+    type ScrollType,
   } from '@wesnothweb2/renderer';
+  import { displayPrefs, prefersReducedMotion } from './displayPrefs.js';
   import type { TimeOfDayEntry } from '@wesnothweb2/engine';
   import { fetchTeamColors } from './teamColorsCache.js';
 
@@ -116,9 +131,58 @@
     hoverDefensePercent?: (x: number, y: number) => number | null;
   } = $props();
 
-  const MIN_ZOOM = 0.3;
-  const MAX_ZOOM = 3;
   const DRAG_THRESHOLD_PX = 6;
+
+  /**
+   * Phase 22: the camera. Every change to where the board sits goes through
+   * `applyView`, which bounds-checks it (`camera.ts`'s port of upstream's
+   * `bounds_check_position`), so no gesture, hotkey or script can lose the map
+   * off screen. Zoom walks upstream's nine discrete levels; `zoomIndex` is the
+   * current one, `lastZoomIndex` what `zoomdefault` toggles back to.
+   */
+  let zoomIndex = zoomIndexFor(displayPrefs.peek().zoom);
+  let lastZoomIndex = zoomIndex === DEFAULT_ZOOM_INDEX ? DEFAULT_ZOOM_INDEX : zoomIndex;
+
+  function mapSize(): { w: number; h: number } {
+    return { w: snapshot.map.width, h: snapshot.map.height };
+  }
+
+  /** The middle of the map (and its border), in unscaled board pixels. */
+  function mapCentre(): { x: number; y: number } {
+    const b = worldBounds(mapSize());
+    return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+  }
+
+  function viewportSize(): { width: number; height: number } | null {
+    return pixiApp ? { width: pixiApp.screen.width, height: pixiApp.screen.height } : null;
+  }
+
+  function currentView(): View | null {
+    return board ? { x: board.stage.x, y: board.stage.y, scale: board.stage.scale.x } : null;
+  }
+
+  function applyView(view: View): void {
+    const viewport = viewportSize();
+    if (!board || !viewport) return;
+    const v = clampView(view, mapSize(), viewport);
+    board.stage.x = v.x;
+    board.stage.y = v.y;
+    board.stage.scale.set(v.scale);
+  }
+
+  /** `set_zoom(amount)` for a level index, keeping screen point `anchor` fixed (default: the centre). */
+  function setZoomIndex(index: number, anchor?: { x: number; y: number }): void {
+    const view = currentView();
+    const viewport = viewportSize();
+    if (!view || !viewport || index === zoomIndex) return;
+    cancelScroll();
+    zoomIndex = index;
+    if (index !== DEFAULT_ZOOM_INDEX) lastZoomIndex = index;
+    const at = anchor ?? { x: viewport.width / 2, y: viewport.height / 2 };
+    applyView(zoomAbout(view, scaleForZoom(ZOOM_LEVELS[index]!), at, mapSize(), viewport));
+    // prefs::set_tile_size: the next game opens at this zoom.
+    displayPrefs.update({ zoom: ZOOM_LEVELS[index]! });
+  }
 
   let canvasHost: HTMLDivElement | undefined = $state();
   /** Transient loading/error text only -- the ready-state label is `readyLabel` below, kept live via `$derived` rather than a one-time snapshot of `units.length` at mount (that used to freeze at the pre-events count, e.g. "2 units" even once the scenario's startup events had spawned nine more). */
@@ -164,6 +228,7 @@
     let dragOrigin = { x: 0, y: 0 };
     let dragDistance = 0;
     let suppressNextClick = false;
+    let disconnectResize = (): void => {};
 
     function wrappedOnHexClick(x: number, y: number): void {
       if (suppressNextClick) {
@@ -179,6 +244,7 @@
       dragDistance = 0;
       dragStart = { x: e.clientX, y: e.clientY };
       dragOrigin = { x: board.stage.x, y: board.stage.y };
+      cancelScroll();
     }
 
     function onPointerMove(e: PointerEvent): void {
@@ -186,8 +252,7 @@
       const dx = e.clientX - dragStart.x;
       const dy = e.clientY - dragStart.y;
       dragDistance = Math.max(dragDistance, Math.hypot(dx, dy));
-      board.stage.x = dragOrigin.x + dx;
-      board.stage.y = dragOrigin.y + dy;
+      applyView({ x: dragOrigin.x + dx, y: dragOrigin.y + dy, scale: board.stage.scale.x });
     }
 
     function onPointerUpCapture(): void {
@@ -200,20 +265,44 @@
       dragActive = false;
     }
 
+    /**
+     * Phase 22, the user's call: the wheel pans, as upstream's
+     * (`mouse_handler_base::mouse_wheel`: `scroll_speed` px per notch, Alt
+     * swaps the axes), and Ctrl+wheel zooms one level about the pointer.
+     * Browsers deliver a trackpad pinch as Ctrl+wheel in small steps, so
+     * those accumulate until they amount to one level; a mouse notch
+     * (|delta| >= 50 px) is a level on its own.
+     */
+    let pinchAccum = 0;
     function onWheel(e: WheelEvent): void {
       if (!board || viewLocked) return;
       e.preventDefault();
-      const zoomFactor = Math.exp(-e.deltaY * 0.001);
-      const oldScale = board.stage.scale.x;
-      const newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, oldScale * zoomFactor));
-      const actualFactor = newScale / oldScale;
-      const rect = host.getBoundingClientRect();
-      const px = e.clientX - rect.left;
-      const py = e.clientY - rect.top;
-      // Keep the point under the cursor fixed on screen while scaling.
-      board.stage.x = px - (px - board.stage.x) * actualFactor;
-      board.stage.y = py - (py - board.stage.y) * actualFactor;
-      board.stage.scale.set(newScale);
+      // deltaMode: 0 pixels (a notch is ~100), 1 lines (a notch is 3), 2 pages.
+      const unit = e.deltaMode === 1 ? 100 / 3 : e.deltaMode === 2 ? 800 : 1;
+      if (e.ctrlKey) {
+        const d = e.deltaY * unit;
+        let direction = 0;
+        if (Math.abs(d) >= 50) {
+          direction = Math.sign(d);
+          pinchAccum = 0;
+        } else {
+          pinchAccum += d;
+          if (Math.abs(pinchAccum) >= 30) {
+            direction = Math.sign(pinchAccum);
+            pinchAccum = 0;
+          }
+        }
+        if (direction === 0) return;
+        const rect = host.getBoundingClientRect();
+        setZoomIndex(stepZoomIndex(zoomIndex, direction < 0), { x: e.clientX - rect.left, y: e.clientY - rect.top });
+        return;
+      }
+      const perPixel = displayPrefs.peek().scrollSpeed / 100;
+      let dx = e.deltaX * unit * perPixel;
+      let dy = e.deltaY * unit * perPixel;
+      if (e.altKey) [dx, dy] = [dy, dx];
+      cancelScroll();
+      applyView({ x: board.stage.x - dx, y: board.stage.y - dy, scale: board.stage.scale.x });
     }
 
     // `pointerdown`/`pointermove` on the host are enough for a drag that
@@ -308,10 +397,16 @@
       board = newBoard;
       app.stage.addChild(newBoard.stage);
 
-      // Center the board roughly in the viewport.
-      const bounds = newBoard.stage.getLocalBounds();
-      newBoard.stage.x = (app.screen.width - bounds.width) / 2 - bounds.x;
-      newBoard.stage.y = (app.screen.height - bounds.height) / 2 - bounds.y;
+      // Open at the saved zoom, centred on the map (clamped: a map smaller than the screen sits in its middle).
+      const openScale = scaleForZoom(ZOOM_LEVELS[zoomIndex]!);
+      applyView(centerOn({ x: 0, y: 0, scale: openScale }, mapCentre(), mapSize(), { width: app.screen.width, height: app.screen.height }));
+      // Re-bounds-check whenever the canvas changes size (window resize, side panel reflow).
+      const resizeObserver = new ResizeObserver(() => {
+        const view = currentView();
+        if (view) applyView(view);
+      });
+      resizeObserver.observe(host);
+      disconnectResize = () => resizeObserver.disconnect();
 
       status = null;
       // Apply whatever the current live state already is (props may have
@@ -331,6 +426,7 @@
 
     return () => {
       cancelled = true;
+      disconnectResize();
       host.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onWindowPointerUp);
@@ -558,6 +654,8 @@
       viewCenterHex,
       freezeAnimationsForCapture,
       setRenderingPaused,
+      /** Phase 22: where the camera is (stage position/scale, canvas size) and the zoom level in hex px. */
+      camera: () => ({ ...viewState(), zoom: zoomLevel() }),
       /** Live sprite positions, for debugging movement animation glitches -- see `SnapshotBoard.unitSpritePositions`. */
       unitSpritePositions: () => board?.unitSpritePositions() ?? null,
       /** Filters per unit sprite, for checking status looks (slowed/poisoned/petrified). */
@@ -582,87 +680,159 @@
     return canvasHost?.getBoundingClientRect() ?? null;
   }
 
+  /** Phase 15 `zoomin`/`zoomout` (Phase 22: one of upstream's levels at a time, about the viewport centre). */
+  export function zoomStep(increase: boolean): void {
+    setZoomIndex(stepZoomIndex(zoomIndex, increase));
+  }
+
   /**
-   * Phase 15: the zoom hotkeys (`=`/`-`/`0`, upstream `zoomin`/`zoomout`/
-   * `zoomdefault`). Scales about the viewport centre -- the wheel zoom
-   * keeps the point under the cursor fixed instead, which a keypress has
-   * no cursor for. Clamped to the same limits the wheel uses.
+   * Phase 17 `[zoom] relative=yes`: `set_zoom(factor * zoom, true)` -- the
+   * result snaps to the nearest level (Phase 22), about the viewport centre.
    */
   export function zoomBy(factor: number): void {
-    if (!board || !pixiApp) return;
-    const oldScale = board.stage.scale.x;
-    const newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, oldScale * factor));
-    const actualFactor = newScale / oldScale;
-    const cx = pixiApp.screen.width / 2;
-    const cy = pixiApp.screen.height / 2;
-    board.stage.x = cx - (cx - board.stage.x) * actualFactor;
-    board.stage.y = cy - (cy - board.stage.y) * actualFactor;
-    board.stage.scale.set(newScale);
+    setZoomIndex(zoomIndexFor(ZOOM_LEVELS[zoomIndex]! * factor));
   }
 
-  /** Phase 15: `zoomdefault` -- back to 1:1, re-centring the board as the initial mount does. */
-  export function zoomDefault(): void {
-    if (!board || !pixiApp) return;
-    board.stage.scale.set(1);
-    const bounds = board.stage.getLocalBounds();
-    board.stage.x = (pixiApp.screen.width - bounds.width) / 2 - bounds.x;
-    board.stage.y = (pixiApp.screen.height - bounds.height) / 2 - bounds.y;
-  }
-
-  /** Phase 15: centre `(x, y)` (engine 0-based) unconditionally -- the keyboard cursor and "scroll to leader". */
-  export function centerOnHex(x: number, y: number): void {
-    if (!board || !pixiApp) return;
-    const { x: px, y: py } = hexToPixel({ x: x + 1, y: y + 1 });
-    const scale = board.stage.scale.x;
-    board.stage.x = pixiApp.screen.width / 2 - px * scale;
-    board.stage.y = pixiApp.screen.height / 2 - py * scale;
+  /** Phase 17 `[zoom] factor=`: an absolute scale, snapped the same way. */
+  export function zoomTo(factor: number): void {
+    setZoomIndex(zoomIndexFor(factor * ZOOM_LEVELS[DEFAULT_ZOOM_INDEX]!));
   }
 
   /**
-   * Phase 17 `[zoom] factor=`: an absolute scale, as opposed to
-   * `zoomBy`'s relative one. Same clamp and same centre-preserving
-   * arithmetic.
+   * `zoomdefault` (`display::toggle_default_zoom`): to 1:1, or -- already
+   * there -- back to the zoom it came from.
    */
-  export function zoomTo(factor: number): void {
-    if (!board) return;
-    const current = board.stage.scale.x;
-    if (current <= 0) return;
-    zoomBy(factor / current);
+  export function zoomDefault(): void {
+    setZoomIndex(zoomIndex !== DEFAULT_ZOOM_INDEX ? DEFAULT_ZOOM_INDEX : lastZoomIndex);
   }
 
-  /** Phase 17 `[scroll]`: shift the view by a pixel delta (upstream's own `display::scroll`). */
+  /** The current zoom as upstream's hex size in px (for checks and the status line). */
+  export function zoomLevel(): number {
+    return ZOOM_LEVELS[zoomIndex]!;
+  }
+
+  /** Phase 17 `[scroll]`: shift the view by a pixel delta (upstream's own `display::scroll`), bounds-checked. */
   export function scrollByPixels(dx: number, dy: number): void {
-    if (!board) return;
-    board.stage.x -= dx;
-    board.stage.y -= dy;
+    const view = currentView();
+    if (view) applyView({ ...view, x: view.x - dx, y: view.y - dy });
   }
 
   /**
    * Phase 17 `[lock_view]`/`[unlock_view]`: while locked, the player
-   * cannot pan or zoom -- a cutscene owns the camera. Scripted moves
-   * (`[scroll_to]` and friends) still work, as upstream.
+   * cannot pan or zoom -- a cutscene owns the camera -- and unforced
+   * scrolls (following unit actions) stay put, as `scroll_to_xy`'s own
+   * `view_locked_` check. Scripted scrolls are forced and still move.
    */
   export function setViewLocked(locked: boolean): void {
     viewLocked = locked;
   }
 
+  /** The glide in flight, if any: a new scroll or the player grabbing the map cancels it. */
+  let scrollInFlight: { cancel: () => void } | null = null;
+
+  function cancelScroll(): void {
+    scrollInFlight?.cancel();
+  }
+
+  /** Longest a glide may take before it jumps to the end: a hidden tab stops animation frames, and nothing may wait on one forever. */
+  const SCROLL_TIMEOUT_MS = 4000;
+
+  function glideTo(target: View, type: ScrollType): Promise<void> {
+    cancelScroll();
+    const from = currentView();
+    if (!from) return Promise.resolve();
+    const { scrollSpeed } = displayPrefs.peek();
+    const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+    if (hidden || scrollWarps(type, scrollSpeed, 1, prefersReducedMotion())) {
+      applyView(target);
+      return Promise.resolve();
+    }
+    const anim = new ScrollAnimation(target.x - from.x, target.y - from.y, scrollSpeed);
+    return new Promise((resolve) => {
+      let raf = 0;
+      let last = performance.now();
+      const finish = (): void => {
+        cancelAnimationFrame(raf);
+        clearTimeout(timeout);
+        scrollInFlight = null;
+        resolve();
+      };
+      const timeout = setTimeout(() => {
+        applyView(target);
+        finish();
+      }, SCROLL_TIMEOUT_MS);
+      const frame = (now: number): void => {
+        const step = anim.step((now - last) / 1000);
+        last = now;
+        applyView({ x: from.x + step.x, y: from.y + step.y, scale: from.scale });
+        if (step.done) finish();
+        else raf = requestAnimationFrame(frame);
+      };
+      scrollInFlight = { cancel: finish };
+      raf = requestAnimationFrame(frame);
+    });
+  }
+
+  interface ScrollRequest {
+    type: ScrollType;
+    /**
+     * `force`: move even under `[lock_view]` or with "follow unit actions"
+     * off. Upstream's default -- only the unit-action displays
+     * (`unit_display::move_unit`, attacks, recruits, heals) pass false.
+     */
+    force?: boolean;
+    addSpacing?: number;
+    onlyIfPossible?: boolean;
+  }
+
   /**
-   * Phase 16: `[message]`'s scroll to the speaker -- `message.lua` calls
-   * `scroll_to_hex(x, y, true, false, true)`, i.e. `ONSCREEN`: move only
-   * when the hex (engine 0-based) is not already comfortably in view.
-   * Centres it instantly (upstream scrolls smoothly).
+   * Phase 22: `display::scroll_to_tiles` -- bring `hexes` (engine 0-based,
+   * already filtered for fog where upstream's `check_fogged` applies) on
+   * screen the way `type` asks, gliding unless it warps. Resolves when the
+   * camera has arrived, so a caller can hold the next beat until then.
    */
-  export function scrollToHexIfOffscreen(x: number, y: number): void {
-    if (!board || !pixiApp) return;
-    const { x: px, y: py } = hexToPixel({ x: x + 1, y: y + 1 });
-    const scale = board.stage.scale.x;
-    const screenX = board.stage.x + px * scale;
-    const screenY = board.stage.y + py * scale;
-    const margin = 72 * scale;
-    const { width, height } = pixiApp.screen;
-    if (screenX >= margin && screenX <= width - margin && screenY >= margin && screenY <= height - margin) return;
-    board.stage.x = width / 2 - px * scale;
-    board.stage.y = height / 2 - py * scale;
+  export function scrollToHexes(hexes: readonly { x: number; y: number }[], request: ScrollRequest): Promise<void> {
+    const force = request.force ?? true;
+    if (!force && (viewLocked || !displayPrefs.peek().scrollToAction)) return Promise.resolve();
+    const view = currentView();
+    const viewport = viewportSize();
+    if (!view || !viewport) return Promise.resolve();
+    const target = scrollTargetForHexes(view, hexes, request.type, mapSize(), viewport, {
+      addSpacing: request.addSpacing,
+      onlyIfPossible: request.onlyIfPossible,
+    });
+    return target ? glideTo(target, request.type) : Promise.resolve();
+  }
+
+  /** `scroll_to_tile`: one hex. */
+  export function scrollToHex(x: number, y: number, type: ScrollType, force = true): Promise<void> {
+    return scrollToHexes([{ x, y }], { type, force });
+  }
+
+  /** Phase 15: centre `(x, y)` (engine 0-based) at once -- `scroll_to_tile(loc, WARP)`, what next-unit and goto-leader use. */
+  export function centerOnHex(x: number, y: number): void {
+    void scrollToHex(x, y, 'warp');
+  }
+
+  /** Phase 16/22: bring `(x, y)` on screen only if it is not already -- `ONSCREEN`, or `ONSCREEN_WARP` with `instant`. */
+  export function scrollToHexIfOffscreen(x: number, y: number, instant = false): Promise<void> {
+    return scrollToHex(x, y, instant ? 'onscreen-warp' : 'onscreen');
+  }
+
+  /** Phase 22, for the minimap and checks: the current view and the canvas size. */
+  export function viewState(): { view: View; viewport: { width: number; height: number } } | null {
+    const view = currentView();
+    const viewport = viewportSize();
+    return view && viewport ? { view, viewport } : null;
+  }
+
+  /** Phase 22, the minimap: centre world point `p` (unscaled board pixels) at once. */
+  export function centerOnWorldPoint(p: { x: number; y: number }): void {
+    const view = currentView();
+    const viewport = viewportSize();
+    if (!view || !viewport) return;
+    cancelScroll();
+    applyView(centerOn(view, p, mapSize(), viewport));
   }
 </script>
 

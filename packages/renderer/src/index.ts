@@ -70,6 +70,31 @@ export {
   hexEqual,
 } from './hexGeometry'
 
+// ── Phase 22: the map camera ────────────────────────────────────────────────
+export {
+  type View,
+  type Size,
+  type Rect,
+  type MapSize,
+  type ScrollType,
+  type ScrollToTilesOptions,
+  ZOOM_LEVELS,
+  DEFAULT_ZOOM,
+  DEFAULT_ZOOM_INDEX,
+  scaleForZoom,
+  zoomIndexFor,
+  stepZoomIndex,
+  worldBounds,
+  clampView,
+  mapArea,
+  zoomAbout,
+  centerOn,
+  scrollTargetForHexes,
+  ScrollAnimation,
+  scrollWarps,
+  edgeScrollAmount,
+} from './camera'
+
 // ── Terrain hex-cropping / per-layer positioning ────────────────────────────
 export {
   type TerrainFrame,

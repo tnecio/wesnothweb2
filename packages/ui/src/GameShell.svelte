@@ -642,13 +642,37 @@
       // *now*, not the state it will have when the event finishes -- the
       // whole point of blocking dialogue (bugs2.md, fixed properly here).
       sync();
-      return new Promise<InteractionResult>((resolve) => {
-        currentMessage = interaction;
-        answerInteraction = resolve;
-      });
+      return scrollToSpeaker(interaction).then(
+        () =>
+          new Promise<InteractionResult>((resolve) => {
+            currentMessage = interaction;
+            answerInteraction = resolve;
+          }),
+      );
     },
   };
   session.interactionHost = interactionHost;
+
+  /**
+   * Phase 22: message.lua's `scroll_to_hex(loc, true, false, true)` -- an
+   * ONSCREEN glide to the speaker, skipped if the viewing side can't see
+   * the hex (`check_fogged`), finished before the dialog opens.
+   */
+  async function scrollToSpeaker(interaction: MessageInteraction): Promise<void> {
+    const at = interaction.message.speakerLocation;
+    if (!at || !interaction.message.scroll || !interaction.message.highlight) return;
+    if (visibleHexes([at]).length === 0) return;
+    await boardView?.scrollToHexIfOffscreen(at.x, at.y);
+  }
+
+  /** `display::fogged`, for `check_fogged` scrolls: the hexes the viewing side can see (not fogged or shrouded). */
+  function visibleHexes<T extends { x: number; y: number }>(hexes: readonly T[]): T[] {
+    const side = session.viewingSide;
+    return hexes.filter((h) => {
+      const loc = new Location(h.x, h.y);
+      return !session.board.isFogged(side, loc) && !session.board.isShrouded(side, loc);
+    });
+  }
 
   /** The player answered the message on screen (dismissed it, chose an option, typed something). */
   function answerMessage(result: InteractionResult): void {
@@ -717,8 +741,13 @@
         await new Promise((r) => setTimeout(r, Math.min(beat.ms, MAX_BEAT_MS)));
         break;
       case 'scrollTo':
-        if (beat.onlyIfNeeded) boardView?.scrollToHexIfOffscreen(beat.location.x, beat.location.y);
-        else boardView?.centerOnHex(beat.location.x, beat.location.y);
+        // wesnoth.interface.scroll_to_hex: only_if_needed picks ONSCREEN, immediate the WARP variant; the
+        // event waits for the camera to arrive, as upstream's blocking scroll does.
+        await boardView?.scrollToHex(
+          beat.location.x,
+          beat.location.y,
+          beat.onlyIfNeeded ? (beat.immediate ? 'onscreen-warp' : 'onscreen') : beat.immediate ? 'warp' : 'scroll',
+        );
         break;
       case 'scrollBy':
         boardView?.scrollByPixels(beat.dx, beat.dy);
@@ -757,7 +786,7 @@
         break;
       case 'unitDeath':
         if (boardView) {
-          if (beat.scroll) boardView.scrollToHexIfOffscreen(beat.unit.location.x, beat.unit.location.y);
+          if (beat.scroll) await boardView.scrollToHexIfOffscreen(beat.unit.location.x, beat.unit.location.y);
           await boardView.playAnimationSequence(buildFlagAnimationCues(beat.unit, 'death'), 1);
         }
         break;
@@ -938,6 +967,7 @@
   async function showDeferredInteractions(): Promise<void> {
     for (const interaction of session.takeDeferredInteractions()) {
       if (interaction.kind !== 'message') continue;
+      await scrollToSpeaker(interaction);
       await new Promise<void>((resolve) => {
         currentMessage = interaction;
         answerInteraction = () => resolve();
@@ -2162,7 +2192,7 @@
     }
   }
 
-  // Phase 16: [message] scrolls to its speaker (unless scroll=no or highlight=no), like message.lua.
+  // Phase 16: [message] highlights its speaker (the scroll to it, Phase 22, happens before the dialog opens -- `scrollToSpeaker`).
   // bugs6.md: and selects it for as long as the message is up -- message.lua's
   // `highlight_hex`, which also shows the unit in the sidebar
   // (`display_unit_hex`). Only the highlight and the sidebar: the speaker's
@@ -2172,7 +2202,6 @@
     const message = currentMessage?.message;
     const at = message?.speakerLocation;
     const speaker = at && message.highlight ? session.board.unitAt(new Location(at.x, at.y)) : undefined;
-    if (at && message.scroll && message.highlight) boardView?.scrollToHexIfOffscreen(at.x, at.y);
     untrack(() => {
       speakerHex = speaker ? { x: speaker.location.x, y: speaker.location.y } : null;
       if (speaker) session.inspectedUnit = speaker;
@@ -2486,7 +2515,8 @@
     }
     hoveredHexInfo = session.hoveredHexInfo(cursorHex.x, cursorHex.y);
     cursorAnnouncement = session.describeHex(cursorHex.x, cursorHex.y);
-    boardView?.scrollToHexIfOffscreen(cursorHex.x, cursorHex.y);
+    // Instant: a held arrow key would otherwise restart a glide from rest on every repeat.
+    void boardView?.scrollToHexIfOffscreen(cursorHex.x, cursorHex.y, true);
   }
 
   /**
@@ -2498,10 +2528,10 @@
     { id: 'next-unit', label: t('Next Unit'), enabled: phase === 'playing', hotkey: { key: 'n' }, handler: () => cycleUnit(1) },
     { id: 'previous-unit', label: t('Previous Unit'), enabled: phase === 'playing', hotkey: { key: 'n', shift: true }, handler: () => cycleUnit(-1) },
     { id: 'leader', label: t('Scroll to Leader'), enabled: phase === 'playing', hotkey: { key: 'l' }, handler: scrollToLeader },
-    { id: 'zoom-in', label: t('Zoom In'), enabled: true, hotkey: { key: '=' }, handler: () => boardView?.zoomBy(1.25) },
+    { id: 'zoom-in', label: t('Zoom In'), enabled: true, hotkey: { key: '=' }, handler: () => boardView?.zoomStep(true) },
     // Upstream binds zoomin twice, to both `=` and `+` (the shifted key on most layouts).
-    { id: 'zoom-in-shifted', label: t('Zoom In'), enabled: true, hotkey: { key: '+', shift: true }, handler: () => boardView?.zoomBy(1.25) },
-    { id: 'zoom-out', label: t('Zoom Out'), enabled: true, hotkey: { key: '-' }, handler: () => boardView?.zoomBy(0.8) },
+    { id: 'zoom-in-shifted', label: t('Zoom In'), enabled: true, hotkey: { key: '+', shift: true }, handler: () => boardView?.zoomStep(true) },
+    { id: 'zoom-out', label: t('Zoom Out'), enabled: true, hotkey: { key: '-' }, handler: () => boardView?.zoomStep(false) },
     { id: 'zoom-default', label: t('Default Zoom'), enabled: true, hotkey: { key: '0' }, handler: () => boardView?.zoomDefault() },
     { id: 'cursor-left', label: tx('Cursor Left'), enabled: phase === 'playing', hotkey: { key: 'ArrowLeft' }, handler: () => moveCursor(-1, 0) },
     { id: 'cursor-right', label: tx('Cursor Right'), enabled: phase === 'playing', hotkey: { key: 'ArrowRight' }, handler: () => moveCursor(1, 0) },
