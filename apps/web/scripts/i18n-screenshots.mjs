@@ -103,8 +103,25 @@ try {
     try {
       // menu
       await page.goto(base + '/');
-      await page.waitForSelector('.campaign-list');
+      await page.waitForSelector('[data-testid="title-screen"]');
+      await page.waitForTimeout(1500);
       await shoot(page, dir, 'menu');
+      // Phase 21: the dialogs the title screen opens, each checked for overflow like every other screen.
+      await page.keyboard.press('c');
+      await page.waitForSelector('[data-testid="campaign-dialog"]');
+      await page.click('[data-testid="campaign-liberty"]');
+      await page.waitForTimeout(1500);
+      await shoot(page, dir, 'campaigns');
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Control+p');
+      await page.waitForSelector('[data-testid="prefs-tab-display"]');
+      await shoot(page, dir, 'preferences');
+      await page.keyboard.press('Escape');
+      await page.keyboard.press(' ');
+      await page.waitForSelector('[data-testid="credits-text"]');
+      await page.waitForTimeout(800);
+      await shoot(page, dir, 'credits');
+      await page.keyboard.press('Escape');
 
       if (fast) {
         // story + objectives + the keyboard scenario's choice dialogue

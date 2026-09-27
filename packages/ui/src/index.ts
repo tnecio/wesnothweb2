@@ -34,6 +34,7 @@ export {
 export { fromWesnothSave, toWesnothSave, type WesnothCampaignInfo, type ImportedWesnothSave } from './save/wesnothSave.js';
 export { wesnothCampaignInfo, campaignAbbrev, defaultDifficulty, type CampaignInfo, type CampaignDifficulty } from './save/campaign.js';
 export { fetchCampaigns, parseCampaigns, type Campaign } from './campaigns.js';
+export { default as MainMenu } from './menu/MainMenu.svelte';
 export { fetchScenarioSnapshot } from './scenarioFetch.js';
 export {
   scenarioLabel,
@@ -52,7 +53,6 @@ export { default as GameShell } from './GameShell.svelte';
 export { fetchStoryAssets, pickStoryImage, type StoryAssets, type StoryImageEntry } from './story/storyImages.js';
 
 // Phase 20: accessibility preferences, language and translation lookup.
-export { default as AccessibilityDialog } from './AccessibilityDialog.svelte';
 export { accessibility, AccessibilityManager, FONT_SCALE_MIN, FONT_SCALE_MAX, DEFAULT_ORB_COLORS } from './accessibility.js';
 export { default as LanguageDialog } from './LanguageDialog.svelte';
 export {

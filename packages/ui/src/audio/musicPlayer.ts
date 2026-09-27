@@ -92,6 +92,15 @@ export class MusicPlayer {
     else this.sync();
   }
 
+  /** `sound::stop_music`: silence now and forget what was playing (the list's own state is the caller's). */
+  stop(): void {
+    this.generation++;
+    this.starting = false;
+    this.backend.stop();
+    this.backend.prefetch(null);
+    this.log('music-stopped');
+  }
+
   /** `stop_music_in_background`: the window went out of sight or came back. */
   setBackgrounded(hidden: boolean): void {
     if (hidden === this.paused) return;

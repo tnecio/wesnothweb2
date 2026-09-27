@@ -230,6 +230,17 @@ export class AudioEngine {
     this.flushPreload();
   }
 
+  /**
+   * `sound::stop_music` plus `empty_playlist`: what leaving the title screen for a game does. The scenario
+   * then starts its own playlist from nothing, instead of the title track carrying on into it.
+   */
+  stopMusic(): void {
+    this.music.clear();
+    this.music.current = null;
+    this.player?.stop();
+    this.record('stop-music');
+  }
+
   /** For browser checks: jumps the playing track to `secondsBeforeEnd` from its end, to see the transition without waiting minutes. */
   debugSeekNearEnd(secondsBeforeEnd: number): boolean {
     return this.backend?.seekNearEnd(secondsBeforeEnd) ?? false;

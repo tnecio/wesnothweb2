@@ -340,3 +340,23 @@ their deep links, which stay): `i18n-screenshots`, `measure-story`,
 - The "More campaigns..." and "Missing Campaigns" pages.
 - Debug clock, test dialog and core selection.
 - The tip panel's final content, and the encountered-units filter.
+
+## Outcome (2026-09-27)
+
+Delivered in the commits listed in `docs/PROGRESS.md`. Where it differs from the plan above:
+
+- **No difficulty dialog for old saves** (your call): a save without a difficulty gets the campaign's default.
+- **Lua `wesnoth.scenario.difficulty`: not built.** The bridge has no scenario table (its per-state data is the
+  variable store); no shipped scenario reads it. It belongs to Phase 29's host API.
+- **Overlays needed table patches:** Under the Burning Suns changes a few unit types per difficulty, so an
+  overlay can carry per-entry patches to the unit-type tables as well as whole top-level keys.
+- **No tip hide button, no `encountered_units` filter:** neither exists in this version's `title_screen.cfg` /
+  `tips.cfg`.
+- **Load from the title screen has no "Show replay"**: a replay opens inside a running game.
+- **The plan's "campaign with no difficulties gets a gold laurel" was wrong:** upstream gives gold only when the
+  last of the listed difficulties was won, so a campaign with none gets silver (the rule is ported exactly, with
+  tests).
+- **Outro credits** moved to `credits.json` in this phase (they were a text scan), which translates their titles.
+- **Found on the way:** the keyboard cursor survived a scenario change (fixed); Two Brothers was built at a
+  difficulty it does not have (fixed); `13_Epilogue` exists in two campaigns and the snapshot is named by id
+  (unchanged; UtBS's last scenario resolves to Dead Water's).

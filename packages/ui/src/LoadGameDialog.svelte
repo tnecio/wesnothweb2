@@ -17,6 +17,7 @@
     saves,
     campaignNames,
     busy = false,
+    allowReplay = true,
     onLoad,
     onDelete,
     onRename,
@@ -29,6 +30,8 @@
     campaignNames: Record<string, string>;
     /** A file operation is in flight; the list stays visible but actions are inert. */
     busy?: boolean;
+    /** Offer upstream's "Show replay" checkbox. The title screen does not (a replay opens inside a running game). */
+    allowReplay?: boolean;
     /** `showReplay`: upstream's "Show replay" checkbox -- watch the game from its start instead of resuming it. */
     onLoad: (name: string, showReplay: boolean) => void;
     onDelete: (name: string) => void;
@@ -208,10 +211,12 @@
         }}
       />
       <div class="spacer"></div>
-      <label class="filter replay-toggle">
-        <input type="checkbox" bind:checked={showReplay} data-testid="show-replay" />
-        {t('Show replay')}
-      </label>
+      {#if allowReplay}
+        <label class="filter replay-toggle">
+          <input type="checkbox" bind:checked={showReplay} data-testid="show-replay" />
+          {t('Show replay')}
+        </label>
+      {/if}
       <button class="primary" data-autofocus disabled={!selected || busy} onclick={() => selected && onLoad(selected.name, showReplay)}>
         {t('Load')}
       </button>

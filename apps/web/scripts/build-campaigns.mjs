@@ -15,6 +15,9 @@
  * (`core/about.cfg`, `core/about_i18n.cfg`) and each shipped campaign's `[about]` sections,
  * with their translatable titles. Sections without entries are dropped, as upstream does.
  *
+ * `tips.json` is the title screen's tip-of-the-day source (`data/tips.cfg`, translatable text and
+ * source line per tip). This data version has no `encountered_units=` filters, so none is carried.
+ *
  * Run after editing campaigns.json or updating the wesnoth data:
  *   node --import tsx apps/web/scripts/build-campaigns.mjs
  */
@@ -45,7 +48,11 @@ function textOf(cfg, key) {
   return t.translatable ? t.toJSON() : t.baseStr();
 }
 
-const credits = { groups: [] };
+// The title-screen pictures the credits fall back to (`[images] game_title_background` in game_config.cfg);
+// upstream picks one at random.
+const gameConfig = fs.readFileSync(path.join(dataRoot, 'game_config.cfg'), 'utf8');
+const backgrounds = (/game_title_background\s*=\s*"([^"]*)"/.exec(gameConfig)?.[1] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+const credits = { backgrounds, groups: [] };
 
 /** One `about::credits_group`: sections with their entries' names, in file order. */
 function creditsGroup(cfg, { id, header } = {}) {
@@ -113,6 +120,10 @@ for (const campaign of manifest.campaigns) {
   credits.groups.push(creditsGroup(block, { id: campaign.wesnothId, header: textOf(block, 'name') }));
 }
 
+const tipsCfg = parseWmlFile(path.join(dataRoot, 'tips.cfg'), { dataRoot, defines: newDefines('NORMAL') });
+const tips = tipsCfg.children('tip').map((tip) => ({ text: textOf(tip, 'text') ?? '', source: textOf(tip, 'source') ?? '' }));
+fs.writeFileSync(path.join(repoRoot, 'apps/web/public/tips.json'), JSON.stringify({ tips }));
+
 fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
 fs.writeFileSync(path.join(repoRoot, 'apps/web/public/credits.json'), JSON.stringify(credits));
-console.log(`updated campaigns.json (${manifest.campaigns.length} campaigns) and credits.json (${credits.groups.length} groups)`);
+console.log(`updated campaigns.json (${manifest.campaigns.length} campaigns), credits.json (${credits.groups.length} groups) and tips.json (${tips.length} tips)`);

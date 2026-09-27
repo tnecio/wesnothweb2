@@ -96,6 +96,7 @@
   import { type CampaignInfo as Campaign, campaignAbbrev, defaultDifficulty, wesnothCampaignInfo } from './save/campaign.js';
   import { fetchScenarioSnapshot } from './scenarioFetch.js';
   import { markCampaignCompleted } from './menu/completedStore.js';
+  import { campaignCredits, type CreditsJson } from './menu/credits.js';
   import { downloadSave, importSaveFile } from './save/saveManager.js';
   import {
     scenarioLabel,
@@ -117,9 +118,8 @@
   import GameBoardView from './GameBoardView.svelte';
   import SidePanel from './SidePanel.svelte';
   import StoryViewer from './StoryViewer.svelte';
-  import AudioDialog from './AudioDialog.svelte';
+  import PreferencesDialog from './PreferencesDialog.svelte';
   import LanguageDialog from './LanguageDialog.svelte';
-  import AccessibilityDialog from './AccessibilityDialog.svelte';
   import { accessibility } from './accessibility.js';
   import { fmt, locale, t, tw, ts, tx } from './i18n/locale.js';
   import { getAudioEngine } from './audio/audioEngine.js';
@@ -248,9 +248,8 @@
     audio.campaign = campaign?.wesnothId;
   });
   let audioSettings = $state<Readonly<AudioSettings>>(audio.settings);
-  let audioDialogOpen = $state(false);
+  let preferencesOpen = $state(false);
   let languageDialogOpen = $state(false);
-  let accessibilityDialogOpen = $state(false);
   function changeAudio(patch: Partial<AudioSettings>): void {
     audio.updateSettings(patch);
     audioSettings = audio.settings;
@@ -353,11 +352,27 @@
    * scenario), recorded per difficulty for the campaign dialog's laurels -- whether or not the credits roll.
    */
   let completionRecorded = false;
+  let creditsRequested = false;
   $effect(() => {
     if (phase !== 'ended' || completionRecorded || !campaign) return;
     if (session.scenarioResult !== 'victory' || session.nextScenarioId !== null) return;
     completionRecorded = true;
     void markCampaignCompleted(campaign.id, activeSnapshot.difficulty ?? '').catch((err) => console.error('[menu] could not record completion:', err));
+  });
+  /**
+   * The campaign's credits for the outro, from `credits.json` (the same data as the title screen's credits, with
+   * translatable section titles). Fetched when the outro is first due; a campaign with none (a debug one) gets
+   * just its end text.
+   */
+  let creditsData = $state.raw<CreditsJson | null>(null);
+  const outroCredits = $derived(creditsData ? campaignCredits(creditsData, campaign?.wesnothId, (s) => ts(s)) : undefined);
+  $effect(() => {
+    if (!showOutro || creditsRequested) return;
+    creditsRequested = true;
+    fetch('/credits.json')
+      .then((res) => (res.ok ? (res.json() as Promise<CreditsJson>) : null))
+      .then((json) => (creditsData = json))
+      .catch((err) => console.error('[outro] could not load credits.json:', err));
   });
   /** Upstream shows the outro only for a victory with no next scenario, and only when `end_credits` is not turned off. */
   const showOutro = $derived(
@@ -1925,6 +1940,7 @@
     const replaySession = GameSession.forReplay(replaySnapshot, data, { ...SESSION_OPTIONS, onSound: undefined, onVolume: undefined });
     if (!replaySession) return;
     activeSnapshot = replaySnapshot;
+    cursorHex = null; // the keyboard cursor belongs to the board it was on
     session = replaySession;
     session.interactionHost = interactionHost;
     storyParts = [];
@@ -2005,6 +2021,7 @@
   async function loadIntoScenario(scenarioId: string, data: SaveGameData): Promise<void> {
     const [nextSnapshot, assets] = await Promise.all([snapshotFor(scenarioId, savedDifficulty(data)), fetchStoryAssets(scenarioId)]);
     activeSnapshot = nextSnapshot;
+    cursorHex = null; // the keyboard cursor belongs to the board it was on
     session = GameSession.fromSaveData(nextSnapshot, data, SESSION_OPTIONS);
     session.interactionHost = interactionHost;
     storyParts = [];
@@ -2135,6 +2152,7 @@
       const nextStoryParts = nextSession.storyParts();
 
       activeSnapshot = nextSnapshot;
+      cursorHex = null; // the keyboard cursor belongs to the board it was on
       session = nextSession;
       storyParts = nextStoryParts;
       storyAssets = nextStoryAssets;
@@ -2201,22 +2219,17 @@
       handler: () => changeAudio({ muted: !audioSettings.muted }),
     },
     {
-      id: 'audio',
-      label: `${tx('Audio')}...`,
+      id: 'preferences',
+      label: `${t('Preferences')}...`,
       enabled: true,
-      handler: () => (audioDialogOpen = true),
+      handler: () => (preferencesOpen = true),
+      hotkey: { key: 'p', ctrl: true },
     },
     {
       id: 'language',
       label: `${t('Language')}...`,
       enabled: true,
       handler: () => (languageDialogOpen = true),
-    },
-    {
-      id: 'accessibility',
-      label: `${tx('Accessibility')}...`,
-      enabled: true,
-      handler: () => (accessibilityDialogOpen = true),
     },
   ]);
   let actionCommands = $derived<Command[]>([
@@ -2481,9 +2494,8 @@
       clearLabelsConfirmOpen ||
       quitConfirmOpen ||
       labelSettingsOpen ||
-      audioDialogOpen ||
+      preferencesOpen ||
       languageDialogOpen ||
-      accessibilityDialogOpen ||
       pendingAdvancement !== null ||
       pendingPreview !== null ||
       // Phase 17: a suspended event's own dialogue owns the keyboard
@@ -2733,11 +2745,8 @@
   {#if languageDialogOpen}
     <LanguageDialog onClose={() => (languageDialogOpen = false)} />
   {/if}
-  {#if accessibilityDialogOpen}
-    <AccessibilityDialog onClose={() => (accessibilityDialogOpen = false)} />
-  {/if}
-  {#if audioDialogOpen}
-    <AudioDialog settings={audioSettings} onChange={changeAudio} onClose={() => (audioDialogOpen = false)} />
+  {#if preferencesOpen}
+    <PreferencesDialog audioSettings={audioSettings} onAudioChange={changeAudio} onClose={() => (preferencesOpen = false)} />
   {/if}
 
   {#if phase === 'story'}
@@ -2765,7 +2774,7 @@
     {#if showOutro}
       <!-- Phase 16 N7: the campaign's last victory rolls the outro first, as playcampaign.cpp does. -->
       <Outro
-        screens={buildOutroScreens(session.endLevelPresentation?.endText, true, storyAssets?.campaign)}
+        screens={buildOutroScreens(session.endLevelPresentation?.endText, true, outroCredits)}
         holdMs={outroHoldMs(session.endLevelPresentation?.endTextDuration)}
         onDone={() => (outroDone = true)}
       />

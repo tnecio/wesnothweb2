@@ -101,7 +101,8 @@ try {
       const before = plays(await audioLog(page)).length;
       await page.getByRole('button', { name: 'Menu', exact: true }).click();
       await page.waitForTimeout(300);
-      await page.getByRole('button', { name: /Audio\.\.\./ }).click();
+      await page.getByRole('button', { name: /Preferences\.\.\./ }).click();
+      await page.getByRole('tab', { name: 'Sound' }).click();
       await page.waitForTimeout(500);
       heard = plays(await audioLog(page)).slice(before);
       check('opening a menu expands, choosing an entry selects', heard.includes('expand.wav') && heard.includes('select.wav'), heard.join(', '));
@@ -213,7 +214,8 @@ try {
 
       // The player's own slider ends the scale on that channel.
       await page.getByRole('button', { name: 'Menu', exact: true }).click();
-      await page.getByRole('button', { name: /Audio\.\.\./ }).click();
+      await page.getByRole('button', { name: /Preferences\.\.\./ }).click();
+      await page.getByRole('tab', { name: 'Sound' }).click();
       await page.locator('input[aria-label="Music volume"]').fill('80');
       const reset = await page.evaluate(() => window.__audio.state());
       check("the player's own music volume replaces the scenario's scale", reset.gains.music === 0.8 && Math.abs(reset.gains.sound - 0.2) < 1e-9, `music ${reset.gains.music}, sound ${reset.gains.sound}`);

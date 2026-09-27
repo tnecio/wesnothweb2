@@ -82,32 +82,6 @@ function findCampaignDir(scenarioId) {
   return byId ? path.join(campaignsRoot, byId.campaign) : null;
 }
 
-/**
- * The campaign's name and `[about]` credits from its `_main.cfg` `[campaign]`
- * block, for the outro (`gui2::dialogs::outro`, `about::get_campaign_credits`).
- * A light text scan rather than a full preprocessor run: mainline credits are
- * plain `title = _ "..."` / `[entry] name = "..."` literals. Sections without
- * entries are dropped, as upstream does. Null when the block is absent.
- */
-function extractCampaignCredits(campaignDir) {
-  const mainCfg = path.join(campaignDir, '_main.cfg');
-  if (!fs.existsSync(mainCfg)) return null;
-  const block = /\[campaign\]([\s\S]*?)\[\/campaign\]/.exec(fs.readFileSync(mainCfg, 'utf8'))?.[1];
-  if (!block) return null;
-  const quoted = (body, key) => {
-    const m = new RegExp(`^\\s*${key}\\s*=\\s*(?:_\\s*)?"((?:[^"]|"")*)"`, 'm').exec(body);
-    return m ? m[1].replace(/""/g, '"') : '';
-  };
-  const aboutBlocks = [...block.matchAll(/\[about\]([\s\S]*?)\[\/about\]/g)].map((m) => m[1]);
-  const credits = [];
-  for (const about of aboutBlocks) {
-    const names = [...about.matchAll(/\[entry\]([\s\S]*?)\[\/entry\]/g)].map((e) => quoted(e[1], 'name')).filter((n) => n !== '');
-    if (names.length > 0) credits.push({ title: quoted(about, 'title'), names });
-  }
-  const name = quoted(block.replace(/\[about\][\s\S]*?\[\/about\]/g, ''), 'name');
-  return { name, credits };
-}
-
 /** Strips image path functions (`~RIGHT()`, `~SCALE_SHARP(...)`, ...) to the file path. */
 function basePath(ref) {
   return ref.split('~')[0];
@@ -280,8 +254,7 @@ for (const file of fs.readdirSync(scenariosDir).sort()) {
     totalSmallest += variants.length > 0 ? variants[0].bytes : bytes;
   }
 
-  const campaign = extractCampaignCredits(campaignDir);
-  const out = { scenarioId: id, scenarioName: snapshot.scenario?.name ?? '', story: storyJsons, images, ...(campaign ? { campaign } : {}) };
+  const out = { scenarioId: id, scenarioName: snapshot.scenario?.name ?? '', story: storyJsons, images };
   fs.writeFileSync(outFile, JSON.stringify(out));
   summary.push(`${id}: ${storyJsons.length} [story], ${Object.keys(images).length} images, ${Math.round(fs.statSync(outFile).size / 1024)} KB`);
 }

@@ -5054,3 +5054,70 @@ lua-bridge 38; 0 typecheck/svelte-check errors.
 
 Checked: `save-load-playthrough.mjs` passes end to end on the refactored code (save, autosave, download
 as a Wesnoth `.gz`, upload, reload, cross-campaign load).
+
+## 2026-09-27: Phase 21, stages 4-7 — title screen, campaign dialog, preferences, credits; Phase 21 delivered
+
+- **Title screen** (`menu/TitleScreen.svelte`), laid out as `title_screen.cfg`: `maps/background.webp`
+  stretched with `maps/titlescreen.webp` fitted and centred over it, the logo 30 px from the top, the tip
+  panel bottom-left and the button column bottom-right (translucent, blurred, upstream's border colours),
+  "Version 1.19.21" and the language's own name bottom-left and right. The buttons use upstream's
+  `large-button` art in its three states. Keys as `hotkeys.cfg`: C, Ctrl+O, Ctrl+P, L, Space, Left/Right for
+  the tips; they are off while a dialog is open or a field has the focus. Title music
+  (`return_to_wesnoth.ogg`) starts on the first gesture and `AudioEngine.stopMusic()` ends it when a game
+  opens. Below 720 px the panels stack (menu above tips) and scroll; checked at 390 px and at a 150 % font
+  scale. The old menu page's saved-games list is gone (Load is its job).
+- **Tips.** 68 of upstream's tips, shuffled, Previous/Next, with their markup (`<i>`, `<b>`) drawn. The
+  source is one small loader (`menu/tips.ts`), since what to show is still to be decided; this version of
+  upstream's data has no `encountered_units=` filters, so none is carried. There is no hide button: the
+  1.19 title screen has none either; the panel's visibility is a preference (Preferences > Display).
+- **Campaign dialog** (`menu/CampaignSelectionDialog.svelte`), from `campaign_dialog.cfg` and
+  `campaign_selection.cpp`: search (every word must occur in the name, description or abbreviation, in the
+  shown or the English text), Name and Timeline sort (ascending, descending, back to rank), the five-way
+  completion filter, campaigns by `[campaign] rank=` with icons, laurels, debug campaigns under a heading of
+  their own, the campaign image and description over its background picture, a radio group of difficulties
+  (image, label, grey description, laurel when won). The keyboard works as upstream's: the filter has the
+  focus, Up/Down move through the list, Enter plays. Campaign icons carry `~RC(magenta>red)~CROP(...)`, so they
+  go through the renderer's own compositor. Play opens `/play/<id>?difficulty=<DEFINE>`.
+- **Preferences** (`PreferencesDialog.svelte`): a tab strip (Display, Sound), the two old dialogs now panels;
+  the in-game Audio and Accessibility entries became one "Preferences..." (Ctrl+P). `audio-playthrough` and
+  `sound-playthrough` follow.
+- **Credits** (`menu/CreditsScreen.svelte`, `credits.json`): core groups and each shipped campaign's
+  `[about]` sections, scrolling at 100 px/s, Up/Down doubling/halving (50-400), a title-screen picture behind
+  (a campaign's own when it has one), a Pause button, and a plain scrollable list under
+  `prefers-reduced-motion`. **The campaign outro reads the same file now**, replacing a text scan of `_main.cfg`
+  that could not translate section titles; verified in Polish ("Koniec", "Martwa woda", "Projekt kampanii i
+  programowanie"). The scan and its `campaign` key in the 30 story files are gone.
+- **A bug the keyboard run found:** the keyboard cursor kept its hex from the previous scenario, so the
+  first arrow key in the next one started somewhere else. It resets when the scenario changes.
+- **A synthetic scenario changed:** `synth_keyboard_02` (the keyboard campaign's last) now has a one-hit-point
+  enemy leader and a victory event, so the campaign can be finished, which records it as completed.
+
+### Phase 21 — milestone
+`apps/web/scripts/main-menu-playthrough.mjs`:
+- **Mouse run (50 checks):** the title screen at 1280x800 and 390x844, at 100 % and 150 % font scale (four
+  buttons, version, language, a tip, nothing off screen, no sideways scrolling); C, the filter finds Liberty by a
+  word in its description, Hard is chosen, Play opens `/play/liberty?difficulty=HARD` and the session's
+  snapshot is the HARD build; Ctrl+S, Quit to Menu (asks first), Ctrl+O, Load resumes it on HARD at the same
+  turn; Two Brothers left on its default opens the EASY build; laurels (gold for a win at the last listed
+  difficulty, bronze for only the first of two) and the completion filter hiding and showing them.
+- **`--keyboard-only` (whole run, zero pointer events):** C, type "keyboard", Down, Enter; both scenarios of
+  the campaign won by keys; the outro, the end screen's Quit to Menu (focused), back at the title screen the
+  campaign wears its silver laurel (no difficulties, so no gold); Ctrl+O, Ctrl+P (tabs by arrow keys), Space
+  (the credits scroll by themselves), L each open and close with Escape. 0 mouse, pointer or touch events.
+- **Real Wesnoth, side by side:** the installed 1.16.9's title screen under Xvfb has the same structure: map,
+  logo, tip panel left, button column right, version bottom-left, language bottom-right (not committed: the
+  screenshot is in the session's scratch). Ours follows 1.19's `title_screen.cfg` where the two differ (larger
+  `large` buttons; 1.16 has eight smaller ones and an About button).
+- Regression: `keyboard-playthrough.mjs` (both modes), `dialogue-playthrough.mjs`, `i18n-playthrough.mjs`,
+  `audio-playthrough.mjs`, `sound-playthrough.mjs`, `undo-replay-playthrough.mjs` and `save-load-playthrough.mjs`
+  pass. `i18n-screenshots.mjs` now also shoots the campaign dialog, Preferences and the credits and finds no
+  overflow in Polish, Arabic (right to left) or Finnish at 100 %, or English and Polish at 150 %.
+
+### Phase 21 — what is left for you
+- Which text the tip panel shows (it is upstream's tips for now), and whether the port wants a title-screen
+  hide button.
+- The port-only strings added here ("Debug campaigns", "Tip of the day", ...) are English until translated.
+- Real screen reader pass over the new dialogs (listbox, radio group, tabs, the credits' pause button).
+
+Gates: engine 799, ui 352 (plus the known vitest `onTaskUpdate` timeout from the AI/replay tests), renderer 217,
+lua-bridge 38; 0 typecheck/svelte-check errors.

@@ -1558,15 +1558,11 @@ What was delivered, and where it differs from the sketch above:
 
 ## Phase 21 — Main menu
 
-**Status: planned 2026-09-27** (working plan: `docs/PHASE21_PLAN.md`;
-the current campaign picker is a plain routed list). Spec sources:
-`title_screen.cpp`, `campaign_selection.cpp`, `campaign_difficulty.cpp`.
-Decided 2026-09-27: Preferences opens an interim tabbed dialog (Phase 24
-fills in the rest); the tip-of-the-day panel ships but its content is
-decided later; the campaign dialog's Combat RNG and Modifications menus
-are omitted (RNG modes are Phase 30). Difficulty needs per-difficulty
-build output (it is resolved by the preprocessor), shipped as small
-overlays on each scenario snapshot.
+**Status: delivered 2026-09-27.** How it was built, the decisions taken,
+and what each stage proved are in `docs/PHASE21_PLAN.md` and the Phase 21
+entries in `docs/PROGRESS.md`. Spec sources: `title_screen.cpp`,
+`campaign_selection.cpp`, `campaign_difficulty.cpp`, `end_credits.cpp`,
+`about.cpp`. Original scope, for reference:
 
 - Title screen with the real background and button column: Campaigns,
   Load Game, Preferences, Credits (help/multiplayer/editor/add-ons
@@ -1574,13 +1570,40 @@ overlays on each scenario snapshot.
 - Campaign selection modal: campaign list with icon, description, image,
   difficulty chooser (`[difficulty]`), and campaign completion markers
   (persisted); debug campaigns kept but visually separated.
-- Load Game opens the existing load flow (fully reworked in Phase 26,
-  which also added a saved-games list and resume to the current menu page);
-  Preferences opens Phase 24's dialog; credits screen
-  (`[about]`/`[entry]`/`[credits_group]`).
+- Load Game opens the existing load flow; Preferences opens Phase 24's
+  dialog; credits screen (`[about]`/`[entry]`/`[credits_group]`).
 - **Milestone**: starting a campaign at a chosen difficulty, and loading a
   save, are both reachable only via the main menu, matching the real
   title screen's layout.
+
+What was delivered, and where it differs from the sketch above:
+
+- **Difficulty is build output.** The preprocessor resolves `#ifdef EASY`,
+  so each difficulty of a scenario is its own build. The campaign's default
+  ships whole; the others ship as small overlays (`<id>@<DEFINE>.json`,
+  50-280 KB against 3.4 MB; per-entry patches for the few unit types a
+  campaign changes). This also fixed Two Brothers, which had been built at
+  a `NORMAL` it does not have. Saves, continuation and exported Wesnoth saves
+  carry the difficulty; a save without one gets the campaign's default (no
+  difficulty-choice dialog, decided 2026-09-27).
+- **Title screen** as `title_screen.cfg` lays it out (real background, logo,
+  translucent tip and button panels, version, language), with upstream's
+  keys, title music, and a phone layout. Tips: upstream's own `tips.cfg` until
+  the content is decided.
+- **Campaign dialog** with search, Name/Timeline sort, completion filter,
+  laurels (upstream's exact rules), a difficulty chooser and debug campaigns
+  set apart. Completion is recorded on a campaign's last victory. **Not
+  built:** the Combat RNG and Modifications menus (RNG modes are now Phase 30).
+- **Preferences** is an interim tabbed dialog (Display: font size, orb
+  colours, show tips; Sound); Phase 24 adds the rest. In a game it replaces
+  the separate Audio and Accessibility entries (Ctrl+P).
+- **Credits** scroll as upstream's (100 px/s, Up/Down change the speed), with a
+  pause button and no motion under `prefers-reduced-motion`. The campaign
+  outro now reads the same data, so its section titles are translated.
+- **Quit to Menu** in a game and on the end screen.
+- **Not done:** Load's "Show replay" from the title screen (a replay opens
+  inside a running game), `wesnoth.scenario.difficulty` in Lua (the bridge
+  has no scenario table; Phase 29's host API).
 
 ## Phase 22 — Advanced map rendering: minimap & camera
 
@@ -1936,7 +1959,8 @@ pulled forward and delivered 2026-09-22.
 5. **Phase 18** (labels/items) — delivered 2026-09-26. **Phase 19**
    (audio/music) — delivered 2026-09-26.
 6. **Phase 20** (localization/accessibility) — delivered.
-7. **Phases 21–24** (main menu, minimap/camera, mobile, advanced UI).
+7. **Phase 21** (main menu) — delivered 2026-09-27. **Phases 22–24**
+   (minimap/camera, mobile, advanced UI).
 8. **Phase 25** (statistics & achievements).
 9. **Phase 27** (feature completeness assessment).
 10. **Phase 28** (CI/CD/performance/platform).

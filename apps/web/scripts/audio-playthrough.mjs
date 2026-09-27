@@ -135,9 +135,10 @@ try {
       state = await audioState(page);
       check('unmute restores it', state.gains.master === 1 && state.settings.muted === false);
 
-      // Audio dialog: music volume.
+      // Preferences > Sound: music volume.
       await page.getByRole('button', { name: 'Menu', exact: true }).click();
-      await page.getByRole('button', { name: /Audio\.\.\./ }).click();
+      await page.getByRole('button', { name: /Preferences\.\.\./ }).click();
+      await page.getByRole('tab', { name: 'Sound' }).click();
       await page.locator('input[aria-label="Music volume"]').fill('40');
       state = await audioState(page);
       check('the audio dialog sets the music volume', state.gains.music === 0.4, String(state.gains.music));
