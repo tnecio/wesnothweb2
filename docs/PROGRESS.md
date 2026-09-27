@@ -5203,3 +5203,38 @@ issue with replays so we have consistent experience when loading from both main 
 Gates: engine 800, ui 355 (plus the known vitest `onTaskUpdate` timeout from the AI/replay tests), renderer
 217, lua-bridge 38; 0 typecheck/svelte-check errors. Browser: `replay-from-menu-playthrough.mjs` (new),
 `undo-replay-playthrough.mjs`, `save-load-playthrough.mjs`, `main-menu-playthrough.mjs` (both modes) all pass.
+
+## 2026-09-27: Phase 22 -- minimap and camera
+
+Planned in `docs/PHASE22_PLAN.md` (user decisions: the wheel pans and Ctrl+wheel zooms as upstream; arrow
+keys stay on the hex cursor; terrain-help data moves to Phase 24), then implemented on "Start implementing."
+
+- **S1, camera model** (`packages/renderer/src/camera.ts`, 22 node tests): upstream's nine zoom levels
+  (`get_zoom_levels_index`, `set_zoom`, `toggle_default_zoom`), `bounds_check_position` plus `map_area`'s
+  centring of a small map, `scroll_to_tiles`' four scroll types, and `scroll_to_xy`'s accelerate / cruise /
+  decelerate glide. `GameBoardView` routes every view change through one bounds-checked `applyView`; the
+  zoom is remembered (`tile_size`). New `displayPrefs` holds upstream's view preferences.
+- **S2, following the action**: moves, attacks, recruits and heals -- AI turns, replays and the player's own
+  -- bring themselves on screen first, as `unit_display` does (ONSCREEN, unforced, fog-checked). Scripted
+  scrolls glide and the event waits; a message glides to an off-screen speaker before the dialog opens.
+  Next unit and goto leader stay instant: upstream's are `WARP` (the plan had said "smooth"; upstream wins).
+- **S3, edge panning** (`handle_scroll`): 10 px from the window edge, `scroll_speed * 0.036` px/ms, not over
+  controls, dialogs, `[lock_view]` or with "Mouse scrolling" off. Preferences gains upstream's General tab
+  (Scroll speed) and Advanced tab (Mouse scrolling, Follow unit actions), and Display > Grid overlay.
+- **S4, minimap** (`packages/renderer/src/minimap.ts`, 18 node tests; `Minimap.svelte`; `minimapStyle.ts`):
+  a port of `prep_minimap_for_rendering` -- `symbol_image` tiles, shroud as void, fog and reach overlays,
+  villages by owner (unowned in the `white` range's min, a dark grey, as upstream), units filtered by fog,
+  `hidden` and invisibility -- with the viewport outline and click/drag navigation. One deliberate
+  deviation: upstream's minimap click/outline conversion is off by up to a hex (its own comment admits
+  it); this port uses the exact inverse of where a hex is drawn. Upstream's six buttons sit under it.
+- **S5, grid and enemy reach**: Ctrl+G draws `grid-top`/`grid-bottom` on their own layers under the
+  time-of-day tint; Ctrl+V / Ctrl+B (`GameSession.enemyReach`) show every hex a visible, able enemy could
+  reach with full movement, until the pointer moves to another hex.
+- **Verification**: `apps/web/scripts/minimap-camera-playthrough.mjs` -- bounds, the zoom levels both ways,
+  wheel pan and Ctrl+wheel zoom, a glide measured frame by frame (838 ms for 1556 px; upstream's profile
+  says 817) and a WARP as one jump, edge panning and its exclusions, minimap click/drag, a village changing
+  colour on capture, hotseat fog on the minimap both ways, the grid and enemy reach, and the camera leaving
+  its parked spot to show the AI's turn. Headless software GL draws the board at ~1.5 fps, so checks that
+  read camera state pause the render loop (`--skip-ai` leaves out the multi-minute AI turn). The minimap
+  was compared by eye against the real 1.16.9 game on Dead Water 1 (`Xvfb` recipe): the buttons moved
+  from a column of glyphs to upstream's row of real icons as a result.

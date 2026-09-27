@@ -1607,10 +1607,18 @@ What was delivered, and where it differs from the sketch above:
 
 ## Phase 22 — Advanced map rendering: minimap & camera
 
-**Status: planned 2026-09-27** (`docs/PHASE22_PLAN.md`). Remainder of the
-old Phase 16 after labels/items (Phase 18) and camera scripting (Phase 17)
-moved out. Terrain-help data moved to Phase 24 (user's call, 2026-09-27):
-it has no consumer until the help browser exists.
+**Status: delivered 2026-09-27** (`docs/PHASE22_PLAN.md`, outcome at its
+end). Remainder of the old Phase 16 after labels/items (Phase 18) and camera
+scripting (Phase 17) moved out. Terrain-help data moved to Phase 24 (user's
+call, 2026-09-27): it has no consumer until the help browser exists.
+
+Delivered: upstream's nine zoom levels and map bounds; `scroll_to_xy`'s
+glide for scripted scrolls, messages and followed unit actions (next unit
+and goto leader stay instant, as upstream's `WARP`); the wheel pans and
+Ctrl+wheel zooms (user's call); edge panning; the minimap with its outline,
+click/drag navigation and upstream's six buttons; the grid; Show Enemy
+Moves / Best Possible Enemy Moves; General/Advanced preference tabs.
+Verified by `apps/web/scripts/minimap-camera-playthrough.mjs`.
 
 - Minimap: downscaled terrain-colour map with unit dots and village-flag
   markers, click/drag-to-navigate, viewport rectangle, reflecting only the
@@ -1628,11 +1636,16 @@ it has no consumer until the help browser exists.
 13–15, 21, 22) has settled, so it adapts a stable design instead of
 chasing a moving one.
 
-- Responsive layout: collapsing infobox/status bar, full-screen modals on
+- Responsive layout: collapsible infobox, full-screen modals on
   narrow viewports, larger tap targets.
+- In infobox: selected unit info replaces minimap; deselection restores it.
+- Status bar at the top wraps around so that all info is visible even on narrow
+  viewports. Collapsible.
 - Touch input: tap-select/tap-move (with a confirm tap for moves/attacks),
   long-press context menu, pinch-zoom, drag-pan, and resize/orientation
   change without losing game state.
+- Visuals: story and main menu illustrations should not be stretched too much
+  and should be placed in visible position.
 - *Conditional* (from Phase 19): transcode music/sounds (e.g. Opus) to
   shrink the audio download -- only if real-world tests on mobile show the
   size (~162 MB of music as shipped) is actually a problem.
@@ -1960,7 +1973,8 @@ pulled forward and delivered 2026-09-22.
 5. **Phase 18** (labels/items) — delivered 2026-09-26. **Phase 19**
    (audio/music) — delivered 2026-09-26.
 6. **Phase 20** (localization/accessibility) — delivered.
-7. **Phase 21** (main menu) — delivered 2026-09-27. **Phases 22–24**
+7. **Phase 21** (main menu) — delivered 2026-09-27. **Phase 22**
+   (minimap/camera) — delivered 2026-09-27. **Phases 23–24**
    (minimap/camera, mobile, advanced UI).
 8. **Phase 25** (statistics & achievements).
 9. **Phase 27** (feature completeness assessment).

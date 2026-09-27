@@ -199,3 +199,33 @@ delivered; `docs/PROGRESS.md` entries per stage.
 | Minimap redraws on every state change cost frames during AI turns | Draw list is cheap (hexes × 1 blit); throttled to one redraw per animation frame, and the map-sized base terrain is cached until terrain changes |
 | Follow-action scrolling fights the player's own panning mid-AI-turn | Upstream does the same; `scroll_to_action` off disables it |
 | Edge panning triggers while reaching for browser chrome | Only while the pointer is inside the page and no modal is open; preference to turn off |
+
+## Outcome (2026-09-27)
+
+Delivered in five commits (S1 `88c7c7f`, S2 `69418a7`, S4 `dbf9b10`, S3
+`269dbce`, S5 `3232fa2`; the minimap landed before edge panning), plus this
+wrap-up. Where it differs from the plan above:
+
+- **Next unit and goto leader do not glide.** Upstream scrolls to them with
+  `WARP` (`mouse_events.cpp`, `menu_events.cpp`), so they stay instant; the
+  glide is for scripted `[scroll_to]`, message speakers and followed unit
+  actions, as upstream. The keyboard cursor jumps too (`ONSCREEN_WARP`), since
+  a held arrow key would otherwise restart a glide from rest on every repeat.
+- **Scroll types are upstream's own.** `[scroll_to]` maps `only_if_needed`/
+  `immediate` onto `ONSCREEN`/`WARP` exactly as `intf_scroll_to_tile` does;
+  only the unit-action scrolls are unforced (so `[lock_view]` and "Follow unit
+  actions" stop them), matching `scroll_to_xy`'s `force` default.
+- **Minimap clicks are exact.** Upstream's click-to-hex and outline
+  conversions are off by up to a hex (its own comment says so); this port uses
+  the inverse of where `get_dst_rect` draws a hex, for both.
+- **Preferences follow upstream's placement**: Scroll speed on General, Grid
+  overlay on Display, Mouse scrolling and Follow unit actions on Advanced,
+  with upstream's wording. The dialog still opens on Display (the existing
+  menu checks rely on it); upstream opens on General.
+- **Minimap buttons** are upstream's six, in its order, as a row under the
+  minimap with its `button_square_25` frames and `icons/action` images,
+  compared against the real 1.16.9 game on Dead Water 1.
+- **Headless verification**: at ~1.5 fps in software GL, a glide exceeds its
+  4 s safety limit and jumps; the milestone pauses the render loop wherever it
+  measures camera state rather than pixels. A glide of 1556 px took 838 ms
+  against the 817 ms upstream's profile gives.

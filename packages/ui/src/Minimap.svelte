@@ -217,34 +217,24 @@
   }
 
   /**
-   * Upstream's buttons beside the minimap, in its order (`data/themes/_initial.cfg`'s
-   * `minimap-button-1..6`): default zoom, then the five minimap toggles. Their tooltips are the
-   * hotkey commands' own names (`auto_tooltip`).
+   * Upstream's buttons under the minimap, in its order (`data/themes/_initial.cfg`'s
+   * `minimap-button-1..6`): default zoom, then the five minimap toggles. Each is a 25 px square
+   * button (`button_square_25`) with the command's icon (`icons/action/<command>_25.png`, or the theme's
+   * own overlay for units and villages); a toggle that is on shows the pressed images. Tooltips are
+   * the hotkey commands' names (`auto_tooltip`).
    */
   const buttons: ReadonlyArray<{ key: keyof MinimapOptions; label: () => string; icon: string }> = [
-    { key: 'drawTerrain', label: () => t('Toggle Minimap Terrain Drawing'), icon: '▦' },
-    { key: 'drawUnits', label: () => t('Toggle Minimap Unit Drawing'), icon: '●' },
-    { key: 'drawVillages', label: () => t('Toggle Minimap Village Drawing'), icon: '⌂' },
-    { key: 'movementCoding', label: () => t('Toggle Minimap Unit Coding'), icon: '◐' },
-    { key: 'terrainCoding', label: () => t('Toggle Minimap Terrain Coding'), icon: '◧' },
+    { key: 'drawTerrain', label: () => t('Toggle Minimap Terrain Drawing'), icon: 'minimap-draw-terrain_25' },
+    { key: 'drawUnits', label: () => t('Toggle Minimap Unit Drawing'), icon: 'editor-tool-unit_25' },
+    { key: 'drawVillages', label: () => t('Toggle Minimap Village Drawing'), icon: 'editor-tool-village_25' },
+    { key: 'movementCoding', label: () => t('Toggle Minimap Unit Coding'), icon: 'minimap-unit-coding_25' },
+    { key: 'terrainCoding', label: () => t('Toggle Minimap Terrain Coding'), icon: 'minimap-terrain-coding_25' },
   ];
+  const icon = (name: string, pressed: boolean): string => imageUrl(`engine/icons/action/${name}${pressed ? '-pressed' : ''}.png`);
+  const frame = (pressed: boolean): string => imageUrl(`engine/buttons/button_square/button_square_25${pressed ? '-pressed' : ''}.png`);
 </script>
 
 <div class="minimap" data-testid="minimap">
-  <div class="buttons" role="toolbar" aria-label={tx('Minimap')}>
-    <button type="button" class="on" title={t('Default Zoom')} aria-label={t('Default Zoom')} onclick={onZoomDefault}>1:1</button>
-    {#each buttons as b (b.key)}
-      <button
-        type="button"
-        class:on={options[b.key]}
-        aria-pressed={options[b.key]}
-        title={b.label()}
-        aria-label={b.label()}
-        data-testid={`minimap-${b.key}`}
-        onclick={() => onToggle(b.key)}>{b.icon}</button
-      >
-    {/each}
-  </div>
   <div class="map" bind:this={host}>
     <canvas
       bind:this={canvas}
@@ -256,39 +246,34 @@
       onpointercancel={onPointerUp}
     ></canvas>
   </div>
+  <div class="buttons" role="toolbar" aria-label={tx('Minimap')}>
+    <button type="button" title={t('Default Zoom')} aria-label={t('Default Zoom')} onclick={onZoomDefault} style={`background-image: url("${frame(false)}")`}>
+      <img src={icon('zoomdefault_25', false)} alt="" />
+    </button>
+    {#each buttons as b (b.key)}
+      <button
+        type="button"
+        aria-pressed={options[b.key]}
+        title={b.label()}
+        aria-label={b.label()}
+        data-testid={`minimap-${b.key}`}
+        style={`background-image: url("${frame(options[b.key])}")`}
+        onclick={() => onToggle(b.key)}><img src={icon(b.icon, options[b.key])} alt="" /></button
+      >
+    {/each}
+  </div>
 </div>
 
 <style>
   .minimap {
     display: flex;
-    gap: 0.25rem;
-    height: 11rem;
+    flex-direction: column;
+    gap: 3px;
     flex: 0 0 auto;
     margin-bottom: 0.5rem;
   }
-  .buttons {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-  .buttons button {
-    width: 1.6rem;
-    height: 1.6rem;
-    padding: 0;
-    font-size: 0.75rem;
-    line-height: 1;
-    border: 1px solid #4a4432;
-    border-radius: 2px;
-    background: #141a26;
-    color: #7a7a70;
-    cursor: pointer;
-  }
-  .buttons button.on {
-    color: #f1e6c8;
-    background: #26303f;
-  }
   .map {
-    flex: 1 1 auto;
+    height: 10rem;
     min-width: 0;
     position: relative;
     background: rgb(31, 31, 23);
@@ -298,5 +283,29 @@
     display: block;
     cursor: crosshair;
     touch-action: none;
+  }
+  .buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1px;
+  }
+  .buttons button {
+    width: 25px;
+    height: 25px;
+    padding: 0;
+    border: 0;
+    background: transparent center / 25px 25px no-repeat;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+  }
+  .buttons img {
+    width: 25px;
+    height: 25px;
+    pointer-events: none;
+  }
+  .buttons button:focus-visible {
+    outline: 2px solid #ffd54a;
+    outline-offset: 1px;
   }
 </style>
