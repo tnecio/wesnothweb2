@@ -1558,12 +1558,18 @@ What was delivered, and where it differs from the sketch above:
 
 ## Phase 21 — Main menu
 
-**Status: not started** (the current campaign picker is a plain routed
-list). Spec sources: `title_screen.cpp`, `campaign_selection.cpp`,
-`campaign_difficulty.cpp`.
+**Status: planned 2026-09-27** (working plan: `docs/PHASE21_PLAN.md`;
+the current campaign picker is a plain routed list). Spec sources:
+`title_screen.cpp`, `campaign_selection.cpp`, `campaign_difficulty.cpp`.
+Decided 2026-09-27: Preferences opens an interim tabbed dialog (Phase 24
+fills in the rest); the tip-of-the-day panel ships but its content is
+decided later; the campaign dialog's Combat RNG and Modifications menus
+are omitted (RNG modes are Phase 30). Difficulty needs per-difficulty
+build output (it is resolved by the preprocessor), shipped as small
+overlays on each scenario snapshot.
 
 - Title screen with the real background and button column: Campaigns,
-  Load Game, Preferences, Help, Credits (multiplayer/editor/add-ons
+  Load Game, Preferences, Credits (help/multiplayer/editor/add-ons
   entries omitted — out of scope).
 - Campaign selection modal: campaign list with icon, description, image,
   difficulty chooser (`[difficulty]`), and campaign completion markers
@@ -1888,6 +1894,31 @@ needs revisiting once S7 eventually lands.
 recruitment budgeting (`[recruitment_instructions]`/`[recruit]`/
 `[limit]`) become real here.
 
+## Phase 30 — Combat RNG modes (added 2026-09-27, deliberately last)
+
+**Status: not started.** Split out of Phase 21 (user's call, 2026-09-27):
+the campaign dialog's "Combat:" menu is omitted there, and this phase —
+after CI/CD (28) and the AI (29) — makes sure it is not forgotten.
+
+- Upstream's three modes (`campaign_dialog.cfg` `rng_menu`,
+  `singleplayer.cpp:60-97`, `synced_context::get_rng_for_action`):
+  **Default RNG** (`random_mode=""`: each action gets a fresh seed),
+  **Predictable RNG** (`"deterministic"`: actions draw from the game's
+  saved RNG, so reloading a save does not change an attack's outcome) and
+  **Reduced RNG** (`"biased"`: `attack.cpp:739` `use_prng_`, hits and
+  misses made more consistent).
+- First establish which of these the port's current behaviour actually
+  matches: Phase 26 restores the RNG position on load, which is what
+  "Predictable" means upstream.
+- `random_mode` recorded in `SaveGameData`, carried over between
+  scenarios, and written/read by the Wesnoth save converter
+  (`game_classification`, `savegame.cpp:607`).
+- The menu added to Phase 21's campaign selection dialog with upstream's
+  labels and tooltips.
+- **Milestone**: the same attack, reloaded from a save, gives the same
+  result under Predictable and may differ under Default; Reduced RNG's
+  hit distribution matches upstream's on a fixed seed.
+
 ---
 
 ## Priority as of 2026-09-26
@@ -1912,6 +1943,8 @@ pulled forward and delivered 2026-09-22.
 11. **Phase 29** (real AI: RCA framework + Lua on fengari) — underway
    alongside the above rather than strictly after it (Phase 7's MVP
    heuristic AI remains playable throughout).
+12. **Phase 30** (combat RNG modes, split from Phase 21) — last, after
+   everything above.
 
 ### Old → new phase numbers
 
