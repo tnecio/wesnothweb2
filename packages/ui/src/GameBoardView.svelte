@@ -277,9 +277,12 @@
       // `defaultColors`) rather than relying on `ImageCache`'s own
       // side-number fallback.
       ImageCache.setColorData(teamColors ? { ...teamColors, sideRanges: {} } : null);
-      // Phase 28a P5: this scenario's terrain bundle (built by apps/web/scripts/build-image-atlases.mjs).
-      // Images not in it are fetched on their own, so a missing bundle only costs requests.
-      ImageCache.setAtlasManifests([`/atlases/${snapshot.scenario.id}/terrain.json`]);
+      // Phase 28a P5: this scenario's terrain bundle (built by apps/web/scripts/build-image-atlases.mjs),
+      // scoped under its campaign directory: a bare scenario id is only unique within its own campaign
+      // (Dead Water and Under the Burning Suns both ship a 13_Epilogue), so the id alone could fetch the
+      // wrong campaign's terrain bundle (a real bug, found 2026-09-27). Images not in the bundle are
+      // fetched on their own, so a missing/mis-scoped one only costs requests, never a wrong-looking board.
+      ImageCache.setAtlasManifests(snapshot.assetDir ? [`/atlases/${snapshot.assetDir}/${snapshot.scenario.id}/terrain.json`] : []);
       // Phase 28a P6: recruitable types' bundles are registered (downloaded on first use)...
       ImageCache.addAtlasManifests(snapshot.teams.flatMap((team) => team.recruit ?? []).map(unitBundleManifestUrl));
       // ...and types on the board are downloaded now, so their first animation needs no network.

@@ -15,7 +15,7 @@ import { fromWesnothSave, toWesnothSave } from './save/wesnothSave.js';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
 function scenario(id: string): GameBoardSnapshot {
-  return JSON.parse(fs.readFileSync(path.join(repoRoot, `apps/web/public/scenarios/${id}.json`), 'utf8')) as GameBoardSnapshot;
+  return JSON.parse(fs.readFileSync(path.join(repoRoot, `apps/web/public/scenarios/Dead_Water/${id}.json`), 'utf8')) as GameBoardSnapshot;
 }
 
 /** A list whose track choice is a fixed sequence, so the tests are deterministic. */

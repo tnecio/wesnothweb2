@@ -23,11 +23,17 @@
  * packed losslessly into bundle images of at most 4096x4096 (RGBA PNG, no
  * gamma/colour-profile chunks). Output, gitignored:
  *
- *   public/atlases/<scenarioId>/terrain.json            manifest
- *   public/atlases/<scenarioId>/terrain-<n>.<hash>.png   content-hashed bundles
+ *   public/atlases/<campaignDir>/<scenarioId>/terrain.json            manifest
+ *   public/atlases/<campaignDir>/<scenarioId>/terrain-<n>.<hash>.png   content-hashed bundles
  *   public/atlases/units/<stem>.json                     manifest (stem: `unitBundleStem(typeId)`)
  *   public/atlases/units/<stem>-<n>.<hash>.png
  *   public/atlases/units/index.json                      type id -> stem, for tools
+ *
+ * Terrain bundles are nested under `<campaignDir>` (`CampaignInfo.assetDir`, matching
+ * `public/scenarios/<campaignDir>/<id>.json`) because a bare scenario id is only unique within its own
+ * campaign -- Dead Water and Under the Burning Suns both ship a `13_Epilogue`. A flat `<scenarioId>/`
+ * namespace let one campaign's terrain bundle silently stand in for the other's at runtime (a real bug,
+ * found 2026-09-27: the board could render one campaign's map with the wrong terrain images).
  *
  * A manifest maps each rooted image path (`rootedImagePath`, the same key the
  * runtime computes) to [bundle index, x, y, width, height]. Bundles are only a
@@ -206,11 +212,19 @@ function upToDate(manifestFile, inputs) {
   return inputs.every((f) => fs.existsSync(f) && fs.statSync(f).mtimeMs <= built);
 }
 
-const snapshotFiles = fs
-  .readdirSync(scenariosDir)
-  .filter((f) => f.endsWith('.json'))
-  .sort()
-  .map((f) => path.join(scenariosDir, f));
+/** Every `<campaignDir>/<id>.json` snapshot (not a difficulty overlay), recursively -- see module doc comment. */
+function findSnapshots() {
+  const found = [];
+  for (const campaignDirName of fs.readdirSync(scenariosDir).sort()) {
+    const dir = path.join(scenariosDir, campaignDirName);
+    if (!fs.statSync(dir).isDirectory()) continue;
+    for (const f of fs.readdirSync(dir).sort()) {
+      if (f.endsWith('.json') && !f.includes('@')) found.push({ campaignDirName, id: f.slice(0, -5), file: path.join(dir, f) });
+    }
+  }
+  return found;
+}
+const snapshotFiles = findSnapshots();
 const summary = [];
 
 // ── Terrain, per scenario ───────────────────────────────────────────────────
@@ -218,10 +232,9 @@ if (!fs.existsSync(rulesFile)) {
   console.warn(`build-image-atlases: ${path.relative(repoRoot, rulesFile)} is missing; no terrain bundles built (the game falls back to per-file images).`);
 } else {
   let rules = null;
-  for (const snapshotFile of snapshotFiles) {
-    const id = path.basename(snapshotFile, '.json');
+  for (const { campaignDirName, id, file: snapshotFile } of snapshotFiles) {
     if (!wanted(id)) continue;
-    const outDir = path.join(outRoot, id);
+    const outDir = path.join(outRoot, campaignDirName, id);
     if (upToDate(path.join(outDir, 'terrain.json'), [snapshotFile, rulesFile, scriptFile])) continue;
 
     rules ??= reviveBuildingRules(JSON.parse(fs.readFileSync(rulesFile, 'utf8')));
@@ -234,16 +247,16 @@ if (!fs.existsSync(rulesFile)) {
     // Drop bundles from earlier builds.
     const keep = new Set(['terrain.json', ...files]);
     for (const old of fs.readdirSync(outDir)) if (!keep.has(old)) fs.rmSync(path.join(outDir, old));
-    summary.push(`${id}: ${line} (${Date.now() - started} ms)`);
+    summary.push(`${campaignDirName}/${id}: ${line} (${Date.now() - started} ms)`);
   }
 }
 
 // ── Unit types, across all scenarios ───────────────────────────────────────
 const unitIndexFile = path.join(unitsDir, 'index.json');
-if (wanted('units') && !upToDate(unitIndexFile, [...snapshotFiles, scriptFile])) {
+if (wanted('units') && !upToDate(unitIndexFile, [...snapshotFiles.map((s) => s.file), scriptFile])) {
   const started = Date.now();
   const typeSources = new Map();
-  for (const snapshotFile of snapshotFiles) {
+  for (const { file: snapshotFile } of snapshotFiles) {
     const snapshot = JSON.parse(fs.readFileSync(snapshotFile, 'utf8'));
     for (const [typeId, cfg] of Object.entries(snapshot.unitTypeConfigs ?? {})) {
       let sources = typeSources.get(typeId);

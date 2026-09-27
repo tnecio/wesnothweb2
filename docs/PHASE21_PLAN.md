@@ -360,3 +360,19 @@ Delivered in the commits listed in `docs/PROGRESS.md`. Where it differs from the
 - **Found on the way:** the keyboard cursor survived a scenario change (fixed); Two Brothers was built at a
   difficulty it does not have (fixed); `13_Epilogue` exists in two campaigns and the snapshot is named by id
   (unchanged; UtBS's last scenario resolves to Dead Water's).
+
+
+## Addendum (2026-09-27): a real bug the plan missed -- scenario ids collide across campaigns
+
+Flagged by the user right after delivery: the Outcome section above said "13_Epilogue exists in two
+campaigns and the snapshot is named by scenario id... I left it alone" as if it were a cosmetic footnote.
+It was not: it meant Under the Burning Suns' own epilogue never got built at all (Dead Water's silently
+took its place), and the same flat-by-id scheme affected story assets and, worse, terrain image atlases --
+where it meant a board could render with the *wrong* campaign's terrain images, not just lose data.
+
+Fixed properly, not patched: every campaign's scenario/story/atlas output now nests under its own directory
+(`CampaignInfo.assetDir`), and every id-based "just search all campaigns and pick one" shortcut
+(`rebuild-snapshots.mjs`'s `PREFER` map included) is gone. Full details and verification:
+`docs/PROGRESS.md`'s "real bug -- scenario/story/atlas JSON was keyed only by scenario id" entry
+(2026-09-27, same date). `packages/ui/src/scenarioFetch.test.ts` now asserts the fix directly: the same
+scenario id fetched from two different campaign directories comes back as two different snapshots.

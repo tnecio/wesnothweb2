@@ -39,15 +39,18 @@ import { GameSession } from './gameSession.js';
 // `build-scenario-snapshot.mjs` became generic over which scenario it
 // builds (needed for real scenario-to-scenario chaining, see
 // `GameSession.startNextScenario`) -- both scenario 1 and 2's real,
-// committed snapshots are used below.
+// committed snapshots are used below. Phase 21: nested one level further
+// under each campaign's own directory (`CampaignInfo.assetDir`), since a
+// bare scenario id is only unique within its own campaign (Dead Water and
+// Under the Burning Suns both ship a `13_Epilogue`, used below too).
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const snapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/01_Invasion.json');
-const nextSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/02_Flight.json');
-const economySnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/synth_economy_01.json');
-const abilitiesSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/synth_abilities_01.json');
-const wolfCoastSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/03_Wolf_Coast.json');
-const utbsTimeAreaSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/03_Stirring_in_the_Night.json');
-const combatSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/synth_combat_01.json');
+const snapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/Dead_Water/01_Invasion.json');
+const nextSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/Dead_Water/02_Flight.json');
+const economySnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/economy/synth_economy_01.json');
+const abilitiesSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/abilities/synth_abilities_01.json');
+const wolfCoastSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/Dead_Water/03_Wolf_Coast.json');
+const utbsTimeAreaSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/Under_the_Burning_Suns/03_Stirring_in_the_Night.json');
+const combatSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/combat/synth_combat_01.json');
 
 /** Real Dead Water scenario 3 -- chained here to exercise `{RECALL_LOYAL_UNITS}` (a real `prestart`-event macro expanding to several `[recall] id=X` calls) against a real recall list carried two scenarios deep. */
 function loadWolfCoastSnapshot(): GameBoardSnapshot {
@@ -2128,7 +2131,7 @@ describe('GameSession.storyParts (Phase 16)', () => {
 
 describe('GameSession.nextScenarioId: next_scenario=null ends the campaign (Phase 16 outro)', () => {
   it("real Dead Water epilogue: its start event's [endlevel] wins with no next scenario, while scenario 1 still continues", async () => {
-    const epilogue = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/13_Epilogue.json'), 'utf8')) as GameBoardSnapshot;
+    const epilogue = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/Dead_Water/13_Epilogue.json'), 'utf8')) as GameBoardSnapshot;
     const session = new GameSession(epilogue);
     const messages = await session.runStartupEvents();
 
@@ -2234,7 +2237,7 @@ describe('Phase 18d: exit hex / enter hex fire mid-move; [cancel_action] stops t
 
 describe('Phase 18d: [terrain_mask] against the real 1.19 build', () => {
   it("Dead Water 2's prestart mask gives exactly the real game's map, the moved side 4 start included", async () => {
-    const snapshot = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/02_Flight.json'), 'utf8')) as GameBoardSnapshot;
+    const snapshot = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/Dead_Water/02_Flight.json'), 'utf8')) as GameBoardSnapshot;
     const session = new GameSession(snapshot);
     await session.runStartupEvents();
     const real = parseConfig(
@@ -2269,7 +2272,7 @@ describe('Phase 18: map items', () => {
 
 describe('Phase 18: map labels', () => {
   it("the scenario's [label] shows; a team label covers it for that team only; both survive a load", async () => {
-    const snapshot = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/01_The_Raid.json'), 'utf8')) as GameBoardSnapshot;
+    const snapshot = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/Liberty/01_The_Raid.json'), 'utf8')) as GameBoardSnapshot;
     expect(new GameSession(snapshot).mapLabels).toEqual([{ x: 10, y: 0, text: 'Dallben', color: '255,255,255', tooltip: '' }]);
     const session0 = new GameSession(snapshot);
     const myTeam = session0.board.getTeam(session0.viewingSide)!.teamName;
@@ -2288,7 +2291,7 @@ describe('Phase 18: map labels', () => {
 
 describe('Phase 18: player labels (label_terrain / clear_labels)', () => {
   it('places, clears (scenario labels are immutable) and records them, unsynced, so a replay shows them', async () => {
-    const snapshot = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/01_The_Raid.json'), 'utf8')) as GameBoardSnapshot;
+    const snapshot = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/Liberty/01_The_Raid.json'), 'utf8')) as GameBoardSnapshot;
     const session = new GameSession(snapshot);
     await session.runStartupEvents();
     const undoable = session.canUndo;
@@ -2316,7 +2319,7 @@ describe('Phase 18: player labels (label_terrain / clear_labels)', () => {
 
 describe('Phase 18: label settings (hidden_label_categories)', () => {
   it('lists team, sides and categories; hiding a side hides the labels it made', async () => {
-    const snapshot = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/01_The_Raid.json'), 'utf8')) as GameBoardSnapshot;
+    const snapshot = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/Liberty/01_The_Raid.json'), 'utf8')) as GameBoardSnapshot;
     snapshot.scenarioConfigJson.children.push({
       tag: 'event',
       config: parseConfig('[event]\nname=prestart\n[label]\nx=2\ny=2\ntext=Camp\ncategory=places\n[/label]\n[/event]').child('event')!.toJSON(),

@@ -21,7 +21,7 @@ import { fromWesnothSave, toWesnothSave, type WesnothCampaignInfo } from './wesn
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../../../..');
 const fixturePath = path.join(here, 'fixtures/dead-water-1-autosave-1.16.9.gz');
-const snapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/01_Invasion.json');
+const snapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/Dead_Water/01_Invasion.json');
 
 function loadRealSave(): WmlConfig {
   return parseConfig(zlib.gunzipSync(fs.readFileSync(fixturePath)).toString('utf8'));

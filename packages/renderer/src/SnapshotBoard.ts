@@ -221,6 +221,12 @@ export interface ScenarioSnapshot {
   terrain: SnapshotTerrainHex[];
   teams: SnapshotTeam[];
   units: SnapshotUnit[];
+  /**
+   * The campaign directory this scenario belongs to (`GameBoardSnapshot.assetDir` / `CampaignInfo.assetDir`),
+   * for scoping its terrain image atlas: a bare scenario id is only unique within its own campaign, so the
+   * atlas bundle lives at `/atlases/<assetDir>/<id>/terrain.json`, not `/atlases/<id>/terrain.json`.
+   */
+  assetDir?: string;
 }
 
 /** An engine-convention (0-based) hex coordinate, as used by `setHighlights`/`onHexClick`. */

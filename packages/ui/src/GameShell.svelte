@@ -152,7 +152,7 @@
     onQuitToMenu = undefined,
   }: {
     snapshot: GameBoardSnapshot;
-    /** `/story/<id>.json` for `snapshot`'s scenario (see `fetchStoryAssets`); null shows the story without images. */
+    /** `/story/<campaignDir>/<id>.json` for `snapshot`'s scenario (see `storyAssetsFor`); null shows the story without images. */
     storyAssets?: StoryAssets | null;
     /**
      * Which campaign this scenario belongs to (`campaigns.json`). A save
@@ -2019,7 +2019,7 @@
    * state) and minus the story screen (this game is in progress).
    */
   async function loadIntoScenario(scenarioId: string, data: SaveGameData): Promise<void> {
-    const [nextSnapshot, assets] = await Promise.all([snapshotFor(scenarioId, savedDifficulty(data)), fetchStoryAssets(scenarioId)]);
+    const [nextSnapshot, assets] = await Promise.all([snapshotFor(scenarioId, savedDifficulty(data)), storyAssetsFor(scenarioId)]);
     activeSnapshot = nextSnapshot;
     cursorHex = null; // the keyboard cursor belongs to the board it was on
     session = GameSession.fromSaveData(nextSnapshot, data, SESSION_OPTIONS);
@@ -2084,9 +2084,21 @@
     return data.difficulty ?? defaultDifficulty(campaign);
   }
 
-  /** `scenarioId`'s snapshot at `difficulty` (default: this game's own), through the overlay-aware fetch. */
+  /**
+   * `scenarioId`'s snapshot at `difficulty` (default: this game's own), through the overlay-aware fetch.
+   * Always the *current* campaign's own directory: a scenario next-, continue-, replay- or load-transitioned
+   * to here never leaves the campaign this shell was opened for (a save whose own campaign differs is handed
+   * to `onOpenSave` instead -- see `handleLoadNamed`).
+   */
   function snapshotFor(scenarioId: string, difficulty: string | undefined = activeSnapshot.difficulty): Promise<GameBoardSnapshot> {
-    return fetchScenarioSnapshot(scenarioId, difficulty, defaultDifficulty(campaign));
+    if (!campaign) throw new Error(`cannot fetch scenario "${scenarioId}": this game was not opened with a campaign`);
+    return fetchScenarioSnapshot(scenarioId, campaign.assetDir, difficulty, defaultDifficulty(campaign));
+  }
+
+  /** `scenarioId`'s story assets, in the current campaign's own directory -- see `snapshotFor`. */
+  function storyAssetsFor(scenarioId: string): Promise<StoryAssets | null> {
+    if (!campaign) return Promise.resolve(null);
+    return fetchStoryAssets(scenarioId, campaign.assetDir);
   }
 
   async function handleLoad(): Promise<void> {
@@ -2147,7 +2159,7 @@
     continueError = null;
     try {
       // The campaign carries its difficulty into every following scenario, as the real game does.
-      const [nextSnapshot, nextStoryAssets] = await Promise.all([snapshotFor(nextId), fetchStoryAssets(nextId)]);
+      const [nextSnapshot, nextStoryAssets] = await Promise.all([snapshotFor(nextId), storyAssetsFor(nextId)]);
       const nextSession = GameSession.startNextScenario(session, nextSnapshot, SESSION_OPTIONS);
       const nextStoryParts = nextSession.storyParts();
 

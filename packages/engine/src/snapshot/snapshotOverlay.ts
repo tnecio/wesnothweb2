@@ -4,9 +4,15 @@
  * A campaign's difficulty is resolved by the WML preprocessor (`#ifdef EASY`), so each difficulty is its
  * own build of a scenario. But the builds barely differ: of a ~3.4 MB snapshot only `teams`, `units` and
  * `scenarioConfigJson` (~50 KB) change; the unit-type and terrain tables (most of the size) are identical.
- * So only the campaign's default difficulty ships whole (`scenarios/<id>.json`); every other one ships as
- * an *overlay* (`scenarios/<id>@<DEFINE>.json`): just the top-level keys that differ, replaced wholesale
- * when applied.
+ * So only the campaign's default difficulty ships whole (`scenarios/<campaignDir>/<id>.json`); every other
+ * one ships as an *overlay* (`scenarios/<campaignDir>/<id>@<DEFINE>.json`): just the top-level keys that
+ * differ, replaced wholesale when applied.
+ *
+ * Snapshots are nested under `<campaignDir>` (a campaign's own directory name, e.g. `Dead_Water`; see
+ * `CampaignInfo.assetDir`) rather than sitting flat under `scenarios/`, because a bare `[scenario] id=` is
+ * only unique *within* its own campaign (Dead Water and Under the Burning Suns both ship a `13_Epilogue`) --
+ * a flat namespace let one campaign's build silently overwrite another's (found 2026-09-27, a real bug: one
+ * campaign's `13_Epilogue` was simply missing, replaced by the other's at build time).
  *
  * A few campaigns (Under the Burning Suns) also change a handful of unit types per difficulty. Those tables
  * are large records keyed by id, so for them the overlay carries only the entries that differ
@@ -86,7 +92,12 @@ function diffTable(a: Record<string, unknown> = {}, b: Record<string, unknown> =
   return out;
 }
 
-/** The URL of a scenario's snapshot for a difficulty: the whole file for the default, an overlay file otherwise. */
-export function scenarioFileName(scenarioId: string, difficulty: string | undefined, defaultDifficulty: string | undefined): string {
-  return !difficulty || difficulty === defaultDifficulty ? `${scenarioId}.json` : `${scenarioId}@${difficulty}.json`;
+/**
+ * The URL of a scenario's snapshot for a difficulty, under its campaign's own directory (`campaignDir`,
+ * e.g. `Dead_Water`; see `CampaignInfo.assetDir`): the whole file for the default difficulty, an overlay
+ * file otherwise.
+ */
+export function scenarioFileName(campaignDir: string, scenarioId: string, difficulty: string | undefined, defaultDifficulty: string | undefined): string {
+  const base = !difficulty || difficulty === defaultDifficulty ? `${scenarioId}.json` : `${scenarioId}@${difficulty}.json`;
+  return `${campaignDir}/${base}`;
 }

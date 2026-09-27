@@ -16,7 +16,7 @@ import { parseConfig, type GameBoardSnapshot } from '@wesnothweb2/engine';
 import { GameSession } from '../src/gameSession.js';
 import { fromWesnothSave } from '../src/save/wesnothSave.js';
 const [savePath, statePath] = process.argv.slice(2);
-const snapshot = JSON.parse(fs.readFileSync('apps/web/public/scenarios/01_Invasion.json', 'utf8')) as GameBoardSnapshot;
+const snapshot = JSON.parse(fs.readFileSync('apps/web/public/scenarios/Dead_Water/01_Invasion.json', 'utf8')) as GameBoardSnapshot;
 const { save } = fromWesnothSave(parseConfig(gunzipSync(fs.readFileSync(savePath!)).toString('utf8')));
 const s = GameSession.fromSaveData(snapshot, save);
 const real = s.describeState().split('\n');

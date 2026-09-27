@@ -54,13 +54,13 @@ export async function downloadSave(name: string, campaigns: readonly CampaignInf
   const campaignId = found.meta.campaignId ?? found.data.campaignId;
   const campaign = campaigns.find((c) => c.id === campaignId) ?? null;
   const wesnoth = wesnothCampaignInfo(campaign);
-  if (!wesnoth) throw new Error('this campaign has no Wesnoth counterpart, so its saves cannot be exported');
+  if (!wesnoth || !campaign) throw new Error('this campaign has no Wesnoth counterpart, so its saves cannot be exported');
   const scenarioId = found.data.scenarioId ?? found.meta.scenarioId;
   const difficulty = found.data.difficulty ?? defaultDifficulty(campaign);
   const snapshot =
     current && current.scenario.id === scenarioId && current.difficulty === difficulty
       ? current
-      : await fetchScenarioSnapshot(scenarioId, difficulty, defaultDifficulty(campaign));
+      : await fetchScenarioSnapshot(scenarioId, campaign.assetDir, difficulty, defaultDifficulty(campaign));
   const gz = await gzipText(writeWml(toWesnothSave(found.data, snapshot, wesnoth)));
   downloadBlob(gz, downloadFileName(name));
   return downloadFileName(name);

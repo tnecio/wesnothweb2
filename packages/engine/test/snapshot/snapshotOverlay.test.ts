@@ -36,10 +36,15 @@ describe('snapshot overlays', () => {
     expect(() => diffSnapshots(snap(), snap({ terrainFlags: { x: 1 } }))).toThrow(/terrainFlags/);
   });
 
-  it('names the file for a difficulty', () => {
-    expect(scenarioFileName('01_Invasion', 'NORMAL', 'NORMAL')).toBe('01_Invasion.json');
-    expect(scenarioFileName('01_Invasion', undefined, 'NORMAL')).toBe('01_Invasion.json');
-    expect(scenarioFileName('01_Invasion', 'HARD', 'NORMAL')).toBe('01_Invasion@HARD.json');
-    expect(scenarioFileName('synth_combat_01', undefined, undefined)).toBe('synth_combat_01.json');
+  it('names the file for a difficulty, under its campaign directory', () => {
+    expect(scenarioFileName('Dead_Water', '01_Invasion', 'NORMAL', 'NORMAL')).toBe('Dead_Water/01_Invasion.json');
+    expect(scenarioFileName('Dead_Water', '01_Invasion', undefined, 'NORMAL')).toBe('Dead_Water/01_Invasion.json');
+    expect(scenarioFileName('Dead_Water', '01_Invasion', 'HARD', 'NORMAL')).toBe('Dead_Water/01_Invasion@HARD.json');
+    expect(scenarioFileName('combat', 'synth_combat_01', undefined, undefined)).toBe('combat/synth_combat_01.json');
+  });
+
+  it('disambiguates a scenario id two campaigns both use (Dead Water and Under the Burning Suns both ship 13_Epilogue)', () => {
+    expect(scenarioFileName('Dead_Water', '13_Epilogue', undefined, 'NORMAL')).toBe('Dead_Water/13_Epilogue.json');
+    expect(scenarioFileName('Under_the_Burning_Suns', '13_Epilogue', undefined, 'NORMAL')).toBe('Under_the_Burning_Suns/13_Epilogue.json');
   });
 });

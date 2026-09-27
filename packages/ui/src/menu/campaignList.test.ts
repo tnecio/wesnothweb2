@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CampaignInfo } from '../save/campaign.js';
 import { campaignStart, dateBefore, matchesSearch, nextSort, parseIrdyaDate, searchWords, sortCampaigns } from './campaignList.js';
 
-const c = (id: string, extra: Partial<CampaignInfo> = {}): CampaignInfo => ({ id, name: id, ...extra });
+const c = (id: string, extra: Partial<CampaignInfo> = {}): CampaignInfo => ({ id, assetDir: id, name: id, ...extra });
 const ids = (list: CampaignInfo[]): string[] => list.map((x) => x.id);
 
 describe('Irdya dates', () => {

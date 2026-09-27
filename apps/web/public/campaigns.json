@@ -113,7 +113,8 @@
           },
           "image": "units/merfolk/triton.png~RC(magenta>red)"
         }
-      ]
+      ],
+      "assetDir": "Dead_Water"
     },
     {
       "id": "two_brothers",
@@ -193,7 +194,8 @@
           },
           "image": "units/human-loyalists/grand-knight/grand-knight.png~RC(magenta>red)"
         }
-      ]
+      ],
+      "assetDir": "Two_Brothers"
     },
     {
       "id": "liberty",
@@ -288,7 +290,8 @@
           },
           "image": "units/human-outlaws/fugitive.png~RC(magenta>red)"
         }
-      ]
+      ],
+      "assetDir": "Liberty"
     },
     {
       "id": "under_the_burning_suns",
@@ -407,77 +410,88 @@
           },
           "image": "data/campaigns/Under_the_Burning_Suns/images/units/quenoth/champion.png~RC(magenta>red)"
         }
-      ]
+      ],
+      "assetDir": "Under_the_Burning_Suns"
     },
     {
       "id": "synthetic_combat",
       "name": "[Debug] Combat",
       "description": "Two adjacent leaders on a tiny grassland map -- for fast combat-math debugging, no setup turns needed.",
       "firstScenario": "synth_combat_01",
-      "debug": true
+      "debug": true,
+      "assetDir": "combat"
     },
     {
       "id": "synthetic_economy",
       "name": "[Debug] Economy & Recruit",
       "description": "A leader on a keep with a full castle ring, gold, and a short recruit list -- for fast economy/recruit debugging.",
       "firstScenario": "synth_economy_01",
-      "debug": true
+      "debug": true,
+      "assetDir": "economy"
     },
     {
       "id": "synthetic_progression",
       "name": "[Debug] Scenario Progression",
       "description": "Two tiny scenarios chained by next_scenario=, with a real gold/recall carryover setup -- for fast progression debugging.",
       "firstScenario": "synth_progression_01",
-      "debug": true
+      "debug": true,
+      "assetDir": "progression"
     },
     {
       "id": "synthetic_abilities",
       "name": "[Debug] Abilities & Specials",
       "description": "15 real mainline units, each demonstrating one weapon special or ability (poison, drains, berserk, firststrike, marksman, magical, backstab, charge, swarm, plague, heals, regenerate, skirmisher, leadership, illuminates) -- for fast specials/abilities debugging.",
       "firstScenario": "synth_abilities_01",
-      "debug": true
+      "debug": true,
+      "assetDir": "abilities"
     },
     {
       "id": "synthetic_advancement",
       "name": "[Debug] Unit Advancement",
       "description": "Two real units one combat-XP gain from leveling up -- one with a single real advances_to= option (advances immediately), one with three (opens the real advancement-choice dialog) -- for fast advancement debugging.",
       "firstScenario": "synth_advancement_01",
-      "debug": true
+      "debug": true,
+      "assetDir": "advancement"
     },
     {
       "id": "synthetic_fog",
       "name": "[Debug] Fog of War",
       "description": "Two leaders on opposite corners of an empty board, each with fog=yes/shroud=yes, and two unexplored villages in the middle -- for fast shroud/fog debugging, no story setup needed.",
       "firstScenario": "synth_fog_01",
-      "debug": true
+      "debug": true,
+      "assetDir": "fog"
     },
     {
       "id": "synthetic_dialogue",
       "name": "[Debug] Dialogue & Choices",
       "description": "A blocking [message], a [move_unit_fake] flight, an [option] prompt that branches the scenario, a [text_input] and a [foreach] -- for fast Phase 17 event/dialogue debugging.",
       "firstScenario": "synth_dialogue_01",
-      "debug": true
+      "debug": true,
+      "assetDir": "dialogue"
     },
     {
       "id": "synthetic_animation",
       "name": "[Debug] Animation",
       "description": "An AI side that recruits and marches, a scripted spawn+move cutscene, a long Horseman ride and a fake unit -- each one click from a cold load, for debugging movement/appearance animation glitches.",
       "firstScenario": "synth_animation_01",
-      "debug": true
+      "debug": true,
+      "assetDir": "animation"
     },
     {
       "id": "synthetic_audio",
       "name": "[Debug] Audio",
       "description": "A wide map with two placed sound sources and one heard everywhere, a two-track music playlist, and a turn 2 that changes the volumes, removes a source, plays a sound and switches the music -- for debugging Phase 19 audio.",
       "firstScenario": "synth_audio_01",
-      "debug": true
+      "debug": true,
+      "assetDir": "audio"
     },
     {
       "id": "synthetic_keyboard",
       "name": "[Debug] Keyboard Play",
       "description": "A story, an objectives dialog, a choice, a fight, an advancement and a victory, all playable with the keyboard alone -- for the keyboard-only milestone.",
       "firstScenario": "synth_keyboard_01",
-      "debug": true
+      "debug": true,
+      "assetDir": "keyboard"
     }
   ]
 }

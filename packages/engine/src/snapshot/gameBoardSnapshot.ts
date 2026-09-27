@@ -272,6 +272,16 @@ export interface GameBoardSnapshot {
    * `#ifdef <difficulty>` in the scenario's WML with it. Absent for the debug scenarios, which have none.
    */
   difficulty?: string;
+  /**
+   * The campaign directory this scenario belongs to (`CampaignInfo.assetDir`: a real campaign's own
+   * directory name under `wesnoth/data/campaigns/`, or a debug one's under `synthetic-campaigns/`). A bare
+   * `[scenario] id=` is only unique *within* its own campaign -- Dead Water and Under the Burning Suns both
+   * ship a `13_Epilogue` -- so anything else keyed only by `scenario.id` (this snapshot's own file path,
+   * the image atlas bundle at `/atlases/<assetDir>/<id>/terrain.json`) needs this too, not just the id
+   * (found 2026-09-27, a real bug: the terrain atlas was keyed by id alone, so one campaign's board could
+   * silently render with the other's terrain bundle).
+   */
+  assetDir?: string;
   /** Every textdomain a translatable string in this snapshot belongs to: the catalogues to load for it. */
   textdomains?: string[];
   /** The scenario's `[story][part]` blocks (real narrative text + background art, if any), meant to be shown as a click-through sequence before interactive play begins. Empty if the scenario has no `[story]`. */

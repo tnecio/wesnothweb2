@@ -222,7 +222,7 @@ describe('resolveStory', () => {
 
   it("resolves Dead Water 1's real opening: five map parts plus the journey part with its battle markers", () => {
     const snapshot = JSON.parse(
-      readFileSync(fileURLToPath(new URL('../../../../apps/web/public/scenarios/01_Invasion.json', import.meta.url)), 'utf8'),
+      readFileSync(fileURLToPath(new URL('../../../../apps/web/public/scenarios/Dead_Water/01_Invasion.json', import.meta.url)), 'utf8'),
     ) as { scenarioConfigJson: WmlConfigJson };
     const parts = resolveStory(WmlConfig.fromJSON(snapshot.scenarioConfigJson), 'Invasion!', makeCtx());
     expect(parts).toHaveLength(6);

@@ -17,8 +17,10 @@ import { GameSession, type SaveGameData } from './gameSession.js';
 import { fromWesnothSave } from './save/wesnothSave.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+/** This file's two fixtures' own campaign directories (`CampaignInfo.assetDir`). */
+const CAMPAIGN_DIR: Record<string, string> = { '01_Invasion': 'Dead_Water', synth_economy_01: 'economy', synth_combat_01: 'combat' };
 const load = (name: string): GameBoardSnapshot =>
-  JSON.parse(fs.readFileSync(path.join(repoRoot, `apps/web/public/scenarios/${name}.json`), 'utf8')) as GameBoardSnapshot;
+  JSON.parse(fs.readFileSync(path.join(repoRoot, `apps/web/public/scenarios/${CAMPAIGN_DIR[name]}/${name}.json`), 'utf8')) as GameBoardSnapshot;
 
 /** Dead Water 1 with both sides played by the AI, for `turns` turns. */
 async function aiVsAi(seed: number, turns: number): Promise<GameSession> {

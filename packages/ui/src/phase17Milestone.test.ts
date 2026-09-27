@@ -22,8 +22,14 @@ import { GameSession } from './gameSession.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
+/** This file's fixtures' own campaign directories (`CampaignInfo.assetDir`). */
+const CAMPAIGN_DIR: Record<string, string> = {
+  '03_Guarded_Castle': 'Two_Brothers',
+  '05_Tirigaz': 'Dead_Water',
+  '01_The_Morning_After': 'Under_the_Burning_Suns',
+};
 function loadScenario(id: string): GameBoardSnapshot {
-  return JSON.parse(fs.readFileSync(path.join(repoRoot, `apps/web/public/scenarios/${id}.json`), 'utf8')) as GameBoardSnapshot;
+  return JSON.parse(fs.readFileSync(path.join(repoRoot, `apps/web/public/scenarios/${CAMPAIGN_DIR[id]}/${id}.json`), 'utf8')) as GameBoardSnapshot;
 }
 
 /** What the player saw, in order: each line of dialogue and each cutscene beat. */

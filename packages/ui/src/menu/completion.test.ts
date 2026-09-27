@@ -4,7 +4,7 @@ import type { CampaignInfo } from '../save/campaign.js';
 import { campaignLaurel, difficultyLaurel, isCampaignCompleted, isCompletedAt, passesCompletionFilter, summarizeCompletion, withCompleted, type CompletionFilter } from './completion.js';
 
 const d = (define: string) => ({ define, label: TString.literal(define), description: TString.literal('') });
-const camp = (...defines: string[]): CampaignInfo => ({ id: 'c', name: 'C', difficulties: defines.map(d) });
+const camp = (...defines: string[]): CampaignInfo => ({ id: 'c', assetDir: 'c', name: 'C', difficulties: defines.map(d) });
 
 describe('completion record', () => {
   it('records difficulties per campaign without mutating', () => {
@@ -33,7 +33,7 @@ describe('the campaign list laurel (campaign_selection.cpp add_campaign_to_tree)
   it('is silver for a middle difficulty', () => expect(campaignLaurel(three, { c: ['NORMAL'] })).toBe('normal'));
   it('is gold for a campaign with a single difficulty', () => expect(campaignLaurel(camp('NORMAL'), { c: ['NORMAL'] })).toBe('hardest'));
   it('is silver for a campaign with no difficulties (nothing to be the hardest)', () => {
-    expect(campaignLaurel({ id: 'c', name: 'C' }, { c: [''] })).toBe('normal');
+    expect(campaignLaurel({ id: 'c', assetDir: 'c', name: 'C' }, { c: [''] })).toBe('normal');
   });
   it('treats the last listed difficulty as the hardest, whatever it is called (UtBS lists HARD after NIGHTMARE)', () => {
     const utbs = camp('EASY', 'NORMAL', 'NIGHTMARE', 'HARD');

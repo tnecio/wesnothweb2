@@ -49,13 +49,14 @@ export interface PickedImage {
 }
 
 /**
- * Fetches `/story/<scenarioId>.json`. Null when the scenario has no story
- * (404, or the dev server's HTML fallback page) or the request fails -- the
- * story still resolves from the snapshot, just without images.
+ * Fetches `/story/<campaignDir>/<scenarioId>.json` (`campaignDir` is a `CampaignInfo.assetDir` -- required,
+ * not inferred from `scenarioId`, since a bare `[scenario] id=` is only unique within its own campaign).
+ * Null when the scenario has no story (404, or the dev server's HTML fallback page) or the request fails --
+ * the story still resolves from the snapshot, just without images.
  */
-export async function fetchStoryAssets(scenarioId: string): Promise<StoryAssets | null> {
+export async function fetchStoryAssets(scenarioId: string, campaignDir: string): Promise<StoryAssets | null> {
   try {
-    const res = await fetch(`/story/${scenarioId}.json`);
+    const res = await fetch(`/story/${campaignDir}/${scenarioId}.json`);
     if (!res.ok || !(res.headers.get('content-type') ?? '').includes('json')) return null;
     return (await res.json()) as StoryAssets;
   } catch {

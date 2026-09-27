@@ -1,22 +1,27 @@
 #!/usr/bin/env node
 /**
- * Rebuilds every checked-in scenario snapshot (`apps/web/public/scenarios/*.json`)
+ * Rebuilds every checked-in scenario snapshot (`apps/web/public/scenarios/<campaignDir>/*.json`)
  * by re-running `build-scenario-snapshot.mjs` on the `.cfg` each one came from.
  *
  * Needed whenever the WML pipeline's output shape changes (Phase 20 made
  * translatable strings survive parsing, so every snapshot picked up
- * `{"t": [...]}` markers). A snapshot is named after its `[scenario] id=`,
- * not its file, so each cfg is found by scanning the real campaigns and the
- * synthetic ones for that id. `13_Epilogue` exists in two campaigns; the
- * checked-in one is Dead Water's.
+ * `{"t": [...]}` markers).
+ *
+ * Snapshots are filed under their own campaign's directory (`<campaignDirName>/<id>.json`), not flat under
+ * `scenarios/`, because a bare `[scenario] id=` is only unique *within* one campaign -- Dead Water and
+ * Under the Burning Suns both ship a `13_Epilogue`. A flat namespace (this script's own shape before
+ * 2026-09-27) let one campaign's rebuild silently overwrite another's: a hardcoded `PREFER` map picked
+ * Dead Water's `13_Epilogue` and dropped Under the Burning Suns' every time this ran, without so much as a
+ * warning. So a scenario id here is always paired with the campaign directory it belongs to, and a bare id
+ * given on the command line rebuilds it for *every* campaign that has one, not just the first found.
  *
  * Phase 21: a campaign's difficulty is resolved by the preprocessor, so each difficulty is its own build.
  * The campaign's default difficulty (`default=yes`, from `campaigns.json`) is written whole as
- * `<id>.json`; every other one is built to a scratch file and written as `<id>@<DEFINE>.json`, holding
- * only the top-level keys that differ (`snapshotOverlay.ts` refuses a difference outside its allow-list).
- * Debug scenarios have no difficulties and are built once.
+ * `<campaignDir>/<id>.json`; every other one is built to a scratch file and written as
+ * `<campaignDir>/<id>@<DEFINE>.json`, holding only the top-level keys that differ (`snapshotOverlay.ts`
+ * refuses a difference outside its allow-list). Debug scenarios have no difficulties and are built once.
  *
- * Run: npx tsx apps/web/scripts/rebuild-snapshots.mjs [id ...]   (no ids = all)
+ * Run: npx tsx apps/web/scripts/rebuild-snapshots.mjs [id ...]   (no ids = every scenario currently built)
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -30,8 +35,6 @@ const outDir = path.join(repoRoot, 'apps/web/public/scenarios');
 const campaignsRoot = path.join(repoRoot, 'wesnoth/data/campaigns');
 const syntheticRoot = path.join(repoRoot, 'synthetic-campaigns');
 
-const PREFER = { '13_Epilogue': 'Dead_Water' };
-
 function cfgFilesUnder(dir) {
   const out = [];
   if (!fs.existsSync(dir)) return out;
@@ -43,42 +46,65 @@ function cfgFilesUnder(dir) {
   return out;
 }
 
-/** scenario id -> list of cfg paths (relative to the argument roots build-scenario-snapshot.mjs takes). */
-function indexScenarios() {
-  const byId = new Map();
-  const add = (id, arg) => byId.set(id, [...(byId.get(id) ?? []), arg]);
+/**
+ * Every scenario found in the source tree: `{ id, campaignDirName, arg }`. `campaignDirName` matches what
+ * `build-scenario-snapshot.mjs` computes (and what `CampaignInfo.assetDir` names) -- the plain directory
+ * name under `wesnoth/data/campaigns/` or `synthetic-campaigns/`. `arg` is what to pass that script.
+ */
+function findScenarios() {
+  const found = [];
   for (const camp of fs.readdirSync(campaignsRoot)) {
     for (const f of cfgFilesUnder(path.join(campaignsRoot, camp, 'scenarios'))) {
       const m = /^\s*id\s*=\s*"?([\w-]+)"?\s*$/m.exec(fs.readFileSync(f, 'utf8'));
-      if (m) add(m[1], path.relative(campaignsRoot, f));
+      if (m) found.push({ id: m[1], campaignDirName: camp, arg: path.relative(campaignsRoot, f) });
     }
   }
   for (const camp of fs.readdirSync(syntheticRoot)) {
     for (const f of cfgFilesUnder(path.join(syntheticRoot, camp, 'scenarios'))) {
       const m = /^\s*id\s*=\s*"?([\w-]+)"?\s*$/m.exec(fs.readFileSync(f, 'utf8'));
-      if (m) add(m[1], path.relative(repoRoot, f));
+      if (m) found.push({ id: m[1], campaignDirName: camp, arg: path.relative(repoRoot, f) });
     }
   }
-  return byId;
+  return found;
 }
 
-const byId = indexScenarios();
-const wanted = process.argv.slice(2);
-const ids = (wanted.length ? wanted : fs.readdirSync(outDir).filter((f) => f.endsWith('.json') && !f.includes('@')).map((f) => f.slice(0, -5))).sort();
+/** Every `<campaignDir>/<id>.json` (not an overlay) currently built, as `{ id, campaignDirName }`. */
+function builtScenarios() {
+  const out = [];
+  if (!fs.existsSync(outDir)) return out;
+  for (const campaignDirName of fs.readdirSync(outDir)) {
+    const dir = path.join(outDir, campaignDirName);
+    if (!fs.statSync(dir).isDirectory()) continue;
+    for (const f of fs.readdirSync(dir)) {
+      if (f.endsWith('.json') && !f.includes('@')) out.push({ id: f.slice(0, -5), campaignDirName });
+    }
+  }
+  return out;
+}
 
-const jobs = ids.map((id) => {
-  const candidates = byId.get(id) ?? [];
-  const pick = PREFER[id] ? candidates.find((c) => c.startsWith(PREFER[id] + path.sep)) : candidates[0];
-  if (!pick) throw new Error(`no scenario cfg found for id ${id}`);
-  return { id, arg: pick };
-});
+const allScenarios = findScenarios();
+const wantedIds = process.argv.slice(2);
+
+/** The jobs to run: every scenario matching a requested id (or, with none given, every scenario already built). */
+const jobs = (
+  wantedIds.length > 0
+    ? wantedIds.flatMap((id) => {
+        const matches = allScenarios.filter((s) => s.id === id);
+        if (matches.length === 0) throw new Error(`no scenario cfg found for id ${id}`);
+        return matches;
+      })
+    : builtScenarios().map(({ id, campaignDirName }) => {
+        const match = allScenarios.find((s) => s.id === id && s.campaignDirName === campaignDirName);
+        if (!match) throw new Error(`built scenario ${campaignDirName}/${id}.json has no source cfg any more`);
+        return match;
+      })
+).sort((a, b) => (a.campaignDirName === b.campaignDirName ? a.id.localeCompare(b.id) : a.campaignDirName.localeCompare(b.campaignDirName)));
 
 const manifest = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/campaigns.json'), 'utf8'));
 
-/** [defaultDefine, ...otherDefines] for the real campaign `arg` (a path under wesnoth/data/campaigns) belongs to; [] for a debug scenario. */
-function difficultiesFor(arg) {
-  if (path.isAbsolute(arg) || arg.startsWith('synthetic-campaigns')) return [];
-  const entry = manifest.campaigns.find((c) => c.wesnothId === arg.split(path.sep)[0]);
+/** [defaultDefine, ...otherDefines] for the campaign directory `campaignDirName` belongs to; [] for a debug scenario. */
+function difficultiesFor(campaignDirName) {
+  const entry = manifest.campaigns.find((c) => c.assetDir === campaignDirName);
   const all = (entry?.difficulties ?? []).map((d) => d.define);
   if (all.length === 0) return [];
   const def = entry.difficulties.find((d) => d.default)?.define ?? all[0];
@@ -99,21 +125,22 @@ function build(arg, difficulty, out) {
 }
 
 async function run(job) {
-  const [def, ...others] = difficultiesFor(job.arg);
+  const [def, ...others] = difficultiesFor(job.campaignDirName);
   const base = await build(job.arg, def, undefined);
   if (base.code !== 0) return { ...job, ...base };
-  const baseFile = path.join(outDir, `${job.id}.json`);
+  const campaignOutDir = path.join(outDir, job.campaignDirName);
+  const baseFile = path.join(campaignOutDir, `${job.id}.json`);
   const wanted = new Set(others.map((d) => `${job.id}@${d}.json`));
-  for (const f of fs.readdirSync(outDir)) if (f.startsWith(`${job.id}@`) && !wanted.has(f)) fs.rmSync(path.join(outDir, f));
+  for (const f of fs.readdirSync(campaignOutDir)) if (f.startsWith(`${job.id}@`) && !wanted.has(f)) fs.rmSync(path.join(campaignOutDir, f));
   if (others.length === 0) return { ...job, ...base };
   const baseSnap = JSON.parse(fs.readFileSync(baseFile, 'utf8'));
   for (const difficulty of others) {
-    const scratch = path.join(os.tmpdir(), `${job.id}@${difficulty}.${process.pid}.json`);
+    const scratch = path.join(os.tmpdir(), `${job.campaignDirName}-${job.id}@${difficulty}.${process.pid}.json`);
     const r = await build(job.arg, difficulty, scratch);
     if (r.code !== 0) return { ...job, ...r };
     try {
       const overlay = diffSnapshots(baseSnap, JSON.parse(fs.readFileSync(scratch, 'utf8')));
-      fs.writeFileSync(path.join(outDir, `${job.id}@${difficulty}.json`), JSON.stringify(overlay));
+      fs.writeFileSync(path.join(campaignOutDir, `${job.id}@${difficulty}.json`), JSON.stringify(overlay));
     } catch (e) {
       return { ...job, code: 1, err: `${difficulty}: ${e instanceof Error ? e.message : e}` };
     } finally {
@@ -130,10 +157,10 @@ async function worker() {
   while (next < jobs.length) {
     const job = jobs[next++];
     const r = await run(job);
-    if (r.code === 0) console.log(`ok   ${r.id}`);
+    if (r.code === 0) console.log(`ok   ${job.campaignDirName}/${r.id}`);
     else {
       failed++;
-      console.error(`FAIL ${r.id} (${r.arg})\n${r.err}`);
+      console.error(`FAIL ${job.campaignDirName}/${r.id} (${r.arg})\n${r.err}`);
     }
   }
 }

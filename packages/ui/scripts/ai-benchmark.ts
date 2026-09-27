@@ -5,8 +5,10 @@
  * Usage:
  *   npx tsx packages/ui/scripts/ai-benchmark.ts --scenario synth_combat_02 --games 10 --seed 1 --max-turns 40
  *
- * `--scenario` is a snapshot id under `apps/web/public/scenarios/<id>.json`
- * (build one first with `npx tsx apps/web/scripts/build-scenario-snapshot.mjs
+ * `--scenario` is a snapshot id under `apps/web/public/scenarios/<campaignDir>/<id>.json` (found by
+ * searching every campaign directory; `--campaign <dir>` disambiguates if the id exists in more than one --
+ * a bare scenario id is only unique within its own campaign, e.g. Dead Water and Under the Burning Suns
+ * both ship a `13_Epilogue`; build one first with `npx tsx apps/web/scripts/build-scenario-snapshot.mjs
  * <path-to.cfg>` -- see `synthetic-campaigns/combat/scenarios/
  * 02_combat_ai.cfg` for a ready-made both-sides-AI scenario). `--games N`
  * plays N independent games, seeded `--seed, --seed+1, ..., --seed+N-1`.
@@ -37,6 +39,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 
 interface Args {
   scenario: string;
+  /** Disambiguates `scenario` when its id exists under more than one campaign directory. */
+  campaign?: string;
   games: number;
   seed: number;
   maxTurns: number;
@@ -55,6 +59,9 @@ export function parseArgs(argv: readonly string[]): Args {
     switch (arg) {
       case '--scenario':
         args.scenario = next();
+        break;
+      case '--campaign':
+        args.campaign = next();
         break;
       case '--games':
         args.games = Number(next());
@@ -75,14 +82,25 @@ export function parseArgs(argv: readonly string[]): Args {
   return args;
 }
 
-export function loadSnapshot(scenarioId: string): GameBoardSnapshot {
-  const file = path.join(repoRoot, 'apps/web/public/scenarios', `${scenarioId}.json`);
-  if (!fs.existsSync(file)) {
+/**
+ * `scenarioId`'s snapshot, found under `campaignDir` if given, else by searching every campaign directory
+ * (erroring if more than one has it -- a bare scenario id is only unique within its own campaign, e.g. Dead
+ * Water and Under the Burning Suns both ship a `13_Epilogue`).
+ */
+export function loadSnapshot(scenarioId: string, campaignDir?: string): GameBoardSnapshot {
+  const scenariosDir = path.join(repoRoot, 'apps/web/public/scenarios');
+  const candidates = campaignDir
+    ? [campaignDir]
+    : fs.readdirSync(scenariosDir).filter((d) => fs.existsSync(path.join(scenariosDir, d, `${scenarioId}.json`)));
+  if (candidates.length === 0) {
     throw new Error(
-      `No snapshot at ${file}. Build one first: npx tsx apps/web/scripts/build-scenario-snapshot.mjs <path-to-scenario.cfg>`,
+      `No snapshot for "${scenarioId}" under ${scenariosDir}. Build one first: npx tsx apps/web/scripts/build-scenario-snapshot.mjs <path-to-scenario.cfg>`,
     );
   }
-  return JSON.parse(fs.readFileSync(file, 'utf8')) as GameBoardSnapshot;
+  if (candidates.length > 1) {
+    throw new Error(`"${scenarioId}" exists under more than one campaign (${candidates.join(', ')}); pass --campaign to pick one.`);
+  }
+  return JSON.parse(fs.readFileSync(path.join(scenariosDir, candidates[0]!, `${scenarioId}.json`), 'utf8')) as GameBoardSnapshot;
 }
 
 function isAiControlled(session: GameSession, side: number): boolean {
@@ -138,7 +156,7 @@ async function main(): Promise<void> {
   if (args.lua) {
     console.warn('--lua requested, but Lua candidate actions do not exist until Phase 29 S7 -- ignoring.');
   }
-  const snapshot = loadSnapshot(args.scenario);
+  const snapshot = loadSnapshot(args.scenario, args.campaign);
 
   const results: GameResult[] = [];
   for (let i = 0; i < args.games; i++) {

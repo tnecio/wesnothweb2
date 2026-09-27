@@ -202,13 +202,22 @@ function readCampaignDefine(dir) {
 }
 const campaignDefine = isRealCampaign ? readCampaignDefine(campaignDir) : null;
 const campaignName = isRealCampaign ? path.basename(campaignDir) : null;
+/**
+ * The directory this scenario's snapshot is filed under (Phase 21, fixing a real bug: a bare
+ * `[scenario] id=` is only unique within its own campaign -- Dead Water and Under the Burning Suns both
+ * ship a `13_Epilogue`, so a flat `scenarios/<id>.json` namespace let one campaign's build silently
+ * overwrite another's). `campaignName` above stays real-campaign-only (it also roots image search paths);
+ * this is the plain basename of whichever directory the scenario file lives under, real or synthetic --
+ * matching `CampaignInfo.assetDir`, which `build-campaigns.mjs` computes the same way.
+ */
+const campaignDirName = path.basename(campaignDir);
 
 /**
  * The difficulty define this build is for (Phase 21): `argv[3]` (`EASY`, `HARD`, ...), else the campaign's
  * `default=yes` difficulty from `public/campaigns.json` (built by `build-campaigns.mjs`), else `NORMAL`.
  * Difficulty is resolved by the preprocessor (`#ifdef EASY`), so each one is its own build; see
  * `rebuild-snapshots.mjs`, which turns the non-default builds into small overlays.
- * `argv[4]`, when given, is the output file instead of `public/scenarios/<id>.json`.
+ * `argv[4]`, when given, is the output file instead of `public/scenarios/<campaignDirName>/<id>.json`.
  */
 function defaultDifficulty() {
   const manifest = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/campaigns.json'), 'utf8'));
@@ -591,6 +600,7 @@ const abilityConfigsJson = Object.fromEntries([...abilityRegistry].map(([id, ent
 const snapshot = {
   generatedBy: 'apps/web/scripts/build-scenario-snapshot.mjs (see file header)',
   ...(difficulty ? { difficulty } : {}),
+  assetDir: campaignDirName,
   scenario: { id: scenario.getString('id'), name: scenario.getString('name') },
   map: {
     width: board.map.w(),
@@ -632,7 +642,7 @@ function collectTextdomains(node, out) {
 }
 snapshot.textdomains = [...collectTextdomains(snapshot, new Set())].sort();
 
-const outFile = outArg ? path.resolve(outArg) : path.join(repoRoot, 'apps/web/public/scenarios', `${snapshot.scenario.id}.json`);
+const outFile = outArg ? path.resolve(outArg) : path.join(repoRoot, 'apps/web/public/scenarios', campaignDirName, `${snapshot.scenario.id}.json`);
 fs.mkdirSync(path.dirname(outFile), { recursive: true });
 fs.writeFileSync(outFile, JSON.stringify(snapshot));
 console.log(

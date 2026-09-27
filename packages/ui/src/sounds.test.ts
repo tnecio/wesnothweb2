@@ -16,7 +16,7 @@ import { fromWesnothSave, toWesnothSave } from './save/wesnothSave.js';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
 function dw1(): GameBoardSnapshot {
-  return JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/01_Invasion.json'), 'utf8')) as GameBoardSnapshot;
+  return JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/Dead_Water/01_Invasion.json'), 'utf8')) as GameBoardSnapshot;
 }
 
 function describeSounds(heard: readonly SoundRequest[]): string[] {

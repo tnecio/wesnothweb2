@@ -67,10 +67,19 @@ function visit(node, where) {
   }
 }
 
+// `scenarios/` and `story/` are nested one level under each campaign's own directory
+// (`<campaignDir>/<scenarioId>.json`, `<campaignDir>/<scenarioId>@<DIFFICULTY>.json`; a bare scenario id is
+// only unique within its own campaign -- Dead Water and Under the Burning Suns both ship a `13_Epilogue` --
+// so both campaigns' files are visited here, not just one). Difficulty overlays are visited too, same as
+// before: a difficulty can carry its own translatable strings (a unit only present on Hard, say).
 for (const dir of ['scenarios', 'story']) {
   const full = path.join(repoRoot, 'apps/web/public', dir);
-  for (const f of fs.readdirSync(full).filter((x) => x.endsWith('.json')).sort()) {
-    visit(JSON.parse(fs.readFileSync(path.join(full, f), 'utf8')), `${dir}/${f}`);
+  for (const campaignDir of fs.readdirSync(full).sort()) {
+    const campaignFull = path.join(full, campaignDir);
+    if (!fs.statSync(campaignFull).isDirectory()) continue;
+    for (const f of fs.readdirSync(campaignFull).filter((x) => x.endsWith('.json')).sort()) {
+      visit(JSON.parse(fs.readFileSync(path.join(campaignFull, f), 'utf8')), `${dir}/${campaignDir}/${f}`);
+    }
   }
 }
 

@@ -167,11 +167,19 @@ for (const campaign of ['Dead_Water', 'Two_Brothers', 'Liberty', 'Under_the_Burn
 // Run
 // ---------------------------------------------------------------------------
 
+// Snapshots are nested under each campaign's own directory (`<campaignDir>/<scenarioId>.json`) -- a bare
+// scenario id is only unique within its own campaign (Dead Water and Under the Burning Suns both ship a
+// `13_Epilogue`), so this walks every campaign, not just whichever happened to be found first. Difficulty
+// overlays (`@<DEFINE>.json`) carry only the WML that differs from the base and are skipped: the base
+// snapshot's own `scenarioConfigJson` is already a full survey of that scenario's action tags.
 const scenarioDir = path.join(repoRoot, 'apps/web/public/scenarios');
-const scenarioFiles = fs.readdirSync(scenarioDir).filter((f) => f.endsWith('.json')).sort();
-for (const file of scenarioFiles) {
-  const snap = JSON.parse(fs.readFileSync(path.join(scenarioDir, file), 'utf8')) as { scenarioConfigJson: WmlConfigJson };
-  walkScenario(WmlConfig.fromJSON(snap.scenarioConfigJson), file.replace(/\.json$/, ''));
+for (const campaignDir of fs.readdirSync(scenarioDir).sort()) {
+  const campaignFull = path.join(scenarioDir, campaignDir);
+  if (!fs.statSync(campaignFull).isDirectory()) continue;
+  for (const file of fs.readdirSync(campaignFull).filter((f) => f.endsWith('.json') && !f.includes('@')).sort()) {
+    const snap = JSON.parse(fs.readFileSync(path.join(campaignFull, file), 'utf8')) as { scenarioConfigJson: WmlConfigJson };
+    walkScenario(WmlConfig.fromJSON(snap.scenarioConfigJson), `${campaignDir}/${file.replace(/\.json$/, '')}`);
+  }
 }
 
 /** Not actions: resolved while an action body is iterated (`runActionFlow`, as upstream's vconfig iterator). */

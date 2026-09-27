@@ -11,6 +11,16 @@
  *   - `difficulties`: `[{define, label, description, image, default?, autoMarkup?}]` from `[difficulty]`.
  * Synthetic debug campaigns keep their plain English text and are marked `debug: true`.
  *
+ * Every campaign (real or debug) also gets `assetDir`: the directory `build-scenario-snapshot.mjs` and
+ * `build-story-assets.mjs` file its scenario/story JSON under (`scenarios/<assetDir>/<scenarioId>.json`),
+ * so the runtime can fetch the right file. For a real campaign this is `wesnothId` (its own directory name
+ * under `wesnoth/data/campaigns/`); a bare `[scenario] id=` is only unique *within* one campaign (Dead
+ * Water and Under the Burning Suns both ship a `13_Epilogue`), so scenario JSON is nested per campaign
+ * rather than sitting flat under `scenarios/` -- a flat namespace let one campaign's build silently
+ * overwrite another's (found 2026-09-27). For a debug campaign, `assetDir` is found by scanning
+ * `synthetic-campaigns/*` for the folder whose own scenarios include `firstScenario`, rather than assumed
+ * from its id (`synthetic_combat` -> `combat` holds today but is not a guarantee).
+ *
  * `credits.json` is what upstream's `about::set_about` builds: the two core credit groups
  * (`core/about.cfg`, `core/about_i18n.cfg`) and each shipped campaign's `[about]` sections,
  * with their translatable titles. Sections without entries are dropped, as upstream does.
@@ -48,6 +58,28 @@ function textOf(cfg, key) {
   return t.translatable ? t.toJSON() : t.baseStr();
 }
 
+/** The first `id=` in a WML file's text -- the same convention `rebuild-snapshots.mjs` indexes scenarios by. */
+function firstId(cfgFile) {
+  const m = /^\s*id\s*=\s*"?([\w-]+)"?\s*$/m.exec(fs.readFileSync(cfgFile, 'utf8'));
+  return m ? m[1] : null;
+}
+
+/**
+ * The `synthetic-campaigns/<name>/` directory whose own scenarios include `scenarioId` -- found by content,
+ * not assumed from the campaign's id, so a debug campaign named unlike its folder still resolves correctly.
+ */
+function findSyntheticAssetDir(scenarioId) {
+  const root = path.join(repoRoot, 'synthetic-campaigns');
+  for (const name of fs.readdirSync(root)) {
+    const scenariosDir = path.join(root, name, 'scenarios');
+    if (!fs.existsSync(scenariosDir)) continue;
+    for (const f of fs.readdirSync(scenariosDir)) {
+      if (f.endsWith('.cfg') && firstId(path.join(scenariosDir, f)) === scenarioId) return name;
+    }
+  }
+  return null;
+}
+
 // The title-screen pictures the credits fall back to (`[images] game_title_background` in game_config.cfg);
 // upstream picks one at random.
 const gameConfig = fs.readFileSync(path.join(dataRoot, 'game_config.cfg'), 'utf8');
@@ -76,9 +108,13 @@ for (const name of ['about.cfg', 'about_i18n.cfg']) {
 for (const campaign of manifest.campaigns) {
   if (!campaign.wesnothId || !campaign.define) {
     campaign.debug = true;
+    const dir = findSyntheticAssetDir(campaign.firstScenario);
+    if (!dir) throw new Error(`${campaign.id}: no synthetic-campaigns/*/scenarios/*.cfg declares firstScenario "${campaign.firstScenario}"`);
+    campaign.assetDir = dir;
     continue;
   }
   delete campaign.debug;
+  campaign.assetDir = campaign.wesnothId;
   const main = parseWmlFile(path.join(dataRoot, 'campaigns', campaign.wesnothId, '_main.cfg'), {
     dataRoot,
     // The [campaign] block does not depend on the difficulty; any one define lets the core macros load.

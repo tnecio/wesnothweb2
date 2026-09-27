@@ -5121,3 +5121,52 @@ as a Wesnoth `.gz`, upload, reload, cross-campaign load).
 
 Gates: engine 799, ui 352 (plus the known vitest `onTaskUpdate` timeout from the AI/replay tests), renderer 217,
 lua-bridge 38; 0 typecheck/svelte-check errors.
+
+## 2026-09-27: real bug -- scenario/story/atlas JSON was keyed only by scenario id, so campaigns sharing one clobbered each other's build
+
+Flagged by the user right after the Phase 21 report: "13_Epilogue: Dead Water and Under the Burning Suns
+both have one and the snapshot is named by scenario id, so UtBS's epilogue loads Dead Water's. I left it
+alone. Wtf? That is obviously a huge problem."
+
+- **The bug.** A bare `[scenario] id=` is only unique *within* its own campaign, not across all of them --
+  upstream's own convention (`13_Epilogue`, `01_The_Raid`-style numbering) reuses ids freely between
+  campaigns. Three build outputs were keyed by id alone, flat under a shared directory: scenario snapshots
+  (`public/scenarios/<id>.json`), story assets (`public/story/<id>.json`), and terrain image atlases
+  (`public/atlases/<id>/terrain.json`). Building or rebuilding one campaign after another silently
+  overwrote the first's file with the second's. `rebuild-snapshots.mjs` even had a hardcoded `PREFER =
+  { '13_Epilogue': 'Dead_Water' }` map that *institutionalised* the bug: it always kept Dead Water's and
+  discarded Under the Burning Suns' on every rebuild, with no warning. Checked: of the 53 scenario ids
+  across the four shipped campaigns, only `13_Epilogue` actually collides today -- but it is a structural
+  gap, not a one-off, and would recur silently the moment a future campaign reused any other id. The atlas
+  instance was worse than "missing": it meant one campaign's board could render with the *wrong* campaign's
+  terrain images, not just lose data.
+- **The fix.** Every campaign now has `assetDir` (`CampaignInfo.assetDir`, `build-campaigns.mjs`): its own
+  directory name (`wesnothId` for a real campaign; for a debug one, found by scanning
+  `synthetic-campaigns/*` for the folder whose scenarios actually include its `firstScenario`, not assumed
+  from its id). Scenario and story JSON now nest under it: `scenarios/<assetDir>/<id>.json`,
+  `story/<assetDir>/<id>.json` (and difficulty overlays: `scenarios/<assetDir>/<id>@<DEFINE>.json`).
+  `GameBoardSnapshot` itself carries `assetDir` (parallel to last phase's `difficulty`), so the terrain
+  atlas URL (`/atlases/<assetDir>/<id>/terrain.json`) needs no separate campaign lookup at render time.
+  `fetchScenarioSnapshot`/`fetchStoryAssets` take `campaignDir` as a required parameter; `PREFER` and every
+  id-only directory search (`build-story-assets.mjs`'s old `findCampaignDir`, `rebuild-snapshots.mjs`'s
+  by-id map) are gone -- a scenario is found by walking the real source tree instead of matched by name.
+  `rebuild-snapshots.mjs`/`build-image-atlases.mjs`'s "no ids given" default and a bare id given on the
+  command line now build/rebuild *every* campaign that scenario id belongs to, not just the first found.
+- **Verified the fix, not just the refactor:** rebuilt every scenario, story and atlas from scratch;
+  `Dead_Water/13_Epilogue.json` (333 unit types) and `Under_the_Burning_Suns/13_Epilogue.json` (425 unit
+  types, previously missing outright) are now both real, distinct builds, each with its own story assets
+  (previously only one of the two ever got a `story/<id>.json`) and its own terrain atlas (479 vs. 611
+  images -- previously one campaign's board would have silently used the other's terrain images). New
+  tests assert this directly: `scenarioFetch.test.ts` fetches the same id from two different
+  `campaignDir`s and checks they come back distinct, and checks every shipped campaign's `assetDir` is a
+  real, populated directory.
+- Fixed the same flat-by-id pattern in `i18n-coverage.mjs`, `audit-wml.ts` (both now walk every campaign
+  directory instead of one flat list) and three dev tools (`ai-benchmark.ts` now takes `--campaign` to
+  disambiguate; `export-replay.ts`/`compare-real-save.ts` point at `Dead_Water/01_Invasion.json`
+  explicitly). Every hardcoded test fixture path across both packages was updated to name its own campaign
+  directory (`Dead_Water`, `Liberty`, `Two_Brothers`, `Under_the_Burning_Suns`, or a debug campaign's own
+  folder), rather than guessed.
+
+Gates: engine 800, ui 355 (plus the known vitest `onTaskUpdate` timeout from the AI/replay tests), renderer
+217, lua-bridge 38; 0 typecheck/svelte-check errors. `apps/web/public/atlases` (gitignored) and
+`derived-images` rebuilt from scratch and inspected directly, not just left to the test suite.

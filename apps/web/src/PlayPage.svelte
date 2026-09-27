@@ -85,7 +85,10 @@
         if (fallback) console.warn(`[play] campaign ${campaignInfo.id} has no difficulty "${requested}"; using ${fallback}`);
         difficulty = fallback;
       }
-      const [data, assets] = await Promise.all([fetchScenarioSnapshot(scenarioId, difficulty, fallback), fetchStoryAssets(scenarioId)]);
+      const [data, assets] = await Promise.all([
+        fetchScenarioSnapshot(scenarioId, campaignInfo.assetDir, difficulty, fallback),
+        fetchStoryAssets(scenarioId, campaignInfo.assetDir),
+      ]);
       if (cancelled) return;
       snapshot = data;
       storyAssets = assets;

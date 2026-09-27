@@ -14,6 +14,16 @@ import type { WesnothCampaignInfo } from './wesnothSave.js';
 export interface CampaignInfo {
   /** This project's own id, e.g. `dead_water`. */
   id: string;
+  /**
+   * The directory this campaign's scenario and story JSON are filed under
+   * (`apps/web/public/scenarios/<assetDir>/<scenarioId>.json`, `public/story/<assetDir>/<scenarioId>.json`):
+   * `wesnothId` for a real campaign (its own directory under `wesnoth/data/campaigns/`), or the matching
+   * `synthetic-campaigns/` directory for a debug one. Every fetch of a scenario or its story assets needs
+   * this, because a bare `[scenario] id=` is only unique *within* its own campaign -- Dead Water and Under
+   * the Burning Suns both ship a `13_Epilogue` -- so the id alone cannot name the right file (a real bug,
+   * found 2026-09-27: one campaign's build was silently clobbering the other's).
+   */
+  assetDir: string;
   /** The English name: what a save file records, whatever language the menu is in. */
   name: string;
   description?: string;
