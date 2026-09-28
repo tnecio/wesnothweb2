@@ -23,7 +23,8 @@
  * packed losslessly into bundle images of at most 4096x4096 (RGBA PNG, no
  * gamma/colour-profile chunks). Output, gitignored:
  *
- *   public/atlases/<campaignDir>/<scenarioId>/terrain.json            manifest
+ *   public/atlases/_common/terrain.json                               terrain shared by >= 5 scenarios (Phase 28)
+ *   public/atlases/<campaignDir>/<scenarioId>/terrain.json            manifest (the scenario's other terrain)
  *   public/atlases/<campaignDir>/<scenarioId>/terrain-<n>.<hash>.png   content-hashed bundles
  *   public/atlases/units/<stem>.json                     manifest (stem: `unitBundleStem(typeId)`)
  *   public/atlases/units/<stem>-<n>.<hash>.png
@@ -48,6 +49,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
 import { layoutTerrain } from '../../../packages/renderer/src/terrain/terrainLayout.ts';
@@ -169,7 +171,64 @@ function encodeAtlas(atlas) {
       image.data.copy(png.data, (y + row) * atlas.width * 4 + x * 4, src, src + image.width * 4);
     }
   }
-  return PNG.sync.write(png, { colorType: 6, inputColorType: 6, bitDepth: 8 });
+  return encodePalettePng(atlas.width, atlas.height, png.data) ?? PNG.sync.write(png, { colorType: 6, inputColorType: 6, bitDepth: 8 });
+}
+
+/**
+ * Phase 28 S4: the image as an 8-bit palette PNG when it has at most 256 distinct RGBA values, else null.
+ * Unit sprites are palette PNGs upstream (a unit's whole bundle has ~50 colours), and repacking them as
+ * RGBA tripled their size. The palette keeps every RGBA value exactly, including the colour of fully
+ * transparent pixels, and the result is decoded again and compared before it is used.
+ */
+function encodePalettePng(width, height, rgba) {
+  const index = new Map();
+  const rows = Buffer.alloc((width + 1) * height);
+  for (let y = 0; y < height; y++) {
+    const rowStart = y * (width + 1); // byte 0 of each row: filter type 0 (None), the usual choice for palettes
+    for (let x = 0; x < width; x++) {
+      const key = rgba.readUInt32BE((y * width + x) * 4);
+      let i = index.get(key);
+      if (i === undefined) {
+        if (index.size === 256) return null;
+        i = index.size;
+        index.set(key, i);
+      }
+      rows[rowStart + 1 + x] = i;
+    }
+  }
+  const colours = [...index.keys()];
+  const plte = Buffer.alloc(colours.length * 3);
+  const trns = Buffer.alloc(colours.length);
+  colours.forEach((c, i) => {
+    plte[i * 3] = c >>> 24;
+    plte[i * 3 + 1] = (c >>> 16) & 255;
+    plte[i * 3 + 2] = (c >>> 8) & 255;
+    trns[i] = c & 255;
+  });
+  const chunk = (type, data) => {
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(data.length, 0);
+    head.write(type, 4, 'ascii');
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(zlib.crc32(Buffer.concat([head.subarray(4), data])) >>> 0, 0);
+    return Buffer.concat([head, data, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 3; // colour type: palette
+  const png = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('PLTE', plte),
+    chunk('tRNS', trns),
+    chunk('IDAT', zlib.deflateSync(rows, { level: 9 })),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+  const back = PNG.sync.read(png);
+  if (back.width !== width || back.height !== height || !back.data.equals(rgba)) throw new Error('palette PNG does not decode to its source pixels');
+  return png;
 }
 
 /**
@@ -239,28 +298,46 @@ function databaseFiles() {
 }
 const summary = [];
 
-// ── Terrain, per scenario ───────────────────────────────────────────────────
+// ── Terrain: one shared bundle plus a small one per scenario ─────────────────
+// Phase 28 S4 (docs/ASSETS.md §4.2, §6): per-scenario bundles repeated the same common tiles in every
+// scenario (44 bundles held 13k image slots but only 1.7k distinct images). Images used by at least
+// COMMON_MIN scenarios go into one shared bundle, `_common/terrain.json`, cached once for every scenario and
+// campaign; each scenario's own bundle holds only the rest. Which images are common depends on every
+// scenario, so terrain is rebuilt for all of them together (a scenario id filter does not narrow it).
+const COMMON_MIN = 5;
+const commonDir = path.join(outRoot, '_common');
 if (!fs.existsSync(rulesFile)) {
   console.warn(`build-image-atlases: ${path.relative(repoRoot, rulesFile)} is missing; no terrain bundles built (the game falls back to per-file images).`);
-} else {
-  let rules = null;
-  for (const { campaignDirName, id, file: snapshotFile } of snapshotFiles) {
-    if (!wanted(id)) continue;
-    const outDir = path.join(outRoot, campaignDirName, id);
-    if (upToDate(path.join(outDir, 'terrain.json'), [snapshotFile, rulesFile, scriptFile])) continue;
-
-    rules ??= reviveBuildingRules(JSON.parse(fs.readFileSync(rulesFile, 'utf8')));
-    const snapshot = JSON.parse(fs.readFileSync(snapshotFile, 'utf8'));
-    const started = Date.now();
+} else if (
+  !upToDate(path.join(commonDir, 'terrain.json'), [...snapshotFiles.map((s) => s.file), rulesFile, scriptFile]) ||
+  snapshotFiles.some(({ campaignDirName, id }) => !fs.existsSync(path.join(outRoot, campaignDirName, id, 'terrain.json')))
+) {
+  const rules = reviveBuildingRules(JSON.parse(fs.readFileSync(rulesFile, 'utf8')));
+  const started = Date.now();
+  const perScenario = snapshotFiles.map(({ campaignDirName, id, file }) => {
+    const snapshot = JSON.parse(fs.readFileSync(file, 'utf8'));
     const layout = layoutTerrain(rules, snapshot.terrain, snapshot.map.width, snapshot.map.height);
     const sources = new Set();
     for (const ref of layout.refs) collectSources(ref, sources);
+    return { campaignDirName, id, sources };
+  });
+  const uses = new Map();
+  for (const { sources } of perScenario) for (const rooted of sources) uses.set(rooted, (uses.get(rooted) ?? 0) + 1);
+  const common = new Set([...uses].filter(([, n]) => n >= COMMON_MIN).map(([rooted]) => rooted));
+
+  const writeTerrain = (outDir, sources) => {
     const { files, summary: line } = writeBundle(outDir, 'terrain', sources);
     // Drop bundles from earlier builds.
     const keep = new Set(['terrain.json', ...files]);
     for (const old of fs.readdirSync(outDir)) if (!keep.has(old)) fs.rmSync(path.join(outDir, old));
-    summary.push(`${campaignDirName}/${id}: ${line} (${Date.now() - started} ms)`);
+    return line;
+  };
+  summary.push(`terrain, shared by >= ${COMMON_MIN} scenarios: ${writeTerrain(commonDir, common)}`);
+  for (const { campaignDirName, id, sources } of perScenario) {
+    const own = new Set([...sources].filter((rooted) => !common.has(rooted)));
+    summary.push(`${campaignDirName}/${id}: ${writeTerrain(path.join(outRoot, campaignDirName, id), own)}`);
   }
+  summary.push(`terrain: ${perScenario.length} scenarios in ${Date.now() - started} ms`);
 }
 
 // ── Unit types, across all scenarios ───────────────────────────────────────
