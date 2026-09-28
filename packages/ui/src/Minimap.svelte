@@ -25,6 +25,7 @@
     minimapViewRect,
     minimapPointToBoard,
     minimapHexRect,
+    ImageCache,
     imageUrl,
     type MinimapInput,
     type MinimapOptions,
@@ -33,6 +34,7 @@
     type Rect,
     type View,
   } from '@wesnothweb2/renderer';
+  import type * as PIXI from 'pixi.js';
   import { t, tx } from './i18n/locale.js';
 
   let {
@@ -68,21 +70,23 @@
   let location: Rect = { x: 0, y: 0, w: 0, h: 0 };
   let tileGeneration = $state(0);
 
-  const images = new Map<string, HTMLImageElement>();
+  /**
+   * Tiles come through the shared image cache, so they are cut from the terrain bundles the board registered
+   * (Phase 28 S4) instead of each being fetched as its own file.
+   */
+  const images = new Map<string, PIXI.Texture | null>();
 
   /** The tile at `path`, if loaded; starts loading it (and repaints once it arrives) otherwise. */
-  function tile(path: string): HTMLImageElement | null {
-    let img = images.get(path);
-    if (!img) {
-      img = new Image();
-      // Tiles come from the game data bucket in production; CORS mode keeps the canvas readable.
-      img.crossOrigin = 'anonymous';
-      img.onload = () => tileGeneration++;
-      img.onerror = () => {};
-      img.src = imageUrl(path);
-      images.set(path, img);
+  function tile(path: string): CanvasImageSource | null {
+    if (!images.has(path)) {
+      images.set(path, null);
+      void ImageCache.resolve(path).then((tex) => {
+        images.set(path, tex);
+        if (tex) tileGeneration++;
+      });
     }
-    return img.complete && img.naturalWidth > 0 ? img : null;
+    const tex = images.get(path);
+    return tex && !tex.destroyed ? (tex.source.resource as CanvasImageSource) : null;
   }
 
   const list = $derived<MinimapDrawList | null>(input ? buildMinimap(input, options, style) : null);

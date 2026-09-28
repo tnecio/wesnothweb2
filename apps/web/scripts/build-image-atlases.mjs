@@ -57,6 +57,7 @@ import { reviveBuildingRules } from '../../../packages/renderer/src/terrain/terr
 import { parseIpf, splitRef } from '../../../packages/renderer/src/images/ipf.ts';
 import { HEX_MASK, rootedImagePath, unitBundleStem } from '../../../packages/renderer/src/images/compositor.ts';
 import { parseStepSequence } from '../../../packages/renderer/src/animation/frame.ts';
+import { MINIMAP_FOG_IMAGE, MINIMAP_HIGHLIGHT_IMAGE, VOID_TERRAIN } from '../../../packages/renderer/src/minimap.ts';
 import { readScenarioSnapshot } from '../../../packages/engine/src/snapshot/snapshotFiles.node.ts';
 
 const scriptFile = fileURLToPath(import.meta.url);
@@ -305,21 +306,46 @@ const summary = [];
 // campaign; each scenario's own bundle holds only the rest. Which images are common depends on every
 // scenario, so terrain is rebuilt for all of them together (a scenario id filter does not narrow it).
 const COMMON_MIN = 5;
+
+/**
+ * The minimap's tiles for `snapshot`'s map: each terrain code's `symbol_image` (the base's and the overlay's
+ * for a combined code with no type of its own), plus the fog and reach highlight tiles -- as
+ * `packages/ui/src/minimapStyle.ts` and `packages/renderer/src/minimap.ts` pick them.
+ */
+function minimapImages(snapshot) {
+  const symbolByCode = new Map();
+  for (const cfg of snapshot.terrainTypeConfigs ?? []) {
+    const code = cfg.attrs?.string;
+    const symbol = cfg.attrs?.symbol_image;
+    if (typeof code === 'string' && typeof symbol === 'string' && symbol !== '') symbolByCode.set(code, symbol);
+  }
+  const out = new Set([MINIMAP_FOG_IMAGE, MINIMAP_HIGHLIGHT_IMAGE].map((p) => `core/images/${p}`));
+  const add = (symbol) => symbol && out.add(`core/images/terrain/${symbol}.png`);
+  for (const code of new Set([...snapshot.terrain.map((h) => h.code), VOID_TERRAIN])) {
+    if (symbolByCode.has(code)) add(symbolByCode.get(code));
+    else if (code.includes('^')) {
+      add(symbolByCode.get(code.slice(0, code.indexOf('^'))));
+      add(symbolByCode.get(code.slice(code.indexOf('^'))));
+    }
+  }
+  return [...out].filter((rooted) => fs.existsSync(path.join(dataRoot, rooted)));
+}
 const COMMON_ATLAS_SIZE = 2048;
 const commonDir = path.join(outRoot, '_common');
 if (!fs.existsSync(rulesFile)) {
   console.warn(`build-image-atlases: ${path.relative(repoRoot, rulesFile)} is missing; no terrain bundles built (the game falls back to per-file images).`);
 } else if (
-  !upToDate(path.join(commonDir, 'terrain.json'), [...snapshotFiles.map((s) => s.file), rulesFile, scriptFile]) ||
+  !upToDate(path.join(commonDir, 'terrain.json'), [...snapshotFiles.map((s) => s.file), ...databaseFiles(), rulesFile, scriptFile]) ||
   snapshotFiles.some(({ campaignDirName, id }) => !fs.existsSync(path.join(outRoot, campaignDirName, id, 'terrain.json')))
 ) {
   const rules = reviveBuildingRules(JSON.parse(fs.readFileSync(rulesFile, 'utf8')));
   const started = Date.now();
   const perScenario = snapshotFiles.map(({ campaignDirName, id, file }) => {
-    const snapshot = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const snapshot = readScenarioSnapshot(file);
     const layout = layoutTerrain(rules, snapshot.terrain, snapshot.map.width, snapshot.map.height);
     const sources = new Set();
     for (const ref of layout.refs) collectSources(ref, sources);
+    for (const rooted of minimapImages(snapshot)) sources.add(rooted);
     return { campaignDirName, id, sources };
   });
   const uses = new Map();
@@ -341,6 +367,23 @@ if (!fs.existsSync(rulesFile)) {
     summary.push(`${campaignDirName}/${id}: ${writeTerrain(path.join(outRoot, campaignDirName, id), own)}`);
   }
   summary.push(`terrain: ${perScenario.length} scenarios in ${Date.now() - started} ms`);
+}
+
+// ── Small images every board draws: unit ellipses, leader crown, orbs, village flags ──────────────
+// Phase 28 S4 (docs/ASSETS.md §4.6): about a dozen of these were fetched one by one per scenario. One
+// fixed bundle, `_ui/ui.json`, holds every ellipse, crown, orb and flag animation frame.
+const uiDir = path.join(outRoot, '_ui');
+if (!upToDate(path.join(uiDir, 'ui.json'), [scriptFile])) {
+  const pick = (dir, rootedDir, test) =>
+    fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.png') && test(f)).map((f) => `${rootedDir}/${f}`) : [];
+  const sources = new Set([
+    ...pick(path.join(engineImagesRoot, 'misc'), 'engine/misc', (f) => /^(ellipse|leader-crown|orb)/.test(f)),
+    ...pick(path.join(dataRoot, 'core/images/flags'), 'core/images/flags', () => true),
+  ]);
+  const { files, summary: line } = writeBundle(uiDir, 'ui', sources, COMMON_ATLAS_SIZE);
+  const keep = new Set(['ui.json', ...files]);
+  for (const old of fs.readdirSync(uiDir)) if (!keep.has(old)) fs.rmSync(path.join(uiDir, old));
+  summary.push(`ui: ${line}`);
 }
 
 // ── Unit types, across all scenarios ───────────────────────────────────────
