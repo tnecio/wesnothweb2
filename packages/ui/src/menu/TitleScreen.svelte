@@ -14,6 +14,23 @@
   import { fmt, t, ts, tw, tx } from '../i18n/locale.js';
   import Markup from '../markup/Markup.svelte';
   import { ENGINE_IMAGES, GAME_IMAGES } from '../gameData.js';
+  import { dataUrl } from '../dataUrls.js';
+  import titleImages from './titleImages.json';
+
+  /**
+   * Phase 28 S4: `srcset` over the smaller copies `build-story-assets.mjs` makes of the title images (the
+   * backdrop is 4096 px wide, 4.5 MB, and only stretched behind the menu), falling back to the original.
+   */
+  function srcset(image: { src: string; w: number; variants: { src: string; w: number }[] }): { src: string; srcset?: string } {
+    if (image.variants.length === 0) return { src: `${GAME_IMAGES}/${image.src}` };
+    const largest = image.variants[image.variants.length - 1]!;
+    return {
+      src: dataUrl(`derived-images/${largest.src}`),
+      srcset: image.variants.map((v) => `${dataUrl(`derived-images/${v.src}`)} ${v.w}w`).join(', '),
+    };
+  }
+  const backdrop = srcset(titleImages.backdrop);
+  const picture = srcset(titleImages.picture);
   import { locale } from '../i18n/locale.js';
   import { matchesHotkey } from '../commands.js';
   import { stepTip, type Tip } from './tips.js';
@@ -88,8 +105,8 @@
   style:--button-h22-active="url('{ENGINE_IMAGES}/buttons/button_normal/button_H22-active.png')"
   style:--button-h22-pressed="url('{ENGINE_IMAGES}/buttons/button_normal/button_H22-pressed.png')"
 >
-  <img class="backdrop" src="{GAME_IMAGES}/core/images/maps/background.webp" alt="" draggable="false" />
-  <img class="picture" src="{GAME_IMAGES}/core/images/maps/titlescreen.webp" alt="" draggable="false" />
+  <img class="backdrop" src={backdrop.src} srcset={backdrop.srcset} sizes="100vw" alt="" draggable="false" />
+  <img class="picture" src={picture.src} srcset={picture.srcset} sizes="min(100vw, 1280px)" alt="" draggable="false" />
 
   <h1 class="logo">
     <img class="logo-bg" src="{ENGINE_IMAGES}/misc/logo-bg.png" alt="" draggable="false" />

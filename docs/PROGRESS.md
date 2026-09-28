@@ -5434,3 +5434,11 @@ either orientation; tablets and desktops keep the full layout.
   exercised. It now registers `_common` and the nested scenario bundles and fetches 5 bundle images and 1
   single file. **4872/4872 refs match.** Liberty 1 (HARD) and Dead Water 1 load in the browser with no
   errors.
+- **Title screen** (§4.5). `build-story-assets.mjs` also makes 960/1920 px copies of the two title images
+  and lists them in `packages/ui/src/menu/titleImages.json`, which is bundled into the app. The page uses
+  `srcset`. Measured: 6.1 MB → about 1 MB (a 1280 px desktop and a 412 px phone at 2.6× both take the
+  1920 px backdrop, 723 KB, and the 1280 px picture, 286 KB).
+- **Regression caught.** `build-story-assets.mjs` read raw scenario files, which lost the unit types (and so
+  every portrait: 275 → 7 images in Dead Water 1) after the database split. It now reads assembled
+  snapshots, and the story files regenerate byte-identical. A new CI job, `generated-in-sync`, regenerates
+  the story assets and the title image list and fails on any change or new file.

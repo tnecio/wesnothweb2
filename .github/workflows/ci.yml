@@ -65,3 +65,24 @@ jobs:
       - name: vitest
         working-directory: packages/${{ matrix.package }}
         run: npx vitest run --reporter=default --reporter=github-actions
+
+  # Story assets and the title screen's image list are generated but committed: regenerate them from the
+  # built scenarios and fail on any difference (a reader of the scenario files once lost every portrait
+  # after the database split, and nothing noticed).
+  generated-in-sync:
+    needs: scenarios
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with:
+          name: scenarios
+          path: apps/web/public/scenarios
+      - run: node --import tsx apps/web/scripts/build-story-assets.mjs
+      - name: Nothing changed or appeared
+        run: |
+          changes=$(git status --porcelain -- apps/web/public/story apps/web/public/derived-images packages/ui/src/menu/titleImages.json)
+          if [ -n "$changes" ]; then echo "$changes"; git diff --stat; exit 1; fi
+
