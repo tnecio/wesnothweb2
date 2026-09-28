@@ -31,6 +31,9 @@ export default defineConfig(({ command }) => ({
   // dev server's dep prebundle gets the static replacement below instead.
   define: command === 'build' ? { 'process.env.FENGARICONF': 'undefined' } : {},
   optimizeDeps: { esbuildOptions: { define: { 'process.env.FENGARICONF': 'undefined' } } },
+  // Phase 28: public/ holds symlinks into the wesnoth submodule (~600 MB of game media, which production
+  // serves from its own bucket), so a build copies only what the app itself needs: scripts/stage-dist.mjs.
+  build: { copyPublicDir: false },
   // Module workers (packages/renderer's image compositor pool) are emitted as ES modules.
   worker: { format: 'es' },
   server: {

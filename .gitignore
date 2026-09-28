@@ -15,3 +15,5 @@ story-screenshots/
 board-screenshots/
 dialogue-screenshots/
 i18n-screenshots/
+# Wrangler local state (wrangler dev)
+.wrangler/

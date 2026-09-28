@@ -5366,3 +5366,31 @@ either orientation; tablets and desktops keep the full layout.
   - Liberty 1 on HARD (an overlay applied to an assembled snapshot) and Dead Water 1 load in the browser
     with no console errors;
   - the unit atlas build reads the assembled snapshots (444 types, unchanged).
+
+## 2026-09-28 — Phase 28: deployment pipeline (Cloudflare Workers assets + R2)
+
+- **Production build ships only the app.** `vite build` no longer copies `public/`: its
+  `game-images*` symlinks would have copied ~600 MB of submodule media. `apps/web/scripts/stage-dist.mjs`
+  copies the app's own data into `dist/` (scenarios and databases, atlases, story, i18n, JSON), writes
+  `_headers` and fails over 18k files or 24 MiB per file. Measured: 1,348 files, 265 MiB, largest
+  `terrain-graphics-rules.json` at 17 MiB.
+- **Game media in R2.** `upload-game-data.mjs` uploads the upstream media (png/webp/jpg/ogg/wav from
+  `data/core`, `data/campaigns`, `images/`, `sounds/`: 20,626 files, 516 MiB) to `wesnothweb2-data` under
+  `<submodule commit>/`, mirroring the dev server's three `game-*` roots. It uses the S3 API (the REST API's
+  rate limit would take over an hour), sends `Cache-Control: immutable`, skips objects already present, and
+  writes `<commit>/.complete` when done so later deploys skip the upload. The build points
+  `VITE_GAME_DATA_URL` at `https://wesnoth-data.tnec.io/<commit>`; bucket CORS allows GET/HEAD from any
+  origin (`r2-cors.json`).
+- **Worker.** `wrangler.jsonc` has static assets only (no script, so requests stay free and unmetered) and
+  an SPA fallback. Checked locally with `wrangler dev`:
+  - `/play/liberty` falls back to `index.html`;
+  - `/assets/*` is `immutable`;
+  - data files keep the default revalidation until they get hashed names (S3).
+  
+  Caveat: a missing file under the SPA fallback returns `index.html` with 200. The runtime already checks
+  content types for JSON.
+- **Wrangler pinned to 4.86.0.** Newer releases need Node 22, and CI and the VM run Node 20. Node 20 has
+  been end-of-life since April 2026, so moving CI and the VM to Node 22 is a follow-up.
+- **`deploy.yml`** runs on `v*` tags or by hand. It uploads the media, sets CORS, builds, deploys, then
+  checks HTTP 200 for the site, a deep link, `_core.json` and a bucket image, plus the bucket's
+  Cache-Control and CORS headers.
