@@ -5,6 +5,7 @@
  * every scenario/campaign a `GameBoardView` might mount for.
  */
 import type { ColorData } from '@wesnothweb2/renderer';
+import { dataUrl } from './dataUrls.js';
 
 let cached: Promise<ColorData | null> | null = null;
 
@@ -19,7 +20,7 @@ let cached: Promise<ColorData | null> | null = null;
 export function fetchTeamColors(): Promise<ColorData | null> {
   cached ??= (async () => {
     try {
-      const res = await fetch('/team-colors.json');
+      const res = await fetch(dataUrl('team-colors.json'));
       if (!res.ok) {
         console.warn(`[teamColorsCache] ${res.status} fetching team-colors.json -- units will render unrecolored`);
         return null;

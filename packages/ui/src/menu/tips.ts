@@ -5,6 +5,7 @@
  * loader would change.
  */
 import { TString, type TStringJson } from '@wesnothweb2/engine';
+import { dataUrl } from '../dataUrls.js';
 
 export interface Tip {
   /** The tip, in Pango markup. */
@@ -21,7 +22,7 @@ export function parseTips(data: { tips: { text: string | TStringJson; source: st
 
 export async function fetchTips(): Promise<Tip[]> {
   try {
-    const res = await fetch('/tips.json');
+    const res = await fetch(dataUrl('tips.json'));
     if (!res.ok) throw new Error(`${res.status}`);
     return parseTips((await res.json()) as Parameters<typeof parseTips>[0]);
   } catch (err) {

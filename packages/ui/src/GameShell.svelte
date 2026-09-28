@@ -25,6 +25,7 @@
    * before entering 'messages', so the board already reflects every real
    * event-spawned unit by the time the player gets control.
    */
+  import { dataUrl } from './dataUrls.js';
   import { ENGINE_IMAGES, GAME_IMAGES } from './gameData.js';
   import { tick, untrack } from 'svelte';
   import type {
@@ -461,7 +462,7 @@
   $effect(() => {
     if (!showOutro || creditsRequested) return;
     creditsRequested = true;
-    fetch('/credits.json')
+    fetch(dataUrl('credits.json'))
       .then((res) => (res.ok ? (res.json() as Promise<CreditsJson>) : null))
       .then((json) => (creditsData = json))
       .catch((err) => console.error('[outro] could not load credits.json:', err));

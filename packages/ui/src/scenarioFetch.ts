@@ -17,9 +17,10 @@ import {
   type SnapshotOverlay,
   type StoredSnapshot,
 } from '@wesnothweb2/engine';
+import { dataUrl } from './dataUrls.js';
 
 async function fetchJson<T>(name: string): Promise<T> {
-  const res = await fetch(`/scenarios/${name}`);
+  const res = await fetch(dataUrl(`scenarios/${name}`));
   if (!res.ok) throw new Error(`fetch scenarios/${name}: ${res.status}`);
   return (await res.json()) as T;
 }

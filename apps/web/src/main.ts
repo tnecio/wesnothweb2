@@ -1,6 +1,6 @@
 import { mount } from 'svelte';
 import '@wesnothweb2/ui/src/fonts.css';
-import { accessibility, locale } from '@wesnothweb2/ui';
+import { accessibility, loadDataManifest, locale } from '@wesnothweb2/ui';
 import App from './App.svelte';
 
 const target = document.getElementById('app');
@@ -11,7 +11,10 @@ if (!target) throw new Error('missing #app element');
 // Font scale and orb colours from the saved preferences, before anything is drawn.
 accessibility.init();
 
-void locale.init().finally(() => mount(App, { target }));
+// A production build first learns where its data files are (content-hashed paths; see dataUrls.ts).
+void loadDataManifest()
+  .then(() => locale.init())
+  .finally(() => mount(App, { target }));
 
 // Dev-only hook for the browser scripts (apps/web/scripts/i18n-playthrough.mjs): switches language the way the picker does,
 // for screens where a modal covers the menu (a dialogue line, say).

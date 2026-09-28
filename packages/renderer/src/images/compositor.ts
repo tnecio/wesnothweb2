@@ -176,6 +176,14 @@ export function unitBundleManifestUrl(typeId: string): string {
   return `/atlases/units/${unitBundleStem(typeId)}.json`
 }
 
+/**
+ * URL of a bundle image named by a manifest: relative to the manifest (as built), or absolute when a
+ * production build rewrote it to a content-hashed path (Phase 28 S3, `apps/web/scripts/stage-dist.mjs`).
+ */
+export function atlasFileUrl(manifestUrl: string, file: string): string {
+  return file.startsWith('/') || /^[a-z]+:/i.test(file) ? file : `${manifestUrl.slice(0, manifestUrl.lastIndexOf('/') + 1)}${file}`
+}
+
 /** One image bundle manifest (`public/atlases/<scenario>/terrain.json`, `public/atlases/units/<type>.json`). */
 export interface AtlasManifest {
   atlases: { file: string; width: number; height: number }[]
@@ -306,7 +314,7 @@ export class Compositor {
       const [index, x, y, w, h] = rect
       const entry = manifest.atlases[index]
       if (!entry) continue
-      const atlas = await this.loadAtlas(`${manifestUrl.slice(0, manifestUrl.lastIndexOf('/') + 1)}${entry.file}`)
+      const atlas = await this.loadAtlas(atlasFileUrl(manifestUrl, entry.file))
       if (!atlas) continue
       return createImageBitmap(atlas, x, y, w, h)
     }

@@ -32,6 +32,7 @@
    * confirmed against a real browser in this environment -- see the
    * top-level report.
    */
+  import { dataUrl } from './dataUrls.js';
   import { ENGINE_IMAGES, GAME_IMAGES } from './gameData.js';
   import { fmt, th, tx } from './i18n/locale.js';
   import * as PIXI from 'pixi.js';
@@ -533,9 +534,9 @@
       // (Dead Water and Under the Burning Suns both ship a 13_Epilogue), so the id alone could fetch the
       // wrong campaign's terrain bundle (a real bug, found 2026-09-27). Images not in the bundle are
       // fetched on their own, so a missing/mis-scoped one only costs requests, never a wrong-looking board.
-      ImageCache.setAtlasManifests(snapshot.assetDir ? [`/atlases/${snapshot.assetDir}/${snapshot.scenario.id}/terrain.json`] : []);
+      ImageCache.setAtlasManifests(snapshot.assetDir ? [dataUrl(`atlases/${snapshot.assetDir}/${snapshot.scenario.id}/terrain.json`)] : []);
       // Phase 28a P6: recruitable types' bundles are registered (downloaded on first use)...
-      ImageCache.addAtlasManifests(snapshot.teams.flatMap((team) => team.recruit ?? []).map(unitBundleManifestUrl));
+      ImageCache.addAtlasManifests(snapshot.teams.flatMap((team) => team.recruit ?? []).map((id) => dataUrl(unitBundleManifestUrl(id))));
       // ...and types on the board are downloaded now, so their first animation needs no network.
       registerUnitBundles(units);
 
@@ -549,7 +550,7 @@
           onHexHoverChange?.({ x, y });
         },
         // Phase 28a P3: the rules (~17.5 MB JSON) are fetched, parsed and matched in a worker.
-        terrainGraphicsRulesUrl: '/terrain-graphics-rules.json',
+        terrainGraphicsRulesUrl: dataUrl('terrain-graphics-rules.json'),
       });
       await newBoard.render();
       if (cancelled) {
@@ -661,7 +662,7 @@
   const destroyedApps = new WeakSet<PIXI.Application>();
 
   function registerUnitBundles(list: readonly SnapshotUnit[]): void {
-    ImageCache.addAtlasManifests(new Set(list.map((unit) => unitBundleManifestUrl(unit.typeId))), { prefetch: true });
+    ImageCache.addAtlasManifests(new Set(list.map((unit) => dataUrl(unitBundleManifestUrl(unit.typeId)))), { prefetch: true });
   }
 
   $effect(() => {

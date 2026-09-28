@@ -4,6 +4,7 @@
  */
 import { TString, type TStringJson } from '@wesnothweb2/engine';
 import type { CampaignDifficulty, CampaignInfo } from './save/campaign.js';
+import { dataUrl } from './dataUrls.js';
 
 export interface Campaign extends CampaignInfo {
   /** The name and description as translatable strings, for showing to the player. */
@@ -39,7 +40,7 @@ export function parseCampaigns(data: { campaigns: CampaignJson[] }): Campaign[] 
 }
 
 export async function fetchCampaigns(): Promise<Campaign[]> {
-  const res = await fetch('/campaigns.json');
+  const res = await fetch(dataUrl('campaigns.json'));
   if (!res.ok) throw new Error(`fetch campaigns.json: ${res.status}`);
   return parseCampaigns((await res.json()) as { campaigns: CampaignJson[] });
 }

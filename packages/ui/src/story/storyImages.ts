@@ -6,6 +6,7 @@
  */
 import type { WmlConfigJson } from '@wesnothweb2/engine';
 import { GAME_IMAGES } from '../gameData.js';
+import { dataUrl } from '../dataUrls.js';
 
 export interface StoryImageVariant {
   /** Path under `/derived-images/`. */
@@ -57,7 +58,7 @@ export interface PickedImage {
  */
 export async function fetchStoryAssets(scenarioId: string, campaignDir: string): Promise<StoryAssets | null> {
   try {
-    const res = await fetch(`/story/${campaignDir}/${scenarioId}.json`);
+    const res = await fetch(dataUrl(`story/${campaignDir}/${scenarioId}.json`));
     if (!res.ok || !(res.headers.get('content-type') ?? '').includes('json')) return null;
     return (await res.json()) as StoryAssets;
   } catch {
@@ -77,7 +78,7 @@ export const DERIVED_IMAGES_BASE = '/derived-images';
 export function pickStoryImage(entry: StoryImageEntry, drawnWidth: number, devicePixelRatio = 1): PickedImage {
   const needed = Math.ceil(drawnWidth * devicePixelRatio);
   const candidates = [
-    ...entry.variants.map((v) => ({ url: `${DERIVED_IMAGES_BASE}/${v.src}`, w: v.w, bytes: v.bytes })),
+    ...entry.variants.map((v) => ({ url: dataUrl(`derived-images/${v.src}`), w: v.w, bytes: v.bytes })),
     { url: `${GAME_IMAGES_BASE}/${entry.src}`, w: entry.w, bytes: entry.bytes },
   ];
   const wideEnough = candidates.filter((c) => c.w >= needed);
