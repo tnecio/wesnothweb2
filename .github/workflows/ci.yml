@@ -1,9 +1,9 @@
 name: CI
 
 on:
+  # Every branch, so a branch is checked before it is merged whether or not it has a PR.
   push:
-    branches: [main]
-  pull_request:
+    branches: ['**']
   workflow_dispatch:
 
 concurrency:
