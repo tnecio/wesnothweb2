@@ -5450,8 +5450,11 @@ either orientation; tablets and desktops keep the full layout.
   `servedAudioPath`); the dev server serves the originals. The bucket prefix is now
   `<commit>-m<MEDIA_VERSION>` (2), so changing how media is processed uploads a fresh prefix instead of
   mixing with immutable objects already served.
-- **CI `generated-in-sync`** installs ImageMagick (not on the runner image) and treats committed variants as
-  current, since runner WebP encoders can produce different bytes. A missing variant still fails the check.
+- **CI `generated-in-sync`** installs ImageMagick (not on the runner image), regenerates the story assets
+  and compares their structure with the committed files (`.github/scripts/json-diff.mjs`): which images
+  each scenario references, localized entries, the title images. Variant lists are left out: the runner's
+  WebP encoder kept 500 px copies of two portraits that this VM's encoder judged not worth serving, so they
+  depend on the machine, not on the code.
 - Localized story art comes from a separate full upstream checkout (`~/wesnothweb`), which CI lacks. Without
   it, `build-story-assets.mjs` now keeps the `localized` entries already committed instead of dropping them.
   Checked by rerunning with that checkout hidden: no changes.
