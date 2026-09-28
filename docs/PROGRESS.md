@@ -5458,3 +5458,10 @@ either orientation; tablets and desktops keep the full layout.
 - Localized story art comes from a separate full upstream checkout (`~/wesnothweb`), which CI lacks. Without
   it, `build-story-assets.mjs` now keeps the `localized` entries already committed instead of dropping them.
   Checked by rerunning with that checkout hidden: no changes.
+- **Deployed and checked live** (deploy run 36469444651). A cold Liberty 1 load made 34 app requests, 21 of
+  them hashed data, with no errors. Converted sounds decode in the browser (`bell.wav.ogg` 2.05 s,
+  `slowed.wav.ogg` 1.72 s). A warm reload in Playwright's throwaway profile still re-downloaded the
+  9.9 MB shared terrain image: its small in-memory cache drops entries that large, and small mobile caches
+  can too. **The shared bundle is now split into images of at most 2048 px**: 4 files of 1.2–3.8 MB, the
+  same 9.8 MB in total, which also download in parallel. Golden check: 4872/4872 (7 bundle images, 1
+  single file).

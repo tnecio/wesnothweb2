@@ -134,7 +134,7 @@ function decode(rooted) {
 }
 
 /** Shelf packing, tallest first; returns bundles of placed images. */
-function pack(images) {
+function pack(images, maxSize = MAX_ATLAS_SIZE) {
   const sorted = [...images].sort((a, b) => b.image.height - a.image.height || b.image.width - a.image.width || a.rooted.localeCompare(b.rooted));
   const atlases = [];
   let current = null;
@@ -145,12 +145,12 @@ function pack(images) {
   for (const entry of sorted) {
     const { width, height } = entry.image;
     if (!current) newAtlas();
-    if (current.shelfX + width > MAX_ATLAS_SIZE) {
+    if (current.shelfX + width > maxSize) {
       current.shelfY += current.shelfHeight;
       current.shelfX = 0;
       current.shelfHeight = 0;
     }
-    if (current.shelfY + height > MAX_ATLAS_SIZE) {
+    if (current.shelfY + height > maxSize) {
       newAtlas();
     }
     current.placements.push({ ...entry, x: current.shelfX, y: current.shelfY });
@@ -235,18 +235,18 @@ function encodePalettePng(width, height, rgba) {
  * Packs `sources` (rooted paths) into `<dir>/<prefix>-<n>.<hash>.png` bundles and writes
  * `<dir>/<prefix>.json`. Returns the bundle file names plus a summary line.
  */
-function writeBundle(dir, prefix, sources) {
+function writeBundle(dir, prefix, sources, maxSize = MAX_ATLAS_SIZE) {
   const images = [];
   let skipped = 0;
   for (const rooted of [...sources].sort()) {
     const image = decode(rooted);
-    if (!image || image.width > MAX_ATLAS_SIZE || image.height > MAX_ATLAS_SIZE) {
+    if (!image || image.width > maxSize || image.height > maxSize) {
       skipped++;
       continue;
     }
     images.push({ rooted, image });
   }
-  const atlases = pack(images);
+  const atlases = pack(images, maxSize);
   fs.mkdirSync(dir, { recursive: true });
   const manifest = { atlases: [], images: {} };
   let bytes = 0;
@@ -305,6 +305,7 @@ const summary = [];
 // campaign; each scenario's own bundle holds only the rest. Which images are common depends on every
 // scenario, so terrain is rebuilt for all of them together (a scenario id filter does not narrow it).
 const COMMON_MIN = 5;
+const COMMON_ATLAS_SIZE = 2048;
 const commonDir = path.join(outRoot, '_common');
 if (!fs.existsSync(rulesFile)) {
   console.warn(`build-image-atlases: ${path.relative(repoRoot, rulesFile)} is missing; no terrain bundles built (the game falls back to per-file images).`);
@@ -325,14 +326,16 @@ if (!fs.existsSync(rulesFile)) {
   for (const { sources } of perScenario) for (const rooted of sources) uses.set(rooted, (uses.get(rooted) ?? 0) + 1);
   const common = new Set([...uses].filter(([, n]) => n >= COMMON_MIN).map(([rooted]) => rooted));
 
-  const writeTerrain = (outDir, sources) => {
-    const { files, summary: line } = writeBundle(outDir, 'terrain', sources);
+  const writeTerrain = (outDir, sources, maxSize) => {
+    const { files, summary: line } = writeBundle(outDir, 'terrain', sources, maxSize);
     // Drop bundles from earlier builds.
     const keep = new Set(['terrain.json', ...files]);
     for (const old of fs.readdirSync(outDir)) if (!keep.has(old)) fs.rmSync(path.join(outDir, old));
     return line;
   };
-  summary.push(`terrain, shared by >= ${COMMON_MIN} scenarios: ${writeTerrain(commonDir, common)}`);
+  // The shared bundle is split into images of at most 2048 px (~2.5 MB each): one 10 MB file is dropped by
+  // small (mobile, in-memory) HTTP caches, and several download in parallel.
+  summary.push(`terrain, shared by >= ${COMMON_MIN} scenarios: ${writeTerrain(commonDir, common, COMMON_ATLAS_SIZE)}`);
   for (const { campaignDirName, id, sources } of perScenario) {
     const own = new Set([...sources].filter((rooted) => !common.has(rooted)));
     summary.push(`${campaignDirName}/${id}: ${writeTerrain(path.join(outRoot, campaignDirName, id), own)}`);
