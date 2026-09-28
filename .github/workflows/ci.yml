@@ -90,5 +90,5 @@ jobs:
       - name: Nothing changed or appeared
         run: |
           changes=$(git status --porcelain -- apps/web/public/story apps/web/public/derived-images packages/ui/src/menu/titleImages.json)
-          if [ -n "$changes" ]; then echo "$changes"; git diff --stat; exit 1; fi
+          if [ -n "$changes" ]; then echo "$changes"; git diff --stat; git diff --word-diff=porcelain -U0 -- apps/web/public/story | head -n 60; exit 1; fi
 
