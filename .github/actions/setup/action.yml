@@ -1,0 +1,32 @@
+name: Setup
+description: >
+  Node + npm ci, and the parts of the `wesnoth` submodule the tests and build read
+  (data/, images/, sounds/, po/wesnoth/ and the .pot templates, ~650 MB instead of the
+  2.8 GB full checkout), cached by the submodule's pinned commit.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+        cache: npm
+    - run: npm ci
+      shell: bash
+    - id: sub
+      shell: bash
+      run: echo "sha=$(git rev-parse HEAD:wesnoth)" >> "$GITHUB_OUTPUT"
+    - id: cache
+      uses: actions/cache@v4
+      with:
+        path: wesnoth
+        key: wesnoth-sparse-v1-${{ steps.sub.outputs.sha }}
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        url=$(git config -f .gitmodules submodule.wesnoth.url)
+        rm -rf wesnoth && git init -q wesnoth && cd wesnoth
+        git remote add origin "$url"
+        git sparse-checkout set --no-cone '/data/' '/images/' '/sounds/' '/po/wesnoth/' '/po/**/*.pot'
+        git fetch -q --depth 1 --filter=blob:none origin "${{ steps.sub.outputs.sha }}"
+        git checkout -q FETCH_HEAD
+        du -sh .
