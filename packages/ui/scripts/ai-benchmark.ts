@@ -132,8 +132,21 @@ export async function playGame(snapshot: GameBoardSnapshot, seed: number, maxTur
     actions += anims.length;
   }
 
-  await session.endTurn(Math.max(1, maxTurns * numSides));
-  actions += session.lastAiAnimations?.length ?? 0;
+  // One round of side turns per call, yielding to the event loop in between: a whole game in one synchronous
+  // endTurn() blocks a vitest worker for up to a minute, long enough for its RPC to the main process to time out.
+  // endTurn(n) stops once it has advanced to the (n+1)th side, before playing it, so that side is played here --
+  // as side 1's first turn is above -- and the game is the same as with one call.
+  const budget = Math.max(1, maxTurns * numSides);
+  for (let played = 0; played < budget && !session.scenarioResult; played += numSides + 1) {
+    await session.endTurn(numSides);
+    actions += session.lastAiAnimations?.length ?? 0;
+    if (!session.scenarioResult && played + numSides + 1 < budget && isAiControlled(session, session.activeSide)) {
+      const anims: AiAnimationEvent[] = [];
+      session.playAiSide(session.activeSide, anims);
+      actions += anims.length;
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+  }
 
   const ms = Date.now() - start;
   const turns = session.turnNumber;
