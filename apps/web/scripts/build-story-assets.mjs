@@ -181,9 +181,25 @@ function localizedEntry(rel) {
   return { src: rel, w: size.w, h: size.h, bytes, variants: [{ src: rel, w: size.w, h: size.h, bytes }] };
 }
 
+/**
+ * Without that checkout (CI), the `localized` entries already in the story files are kept: their files are
+ * committed in `derived-images/`, and dropping them would silently lose translated art.
+ */
+const committedLocalized = new Map();
+if (!l10nDataRoot && fs.existsSync(storyOutDir)) {
+  for (const dir of fs.readdirSync(storyOutDir)) {
+    if (!fs.statSync(path.join(storyOutDir, dir)).isDirectory()) continue;
+    for (const f of fs.readdirSync(path.join(storyOutDir, dir))) {
+      for (const info of Object.values(JSON.parse(fs.readFileSync(path.join(storyOutDir, dir, f), 'utf8')).images ?? {})) {
+        if (info.localized) committedLocalized.set(info.src, info.localized);
+      }
+    }
+  }
+}
+
 /** `{ <code>: { image?, overlay? } }` for every shipped resource code that has a localized twin of `rooted`. */
 function buildLocalized(rooted) {
-  if (!l10nDataRoot) return undefined;
+  if (!l10nDataRoot) return committedLocalized.get(rooted);
   const out = {};
   for (const code of resourceCodes) {
     const image = localizedEntry(localizedPath(rooted, code));

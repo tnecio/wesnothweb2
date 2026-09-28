@@ -5442,3 +5442,16 @@ either orientation; tablets and desktops keep the full layout.
   every portrait: 275 → 7 images in Dead Water 1) after the database split. It now reads assembled
   snapshots, and the story files regenerate byte-identical. A new CI job, `generated-in-sync`, regenerates
   the story assets and the title image list and fails on any change or new file.
+- **WAV → Ogg Vorbis** (§4.7, approved by the user). `upload-game-data.mjs` converts all 86 WAVs with
+  ffmpeg (libvorbis, quality 5; sample rate and channels unchanged) and stores them as `<name>.wav.ogg`.
+  Core and engine WAVs go from 3.4 MB to 0.59 MB; `bell.wav` 181 → 22 KB, `slowed.wav` 151 → 22 KB (both
+  preloaded on every board). The name keeps `.wav` because core has `mace`/`spear`/`staff` as both `.wav`
+  and `.ogg`, as different sounds. The production build asks for these names (`gameData.ts`
+  `servedAudioPath`); the dev server serves the originals. The bucket prefix is now
+  `<commit>-m<MEDIA_VERSION>` (2), so changing how media is processed uploads a fresh prefix instead of
+  mixing with immutable objects already served.
+- **CI `generated-in-sync`** installs ImageMagick (not on the runner image) and treats committed variants as
+  current, since runner WebP encoders can produce different bytes. A missing variant still fails the check.
+- Localized story art comes from a separate full upstream checkout (`~/wesnothweb`), which CI lacks. Without
+  it, `build-story-assets.mjs` now keeps the `localized` entries already committed instead of dropping them.
+  Checked by rerunning with that checkout hidden: no changes.
