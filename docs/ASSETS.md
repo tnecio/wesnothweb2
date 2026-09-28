@@ -125,6 +125,8 @@ these 155 MB).
 
 ### 4.2 Per-scenario terrain atlases repeat the same tiles (186 MB for 16 MB of sources)
 
+**Fixed 2026-09-28:** a shared bundle plus small per-scenario ones; terrain is now 25 MB in total (see PROGRESS).
+
 - The 44 terrain atlases fill 12,988 image slots, but only **1,722 distinct
   images** (16.1 MB of source PNG). 479 images appear in ≥10 scenarios and
   make up 68% of all slots.
@@ -136,6 +138,8 @@ these 155 MB).
   one-by-one requests per scenario.
 
 ### 4.3 Unit bundles are 3× their sources (27.6 MB vs 9.1 MB)
+
+**Fixed 2026-09-28:** exact palette PNGs, 9.8 MB.
 
 - Upstream's unit sprites are mostly 8-bit palette PNGs. Our bundler decodes
   them and writes RGBA, which loses the palette compression.

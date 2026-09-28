@@ -3,13 +3,16 @@
  * Phase 28: uploads the upstream game media (images, music, sounds) to the R2 bucket the production build
  * reads it from (`VITE_GAME_DATA_URL`, `packages/ui/src/gameData.ts`):
  *
- *   <submodule commit>/game-images/...          wesnoth/data/{core,campaigns}/**   (as public/game-images)
- *   <submodule commit>/game-images-engine/...   wesnoth/images/**                  (as public/game-images-engine)
- *   <submodule commit>/game-sounds-engine/...   wesnoth/sounds/**                  (as public/game-sounds-engine)
+ *   <prefix>/game-images/...          wesnoth/data/{core,campaigns}/**   (as public/game-images)
+ *   <prefix>/game-images-engine/...   wesnoth/images/**                  (as public/game-images-engine)
+ *   <prefix>/game-sounds-engine/...   wesnoth/sounds/**                  (as public/game-sounds-engine)
  *
- * Only media files (png, webp, jpg, ogg, wav) are uploaded; WML, maps and Lua are baked into the build. A
- * prefix never changes once written (it is named after the commit), so every object is sent with
- * `Cache-Control: public, max-age=31536000, immutable`. When `<commit>/.complete` exists the prefix is done
+ * `<prefix>` is `<submodule commit>-m<MEDIA_VERSION>`: the commit fixes the sources, the version the way
+ * they are processed. Only media files (png, webp, jpg, ogg, wav) are uploaded; WML, maps and Lua are baked
+ * into the build. WAVs are converted to Ogg Vorbis (quality 5, ~6x smaller) and stored as `<name>.wav.ogg`,
+ * which is what the production build asks for (`packages/ui/src/gameData.ts` `servedAudioPath`); this needs
+ * `ffmpeg`. A prefix never changes once written, so every object is sent with
+ * `Cache-Control: public, max-age=31536000, immutable`. When `<prefix>/.complete` exists the prefix is done
  * and nothing is sent; otherwise objects already present (an interrupted earlier run) are skipped.
  *
  * Uses R2's S3-compatible API: the Cloudflare REST API's rate limit would stretch ~19k uploads past an hour.
@@ -20,6 +23,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AwsClient } from 'aws4fetch';
@@ -29,7 +33,9 @@ const wesnoth = path.join(repoRoot, 'wesnoth');
 const dryRun = process.argv.includes('--dry-run');
 const bucket = process.env.R2_BUCKET || 'wesnothweb2-data';
 
-const CONTENT_TYPES = { png: 'image/png', webp: 'image/webp', jpg: 'image/jpeg', ogg: 'audio/ogg', wav: 'audio/wav' };
+/** Bump when the processing below changes (2: WAV -> Ogg Vorbis), so a new prefix is uploaded. */
+const MEDIA_VERSION = 2;
+const CONTENT_TYPES = { png: 'image/png', webp: 'image/webp', jpg: 'image/jpeg', ogg: 'audio/ogg' };
 const CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
 /** The submodule commit: its own HEAD when checked out as a repository, else the one the superproject pins. */
@@ -46,24 +52,37 @@ function mediaFiles(dir, keyPrefix, out) {
     if (e.isDirectory()) mediaFiles(p, `${keyPrefix}/${e.name}`, out);
     else {
       const ext = e.name.split('.').pop().toLowerCase();
-      if (CONTENT_TYPES[ext]) out.push({ file: p, key: `${keyPrefix}/${e.name}`, type: CONTENT_TYPES[ext] });
+      if (ext === 'wav') out.push({ file: p, key: `${keyPrefix}/${e.name}.ogg`, type: 'audio/ogg', transcode: true });
+      else if (CONTENT_TYPES[ext]) out.push({ file: p, key: `${keyPrefix}/${e.name}`, type: CONTENT_TYPES[ext] });
     }
   }
   return out;
 }
 
-const commit = submoduleCommit();
+const prefix = `${submoduleCommit()}-m${MEDIA_VERSION}`;
 const files = [];
-mediaFiles(path.join(wesnoth, 'data/core'), `${commit}/game-images/core`, files);
-mediaFiles(path.join(wesnoth, 'data/campaigns'), `${commit}/game-images/campaigns`, files);
-mediaFiles(path.join(wesnoth, 'images'), `${commit}/game-images-engine`, files);
-mediaFiles(path.join(wesnoth, 'sounds'), `${commit}/game-sounds-engine`, files);
+mediaFiles(path.join(wesnoth, 'data/core'), `${prefix}/game-images/core`, files);
+mediaFiles(path.join(wesnoth, 'data/campaigns'), `${prefix}/game-images/campaigns`, files);
+mediaFiles(path.join(wesnoth, 'images'), `${prefix}/game-images-engine`, files);
+mediaFiles(path.join(wesnoth, 'sounds'), `${prefix}/game-sounds-engine`, files);
 const totalBytes = files.reduce((n, f) => n + fs.statSync(f.file).size, 0);
-console.log(`${files.length} media files, ${(totalBytes / 1024 / 1024).toFixed(0)} MiB, under ${bucket}/${commit}/`);
+console.log(`${files.length} media files (${files.filter((f) => f.transcode).length} WAVs to convert), ${(totalBytes / 1024 / 1024).toFixed(0)} MiB, under ${bucket}/${prefix}/`);
 
 if (dryRun) {
-  console.log(commit);
+  console.log(prefix);
   process.exit(0);
+}
+
+if (files.some((f) => f.transcode)) execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); // fail early without ffmpeg
+const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'game-data-'));
+/** The bytes to upload for `f`: the file itself, or its Ogg Vorbis conversion. */
+function body(f) {
+  if (!f.transcode) return fs.readFileSync(f.file);
+  const out = path.join(scratch, `${f.key.replace(/[^A-Za-z0-9.-]/g, '_')}`);
+  execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-i', f.file, '-c:a', 'libvorbis', '-q:a', '5', out]);
+  const bytes = fs.readFileSync(out);
+  fs.rmSync(out);
+  return bytes;
 }
 
 for (const name of ['CLOUDFLARE_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY']) {
@@ -89,11 +108,11 @@ async function withRetries(what, fn) {
   }
 }
 
-const marker = `${commit}/.complete`;
+const marker = `${prefix}/.complete`;
 const head = await withRetries('HEAD marker', () => client.fetch(objectUrl(marker), { method: 'HEAD' }));
 if (head.status === 200) {
   console.log(`${marker} exists: nothing to upload`);
-  console.log(commit);
+  console.log(prefix);
   process.exit(0);
 }
 
@@ -103,7 +122,7 @@ let token;
 do {
   const url = new URL(endpoint);
   url.searchParams.set('list-type', '2');
-  url.searchParams.set('prefix', `${commit}/`);
+  url.searchParams.set('prefix', `${prefix}/`);
   if (token) url.searchParams.set('continuation-token', token);
   const res = await withRetries('list', async () => {
     const r = await client.fetch(url.toString());
@@ -126,7 +145,7 @@ async function worker() {
     await withRetries(f.key, async () => {
       const r = await client.fetch(objectUrl(f.key), {
         method: 'PUT',
-        body: fs.readFileSync(f.file),
+        body: body(f),
         headers: { 'Content-Type': f.type, 'Cache-Control': CACHE_CONTROL },
       });
       if (!r.ok) throw new Error(`HTTP ${r.status} ${await r.text()}`);
@@ -138,5 +157,6 @@ await Promise.all(Array.from({ length: 32 }, worker));
 
 const put = await client.fetch(objectUrl(marker), { method: 'PUT', body: new Date().toISOString() });
 if (!put.ok) throw new Error(`writing ${marker}: HTTP ${put.status}`);
+fs.rmSync(scratch, { recursive: true, force: true });
 console.log(`uploaded ${done} objects in ${Math.round((Date.now() - started) / 1000)} s`);
-console.log(commit);
+console.log(prefix);

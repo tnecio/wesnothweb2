@@ -36,6 +36,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { localizedPath } from '../../../packages/engine/src/i18n/localizedPath.ts';
+import { readScenarioSnapshot } from '../../../packages/engine/src/snapshot/snapshotFiles.node.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../../..');
@@ -180,9 +181,25 @@ function localizedEntry(rel) {
   return { src: rel, w: size.w, h: size.h, bytes, variants: [{ src: rel, w: size.w, h: size.h, bytes }] };
 }
 
+/**
+ * Without that checkout (CI), the `localized` entries already in the story files are kept: their files are
+ * committed in `derived-images/`, and dropping them would silently lose translated art.
+ */
+const committedLocalized = new Map();
+if (!l10nDataRoot && fs.existsSync(storyOutDir)) {
+  for (const dir of fs.readdirSync(storyOutDir)) {
+    if (!fs.statSync(path.join(storyOutDir, dir)).isDirectory()) continue;
+    for (const f of fs.readdirSync(path.join(storyOutDir, dir))) {
+      for (const info of Object.values(JSON.parse(fs.readFileSync(path.join(storyOutDir, dir, f), 'utf8')).images ?? {})) {
+        if (info.localized) committedLocalized.set(info.src, info.localized);
+      }
+    }
+  }
+}
+
 /** `{ <code>: { image?, overlay? } }` for every shipped resource code that has a localized twin of `rooted`. */
 function buildLocalized(rooted) {
-  if (!l10nDataRoot) return undefined;
+  if (!l10nDataRoot) return committedLocalized.get(rooted);
   const out = {};
   for (const code of resourceCodes) {
     const image = localizedEntry(localizedPath(rooted, code));
@@ -213,7 +230,8 @@ for (const campaignDirName of fs.readdirSync(scenariosDir).sort()) {
     if (!file.endsWith('.json') || file.includes('@') || file.startsWith('_')) continue;
     const id = file.slice(0, -'.json'.length);
     if (onlyIds.size > 0 && !onlyIds.has(id)) continue;
-    const snapshot = JSON.parse(fs.readFileSync(path.join(campaignScenariosDir, file), 'utf8'));
+    // Assembled: the unit types (and so their portraits) live in the shared databases (Phase 28).
+    const snapshot = readScenarioSnapshot(path.join(campaignScenariosDir, file));
     const scenarioCfg = snapshot.scenarioConfigJson;
     const storyJsons = (scenarioCfg.children ?? []).filter((c) => c.tag === 'story').map((c) => c.config);
     const outFile = path.join(storyOutDir, campaignDirName, `${id}.json`);
@@ -256,6 +274,16 @@ for (const campaignDirName of fs.readdirSync(scenariosDir).sort()) {
     summary.push(`${campaignDirName}/${id}: ${storyJsons.length} [story], ${Object.keys(images).length} images, ${Math.round(fs.statSync(outFile).size / 1024)} KB`);
   }
 }
+
+// Phase 28 S4 (docs/ASSETS.md §4.5): the title screen's two images, which every visitor downloads first.
+// `maps/background.webp` is 4096 px wide (4.5 MB) and only stretched behind the menu, so smaller copies are
+// listed for the page's srcset. Bundled into the app (no request): packages/ui/src/menu/titleImages.json.
+const titleImages = {};
+for (const [key, rooted] of [['backdrop', 'core/images/maps/background.webp'], ['picture', 'core/images/maps/titlescreen.webp']]) {
+  const size = imageSize(path.join(dataRoot, rooted));
+  titleImages[key] = { src: rooted, w: size.w, variants: buildVariants(rooted, size).map(({ src, w }) => ({ src, w })) };
+}
+fs.writeFileSync(path.join(repoRoot, 'packages/ui/src/menu/titleImages.json'), JSON.stringify(titleImages, null, 2) + '\n');
 
 console.log(summary.join('\n'));
 console.log(`\nimage bytes: originals ${Math.round(totalOriginal / 1024)} KB, smallest variants ${Math.round(totalSmallest / 1024)} KB (per-scenario sums, shared images counted once per scenario)`);

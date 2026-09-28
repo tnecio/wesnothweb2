@@ -1,0 +1,34 @@
+{
+  "backdrop": {
+    "src": "core/images/maps/background.webp",
+    "w": 4096,
+    "variants": [
+      {
+        "src": "core/images/maps/background.w960.webp",
+        "w": 960
+      },
+      {
+        "src": "core/images/maps/background.w1920.webp",
+        "w": 1920
+      },
+      {
+        "src": "core/images/maps/background.w4096.webp",
+        "w": 4096
+      }
+    ]
+  },
+  "picture": {
+    "src": "core/images/maps/titlescreen.webp",
+    "w": 1280,
+    "variants": [
+      {
+        "src": "core/images/maps/titlescreen.w960.webp",
+        "w": 960
+      },
+      {
+        "src": "core/images/maps/titlescreen.w1280.webp",
+        "w": 1280
+      }
+    ]
+  }
+}

@@ -132,7 +132,8 @@ try {
       progress(`render loop paused: ${paused}`);
       // Take source images from the terrain bundles of every scenario the corpus came from (when built), so
       // the check covers cropping from bundles; anything not bundled is fetched on its own as usual.
-      const manifests = ['01_Invasion', '01_The_Raid', 'synth_combat_01'].map((id) => `/atlases/${id}/terrain.json`);
+      // The shared terrain bundle (Phase 28 S4) and each scenario's own, under its campaign directory.
+      const manifests = ['/atlases/_common/terrain.json', ...['Dead_Water/01_Invasion', 'Liberty/01_The_Raid', 'combat/synth_combat_01'].map((id) => `/atlases/${id}/terrain.json`)];
       // ...and every unit type bundle (P6), so unit frames are cropped from bundles too.
       const unitIndex = await page.evaluate(() => fetch('/atlases/units/index.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({})));
       for (const stem of Object.values(unitIndex)) manifests.push(`/atlases/units/${stem}.json`);

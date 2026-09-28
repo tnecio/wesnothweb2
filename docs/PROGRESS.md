@@ -5416,3 +5416,45 @@ either orientation; tablets and desktops keep the full layout.
   - no console errors. The dev server and the ui (375) and renderer (263) suites pass.
 - The edge already Brotli-compresses JSON (`_core.json`: 3.3 MB → 211 KB on the wire), so pre-compressed
   files are not needed for now.
+
+## 2026-09-28 — Phase 28 S4: shared terrain bundle, palette-encoded bundles
+
+- **Shared terrain bundle** (`docs/ASSETS.md` §4.2). Terrain images used by at least 5 scenarios (847
+  images) go into one bundle, `atlases/_common/terrain.json` (9.9 MB), cached once for every scenario and
+  campaign. Each scenario's own bundle now holds only the rest: Liberty 1 is 12 images and 84 KB; the
+  largest, Dead Water 12, is 496 KB. Because which images are common depends on every scenario, terrain is
+  rebuilt for all scenarios together. The board registers the shared bundle first, then the scenario's.
+- **Exact palette PNGs** (§4.3). A bundle with at most 256 distinct RGBA values is written as an 8-bit
+  palette PNG. Every value is kept exactly (including the RGB of transparent pixels), and each file is
+  decoded and compared with its source before use. Unit bundles: 27.6 → 9.8 MB.
+- **Totals:** atlases 212 → 37 MB (terrain 186 → 25 MB, units 27.6 → 9.8 MB). A full atlas build now takes
+  50 s instead of 95 s.
+- **Fidelity.** `check:image-golden` had been registering flat `atlases/<id>/terrain.json` paths since the
+  campaign-directory nesting (2026-09-27), so its terrain went per-file and only unit bundles were
+  exercised. It now registers `_common` and the nested scenario bundles and fetches 5 bundle images and 1
+  single file. **4872/4872 refs match.** Liberty 1 (HARD) and Dead Water 1 load in the browser with no
+  errors.
+- **Title screen** (§4.5). `build-story-assets.mjs` also makes 960/1920 px copies of the two title images
+  and lists them in `packages/ui/src/menu/titleImages.json`, which is bundled into the app. The page uses
+  `srcset`. Measured: 6.1 MB → about 1 MB (a 1280 px desktop and a 412 px phone at 2.6× both take the
+  1920 px backdrop, 723 KB, and the 1280 px picture, 286 KB).
+- **Regression caught.** `build-story-assets.mjs` read raw scenario files, which lost the unit types (and so
+  every portrait: 275 → 7 images in Dead Water 1) after the database split. It now reads assembled
+  snapshots, and the story files regenerate byte-identical. A new CI job, `generated-in-sync`, regenerates
+  the story assets and the title image list and fails on any change or new file.
+- **WAV → Ogg Vorbis** (§4.7, approved by the user). `upload-game-data.mjs` converts all 86 WAVs with
+  ffmpeg (libvorbis, quality 5; sample rate and channels unchanged) and stores them as `<name>.wav.ogg`.
+  Core and engine WAVs go from 3.4 MB to 0.59 MB; `bell.wav` 181 → 22 KB, `slowed.wav` 151 → 22 KB (both
+  preloaded on every board). The name keeps `.wav` because core has `mace`/`spear`/`staff` as both `.wav`
+  and `.ogg`, as different sounds. The production build asks for these names (`gameData.ts`
+  `servedAudioPath`); the dev server serves the originals. The bucket prefix is now
+  `<commit>-m<MEDIA_VERSION>` (2), so changing how media is processed uploads a fresh prefix instead of
+  mixing with immutable objects already served.
+- **CI `generated-in-sync`** installs ImageMagick (not on the runner image), regenerates the story assets
+  and compares their structure with the committed files (`.github/scripts/json-diff.mjs`): which images
+  each scenario references, localized entries, the title images. Variant lists are left out: the runner's
+  WebP encoder kept 500 px copies of two portraits that this VM's encoder judged not worth serving, so they
+  depend on the machine, not on the code.
+- Localized story art comes from a separate full upstream checkout (`~/wesnothweb`), which CI lacks. Without
+  it, `build-story-assets.mjs` now keeps the `localized` entries already committed instead of dropping them.
+  Checked by rerunning with that checkout hidden: no changes.

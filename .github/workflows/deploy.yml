@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 env:
-  # The R2 bucket's custom domain; the build reads game media from <origin>/<submodule commit>.
+  # The R2 bucket's custom domain; the build reads game media from <origin>/<prefix> (upload-game-data.mjs).
   GAME_DATA_ORIGIN: https://wesnoth-data.tnec.io
   R2_BUCKET: wesnothweb2-data
 
@@ -40,8 +40,9 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
+          command -v ffmpeg >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
           node apps/web/scripts/upload-game-data.mjs | tee upload.log
-          echo "commit=$(tail -n 1 upload.log)" >> "$GITHUB_OUTPUT"
+          echo "prefix=$(tail -n 1 upload.log)" >> "$GITHUB_OUTPUT"
 
       - name: Allow cross-origin reads of the game media
         working-directory: apps/web
@@ -52,7 +53,7 @@ jobs:
 
       - name: Build
         env:
-          VITE_GAME_DATA_URL: ${{ env.GAME_DATA_ORIGIN }}/${{ steps.data.outputs.commit }}
+          VITE_GAME_DATA_URL: ${{ env.GAME_DATA_ORIGIN }}/${{ steps.data.outputs.prefix }}
         run: |
           npm run build --workspace=apps/web
           node apps/web/scripts/stage-dist.mjs
@@ -66,7 +67,7 @@ jobs:
 
       - name: Check the deployment
         env:
-          DATA: ${{ env.GAME_DATA_ORIGIN }}/${{ steps.data.outputs.commit }}
+          DATA: ${{ env.GAME_DATA_ORIGIN }}/${{ steps.data.outputs.prefix }}
         run: |
           site=$(grep -oE 'https://[^ ]+\.workers\.dev' apps/web/deploy.log | head -n 1)
           echo "Deployed to $site" | tee -a "$GITHUB_STEP_SUMMARY"
