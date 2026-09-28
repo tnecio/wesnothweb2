@@ -41,6 +41,9 @@ export class WebAudioMusicBackend implements MusicBackend {
 
   private open(url: string): Slot {
     const el = new Audio();
+    // Production serves music from the game data bucket, another origin. An element routed through
+    // createMediaElementSource plays silence unless it was fetched in CORS mode (the bucket allows any origin).
+    el.crossOrigin = 'anonymous';
     el.preload = 'auto';
     el.src = url;
     return { el, url, fading: false };
