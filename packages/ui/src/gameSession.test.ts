@@ -20,6 +20,7 @@ import {
   type WmlConfigJson,
 } from '@wesnothweb2/engine';
 import { GameSession } from './gameSession.js';
+import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 
 /**
  * Real-content tests for the new (post-Phase-5 playability feedback)
@@ -54,30 +55,30 @@ const combatSnapshotPath = path.join(repoRoot, 'apps/web/public/scenarios/combat
 
 /** Real Dead Water scenario 3 -- chained here to exercise `{RECALL_LOYAL_UNITS}` (a real `prestart`-event macro expanding to several `[recall] id=X` calls) against a real recall list carried two scenarios deep. */
 function loadWolfCoastSnapshot(): GameBoardSnapshot {
-  return JSON.parse(fs.readFileSync(wolfCoastSnapshotPath, 'utf8')) as GameBoardSnapshot;
+  return readScenarioSnapshot(wolfCoastSnapshotPath);
 }
 
 /** Real Under the Burning Suns scenario 3 -- its real prestart event declares a `[time_area] id=campfires x=14,16,13 y=10,15,20 radius=2` covering three campfire clusters with their own always-dawn-lit schedule (Phase 12's `[time_area]` testbed). */
 function loadUtbsTimeAreaSnapshot(): GameBoardSnapshot {
-  return JSON.parse(fs.readFileSync(utbsTimeAreaSnapshotPath, 'utf8')) as GameBoardSnapshot;
+  return readScenarioSnapshot(utbsTimeAreaSnapshotPath);
 }
 
 function loadSnapshot(): GameBoardSnapshot {
-  return JSON.parse(fs.readFileSync(snapshotPath, 'utf8')) as GameBoardSnapshot;
+  return readScenarioSnapshot(snapshotPath);
 }
 
 function loadNextSnapshot(): GameBoardSnapshot {
-  return JSON.parse(fs.readFileSync(nextSnapshotPath, 'utf8')) as GameBoardSnapshot;
+  return readScenarioSnapshot(nextSnapshotPath);
 }
 
 /** Real "Economy Debug" synthetic scenario -- gold=40/income=2 (side 1), gold=50/income=1 (side 2), both village_gold=1, one real village at (5,5) -- see synthetic-campaigns/economy/. */
 function loadEconomySnapshot(): GameBoardSnapshot {
-  return JSON.parse(fs.readFileSync(economySnapshotPath, 'utf8')) as GameBoardSnapshot;
+  return readScenarioSnapshot(economySnapshotPath);
 }
 
 /** Real "Abilities & Specials Debug" synthetic scenario -- see synthetic-campaigns/abilities/. */
 function loadAbilitiesSnapshot(): GameBoardSnapshot {
-  return JSON.parse(fs.readFileSync(abilitiesSnapshotPath, 'utf8')) as GameBoardSnapshot;
+  return readScenarioSnapshot(abilitiesSnapshotPath);
 }
 
 /**
@@ -88,7 +89,7 @@ function loadAbilitiesSnapshot(): GameBoardSnapshot {
  * synthetic-campaigns/combat/scenarios/01_combat.cfg.
  */
 function loadCombatSnapshot(): GameBoardSnapshot {
-  return JSON.parse(fs.readFileSync(combatSnapshotPath, 'utf8')) as GameBoardSnapshot;
+  return readScenarioSnapshot(combatSnapshotPath);
 }
 
 /**
@@ -2133,7 +2134,7 @@ describe('GameSession.menuItems / runMenuItem (Phase 14: real WML/Lua-extensible
 
 describe('GameSession.storyParts (Phase 16)', () => {
   it("resolves real Dead Water 1's two [story] blocks: five narrated map parts, then the titled journey part", async () => {
-    const snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf8')) as GameBoardSnapshot;
+    const snapshot = readScenarioSnapshot(snapshotPath);
     const session = new GameSession(snapshot);
 
     const parts = session.storyParts();
@@ -2148,7 +2149,7 @@ describe('GameSession.storyParts (Phase 16)', () => {
 
 describe('GameSession.nextScenarioId: next_scenario=null ends the campaign (Phase 16 outro)', () => {
   it("real Dead Water epilogue: its start event's [endlevel] wins with no next scenario, while scenario 1 still continues", async () => {
-    const epilogue = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/Dead_Water/13_Epilogue.json'), 'utf8')) as GameBoardSnapshot;
+    const epilogue = readScenarioSnapshot(path.join(repoRoot, 'apps/web/public/scenarios/Dead_Water/13_Epilogue.json'));
     const session = new GameSession(epilogue);
     const messages = await session.runStartupEvents();
 
@@ -2157,7 +2158,7 @@ describe('GameSession.nextScenarioId: next_scenario=null ends the campaign (Phas
     expect(session.nextScenarioId).toBeNull();
     expect(session.endLevelPresentation).toEqual({ endText: undefined, endTextDuration: undefined, endCredits: undefined });
 
-    const first = new GameSession(JSON.parse(fs.readFileSync(snapshotPath, 'utf8')) as GameBoardSnapshot);
+    const first = new GameSession(readScenarioSnapshot(snapshotPath));
     expect(first.nextScenarioId).toBe('02_Flight');
   });
 });
@@ -2254,7 +2255,7 @@ describe('Phase 18d: exit hex / enter hex fire mid-move; [cancel_action] stops t
 
 describe('Phase 18d: [terrain_mask] against the real 1.19 build', () => {
   it("Dead Water 2's prestart mask gives exactly the real game's map, the moved side 4 start included", async () => {
-    const snapshot = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/Dead_Water/02_Flight.json'), 'utf8')) as GameBoardSnapshot;
+    const snapshot = readScenarioSnapshot(path.join(repoRoot, 'apps/web/public/scenarios/Dead_Water/02_Flight.json'));
     const session = new GameSession(snapshot);
     await session.runStartupEvents();
     const real = parseConfig(
@@ -2289,7 +2290,7 @@ describe('Phase 18: map items', () => {
 
 describe('Phase 18: map labels', () => {
   it("the scenario's [label] shows; a team label covers it for that team only; both survive a load", async () => {
-    const snapshot = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/Liberty/01_The_Raid.json'), 'utf8')) as GameBoardSnapshot;
+    const snapshot = readScenarioSnapshot(path.join(repoRoot, 'apps/web/public/scenarios/Liberty/01_The_Raid.json'));
     expect(new GameSession(snapshot).mapLabels).toEqual([{ x: 10, y: 0, text: 'Dallben', color: '255,255,255', tooltip: '' }]);
     const session0 = new GameSession(snapshot);
     const myTeam = session0.board.getTeam(session0.viewingSide)!.teamName;
@@ -2308,7 +2309,7 @@ describe('Phase 18: map labels', () => {
 
 describe('Phase 18: player labels (label_terrain / clear_labels)', () => {
   it('places, clears (scenario labels are immutable) and records them, unsynced, so a replay shows them', async () => {
-    const snapshot = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/Liberty/01_The_Raid.json'), 'utf8')) as GameBoardSnapshot;
+    const snapshot = readScenarioSnapshot(path.join(repoRoot, 'apps/web/public/scenarios/Liberty/01_The_Raid.json'));
     const session = new GameSession(snapshot);
     await session.runStartupEvents();
     const undoable = session.canUndo;
@@ -2336,7 +2337,7 @@ describe('Phase 18: player labels (label_terrain / clear_labels)', () => {
 
 describe('Phase 18: label settings (hidden_label_categories)', () => {
   it('lists team, sides and categories; hiding a side hides the labels it made', async () => {
-    const snapshot = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/Liberty/01_The_Raid.json'), 'utf8')) as GameBoardSnapshot;
+    const snapshot = readScenarioSnapshot(path.join(repoRoot, 'apps/web/public/scenarios/Liberty/01_The_Raid.json'));
     snapshot.scenarioConfigJson.children.push({
       tag: 'event',
       config: parseConfig('[event]\nname=prestart\n[label]\nx=2\ny=2\ntext=Camp\ncategory=places\n[/label]\n[/event]').child('event')!.toJSON(),

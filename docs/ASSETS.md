@@ -104,6 +104,8 @@ tiles from being downloaded twice. It wouldn't help the snapshot or the atlas: t
 
 ### 4.1 Every snapshot carries the whole unit database (≈95% of snapshot bytes)
 
+**Fixed 2026-09-28:** split into `_core.json` and per-campaign databases (see PROGRESS).
+
 | Key in each snapshot | Summed over 44 snapshots | Distinct content |
 |---|---|---|
 | `unitTypeConfigs` (fully flattened `[unit_type]` WML, 328–425 types) | 137 MB | **4.2 MB** (444 types; a type is byte-identical in every snapshot that has it) |

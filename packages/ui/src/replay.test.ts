@@ -15,12 +15,13 @@ import { gunzipSync } from 'node:zlib';
 import { Location, parseConfig, type GameBoardSnapshot, type RecordedCommand, type WmlConfigJson } from '@wesnothweb2/engine';
 import { GameSession, type SaveGameData } from './gameSession.js';
 import { fromWesnothSave } from './save/wesnothSave.js';
+import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 /** This file's two fixtures' own campaign directories (`CampaignInfo.assetDir`). */
 const CAMPAIGN_DIR: Record<string, string> = { '01_Invasion': 'Dead_Water', synth_economy_01: 'economy', synth_combat_01: 'combat' };
 const load = (name: string): GameBoardSnapshot =>
-  JSON.parse(fs.readFileSync(path.join(repoRoot, `apps/web/public/scenarios/${CAMPAIGN_DIR[name]}/${name}.json`), 'utf8')) as GameBoardSnapshot;
+  readScenarioSnapshot(path.join(repoRoot, `apps/web/public/scenarios/${CAMPAIGN_DIR[name]}/${name}.json`));
 
 /** Dead Water 1 with both sides played by the AI, for `turns` turns. */
 async function aiVsAi(seed: number, turns: number): Promise<GameSession> {

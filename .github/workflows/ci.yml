@@ -22,8 +22,33 @@ jobs:
       - uses: ./.github/actions/setup
       - run: npm run typecheck --workspaces --if-present
 
+  # Scenario snapshots are generated (not in git) and several suites read them: build them once per run,
+  # cached by a hash of their inputs, and hand them to the test jobs.
+  scenarios:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - id: inputs
+        run: echo "hash=$(node --import tsx apps/web/scripts/rebuild-snapshots.mjs --inputs-hash)" >> "$GITHUB_OUTPUT"
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          path: apps/web/public/scenarios
+          key: scenarios-${{ steps.inputs.outputs.hash }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: npm run build:scenarios --workspace=apps/web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scenarios
+          path: apps/web/public/scenarios
+          include-hidden-files: true
+          retention-days: 1
+
   test:
     name: test (${{ matrix.package }})
+    needs: scenarios
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -33,6 +58,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with:
+          name: scenarios
+          path: apps/web/public/scenarios
       - name: vitest
         working-directory: packages/${{ matrix.package }}
         run: npx vitest run --reporter=default --reporter=github-actions

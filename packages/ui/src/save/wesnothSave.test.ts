@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { WmlConfig, parseConfig, writeWml, recordedCommandToWml, type GameBoardSnapshot } from '@wesnothweb2/engine';
 import { GameSession } from '../gameSession.js';
 import { fromWesnothSave, toWesnothSave, type WesnothCampaignInfo } from './wesnothSave.js';
+import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 
 /**
  * Both directions against a **real** save file written by the real game --
@@ -28,7 +29,7 @@ function loadRealSave(): WmlConfig {
 }
 
 function loadSnapshot(): GameBoardSnapshot {
-  return JSON.parse(fs.readFileSync(snapshotPath, 'utf8')) as GameBoardSnapshot;
+  return readScenarioSnapshot(snapshotPath);
 }
 
 const DEAD_WATER: WesnothCampaignInfo = {

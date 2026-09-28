@@ -8,12 +8,43 @@
  * only unique *within* its own campaign (Dead Water and Under the Burning Suns both ship a `13_Epilogue`),
  * so `campaignDir` (a `CampaignInfo.assetDir`) is required, not inferred from the id.
  */
-import { applySnapshotOverlay, scenarioFileName, type GameBoardSnapshot, type SnapshotOverlay } from '@wesnothweb2/engine';
+import {
+  applySnapshotOverlay,
+  assembleSnapshot,
+  scenarioFileName,
+  type GameBoardSnapshot,
+  type SnapshotDatabase,
+  type SnapshotOverlay,
+  type StoredSnapshot,
+} from '@wesnothweb2/engine';
 
 async function fetchJson<T>(name: string): Promise<T> {
   const res = await fetch(`/scenarios/${name}`);
   if (!res.ok) throw new Error(`fetch scenarios/${name}: ${res.status}`);
   return (await res.json()) as T;
+}
+
+/**
+ * Phase 28: the shared unit/terrain databases a scenario file names (`_core.json`, `<campaignDir>/_campaign.json`,
+ * see `engine/snapshot/snapshotDatabase.ts`), fetched once per page and shared by every scenario that uses them.
+ */
+const databases = new Map<string, Promise<SnapshotDatabase>>();
+
+function fetchDatabase(name: string): Promise<SnapshotDatabase> {
+  let db = databases.get(name);
+  if (!db) {
+    db = fetchJson<SnapshotDatabase>(name);
+    db.catch(() => databases.delete(name));
+    databases.set(name, db);
+  }
+  return db;
+}
+
+/** A scenario file with its databases merged back in: the complete snapshot. */
+async function fetchSnapshot(name: string): Promise<GameBoardSnapshot> {
+  const stored = await fetchJson<StoredSnapshot>(name);
+  if (!stored.databases) return stored;
+  return assembleSnapshot(stored, await Promise.all(stored.databases.map(fetchDatabase)));
 }
 
 /**
@@ -24,14 +55,14 @@ async function fetchJson<T>(name: string): Promise<T> {
  */
 export async function fetchScenarioSnapshot(scenarioId: string, campaignDir: string, difficulty?: string, defaultDifficulty?: string): Promise<GameBoardSnapshot> {
   const baseName = `${campaignDir}/${scenarioId}.json`;
-  if (!difficulty) return fetchJson<GameBoardSnapshot>(baseName);
+  if (!difficulty) return fetchSnapshot(baseName);
   if (defaultDifficulty !== undefined) {
     const overlayName = scenarioFileName(campaignDir, scenarioId, difficulty, defaultDifficulty);
-    if (overlayName === baseName) return fetchJson<GameBoardSnapshot>(overlayName);
-    const [base, overlay] = await Promise.all([fetchJson<GameBoardSnapshot>(baseName), fetchJson<SnapshotOverlay>(overlayName)]);
+    if (overlayName === baseName) return fetchSnapshot(overlayName);
+    const [base, overlay] = await Promise.all([fetchSnapshot(baseName), fetchJson<SnapshotOverlay>(overlayName)]);
     return applySnapshotOverlay(base, overlay);
   }
-  const base = await fetchJson<GameBoardSnapshot>(baseName);
+  const base = await fetchSnapshot(baseName);
   if (base.difficulty === difficulty) return base;
   return applySnapshotOverlay(base, await fetchJson<SnapshotOverlay>(scenarioFileName(campaignDir, scenarioId, difficulty, base.difficulty)));
 }

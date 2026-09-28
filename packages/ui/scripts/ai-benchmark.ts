@@ -34,6 +34,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { GameBoardSnapshot, AiAnimationEvent } from '@wesnothweb2/engine';
 import { GameSession } from '../src/gameSession.js';
+import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -100,7 +101,7 @@ export function loadSnapshot(scenarioId: string, campaignDir?: string): GameBoar
   if (candidates.length > 1) {
     throw new Error(`"${scenarioId}" exists under more than one campaign (${candidates.join(', ')}); pass --campaign to pick one.`);
   }
-  return JSON.parse(fs.readFileSync(path.join(scenariosDir, candidates[0]!, `${scenarioId}.json`), 'utf8')) as GameBoardSnapshot;
+  return readScenarioSnapshot(path.join(scenariosDir, candidates[0]!, `${scenarioId}.json`));
 }
 
 function isAiControlled(session: GameSession, side: number): boolean {

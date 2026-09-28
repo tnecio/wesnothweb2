@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:scenarios": "tsx scripts/rebuild-snapshots.mjs --if-stale",
     "build:atlases": "tsx scripts/build-image-atlases.mjs",
     "build:campaign-images": "node scripts/build-campaign-images.mjs",
-    "predev": "npm run build:atlases",
+    "predev": "npm run build:scenarios && npm run build:atlases",
     "dev": "vite",
-    "prebuild": "npm run build:atlases",
+    "prebuild": "npm run build:scenarios && npm run build:atlases",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "svelte-check --tsconfig ./tsconfig.json"

@@ -209,7 +209,8 @@ for (const campaignDirName of fs.readdirSync(scenariosDir).sort()) {
   fs.mkdirSync(path.join(storyOutDir, campaignDirName), { recursive: true });
 
   for (const file of fs.readdirSync(campaignScenariosDir).sort()) {
-    if (!file.endsWith('.json') || file.includes('@')) continue; // '@' = a difficulty overlay, not a full snapshot
+    // '@' = a difficulty overlay; '_' = a shared unit/terrain database (Phase 28). Neither is a scenario.
+    if (!file.endsWith('.json') || file.includes('@') || file.startsWith('_')) continue;
     const id = file.slice(0, -'.json'.length);
     if (onlyIds.size > 0 && !onlyIds.has(id)) continue;
     const snapshot = JSON.parse(fs.readFileSync(path.join(campaignScenariosDir, file), 'utf8'));

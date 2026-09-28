@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { MusicList, WmlConfig, type GameBoardSnapshot } from '@wesnothweb2/engine';
 import { GameSession } from './gameSession.js';
 import { fromWesnothSave, toWesnothSave } from './save/wesnothSave.js';
+import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 
 /**
  * Phase 19, Stage 1: the music playlist through a real session -- the
@@ -15,7 +16,7 @@ import { fromWesnothSave, toWesnothSave } from './save/wesnothSave.js';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
 function scenario(id: string): GameBoardSnapshot {
-  return JSON.parse(fs.readFileSync(path.join(repoRoot, `apps/web/public/scenarios/Dead_Water/${id}.json`), 'utf8')) as GameBoardSnapshot;
+  return readScenarioSnapshot(path.join(repoRoot, `apps/web/public/scenarios/Dead_Water/${id}.json`));
 }
 
 /** A list whose track choice is a fixed sequence, so the tests are deterministic. */

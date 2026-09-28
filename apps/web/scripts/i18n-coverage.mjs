@@ -76,6 +76,8 @@ for (const dir of ['scenarios', 'story']) {
   const full = path.join(repoRoot, 'apps/web/public', dir);
   for (const campaignDir of fs.readdirSync(full).sort()) {
     const campaignFull = path.join(full, campaignDir);
+    // Phase 28: the core unit/terrain database (`scenarios/_core.json`) sits beside the campaign directories.
+    if (campaignDir.endsWith('.json')) visit(JSON.parse(fs.readFileSync(campaignFull, 'utf8')), `${dir}/${campaignDir}`);
     if (!fs.statSync(campaignFull).isDirectory()) continue;
     for (const f of fs.readdirSync(campaignFull).filter((x) => x.endsWith('.json')).sort()) {
       visit(JSON.parse(fs.readFileSync(path.join(campaignFull, f), 'utf8')), `${dir}/${campaignDir}/${f}`);

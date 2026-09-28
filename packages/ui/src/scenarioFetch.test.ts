@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { applySnapshotOverlay, type GameBoardSnapshot, type SnapshotOverlay } from '@wesnothweb2/engine';
 import { fetchScenarioSnapshot } from './scenarioFetch.js';
+import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 
 const publicDir = path.resolve(__dirname, '../../../apps/web/public');
 const scenariosDir = path.join(publicDir, 'scenarios');
@@ -80,7 +81,7 @@ describe('shipped scenario snapshots', () => {
       .flatMap((d) => fs.readdirSync(path.join(scenariosDir, d)).map((f) => `${d}/${f}`)),
   );
   const bases = [...files].filter((f) => !f.includes('@'));
-  const read = (assetDir: string, id: string): GameBoardSnapshot => JSON.parse(fs.readFileSync(path.join(scenariosDir, assetDir, `${id}.json`), 'utf8')) as GameBoardSnapshot;
+  const read = (assetDir: string, id: string): GameBoardSnapshot => readScenarioSnapshot(path.join(scenariosDir, assetDir, `${id}.json`));
 
   it('records the default difficulty in every real campaign scenario, and none in a debug one', () => {
     for (const c of manifest.campaigns) {
@@ -118,8 +119,8 @@ describe('shipped scenario snapshots', () => {
     const utbs = manifest.campaigns.find((c) => c.wesnothId === 'Under_the_Burning_Suns')!;
     expect(files.has('Dead_Water/13_Epilogue.json')).toBe(true);
     expect(files.has('Under_the_Burning_Suns/13_Epilogue.json')).toBe(true);
-    const dwEpilogue = JSON.parse(fs.readFileSync(path.join(scenariosDir, 'Dead_Water/13_Epilogue.json'), 'utf8')) as GameBoardSnapshot;
-    const utbsEpilogue = JSON.parse(fs.readFileSync(path.join(scenariosDir, 'Under_the_Burning_Suns/13_Epilogue.json'), 'utf8')) as GameBoardSnapshot;
+    const dwEpilogue = readScenarioSnapshot(path.join(scenariosDir, 'Dead_Water/13_Epilogue.json'));
+    const utbsEpilogue = readScenarioSnapshot(path.join(scenariosDir, 'Under_the_Burning_Suns/13_Epilogue.json'));
     // Two different scenarios that happen to share an id: their unit rosters differ.
     expect(Object.keys(dwEpilogue.unitTypes).sort()).not.toEqual(Object.keys(utbsEpilogue.unitTypes).sort());
     expect(dw.assetDir).toBe('Dead_Water');

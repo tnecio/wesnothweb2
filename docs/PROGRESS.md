@@ -5324,3 +5324,45 @@ either orientation; tablets and desktops keep the full layout.
   nearest level in that direction, and WML `[zoom]` still snaps to a level.
 - Plan: Phase 28b records the move-and-attack order's requirements (touch and mouse).
 
+
+## 2026-09-28 — Phase 28 S1 (CI) and the shared unit/terrain databases
+
+- **CI on GitHub Actions** (`.github/workflows/ci.yml`, runs on every push). Jobs: typecheck; one job per
+  package for unit tests; and a `scenarios` job that builds the scenario snapshots once per run (cached by a
+  hash of their inputs) and hands them to the test jobs. A composite setup action installs Node 20
+  (`.nvmrc`) and does a sparse, blob-filtered checkout of the wesnoth submodule (`data/`, `images/`,
+  `sounds/`, `po/wesnoth/`, `.pot` files), about 15 s, cached by the submodule commit. First green run:
+  about 2 minutes end to end.
+- **ui suite exit code.** Every test passed but vitest exited 1: `scripts/ai-benchmark.test.ts` played a
+  whole AI-vs-AI game in one synchronous `endTurn()`, blocking the worker past its RPC timeout. `playGame`
+  now plays one round per call and yields in between. `endTurn(n)` stops after *advancing to* the next
+  side without playing it, so the benchmark plays that side explicitly, as it already did for side 1's
+  first turn. Outcomes for seeds 1, 42 and 7 match a single call.
+- **Scenario snapshots split into shared databases** (`docs/ASSETS.md` §4.1,
+  `engine/snapshot/snapshotDatabase.ts`). Built snapshots each carried the whole unit-type, movement-type,
+  terrain-type, ability and weapon-special tables: ~3 MB of every ~3.5 MB file, identical between
+  scenarios. `split-snapshot-databases.mjs` (run by `rebuild-snapshots.mjs`) moves:
+  - entries identical in all real campaigns to `scenarios/_core.json`;
+  - entries shared within one campaign to `scenarios/<campaignDir>/_campaign.json`;
+  - leaving the rest in the scenario file, with a `databases` list.
+
+  `assembleSnapshot` restores the complete snapshot. The browser (`scenarioFetch.ts`) fetches each
+  database once per page; tests and scripts use `readScenarioSnapshot` (`snapshotFiles.node.ts`). The
+  split checks that every scenario reassembles exactly before writing.
+
+  | | Before | After |
+  |---|---|---|
+  | Scenario files on disk | 157 MB | 2.9 MB |
+  | Liberty 1 scenario file (Brotli) | 164 KB | 8.8 KB |
+  | `_core.json` (Brotli), 328 types | — | 153 KB, once for every campaign |
+  | Campaign databases (Brotli) | — | 3–36 KB |
+- **Scenario snapshots are no longer in git** (user's decision). `apps/web/scenario-list.json` says which
+  scenarios a full build produces. `npm run build:scenarios` (`rebuild-snapshots.mjs --if-stale`, run by
+  `predev` and `prebuild`) rebuilds only when a hash of the inputs changed: the engine source, the build
+  scripts, the synthetic campaigns, the campaign and scenario lists, and the submodule commit. A full
+  build takes about 3 minutes on this VM.
+- Verified:
+  - engine 805 tests and ui 375 tests pass, typecheck has 0 errors;
+  - Liberty 1 on HARD (an overlay applied to an assembled snapshot) and Dead Water 1 load in the browser
+    with no console errors;
+  - the unit atlas build reads the assembled snapshots (444 types, unchanged).

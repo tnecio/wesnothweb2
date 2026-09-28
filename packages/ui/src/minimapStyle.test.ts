@@ -1,10 +1,12 @@
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 import { describe, expect, it } from 'vitest';
 import type { ColorData } from '@wesnothweb2/renderer';
 import { createMinimapStyle } from './minimapStyle.js';
 
 const root = new URL('../../../', import.meta.url);
-const snapshot = JSON.parse(readFileSync(new URL('apps/web/public/scenarios/Dead_Water/01_Invasion.json', root), 'utf8')) as {
+const snapshot = readScenarioSnapshot(fileURLToPath(new URL('apps/web/public/scenarios/Dead_Water/01_Invasion.json', root))) as unknown as {
   terrainTypeConfigs: { attrs: Record<string, unknown> }[];
 };
 const colors = JSON.parse(readFileSync(new URL('apps/web/public/team-colors.json', root), 'utf8')) as ColorData;

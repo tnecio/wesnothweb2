@@ -6,6 +6,7 @@ import type { GameBoardSnapshot, SoundRequest } from '@wesnothweb2/engine';
 import { WmlConfig } from '@wesnothweb2/engine';
 import { GameSession } from './gameSession.js';
 import { fromWesnothSave, toWesnothSave } from './save/wesnothSave.js';
+import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 
 /**
  * Phase 19, Stage 2: the sounds the game itself asks for -- the turn bell
@@ -16,7 +17,7 @@ import { fromWesnothSave, toWesnothSave } from './save/wesnothSave.js';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
 function dw1(): GameBoardSnapshot {
-  return JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/Dead_Water/01_Invasion.json'), 'utf8')) as GameBoardSnapshot;
+  return readScenarioSnapshot(path.join(repoRoot, 'apps/web/public/scenarios/Dead_Water/01_Invasion.json'));
 }
 
 function describeSounds(heard: readonly SoundRequest[]): string[] {

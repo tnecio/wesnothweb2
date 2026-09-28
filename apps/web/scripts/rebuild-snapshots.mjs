@@ -21,11 +21,18 @@
  * `<campaignDir>/<id>@<DEFINE>.json`, holding only the top-level keys that differ (`snapshotOverlay.ts`
  * refuses a difference outside its allow-list). Debug scenarios have no difficulties and are built once.
  *
- * Run: npx tsx apps/web/scripts/rebuild-snapshots.mjs [id ...]   (no ids = every scenario currently built)
+ * Run: npx tsx apps/web/scripts/rebuild-snapshots.mjs [id ...]   (no ids = every scenario in apps/web/scenario-list.json)
+ *      npx tsx apps/web/scripts/rebuild-snapshots.mjs --if-stale  (full build only if its inputs changed; `predev`/`prebuild`)
+ *      npx tsx apps/web/scripts/rebuild-snapshots.mjs --inputs-hash (print that hash; CI caches the output by it)
+ *
+ * Phase 28: the built files are not in git. `--if-stale` compares a hash of everything a full build reads
+ * (the engine source, these scripts, the synthetic campaigns, the campaign and scenario lists and the wesnoth
+ * submodule's commit) with the one recorded in `public/scenarios/.inputs-hash` by the last full build.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import * as os from 'node:os';
 import { diffSnapshots } from '../../../packages/engine/src/snapshot/snapshotOverlay.ts';
@@ -68,22 +75,56 @@ function findScenarios() {
   return found;
 }
 
-/** Every `<campaignDir>/<id>.json` (not an overlay) currently built, as `{ id, campaignDirName }`. */
-function builtScenarios() {
-  const out = [];
-  if (!fs.existsSync(outDir)) return out;
-  for (const campaignDirName of fs.readdirSync(outDir)) {
-    const dir = path.join(outDir, campaignDirName);
-    if (!fs.statSync(dir).isDirectory()) continue;
-    for (const f of fs.readdirSync(dir)) {
-      if (f.endsWith('.json') && !f.includes('@')) out.push({ id: f.slice(0, -5), campaignDirName });
-    }
+/**
+ * Phase 28: the scenarios the game ships, `{ <campaignDir>: [id, ...] }`. Built snapshots are no longer in git,
+ * so this list (not "whatever is already built") says what a full build produces. Building an id not on it
+ * adds it.
+ */
+const listFile = path.join(repoRoot, 'apps/web/scenario-list.json');
+const scenarioList = JSON.parse(fs.readFileSync(listFile, 'utf8'));
+
+/** Hash of everything a full build reads -- see the doc comment. */
+function inputsHash() {
+  const hash = createHash('sha256');
+  const add = (p) => {
+    const st = fs.statSync(p);
+    if (st.isDirectory()) for (const e of fs.readdirSync(p).sort()) add(path.join(p, e));
+    else hash.update(path.relative(repoRoot, p)).update('\0').update(fs.readFileSync(p)).update('\0');
+  };
+  for (const p of [
+    'packages/engine/src',
+    'apps/web/scripts/build-scenario-snapshot.mjs',
+    'apps/web/scripts/rebuild-snapshots.mjs',
+    'apps/web/scripts/split-snapshot-databases.mjs',
+    'apps/web/public/campaigns.json',
+    'apps/web/scenario-list.json',
+    'synthetic-campaigns',
+  ]) add(path.join(repoRoot, p));
+  // The checked-out submodule's commit when it is its own repository (a local checkout, or CI's sparse clone);
+  // otherwise the commit the superproject pins. (`git -C` on a plain directory would report the superproject.)
+  const sub = path.join(repoRoot, 'wesnoth');
+  const submodule = fs.existsSync(path.join(sub, '.git'))
+    ? execFileSync('git', ['-C', sub, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+    : execFileSync('git', ['-C', repoRoot, 'rev-parse', 'HEAD:wesnoth'], { encoding: 'utf8' }).trim();
+  return hash.update(submodule).digest('hex').slice(0, 16);
+}
+
+const hashFile = path.join(outDir, '.inputs-hash');
+const flags = new Set(process.argv.slice(2).filter((a) => a.startsWith('--')));
+if (flags.has('--inputs-hash')) {
+  console.log(inputsHash());
+  process.exit(0);
+}
+if (flags.has('--if-stale')) {
+  const current = inputsHash();
+  if (fs.existsSync(hashFile) && fs.readFileSync(hashFile, 'utf8').trim() === current) {
+    console.log('scenario snapshots are up to date');
+    process.exit(0);
   }
-  return out;
 }
 
 const allScenarios = findScenarios();
-const wantedIds = process.argv.slice(2);
+const wantedIds = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 
 /** The jobs to run: every scenario matching a requested id (or, with none given, every scenario already built). */
 const jobs = (
@@ -93,11 +134,13 @@ const jobs = (
         if (matches.length === 0) throw new Error(`no scenario cfg found for id ${id}`);
         return matches;
       })
-    : builtScenarios().map(({ id, campaignDirName }) => {
-        const match = allScenarios.find((s) => s.id === id && s.campaignDirName === campaignDirName);
-        if (!match) throw new Error(`built scenario ${campaignDirName}/${id}.json has no source cfg any more`);
-        return match;
-      })
+    : Object.entries(scenarioList).flatMap(([campaignDirName, ids]) =>
+        ids.map((id) => {
+          const match = allScenarios.find((s) => s.id === id && s.campaignDirName === campaignDirName);
+          if (!match) throw new Error(`listed scenario ${campaignDirName}/${id} has no source cfg any more`);
+          return match;
+        }),
+      )
 ).sort((a, b) => (a.campaignDirName === b.campaignDirName ? a.id.localeCompare(b.id) : a.campaignDirName.localeCompare(b.campaignDirName)));
 
 const manifest = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/campaigns.json'), 'utf8'));
@@ -129,6 +172,7 @@ async function run(job) {
   const base = await build(job.arg, def, undefined);
   if (base.code !== 0) return { ...job, ...base };
   const campaignOutDir = path.join(outDir, job.campaignDirName);
+  fs.mkdirSync(campaignOutDir, { recursive: true });
   const baseFile = path.join(campaignOutDir, `${job.id}.json`);
   const wanted = new Set(others.map((d) => `${job.id}@${d}.json`));
   for (const f of fs.readdirSync(campaignOutDir)) if (f.startsWith(`${job.id}@`) && !wanted.has(f)) fs.rmSync(path.join(campaignOutDir, f));
@@ -165,4 +209,22 @@ async function worker() {
   }
 }
 await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-process.exit(failed ? 1 : 0);
+if (failed) process.exit(1);
+
+let listChanged = false;
+for (const job of jobs) {
+  const ids = (scenarioList[job.campaignDirName] ??= []);
+  if (!ids.includes(job.id)) {
+    ids.push(job.id);
+    ids.sort();
+    listChanged = true;
+  }
+}
+if (listChanged) fs.writeFileSync(listFile, JSON.stringify(scenarioList, null, 2) + '\n');
+
+// The builder writes complete snapshots; move their shared unit/terrain tables into the database files.
+const split = spawn(process.execPath, ['--import', 'tsx', path.join(repoRoot, 'apps/web/scripts/split-snapshot-databases.mjs')], { cwd: repoRoot, stdio: 'inherit' });
+const splitCode = await new Promise((resolve) => split.on('close', resolve));
+// Only a full build (every listed scenario) vouches for the whole directory.
+if (splitCode === 0 && wantedIds.length === 0) fs.writeFileSync(hashFile, inputsHash() + '\n');
+process.exit(splitCode);

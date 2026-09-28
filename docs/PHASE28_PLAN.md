@@ -121,6 +121,10 @@ you confirm.
 
 ### S1 — Unit CI (`.github/workflows/ci.yml`)
 
+**Done 2026-09-28** (see PROGRESS). CI runs on every push, since the token can't open PRs. A
+`scenarios` job builds the generated snapshots for the test jobs. The `generated-in-sync` job is dropped for
+scenarios, which are no longer committed; for the remaining committed generated files it moves to S3.
+
 Runs on pushes to `main` and on PRs. Superseded runs are cancelled.
 
 - **Setup** (composite action): checkout, then a shallow, sparse submodule

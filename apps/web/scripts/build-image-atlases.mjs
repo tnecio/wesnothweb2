@@ -55,6 +55,7 @@ import { reviveBuildingRules } from '../../../packages/renderer/src/terrain/terr
 import { parseIpf, splitRef } from '../../../packages/renderer/src/images/ipf.ts';
 import { HEX_MASK, rootedImagePath, unitBundleStem } from '../../../packages/renderer/src/images/compositor.ts';
 import { parseStepSequence } from '../../../packages/renderer/src/animation/frame.ts';
+import { readScenarioSnapshot } from '../../../packages/engine/src/snapshot/snapshotFiles.node.ts';
 
 const scriptFile = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(scriptFile), '../../..');
@@ -219,12 +220,23 @@ function findSnapshots() {
     const dir = path.join(scenariosDir, campaignDirName);
     if (!fs.statSync(dir).isDirectory()) continue;
     for (const f of fs.readdirSync(dir).sort()) {
-      if (f.endsWith('.json') && !f.includes('@')) found.push({ campaignDirName, id: f.slice(0, -5), file: path.join(dir, f) });
+      if (f.endsWith('.json') && !f.includes('@') && !f.startsWith('_')) found.push({ campaignDirName, id: f.slice(0, -5), file: path.join(dir, f) });
     }
   }
   return found;
 }
 const snapshotFiles = findSnapshots();
+
+/** Phase 28: the shared unit/terrain databases the scenario files name (`_core.json`, `<campaignDir>/_campaign.json`). */
+function databaseFiles() {
+  const out = [];
+  for (const name of fs.readdirSync(scenariosDir)) {
+    const p = path.join(scenariosDir, name);
+    if (name.startsWith('_')) out.push(p);
+    else if (fs.statSync(p).isDirectory()) for (const f of fs.readdirSync(p)) if (f.startsWith('_')) out.push(path.join(p, f));
+  }
+  return out;
+}
 const summary = [];
 
 // ── Terrain, per scenario ───────────────────────────────────────────────────
@@ -253,11 +265,11 @@ if (!fs.existsSync(rulesFile)) {
 
 // ── Unit types, across all scenarios ───────────────────────────────────────
 const unitIndexFile = path.join(unitsDir, 'index.json');
-if (wanted('units') && !upToDate(unitIndexFile, [...snapshotFiles.map((s) => s.file), scriptFile])) {
+if (wanted('units') && !upToDate(unitIndexFile, [...snapshotFiles.map((s) => s.file), ...databaseFiles(), scriptFile])) {
   const started = Date.now();
   const typeSources = new Map();
   for (const { file: snapshotFile } of snapshotFiles) {
-    const snapshot = JSON.parse(fs.readFileSync(snapshotFile, 'utf8'));
+    const snapshot = readScenarioSnapshot(snapshotFile);
     for (const [typeId, cfg] of Object.entries(snapshot.unitTypeConfigs ?? {})) {
       let sources = typeSources.get(typeId);
       if (!sources) typeSources.set(typeId, (sources = new Set()));

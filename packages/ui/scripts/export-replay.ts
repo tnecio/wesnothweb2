@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { writeWml, type GameBoardSnapshot } from '@wesnothweb2/engine';
 import { GameSession } from '../src/gameSession.js';
 import { toWesnothSave } from '../src/save/wesnothSave.js';
+import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 
 const args = process.argv.slice(2);
 const arg = (name: string, fallback: string): string => {
@@ -21,7 +22,7 @@ const arg = (name: string, fallback: string): string => {
   return i >= 0 ? args[i + 1]! : fallback;
 };
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const snapshot = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/scenarios/Dead_Water/01_Invasion.json'), 'utf8')) as GameBoardSnapshot;
+const snapshot = readScenarioSnapshot(path.join(repoRoot, 'apps/web/public/scenarios/Dead_Water/01_Invasion.json'));
 
 const turns = Number(arg('turns', '2'));
 const session = new GameSession(snapshot, { seed: Number(arg('seed', '3')) });

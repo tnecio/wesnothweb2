@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { GameBoardSnapshot, CutsceneBeat, Interaction, InteractionResult } from '@wesnothweb2/engine';
 import { GameSession } from './gameSession.js';
+import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 
 /**
  * Phase 17's milestones, on real campaign content.
@@ -29,7 +30,7 @@ const CAMPAIGN_DIR: Record<string, string> = {
   '01_The_Morning_After': 'Under_the_Burning_Suns',
 };
 function loadScenario(id: string): GameBoardSnapshot {
-  return JSON.parse(fs.readFileSync(path.join(repoRoot, `apps/web/public/scenarios/${CAMPAIGN_DIR[id]}/${id}.json`), 'utf8')) as GameBoardSnapshot;
+  return readScenarioSnapshot(path.join(repoRoot, `apps/web/public/scenarios/${CAMPAIGN_DIR[id]}/${id}.json`));
 }
 
 /** What the player saw, in order: each line of dialogue and each cutscene beat. */

@@ -5,6 +5,9 @@ build/
 *.log
 .env
 .vite/
+# Generated scenario snapshots and their shared unit/terrain databases (Phase 28;
+# npm run build:scenarios --workspace=apps/web, which predev/prebuild run)
+apps/web/public/scenarios/
 # Generated image bundles (Phase 28a P5+; npm run build:atlases --workspace=apps/web)
 apps/web/public/atlases/
 # Verification captures (apps/web/scripts/*-screenshots.mjs, dialogue-playthrough.mjs)
