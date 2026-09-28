@@ -1,0 +1,14 @@
+// Phase 28: Cloudflare Workers static assets deployment of apps/web (see docs/PHASE28_PLAN.md).
+// There is deliberately no Worker script: requests for static assets are free and unmetered, while any request
+// that runs a script counts against the 100k/day free limit. Game media is served from the R2 bucket
+// (scripts/upload-game-data.mjs), not from here.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "wesnothweb2",
+  "compatibility_date": "2026-05-01",
+  "assets": {
+    "directory": "./dist",
+    // Client-side routes (/play/<campaign>?...) get index.html on a hard refresh.
+    "not_found_handling": "single-page-application"
+  }
+}
