@@ -15,6 +15,7 @@
   import Markup from '../markup/Markup.svelte';
   import { ENGINE_IMAGES, GAME_IMAGES } from '../gameData.js';
   import { dataUrl } from '../dataUrls.js';
+  import { buildInfo } from '../errors/errorReporting.svelte.js';
   import titleImages from './titleImages.json';
 
   /**
@@ -29,6 +30,8 @@
       srcset: image.variants.map((v) => `${dataUrl(`derived-images/${v.src}`)} ${v.w}w`).join(', '),
     };
   }
+  /** The deployed build (Phase 28 S6), shown after upstream's version; nothing in development. */
+  const build = buildInfo();
   const backdrop = srcset(titleImages.backdrop);
   const picture = srcset(titleImages.picture);
   import { locale } from '../i18n/locale.js';
@@ -137,7 +140,9 @@
   </div>
 
   <div class="bar">
-    <span class="version" data-testid="title-version">{fmt(t('Version $version'), { version })}</span>
+    <span class="version" data-testid="title-version" title={build.commit || undefined}
+      >{fmt(t('Version $version'), { version })}{#if build.version !== 'dev'}<span class="build"> · {fmt(tx('web $version'), { version: build.version })}</span>{/if}</span
+    >
     <button class="language" title={t('Change the language')} onclick={onLanguage} data-testid="title-language">
       {locale.currentInfo?.name ?? t('Language')}
     </button>
@@ -283,6 +288,9 @@
   }
   .version {
     text-shadow: 0 0 3px #000;
+  }
+  .build {
+    opacity: 0.7;
   }
   .language {
     min-height: 1.75rem;

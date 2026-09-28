@@ -76,3 +76,5 @@ export {
   type LocaleHost,
 } from './i18n/locale.js';
 export { dataUrl, loadDataManifest } from './dataUrls.js';
+export { default as ErrorScreen } from './errors/ErrorScreen.svelte';
+export { installErrorReporting, reportError, setGameContext, buildInfo } from './errors/errorReporting.svelte.js';

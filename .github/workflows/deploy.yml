@@ -54,6 +54,9 @@ jobs:
       - name: Build
         env:
           VITE_GAME_DATA_URL: ${{ env.GAME_DATA_ORIGIN }}/${{ steps.data.outputs.prefix }}
+          # Shown in error reports (and on the title screen): the tag, or the branch and run for a manual deploy.
+          VITE_APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || format('{0}-run{1}', github.ref_name, github.run_number) }}
+          VITE_APP_COMMIT: ${{ github.sha }}
         run: |
           npm run build --workspace=apps/web
           node apps/web/scripts/stage-dist.mjs

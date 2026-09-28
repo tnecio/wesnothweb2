@@ -262,6 +262,9 @@ kept only if it is lossless or you sign off on it.
 
 ### S6 — Error reporting
 
+**Done 2026-09-28** (see PROGRESS). Per-turn catching inside the AI, Lua and event paths is not done: those
+errors surface through the global handlers and the screen, and the player can continue or reload an autosave.
+
 - Global `error` and `unhandledrejection` handlers, and
   `<svelte:boundary>` around `GameShell` and the menu.
 - A recoverable error screen: back to menu, reload the last autosave, and
