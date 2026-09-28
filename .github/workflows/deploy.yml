@@ -70,7 +70,15 @@ jobs:
         run: |
           site=$(grep -oE 'https://[^ ]+\.workers\.dev' apps/web/deploy.log | head -n 1)
           echo "Deployed to $site" | tee -a "$GITHUB_STEP_SUMMARY"
-          check() { code=$(curl -s -o /dev/null -w '%{http_code}' "$1"); echo "$code $1"; [ "$code" = 200 ]; }
+          # A first deploy's workers.dev address takes a minute or two to answer, so retry for up to ~3 minutes.
+          check() {
+            for i in $(seq 1 18); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' "$1")
+              [ "$code" = 200 ] && echo "$code $1" && return 0
+              sleep 10
+            done
+            echo "$code $1"; return 1
+          }
           check "$site/"
           check "$site/play/liberty"
           check "$site/scenarios/_core.json"
