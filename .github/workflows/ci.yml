@@ -80,7 +80,13 @@ jobs:
         with:
           name: scenarios
           path: apps/web/public/scenarios
-      - run: node --import tsx apps/web/scripts/build-story-assets.mjs
+      - name: Regenerate story assets
+        run: |
+          command -v identify >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick)
+          # Committed variants count as current: a runner's WebP encoder may produce different bytes. A missing
+          # variant is still made (and fails the check below as a new file).
+          find apps/web/public/derived-images -type f -exec touch {} +
+          node --import tsx apps/web/scripts/build-story-assets.mjs
       - name: Nothing changed or appeared
         run: |
           changes=$(git status --porcelain -- apps/web/public/story apps/web/public/derived-images packages/ui/src/menu/titleImages.json)

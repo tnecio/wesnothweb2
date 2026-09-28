@@ -16,3 +16,12 @@ export const GAME_IMAGES = `${base}/game-images`;
 export const ENGINE_IMAGES = `${base}/game-images-engine`;
 /** Upstream `sounds/` (engine UI sounds). */
 export const ENGINE_SOUNDS = `${base}/game-sounds-engine`;
+
+/**
+ * Phase 28 S4: the bucket holds every `.wav` as Ogg Vorbis under `<name>.wav.ogg` (`upload-game-data.mjs`;
+ * about 6x smaller). The name keeps its `.wav`, since core has `mace.wav` and `mace.ogg` as different sounds.
+ * The dev server serves the original files.
+ */
+export function servedAudioPath(url: string): string {
+  return base && url.toLowerCase().endsWith('.wav') ? `${url}.ogg` : url;
+}
