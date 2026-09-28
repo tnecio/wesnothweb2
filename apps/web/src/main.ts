@@ -1,7 +1,17 @@
 import { mount } from 'svelte';
 import '@wesnothweb2/ui/src/fonts.css';
-import { accessibility, loadDataManifest, locale } from '@wesnothweb2/ui';
+import { accessibility, installErrorReporting, loadDataManifest, locale } from '@wesnothweb2/ui';
 import App from './App.svelte';
+
+// First, so an error anywhere after this reaches the error screen (Phase 28 S6) instead of a frozen page.
+installErrorReporting();
+
+// `?crashtest` throws a few seconds in, to check the error screen on a deployed build.
+if (new URLSearchParams(location.search).has('crashtest')) {
+  setTimeout(() => {
+    throw new Error('Crash test (?crashtest): an error thrown on purpose.');
+  }, 4000);
+}
 
 const target = document.getElementById('app');
 if (!target) throw new Error('missing #app element');

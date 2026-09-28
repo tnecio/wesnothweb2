@@ -26,6 +26,7 @@
    * event-spawned unit by the time the player gets control.
    */
   import { dataUrl } from './dataUrls.js';
+  import { setGameContext } from './errors/errorReporting.svelte.js';
   import { ENGINE_IMAGES, GAME_IMAGES } from './gameData.js';
   import { tick, untrack } from 'svelte';
   import type {
@@ -518,6 +519,18 @@
   let canUndo = $state(false);
   let canRedo = $state(false);
   let turnNumber = $state(session.turnNumber);
+
+  // Phase 28 S6: where the player is, for error reports (read only when a report is built).
+  $effect(() => {
+    setGameContext(() => ({
+      campaignId: campaign?.id,
+      scenarioId: activeSnapshot.scenario.id,
+      scenarioName: session.scenarioName,
+      turn: session.turnNumber,
+      saveData: () => session.toSaveData(),
+    }));
+    return () => setGameContext(null);
+  });
   let activeSide = $state(session.activeSide);
   let gold = $state(session.board.getTeam(session.activeSide)?.gold ?? 0);
   let economyInfo = $state<EconomyInfo>(session.economyInfo);

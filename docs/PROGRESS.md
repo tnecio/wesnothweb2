@@ -5509,3 +5509,37 @@ either orientation; tablets and desktops keep the full layout.
 - Removing `handleLoad` retired the string "No save found.", so `wesnothweb.pot` was regenerated; the i18n
   audit test caught it.
 - Unit suites: engine 805, renderer 263, ui 375, lua-bridge 38, all pass. Typecheck passes.
+
+## 2026-09-28 — Phase 28 S6: error screen and reports
+
+- **Catching errors.** `packages/ui/src/errors/errorReporting.svelte.ts` records uncaught errors,
+  unhandled rejections and Svelte render errors (`<svelte:boundary>` around the pages in `App.svelte`).
+  `main.ts` installs it before anything else runs. Benign ones are ignored: ResizeObserver notifications,
+  `AbortError`, audio the browser would not start without a click. It also keeps the last 50 console
+  warnings and errors, which is where WML and Lua problems are logged.
+- **The error screen** (`ErrorScreen.svelte`) offers:
+  - Continue;
+  - Back to menu;
+  - **Load latest autosave**: the campaign's newest autosave or start-of-scenario save, via a full page
+    load so no broken state survives;
+  - **Copy report** / **Download report**.
+- **The report** has:
+  - the build (the deploy sets `VITE_APP_VERSION`, a tag or `<branch>-run<n>`, and `VITE_APP_COMMIT`);
+  - page, browser, campaign / scenario / turn (GameShell registers a `GameContext`);
+  - the error and its stack, and the recent log lines;
+  - optionally, if the player ticks it, the current game as save JSON.
+  
+  Nothing is sent anywhere (user decision).
+- The title screen shows the deployed build after upstream's version ("Version 1.19.21 · web v0.1.0"),
+  with the commit as a tooltip. Nothing is shown in development.
+- `?crashtest` throws on purpose 4 s after load, to try the screen on a deployed build.
+- **`apps/web/scripts/error-screen-playthrough.mjs`** (all checks pass): the error shows the screen; the
+  copied report has the error, a stack, the build and "Campaign: liberty; scenario: 01_The_Raid (The
+  Raid); turn: 1"; "Load latest autosave" reopens the game from `Liberty-The Raid`.
+- Found on the way:
+  - Setting the context from GameShell's `$effect` bumped a reactive counter that the effect then
+    depended on, an effect loop that froze loading (now `untrack`).
+  - An error during the story, before GameShell registers, found no autosave; registering now bumps a
+    counter so the screen looks again.
+  - My first save probe ran before the opening dialogue was answered, so the start-of-scenario save
+    (written after the dialogue, as upstream) did not exist yet. That was not a game bug.
