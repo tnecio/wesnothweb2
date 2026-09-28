@@ -32,6 +32,7 @@
    * confirmed against a real browser in this environment -- see the
    * top-level report.
    */
+  import { ENGINE_IMAGES, GAME_IMAGES } from './gameData.js';
   import { fmt, th, tx } from './i18n/locale.js';
   import * as PIXI from 'pixi.js';
   import {
@@ -539,8 +540,8 @@
       registerUnitBundles(units);
 
       const newBoard = new SnapshotBoard(snapshot, {
-        imageBaseUrl: '/game-images',
-        engineImageBaseUrl: '/game-images-engine',
+        imageBaseUrl: GAME_IMAGES,
+        engineImageBaseUrl: ENGINE_IMAGES,
         onHexClick: wrappedOnHexClick,
         onHexRightClick,
         onHexHover: (x, y) => {

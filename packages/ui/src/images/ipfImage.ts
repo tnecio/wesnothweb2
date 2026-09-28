@@ -8,6 +8,7 @@
 import { Compositor, imageUrl, setEngineImageBaseUrl, setImageBaseUrl } from '@wesnothweb2/renderer';
 import { rootMenuImage } from './rootMenuImage.js';
 import { fetchTeamColors } from '../teamColorsCache.js';
+import { ENGINE_IMAGES, GAME_IMAGES } from '../gameData.js';
 
 let compositor: Compositor | null = null;
 const results = new Map<string, Promise<string | null>>();
@@ -15,8 +16,8 @@ const results = new Map<string, Promise<string | null>>();
 async function getCompositor(): Promise<Compositor> {
   if (!compositor) {
     // The same roots the game uses (`GameShell`), set here so the title screen does not depend on it having loaded.
-    setImageBaseUrl('/game-images');
-    setEngineImageBaseUrl('/game-images-engine');
+    setImageBaseUrl(GAME_IMAGES);
+    setEngineImageBaseUrl(ENGINE_IMAGES);
     compositor = new Compositor();
     compositor.setColorData(await fetchTeamColors());
   }

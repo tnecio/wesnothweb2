@@ -19,6 +19,7 @@
    *
    * `GameShell` owns what happens after the story (`onDone`).
    */
+  import { ENGINE_IMAGES } from './gameData.js';
   import { onDestroy } from 'svelte';
   import { locale, t, ts, tx } from './i18n/locale.js';
   import Markup from './markup/Markup.svelte';
@@ -40,7 +41,6 @@
     onPartShown?: (part: ResolvedStoryPart) => void;
   } = $props();
 
-  const ENGINE_IMAGES = '/game-images-engine';
   const FADE_STEP_MS = 20;
 
   /** The part being navigated to. */

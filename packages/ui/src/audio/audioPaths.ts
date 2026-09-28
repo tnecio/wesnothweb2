@@ -4,6 +4,7 @@
  * directory first, then core. `audioFiles.json` (generated) says what exists.
  */
 import audioFiles from '../audioFiles.json';
+import { ENGINE_SOUNDS, GAME_IMAGES } from '../gameData.js';
 
 export type AudioKind = 'music' | 'sounds';
 
@@ -14,9 +15,9 @@ for (const kind of ['music', 'sounds'] as const) {
 
 /** The URL of `file`, or null if no such file ships. `campaign` is the running campaign's wesnoth id. */
 export function audioUrl(kind: AudioKind, file: string, campaign?: string): string | null {
-  if (campaign && index[kind][campaign]?.has(file)) return `/game-images/campaigns/${campaign}/${kind}/${file}`;
-  if (index[kind]['core']?.has(file)) return `/game-images/core/${kind}/${file}`;
-  if (kind === 'sounds' && index[kind]['engine']?.has(file)) return `/game-sounds-engine/${file}`;
+  if (campaign && index[kind][campaign]?.has(file)) return `${GAME_IMAGES}/campaigns/${campaign}/${kind}/${file}`;
+  if (index[kind]['core']?.has(file)) return `${GAME_IMAGES}/core/${kind}/${file}`;
+  if (kind === 'sounds' && index[kind]['engine']?.has(file)) return `${ENGINE_SOUNDS}/${file}`;
   return null;
 }
 

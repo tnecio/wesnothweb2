@@ -21,6 +21,7 @@
    * Enter confirms); Escape on a plain line skips the rest of the
    * event's dialogue, as upstream's own `skip_messages` does.
    */
+  import { ENGINE_IMAGES } from './gameData.js';
   import type { MessageInteraction, InteractionResult } from '@wesnothweb2/engine';
   import { imageUrl } from '@wesnothweb2/renderer';
   import { pickStoryImage, type StoryAssets } from './story/storyImages.js';
@@ -46,7 +47,6 @@
     layoutTick?: number;
   } = $props();
 
-  const ENGINE_IMAGES = '/game-images-engine';
   const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
 
   let innerWidth = $state(typeof window === 'undefined' ? 1280 : window.innerWidth);

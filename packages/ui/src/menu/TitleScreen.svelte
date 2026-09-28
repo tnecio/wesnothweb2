@@ -13,6 +13,7 @@
    */
   import { fmt, t, ts, tw, tx } from '../i18n/locale.js';
   import Markup from '../markup/Markup.svelte';
+  import { ENGINE_IMAGES, GAME_IMAGES } from '../gameData.js';
   import { locale } from '../i18n/locale.js';
   import { matchesHotkey } from '../commands.js';
   import { stepTip, type Tip } from './tips.js';
@@ -76,13 +77,23 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<div class="title" data-testid="title-screen">
-  <img class="backdrop" src="/game-images/core/images/maps/background.webp" alt="" draggable="false" />
-  <img class="picture" src="/game-images/core/images/maps/titlescreen.webp" alt="" draggable="false" />
+<!-- Button art as custom properties: the stylesheet cannot read the (per-build) game data origin. -->
+<div
+  class="title"
+  data-testid="title-screen"
+  style:--large-button="url('{ENGINE_IMAGES}/buttons/large-button.png')"
+  style:--large-button-active="url('{ENGINE_IMAGES}/buttons/large-button-active.png')"
+  style:--large-button-pressed="url('{ENGINE_IMAGES}/buttons/large-button-pressed.png')"
+  style:--button-h22="url('{ENGINE_IMAGES}/buttons/button_normal/button_H22.png')"
+  style:--button-h22-active="url('{ENGINE_IMAGES}/buttons/button_normal/button_H22-active.png')"
+  style:--button-h22-pressed="url('{ENGINE_IMAGES}/buttons/button_normal/button_H22-pressed.png')"
+>
+  <img class="backdrop" src="{GAME_IMAGES}/core/images/maps/background.webp" alt="" draggable="false" />
+  <img class="picture" src="{GAME_IMAGES}/core/images/maps/titlescreen.webp" alt="" draggable="false" />
 
   <h1 class="logo">
-    <img class="logo-bg" src="/game-images-engine/misc/logo-bg.png" alt="" draggable="false" />
-    <img class="logo-fg" src="/game-images-engine/misc/logo.png" alt={tw('The Battle for Wesnoth')} draggable="false" />
+    <img class="logo-bg" src="{ENGINE_IMAGES}/misc/logo-bg.png" alt="" draggable="false" />
+    <img class="logo-fg" src="{ENGINE_IMAGES}/misc/logo.png" alt={tw('The Battle for Wesnoth')} draggable="false" />
   </h1>
 
   <div class="stage">
@@ -225,24 +236,24 @@
     min-height: 2.75rem;
     padding: 0.35rem 1.2rem;
     font-size: 1.2rem;
-    background-image: url('/game-images-engine/buttons/large-button.png');
+    background-image: var(--large-button);
   }
   button.large:hover {
-    background-image: url('/game-images-engine/buttons/large-button-active.png');
+    background-image: var(--large-button-active);
   }
   button.large:active {
-    background-image: url('/game-images-engine/buttons/large-button-pressed.png');
+    background-image: var(--large-button-pressed);
   }
   button.small {
     min-height: 1.75rem;
     padding: 0.1rem 0.9rem;
-    background-image: url('/game-images-engine/buttons/button_normal/button_H22.png');
+    background-image: var(--button-h22);
   }
   button.small:hover {
-    background-image: url('/game-images-engine/buttons/button_normal/button_H22-active.png');
+    background-image: var(--button-h22-active);
   }
   button.small:active {
-    background-image: url('/game-images-engine/buttons/button_normal/button_H22-pressed.png');
+    background-image: var(--button-h22-pressed);
   }
   .bar {
     position: relative;
@@ -259,10 +270,10 @@
   .language {
     min-height: 1.75rem;
     padding: 0.1rem 1rem;
-    background-image: url('/game-images-engine/buttons/button_normal/button_H22.png');
+    background-image: var(--button-h22);
   }
   .language:hover {
-    background-image: url('/game-images-engine/buttons/button_normal/button_H22-active.png');
+    background-image: var(--button-h22-active);
   }
 
   /* Narrow windows: the panels stack (tips under the menu) so both stay readable and the buttons reachable. */

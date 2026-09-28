@@ -5,6 +5,7 @@
  * copy of each image.
  */
 import type { WmlConfigJson } from '@wesnothweb2/engine';
+import { GAME_IMAGES } from '../gameData.js';
 
 export interface StoryImageVariant {
   /** Path under `/derived-images/`. */
@@ -64,7 +65,7 @@ export async function fetchStoryAssets(scenarioId: string, campaignDir: string):
   }
 }
 
-export const GAME_IMAGES_BASE = '/game-images';
+export const GAME_IMAGES_BASE = GAME_IMAGES;
 export const DERIVED_IMAGES_BASE = '/derived-images';
 
 /**

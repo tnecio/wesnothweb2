@@ -25,6 +25,7 @@
    * before entering 'messages', so the board already reflects every real
    * event-spawned unit by the time the player gets control.
    */
+  import { ENGINE_IMAGES, GAME_IMAGES } from './gameData.js';
   import { tick, untrack } from 'svelte';
   import type {
     GameBoardSnapshot,
@@ -145,8 +146,8 @@
 
   // Every `imageUrl()` user (time-of-day images, portraits), not only the board, needs the served
   // image roots -- until the board mounted, they defaulted to a non-existent `/data/data` (Phase 16 N0 finding).
-  setImageBaseUrl('/game-images');
-  setEngineImageBaseUrl('/game-images-engine');
+  setImageBaseUrl(GAME_IMAGES);
+  setEngineImageBaseUrl(ENGINE_IMAGES);
 
   import campaignImages from './campaignImages.json';
 
