@@ -75,6 +75,8 @@
     let img = images.get(path);
     if (!img) {
       img = new Image();
+      // Tiles come from the game data bucket in production; CORS mode keeps the canvas readable.
+      img.crossOrigin = 'anonymous';
       img.onload = () => tileGeneration++;
       img.onerror = () => {};
       img.src = imageUrl(path);
