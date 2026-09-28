@@ -34,7 +34,6 @@
     TimeOfDayEntry,
     Unit,
     AiAnimationEvent,
-    ScenarioObjectives,
     HealOutcome,
     MessageInteraction,
     InteractionResult,
@@ -69,7 +68,6 @@
   } from '@wesnothweb2/renderer';
   import {
     GameSession,
-    parseScenarioTurnsLimit,
     type CombatPreview,
     type SelectedUnitInfo,
     type RecruitOption,
@@ -99,7 +97,7 @@
     type SaveKind,
     type SaveMeta,
   } from './persistence.js';
-  import { type CampaignInfo as Campaign, campaignAbbrev, defaultDifficulty, wesnothCampaignInfo } from './save/campaign.js';
+  import { type CampaignInfo as Campaign, campaignAbbrev, defaultDifficulty } from './save/campaign.js';
   import { fetchScenarioSnapshot } from './scenarioFetch.js';
   import { markCampaignCompleted } from './menu/completedStore.js';
   import { campaignCredits, type CreditsJson } from './menu/credits.js';
@@ -313,8 +311,6 @@
   /** Resolved once per scenario, before its startup events run -- see `GameSession.storyParts`. A resumed save has already been past all of this. */
   let storyParts = $state.raw(initialSave ? [] : session.storyParts());
   let storyAssets = $state.raw(initialStoryAssets);
-  /** Single fixed slot for MVP simplicity -- see persistence.ts's doc comment; keyed by scenario so a future multi-scenario build doesn't collide saves across scenarios. */
-  let saveSlot = $derived(`quicksave:${activeSnapshot.scenario.id}`);
   /** The live turn limit (`[modify_turns]` can change it); synced with the rest of the session state. */
   // Phase 18: the campaign's own images are searched before core (its [binary_path]).
   $effect.pre(() => {
@@ -2066,16 +2062,6 @@
     };
   }
 
-  async function handleSave(): Promise<void> {
-    if (phase !== 'playing') return;
-    try {
-      await saveGame(saveSlot, saveDetails('manual'), session.toSaveData());
-      sync(`Saved (turn ${session.turnNumber}).`);
-    } catch (err) {
-      sync(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
-
   /** Opens the save manager, refreshing the list first so it is never stale. */
   async function openSaveManager(which: 'save' | 'load'): Promise<void> {
     try {
@@ -2363,22 +2349,6 @@
   function storyAssetsFor(scenarioId: string): Promise<StoryAssets | null> {
     if (!campaign) return Promise.resolve(null);
     return fetchStoryAssets(scenarioId, campaign.assetDir);
-  }
-
-  async function handleLoad(): Promise<void> {
-    if (phase !== 'playing') return;
-    try {
-      const found = await loadGame<import('./gameSession.js').SaveGameData>(saveSlot);
-      if (!found || found.meta.scenarioId !== activeSnapshot.scenario.id) {
-        sync(tx('No save found.'));
-        return;
-      }
-      session.loadSaveData(found.data);
-      if (session.scenarioResult) phase = 'ended';
-      sync(`Loaded save from turn ${found.data.turnNumber}.`);
-    } catch (err) {
-      sync(`Load failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
   }
 
   // Phase 16: [message] highlights its speaker (the scroll to it, Phase 22, happens before the dialog opens -- `scrollToSpeaker`).

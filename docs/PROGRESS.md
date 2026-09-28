@@ -5485,3 +5485,27 @@ either orientation; tablets and desktops keep the full layout.
   stop ~170 px short at the same zoom (not investigated), so they now run before the AI turn.
 - A measurement mistake worth remembering: the first count still showed ~40 terrain requests because the
   Vite dev server served a stale `Minimap.svelte` after a branch switch. Restarting Vite fixed it.
+
+## 2026-09-28 — Phase 28 S2: lint
+
+- `eslint.config.js` (ESLint 9 flat config): `@eslint/js` and `typescript-eslint` recommended, plus
+  `eslint-plugin-svelte` recommended, over all 449 source, test and script files. Takes 19 s. `npm run lint`
+  runs it, and CI has a `lint` job.
+- Correctness only, no formatter. Turned off, with the reason in the config:
+  - `no-undef` (TypeScript already checks it);
+  - `require-yield` (flow generators may finish without asking);
+  - the Svelte style rules (`prefer-svelte-reactivity`: the flagged Maps and Sets are deliberately
+    non-reactive caches; unused `svelte-ignore` comments serve svelte-check);
+  - reporting of disable directives for rules this config doesn't enable.
+- The Phase 28a risk is now enforced: `no-restricted-imports` forbids `pixi.js` in the compositor,
+  compositor worker and terrain layout worker modules.
+- **Fixed what it found:**
+  - 43 unused imports and variables;
+  - 4 `let`s that are `const`;
+  - comma-expression statements in `i18n-screenshots.mjs`;
+  - dead code: `GameShell`'s old single-slot `handleSave`/`handleLoad` (replaced by the save manager
+    in Phase 26) and their `saveSlot`, `unitCanAct`'s unused `isAlly`, an unused context object in
+    `attackAnalysis`. `recruitment.cpp`'s unused `SAVE_GOLD_FORECAST_TURNS` is now a comment.
+- Removing `handleLoad` retired the string "No save found.", so `wesnothweb.pot` was regenerated; the i18n
+  audit test caught it.
+- Unit suites: engine 805, renderer 263, ui 375, lua-bridge 38, all pass. Typecheck passes.

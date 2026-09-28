@@ -366,7 +366,7 @@ class CeilFn extends FnExpr {
     super('ceil', args, 1, 1);
   }
   evaluate(vars: Callable): Variant {
-    let d = this.args[0]!.evaluate(vars).asDecimal();
+    const d = this.args[0]!.evaluate(vars).asDecimal();
     if (d >= 0 && d % 1000 !== 0) return Variant.int(Math.trunc(d / 1000) + 1);
     return Variant.int(Math.trunc(d / 1000));
   }

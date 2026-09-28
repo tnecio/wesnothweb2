@@ -16,7 +16,7 @@
   import LanguageDialog from '../LanguageDialog.svelte';
   import LoadGameDialog from '../LoadGameDialog.svelte';
   import PreferencesDialog from '../PreferencesDialog.svelte';
-  import { locale, t, ts, tx } from '../i18n/locale.js';
+  import { locale, ts, tx } from '../i18n/locale.js';
   import { deleteSave, listSaves, renameSave, type SaveMeta } from '../persistence.js';
   import { downloadSave, importSaveFile } from '../save/saveManager.js';
   import { WESNOTH_CONTENT_VERSION } from '../save/wesnothSave.js';

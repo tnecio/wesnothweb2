@@ -25,7 +25,7 @@
   import Markup from './markup/Markup.svelte';
   import type { ResolvedStoryPart } from '@wesnothweb2/engine';
   import { layoutFloatingImage, layoutStoryPart, titleOrigin, type Size } from './story/storyLayout.js';
-  import { pickStoryImage, localizedEntry, GAME_IMAGES_BASE, type StoryAssets } from './story/storyImages.js';
+  import { pickStoryImage, localizedEntry, type StoryAssets } from './story/storyImages.js';
 
   let {
     parts,

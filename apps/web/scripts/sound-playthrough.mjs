@@ -19,7 +19,7 @@
  * Exits non-zero on any failure.
  */
 import { chromium } from 'playwright';
-import { hexPoint, openScenario, performAttack, skipToPlay, waitBoardReady, confirmEndTurnIfAsked } from './lib/browserFlows.mjs';
+import { openScenario, performAttack, skipToPlay, waitBoardReady, confirmEndTurnIfAsked } from './lib/browserFlows.mjs';
 
 const args = process.argv.slice(2);
 const arg = (name, fallback) => {

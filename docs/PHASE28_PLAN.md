@@ -142,6 +142,8 @@ Runs on pushes to `main` and on PRs. Superseded runs are cancelled.
 
 ### S2 — Lint (small)
 
+**Done 2026-09-28** (see PROGRESS).
+
 - ESLint flat config (`typescript-eslint`, `eslint-plugin-svelte`) with
   correctness rules only, and no formatter.
 - A restricted-import rule enforces the Phase 28a risk: the compositor and

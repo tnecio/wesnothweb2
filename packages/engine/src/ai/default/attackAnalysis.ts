@@ -156,7 +156,6 @@ export class AttackAnalysis {
     // Alternative terrain quality: what defense could the attackers get if they repositioned instead of attacking.
     this.alternativeTerrainQuality = 0;
     let costSum = 0;
-    const ppCtx = { turnNumber: ctx.turnNumber(), lawfulBonusAt: ctx.host.lawfulBonusAt, maxLiminalBonus: ctx.host.maxLiminalBonus };
     for (const m of this.movements) {
       const att = board.unitAt(m.from);
       if (!att) continue;

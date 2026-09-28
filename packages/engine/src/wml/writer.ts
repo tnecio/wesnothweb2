@@ -52,7 +52,7 @@ interface WriterState {
 }
 
 function writeTString(st: WriterState, indent: string, key: string, value: TString): void {
-  let line = `${indent}${key}=`;
+  const line = `${indent}${key}=`;
   const pieces: string[] = [];
   for (const part of value.parts) {
     if (typeof part === 'string') {

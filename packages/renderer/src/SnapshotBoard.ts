@@ -79,17 +79,16 @@ import {
   hexCorners,
   hexToPixel,
   pixelToHex,
-  HEX_SIZE,
   HEX_COL_WIDTH,
   HEX_ROW_HEIGHT,
   TILE_SIZE,
   type HexCoord,
 } from './hexGeometry.js';
-import { ImageCache, hexedRef, setImageBaseUrl, setEngineImageBaseUrl } from './images/ImageCache.js';
+import { ImageCache, setImageBaseUrl, setEngineImageBaseUrl } from './images/ImageCache.js';
 import { joinRef } from './images/ipf.js';
 import { resolveSideColorId, sideColorRgb } from './images/teamColor.js';
 import { squareParentheticalSplit } from './animation/frame.js';
-import { sampleAnimation, animationDurationMs, animationTimeline, animationSoundCues, sampleParticles, sampleUnitHalo, type OverlaySample, type SoundCue } from './animation/playback.js';
+import { sampleAnimation, animationTimeline, animationSoundCues, sampleParticles, sampleUnitHalo, type OverlaySample, type SoundCue } from './animation/playback.js';
 import { HEX_STEP_MS, type UnitAnimationDef } from './animation/unitAnimation.js';
 import { LABEL_FONT_SIZE, parseHaloFrames, type MapItemPoint, type MapLabelPoint } from './mapItems.js';
 import { makeLayerSprite } from './terrainPositioning.js';

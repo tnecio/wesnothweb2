@@ -165,10 +165,16 @@ try {
         // on to play
         let quiet = 0;
         for (let i = 0; i < 150 && quiet < 6; i++) {
-          if (await page.$('.story')) await page.keyboard.press('Escape'), (quiet = 0);
-          else if (await page.$('.window[role="dialog"]')) await page.keyboard.press('Enter'), (quiet = 0);
-          else if (await page.$('.modal-box .advance')) await page.locator('.modal-box .advance').first().click(), (quiet = 0);
-          else quiet++;
+          if (await page.$('.story')) {
+            await page.keyboard.press('Escape');
+            quiet = 0;
+          } else if (await page.$('.window[role="dialog"]')) {
+            await page.keyboard.press('Enter');
+            quiet = 0;
+          } else if (await page.$('.modal-box .advance')) {
+            await page.locator('.modal-box .advance').first().click();
+            quiet = 0;
+          } else quiet++;
           await page.waitForTimeout(400);
         }
         await page.keyboard.press('n');

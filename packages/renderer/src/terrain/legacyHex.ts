@@ -31,7 +31,7 @@ export function legacyNegation(a: HexOffset): HexOffset {
 /** `me.legacy_sum_assign(a)` as a pure function: `me + a`. */
 export function legacySum(me: HexOffset, a: HexOffset): HexOffset {
   const parity = (me.x & 1) !== 0
-  let x = me.x + a.x
+  const x = me.x + a.x
   let y = me.y + a.y
   if (a.x > 0 && a.x % 2 !== 0 && parity) y++
   if (a.x < 0 && a.x % 2 !== 0 && !parity) y--

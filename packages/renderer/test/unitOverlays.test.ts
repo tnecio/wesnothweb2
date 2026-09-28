@@ -7,7 +7,6 @@ import {
   KILL_EXPERIENCE,
   xpColor,
   DEFAULT_HP_BAR_SCALING,
-  DEFAULT_XP_BAR_SCALING,
   movesOrbStatus,
   ORB_COLOR,
   ORB_COLOR_ID,

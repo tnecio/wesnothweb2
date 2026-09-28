@@ -49,7 +49,7 @@ import { CandidateAction } from '../composite/rca.js';
 const UNIT_THRESHOLD = 5;
 const COMBAT_SCORE_POWER = 1.0;
 const VILLAGE_PER_SCOUT_MULTIPLICATOR = 2.0;
-const SAVE_GOLD_FORECAST_TURNS = 5;
+// recruitment.cpp's SAVE_GOLD_FORECAST_TURNS (5) has no use here yet: the save-gold forecast is not ported.
 
 type SaveGoldState = 'normal' | 'save_gold' | 'spend_all_gold' | 'leader_in_danger';
 
@@ -371,7 +371,7 @@ export class RecruitmentCandidateAction extends CandidateAction {
     const lawfulBonus = this.ctx.host.lawfulBonusAt(leaderData[0]?.leader.location ?? Location.NULL);
     const maxLiminalBonus = this.ctx.host.maxLiminalBonus;
 
-    let enemyUnits: Array<{ type: UnitType; hp: number }> = [];
+    const enemyUnits: Array<{ type: UnitType; hp: number }> = [];
     for (const u of board.allUnits()) {
       const uTeam = board.getTeam(u.side);
       if (!uTeam || !team.isEnemy(uTeam) || u.incapacitated) continue;
