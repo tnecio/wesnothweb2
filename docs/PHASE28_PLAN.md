@@ -28,6 +28,26 @@ after review. This plan covers:
    larger than a few KB is served from a versioned URL as `immutable`. Only
    `index.html` and small manifests revalidate.
 
+7. **Generated scenario files are built, not committed** (2026-09-28): once
+   they are split into core, campaign and scenario files (`docs/ASSETS.md` §6),
+   they are generated at build time and removed from git.
+8. **WAV sound effects become OGG** (lossy, approved 2026-09-28). Music stays
+   as upstream ships it unless measurements say otherwise.
+9. **Error reports stay on the device** (copy/download only) for now.
+10. **First release is `v0.1.0`.**
+11. **Test deployment on `wesnoth.tnec.io`.** `tnec.io` is registered
+    elsewhere, but its DNS is already on Cloudflare (nameservers
+    `devin`/`maeve.ns.cloudflare.com`), which is what Workers and R2 custom
+    domains need. The zone must be in the same Cloudflare account as the Worker
+    and the bucket. Game data goes on a sibling host such as
+    `wesnoth-data.tnec.io` rather than `data.wesnoth.tnec.io`, because
+    Cloudflare's free certificate covers only one subdomain level
+    (`*.tnec.io`).
+
+Done 2026-09-28: the `gh` CLI is authenticated with a fine-grained token; the
+stale remote branches are deleted (`phase-29-real-ai` and `plan-ui-reorg` are
+also merged and left for a later decision).
+
 ## Context: measured before planning
 
 | Fact | Consequence |
