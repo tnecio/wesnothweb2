@@ -164,6 +164,12 @@ downloads a file again only when that file itself has changed.
 | Game media (`game-images*`, music, sounds) | symlinks, unversioned, `no-cache` | Uploaded to R2 under `/data/<submodule-sha>/`, `immutable`. The app gets the prefix from the root manifest. |
 | Scenario snapshots, i18n, `terrain-graphics-rules.json`, story assets | fixed names, fetched uncompressed | Content-hashed names via the root manifest, pre-compressed `.br`, `immutable` |
 
+- **Header rules can't overlap.** On Workers, a path matching several `_headers` rules gets all of their
+  headers, with repeated values joined by commas. So `immutable` files and `no-cache` files must live under
+  disjoint path prefixes; the hashed-name layout is designed around that (for example, all hashed data under
+  one prefix, not hashed PNGs beside fixed-name JSON manifests as `atlases/` has today).
+- Game media URLs already go through one base (`packages/ui/src/gameData.ts`, `VITE_GAME_DATA_URL`), done
+  2026-09-28.
 - New `apps/web/scripts/stage-assets.mjs`, run after `vite build`:
   - hashes and renames the data files;
   - writes the root manifest;
