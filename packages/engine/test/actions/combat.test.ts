@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Location } from '../../src/model/Location.js';
 import { GameMap } from '../../src/model/Map.js';
-import { TerrainTypeData, GRASS_LAND } from '../../src/model/Terrain.js';
+import { TerrainTypeData } from '../../src/model/Terrain.js';
 import { GameBoard } from '../../src/model/GameBoard.js';
 import { Team } from '../../src/model/Team.js';
 import { Unit } from '../../src/model/Unit.js';

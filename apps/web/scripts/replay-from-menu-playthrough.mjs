@@ -32,7 +32,6 @@ function check(label, ok, detail) {
   if (!ok) failures.push(label);
 }
 
-const dialogs = (page) => page.$$eval('.modal-box', (els) => els.map((e) => e.getAttribute('aria-label') ?? ''));
 const sessionInfo = (page) =>
   page.evaluate(() => {
     const s = window.__wesnoth?.session;

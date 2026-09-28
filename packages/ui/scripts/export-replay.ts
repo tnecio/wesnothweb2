@@ -11,7 +11,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
-import { writeWml, type GameBoardSnapshot } from '@wesnothweb2/engine';
+import { writeWml } from '@wesnothweb2/engine';
 import { GameSession } from '../src/gameSession.js';
 import { toWesnothSave } from '../src/save/wesnothSave.js';
 import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';

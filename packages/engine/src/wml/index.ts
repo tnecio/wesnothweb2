@@ -9,7 +9,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { WmlConfig } from './config.js';
 import type { DefineMap, PreprocessorHost } from './preprocessor.js';
-import { preprocess, preloadDefines, preloadDefinesFromDir } from './preprocessor.js';
+import { preprocess } from './preprocessor.js';
 import { parseConfig } from './parser.js';
 
 export { WmlConfig } from './config.js';

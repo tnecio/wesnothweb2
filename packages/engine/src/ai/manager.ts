@@ -18,7 +18,6 @@
  * bridge) and just logs here.
  */
 
-import type { GameBoard } from '../model/GameBoard.js';
 import { WmlConfig } from '../wml/config.js';
 import type { AiHost, AiAction } from './types.js';
 import { parseSideAiConfig } from './config/upgrade.js';

@@ -3,7 +3,7 @@
   import { imageUrl, hpColor, xpColor, redToGreen } from '@wesnothweb2/renderer';
   import type { RecruitOption, RecallOption, SelectedUnitInfo, HoveredHexInfo } from './gameSession.js';
   import { alignmentName, capitalizeFirst, damageTypeName, rangeName } from './i18n/gameText.js';
-  import { fmt, t, th, tw, tx } from './i18n/locale.js';
+  import { t, th, tw, tx } from './i18n/locale.js';
   import { compactLayout } from './compactLayout.js';
 
   let {

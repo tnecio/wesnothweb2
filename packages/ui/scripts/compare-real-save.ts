@@ -12,7 +12,7 @@
  */
 import * as fs from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { parseConfig, type GameBoardSnapshot } from '@wesnothweb2/engine';
+import { parseConfig } from '@wesnothweb2/engine';
 import { GameSession } from '../src/gameSession.js';
 import { fromWesnothSave } from '../src/save/wesnothSave.js';
 import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';

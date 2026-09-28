@@ -26,7 +26,6 @@ import { aStarSearch, NO_PATH_VALUE, type CostCalculator } from '../../pathfind/
 import { locationMatchesFilterOnBoard } from '../../events/filter.js';
 import type { GameBoard } from '../../model/GameBoard.js';
 import { CandidateAction } from '../composite/rca.js';
-import type { AiContext } from '../context.js';
 import type { MoveMap } from '../moveMaps.js';
 import type { Target } from '../composite/target.js';
 import { findTargets } from './findTargets.js';

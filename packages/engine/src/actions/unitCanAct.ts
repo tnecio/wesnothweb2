@@ -41,11 +41,6 @@ export function unitCanAct(board: GameBoard, unit: Unit): UnitCanAct {
     const otherTeam = board.getTeam(side);
     return !!ownTeam && !!otherTeam && ownTeam.isEnemy(otherTeam);
   };
-  const isAlly = (a: number, b: number): boolean => {
-    const ta = board.getTeam(a);
-    const tb = board.getTeam(b);
-    return !!ta && !!tb && !ta.isEnemy(tb);
-  };
 
   let canAttackHere = false;
   if (unit.attacksLeft > 0 && unit.attacks.length > 0) {

@@ -10,7 +10,6 @@ import {
   parseConfig,
   type DefineMap,
 } from '@wesnothweb2/engine/src/wml/index.js';
-import { WmlConfig } from '@wesnothweb2/engine/src/wml/config.js';
 import { GameMap } from '@wesnothweb2/engine/src/model/Map.js';
 import { Location } from '@wesnothweb2/engine/src/model/Location.js';
 import { TerrainTypeData, parseTerrainCode, type TerrainCode } from '@wesnothweb2/engine/src/model/Terrain.js';

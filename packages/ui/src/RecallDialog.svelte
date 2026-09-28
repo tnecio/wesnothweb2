@@ -15,7 +15,6 @@
 
   let {
     options,
-    gold,
     onRecall,
     onDismiss,
     onRename,

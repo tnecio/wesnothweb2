@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { GameBoardSnapshot, SoundRequest } from '@wesnothweb2/engine';

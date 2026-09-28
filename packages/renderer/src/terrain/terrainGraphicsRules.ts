@@ -37,7 +37,7 @@ import {
 } from '@wesnothweb2/engine/src/model/Terrain.js'
 import { TILE_SIZE } from '../hexGeometry.js'
 import { squareParentheticalSplit } from '../animation/frame.js'
-import { legacySum, legacyNegation, type HexOffset } from './legacyHex.js'
+import { legacySum, type HexOffset } from './legacyHex.js'
 
 // ── small WML helpers (no equivalent exists yet for these exact semantics) ──
 

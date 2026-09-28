@@ -94,7 +94,7 @@ import type { WmlConfig } from '../wml/config.js';
 import { AttackType, type Alignment } from '../model/UnitType.js';
 import type { Unit } from '../model/Unit.js';
 import type { BattleContextUnitStats } from './attackPrediction.js';
-import { calcBlows, swarmBlows, simulateCombat, Combatant } from './attackPrediction.js';
+import { swarmBlows, simulateCombat, Combatant } from './attackPrediction.js';
 import { roundDamage } from './gameConfig.js';
 
 // --- time-of-day / alignment damage modifier ---

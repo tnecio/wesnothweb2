@@ -1550,7 +1550,7 @@ describe('GameSession.hexVisibility (real, reported bugs: hard shroud edges + bo
 
 describe('GameSession unit inspection (real, reported bug: no way to see information about enemy units)', () => {
   it('clicking an enemy that is NOT an attack target (nothing of mine selected) inspects it without selecting/acting on it', async () => {
-    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    const { session, malKevek } = withAdjacentLeaders();
     // No unit selected yet.
     await session.handleHexClick(malKevek.location.x, malKevek.location.y);
 
