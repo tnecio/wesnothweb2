@@ -5465,3 +5465,23 @@ either orientation; tablets and desktops keep the full layout.
   can too. **The shared bundle is now split into images of at most 2048 px**: 4 files of 1.2–3.8 MB, the
   same 9.8 MB in total, which also download in parallel. Golden check: 4872/4872 (7 bundle images, 1
   single file).
+
+## 2026-09-28 — Phase 28 S4: minimap tiles and board overlays in bundles (70 → 15 per-file images)
+
+- **Minimap tiles** (§4.6). The minimap loaded each terrain's `symbol_image` as its own `<img>`: about 40
+  requests per scenario. The atlas builder now adds each scenario's minimap tiles (from its terrain codes,
+  as `minimapStyle.ts` picks them) plus the fog and highlight tiles to that scenario's terrain image set.
+  So they land in the shared bundle (+55 images, +0.5 MB) or the scenario's own. `Minimap.svelte` draws
+  them through `ImageCache` (the bundles), not `new Image()`.
+- **Board overlays.** A fixed bundle, `atlases/_ui/ui.json` (75 images, 72 KB as a palette PNG), holds every
+  unit ellipse, leader crown, orb and flag animation frame. The board registers it first.
+- Measured on the dev server: per-file image requests are now 15 for Liberty 1 and 15 for Dead Water 1
+  (were 70 and 67). What remains is page chrome used directly in markup and CSS (minimap buttons, dialog
+  frame, story decorations) and one campaign image; each is cached for a year after the first visit.
+  Golden check 4872/4872. `minimap-camera-playthrough.mjs`: all checks pass.
+- **Test-script fixes found on the way.** The AI-follow check in `minimap-camera-playthrough.mjs` never
+  ended the turn: End Turn's "You have not started your turn yet" confirmation (bugs7) was left open. It now
+  answers it (`confirmEndTurnIfAsked`). With the turn really played, the glide checks after it saw a scroll
+  stop ~170 px short at the same zoom (not investigated), so they now run before the AI turn.
+- A measurement mistake worth remembering: the first count still showed ~40 terrain requests because the
+  Vite dev server served a stale `Minimap.svelte` after a branch switch. Restarting Vite fixed it.

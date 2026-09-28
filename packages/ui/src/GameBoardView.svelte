@@ -534,12 +534,14 @@
       // (Dead Water and Under the Burning Suns both ship a 13_Epilogue), so the id alone could fetch the
       // wrong campaign's terrain bundle (a real bug, found 2026-09-27). Images not in the bundle are
       // fetched on their own, so a missing/mis-scoped one only costs requests, never a wrong-looking board.
-      // Terrain shared by many scenarios (one bundle, cached across all of them), then this scenario's own.
-      ImageCache.setAtlasManifests(
-        snapshot.assetDir
+      // Ellipses, crowns, orbs and flags; terrain (and minimap tiles) shared by many scenarios, then this
+      // scenario's own. The first two are cached across every scenario.
+      ImageCache.setAtlasManifests([
+        dataUrl('atlases/_ui/ui.json'),
+        ...(snapshot.assetDir
           ? [dataUrl('atlases/_common/terrain.json'), dataUrl(`atlases/${snapshot.assetDir}/${snapshot.scenario.id}/terrain.json`)]
-          : [],
-      );
+          : []),
+      ]);
       // Phase 28a P6: recruitable types' bundles are registered (downloaded on first use)...
       ImageCache.addAtlasManifests(snapshot.teams.flatMap((team) => team.recruit ?? []).map((id) => dataUrl(unitBundleManifestUrl(id))));
       // ...and types on the board are downloaded now, so their first animation needs no network.
