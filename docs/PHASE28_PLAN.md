@@ -151,6 +151,10 @@ Runs on pushes to `main` and on PRs. Superseded runs are cancelled.
 
 ### S3 — Versioned, long-lived asset delivery
 
+**Done 2026-09-28** (see PROGRESS): content-hashed `/h/` paths plus a data manifest, and game media under
+the submodule commit in R2. The root-manifest design below is what was built; there are no pre-compressed
+`.br` files, since the edge compresses JSON well enough.
+
 The caching contract: **every file larger than a few KB is requested from a
 URL that changes whenever its content changes, and is served
 `public, max-age=31536000, immutable`.** Only `index.html` and small

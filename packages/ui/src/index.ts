@@ -75,3 +75,4 @@ export {
   type LanguageInfo,
   type LocaleHost,
 } from './i18n/locale.js';
+export { dataUrl, loadDataManifest } from './dataUrls.js';

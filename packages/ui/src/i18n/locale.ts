@@ -22,6 +22,7 @@ import {
   type Catalogue,
   type TString,
 } from '@wesnothweb2/engine';
+import { dataUrl } from '../dataUrls.js';
 
 export interface LanguageInfo {
   /** Locale code as upstream writes it, e.g. `pl_PL`. */
@@ -60,7 +61,7 @@ export interface LocaleHost {
 function browserHost(baseUrl: string): LocaleHost {
   return {
     fetchJson: async (url) => {
-      const res = await fetch(`${baseUrl}${url}`);
+      const res = await fetch(dataUrl(`${baseUrl}${url}`));
       if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
       return res.json();
     },
@@ -253,7 +254,7 @@ export class LocaleManager {
   }
 }
 
-export const locale = new LocaleManager(browserHost('/i18n/'));
+export const locale = new LocaleManager(browserHost('i18n/'));
 
 /**
  * Lookup helpers, one per textdomain, so a call names the catalogue upstream's own string lives in:

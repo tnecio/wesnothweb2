@@ -18,7 +18,7 @@
  *   change (checked before dispatching), since each worker has its own copy
  *   of the compositor module.
  */
-import { getCampaignImages, getImageBaseUrls } from './compositor'
+import { atlasFileUrl, getCampaignImages, getImageBaseUrls } from './compositor'
 import type { FromCompositorWorker, ToCompositorWorker } from './compositor.worker'
 import { splitRef } from './ipf'
 import type { ColorData } from './teamColor'
@@ -151,8 +151,7 @@ export class CompositorPool {
     void this.atlasBlob(manifestUrl).then(async (blob) => {
       if (!blob || !blob.type.includes('json')) return
       const manifest = JSON.parse(await blob.text()) as { atlases?: { file: string }[] }
-      const dir = manifestUrl.slice(0, manifestUrl.lastIndexOf('/') + 1)
-      for (const atlas of manifest.atlases ?? []) void this.atlasBlob(`${dir}${atlas.file}`)
+      for (const atlas of manifest.atlases ?? []) void this.atlasBlob(atlasFileUrl(manifestUrl, atlas.file))
     }).catch(() => undefined)
   }
 

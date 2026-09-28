@@ -5394,3 +5394,25 @@ either orientation; tablets and desktops keep the full layout.
 - **`deploy.yml`** runs on `v*` tags or by hand. It uploads the media, sets CORS, builds, deploys, then
   checks HTTP 200 for the site, a deep link, `_core.json` and a bucket image, plus the bucket's
   Cache-Control and CORS headers.
+
+## 2026-09-28 — Phase 28 S3: content-hashed data, year-long caching
+
+- **Music on the deployed site.** Music was silent because the `<audio>` element feeding Web Audio
+  (`createMediaElementSource`) loaded bucket files without CORS mode, and Chrome outputs zeroes for such a
+  source. Measured on the live origin: peak 0 without `crossOrigin`, 0.05 with it. Now
+  `crossOrigin = 'anonymous'` (the bucket sends `access-control-allow-origin: *`, also on 206 range
+  responses). Minimap tiles got the same setting.
+- **Every data file is content-hashed.** `stage-dist.mjs` publishes each file from `public/` at
+  `/h/<sha256-16>/<path>` and writes a hashed `data-manifest.json` that `index.html` names.
+  `packages/ui/src/dataUrls.ts` loads it before the app mounts, and `dataUrl(path)` maps a path to its
+  URL (identity in development). Image bundle manifests are rewritten to their PNGs' hashed URLs before they
+  are hashed; `atlasFileUrl` accepts those absolute URLs. Every data fetch (scenarios, databases, atlases,
+  terrain rules, story, derived images, i18n, the menu JSON) now goes through `dataUrl`.
+- **`_headers`:** `/assets/*` and `/h/*` are `immutable`; only `index.html` revalidates.
+- Measured on `wrangler dev` (Liberty 1):
+  - the cold load had 32 requests, 19 of them hashed data, and no unhashed data requests;
+  - **a warm reload sent one request to the network (`index.html`)**; everything else came from the browser
+    cache;
+  - no console errors. The dev server and the ui (375) and renderer (263) suites pass.
+- The edge already Brotli-compresses JSON (`_core.json`: 3.3 MB → 211 KB on the wire), so pre-compressed
+  files are not needed for now.

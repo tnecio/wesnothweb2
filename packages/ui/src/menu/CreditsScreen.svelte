@@ -7,6 +7,7 @@
    * needs an off switch), and with `prefers-reduced-motion` it does not move at all, it is an ordinary
    * scrollable list. The data (`credits.json`, ~30 KB) is fetched when the screen opens, not with the menu.
    */
+  import { dataUrl } from '../dataUrls.js';
   import { imageUrl } from '@wesnothweb2/renderer';
   import Modal from '../Modal.svelte';
   import { languageTag, locale, t, ts, tx } from '../i18n/locale.js';
@@ -27,7 +28,7 @@
 
   $effect(() => {
     let cancelled = false;
-    fetch('/credits.json')
+    fetch(dataUrl('credits.json'))
       .then((res) => {
         if (!res.ok) throw new Error(String(res.status));
         return res.json() as Promise<CreditsJson>;
