@@ -85,6 +85,15 @@
           />
           <span class="value">{displayPrefs.value.scrollSpeed}</span>
         </label>
+        <label class="check" title={t('Do not allow automatic movements at the beginning of a turn')}>
+          <input
+            type="checkbox"
+            checked={displayPrefs.value.disableAutoMoves}
+            onchange={(e) => displayPrefs.update({ disableAutoMoves: e.currentTarget.checked })}
+            data-testid="prefs-disable-auto-moves"
+          />
+          <span>{t('Disable automatic moves')}</span>
+        </label>
       {:else if tab === 'display'}
         <AccessibilityPanel />
         <label class="check" title={t('Overlay a grid over the map')}>

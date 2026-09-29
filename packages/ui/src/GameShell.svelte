@@ -1177,6 +1177,7 @@
   }
 
   function updateMovementPreview(): void {
+    canContinueMove = pointerHex ? session.canContinueMove(pointerHex.x, pointerHex.y) : session.canContinueMove();
     route = null;
     attackIndicator = null;
     hoverReach = null;
@@ -1217,12 +1218,26 @@
     sync(message);
   }
 
+  /** Whether "Continue Move" has a unit to move: the selected one, or the one under the pointer. */
+  let canContinueMove = $state(false);
+
+  /** `menu_handler::continue_move`: the unit at `hex` (or the selected one) walks on after sighting units stopped it. */
+  async function handleContinueMove(hex: HexPoint | null): Promise<void> {
+    if (!canAct()) return;
+    clearEnemyMoves();
+    const message = await runPlayerAction(() => session.continueMove(hex?.x, hex?.y));
+    if (message === null) return;
+    sync(message);
+    await showDeferredInteractions();
+  }
+
   /**
    * Phase 28b: `play_human_turn`'s `execute_gotos` -- as the player's turn begins, units with a standing
    * order (a multi-turn move) walk on towards it.
    */
   async function continueStandingOrders(): Promise<void> {
-    if (!canAct()) return;
+    // The "Disable automatic moves" preference (`disable_auto_moves`).
+    if (!canAct() || displayPrefs.value.disableAutoMoves) return;
     const message = await runPlayerAction(() => session.executeGotos());
     if (message === null) return;
     sync(message);
@@ -2593,6 +2608,14 @@
     },
   ]);
   let actionCommands = $derived<Command[]>([
+    // Upstream's Actions menu starts with it (`data/themes/default.cfg`); `t` in `hotkeys.cfg`.
+    {
+      id: 'continue',
+      label: t('Continue Interrupted Move'),
+      enabled: phase === 'playing' && canContinueMove,
+      hotkey: { key: 't' },
+      handler: () => void handleContinueMove(pointerHex ?? cursorHex),
+    },
     {
       id: 'recruit',
       label: `${t('Recruit')}...`,
@@ -2674,6 +2697,9 @@
       const isReachable = !!session.selectedUnit && reachable.some((h) => h.x === x && h.y === y);
       const isAttackTarget = attackTargets.some((h) => h.x === x && h.y === y);
       const isRecruitTile = recruitTiles.some((h) => h.x === x && h.y === y);
+      if (session.canContinueMove(x, y)) {
+        hexCommands.push({ id: 'ctx-continue', label: t('Continue Interrupted Move'), enabled: true, handler: () => void handleContinueMove({ x, y }) });
+      }
       if (unitHere && unitHere.side === activeSide && unitHere !== session.selectedUnit) {
         hexCommands.push({ id: 'ctx-select', label: tx('Select Unit'), enabled: true, handler: () => handleHexClick(x, y) });
       }

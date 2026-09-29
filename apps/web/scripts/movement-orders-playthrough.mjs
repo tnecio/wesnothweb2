@@ -10,7 +10,11 @@
  * - touch: tapping a hex next to the enemy and then the enemy is the same order; an ambush on the
  *   way stops Kai and cancels the attack.
  *
- *   node apps/web/scripts/movement-orders-playthrough.mjs [--base http://localhost:5173] [--only orders,mouse-attack,touch-attack]
+ * - continue move: a move stopped by sighting an enemy (fog on) walks on with `t`;
+ * - with "Disable automatic moves" on, a standing order is not carried on at the next turn.
+ *
+ *   node apps/web/scripts/movement-orders-playthrough.mjs [--base http://localhost:5173]
+ *     [--only orders,mouse-attack,touch-attack,continue,no-auto-moves]
  */
 import { chromium } from 'playwright';
 import { hexPoint, skipToPlay, waitBoardReady, confirmEndTurnIfAsked } from './lib/browserFlows.mjs';
@@ -308,6 +312,78 @@ try {
     check('an ambush on the way stops Kai', after.x === ambush.first.x && after.y === ambush.first.y, `${JSON.stringify(after)} (ambush by ${ambush.lurk})`);
     check('...and the attack does not happen', after.attacksLeft === 1 && hp === ambush.hp, `attacks ${after.attacksLeft}, hp ${ambush.hp} -> ${hp}`);
     check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+    await context.close();
+  }
+  // ── Continue move (t) after sighting an enemy ─────────────────────────────
+  if (runs('continue')) {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await openDeadWater(page);
+    // Fog on for Kai's side; everyone else of his out of the way; Mal-Kevek hidden in the fog to the west.
+    await page.evaluate(async () => {
+      const { session } = window.__wesnoth;
+      const board = session.board;
+      const Loc = board.allUnits()[0].location.constructor;
+      board.getTeam(1).fog.enabled = true;
+      const kai = board.allUnits().find((u) => u.id === 'Kai Krellis');
+      for (const u of board.allUnits()) if (u.side === 1 && u !== kai) board.removeUnitAt(u.location);
+      const mal = board.allUnits().find((u) => u.id === 'Mal-Kevek');
+      board.moveUnit(mal.location, new Loc(8, 12));
+      session.clearSelection();
+      await window.__wesnoth.clickHex(30, 3);
+    });
+    // The fog is recomputed at the next sync; the order below triggers it anyway.
+    await scrollTo(page, 17, 9);
+    const k = await hexPoint(page, 19, 8);
+    await page.mouse.click(k.x, k.y);
+    await page.waitForTimeout(300);
+    const d = await hexPoint(page, 14, 10);
+    await page.mouse.click(d.x, d.y);
+    await untilPlayable(page);
+    const stopped = await kaiState(page);
+    const interrupted = await page.evaluate(() => window.__wesnoth.session.board.allUnits().find((u) => u.id === 'Kai Krellis').interruptedMove);
+    check('sighting an enemy stops the move short', !(stopped.x === 14 && stopped.y === 10), JSON.stringify(stopped));
+    check('...and remembers where it was headed', interrupted?.x === 14 && interrupted?.y === 10, JSON.stringify(interrupted));
+    const s = await hexPoint(page, stopped.x, stopped.y);
+    await page.mouse.move(s.x, s.y, { steps: 3 });
+    await page.keyboard.press('t');
+    await untilPlayable(page);
+    const after = await kaiState(page);
+    check('t continues the move to where it was headed', after.x === 14 && after.y === 10, JSON.stringify(after));
+    check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+    await context.close();
+  }
+
+  // ── "Disable automatic moves" ────────────────────────────────────────────
+  if (runs('no-auto-moves')) {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await context.addInitScript(() => {
+      try {
+        localStorage.setItem('wesnothweb2.display', JSON.stringify({ disableAutoMoves: true }));
+      } catch {
+        /* ignore */
+      }
+    });
+    const page = await context.newPage();
+    await openDeadWater(page);
+    await scrollTo(page, 19, 8);
+    const k = await hexPoint(page, 19, 8);
+    await page.mouse.click(k.x, k.y);
+    await page.waitForTimeout(300);
+    await scrollTo(page, 8, 10);
+    const d = await hexPoint(page, 2, 10);
+    await page.mouse.click(d.x, d.y);
+    await untilPlayable(page);
+    const ordered = await kaiState(page);
+    check('an order still leaves a standing order', ordered.goto?.x === 2 && ordered.goto?.y === 10, JSON.stringify(ordered));
+    const before = await page.evaluate(() => window.__wesnoth.session.turnNumber);
+    await page.getByRole('button', { name: 'End Turn', exact: true }).click();
+    await confirmEndTurnIfAsked(page);
+    await backToPlayer(page, before);
+    const next = await kaiState(page);
+    check('...but with automatic moves disabled, the next turn leaves Kai where he is', next.x === ordered.x && next.y === ordered.y && next.goto !== null, JSON.stringify(next));
     await context.close();
   }
 } finally {

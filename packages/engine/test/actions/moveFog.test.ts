@@ -99,6 +99,20 @@ describe('executeMove under fog (unit_mover)', () => {
     expect(raised).toEqual([`sighted ${COLUMN[6]} ${COLUMN[4]}`]);
   });
 
+  it("with skip_sighted=all (a continued move) walks on past sighted units, still raising sighted", () => {
+    const { board } = setup({ fog: true });
+    const mover = place(board, makeType('scout', { vision: 1 }), 1, COLUMN[0]!);
+    place(board, makeType('enemy'), 2, COLUMN[6]!);
+    clearShroud(board, 1);
+
+    const raised: string[] = [];
+    const result = executeMove(board, mover, COLUMN.slice(0, 6), { raise: (name) => raised.push(name), skipSighted: 'all' });
+
+    expect(result.sightedStop).toBe(false);
+    expect(mover.location.equals(COLUMN[5]!)).toBe(true);
+    expect(raised).toContain('sighted');
+  });
+
   it('a move that reveals nothing new does not block undo', () => {
     const { board } = setup();
     const mover = place(board, makeType('scout'), 1, COLUMN[0]!);

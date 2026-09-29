@@ -217,6 +217,11 @@ export interface ExecuteMoveOptions extends PlanTurnMovementOptions {
   raise?: RaiseEvent;
   /** Fires the per-step hex events; omit when no WML listens (nothing is fired). */
   hexEvent?: HexEventFirer;
+  /**
+   * `[move] skip_sighted=` (`unit_mover`'s `skip_sighting_`/`skip_ally_sighting_`): units coming into
+   * view don't stop the move -- none at all (`all`, a continued move), or only allies (`only_ally`).
+   */
+  skipSighted?: 'all' | 'only_ally';
 }
 
 /** The facing after stepping `from` -> `to`: the hex direction for a walk, the general direction for a teleport. */
@@ -320,7 +325,7 @@ export function* executeMoveFlow(board: GameBoard, unit: Unit, path: readonly Lo
     reached = i;
     if (usesFog && team) {
       if (clearer.clearUnit(hex, unit, team, undefined, counts)) fogChanged = true;
-      sighted = counts.enemies !== 0 || counts.friends !== 0;
+      if (options.skipSighted !== 'all') sighted = counts.enemies !== 0 || (options.skipSighted !== 'only_ally' && counts.friends !== 0);
     }
     // Not checked until the next pass: the unit has entered this hex either way.
     yield* fireHex('enter hex', hex, from);

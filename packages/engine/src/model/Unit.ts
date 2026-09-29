@@ -132,6 +132,13 @@ export class Unit {
    * sentinel location.
    */
   goto: Location | undefined;
+  /**
+   * Mirrors `unit::get_interrupted_move()`: where the unit's last move was
+   * headed when sighting other units stopped it, for "Continue Move"
+   * (`menu_handler::continue_move`). Cleared at the end of its side's turn,
+   * and not saved (upstream doesn't write it either).
+   */
+  interruptedMove: Location | undefined;
   /** `[unit] profile=`: this unit's own portrait, overriding its type's; empty when not overridden. */
   profile: string;
   /** `[unit] gender=` (`unit::gender_`): `male` or `female`. */
@@ -230,6 +237,7 @@ export class Unit {
     this.statuses = new Set();
     this.variables = options.variables;
     this.goto = undefined;
+    this.interruptedMove = undefined;
     this.profile = options.profile ?? '';
     this.gender = options.gender ?? type.genders[0] ?? 'male';
     // `unit::init`: the type's stats, then every modification's effects,
@@ -351,10 +359,16 @@ export class Unit {
     this.setStatus(UnitStatus.Uncovered, false);
   }
 
-  /** `unit::end_turn` (at the end of the unit's own side's turn): `duration=turn end` modifications expire, and slow wears off. */
+  /** `unit::end_turn` (at the end of the unit's own side's turn): `duration=turn end` modifications expire, slow wears off, and an interrupted move is forgotten. */
   endTurn(env: EffectEnv = {}): void {
     this.expireModifications('turn end', env);
     this.setStatus(UnitStatus.Slowed, false);
+    this.interruptedMove = undefined;
+  }
+
+  /** `unit::move_interrupted()`: a move stopped by sighting units can be continued (it has moves left). */
+  get moveInterrupted(): boolean {
+    return this.movesLeft > 0 && this.interruptedMove !== undefined;
   }
 
   /**

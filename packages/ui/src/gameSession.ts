@@ -2106,6 +2106,7 @@ export class GameSession {
       raise: this.raiseEvent,
       viewingTeam: this.board.getTeam(unit.side),
       hexEvent,
+      skipSighted: cmd.skipSighted,
     });
     const path = outcome.result.path;
     // A move that could not take a single step changed nothing, and the
@@ -3849,7 +3850,7 @@ export class GameSession {
    * what happened; `null` when the unit could not move at all and no order
    * was left either.
    */
-  private *moveAlong(unit: Unit, route: readonly Location[]): Flow<{ result: MoveResult | null; message: string } | null> {
+  private *moveAlong(unit: Unit, route: readonly Location[], continued = false): Flow<{ result: MoveResult | null; message: string } | null> {
     const dest = route[route.length - 1]!;
     const name = this.unitDisplayName(unit);
     this.lastMoveResult = null;
@@ -3864,11 +3865,14 @@ export class GameSession {
       this.log.unshift(message);
       return { result: null, message };
     }
-    const cmd: MoveCommand = { kind: 'move', steps: route.map(hexOf) };
+    // A continued move (`continue_move`) isn't stopped by sighting units again.
+    const cmd: MoveCommand = continued ? { kind: 'move', steps: route.map(hexOf), skipSighted: 'all' } : { kind: 'move', steps: route.map(hexOf) };
     const done = yield* this.runSynced(cmd, (action) => this.execMove(cmd, action), { present: true });
     if (!done) return null;
     const result = done.outcome.result;
     this.lastMoveResult = result;
+    // unit_mover::post_move: a stop for sighted units remembers where the move was headed ("Continue Move").
+    unit.interruptedMove = result.sightedStop ? dest : undefined;
     const interrupted = result.ambushed || result.blocked || result.sightedStop || result.teleportFailed || this.board.unitAt(unit.location) !== unit;
     // `unit_mover::~unit_mover`: an unfinished, uninterrupted move leaves the rest as the order (unless WML set one).
     const continues = !unit.location.equals(dest) && !interrupted && unit.goto === undefined;
@@ -3882,6 +3886,40 @@ export class GameSession {
           : fmt(tx('$unit moved.'), { unit: name });
     this.log.unshift(message);
     return { result, message };
+  }
+
+  /**
+   * `menu_handler::continue_move` ("Continue Move", `t`): a unit whose move
+   * was stopped because it sighted units walks on to where it was headed,
+   * this time not stopping for sightings. The unit is the one at `(x, y)`
+   * (the hex under the pointer) if its move was interrupted, else the
+   * selected one. `null` when neither has an interrupted move.
+   */
+  async continueMove(x?: number, y?: number): Promise<string | null> {
+    return this.drive(this.continueMoveFlow(x, y));
+  }
+
+  /** Whether "Continue Move" would do anything now, for the unit at `(x, y)` or the selected one. */
+  canContinueMove(x?: number, y?: number): boolean {
+    return this.continuableUnit(x, y) !== null;
+  }
+
+  private continuableUnit(x?: number, y?: number): Unit | null {
+    if (this.scenarioResult) return null;
+    const viewer = this.board.getTeam(this.viewingSide);
+    const candidates = [x !== undefined && y !== undefined ? getVisibleUnit(this.board, new Location(x, y), viewer, false) : undefined, this.selectedUnit ?? undefined];
+    return candidates.find((u): u is Unit => !!u && u.side === this.activeSide && u.moveInterrupted && this.board.unitAt(u.location) === u) ?? null;
+  }
+
+  private *continueMoveFlow(x?: number, y?: number): Flow<string | null> {
+    const unit = this.continuableUnit(x, y);
+    const target = unit?.interruptedMove;
+    if (!unit || !target) return null;
+    const route = this.routeTo(unit, target);
+    if (route.length < 2) return null;
+    this.clearSelection();
+    const moved = yield* this.moveAlong(unit, route, true);
+    return moved?.message ?? null;
   }
 
   /**
