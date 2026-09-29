@@ -118,6 +118,7 @@ import { actionTimeArea, actionRemoveTimeArea, actionReplaceSchedule, actionStor
 import { newVarNode, varNodeFromConfig, varNodeToConfig, VariableStore, type VarNode } from './variables.js';
 import { parseScenarioObjectives, type ScenarioObjectives } from './objectives.js';
 import { registerFlowActions } from './flowWml.js';
+import { registerSupportActions } from './supportWml.js';
 import { playBeat, registerCutsceneActions } from './cutsceneWml.js';
 import { ShroudClearer } from '../actions/vision.js';
 import { applyMusicAction } from '../audio/musicList.js';
@@ -136,8 +137,8 @@ import { soundSourceFromConfig } from '../audio/soundSources.js';
  * not to the action sequence), and iteration stops as soon as
  * `ctx.exit.type` becomes non-`'none'`.
  */
-/** Action tags whose handler gets its config exactly as written (see `runActionFlow`). */
-const RAW_CONFIG_TAGS = new Set(['event', 'objectives']);
+/** Action tags whose handler gets its config exactly as written (see `runActionFlow`); `[lua]`'s code is Lua, never `$`-substituted (`wml.shallow_literal` in `wml_actions.lua`). */
+const RAW_CONFIG_TAGS = new Set(['event', 'objectives', 'lua', 'harm_unit']);
 
 export function* runActionFlow(body: WmlConfig, ctx: EventContext): Flow {
   for (const child of body.allChildren()) {
@@ -1943,6 +1944,7 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('disallow_undo', actionDisallowUndo);
   registry.register('on_undo', actionOnUndo);
   registerFlowActions((tag, handler) => registry.register(tag, handler));
+  registerSupportActions((tag, handler) => registry.register(tag, handler));
 
   registry.register('music', (cfg, ctx) => applyMusicAction(ctx.music, cfg));
   registry.register('sound', actionSound);

@@ -223,6 +223,8 @@ export interface SnapshotTeam {
 
 export interface ScenarioSnapshot {
   scenario: { id: string; name: string };
+  /** Phase 28c: the campaign's own `[color_range]`s, added to the colour table (`ColorData.ranges`). */
+  colorRanges?: Record<string, { mid: number[]; max: number[]; min: number[]; rep: number[] }>;
   map: { width: number; height: number };
   terrain: SnapshotTerrainHex[];
   teams: SnapshotTeam[];

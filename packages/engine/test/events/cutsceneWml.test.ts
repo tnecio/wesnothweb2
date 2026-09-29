@@ -65,7 +65,7 @@ function play(pump: EventPump, name: string): { labels: string[]; interactions: 
     return {};
   });
   return {
-    labels: interactions.map((i) => (i.kind === 'message' ? `message:${i.message.message}` : `beat:${i.beat.kind}`)),
+    labels: interactions.map((i) => (i.kind === 'message' ? `message:${i.message.message}` : i.kind === 'beat' ? `beat:${i.beat.kind}` : 'dialog')),
     interactions,
   };
 }
@@ -245,7 +245,7 @@ describe('cutscene ordering (Phase 17 E3)', () => {
     const seen: Array<{ label: string; heroAt: string }> = [];
     runFlow(pump.fireFlow('go'), (interaction) => {
       seen.push({
-        label: interaction.kind === 'message' ? 'message' : interaction.beat.kind,
+        label: interaction.kind === 'message' ? 'message' : interaction.kind === 'beat' ? interaction.beat.kind : 'dialog',
         heroAt: hero.location.key(),
       });
       return {};

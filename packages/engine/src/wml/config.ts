@@ -131,6 +131,17 @@ export class WmlConfig {
     return value;
   }
 
+  /** Mirrors `config::add_child_at_total`: inserts a child at `pos` among all children (clamped to the end). */
+  addChildAt(tag: string, value: WmlConfig, pos: number): WmlConfig {
+    this.childEntries.splice(Math.max(0, Math.min(pos, this.childEntries.length)), 0, { tag, config: value });
+    return value;
+  }
+
+  /** Removes the child at `pos` among all children (`config::remove_child` by total position). */
+  removeChildAt(pos: number): void {
+    this.childEntries.splice(pos, 1);
+  }
+
   /** Mirrors `config::clear_children(tag)`: drops every child with this tag, keeping attributes and other children. */
   removeChildren(tag: string): void {
     this.childEntries = this.childEntries.filter((e) => e.tag !== tag);

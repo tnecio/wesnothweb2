@@ -23,6 +23,9 @@ import type { Flow } from './interaction.js';
 import type { MusicList } from '../audio/musicList.js';
 import type { SoundRequest } from '../audio/sounds.js';
 import type { SoundSourceStore } from '../audio/soundSources.js';
+import type { TString } from '../i18n/tstring.js';
+import type { Unit } from '../model/Unit.js';
+import type { AchievementSink, PersistentVariables } from './supportWml.js';
 
 /**
  * One real `[set_menu_item]` declaration -- see `actionWml.ts`'s
@@ -296,6 +299,18 @@ export interface EventContext {
    */
   gameStarted: boolean;
   log: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
+  /**
+   * Phase 28c: `[allow_end_turn]`/`[disallow_end_turn]` (`game_data::can_end_turn_` and
+   * `cannot_end_turn_reason_`, saved with the game): whether the player may end the turn, and what to tell
+   * them if not.
+   */
+  endTurn: { allowed: boolean; reason?: TString };
+  /** Phase 28c: `[set_global_variable]` and friends' storage, kept across games. Absent: they log and do nothing. */
+  persistent?: PersistentVariables;
+  /** Phase 28c: `[set_achievement]` and friends. Absent: they do nothing. */
+  achievements?: AchievementSink;
+  /** Phase 28c: `unit:advance()` for a tag that adds experience outside combat (`[harm_unit]`). Absent: no advancement. */
+  advanceUnit?: (unit: Unit) => void;
   /** Set by a host with a real AI engine (`packages/ui`'s `GameSession`, Phase 29 S5) -- backs the `[modify_ai]`/`[modify_side]`/`[micro_ai]` action tags (`ai/wmlActions.ts`). Undefined (rather than a no-op stub) in any context without one, e.g. a headless test that never constructs an `AiManager`, so those tags log a clear "not loaded" warning instead of silently doing nothing. */
   ai?: import('../ai/wmlActions.js').AiWmlHooks;
 }

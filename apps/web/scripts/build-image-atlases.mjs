@@ -301,11 +301,21 @@ const summary = [];
 
 // ── Terrain: one shared bundle plus a small one per scenario ─────────────────
 // Phase 28 S4 (docs/ASSETS.md §4.2, §6): per-scenario bundles repeated the same common tiles in every
-// scenario (44 bundles held 13k image slots but only 1.7k distinct images). Images used by at least
-// COMMON_MIN scenarios go into one shared bundle, `_common/terrain.json`, cached once for every scenario and
-// campaign; each scenario's own bundle holds only the rest. Which images are common depends on every
-// scenario, so terrain is rebuilt for all of them together (a scenario id filter does not narrow it).
-const COMMON_MIN = 5;
+// scenario (44 bundles held 13k image slots but only 1.7k distinct images). So there are three tiers, each
+// downloaded once and cached:
+//  - `_common/terrain.json`: images at least half of the real campaigns use (at least 2 campaigns) --
+//    the tiles almost every board has. Phase 28c: this used to be "used by 5 or more scenarios", which
+//    grew with every campaign added (The South Guard alone took it from 9.9 to 12 MB, all of it loaded by
+//    every scenario of every campaign);
+//  - `<campaign>/_campaign/terrain.json` (Phase 28c): the rest that 2 or more of that campaign's scenarios use;
+//  - `<campaign>/<scenario>/terrain.json`: what is left.
+// Which images are common depends on every scenario, so terrain is rebuilt for all of them together (a
+// scenario id filter does not narrow it).
+const realCampaignDirs = new Set(
+  JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/campaigns.json'), 'utf8')).campaigns.filter((c) => !c.debug).map((c) => c.assetDir),
+);
+const COMMON_CAMPAIGNS = Math.max(2, Math.ceil(realCampaignDirs.size / 2));
+const CAMPAIGN_MIN_SCENARIOS = 2;
 
 /**
  * The minimap's tiles for `snapshot`'s map: each terrain code's `symbol_image` (the base's and the overlay's
@@ -348,9 +358,27 @@ if (!fs.existsSync(rulesFile)) {
     for (const rooted of minimapImages(snapshot)) sources.add(rooted);
     return { campaignDirName, id, sources };
   });
-  const uses = new Map();
-  for (const { sources } of perScenario) for (const rooted of sources) uses.set(rooted, (uses.get(rooted) ?? 0) + 1);
-  const common = new Set([...uses].filter(([, n]) => n >= COMMON_MIN).map(([rooted]) => rooted));
+  // Which real campaigns use each image, and how many scenarios of each campaign.
+  const campaignsUsing = new Map();
+  const scenarioUses = new Map(); // `${campaign}\0${rooted}` -> scenarios
+  for (const { campaignDirName, sources } of perScenario) {
+    for (const rooted of sources) {
+      if (realCampaignDirs.has(campaignDirName)) {
+        if (!campaignsUsing.has(rooted)) campaignsUsing.set(rooted, new Set());
+        campaignsUsing.get(rooted).add(campaignDirName);
+      }
+      const key = `${campaignDirName}\0${rooted}`;
+      scenarioUses.set(key, (scenarioUses.get(key) ?? 0) + 1);
+    }
+  }
+  const common = new Set([...campaignsUsing].filter(([, set]) => set.size >= COMMON_CAMPAIGNS).map(([rooted]) => rooted));
+  const campaignShared = new Map();
+  for (const { campaignDirName, sources } of perScenario) {
+    if (!campaignShared.has(campaignDirName)) campaignShared.set(campaignDirName, new Set());
+    for (const rooted of sources) {
+      if (!common.has(rooted) && scenarioUses.get(`${campaignDirName}\0${rooted}`) >= CAMPAIGN_MIN_SCENARIOS) campaignShared.get(campaignDirName).add(rooted);
+    }
+  }
 
   const writeTerrain = (outDir, sources, maxSize) => {
     const { files, summary: line } = writeBundle(outDir, 'terrain', sources, maxSize);
@@ -361,9 +389,15 @@ if (!fs.existsSync(rulesFile)) {
   };
   // The shared bundle is split into images of at most 2048 px (~2.5 MB each): one 10 MB file is dropped by
   // small (mobile, in-memory) HTTP caches, and several download in parallel.
-  summary.push(`terrain, shared by >= ${COMMON_MIN} scenarios: ${writeTerrain(commonDir, common, COMMON_ATLAS_SIZE)}`);
+  summary.push(`terrain, shared by >= ${COMMON_CAMPAIGNS} campaigns: ${writeTerrain(commonDir, common, COMMON_ATLAS_SIZE)}`);
+  for (const [campaignDirName, shared] of campaignShared) {
+    const dir = path.join(outRoot, campaignDirName, '_campaign');
+    fs.mkdirSync(dir, { recursive: true });
+    summary.push(`${campaignDirName}, shared by its scenarios: ${writeTerrain(dir, shared, COMMON_ATLAS_SIZE)}`);
+  }
   for (const { campaignDirName, id, sources } of perScenario) {
-    const own = new Set([...sources].filter((rooted) => !common.has(rooted)));
+    const shared = campaignShared.get(campaignDirName);
+    const own = new Set([...sources].filter((rooted) => !common.has(rooted) && !shared.has(rooted)));
     summary.push(`${campaignDirName}/${id}: ${writeTerrain(path.join(outRoot, campaignDirName, id), own)}`);
   }
   summary.push(`terrain: ${perScenario.length} scenarios in ${Date.now() - started} ms`);

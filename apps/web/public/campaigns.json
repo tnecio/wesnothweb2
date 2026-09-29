@@ -1,6 +1,102 @@
 {
   "campaigns": [
     {
+      "id": "the_south_guard",
+      "firstScenario": "01_Born_to_the_Banner",
+      "wesnothId": "The_South_Guard",
+      "abbrev": "TSG",
+      "define": "CAMPAIGN_THE_SOUTH_GUARD",
+      "assetDir": "The_South_Guard",
+      "name": {
+        "t": [
+          [
+            "wesnoth-tsg",
+            "The South Guard — Start Here"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-tsg",
+            "A young knight, Deoran, is dispatched to the southern frontier town of Westin. Thrust quickly into a hapless conflict against marauding bandits, Deoran soon encounters darker forces at play. Rally the South Guard and defend your homes!\n\n<i><b>This is the recommended starting campaign.</b></i>\n\n"
+          ],
+          [
+            "wesnoth-tsg",
+            "(Novice level, 6 scenarios.)"
+          ]
+        ]
+      },
+      "icon": "data/campaigns/The_South_Guard/images/units/deoran1/deoran-run2.png~RC(magenta>red)",
+      "image": "data/campaigns/The_South_Guard/images/campaign_image.png",
+      "rank": 10,
+      "startYear": "465 YW",
+      "endYear": "466 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-tsg",
+                "Easy"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-tsg",
+                "1x enemies, 70% XP"
+              ]
+            ]
+          },
+          "image": "data/campaigns/The_South_Guard/images/units/deoran1/deoran.png~RC(magenta>red)",
+          "default": true
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-tsg",
+                "Normal"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-tsg",
+                "2x enemies, 90% XP"
+              ]
+            ]
+          },
+          "image": "data/campaigns/The_South_Guard/images/units/deoran2/deoran.png~RC(magenta>red)"
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-tsg",
+                "Hard"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-tsg",
+                "4x enemies, 100% XP"
+              ]
+            ]
+          },
+          "image": "data/campaigns/The_South_Guard/images/units/deoran3/deoran.png~RC(magenta>red)"
+        }
+      ]
+    },
+    {
       "id": "dead_water",
       "name": {
         "t": [

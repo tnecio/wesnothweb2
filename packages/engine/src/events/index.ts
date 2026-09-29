@@ -18,7 +18,9 @@ export type { ScenarioObjectives, ScenarioObjectiveEntry, GoldCarryoverEntry, Ob
 
 export { createDefaultActionRegistry, runActionSequence, runActionFlow, applySetVariable, effectEnvFor } from './actionWml.js';
 
-export { runFlow, autoRespond, isFlow } from './interaction.js';
+export { runFlow, autoRespond, isFlow, guiSelectionAnswer } from './interaction.js';
+export { buildGuiDialog, findGuiWidget, GUI_RETVAL } from './guiDialog.js';
+export type { GuiDialogSpec, GuiDialogInteraction, GuiNode, GuiCell, GuiText } from './guiDialog.js';
 export type { Interaction, MessageInteraction, BeatInteraction, CutsceneBeat, FakeUnitSpec, FakeUnitWalk, InteractionResult, MessageOption, TextInputSpec, Flow, Responder } from './interaction.js';
 
 export { EventManager, EventPump, standardizeEventName } from './pump.js';
@@ -26,3 +28,5 @@ export type { WmlEventHandler, QueuedEvent, EventPumpOptions } from './pump.js';
 export { findSides, sideMatchesFilter } from './sideFilter.js';
 export { ItemStore, addItem, itemToConfig, readPersistentItem, type MapItem } from './itemsWml.js';
 export { LabelStore, labelFromConfig, labelToConfig, LABEL_COLOR, type MapLabel } from './labelsWml.js';
+export { memoryPersistentVariables } from './supportWml.js';
+export type { PersistentVariables, AchievementSink } from './supportWml.js';

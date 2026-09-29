@@ -70,5 +70,18 @@
   "progression": [
     "synth_progression_01",
     "synth_progression_02"
+  ],
+  "The_South_Guard": [
+    "01_Born_to_the_Banner",
+    "02_Proven_by_the_Sword",
+    "02x_Westin",
+    "03_Vale_of_Tears",
+    "04_Choice_in_the_Fog",
+    "05a_The_Long_March",
+    "05b_Pebbles_in_the_Flood",
+    "05c_Into_the_Depths",
+    "06a_Vengeance",
+    "06b_The_Tides_of_War",
+    "06x_Epilogue"
   ]
 }

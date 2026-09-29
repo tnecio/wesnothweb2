@@ -342,6 +342,10 @@
    "slider.wav",
    "timer.wav"
   ],
+  "The_South_Guard": [
+   "skill-illusion-quiet.wav",
+   "skill-polymorph-quiet.wav"
+  ],
   "Under_the_Burning_Suns": [
    "tauroch-hit-1.ogg",
    "tauroch-hit-2.ogg",

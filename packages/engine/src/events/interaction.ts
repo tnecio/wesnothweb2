@@ -30,6 +30,7 @@ import type { TString } from '../i18n/tstring.js';
 import type { Location } from '../model/Location.js';
 import type { Unit } from '../model/Unit.js';
 import type { RecordedMessage } from './context.js';
+import type { GuiDialogInteraction, GuiNode } from './guiDialog.js';
 
 /** One `[option]` of a `[message]`, after `[show_if]` filtering (see `message.lua`'s `wml_actions.message`). */
 export interface MessageOption {
@@ -157,7 +158,12 @@ export type CutsceneBeat =
    * plays the matching "recruiting" animation (`unit_display::
    * unit_recruited`).
    */
-  | { readonly kind: 'unitAppear'; readonly unit: Unit; readonly by?: Unit };
+  | { readonly kind: 'unitAppear'; readonly unit: Unit; readonly by?: Unit }
+  /**
+   * Phase 28c: `[replace_map]` gave the board a new map, possibly of another size (upstream's
+   * `display::reload_map`): the display rebuilds the board before the event goes on.
+   */
+  | { readonly kind: 'mapReplaced' };
 
 /** A cutscene beat waiting to be played out. */
 export interface BeatInteraction {
@@ -165,8 +171,8 @@ export interface BeatInteraction {
   readonly beat: CutsceneBeat;
 }
 
-/** Everything a running event can stop for. */
-export type Interaction = MessageInteraction | BeatInteraction;
+/** Everything a running event can stop for. Phase 28c: a campaign's own Lua dialog (`gui.show_dialog`). */
+export type Interaction = MessageInteraction | BeatInteraction | GuiDialogInteraction;
 
 /**
  * What the player (or `autoRespond`) answered with -- deliberately the
@@ -185,6 +191,15 @@ export interface InteractionResult {
    * of the replayed choice -- it's a local display preference.
    */
   readonly skip?: boolean;
+}
+
+/**
+ * Phase 28c: a `GuiDialogInteraction` is answered with a button's return value (`value`), or with a listbox
+ * row picked while the dialog stays open: `text` is `select:<widget id>:<1-based row>`. Both are recorded for
+ * replay like a `[message]` answer.
+ */
+export function guiSelectionAnswer(widgetId: string, row: number): InteractionResult {
+  return { text: `select:${widgetId}:${row}` };
 }
 
 /**
@@ -209,6 +224,8 @@ const EMPTY_RESULT: InteractionResult = {};
 export const autoRespond: Responder = (interaction) => {
   // A beat has nothing to answer: headless, it has simply happened.
   if (interaction.kind === 'beat') return {};
+  // A Lua dialog: its first visible button, else the first row of its first listbox, else Escape.
+  if (interaction.kind === 'guiDialog') return autoRespondDialog(interaction.dialog.root) ?? { value: -2 };
   const options = interaction.options;
   const preferred = options.findIndex((o) => o.isDefault);
   return {
@@ -229,4 +246,19 @@ export function runFlow<T>(flow: Flow<T>, respond: Responder = autoRespond): T {
     step = flow.next(respond(step.value));
   }
   return step.value;
+}
+
+function autoRespondDialog(node: GuiNode): InteractionResult | undefined {
+  const buttons: number[] = [];
+  let listbox: string | undefined;
+  const walk = (n: GuiNode): void => {
+    if (n.visibility !== 'visible') return;
+    if (n.type === 'button') buttons.push(n.returnValue);
+    else if (n.type === 'listbox') listbox ??= n.id;
+    else if (n.type === 'grid') n.rows.forEach((row) => row.forEach((cell) => walk(cell.widget)));
+    else if (n.type === 'panel') walk(n.child);
+  };
+  walk(node);
+  if (buttons.length > 0) return { value: buttons[0] };
+  return listbox !== undefined ? guiSelectionAnswer(listbox, 1) : undefined;
 }
