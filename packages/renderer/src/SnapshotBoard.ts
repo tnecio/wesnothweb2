@@ -415,6 +415,26 @@ export interface HighlightState {
   cursor?: HexPoint | null;
 }
 
+/** Phase 28b: one hex of a route's footsteps, with the unit's movement cost there (which footprint image). */
+export interface RouteStepPoint extends HexPoint {
+  readonly moveCost: number;
+}
+
+/** Phase 28b: a hex where the route ends a turn, or its last hex (`marked_route::mark`), with the unit's defense there. */
+export interface RouteMarkPoint extends HexPoint {
+  readonly turns: number;
+  readonly zoc: boolean;
+  readonly capture: boolean;
+  readonly invisible: boolean;
+  readonly defensePercent: number;
+}
+
+/** Phase 28b: the route `setRoute` draws (`game_display::set_route`), from the unit's own hex to the destination. */
+export interface RouteOverlay {
+  readonly steps: readonly RouteStepPoint[];
+  readonly marks: readonly RouteMarkPoint[];
+}
+
 /** One currently-OWNED village -- unowned villages need no marker (the terrain colour alone already marks them as villages, see `colorForTerrain`). */
 export interface VillageOwnerPoint extends HexPoint {
   readonly side: number;

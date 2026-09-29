@@ -43,6 +43,10 @@ import {
   getAdjacentTiles,
   reachableHexes,
   findPath,
+  markRoute,
+  planTurnMovement,
+  relativeDirection,
+  distanceBetween,
   performMove,
   performAttack,
   isBackstabActive,
@@ -90,6 +94,7 @@ import {
   locOf,
   resolveDefenderWeaponIndex,
   type PerformMoveResult,
+  type MoveResult,
   type PlaceRecruitResult,
   type AiCommandHost,
   gameBoardFromSnapshot,
@@ -162,7 +167,7 @@ import {
   standardizeEventName,
 } from '@wesnothweb2/engine';
 // Deep import: lua-bridge's index also exports Node-only data loaders.
-import type { MinimapInput } from '@wesnothweb2/renderer';
+import type { MinimapInput, RouteOverlay } from '@wesnothweb2/renderer';
 import { createLuaConditionalEvaluator } from '@wesnothweb2/lua-bridge/src/conditionals.js';
 import { raceName, statusName } from './i18n/gameText.js';
 import { fmt, t, tx } from './i18n/locale.js';
@@ -529,9 +534,27 @@ export function buildUnitInfo(board: GameBoard, unit: Unit, displayName: string,
 export interface PendingAttack {
   attacker: Unit;
   defender: Unit;
+  /**
+   * Phase 28b: where the attacker attacks from -- its own hex, or for a
+   * move-and-attack order the hex it will move to first (upstream's
+   * `attack_from`). The preview is computed as if it stood there.
+   */
+  from: Location;
   attackerWeaponIndex: number;
   defenderWeaponIndex: number;
   preview: CombatPreview;
+}
+
+/** Phase 28b: what a board click carries beyond the hex. */
+export interface HexClickOptions {
+  /**
+   * For a click on an enemy with the player's unit selected, the hex to
+   * attack it from (a move-and-attack order when it isn't the unit's own):
+   * `attackFrom`'s choice for the mouse, the hex a finger picked first for
+   * touch. Ignored unless the unit can reach it this turn and it is next to
+   * the enemy.
+   */
+  attackFrom?: HexPoint | null;
 }
 
 /**
@@ -1204,6 +1227,8 @@ export class GameSession {
   /** Adjacent enemy units `selectedUnit` could attack (empty if it has no attacks left). */
   attackCandidates: Unit[] = [];
   pendingAttack: PendingAttack | null = null;
+  /** The outcome of the player's last move order (`moveAlong`), `null` when it could not take a step. */
+  private lastMoveResult: MoveResult | null = null;
   /**
    * Set by `confirmAttack` every time a HUMAN-confirmed attack resolves --
    * see `LastAttackAnimation`'s own doc comment. A caller that wants to
@@ -1441,7 +1466,7 @@ export class GameSession {
   selectAttackerWeapon(index: number): void {
     const pending = this.pendingAttack;
     if (!pending || !pending.attacker.attacks[index]) return;
-    this.pendingAttack = this.buildPreview(pending.attacker, pending.defender, index);
+    this.pendingAttack = this.buildPreview(pending.attacker, pending.defender, index, pending.from);
   }
   /** Unit type id the player has picked from the recruit list, awaiting a click on one of `recruitTiles`. */
   pendingRecruitTypeId: string | null = null;
@@ -2939,17 +2964,137 @@ export class GameSession {
   inspectUnit(unit: Unit): void {
     this.clearSelection();
     this.inspectedUnit = unit;
-    if (unit.side === this.activeSide || unit.incapacitated) {
-      this.reachable = this.reachOf(unit);
-      return;
-    }
+    this.reachable = this.shownReachOf(unit);
+  }
+
+  /** `unit`'s reach as the board shows it for a unit the player isn't moving: another side's with its moves back (`unit_movement_resetter`). */
+  private shownReachOf(unit: Unit): ReachableHexPoint[] {
+    if (unit.side === this.activeSide || unit.incapacitated) return this.reachOf(unit);
     const saved = unit.movesLeft;
     unit.movesLeft = unit.maxMoves;
     try {
-      this.reachable = this.reachOf(unit);
+      return this.reachOf(unit);
     } finally {
       unit.movesLeft = saved;
     }
+  }
+
+  /**
+   * Phase 28b: `mouse_handler::show_reach_for_unit` -- the pointer resting
+   * on a unit while nothing is selected shows where it can go (another
+   * side's with full moves) and, for a unit of the player's own or an
+   * allied human side, the route of its standing multi-turn order
+   * (`goto`). `null` when something is selected or no unit the viewing
+   * side can see stands at `(x, y)`.
+   */
+  hoverPreview(x: number, y: number): { reach: ReachableHexPoint[]; route: RouteOverlay | null } | null {
+    if (this.selectedUnit || this.inspectedUnit) return null;
+    const viewer = this.board.getTeam(this.viewingSide);
+    const unit = getVisibleUnit(this.board, new Location(x, y), viewer, false);
+    if (!unit) return null;
+    const team = this.board.getTeam(unit.side);
+    // Allied AI sides' orders stay hidden (upstream: campaign authors' goto tricks).
+    const showsGoto = !!viewer && !!team && !viewer.isEnemy(team) && !this.isAiSide(unit.side);
+    const route = showsGoto && unit.goto && this.board.map.onBoard(unit.goto) ? this.routeOverlay(unit, unit.goto) : null;
+    return { reach: this.shownReachOf(unit), route };
+  }
+
+  /**
+   * Phase 28b: the footsteps from the selected (or inspected) unit to
+   * `(x, y)`, as upstream's `mouse_motion` shows them -- the shortest route
+   * the viewing side knows of (`mouse_handler::get_route`), marked with
+   * where each turn ends (`mark_route`), however many turns it takes.
+   * `null` when there is no such unit or it is incapacitated, `(x, y)` is
+   * its own hex or holds a unit the viewing side can see, or no route
+   * exists.
+   */
+  routePreview(x: number, y: number): RouteOverlay | null {
+    const unit = this.selectedUnit ?? this.inspectedUnit;
+    if (!unit || unit.incapacitated) return null;
+    const dest = new Location(x, y);
+    if (dest.equals(unit.location) || !this.board.map.onBoard(dest)) return null;
+    if (getVisibleUnit(this.board, dest, this.board.getTeam(this.viewingSide), false)) return null;
+    return this.routeOverlay(unit, dest);
+  }
+
+  /** `mouse_handler::get_route`: the route to `dest` the viewing side can see, unbounded in turns (upstream's 10000 stop). */
+  private routeTo(unit: Unit, dest: Location): Location[] {
+    return findPath(this.board, unit, dest, { stopAt: 10000, viewingTeam: this.board.getTeam(this.viewingSide) }).steps;
+  }
+
+  private routeOverlay(unit: Unit, dest: Location): RouteOverlay | null {
+    const steps = this.routeTo(unit, dest);
+    if (steps.length < 2) return null;
+    const map = this.board.map;
+    const marked = markRoute(this.board, unit, steps, this.board.getTeam(this.viewingSide));
+    return {
+      steps: steps.map((loc) => ({ x: loc.x, y: loc.y, moveCost: unit.movementCost(map.getTerrain(loc)) })),
+      marks: marked.marks.map((m) => ({
+        x: m.loc.x,
+        y: m.loc.y,
+        turns: m.turns,
+        zoc: m.zoc,
+        capture: m.capture,
+        invisible: m.invisible,
+        defensePercent: 100 - unit.defenseModifier(map.getTerrain(m.loc)),
+      })),
+    };
+  }
+
+  /**
+   * Phase 28b: `mouse_handler::current_unit_attacks_from` -- with the
+   * player's own unit selected and the pointer on an enemy it could
+   * attack, the hex it would attack from: its own, or one it can reach
+   * this turn next to the enemy, preferring the side the pointer came from
+   * (`previous`, the last hex it crossed, then `previousFree`, the last
+   * one without a unit). `null` when there is no such attack.
+   */
+  attackFrom(target: HexPoint, previous: HexPoint | null, previousFree: HexPoint | null): HexPoint | null {
+    const unit = this.selectedUnit;
+    const loc = new Location(target.x, target.y);
+    if (!unit || loc.equals(unit.location)) return null;
+    if (unit.side !== this.viewingSide || this.viewingSide !== this.activeSide || unit.attacksLeft === 0) return null;
+    const viewer = this.board.getTeam(this.viewingSide);
+    const targetUnit = getVisibleUnit(this.board, loc, viewer, false);
+    const targetTeam = targetUnit ? this.board.getTeam(targetUnit.side) : undefined;
+    if (!viewer || !targetUnit || !targetTeam || !viewer.isEnemy(targetTeam) || targetUnit.incapacitated) return null;
+    const distances = new Set<number>();
+    for (const attack of unit.attacks) for (let d = attack.minRange; d <= attack.maxRange; d++) distances.add(d);
+    if (distances.size === 0) return null;
+    const { destinations } = reachableHexes(this.board, unit, { viewingTeam: this.board.getTeam(unit.side) });
+    const hex = (l: Location): HexPoint => ({ x: l.x, y: l.y });
+
+    if (Math.max(...distances) > 1) {
+      // Ranged: from here if in range, else the reachable hex in range with the most moves left.
+      if (distances.has(distanceBetween(unit.location, loc))) return hex(unit.location);
+      let best: { loc: Location; moveLeft: number } | null = null;
+      for (const step of destinations.values()) {
+        if (distances.has(distanceBetween(loc, step.curr)) && step.moveLeft > (best?.moveLeft ?? -1)) best = { loc: step.curr, moveLeft: step.moveLeft };
+      }
+      return best ? hex(best.loc) : null;
+    }
+
+    const dirTo = (p: HexPoint | null): number => (p ? relativeDirection(loc, new Location(p.x, p.y)) : Direction.Indeterminate);
+    const preferred = dirTo(previous);
+    const secondPreferred = dirTo(previousFree);
+    const turn = (a: number, b: number): number => {
+      const d = Math.abs(a - b);
+      return d > 3 ? 6 - d : d;
+    };
+    let bestRating = 100; // smaller is better
+    let result: Location | null = null;
+    getAdjacentTiles(loc).forEach((adj, n) => {
+      if (!this.board.map.onBoard(adj)) return;
+      if (!adj.equals(unit.location) && getVisibleUnit(this.board, adj, viewer, false)) return;
+      if (!destinations.contains(adj)) return;
+      const difference = turn(preferred, n);
+      const rating = difference * 2 + (turn(secondPreferred, n) > difference ? 1 : 0);
+      if (rating < bestRating || !result) {
+        bestRating = rating;
+        result = adj;
+      }
+    });
+    return result ? hex(result) : null;
   }
 
   /** The hexes `unit` can move to this turn (not its own), seen by its own side, with its defense on each. */
@@ -3454,7 +3599,57 @@ export class GameSession {
       .map(({ index }) => index);
   }
 
-  private buildPreview(attacker: Unit, defender: Unit, attackerWeaponIndex: number): PendingAttack {
+  /**
+   * Where `attacker` would attack `defender` from for a click on it:
+   * `requested` (Phase 28b's move-and-attack -- `attackFrom`'s choice, or
+   * the hex a finger picked) when it is the attacker's own hex or one it
+   * can reach this turn, empty, and next to the defender; otherwise its
+   * own hex when the defender is one of `attackCandidates`. `null`: no
+   * attack.
+   */
+  private attackPosition(attacker: Unit, defender: Unit, requested: HexPoint | null | undefined): Location | null {
+    if (requested) {
+      const loc = new Location(requested.x, requested.y);
+      const reachable = loc.equals(attacker.location) || this.reachable.some((h) => h.x === loc.x && h.y === loc.y);
+      const free = loc.equals(attacker.location) || !getVisibleUnit(this.board, loc, this.board.getTeam(this.viewingSide), false);
+      const team = this.board.getTeam(attacker.side);
+      const defenderTeam = this.board.getTeam(defender.side);
+      if (
+        reachable &&
+        free &&
+        distanceBetween(loc, defender.location) === 1 &&
+        attacker.side === this.activeSide &&
+        attacker.attacksLeft > 0 &&
+        !!team &&
+        !!defenderTeam &&
+        team.isEnemy(defenderTeam) &&
+        !defender.incapacitated
+      ) {
+        return loc;
+      }
+    }
+    return this.attackCandidates.includes(defender) ? attacker.location : null;
+  }
+
+  /**
+   * The attack preview. `from` (Phase 28b) is where the attacker attacks
+   * from: when it isn't the attacker's own hex, the attacker is put there
+   * for the computation and back afterwards, so terrain, time of day,
+   * leadership and backstab are all as they will be there (upstream's
+   * `show_attack_dialog` with a temporary move).
+   */
+  private buildPreview(attacker: Unit, defender: Unit, attackerWeaponIndex: number, from: Location = attacker.location): PendingAttack {
+    const origin = attacker.location;
+    if (from.equals(origin)) return this.buildPreviewHere(attacker, defender, attackerWeaponIndex);
+    this.board.moveUnit(origin, from);
+    try {
+      return { ...this.buildPreviewHere(attacker, defender, attackerWeaponIndex), from };
+    } finally {
+      this.board.moveUnit(from, origin);
+    }
+  }
+
+  private buildPreviewHere(attacker: Unit, defender: Unit, attackerWeaponIndex: number): PendingAttack {
     const attackerWeapon = attacker.attacks[attackerWeaponIndex];
     if (!attackerWeapon) {
       throw new Error(`buildPreview: attacker has no weapon at index ${attackerWeaponIndex}`);
@@ -3608,14 +3803,14 @@ export class GameSession {
       },
     };
 
-    return { attacker, defender, attackerWeaponIndex, defenderWeaponIndex, preview };
+    return { attacker, defender, from: attacker.location, attackerWeaponIndex, defenderWeaponIndex, preview };
   }
 
   private *moveSelectedTo(dest: Location): Flow<string | null> {
     const unit = this.selectedUnit;
     if (!unit) return null;
-    const route = findPath(this.board, unit, dest);
-    if (route.steps.length < 2) return null;
+    const route = this.routeTo(unit, dest);
+    if (route.length < 2) return null;
     // Deselect before the walk, not after it. Upstream does exactly this
     // (`mouse_handler::move_unit_along_current_route`: "do not show
     // footsteps during movement" / "do not keep the hex highlighted that
@@ -3625,31 +3820,133 @@ export class GameSession {
     // sat on the map, anchored to the hex it had left, for the whole
     // walk. Re-selected below only when the move was cut short.
     this.clearSelection();
-    // Phase 18b: the move runs as a synced `[move]` command -- recorded,
-    // undoable when nothing was revealed, and the same executor the AI, a
-    // replay and a redo use. It yields the walk beat and pumps the
-    // `moveto`/`sighted` events itself.
-    const cmd: MoveCommand = { kind: 'move', steps: route.steps.map(hexOf) };
-    const done = yield* this.runSynced(cmd, (action) => this.execMove(cmd, action), { present: true });
-    if (!done) return null;
-    const result = done.outcome.result;
-    const name = this.unitDisplayName(unit);
-    const message = result.ambushed
-      ? fmt(tx('$unit was ambushed!'), { unit: name })
-      : result.sightedStop
-        ? fmt(tx('$unit stopped: units sighted.'), { unit: name })
-        : fmt(tx('$unit moved.'), { unit: name });
+    const moved = yield* this.moveAlong(unit, route);
+    if (!moved) return null;
+    const { result, message } = moved;
     if (this.scenarioResult || this.board.unitAt(unit.location) !== unit) {
       this.clearSelection();
-      this.log.unshift(message);
       return message;
     }
     // A move cut short by something the player needs to react to leaves
     // the unit selected where it stopped, so its remaining options are
     // right there -- upstream re-selects the stopping hex for exactly
     // this case, and it is the one exception to the deselect above.
-    if (result.ambushed || result.sightedStop) this.selectUnit(unit);
+    if (result && (result.ambushed || result.sightedStop)) this.selectUnit(unit);
+    return message;
+  }
+
+  /**
+   * A player's order to move `unit` along `route` (from its own hex), as
+   * `actions::move_unit_and_record` gives it: the unit walks as far as it
+   * can this turn (a synced `[move]` -- recorded, undoable when nothing was
+   * revealed, the same executor the AI, a replay and a redo use, yielding
+   * the walk beat and pumping the `moveto`/`sighted` events itself). Phase
+   * 28b: a route that goes on past this turn becomes the unit's standing
+   * order (`unit::goto`), continued at the start of its side's later turns
+   * (`executeGotos`) -- unless the move was interrupted (an ambush, a
+   * sighting, an enemy in the way, a failed teleport, WML removing the
+   * unit), which drops it (`unit_mover`'s destructor). Logs and returns
+   * what happened; `null` when the unit could not move at all and no order
+   * was left either.
+   */
+  private *moveAlong(unit: Unit, route: readonly Location[]): Flow<{ result: MoveResult | null; message: string } | null> {
+    const dest = route[route.length - 1]!;
+    const name = this.unitDisplayName(unit);
+    this.lastMoveResult = null;
+    // unit_mover: any order replaces the unit's standing one.
+    unit.goto = undefined;
+    if (planTurnMovement(this.board, unit, route, { viewingTeam: this.board.getTeam(unit.side) }).steps.length < 2) {
+      // Nothing to walk this turn (no moves left, or the first step costs
+      // more): upstream's mover still leaves the order, to be carried out
+      // next turn, without recording a move.
+      unit.goto = dest;
+      const message = fmt(tx('$unit will move there on a later turn.'), { unit: name });
+      this.log.unshift(message);
+      return { result: null, message };
+    }
+    const cmd: MoveCommand = { kind: 'move', steps: route.map(hexOf) };
+    const done = yield* this.runSynced(cmd, (action) => this.execMove(cmd, action), { present: true });
+    if (!done) return null;
+    const result = done.outcome.result;
+    this.lastMoveResult = result;
+    const interrupted = result.ambushed || result.blocked || result.sightedStop || result.teleportFailed || this.board.unitAt(unit.location) !== unit;
+    // `unit_mover::~unit_mover`: an unfinished, uninterrupted move leaves the rest as the order (unless WML set one).
+    const continues = !unit.location.equals(dest) && !interrupted && unit.goto === undefined;
+    if (continues) unit.goto = dest;
+    const message = result.ambushed
+      ? fmt(tx('$unit was ambushed!'), { unit: name })
+      : result.sightedStop
+        ? fmt(tx('$unit stopped: units sighted.'), { unit: name })
+        : continues
+          ? fmt(tx('$unit moved, and will go on next turn.'), { unit: name })
+          : fmt(tx('$unit moved.'), { unit: name });
     this.log.unshift(message);
+    return { result, message };
+  }
+
+  /**
+   * Phase 28b: `menu_handler::execute_gotos`, run as a human side's turn
+   * begins (`playsingle_controller::play_human_turn`): every unit of the
+   * side with a standing order (`goto`) and moves left walks on towards
+   * it, as far as this turn allows. A unit whose next stop is taken waits
+   * for the others first, in case one of them is what stands there.
+   * Resolves with the last message, or `null` when nothing moved.
+   */
+  async executeGotos(): Promise<string | null> {
+    return this.drive(this.executeGotosFlow());
+  }
+
+  private *executeGotosFlow(): Flow<string | null> {
+    const side = this.activeSide;
+    const team = this.board.getTeam(side);
+    if (!team || this.isAiSide(side) || this.scenarioResult) return null;
+    let message: string | null = null;
+    let waitBlockerMove = true;
+    const fullyMoved = new Set<string>();
+    let change: boolean;
+    let blockedUnit: boolean;
+    do {
+      change = false;
+      blockedUnit = false;
+      for (const unit of this.board.unitsForSide(side)) {
+        if (this.scenarioResult) return message;
+        if (unit.movesLeft === 0 || this.board.unitAt(unit.location) !== unit) continue;
+        const gotoLoc = unit.goto;
+        if (!gotoLoc) continue;
+        if (gotoLoc.equals(unit.location)) {
+          unit.goto = undefined;
+          continue;
+        }
+        if (!this.board.map.onBoard(gotoLoc) || fullyMoved.has(unit.location.key())) continue;
+        const route = findPath(this.board, unit, gotoLoc, { stopAt: 10000, viewingTeam: team }).steps;
+        if (route.length <= 1) {
+          fullyMoved.add(unit.location.key());
+          continue;
+        }
+        // Where the unit stops this turn: the first turn's end, or the goal.
+        const nextStop = markRoute(this.board, unit, route, team).marks.find((m) => m.turns === 1)?.loc ?? gotoLoc;
+        if (nextStop.equals(unit.location)) {
+          fullyMoved.add(unit.location.key());
+          continue;
+        }
+        // Delay a blocked move: another unit's move may clear the way.
+        if (this.board.hasUnitAt(nextStop)) {
+          blockedUnit = true;
+          if (waitBlockerMove) continue;
+        }
+        const before = unit.location;
+        const moved = yield* this.moveAlong(unit, route);
+        if (moved) message = moved.message;
+        change = !unit.location.equals(before);
+        // Something changed: a waiting unit may be able to move now.
+        if (change) waitBlockerMove = true;
+      }
+      if (!change && waitBlockerMove) {
+        // Nothing moved while waiting: stop waiting and try again.
+        waitBlockerMove = false;
+        change = true;
+      }
+    } while (change && blockedUnit);
     return message;
   }
 
@@ -3659,11 +3956,11 @@ export class GameSession {
    * Returns a short human-readable message describing what happened (for a
    * toast/log), or `null` if the click had no visible effect.
    */
-  async handleHexClick(x: number, y: number): Promise<string | null> {
-    return this.drive(this.handleHexClickFlow(x, y));
+  async handleHexClick(x: number, y: number, options: HexClickOptions = {}): Promise<string | null> {
+    return this.drive(this.handleHexClickFlow(x, y, options));
   }
 
-  private *handleHexClickFlow(x: number, y: number): Flow<string | null> {
+  private *handleHexClickFlow(x: number, y: number, options: HexClickOptions): Flow<string | null> {
     if (this.scenarioResult) return null;
     const loc = new Location(x, y);
     // Real, reported bug: this used to read `board.unitAt(loc)` directly,
@@ -3700,13 +3997,16 @@ export class GameSession {
     if (sel) {
       if (clickedUnit) {
         if (clickedUnit === sel) {
+          // mouse_handler::move_action: clicking the selected unit itself cancels its standing order.
+          if (sel.side === this.activeSide) sel.goto = undefined;
           this.clearSelection();
           return null;
         }
-        if (this.attackCandidates.includes(clickedUnit)) {
+        const from = this.attackPosition(sel, clickedUnit, options.attackFrom);
+        if (from) {
           const firstWeapon = this.viableAttackerWeaponIndices(sel)[0];
           if (firstWeapon === undefined) return null; // no usable weapon at this range -- shouldn't happen (computeAttackCandidates implies at least one), but don't throw on it.
-          this.pendingAttack = this.buildPreview(sel, clickedUnit, firstWeapon);
+          this.pendingAttack = this.buildPreview(sel, clickedUnit, firstWeapon, from);
           return fmt(tx('$attacker could attack $defender -- review the prediction and confirm.'), { attacker: this.unitDisplayName(sel), defender: this.unitDisplayName(clickedUnit) });
         }
         if (clickedUnit.side === this.activeSide) {
@@ -3721,6 +4021,11 @@ export class GameSession {
       }
 
       if (this.reachable.some((h) => h.x === x && h.y === y)) {
+        return yield* this.moveSelectedTo(loc);
+      }
+      // Phase 28b: a hex beyond this turn's reach is a multi-turn order
+      // (`move_action` moves along whatever route the footsteps show).
+      if (sel.side === this.activeSide && !sel.incapacitated && this.routeTo(sel, loc).length >= 2) {
         return yield* this.moveSelectedTo(loc);
       }
 
@@ -3776,8 +4081,36 @@ export class GameSession {
 
   private *confirmAttackFlow(): Flow<string | null> {
     if (this.scenarioResult) return null;
-    const pending = this.pendingAttack;
+    let pending = this.pendingAttack;
     if (!pending) return null;
+
+    if (!pending.from.equals(pending.attacker.location)) {
+      // Phase 28b: move-and-attack. The move is an ordinary one (undoable
+      // until the attack commits, and interruptible); the attack only
+      // follows if the unit got there uninterrupted and the target is
+      // still there to be attacked (`mouse_handler::move_action`).
+      const { attacker, defender, from, attackerWeaponIndex } = pending;
+      const defenderLoc = defender.location;
+      this.selectedUnit = attacker;
+      const moveMessage = yield* this.moveSelectedTo(from);
+      const moved = this.lastMoveResult;
+      const uninterrupted = !!moved && !moved.stoppedEarly && !moved.ambushed && !moved.sightedStop && !moved.blocked && !moved.teleportFailed && !moved.wmlInterrupted;
+      const stillThere = this.board.unitAt(from) === attacker && this.board.unitAt(defenderLoc) === defender;
+      const attackerTeam = this.board.getTeam(attacker.side);
+      const defenderTeam = this.board.getTeam(defender.side);
+      const canStillAttack =
+        stillThere &&
+        attacker.attacksLeft > 0 &&
+        !defender.incapacitated &&
+        !!attackerTeam &&
+        !!defenderTeam &&
+        attackerTeam.isEnemy(defenderTeam) &&
+        distanceBetween(from, defenderLoc) === 1 &&
+        this.viableAttackerWeaponIndices(attacker).includes(attackerWeaponIndex);
+      if (this.scenarioResult || !uninterrupted || !canStillAttack) return moveMessage;
+      pending = this.buildPreview(attacker, defender, attackerWeaponIndex);
+      this.pendingAttack = pending;
+    }
 
     // Phase 18b: one synced `[attack]` command -- the `attack` event, the
     // exchange, advancement and the victory check all happen inside it
