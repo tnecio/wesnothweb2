@@ -8,6 +8,7 @@
    * scrollable list. The data (`credits.json`, ~30 KB) is fetched when the screen opens, not with the menu.
    */
   import { dataUrl } from '../dataUrls.js';
+  import { LICENSE_FILES, SOURCE_URL } from '../about.js';
   import { imageUrl } from '@wesnothweb2/renderer';
   import Modal from '../Modal.svelte';
   import { languageTag, locale, t, ts, tx } from '../i18n/locale.js';
@@ -114,6 +115,12 @@
         <button onclick={() => (paused = !paused)} aria-pressed={paused} data-testid="credits-pause">{paused ? tx('Resume scrolling') : tx('Pause scrolling')}</button>
       {/if}
       <span class="spacer"></span>
+      <!-- Phase 28 S9: the licences the game ships under, and where its source is. -->
+      <nav class="legal" aria-label={tx('Licences and source code')} data-testid="credits-legal">
+        <a href={dataUrl(LICENSE_FILES.readme)} target="_blank" rel="noopener">{tx('Licences')}</a>
+        <a href={dataUrl(LICENSE_FILES.wesnothCopyrights)} target="_blank" rel="noopener">{tx('Art and music credits (CSV)')}</a>
+        <a href={SOURCE_URL} target="_blank" rel="noopener">{tx('Source code')}</a>
+      </nav>
       <button class="primary" data-autofocus onclick={onClose} data-testid="credits-close">{t('Close')}</button>
     </div>
   {/snippet}
@@ -183,6 +190,15 @@
     background: #1a1712;
     color: inherit;
     cursor: pointer;
+  }
+  .legal {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    font-size: 0.85rem;
+  }
+  .legal a {
+    color: #d8c38a;
   }
   button.primary {
     background: #6a4a1e;

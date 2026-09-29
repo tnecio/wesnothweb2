@@ -23,7 +23,8 @@
    * dialogs are the same idea (pick a unit, see its details) and should
    * not drift apart.
    */
-  import { imageUrl } from '@wesnothweb2/renderer';
+  import IpfImage from './images/IpfImage.svelte';
+  import { unitImageRef } from './images/unitImageRef.js';
   import type { PendingAdvancement } from './gameSession.js';
   import { alignmentName, damageTypeName, rangeName, raceName } from './i18n/gameText.js';
   import { t, th, tx } from './i18n/locale.js';
@@ -70,7 +71,7 @@
       <div class="layout">
         <div class="detail">
           {#if pending.unitInfo.image}
-            <img class="portrait" src={imageUrl(pending.unitInfo.image)} alt="" />
+            <IpfImage class="portrait" src={unitImageRef(pending.unitInfo.image, pending.unitInfo.side)} />
           {/if}
           <div class="name">{pending.unitInfo.name}</div>
           <div class="type-name">{pending.unitInfo.typeName}</div>
@@ -116,7 +117,7 @@
                   onclick={() => (selectedTypeId = option.typeId)}
                   ondblclick={() => onChoose(option.typeId)}
                 >
-                  {#if option.image}<img class="option-icon" src={imageUrl(option.image)} alt="" />{/if}
+                  {#if option.image}<IpfImage class="option-icon" src={unitImageRef(option.image, pending.unitInfo.side)} />{/if}
                   <span class="option-text">
                     <span class="option-name">{option.name}</span>
                     <span class="option-stats">
@@ -161,7 +162,8 @@
     flex-direction: column;
     gap: 0.3rem;
   }
-  .portrait {
+  /* on the <img> inside IpfImage, so reached through :global, still only within this component */
+  * :global(.portrait) {
     width: 100%;
     max-height: 7rem;
     object-fit: contain;
@@ -256,7 +258,8 @@
     background: #35411f;
     border-color: #ffd54a;
   }
-  .option-icon {
+  /* on the <img> inside IpfImage, so reached through :global, still only within this component */
+  * :global(.option-icon) {
     width: 3rem;
     height: 3rem;
     object-fit: contain;

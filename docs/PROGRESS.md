@@ -5543,3 +5543,35 @@ either orientation; tablets and desktops keep the full layout.
     counter so the screen looks again.
   - My first save probe ran before the opening dialogue was answered, so the start-of-scenario save
     (written after the dialogue, as upstream) did not exist yet. That was not a game bug.
+
+## 2026-09-29 — Phase 28 S9, leftovers, and the plan change
+
+- **Plan.** S7 (budgets and nightly run), S8 (cross-browser, offline) and S5's CI browser smoke test move to
+  a new **Phase 28d**, after Phases 24, 25 and 27 (user's call). Phase 28 is delivered with S0–S6 and S9.
+- **Licences (S9).**
+  - `apps/web/public/licenses/`: `COPYING.txt` (GPL-2, this repo), `wesnoth-copyrights.csv` (per-file
+    licences and authors of upstream art and music) and a README saying what applies to what, and that
+    WAVs are re-encoded. The first two are symlinks like `game-images`.
+  - They are served hashed like all data, and linked from the Credits screen.
+  - A "Source code" link to https://github.com/tnecio/wesnothweb2 (public since 2026-09-29) is on the
+    title screen and in Credits.
+  - CI's sparse checkout now includes the submodule's `COPYING` and `copyrights.csv` (cache key v2).
+- **Upstream-unmodified guard (S9).** `apps/web/scripts/check-upstream-unmodified.mjs` runs in CI before
+  the scenario build. It fails if the `wesnoth` submodule is not at the pinned commit, has local changes,
+  or if `vendor-lua-patches/` holds any Lua file beyond the 8 known ones. Checked by adding a stray patch
+  file: it failed as it should.
+- **Side-panel unit image (leftover).** The side panel, and the recruit, recall, attack and advancement
+  dialogs, put a unit type's image straight into `<img>`. For multi-layer sprites
+  (`pillager-base1.png~BLIT(...)`) that is a broken image, and every sprite showed in magenta. They now
+  use `IpfImage` (the renderer's compositor) with the side's team colour (`unitImageRef`:
+  `~RC(magenta>colour)`; recruit and recall use the side whose turn it is). Their scoped `.portrait` /
+  `.thumb` styles now reach the child component through `* :global(...)`. Checked in the browser: Baldras
+  (side 1) is drawn red in the side panel.
+- **Node 24 (leftover).**
+  - `.nvmrc` is now 24, the active LTS (Node 20 reached end of life in April 2026; 22 is in maintenance).
+  - The VM's nvm default is 24, and the dev server runs on it.
+  - GitHub actions are on their current majors (checkout v7, setup-node v7, cache v6, upload-artifact v7,
+    download-artifact v8), which clears GitHub's Node 20 deprecation warning.
+  - Wrangler is unpinned to `^4` (4.143), which needs Node 22 or newer.
+  - Lint, typecheck and every unit suite pass on Node 24.
+- A production build is now 1,352 files and 93 MiB (265 MiB before the atlas work).
