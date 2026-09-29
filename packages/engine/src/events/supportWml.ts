@@ -173,7 +173,7 @@ function actionProgressAchievement(cfg: WmlConfig, ctx: EventContext): void {
  * `expand=yes` or shrinks without `shrink=yes`. A village that is no longer one is lost; a unit that
  * would be off the map is put on its side's recall list.
  */
-function actionReplaceMap(cfg: WmlConfig, ctx: EventContext): void {
+function* actionReplaceMap(cfg: WmlConfig, ctx: EventContext): Flow {
   const data = cfg.getString('map_data', '') || cfg.getString('map', '');
   if (data === '') {
     ctx.log('error', `replace_map: Unable to load map ${cfg.getString('map_file', '')}`);
@@ -196,6 +196,8 @@ function actionReplaceMap(cfg: WmlConfig, ctx: EventContext): void {
     return;
   }
   ctx.board.replaceMap(map);
+  // display::reload_map: the event goes on once the board shows the new map.
+  yield { kind: 'beat', beat: { kind: 'mapReplaced' } };
 }
 
 function actionOpenHelp(cfg: WmlConfig, ctx: EventContext): void {

@@ -2601,6 +2601,29 @@ export class GameSession {
     return this.terrainHexesCache.hexes;
   }
 
+  /**
+   * Phase 28c: the snapshot to draw the board from. The scenario's own, until `[replace_map]` gives the board
+   * another map (`GameBoard.mapVersion`): then the same snapshot with the current map's size and terrain,
+   * which the display remounts the board on.
+   */
+  get boardSnapshot(): GameBoardSnapshot {
+    const version = this.board.mapVersion;
+    if (version === 0) return this.snapshot;
+    if (this.boardSnapshotCache?.version !== version) {
+      const map = this.board.map;
+      const terrain: { x: number; y: number; code: string }[] = [];
+      for (let x = 0; x < map.w(); x++) for (let y = 0; y < map.h(); y++) terrain.push({ x, y, code: map.getTerrain(new Location(x, y)).toString() });
+      const snapshot: GameBoardSnapshot = {
+        ...this.snapshot,
+        map: { ...this.snapshot.map, width: map.w(), height: map.h(), totalWidth: map.totalWidth(), totalHeight: map.totalHeight(), border: map.borderSize, data: map.write() },
+        terrain,
+      };
+      this.boardSnapshotCache = { version, snapshot };
+    }
+    return this.boardSnapshotCache.snapshot;
+  }
+  private boardSnapshotCache: { version: number; snapshot: GameBoardSnapshot } | null = null;
+
   /** The scenario's turn limit (`turns=`, changed by `[modify_turns]`); `null` for none. */
   get turnLimit(): number | null {
     const limit = this.eventPump.ctx.turnLimit;

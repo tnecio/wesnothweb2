@@ -14,6 +14,25 @@
 
   let { dialog, onAnswer }: { dialog: GuiDialogSpec; onAnswer: (answer: InteractionResult) => void } = $props();
 
+  /**
+   * GUI2 sizes a window to its content. `Modal`'s box is an inline-size container (its dialogs re-flow to
+   * their own width), so it cannot shrink to content by itself: the content is laid out in a wide box, its
+   * root grid measured, and the box set to that width (never wider than the screen allows).
+   */
+  let content: HTMLDivElement | undefined = $state();
+  let boxWidth = $state('min(95vw, 70rem)');
+  $effect(() => {
+    void dialog;
+    const root = content?.firstElementChild;
+    if (!root) return;
+    // Images arrive after the first layout: follow the content as it grows.
+    const observer = new ResizeObserver(() => {
+      boxWidth = `min(95vw, ${Math.ceil(root.getBoundingClientRect().width) + 36}px)`;
+    });
+    observer.observe(root);
+    return () => observer.disconnect();
+  });
+
   function text(value: GuiText): string {
     return typeof value === 'string' ? value : ts(TString.fromJSON(value));
   }
@@ -47,7 +66,7 @@
     {:else if node.type === 'image'}
       {#if node.label}<span style={visibility(node)}><IpfImage src={node.label} /></span>{/if}
     {:else if node.type === 'button'}
-      <button style={visibility(node)} data-gui-id={node.id || undefined} onclick={() => onAnswer({ value: node.returnValue })}>
+      <button class="button" style={visibility(node)} data-gui-id={node.id || undefined} onclick={() => onAnswer({ value: node.returnValue })}>
         {#if node.markup}<Markup text={text(node.label)} />{:else}{text(node.label)}{/if}
       </button>
     {:else if node.type === 'spacer'}
@@ -74,31 +93,42 @@
   {/if}
 {/snippet}
 
-<Modal onClose={() => onAnswer({ value: -2 })} width="auto">
+<Modal onClose={() => onAnswer({ value: -2 })} width={boxWidth}>
   {#snippet children()}
-    <div class="gui-dialog" data-testid="gui-dialog">{@render widget(dialog.root)}</div>
+    <div class="gui-dialog" data-testid="gui-dialog" bind:this={content}>{@render widget(dialog.root)}</div>
   {/snippet}
 </Modal>
 
 <style>
   .gui-dialog {
-    max-width: min(92vw, 70rem);
     max-height: 85vh;
     overflow: auto;
   }
   .grid {
-    display: grid;
+    display: inline-grid;
   }
-  .cell {
-    min-width: 0;
-  }
+  /* GUI2 labels don't wrap unless their definition says so: the texts carry their own line breaks. */
   .label {
-    white-space: pre-wrap;
+    white-space: pre;
   }
   .title {
     font-size: 1.35rem;
     font-weight: bold;
     color: var(--gold, #d4b35a);
+  }
+  .button {
+    font: inherit;
+    padding: 0.4rem 1.1rem;
+    border-radius: 4px;
+    border: 1px solid #2f5a7a;
+    background: #1a3350;
+    color: #d7e8f5;
+    cursor: pointer;
+  }
+  .button:hover,
+  .button:focus-visible {
+    background: #2a5a86;
+    border-color: #4a8ab8;
   }
   .listbox {
     display: flex;

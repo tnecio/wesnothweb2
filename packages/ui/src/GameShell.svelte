@@ -314,6 +314,12 @@
   let session = $state.raw(
     initialReplaySession ?? (initialSave ? GameSession.fromSaveData(activeSnapshot, initialSave, SESSION_OPTIONS) : new GameSession(activeSnapshot, SESSION_OPTIONS)),
   );
+  /**
+   * Phase 28c: which map the board is drawn from -- `session.board.mapVersion`, bumped by `[replace_map]`. The
+   * board remounts on a change (its size may have changed), from `session.boardSnapshot`.
+   */
+  let boardMapVersion = $state(session.board.mapVersion);
+  const boardSnapshot = $derived(boardMapVersion === 0 ? activeSnapshot : session.boardSnapshot);
   /** Resolved once per scenario, before its startup events run -- see `GameSession.storyParts`. A resumed save has already been past all of this. */
   let storyParts = $state.raw(initialSave ? [] : session.storyParts());
   let storyAssets = $state.raw(initialStoryAssets);
@@ -709,6 +715,7 @@
     villageOwners = session.villageOwnership;
     hexVisibility = session.hexVisibility;
     terrainHexes = session.terrainHexes;
+    boardMapVersion = session.board.mapVersion;
     mapItems = session.mapItems;
     mapLabels = session.mapLabels;
     timeOfDay = session.currentTimeOfDay;
@@ -883,6 +890,12 @@
 
   async function playBeatBody(beat: CutsceneBeat): Promise<void> {
     switch (beat.kind) {
+      case 'mapReplaced':
+        // display::reload_map: remount the board on the new map before the event goes on.
+        sync();
+        await tick();
+        await boardView?.whenReady();
+        break;
       case 'delay':
         await new Promise((r) => setTimeout(r, Math.min(beat.ms, MAX_BEAT_MS)));
         break;
@@ -2994,10 +3007,10 @@
       in a 1->2 Playwright check specifically -- confirmed by inspection,
       not by a screenshot that would've looked identical either way.)
     -->
-    {#key activeSnapshot.scenario.id}
+    {#key `${activeSnapshot.scenario.id}:${boardMapVersion}`}
       <GameBoardView
         bind:this={boardView}
-        snapshot={activeSnapshot}
+        snapshot={boardSnapshot}
         onViewportResize={() => boardResizeTick++}
         onSound={(files) => audio.playSound({ files, repeats: 0, group: 'sound' })}
         {units}

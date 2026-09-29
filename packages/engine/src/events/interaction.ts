@@ -158,7 +158,12 @@ export type CutsceneBeat =
    * plays the matching "recruiting" animation (`unit_display::
    * unit_recruited`).
    */
-  | { readonly kind: 'unitAppear'; readonly unit: Unit; readonly by?: Unit };
+  | { readonly kind: 'unitAppear'; readonly unit: Unit; readonly by?: Unit }
+  /**
+   * Phase 28c: `[replace_map]` gave the board a new map, possibly of another size (upstream's
+   * `display::reload_map`): the display rebuilds the board before the event goes on.
+   */
+  | { readonly kind: 'mapReplaced' };
 
 /** A cutscene beat waiting to be played out. */
 export interface BeatInteraction {

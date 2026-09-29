@@ -221,6 +221,8 @@ export class GameBoard {
     }
     this.map = newMap;
     this.mapVersion++;
+    // Terrain changed too: a save carries the whole map from now on (`toSaveData`'s `mapData`).
+    this.terrainVersion++;
   }
 
   /** Bumped by `replaceMap`: the map object itself changed (its size may have). */
