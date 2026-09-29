@@ -23,12 +23,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
       - id: inputs
         run: echo "hash=$(node --import tsx apps/web/scripts/rebuild-snapshots.mjs --inputs-hash)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: apps/web/public/scenarios
           key: scenarios-${{ steps.inputs.outputs.hash }}

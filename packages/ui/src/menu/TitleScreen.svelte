@@ -16,6 +16,7 @@
   import { ENGINE_IMAGES, GAME_IMAGES } from '../gameData.js';
   import { dataUrl } from '../dataUrls.js';
   import { buildInfo } from '../errors/errorReporting.svelte.js';
+  import { SOURCE_URL } from '../about.js';
   import titleImages from './titleImages.json';
 
   /**
@@ -143,6 +144,7 @@
     <span class="version" data-testid="title-version" title={build.commit || undefined}
       >{fmt(t('Version $version'), { version })}{#if build.version !== 'dev'}<span class="build"> · {fmt(tx('web $version'), { version: build.version })}</span>{/if}</span
     >
+    <a class="source" href={SOURCE_URL} target="_blank" rel="noopener" data-testid="title-source">{tx('Source code')}</a>
     <button class="language" title={t('Change the language')} onclick={onLanguage} data-testid="title-language">
       {locale.currentInfo?.name ?? t('Language')}
     </button>
@@ -291,6 +293,12 @@
   }
   .build {
     opacity: 0.7;
+  }
+  .source {
+    margin-left: auto;
+    margin-right: 1rem;
+    color: inherit;
+    text-shadow: 0 0 3px #000;
   }
   .language {
     min-height: 1.75rem;

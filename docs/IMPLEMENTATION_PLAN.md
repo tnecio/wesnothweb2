@@ -1767,8 +1767,10 @@ thumbnail in the list below was not built.
 
 ## Phase 28 — CI/CD, Performance & Platform (was Phase 18)
 
-**Status: planned 2026-09-27** in `docs/PHASE28_PLAN.md` (revised the same
-day). The plan covers:
+**Status: delivered 2026-09-29** (S0–S6 and S9; released as `v0.1.0`, see
+`docs/PHASE28_PLAN.md` and PROGRESS). S7 (performance budgets and the nightly
+run), S8 (cross-browser and offline) and the CI browser smoke test from S5 were
+moved to **Phase 28d** (user's call, 2026-09-29). Planned 2026-09-27; the plan covers:
 
 - GitHub Actions CI on `main` and PRs;
 - versioned, `immutable`-cached assets, with the game media in R2 because
@@ -1884,6 +1886,22 @@ and WL_Test are assessed separately.
 - **Milestone**: every scenario of every added campaign loads, its opening
   events run to play without errors, and one scenario per campaign is
   played headless to its end (AI against AI, as `replay.test.ts` does).
+
+### Phase 28d — Performance budgets, cross-browser and offline (split from Phase 28, 2026-09-29)
+
+**Status: not started.** After Phase 24, 25 and 27 (user's call). The work is
+already planned in `docs/PHASE28_PLAN.md`:
+
+- **S7:** performance budgets in CI and a nightly run. Per PR: request count, bytes, bundle size and
+  heap from `measure-load.mjs`, main-thread blocked time with slack, and the AI benchmark. Nightly: every
+  `*-playthrough.mjs`, `check:image-golden` and `test:slow`, with failures opening an issue.
+- **S8:** cross-browser and offline. A nightly Chromium / Firefox / WebKit and phone-emulation smoke
+  matrix; deep links (`?save=`, `&replay=1`) surviving a hard refresh; a small service worker, cache-first
+  for the (already immutable) hashed data, so a scenario opened once plays offline.
+- **The CI browser smoke test** planned in S5 (`smoke-playthrough.mjs` on the production build, failing on
+  page errors and 404s): deploys are checked over HTTP only (`deploy.yml`).
+- **Milestone:** a PR that grows a budgeted metric fails with a before/after table; the nightly matrix
+  runs green on all three engines; Liberty 1, opened once, reloads and plays with the network off.
 
 ### Phase 28a — Image pipeline performance (planned 2026-09-14)
 
@@ -2093,11 +2111,13 @@ pulled forward and delivered 2026-09-22.
    (minimap/camera) — delivered 2026-09-27. **Phase 23** (mobile) and
    **23a** (bugs7.md playtest fixes) — delivered 2026-09-27.
 8. **Phase 28** (CI/CD/performance/platform) — brought forward to right
-   after Phase 23 and its fixes (user's call, 2026-09-27).
+   after Phase 23 and its fixes (user's call, 2026-09-27); delivered
+   2026-09-29 as `v0.1.0`, with S7/S8 moved to Phase 28d.
 9. **Phase 28b** (movement visualisation & multi-turn moves), then
    **Phase 28c** (the rest of the bundled single-player campaigns).
 10. **Phase 24** (advanced UI), **Phase 25** (statistics & achievements),
-   **Phase 27** (feature completeness assessment).
+   **Phase 27** (feature completeness assessment), then **Phase 28d**
+   (performance budgets, cross-browser, offline; split from Phase 28).
 11. **Phase 29** (real AI: RCA framework + Lua on fengari) — underway
    alongside the above rather than strictly after it (Phase 7's MVP
    heuristic AI remains playable throughout).

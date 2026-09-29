@@ -18,8 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - run: npm run typecheck --workspaces --if-present
 
@@ -40,18 +40,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
+      # The content must be upstream's, unmodified: the pinned submodule commit, no local edits, and no Lua
+      # patches beyond the 8 known ones (Phase 28 S9).
+      - run: node --import tsx apps/web/scripts/check-upstream-unmodified.mjs
       - id: inputs
         run: echo "hash=$(node --import tsx apps/web/scripts/rebuild-snapshots.mjs --inputs-hash)" >> "$GITHUB_OUTPUT"
       - id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: apps/web/public/scenarios
           key: scenarios-${{ steps.inputs.outputs.hash }}
       - if: steps.cache.outputs.cache-hit != 'true'
         run: npm run build:scenarios --workspace=apps/web
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: scenarios
           path: apps/web/public/scenarios
@@ -68,9 +71,9 @@ jobs:
       matrix:
         package: [engine, renderer, ui, lua-bridge, oracle-tools]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: scenarios
           path: apps/web/public/scenarios
@@ -87,9 +90,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: scenarios
           path: apps/web/public/scenarios

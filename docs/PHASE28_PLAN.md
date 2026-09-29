@@ -283,6 +283,9 @@ errors surface through the global handlers and the screen, and the player can co
 
 ### S7 — Performance budgets and the nightly run
 
+**Moved to Phase 28d** (`docs/IMPLEMENTATION_PLAN.md`, user's call 2026-09-29), together with S8 and S5's
+CI browser smoke test.
+
 - **Per PR** (Chromium, production build): `measure-load.mjs` on Dead Water 1
   and Liberty 1. Gates on metrics that are stable on shared runners:
   - request count and bytes transferred;
@@ -305,6 +308,8 @@ errors surface through the global handlers and the screen, and the player can co
 
 ### S8 — Cross-browser and offline
 
+**Moved to Phase 28d** (see S7).
+
 - **Nightly smoke matrix:**
   - Chromium, Firefox and WebKit;
   - Pixel 7 and iPhone emulation running the `mobile-playthrough.mjs`
@@ -325,6 +330,13 @@ errors surface through the global handlers and the screen, and the player can co
   network disabled.
 
 ### S9 — Licence compliance and upstream-fidelity guard
+
+**Done 2026-09-29** (see PROGRESS). As built:
+- The licence files are served under `licenses/` (hashed like all data), linked from the Credits screen.
+- A "Source code" link to the now public repo is on the title screen and in Credits.
+- `check-upstream-unmodified.mjs` runs in CI. It checks the pinned submodule commit with no local
+  changes, and no Lua patches beyond the known 8. The plan's per-file hash check of staged media is
+  covered by that instead: media is uploaded straight from the checked submodule.
 
 - **Licences:** ship `COPYING` (GPL-2), Wesnoth's `copyrights.csv` and the
   data licence notes under `/licenses/`, linked from the credits screen. Add

@@ -1,6 +1,8 @@
 <script lang="ts">
+  import IpfImage from './images/IpfImage.svelte';
+  import { unitImageRef } from './images/unitImageRef.js';
   import type { Snippet } from 'svelte';
-  import { imageUrl, hpColor, xpColor, redToGreen } from '@wesnothweb2/renderer';
+  import { hpColor, xpColor, redToGreen } from '@wesnothweb2/renderer';
   import type { RecruitOption, RecallOption, SelectedUnitInfo, HoveredHexInfo } from './gameSession.js';
   import { alignmentName, capitalizeFirst, damageTypeName, rangeName } from './i18n/gameText.js';
   import { t, th, tw, tx } from './i18n/locale.js';
@@ -102,7 +104,7 @@
   <div class="top-slot" class:hidden={unitShown}>{@render top?.()}</div>
   {#if summaryUnit}
     <p class="status head unit-summary" data-testid="unit-summary" title={statusMessage}>
-      {#if summaryUnit.image}<img class="summary-sprite" src={imageUrl(summaryUnit.image)} alt="" />{/if}
+      {#if summaryUnit.image}<IpfImage class="summary-sprite" src={unitImageRef(summaryUnit.image, summaryUnit.side)} />{/if}
       <span class="summary-name" dir="auto">{summaryUnit.name}</span>
       <b class="summary-level" title={th('Level')}>{summaryUnit.level}</b>
       <span title={tx('Hitpoints')} style:color={cssColor(hpColor(summaryUnit.hp, summaryUnit.maxHp))}>{summaryUnit.hp}/{summaryUnit.maxHp}</span>
@@ -132,7 +134,7 @@
   {#snippet unitInfo(info: SelectedUnitInfo)}
     <div class="portrait-row">
       {#if info.image}
-        <img class="portrait" src={imageUrl(info.image)} alt="" />
+        <IpfImage class="portrait" src={unitImageRef(info.image, info.side)} />
       {/if}
       <div class="headline">
         <div class="name-row">
@@ -401,7 +403,8 @@
     white-space: nowrap;
     overflow: hidden;
   }
-  .summary-sprite {
+  /* on the <img> inside IpfImage, so reached through :global, still only within this component */
+  * :global(.summary-sprite) {
     /* Unit sprites are 72 px with a lot of empty space around the figure. */
     width: 40px;
     height: 40px;
@@ -466,7 +469,8 @@
     align-items: flex-start;
     margin-bottom: 0.4rem;
   }
-  .portrait {
+  /* on the <img> inside IpfImage, so reached through :global, still only within this component */
+  * :global(.portrait) {
     width: 3.2rem;
     height: 3.2rem;
     object-fit: contain;

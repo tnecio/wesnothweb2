@@ -27,6 +27,7 @@
    */
   import { dataUrl } from './dataUrls.js';
   import { setGameContext } from './errors/errorReporting.svelte.js';
+  import { setSideColorResolver } from './images/unitImageRef.js';
   import { ENGINE_IMAGES, GAME_IMAGES } from './gameData.js';
   import { tick, untrack } from 'svelte';
   import type {
@@ -519,6 +520,16 @@
   let canUndo = $state(false);
   let canRedo = $state(false);
   let turnNumber = $state(session.turnNumber);
+
+  // Unit images in the side panel and dialogs are team-coloured like the board's (see unitImageRef.ts).
+  $effect(() => {
+    const defaults = teamColors?.defaultColors ?? [];
+    setSideColorResolver((side) => {
+      const s = side ?? session.activeSide;
+      return resolveSideColorId(session.board.getTeam(s)?.color ?? '', s, defaults);
+    });
+    return () => setSideColorResolver(null);
+  });
 
   // Phase 28 S6: where the player is, for error reports (read only when a report is built).
   $effect(() => {

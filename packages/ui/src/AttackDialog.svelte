@@ -7,7 +7,8 @@
    * `CombatSimulationDialog` for the full damage-calculation breakdown,
    * matching real Wesnoth's own "Damage Calculations" button.
    */
-  import { imageUrl } from '@wesnothweb2/renderer';
+  import IpfImage from './images/IpfImage.svelte';
+  import { unitImageRef } from './images/unitImageRef.js';
   import type { CombatPreview, CombatantPreview, AttackerWeaponOption } from './gameSession.js';
   import { alignmentName, damageTypeName, rangeName, raceName } from './i18n/gameText.js';
   import { fmt, t, tx } from './i18n/locale.js';
@@ -92,7 +93,7 @@
       {#each [preview.attacker, preview.defender] as c, i (i)}
         <div class="combatant" class:defender={i === 1}>
           {#if c.image}
-            <img class="portrait" src={imageUrl(c.image)} alt="" />
+            <IpfImage class="portrait" src={unitImageRef(c.image, c.side)} />
           {/if}
           <div class="name">{c.name}</div>
           <div class="type-name">{c.typeName}</div>
@@ -194,7 +195,8 @@
     text-align: center;
     flex: 1 1 12rem;
   }
-  .portrait {
+  /* on the <img> inside IpfImage, so reached through :global, still only within this component */
+  * :global(.portrait) {
     width: 4.5rem;
     height: 4.5rem;
     object-fit: contain;

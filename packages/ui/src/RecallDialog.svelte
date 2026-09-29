@@ -6,7 +6,8 @@
    * `SidePanel.svelte`'s old inline recall section. Same placement
    * behavior as `RecruitDialog.svelte` -- see its own doc comment.
    */
-  import { imageUrl } from '@wesnothweb2/renderer';
+  import IpfImage from './images/IpfImage.svelte';
+  import { unitImageRef } from './images/unitImageRef.js';
   import type { RecallOption } from './gameSession.js';
   import { alignmentName, damageTypeName, rangeName, raceName } from './i18n/gameText.js';
   import { fmt, t, th, tx } from './i18n/locale.js';
@@ -91,7 +92,7 @@
       <div class="detail">
         {#if selected}
           {#if selected.image}
-            <img class="portrait" src={imageUrl(selected.image)} alt="" />
+            <IpfImage class="portrait" src={unitImageRef(selected.image)} />
           {/if}
           {#if renaming}
             <div class="rename-row">
@@ -163,7 +164,7 @@
                 renaming = false;
               }}
             >
-              <td>{#if opt.image}<img class="thumb" src={imageUrl(opt.image)} alt="" />{/if}</td>
+              <td>{#if opt.image}<IpfImage class="thumb" src={unitImageRef(opt.image)} />{/if}</td>
               <td>{opt.typeName} <span class="cost">{fmt(tx('$amount|g'), { amount: opt.cost })}</span></td>
               <td>{opt.name}</td>
               <td>{opt.level}</td>
@@ -208,7 +209,8 @@
     flex-direction: column;
     gap: 0.3rem;
   }
-  .portrait {
+  /* on the <img> inside IpfImage, so reached through :global, still only within this component */
+  * :global(.portrait) {
     width: 100%;
     max-height: 6rem;
     object-fit: contain;
@@ -329,7 +331,8 @@
     padding: 0.25rem 0.4rem;
     border-bottom: 1px solid #241f1a;
   }
-  .thumb {
+  /* on the <img> inside IpfImage, so reached through :global, still only within this component */
+  * :global(.thumb) {
     width: 22px;
     height: 22px;
     object-fit: contain;

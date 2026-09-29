@@ -15,7 +15,8 @@
    * highlighted castle tiles on the map -- there's no single tile to
    * prefer in that case.
    */
-  import { imageUrl } from '@wesnothweb2/renderer';
+  import IpfImage from './images/IpfImage.svelte';
+  import { unitImageRef } from './images/unitImageRef.js';
   import type { RecruitOption } from './gameSession.js';
   import { alignmentName, damageTypeName, rangeName, raceName } from './i18n/gameText.js';
   import { fmt, t, th, tx } from './i18n/locale.js';
@@ -76,7 +77,7 @@
       <div class="detail">
         {#if selected}
           {#if selected.image}
-            <img class="portrait" src={imageUrl(selected.image)} alt="" />
+            <IpfImage class="portrait" src={unitImageRef(selected.image)} />
           {/if}
           <div class="name">{selected.name}</div>
           <div class="subline">
@@ -128,7 +129,7 @@
               onclick={() => (selectedTypeId = opt.typeId)}
             >
               {#if opt.image}
-                <img class="thumb" src={imageUrl(opt.image)} alt="" />
+                <IpfImage class="thumb" src={unitImageRef(opt.image)} />
               {/if}
               <span class="opt-name">{opt.name}</span>
               <span class="opt-cost">{fmt(tx('$amount|g'), { amount: opt.cost })}</span>
@@ -167,7 +168,8 @@
     flex-direction: column;
     gap: 0.35rem;
   }
-  .portrait {
+  /* on the <img> inside IpfImage, so reached through :global, still only within this component */
+  * :global(.portrait) {
     width: 100%;
     max-height: 8rem;
     object-fit: contain;
@@ -274,7 +276,8 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
-  .thumb {
+  /* on the <img> inside IpfImage, so reached through :global, still only within this component */
+  * :global(.thumb) {
     width: 28px;
     height: 28px;
     object-fit: contain;

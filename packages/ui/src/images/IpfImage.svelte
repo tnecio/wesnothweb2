@@ -2,7 +2,13 @@
   /** An image reference with path functions (see `ipfImage.ts`), shown once built. Decorative unless `alt` is given. */
   import { ipfImageUrl } from './ipfImage.js';
 
-  let { src, alt = '', width = undefined, height = undefined }: { src: string | undefined; alt?: string; width?: number; height?: number } = $props();
+  let {
+    src,
+    alt = '',
+    width = undefined,
+    height = undefined,
+    class: className = undefined,
+  }: { src: string | undefined; alt?: string; width?: number; height?: number; class?: string } = $props();
 
   let url = $state<string | null>(null);
   $effect(() => {
@@ -20,9 +26,9 @@
 </script>
 
 {#if url}
-  <img src={url} {alt} {width} {height} draggable="false" />
+  <img class={className} src={url} {alt} {width} {height} draggable="false" />
 {:else}
-  <span class="placeholder" style:width={width ? `${width}px` : undefined} style:height={height ? `${height}px` : undefined} aria-hidden="true"></span>
+  <span class="placeholder {className ?? ''}" style:width={width ? `${width}px` : undefined} style:height={height ? `${height}px` : undefined} aria-hidden="true"></span>
 {/if}
 
 <style>
