@@ -9,4 +9,7 @@ original C++ codebase and reimplements the game's logic natively in
 TypeScript, aimed squarely at the browser rather than porting a desktop
 engine's dependencies (SDL, Boost, etc.) unchanged.
 
-See [docs/](docs/) for the architecture and implementation plan.
+See [docs/](docs/) for the architecture and implementation plan, and
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for CI, releases and deployment.
+
+Play it at https://wesnoth.tnec.io.
