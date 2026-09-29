@@ -52,7 +52,7 @@ function watch(session: GameSession, answer: (interaction: Interaction) => Inter
       if (interaction.kind === 'message') {
         lines.push(interaction.message.message);
         entries.push(`say:${interaction.message.speaker}`);
-      } else {
+      } else if (interaction.kind === 'beat') {
         beats.push(interaction.beat);
         entries.push(`beat:${interaction.beat.kind}`);
       }

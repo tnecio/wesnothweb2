@@ -289,6 +289,12 @@ export interface GameBoardSnapshot {
   assetDir?: string;
   /** Every textdomain a translatable string in this snapshot belongs to: the catalogues to load for it. */
   textdomains?: string[];
+  /**
+   * Phase 28c: what the campaign's Lua may load while the scenario runs (`lua-bridge`'s `LuaSources`):
+   * every `.lua` file of the campaign by data-relative path, and the WML files its Lua reads with
+   * `wml.load`, preprocessed. Absent for a campaign without Lua.
+   */
+  luaSources?: { modules: Record<string, string>; wml: Record<string, WmlConfigJson> };
   /** The scenario's `[story][part]` blocks (real narrative text + background art, if any), meant to be shown as a click-through sequence before interactive play begins. Empty if the scenario has no `[story]`. */
   story?: StoryPart[];
   /**

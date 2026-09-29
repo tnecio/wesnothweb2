@@ -138,6 +138,8 @@
   import { installUiSounds } from './audio/uiSounds.js';
   import type { AudioSettings } from './audio/settings.js';
   import MessageViewer from './MessageViewer.svelte';
+  import GuiDialog from './GuiDialog.svelte';
+  import type { GuiDialogInteraction } from '@wesnothweb2/engine';
   import AdvancementDialog from './AdvancementDialog.svelte';
   import ObjectivesDialog from './ObjectivesDialog.svelte';
   import ScenarioEndOverlay from './ScenarioEndOverlay.svelte';
@@ -482,6 +484,9 @@
    * `answerInteraction` resolves.
    */
   let currentMessage = $state<MessageInteraction | null>(null);
+  /** Phase 28c: a campaign's own Lua dialog (`gui.show_dialog`) waiting for the player, and how to answer it. */
+  let currentGuiDialog = $state.raw<GuiDialogInteraction | null>(null);
+  let answerGuiDialog: ((result: InteractionResult) => void) | null = null;
   let answerInteraction: ((result: InteractionResult) => void) | null = null;
   /** True while a WML flow is being driven (dialogue, a cutscene, an AI turn): the board is the engine's, not the player's. */
   let eventsRunning = $state(false);
@@ -739,6 +744,17 @@
       // animation short and race the frame loop driving it (see that
       // method's own doc comment). `playCutsceneBeat` syncs when it's done.
       if (interaction.kind === 'beat') return playCutsceneBeat(interaction.beat);
+      if (interaction.kind === 'guiDialog') {
+        sync();
+        return new Promise<InteractionResult>((resolve) => {
+          currentGuiDialog = interaction;
+          answerGuiDialog = (result) => {
+            currentGuiDialog = null;
+            answerGuiDialog = null;
+            resolve(result);
+          };
+        });
+      }
       // A message, though, must show the state the event has reached
       // *now*, not the state it will have when the event finishes -- the
       // whole point of blocking dialogue (bugs2.md, fixed properly here).
@@ -1285,7 +1301,7 @@
 
   /** True when the player may act: their own turn, no dialog up, no event mid-flight. */
   function canAct(): boolean {
-    return phase === 'playing' && !eventsRunning && currentMessage === null;
+    return phase === 'playing' && !eventsRunning && currentMessage === null && currentGuiDialog === null;
   }
 
   /** `GameBoardView`'s `onHexHoverChange` -- keeps the infobox's hovered-hex terrain section live. */
@@ -2090,6 +2106,12 @@
    */
   function requestEndTurn(): void {
     if (!canAct()) return;
+    // Phase 28c: `[disallow_end_turn]` -- upstream shows the reason and does not end the turn.
+    const blocked = session.endTurnBlocked;
+    if (blocked !== null) {
+      statusMessage = blocked;
+      return;
+    }
     const side = session.activeSide;
     if (!session.playerActed && session.board.unitsForSide(side).length > 0) {
       endTurnConfirmOpen = true;
@@ -2106,7 +2128,7 @@
   }
 
   async function handleEndTurn(): Promise<void> {
-    if (!canAct()) return;
+    if (!canAct() || session.endTurnBlocked !== null) return;
     const message = await runPlayerAction(async () => {
       otherSidesTurn = 'thinking';
       skipOtherSidesAnimations = false;
@@ -2322,6 +2344,7 @@
     session.interactionHost = interactionHost;
     storyParts = [];
     currentMessage = null;
+    currentGuiDialog = null;
     screenTint = null;
     phase = 'replay';
     replay = { data, index: 0, total: data.replay.commands.length, playing: true };
@@ -2407,6 +2430,7 @@
     storyParts = [];
     storyAssets = assets;
     currentMessage = null;
+    currentGuiDialog = null;
     screenTint = null;
     phase = session.scenarioResult ? 'ended' : 'playing';
     sync(fmt(tx('Loaded $name (turn $turn).'), { name: session.scenarioName, turn: data.turnNumber }));
@@ -2895,7 +2919,8 @@
       pendingPreview !== null ||
       // Phase 17: a suspended event's own dialogue owns the keyboard
       // while it is up (`MessageViewer` handles arrows/Enter/Escape).
-      currentMessage !== null
+      currentMessage !== null ||
+      currentGuiDialog !== null
     );
   }
 
@@ -3065,6 +3090,10 @@
       getMapRect={() => boardView?.viewportRect() ?? null}
       layoutTick={boardResizeTick}
     />
+  {/if}
+
+  {#if currentGuiDialog}
+    <GuiDialog dialog={currentGuiDialog.dialog} onAnswer={(result) => answerGuiDialog?.(result)} />
   {/if}
 
   {#if screenTint}

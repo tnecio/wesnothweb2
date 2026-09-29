@@ -56,6 +56,7 @@ import {
   registerAiWmlActions,
   findSideConfig,
   type AiWmlHooks,
+  type PersistentVariables,
   type AiHost,
   type AiAction,
   type AiAnimationEvent,
@@ -169,8 +170,10 @@ import {
 // Deep import: lua-bridge's index also exports Node-only data loaders.
 import type { MinimapInput, RouteOverlay } from '@wesnothweb2/renderer';
 import { createLuaConditionalEvaluator } from '@wesnothweb2/lua-bridge/src/conditionals.js';
+import { LuaRuntime } from '@wesnothweb2/lua-bridge/src/runtime.js';
+import { browserAchievements, browserPersistentVariables } from './persistentVariables.js';
 import { raceName, statusName } from './i18n/gameText.js';
-import { fmt, t, tx } from './i18n/locale.js';
+import { fmt, t, tw, tx } from './i18n/locale.js';
 
 // `[lua]` conditions run in a real Lua VM (Fengari); see lua-bridge's conditionals.ts.
 setLuaConditionalEvaluator(createLuaConditionalEvaluator());
@@ -773,6 +776,8 @@ export interface RecallOption {
 export interface GameSessionOptions {
   /** Which side the human player controls. Default 1 (Dead_Water scenario 1's Kai Krellis side). */
   playerSide?: number;
+  /** Phase 28c: where `[set_global_variable]` keeps values (default: the browser's `localStorage`). */
+  persistent?: PersistentVariables;
   /** Seed for the session's `RngDeterministic` -- see `RngDeterministic`'s own doc comment; no need for cryptographic randomness here. */
   seed?: number;
   /**
@@ -889,6 +894,8 @@ export function describeCommand(command: SyncedCommand): string {
 const EVENT_LOCATION_VARIABLES = new Set(['x1', 'y1', 'x2', 'y2']);
 
 function needsInput(interaction: Interaction): boolean {
+  // Phase 28c: a campaign's Lua dialog always waits for an answer, recorded like a [message] choice.
+  if (interaction.kind === 'guiDialog') return true;
   return interaction.kind === 'message' && (interaction.options.length > 0 || interaction.textInput !== undefined);
 }
 
@@ -1106,6 +1113,8 @@ export interface SaveGameData {
   wesnothExtras?: WmlConfigJson;
   /** Phase 18c: `[object] id=`s already taken (upstream's `[used_items]`). */
   usedItems?: string[];
+  /** Phase 28c: `[disallow_end_turn]` in force (upstream's `can_end_turn`/`cannot_end_turn_reason`); absent when the turn may end. */
+  endTurnForbidden?: { reason?: TStringJson };
   /**
    * Phase 18c: the live `[event]` handlers, in order -- spent
    * `first_time_only` ones gone, ones added at run time present, as
@@ -1654,6 +1663,13 @@ export class GameSession {
       this.turnNumber = turn;
       this.eventPump.ctx.variables.set('turn_number', turn);
     };
+    // Phase 28c: global variables and achievements, kept in the browser; unit:advance() for [harm_unit].
+    this.eventPump.ctx.persistent = options.persistent ?? browserPersistentVariables();
+    this.eventPump.ctx.achievements = browserAchievements((contentFor, id) => this.log.unshift(`Achievement: ${contentFor}/${id}`));
+    this.eventPump.ctx.advanceUnit = (unit) => {
+      this.queueAdvancement(unit);
+      this.processAdvancementQueue(this.action?.rec ?? null, this.action?.source ? this.action : null);
+    };
     this.eventPump.ctx.addUndoCommands = (commands) => {
       this.action?.steps.push({ kind: 'event', commands, loc1: this.eventPump.ctx.loc1, loc2: this.eventPump.ctx.loc2 });
     };
@@ -1684,7 +1700,29 @@ export class GameSession {
     };
     registerAiWmlActions(this.eventPump.ctx.registry);
     this.eventPump.ctx.ai = aiWmlHooks;
+
+    // Phase 28c: the campaign's own Lua (`game_lua_kernel`), for a scenario that has any: `[lua]` actions,
+    // Lua-defined tags, and the preload scripts, run now -- before `prestart`, as upstream's
+    // `game_lua_kernel::initialize`. A loaded game runs them again (a new session), as upstream does.
+    if (snapshot.luaSources || JSON.stringify(snapshot.scenarioConfigJson).includes('"tag":"lua"')) {
+      this.luaRuntime = new LuaRuntime(snapshot.luaSources ?? { modules: {}, wml: {} }, () => this.eventPump.ctx);
+      runFlow(this.luaRuntime.initialize(WmlConfig.fromJSON(snapshot.scenarioConfigJson)));
+    }
   }
+
+  /**
+   * Phase 28c: `[disallow_end_turn]` (`game_data::allow_end_turn`): whether the player may end the turn,
+   * and the message to show when not (upstream's default when WML gave none).
+   */
+  get endTurnBlocked(): string | null {
+    const state = this.eventPump.ctx.endTurn;
+    if (state.allowed) return null;
+    const reason = state.reason?.str() ?? '';
+    return reason !== '' ? reason : tw('You cannot end your turn yet!');
+  }
+
+  /** Phase 28c: the scenario's Lua, when it has any. */
+  private luaRuntime: LuaRuntime | null = null;
 
   /** Phase 19: the sound sources in effect, in id order; a replaced source is a new object (the app restarts it). */
   get soundSources(): readonly SoundSourceSpec[] {
@@ -1906,7 +1944,17 @@ export class GameSession {
   /** Records a `[message]` answer as a dependent `[input]` of the running action (`synced_user_choice`). */
   private recordAnswer(interaction: Interaction, answer: InteractionResult): void {
     const action = this.action;
-    if (!action || !needsInput(interaction) || interaction.kind !== 'message') return;
+    if (!action || !needsInput(interaction)) return;
+    if (interaction.kind === 'guiDialog') {
+      action.rec.dependents.push({
+        kind: 'input',
+        ...(answer.value !== undefined ? { value: answer.value } : {}),
+        ...(answer.text !== undefined ? { text: answer.text } : {}),
+        side: this.activeSide,
+      });
+      return;
+    }
+    if (interaction.kind !== 'message') return;
     action.rec.dependents.push({
       kind: 'input',
       ...(interaction.options.length > 0 ? { value: answer.value ?? 1 } : {}),
@@ -2248,8 +2296,9 @@ export class GameSession {
     const leader = this.board.unitAt(from);
     if (!team || !leader) return this.reject(action, `recruiting leader not found at ${from}`);
     if (this.board.hasUnitAt(loc)) return this.reject(action, `cannot recruit onto ${loc}: occupied`);
-    // `find_recruit_location`: the type has to be on the side's recruit list.
-    if (!team.canRecruit.has(cmd.type)) return this.reject(action, `cannot recruit ${cmd.type}: none of the side's leaders can recruit it`);
+    // `find_recruit_location`: the type has to be on the side's recruit list, or the leader's own
+    // `extra_recruit=` (Phase 28c, `[allow_extra_recruit]`).
+    if (!team.canRecruit.has(cmd.type) && !leader.extraRecruit.includes(cmd.type)) return this.reject(action, `cannot recruit ${cmd.type}: none of the side's leaders can recruit it`);
     let type: UnitType;
     try {
       type = this.resolveType(cmd.type);
@@ -3173,7 +3222,8 @@ export class GameSession {
     if (!leader) return [];
     const team = this.board.getTeam(leader.side);
     if (!team) return [];
-    return [...team.canRecruit].map((typeId) => {
+    // `actions::get_recruits`: the side's list, then the leader's own `extra_recruit=`.
+    return [...new Set([...team.canRecruit, ...leader.extraRecruit])].map((typeId) => {
       const snap = this.snapshot.unitTypes[typeId];
       const cost = snap?.cost ?? 0;
       const type = this.resolveType(typeId);
@@ -4334,6 +4384,7 @@ export class GameSession {
       tunnels: this.board.tunnels.toConfigs().map((c) => c.toJSON()),
       nextTeleportGroupId: this.board.tunnels.nextTeleportGroupId,
       usedItems: [...this.eventPump.ctx.usedItems],
+      ...(this.eventPump.ctx.endTurn.allowed ? {} : { endTurnForbidden: { reason: this.eventPump.ctx.endTurn.reason?.toJSON() } }),
       nextUnitId: this.board.nextUnitId,
       turnLimit: this.eventPump.ctx.turnLimit,
       items: this.eventPump.ctx.items.all().map((item) => itemToConfig(item).toJSON()),
@@ -4412,6 +4463,9 @@ export class GameSession {
     this.board.tunnels.loadConfigs((data.tunnels ?? []).map((c) => WmlConfig.fromJSON(c)), data.nextTeleportGroupId ?? 0);
     this.rng.mode = data.randomMode ?? 'per_action';
     this.eventPump.ctx.usedItems = new Set(data.usedItems ?? []);
+    this.eventPump.ctx.endTurn = data.endTurnForbidden
+      ? { allowed: false, reason: data.endTurnForbidden.reason ? TString.fromJSON(data.endTurnForbidden.reason) : undefined }
+      : { allowed: true };
     if (data.turnLimit !== undefined) this.eventPump.ctx.turnLimit = data.turnLimit;
     if (data.items !== undefined) {
       this.eventPump.ctx.items.clear();

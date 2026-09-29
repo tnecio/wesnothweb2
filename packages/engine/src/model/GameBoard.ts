@@ -188,7 +188,11 @@ export class GameBoard {
    */
   applyMapData(data: string): boolean {
     const saved = this.map.parseSibling(data);
-    if (saved.w() !== this.map.w() || saved.h() !== this.map.h()) return false;
+    // Phase 28c: a map `[replace_map]` resized (The South Guard 1 grows it) comes back whole.
+    if (saved.w() !== this.map.w() || saved.h() !== this.map.h()) {
+      this.replaceMap(saved);
+      return true;
+    }
     const b = this.map.borderSize;
     for (let x = -b; x < this.map.w() + b; x++) {
       for (let y = -b; y < this.map.h() + b; y++) {
@@ -199,6 +203,28 @@ export class GameBoard {
     }
     return true;
   }
+
+  /**
+   * Phase 28c: `game_board::replace_map` (`[replace_map]`): the board gets `newMap`, which may be another
+   * size. A unit that would be off the new map goes to its side's recall list; a village that is no
+   * longer a village is lost by its owner. Bumps `mapVersion` so whoever draws the board can tell.
+   */
+  replaceMap(newMap: GameMap): void {
+    for (const unit of this.allUnits()) {
+      if (newMap.onBoard(unit.location)) continue;
+      this.removeUnitAt(unit.location);
+      this.addToRecallList(unit.side, unit);
+    }
+    for (const key of [...this.villageOwners.keys()]) {
+      const [x, y] = key.split(',').map(Number) as [number, number];
+      if (!newMap.isVillage(new Location(x, y))) this.villageOwners.delete(key);
+    }
+    this.map = newMap;
+    this.mapVersion++;
+  }
+
+  /** Bumped by `replaceMap`: the map object itself changed (its size may have). */
+  mapVersion = 0;
 
   /**
    * Mirrors `team::get_village`: assigns `loc` to `side`, replacing any

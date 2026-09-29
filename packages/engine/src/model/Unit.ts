@@ -139,6 +139,8 @@ export class Unit {
    * and not saved (upstream doesn't write it either).
    */
   interruptedMove: Location | undefined;
+  /** `[unit] extra_recruit=`: types this leader may recruit beyond its side's list (`unit::recruits()`). */
+  extraRecruit: string[];
   /** `[unit] profile=`: this unit's own portrait, overriding its type's; empty when not overridden. */
   profile: string;
   /** `[unit] gender=` (`unit::gender_`): `male` or `female`. */
@@ -238,6 +240,7 @@ export class Unit {
     this.variables = options.variables;
     this.goto = undefined;
     this.interruptedMove = undefined;
+    this.extraRecruit = [];
     this.profile = options.profile ?? '';
     this.gender = options.gender ?? type.genders[0] ?? 'male';
     // `unit::init`: the type's stats, then every modification's effects,
@@ -484,6 +487,7 @@ export class Unit {
       const gotoLoc = Location.fromWml(cfg.getNumber('goto_x'), cfg.getNumber('goto_y'));
       if (gotoLoc.valid()) unit.goto = gotoLoc;
     }
+    unit.extraRecruit = cfg.getString('extra_recruit', '').split(',').map((s) => s.trim()).filter((s) => s !== '');
 
     return unit;
   }
@@ -536,6 +540,7 @@ export class Unit {
       cfg.setAttribute('goto_x', this.goto.wmlX);
       cfg.setAttribute('goto_y', this.goto.wmlY);
     }
+    if (this.extraRecruit.length > 0) cfg.setAttribute('extra_recruit', this.extraRecruit.join(','));
     if (this.statuses.size > 0) {
       const statusCfg = cfg.addChild('status');
       for (const s of this.statuses) statusCfg.setAttribute(s, true);

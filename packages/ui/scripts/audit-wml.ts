@@ -2,7 +2,9 @@
  * Static audit of the WML the shipped scenarios actually use against what
  * this port implements (Phase 18c planning, 2026-09-26).
  *
- *   npx tsx packages/ui/scripts/audit-wml.ts [--out docs/WML_AUDIT.md]
+ *   npx tsx packages/ui/scripts/audit-wml.ts [--out docs/WML_AUDIT.md] [--campaign The_South_Guard]
+ *
+ * `--campaign` (Phase 28c) limits the survey to one campaign's snapshots (its directory name).
  *
  * Reads every committed scenario snapshot (`apps/web/public/scenarios/*.json`
  * -- each carries its scenario fully preprocessed, macros expanded, in
@@ -20,8 +22,9 @@
  *    labels, ...) -- the game plays, but nothing is shown/heard.
  *  - extension point: registered, but only logs that it is not implemented.
  *  - MISSING: no handler; the pump logs "[tag] not supported (skipped)".
- *  - campaign Lua: defined by the campaign's own Lua (`wml_actions.X`),
- *    which this port does not run yet -- effectively missing too.
+ *  - campaign Lua: defined by the campaign's own Lua (`wml_actions.X`), run
+ *    by `lua-bridge`'s `LuaRuntime` (Phase 28c) -- implemented as far as the
+ *    Lua API it calls is bridged.
  * Conditions this port does not evaluate are treated as *passing* with an
  * error logged (as upstream treats an unknown conditional), which is worse
  * than skipping, so they are listed separately.
@@ -36,6 +39,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const args = process.argv.slice(2);
 const outArg = args.indexOf('--out');
 const out = outArg >= 0 ? args[outArg + 1] : null;
+const campaignArg = args.indexOf('--campaign');
+const onlyCampaign = campaignArg >= 0 ? args[campaignArg + 1] : null;
 
 // ---------------------------------------------------------------------------
 // What the port implements
@@ -46,7 +51,8 @@ registerAiWmlActions(registry);
 const actionSource = fs.readFileSync(path.join(repoRoot, 'packages/engine/src/events/actionWml.ts'), 'utf8');
 const noopList = /for \(const tag of \[([^\]]*)\]\) \{\s*registry\.register\(tag, noop\)/.exec(actionSource)?.[1] ?? '';
 const NOOP = new Set([...noopList.matchAll(/'([^']+)'/g)].map((m) => m[1]!));
-const EXTENSION = new Set([...actionSource.matchAll(/registry\.register\('([^']+)', extensionPoint\(/g)].map((m) => m[1]!));
+// `[lua]` is registered by the Lua runtime a session creates (Phase 28c), not by the default registry.
+const EXTENSION = new Set([...actionSource.matchAll(/registry\.register\('([^']+)', extensionPoint\(/g)].map((m) => m[1]!).filter((t) => t !== 'lua'));
 /** `conditionalWml.ts`'s `builtinConditions`, `[lua]` (run by lua-bridge), plus the connectives and literals it handles itself. */
 const CONDITIONS_EVALUATED = new Set(['have_unit', 'have_location', 'found_item', 'lua', 'variable', 'true', 'false', 'and', 'or', 'not']);
 
@@ -146,7 +152,10 @@ function walkScenario(cfg: WmlConfig, scenario: string): void {
 // ---------------------------------------------------------------------------
 
 const luaTags = new Map<string, string>();
-for (const campaign of ['Dead_Water', 'Two_Brothers', 'Liberty', 'Under_the_Burning_Suns']) {
+// Only the surveyed campaigns' own Lua: a tag another campaign happens to define (World Conquest defines
+// several mainline ones) is still missing for these.
+const surveyed = fs.readdirSync(path.join(repoRoot, 'apps/web/public/scenarios')).filter((d) => !onlyCampaign || d === onlyCampaign);
+for (const campaign of fs.readdirSync(path.join(repoRoot, 'wesnoth/data/campaigns')).filter((c) => surveyed.includes(c))) {
   const dir = path.join(repoRoot, 'wesnoth/data/campaigns', campaign);
   const files: string[] = [];
   const collect = (d: string) => {
@@ -173,12 +182,14 @@ for (const campaign of ['Dead_Water', 'Two_Brothers', 'Liberty', 'Under_the_Burn
 // overlays (`@<DEFINE>.json`) carry only the WML that differs from the base and are skipped: the base
 // snapshot's own `scenarioConfigJson` is already a full survey of that scenario's action tags.
 const scenarioDir = path.join(repoRoot, 'apps/web/public/scenarios');
+let scenarioCount = 0;
 for (const campaignDir of fs.readdirSync(scenarioDir).sort()) {
   const campaignFull = path.join(scenarioDir, campaignDir);
-  if (!fs.statSync(campaignFull).isDirectory()) continue;
+  if (!fs.statSync(campaignFull).isDirectory() || (onlyCampaign && campaignDir !== onlyCampaign)) continue;
   for (const file of fs.readdirSync(campaignFull).filter((f) => f.endsWith('.json') && !f.includes('@') && !f.startsWith('_')).sort()) {
     const snap = JSON.parse(fs.readFileSync(path.join(campaignFull, file), 'utf8')) as { scenarioConfigJson: WmlConfigJson };
     walkScenario(WmlConfig.fromJSON(snap.scenarioConfigJson), `${campaignDir}/${file.replace(/\.json$/, '')}`);
+    scenarioCount++;
   }
 }
 
@@ -205,7 +216,7 @@ const scenarioList = (s: Seen) => {
 const lines: string[] = [];
 lines.push('# WML audit: what the shipped scenarios use vs. what the port implements');
 lines.push('');
-lines.push(`Generated by \`packages/ui/scripts/audit-wml.ts\` over ${scenarioFiles.length} scenario snapshots (every branch of every event body, statically).`);
+lines.push(`Generated by \`packages/ui/scripts/audit-wml.ts\` over ${scenarioCount} scenario snapshots (every branch of every event body, statically).`);
 lines.push('');
 const order: Status[] = ['MISSING', 'campaign Lua', 'extension point', 'presentation no-op', 'implemented'];
 for (const status of order) {

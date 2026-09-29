@@ -374,6 +374,54 @@ console.log(`Collected ${unitImages.size} unit-type image paths from real WML.`)
 
 const scenarioCfg = parseWmlFile(scenarioFile, { dataRoot, defines: new Map(defines) });
 const scenario = scenarioCfg.child('scenario');
+
+// Phase 28c: what upstream adds to every scenario of a campaign when the game starts
+// (`saved_game::expand_mp_events` -> `load_non_scenario("campaign", id)`): the `[campaign]` block's own
+// `[event]`, `[lua]`, `[modify_unit_type]` and `[load_resource]` children, appended in that order; then
+// each `[load_resource]` is replaced, once per id, by the same four kinds of children of the
+// `[resource]` with that id. (`enable_if=` on an event is not evaluated: no mainline content uses it.)
+// The game config's own top-level `[lua]` (a campaign's Lua loaded under its `#ifdef`) is run by upstream's
+// Lua kernel before the scenario's (`game_lua_kernel::initialize`); it is prepended, marked
+// `game_config=yes`, so the runtime can run those first.
+if (isRealCampaign) {
+  const NON_SCENARIO_TAGS = ['event', 'lua', 'modify_unit_type', 'load_resource'];
+  const copyNonScenario = (from, pos) => {
+    for (const tag of NON_SCENARIO_TAGS) for (const child of from.children(tag)) scenario.addChildAt(tag, child.clone(), pos++);
+    return pos;
+  };
+  const campaign = campaignMainCfg.child('campaign');
+  if (campaign) copyNonScenario(campaign, scenario.allChildren().length);
+  const resources = new Map();
+  const collectResources = (cfg) => {
+    for (const r of cfg.children('resource')) resources.set(r.getString('id'), r);
+  };
+  // `internal/_main.cfg` includes `{internal/resources/}`, one folder per resource.
+  const resourcesDir = path.join(dataRoot, 'internal/resources');
+  for (const name of fs.readdirSync(resourcesDir)) {
+    const main = path.join(resourcesDir, name, '_main.cfg');
+    if (fs.existsSync(main)) collectResources(parseWmlFile(main, { dataRoot, defines: new Map(defines) }));
+  }
+  collectResources(campaignMainCfg);
+  const loaded = new Set();
+  for (;;) {
+    const index = scenario.allChildren().findIndex((e) => e.tag === 'load_resource');
+    if (index < 0) break;
+    const id = scenario.allChildren()[index].config.getString('id');
+    scenario.removeChildAt(index);
+    if (loaded.has(id)) continue;
+    loaded.add(id);
+    const resource = resources.get(id);
+    if (resource) copyNonScenario(resource, index);
+    else console.warn(`Warning: [load_resource] id=${id}: no such [resource]`);
+  }
+  if (loaded.size) scenario.setAttribute('loaded_resources', [...loaded].join(','));
+  campaignMainCfg.children('lua').forEach((lua, i) => {
+    const copy = lua.clone();
+    copy.setAttribute('game_config', true);
+    scenario.addChildAt('lua', copy, i);
+  });
+}
+
 // A real, if rare, shape: a map-less "epilogue" scenario that's pure
 // [story] with no [side]/gameplay at all (e.g. Two_Brothers' own
 // 05_Epilogue.cfg -- unlike Dead_Water's 13_Epilogue, which reuses a real
@@ -599,6 +647,45 @@ const terrainTypeConfigsJson = terrainCfg.children('terrain_type').map((cfg) => 
 const weaponSpecialConfigsJson = Object.fromEntries([...weaponSpecialRegistry].map(([id, entry]) => [id, { tag: entry.tag, config: entry.config.toJSON() }]));
 const abilityConfigsJson = Object.fromEntries([...abilityRegistry].map(([id, entry]) => [id, { tag: entry.tag, config: entry.config.toJSON() }]));
 
+// Phase 28c: `[replace_map] map_file=` is read when the tag runs (`WML_HANDLER_FUNCTION(replace_map)`); the
+// browser has no map files, so the file's contents go in as `map_data=` now, resolved like `map_file=` above.
+(function inlineReplaceMaps(cfg) {
+  for (const { tag, config } of cfg.allChildren()) {
+    if (tag === 'replace_map' && config.hasAttribute('map_file') && !config.hasAttribute('map_data')) {
+      const file = config.getString('map_file');
+      const candidates = [path.join(dataRoot, file), path.join(campaignDir, 'maps', file)];
+      const found = candidates.find((p) => fs.existsSync(p));
+      if (found) config.setAttribute('map_data', fs.readFileSync(found, 'utf8'));
+      else console.warn(`Warning: [replace_map] map_file=${file} not found`);
+    }
+    inlineReplaceMaps(config);
+  }
+})(scenario);
+
+// Phase 28c: the campaign's Lua sources, and the WML files that Lua reads with `wml.load "path"` (found by
+// scanning the sources for literal paths), preprocessed with this build's defines -- the browser has no data
+// directory and no preprocessor.
+let luaSources;
+if (isRealCampaign) {
+  const modules = {};
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.name.endsWith('.lua')) modules[path.relative(dataRoot, p).split(path.sep).join('/')] = fs.readFileSync(p, 'utf8');
+    }
+  };
+  walk(campaignDir);
+  const wml = {};
+  for (const source of Object.values(modules)) {
+    for (const m of source.matchAll(/wml\.load\s*\(?\s*["']([^"']+)["']/g)) {
+      const rel = m[1].replace(/^~?\/?/, '');
+      if (!wml[rel]) wml[rel] = parseWmlFile(path.join(dataRoot, rel), { dataRoot, defines: new Map(defines) }).toJSON();
+    }
+  }
+  if (Object.keys(modules).length > 0) luaSources = { modules, wml };
+}
+
 const snapshot = {
   generatedBy: 'apps/web/scripts/build-scenario-snapshot.mjs (see file header)',
   ...(difficulty ? { difficulty } : {}),
@@ -624,6 +711,7 @@ const snapshot = {
   weaponSpecialConfigs: weaponSpecialConfigsJson,
   abilityConfigs: abilityConfigsJson,
   scenarioConfigJson: scenario.toJSON(),
+  ...(luaSources ? { luaSources } : {}),
 };
 
 /**
