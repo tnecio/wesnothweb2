@@ -116,6 +116,24 @@ describe('preprocess', () => {
     expect(parseConfig(r.text).hasChild('good')).toBe(true);
   });
 
+  it("treats a # comment inside a macro argument as a comment, not expanding macros in it (Eastern Invasion's case)", () => {
+    // Expanded, the multi-line macro would spill out of the comment: core's `{GUARDIAN}` is a whole `[+unit]`
+    // tag, and comes from another textdomain than the campaign's.
+    const src =
+      '#textdomain wesnoth\n#define TAG\n[bad]\n[/bad]\n#enddef\n#textdomain wesnoth-ei\n' +
+      '#define WRAP BODY\n[a]\n{BODY}\n[/a]\n#enddef\n{WRAP (\n    #including {TAG} units!\n    x=1\n)}\n';
+    const r = preprocess(src, { dir: '/x', host: memHost({}) });
+    const a = parseConfig(r.text).child('a')!;
+    expect([a.getString('x'), a.hasChild('bad')]).toEqual(['1', false]);
+  });
+
+  it('ends a macro body at an #enddef followed by more letters (upstream typo `#enddefs` in utils/side_ai.cfg)', () => {
+    const src = '#define M\nx=1\n#enddefs\n#define N\ny=2\n#enddef\n[a]\n{M}\n{N}\n[/a]\n';
+    const r = preprocess(src, { dir: '/x', host: memHost({}) });
+    const a = parseConfig(r.text).child('a')!;
+    expect([a.getString('x'), a.getString('y')]).toEqual(['1', '2']);
+  });
+
   it('throws on #error', () => {
     expect(() => preprocess('#error "boom"\n', { dir: '/x', host: memHost({}) })).toThrow(/boom/);
   });

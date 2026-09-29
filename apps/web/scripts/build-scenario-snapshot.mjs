@@ -227,7 +227,7 @@ function defaultDifficulty() {
 const difficulty = isRealCampaign ? (process.argv[3] || defaultDifficulty()) : null;
 const outArg = process.argv[4];
 
-const { parseWmlFile, preloadDefines, preloadDefinesFromDir } = await import(
+const { parseWmlFile, preloadDefines, preloadDefinesFromDir, makeNodeHost } = await import(
   path.join(repoRoot, 'packages/engine/src/wml/index.ts')
 );
 const { TerrainTypeData, writeTerrainCode } = await import(path.join(repoRoot, 'packages/engine/src/model/Terrain.ts'));
@@ -257,8 +257,24 @@ function loadDefines() {
     flag(difficulty);
   }
   preloadDefinesFromDir(path.join(dataRoot, 'core'), defines, { dataRoot });
+  // Phase 28c: the theme macros too (`{themes/}` in `data/_main.cfg`) -- Heir to the Throne's scenarios use
+  // `CUTSCENE_THEME_BACKGROUND` from `themes/_initial.cfg`.
+  preloadDefinesFromDir(path.join(dataRoot, 'themes'), defines, { dataRoot });
   if (isRealCampaign) {
-    preloadDefines(path.join(campaignDir, '_main.cfg'), defines, { dataRoot });
+    // Upstream preprocesses the whole campaign in one pass, so a scenario sees the macros as they stand
+    // when its own file is reached: a later file may `#undef` or redefine one (Heir to the Throne's last
+    // scenario undefines `HTTT_BIGMAP`; Secrets of the Ancients' chapters swap their `JOURNEY_STAGE*`).
+    // The table is copied at that point, as the campaign's preload reads the scenario's file.
+    const host = makeNodeHost();
+    const target = path.resolve(scenarioFile);
+    let atScenario;
+    const readFile = host.readFile;
+    host.readFile = (p) => {
+      if (!atScenario && path.resolve(p) === target) atScenario = new Map(defines);
+      return readFile(p);
+    };
+    preloadDefines(path.join(campaignDir, '_main.cfg'), defines, { dataRoot, host });
+    if (atScenario) return atScenario;
   }
   return defines;
 }

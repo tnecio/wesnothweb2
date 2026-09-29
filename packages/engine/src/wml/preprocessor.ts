@@ -115,7 +115,7 @@ export interface PreprocessorHost {
   dirname(p: string): string;
 }
 
-function makeNodeHost(): PreprocessorHost {
+export function makeNodeHost(): PreprocessorHost {
   return {
     readFile: (p) => fs.readFileSync(p, 'utf8'),
     readDir: (p) => fs.readdirSync(p),
@@ -209,12 +209,17 @@ function isWordBoundary(src: string, pos: number): boolean {
   return !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9') && c !== '_';
 }
 
-/** Finds the next `#keyword` (one of `words`) at or after `from`, requiring a word boundary after it. */
-function findNextDirective(src: string, from: number, words: string[]): { index: number; word: string } | undefined {
+/**
+ * Finds the next `#keyword` (one of `words`) at or after `from`, requiring a word boundary after it --
+ * except for the words in `prefixOnly`, which match as a prefix, as upstream's define-body scanner compares
+ * only the characters after `#` (so `#enddefs`, a typo in Of Pearls and Pirates and The Hammer of
+ * Thursagan, ends a definition there too).
+ */
+function findNextDirective(src: string, from: number, words: string[], prefixOnly: readonly string[] = []): { index: number; word: string } | undefined {
   let i = src.indexOf('#', from);
   while (i !== -1) {
     for (const w of words) {
-      if (src.startsWith(w, i + 1) && isWordBoundary(src, i + 1 + w.length)) {
+      if (src.startsWith(w, i + 1) && (prefixOnly.includes(w) || isWordBoundary(src, i + 1 + w.length))) {
         return { index: i, word: w };
       }
     }
@@ -258,13 +263,17 @@ function readDefineBody(
   let pos = startPos;
 
   for (;;) {
-    const found = findNextDirective(src, pos, ['enddef', 'define', 'deprecated', 'arg']);
+    const found = findNextDirective(src, pos, ['enddef', 'define', 'deprecated', 'arg'], ['enddef']);
     if (!found) fail(src, startPos, 'Unterminated preprocessor definition (#enddef not found)');
 
     body += src.slice(pos, found.index);
 
     if (found.word === 'enddef') {
       pos = found.index + 1 + 'enddef'.length;
+      // `#enddefs` (the typo above): upstream leaves the `s` in its output; here the rest of the word is
+      // dropped, since a stray word at the top level fails to parse. Whether upstream's parser accepts it
+      // is unverified (docs/CAMPAIGN_INVENTORY.md).
+      while (pos < src.length && /\w/.test(src.charAt(pos))) pos++;
       return { body, optionalParams, pos };
     }
 
@@ -395,6 +404,16 @@ function readParenGroup(src: string, pos: number, ctx: Ctx, active: boolean): { 
     }
     if (c === '{') {
       const r = readBraceExpr(src, pos + 1, ctx, active);
+      out += r.text;
+      pos = r.pos;
+      continue;
+    }
+    if (c === '#') {
+      // A comment (or directive) inside a macro argument ends at the end of its line, as anywhere else:
+      // upstream's preprocessor reads the argument's characters through the same directive handling, so a
+      // `{MACRO}` written in the comment is not expanded (Eastern Invasion: `# ... {GUARDIAN} units!`).
+      const r = processDirective(src, pos, ctx, active, false);
+      if (r.stoppedBy) fail(src, pos, 'Unexpected #else/#endif inside macro argument');
       out += r.text;
       pos = r.pos;
       continue;

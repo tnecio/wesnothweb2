@@ -1,0 +1,2335 @@
+{
+ "generated": "2026-09-29",
+ "bridgedLuaApi": [
+  "gui.show_dialog",
+  "stringx.trim",
+  "wesnoth.__gettext",
+  "wesnoth.__gui_close",
+  "wesnoth.__gui_get",
+  "wesnoth.__gui_new",
+  "wesnoth.__gui_run",
+  "wesnoth.__gui_set",
+  "wesnoth.__module_source",
+  "wesnoth.__native_action",
+  "wesnoth.__register_action",
+  "wesnoth.deprecate_api",
+  "wesnoth.dofile",
+  "wesnoth.game_events.fire",
+  "wesnoth.interface.is_skipping_messages",
+  "wesnoth.interface.skip_messages",
+  "wesnoth.require",
+  "wesnoth.sync.evaluate_single",
+  "wesnoth.textdomain",
+  "wesnoth.units.find",
+  "wesnoth.units.find_on_map",
+  "wesnoth.units.find_on_recall",
+  "wesnoth.units.get",
+  "wesnoth.wml_actions",
+  "wesnoth.wml_actions.foo",
+  "wml.child_count",
+  "wml.child_range",
+  "wml.error",
+  "wml.get_child",
+  "wml.literal",
+  "wml.load",
+  "wml.parsed",
+  "wml.shallow_literal",
+  "wml.shallow_parsed",
+  "wml.tag",
+  "wml.tovconfig",
+  "wml.valid",
+  "wml.variables"
+ ],
+ "campaigns": {
+  "Descent_Into_Darkness": {
+   "scenarios": 13,
+   "built": 13,
+   "buildFailures": [],
+   "buildWarnings": [],
+   "luaFiles": [],
+   "luaLines": 0,
+   "requires": {},
+   "microAi": {},
+   "customAi": [],
+   "dialogs": {
+    "showDialogCalls": 0,
+    "widgets": {},
+    "files": []
+   },
+   "achievements": 7,
+   "helpTopics": [],
+   "terrainGraphics": 0,
+   "terrainTypes": 0,
+   "unitTypes": 16,
+   "luaApiUnbridged": {
+    "wesnoth.map.find": [
+     "04_Spring_of_Reprisal [lua]"
+    ],
+    "mathx.random": [
+     "04_Spring_of_Reprisal [lua]"
+    ],
+    "wesnoth.current.map": [
+     "04_Spring_of_Reprisal [lua]"
+    ],
+    "wesnoth.sides": [
+     "06_Return_to_Parthyn [lua]"
+    ],
+    "wesnoth.units.to_map": [
+     "06_Return_to_Parthyn [lua]"
+    ]
+   },
+   "luaApiBridgedUsed": [
+    "wesnoth.dofile",
+    "wml.variables",
+    "wml.variables.fallback_orc_leader",
+    "wml.variables.orc_leader_store"
+   ],
+   "audit": {
+    "missing": {
+     "find_path": 1,
+     "story": 2
+    },
+    "campaignLua": {},
+    "extension": {},
+    "noop": {
+     "floating_text": 8,
+     "redraw": 10,
+     "unit_overlay": 3
+    },
+    "conditions": {}
+   }
+  },
+  "Dusk_of_Dawn": {
+   "scenarios": 6,
+   "built": 6,
+   "buildFailures": [],
+   "buildWarnings": [],
+   "luaFiles": [],
+   "luaLines": 0,
+   "requires": {},
+   "microAi": {},
+   "customAi": [],
+   "dialogs": {
+    "showDialogCalls": 0,
+    "widgets": {},
+    "files": []
+   },
+   "achievements": 7,
+   "helpTopics": [],
+   "terrainGraphics": 0,
+   "terrainTypes": 0,
+   "unitTypes": 6,
+   "luaApiUnbridged": {},
+   "luaApiBridgedUsed": [],
+   "audit": {
+    "missing": {
+     "petrify": 1,
+     "unpetrify": 1
+    },
+    "campaignLua": {},
+    "extension": {},
+    "noop": {
+     "redraw": 6,
+     "unit_overlay": 1
+    },
+    "conditions": {}
+   }
+  },
+  "Eastern_Invasion": {
+   "scenarios": 24,
+   "built": 24,
+   "buildFailures": [],
+   "buildWarnings": [],
+   "luaFiles": [
+    "campaigns/Eastern_Invasion/ai/ca_ogres_flee.lua",
+    "campaigns/Eastern_Invasion/lua/items.lua"
+   ],
+   "luaLines": 337,
+   "requires": {
+    "ai/lua/ai_helper.lua": [
+     "campaigns/Eastern_Invasion/ai/ca_ogres_flee.lua"
+    ],
+    "ai/lua/battle_calcs.lua": [
+     "campaigns/Eastern_Invasion/ai/ca_ogres_flee.lua"
+    ]
+   },
+   "microAi": {
+    "coward": [
+     "01_Eastern_Invasion",
+     "10_Dark_Sanctuary"
+    ],
+    "zone_guardian": [
+     "04a_An_Elven_Interlude",
+     "04b_Ill_Humors",
+     "05_Northern_Outpost",
+     "07b_Ogre_Crossing",
+     "09_Castle_in_the_Ice",
+     "10_Dark_Sanctuary",
+     "11_Captured",
+     "13_Spoils_of_War",
+     "14_The_Drowned_Plains",
+     "17b_All-In"
+    ],
+    "hang_out": [
+     "06b_Soradoc"
+    ],
+    "goto": [
+     "07a_Capturing_the_Ogres",
+     "16_Eleventh_Hour"
+    ],
+    "forest_animals": [
+     "14_The_Drowned_Plains"
+    ]
+   },
+   "customAi": [
+    "01_Eastern_Invasion: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "01_Eastern_Invasion: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "03_An_Unexpected_Appearance: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "03_An_Unexpected_Appearance: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "04a_An_Elven_Interlude: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "04a_An_Elven_Interlude: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "04b_Ill_Humors: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "04b_Ill_Humors: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "04c_Mal-Ravanals_Capital: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "04c_Mal-Ravanals_Capital: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "05_Northern_Outpost: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "05_Northern_Outpost: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "06a_Undead_Crossing: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "06a_Undead_Crossing: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "06b_Soradoc: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "06b_Soradoc: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "07a_Capturing_the_Ogres: [candidate_action] name=ogres_flee location=campaigns/Eastern_Invasion/ai/ca_ogres_flee.lua",
+    "08_Xenophobia: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "08_Xenophobia: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "12_Evacuation: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "12_Evacuation: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "13_Spoils_of_War: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "13_Spoils_of_War: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "14_The_Drowned_Plains: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "14_The_Drowned_Plains: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "15_Return_to_Wesnoth: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "15_Return_to_Wesnoth: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "16_Eleventh_Hour: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "16_Eleventh_Hour: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "17a_The_Duel: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "17a_The_Duel: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "17b_All-In: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "17b_All-In: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "99_Empire: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "99_Empire: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua"
+   ],
+   "dialogs": {
+    "showDialogCalls": 2,
+    "widgets": {},
+    "files": []
+   },
+   "achievements": 2,
+   "helpTopics": [],
+   "terrainGraphics": 0,
+   "terrainTypes": 0,
+   "unitTypes": 28,
+   "luaApiUnbridged": {
+    "wesnoth.map": [
+     "campaigns/Eastern_Invasion/ai/ca_ogres_flee.lua"
+    ],
+    "wesnoth.current.side": [
+     "campaigns/Eastern_Invasion/ai/ca_ogres_flee.lua"
+    ],
+    "wesnoth.paths.find_reach": [
+     "campaigns/Eastern_Invasion/ai/ca_ogres_flee.lua"
+    ],
+    "wesnoth.current.map": [
+     "campaigns/Eastern_Invasion/ai/ca_ogres_flee.lua"
+    ],
+    "ai.stopunit_moves": [
+     "campaigns/Eastern_Invasion/ai/ca_ogres_flee.lua"
+    ],
+    "wesnoth.current.turn": [
+     "01_Eastern_Invasion [lua]",
+     "03_An_Unexpected_Appearance [lua]",
+     "04a_An_Elven_Interlude [lua]",
+     "06b_Soradoc [lua]",
+     "08_Xenophobia [lua]",
+     "16_Eleventh_Hour [lua]",
+     "17a_The_Duel [lua]",
+     "17b_All-In [lua]",
+     "99_Empire [lua]"
+    ],
+    "stringx.vformat (as a method)": [
+     "04b_Ill_Humors [lua]"
+    ],
+    "wesnoth.map.find": [
+     "05_Northern_Outpost [lua]"
+    ]
+   },
+   "luaApiBridgedUsed": [
+    "gui.show_dialog",
+    "wesnoth.dofile",
+    "wesnoth.game_events.fire",
+    "wesnoth.require",
+    "wesnoth.sync.evaluate_single",
+    "wesnoth.textdomain",
+    "wesnoth.units.find_on_map",
+    "wesnoth.units.get",
+    "wesnoth.wml_actions",
+    "wml.error",
+    "wml.tag",
+    "wml.tag.enemy_of",
+    "wml.tag.filter_side",
+    "wml.variables",
+    "wml.variables.gold_cost",
+    "wml.variables.herbs_needed",
+    "wml.variables.herbs_to_collect_obj"
+   ],
+   "audit": {
+    "missing": {
+     "find_path": 1,
+     "set_extra_recruit": 24,
+     "do_command": 4
+    },
+    "campaignLua": {
+     "item_dialog": 24,
+     "item_dialog_musttake": 1
+    },
+    "extension": {},
+    "noop": {
+     "floating_text": 9,
+     "redraw": 17
+    },
+    "conditions": {}
+   }
+  },
+  "Heir_To_The_Throne": {
+   "scenarios": 35,
+   "built": 35,
+   "buildFailures": [],
+   "buildWarnings": [],
+   "luaFiles": [
+    "campaigns/Heir_To_The_Throne/lua/companion_message.lua",
+    "campaigns/Heir_To_The_Throne/lua/multihex_image.lua",
+    "campaigns/Heir_To_The_Throne/lua/popups.lua"
+   ],
+   "luaLines": 668,
+   "requires": {},
+   "microAi": {
+    "zone_guardian": [
+     "01_The_Elves_Besieged",
+     "02_Flight_of_the_Elves",
+     "03_Blackwater_Port",
+     "04_The_Bay_of_Pearls",
+     "06_The_Isle_of_Alduin",
+     "07_Muff_Malals_Peninsula",
+     "08a_Isle_of_the_Damned_part1",
+     "08b_Isle_of_the_Damned_part2",
+     "10_Elensefar_Before",
+     "11_Elensefar_After",
+     "13_Fort_Tahn",
+     "14_Gryphon_Mountain",
+     "15a_Valley_of_Death_part1",
+     "17_Crossroads",
+     "18_The_Highwaymen",
+     "20_The_Ford_of_Abez",
+     "22_Glamdrol",
+     "23_Northern_Winter",
+     "28_The_Lost_General",
+     "29_Digging_for_Dwarves",
+     "30_The_Sceptre_of_Fire",
+     "31_Plunging_into_Darkness",
+     "32_The_Swamp_of_Dread",
+     "41_Snow_Plains",
+     "42_A_Crisis_of_Leadership",
+     "43_Cliffs_of_Thoria",
+     "44_Underground_Channels",
+     "47_Test_of_the_Clans",
+     "48_Dan_Tonk",
+     "50_The_Battle_for_Wesnoth"
+    ],
+    "messenger_escort": [
+     "02_Flight_of_the_Elves",
+     "18_The_Highwaymen",
+     "50_The_Battle_for_Wesnoth"
+    ],
+    "simple_attack": [
+     "07_Muff_Malals_Peninsula",
+     "24_An_Old_Friend",
+     "48_Dan_Tonk"
+    ],
+    "goto": [
+     "10_Elensefar_Before",
+     "24_An_Old_Friend"
+    ],
+    "coward": [
+     "11_Elensefar_After",
+     "50_The_Battle_for_Wesnoth"
+    ],
+    "wolves": [
+     "17_Crossroads"
+    ]
+   },
+   "customAi": [
+    "01_The_Elves_Besieged: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "01_The_Elves_Besieged: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "02_Flight_of_the_Elves: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "02_Flight_of_the_Elves: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "03_Blackwater_Port: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "03_Blackwater_Port: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "04_The_Bay_of_Pearls: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "04_The_Bay_of_Pearls: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "06_The_Isle_of_Alduin: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "06_The_Isle_of_Alduin: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "07_Muff_Malals_Peninsula: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "07_Muff_Malals_Peninsula: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "08a_Isle_of_the_Damned_part1: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "08a_Isle_of_the_Damned_part1: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "08b_Isle_of_the_Damned_part2: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "08b_Isle_of_the_Damned_part2: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "10_Elensefar_Before: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "10_Elensefar_Before: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "11_Elensefar_After: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "11_Elensefar_After: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "13_Fort_Tahn: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "13_Fort_Tahn: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "14_Gryphon_Mountain: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "14_Gryphon_Mountain: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "15a_Valley_of_Death_part1: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "15a_Valley_of_Death_part1: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "15b_Valley_of_Death_part2: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "15b_Valley_of_Death_part2: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "17_Crossroads: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "17_Crossroads: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "20_The_Ford_of_Abez: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "20_The_Ford_of_Abez: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "22_Glamdrol: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "22_Glamdrol: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "24_An_Old_Friend: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "24_An_Old_Friend: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "26_The_Dwarven_Doors: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "26_The_Dwarven_Doors: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "28_The_Lost_General: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "28_The_Lost_General: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "29_Digging_for_Dwarves: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "29_Digging_for_Dwarves: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "30_The_Sceptre_of_Fire: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "30_The_Sceptre_of_Fire: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "31_Plunging_into_Darkness: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "31_Plunging_into_Darkness: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "32_The_Swamp_of_Dread: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "32_The_Swamp_of_Dread: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "41_Snow_Plains: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "41_Snow_Plains: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "42_A_Crisis_of_Leadership: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "42_A_Crisis_of_Leadership: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "43_Cliffs_of_Thoria: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "43_Cliffs_of_Thoria: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "44_Underground_Channels: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "44_Underground_Channels: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "47_Test_of_the_Clans: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "47_Test_of_the_Clans: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "48_Dan_Tonk: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "48_Dan_Tonk: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "50_The_Battle_for_Wesnoth: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "50_The_Battle_for_Wesnoth: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua"
+   ],
+   "dialogs": {
+    "showDialogCalls": 4,
+    "widgets": {},
+    "files": []
+   },
+   "achievements": 1,
+   "helpTopics": [],
+   "terrainGraphics": 8,
+   "terrainTypes": 3,
+   "unitTypes": 36,
+   "luaApiUnbridged": {
+    "wml.array_variables": [
+     "campaigns/Heir_To_The_Throne/lua/companion_message.lua"
+    ],
+    "wesnoth.map.find": [
+     "17_Crossroads [lua]",
+     "campaigns/Heir_To_The_Throne/lua/multihex_image.lua"
+    ],
+    "filesystem.image_size": [
+     "campaigns/Heir_To_The_Throne/lua/multihex_image.lua"
+    ],
+    "wesnoth.map.get_adjacent_hexes": [
+     "campaigns/Heir_To_The_Throne/lua/multihex_image.lua"
+    ],
+    "wesnoth.org": [
+     "campaigns/Heir_To_The_Throne/lua/popups.lua"
+    ],
+    "stringx.join": [
+     "campaigns/Heir_To_The_Throne/lua/popups.lua"
+    ],
+    "filesystem.have_asset": [
+     "00_The_Great_Continent [lua]",
+     "02_Flight_of_the_Elves [lua]",
+     "03_Blackwater_Port [lua]",
+     "04_The_Bay_of_Pearls [lua]",
+     "06_The_Isle_of_Alduin [lua]",
+     "07_Muff_Malals_Peninsula [lua]",
+     "08a_Isle_of_the_Damned_part1 [lua]",
+     "10_Elensefar_Before [lua]",
+     "11_Elensefar_After [lua]",
+     "13_Fort_Tahn [lua]",
+     "14_Gryphon_Mountain [lua]",
+     "15a_Valley_of_Death_part1 [lua]",
+     "15b_Valley_of_Death_part2 [lua]",
+     "17_Crossroads [lua]",
+     "18_The_Highwaymen [lua]",
+     "20_The_Ford_of_Abez [lua]",
+     "22_Glamdrol [lua]",
+     "23_Northern_Winter [lua]",
+     "24_An_Old_Friend [lua]",
+     "26_The_Dwarven_Doors [lua]",
+     "41_Snow_Plains [lua]",
+     "42_A_Crisis_of_Leadership [lua]",
+     "43_Cliffs_of_Thoria [lua]",
+     "44_Underground_Channels [lua]",
+     "47_Test_of_the_Clans [lua]",
+     "48_Dan_Tonk [lua]",
+     "50_The_Battle_for_Wesnoth [lua]",
+     "50x_Overlook [lua]"
+    ],
+    "filesystem.asset_type.MAP": [
+     "00_The_Great_Continent [lua]",
+     "02_Flight_of_the_Elves [lua]",
+     "03_Blackwater_Port [lua]",
+     "04_The_Bay_of_Pearls [lua]",
+     "06_The_Isle_of_Alduin [lua]",
+     "07_Muff_Malals_Peninsula [lua]",
+     "08a_Isle_of_the_Damned_part1 [lua]",
+     "10_Elensefar_Before [lua]",
+     "11_Elensefar_After [lua]",
+     "13_Fort_Tahn [lua]",
+     "14_Gryphon_Mountain [lua]",
+     "15a_Valley_of_Death_part1 [lua]",
+     "15b_Valley_of_Death_part2 [lua]",
+     "17_Crossroads [lua]",
+     "18_The_Highwaymen [lua]",
+     "20_The_Ford_of_Abez [lua]",
+     "22_Glamdrol [lua]",
+     "23_Northern_Winter [lua]",
+     "24_An_Old_Friend [lua]",
+     "26_The_Dwarven_Doors [lua]",
+     "41_Snow_Plains [lua]",
+     "42_A_Crisis_of_Leadership [lua]",
+     "43_Cliffs_of_Thoria [lua]",
+     "44_Underground_Channels [lua]",
+     "47_Test_of_the_Clans [lua]",
+     "48_Dan_Tonk [lua]",
+     "50_The_Battle_for_Wesnoth [lua]",
+     "50x_Overlook [lua]"
+    ],
+    "wesnoth.current.turn": [
+     "00_The_Great_Continent [lua]",
+     "01_The_Elves_Besieged [lua]",
+     "02_Flight_of_the_Elves [lua]",
+     "03_Blackwater_Port [lua]",
+     "04_The_Bay_of_Pearls [lua]",
+     "06_The_Isle_of_Alduin [lua]",
+     "07_Muff_Malals_Peninsula [lua]",
+     "08a_Isle_of_the_Damned_part1 [lua]",
+     "08b_Isle_of_the_Damned_part2 [lua]",
+     "10_Elensefar_Before [lua]",
+     "11_Elensefar_After [lua]",
+     "13_Fort_Tahn [lua]",
+     "14_Gryphon_Mountain [lua]",
+     "15a_Valley_of_Death_part1 [lua]",
+     "15b_Valley_of_Death_part2 [lua]",
+     "17_Crossroads [lua]",
+     "18_The_Highwaymen [lua]",
+     "20_The_Ford_of_Abez [lua]",
+     "22_Glamdrol [lua]",
+     "23_Northern_Winter [lua]",
+     "24_An_Old_Friend [lua]",
+     "26_The_Dwarven_Doors [lua]",
+     "28_The_Lost_General [lua]",
+     "29_Digging_for_Dwarves [lua]",
+     "30_The_Sceptre_of_Fire [lua]",
+     "31_Plunging_into_Darkness [lua]",
+     "32_The_Swamp_of_Dread [lua]",
+     "41_Snow_Plains [lua]",
+     "42_A_Crisis_of_Leadership [lua]",
+     "43_Cliffs_of_Thoria [lua]",
+     "44_Underground_Channels [lua]",
+     "47_Test_of_the_Clans [lua]",
+     "48_Dan_Tonk [lua]",
+     "50_The_Battle_for_Wesnoth [lua]",
+     "50x_Overlook [lua]"
+    ],
+    "wesnoth.units.create_animator": [
+     "00_The_Great_Continent [lua]",
+     "01_The_Elves_Besieged [lua]",
+     "02_Flight_of_the_Elves [lua]",
+     "03_Blackwater_Port [lua]",
+     "04_The_Bay_of_Pearls [lua]",
+     "06_The_Isle_of_Alduin [lua]",
+     "07_Muff_Malals_Peninsula [lua]",
+     "08a_Isle_of_the_Damned_part1 [lua]",
+     "08b_Isle_of_the_Damned_part2 [lua]",
+     "10_Elensefar_Before [lua]",
+     "11_Elensefar_After [lua]",
+     "13_Fort_Tahn [lua]",
+     "14_Gryphon_Mountain [lua]",
+     "15a_Valley_of_Death_part1 [lua]",
+     "15b_Valley_of_Death_part2 [lua]",
+     "17_Crossroads [lua]",
+     "18_The_Highwaymen [lua]",
+     "20_The_Ford_of_Abez [lua]",
+     "22_Glamdrol [lua]",
+     "23_Northern_Winter [lua]",
+     "24_An_Old_Friend [lua]",
+     "26_The_Dwarven_Doors [lua]",
+     "28_The_Lost_General [lua]",
+     "29_Digging_for_Dwarves [lua]",
+     "30_The_Sceptre_of_Fire [lua]",
+     "31_Plunging_into_Darkness [lua]",
+     "32_The_Swamp_of_Dread [lua]",
+     "41_Snow_Plains [lua]",
+     "42_A_Crisis_of_Leadership [lua]",
+     "43_Cliffs_of_Thoria [lua]",
+     "44_Underground_Channels [lua]",
+     "47_Test_of_the_Clans [lua]",
+     "48_Dan_Tonk [lua]",
+     "50_The_Battle_for_Wesnoth [lua]",
+     "50x_Overlook [lua]"
+    ],
+    "wesnoth.map.get_relative_dir": [
+     "00_The_Great_Continent [lua]",
+     "01_The_Elves_Besieged [lua]",
+     "02_Flight_of_the_Elves [lua]",
+     "03_Blackwater_Port [lua]",
+     "04_The_Bay_of_Pearls [lua]",
+     "06_The_Isle_of_Alduin [lua]",
+     "07_Muff_Malals_Peninsula [lua]",
+     "08a_Isle_of_the_Damned_part1 [lua]",
+     "08b_Isle_of_the_Damned_part2 [lua]",
+     "10_Elensefar_Before [lua]",
+     "11_Elensefar_After [lua]",
+     "13_Fort_Tahn [lua]",
+     "14_Gryphon_Mountain [lua]",
+     "15a_Valley_of_Death_part1 [lua]",
+     "15b_Valley_of_Death_part2 [lua]",
+     "17_Crossroads [lua]",
+     "18_The_Highwaymen [lua]",
+     "20_The_Ford_of_Abez [lua]",
+     "22_Glamdrol [lua]",
+     "23_Northern_Winter [lua]",
+     "24_An_Old_Friend [lua]",
+     "26_The_Dwarven_Doors [lua]",
+     "28_The_Lost_General [lua]",
+     "29_Digging_for_Dwarves [lua]",
+     "30_The_Sceptre_of_Fire [lua]",
+     "31_Plunging_into_Darkness [lua]",
+     "32_The_Swamp_of_Dread [lua]",
+     "41_Snow_Plains [lua]",
+     "42_A_Crisis_of_Leadership [lua]",
+     "43_Cliffs_of_Thoria [lua]",
+     "44_Underground_Channels [lua]",
+     "47_Test_of_the_Clans [lua]",
+     "48_Dan_Tonk [lua]",
+     "50_The_Battle_for_Wesnoth [lua]",
+     "50x_Overlook [lua]"
+    ],
+    "wesnoth.units.erase": [
+     "00_The_Great_Continent [lua]",
+     "01_The_Elves_Besieged [lua]",
+     "02_Flight_of_the_Elves [lua]",
+     "03_Blackwater_Port [lua]",
+     "04_The_Bay_of_Pearls [lua]",
+     "06_The_Isle_of_Alduin [lua]",
+     "07_Muff_Malals_Peninsula [lua]",
+     "08a_Isle_of_the_Damned_part1 [lua]",
+     "08b_Isle_of_the_Damned_part2 [lua]",
+     "10_Elensefar_Before [lua]",
+     "11_Elensefar_After [lua]",
+     "13_Fort_Tahn [lua]",
+     "14_Gryphon_Mountain [lua]",
+     "15a_Valley_of_Death_part1 [lua]",
+     "15b_Valley_of_Death_part2 [lua]",
+     "17_Crossroads [lua]",
+     "18_The_Highwaymen [lua]",
+     "20_The_Ford_of_Abez [lua]",
+     "22_Glamdrol [lua]",
+     "23_Northern_Winter [lua]",
+     "24_An_Old_Friend [lua]",
+     "26_The_Dwarven_Doors [lua]",
+     "28_The_Lost_General [lua]",
+     "29_Digging_for_Dwarves [lua]",
+     "30_The_Sceptre_of_Fire [lua]",
+     "31_Plunging_into_Darkness [lua]",
+     "32_The_Swamp_of_Dread [lua]",
+     "41_Snow_Plains [lua]",
+     "42_A_Crisis_of_Leadership [lua]",
+     "43_Cliffs_of_Thoria [lua]",
+     "44_Underground_Channels [lua]",
+     "47_Test_of_the_Clans [lua]",
+     "48_Dan_Tonk [lua]",
+     "50_The_Battle_for_Wesnoth [lua]",
+     "50x_Overlook [lua]"
+    ],
+    "stringx.vformat (as a method)": [
+     "00_The_Great_Continent [lua]",
+     "01_The_Elves_Besieged [lua]",
+     "02_Flight_of_the_Elves [lua]",
+     "03_Blackwater_Port [lua]",
+     "04_The_Bay_of_Pearls [lua]",
+     "06_The_Isle_of_Alduin [lua]",
+     "07_Muff_Malals_Peninsula [lua]",
+     "08a_Isle_of_the_Damned_part1 [lua]",
+     "08b_Isle_of_the_Damned_part2 [lua]",
+     "10_Elensefar_Before [lua]",
+     "11_Elensefar_After [lua]",
+     "13_Fort_Tahn [lua]",
+     "14_Gryphon_Mountain [lua]",
+     "15a_Valley_of_Death_part1 [lua]",
+     "15b_Valley_of_Death_part2 [lua]",
+     "17_Crossroads [lua]",
+     "18_The_Highwaymen [lua]",
+     "20_The_Ford_of_Abez [lua]",
+     "22_Glamdrol [lua]",
+     "23_Northern_Winter [lua]",
+     "24_An_Old_Friend [lua]",
+     "26_The_Dwarven_Doors [lua]",
+     "28_The_Lost_General [lua]",
+     "29_Digging_for_Dwarves [lua]",
+     "30_The_Sceptre_of_Fire [lua]",
+     "31_Plunging_into_Darkness [lua]",
+     "32_The_Swamp_of_Dread [lua]",
+     "41_Snow_Plains [lua]",
+     "42_A_Crisis_of_Leadership [lua]",
+     "43_Cliffs_of_Thoria [lua]",
+     "44_Underground_Channels [lua]",
+     "47_Test_of_the_Clans [lua]",
+     "48_Dan_Tonk [lua]",
+     "50_The_Battle_for_Wesnoth [lua]",
+     "50x_Overlook [lua]"
+    ],
+    "wesnoth.interface.select_unit": [
+     "08a_Isle_of_the_Damned_part1 [lua]"
+    ],
+    "mathx.random_choice": [
+     "17_Crossroads [lua]"
+    ],
+    "wesnoth.units.to_map": [
+     "17_Crossroads [lua]"
+    ]
+   },
+   "luaApiBridgedUsed": [
+    "gui.show_dialog",
+    "wesnoth.dofile",
+    "wesnoth.game_events.fire",
+    "wesnoth.interface.skip_messages",
+    "wesnoth.sync.evaluate_single",
+    "wesnoth.textdomain",
+    "wesnoth.units.find_on_map",
+    "wesnoth.wml_actions",
+    "wml.error",
+    "wml.parsed",
+    "wml.tag",
+    "wml.tag.enemy_of",
+    "wml.tag.filter",
+    "wml.tag.filter_adjacent",
+    "wml.tag.filter_side",
+    "wml.variables",
+    "wml.variables.magic_item_count",
+    "wml.variables.regen",
+    "wml.variables.regen_description",
+    "wml.variables.turn_number"
+   ],
+   "audit": {
+    "missing": {
+     "set_extra_recruit": 3,
+     "do_command": 6,
+     "end_turn": 2,
+     "store_reachable_locations": 2
+    },
+    "campaignLua": {
+     "display_overworld_tutorial": 1,
+     "display_scenario_preview": 1,
+     "multihex_image": 1,
+     "select_lintanir_boon": 1,
+     "companion_message": 17,
+     "display_lisar_tutorial": 6
+    },
+    "extension": {},
+    "noop": {
+     "floating_text": 35,
+     "redraw": 34
+    },
+    "conditions": {}
+   }
+  },
+  "Heir_To_The_Throne_Classic": {
+   "scenarios": 31,
+   "built": 31,
+   "buildFailures": [],
+   "buildWarnings": [],
+   "luaFiles": [
+    "campaigns/Heir_To_The_Throne_Classic/lua/character_selection.lua",
+    "campaigns/Heir_To_The_Throne_Classic/lua/hint_message.lua"
+   ],
+   "luaLines": 82,
+   "requires": {
+    "ai/lua/ai_helper.lua": [
+     "17_Scepter_of_Fire [lua]"
+    ]
+   },
+   "microAi": {
+    "assassin": [
+     "08_The_Princess_of_Wesnoth"
+    ]
+   },
+   "customAi": [],
+   "dialogs": {
+    "showDialogCalls": 1,
+    "widgets": {},
+    "files": [
+     "campaigns/Heir_To_The_Throne_Classic/gui/character_selection.cfg"
+    ]
+   },
+   "achievements": 1,
+   "helpTopics": [],
+   "terrainGraphics": 0,
+   "terrainTypes": 0,
+   "unitTypes": 14,
+   "luaApiUnbridged": {
+    "wesnoth.units.to_map": [
+     "campaigns/Heir_To_The_Throne_Classic/lua/character_selection.lua"
+    ],
+    "wesnoth.sides": [
+     "campaigns/Heir_To_The_Throne_Classic/lua/character_selection.lua"
+    ],
+    "wesnoth.add_known_unit": [
+     "campaigns/Heir_To_The_Throne_Classic/lua/character_selection.lua"
+    ],
+    "wesnoth.redraw": [
+     "campaigns/Heir_To_The_Throne_Classic/lua/character_selection.lua"
+    ],
+    "wesnoth.interface.add_overlay_text": [
+     "campaigns/Heir_To_The_Throne_Classic/lua/hint_message.lua"
+    ],
+    "wesnoth.persistent_tags.hint_message": [
+     "campaigns/Heir_To_The_Throne_Classic/lua/hint_message.lua"
+    ],
+    "wml.array_variables": [
+     "00_Tutorial_part_1 [lua]"
+    ],
+    "wesnoth.map.find": [
+     "13_The_Dwarven_Doors [lua]"
+    ],
+    "mathx.random": [
+     "13_The_Dwarven_Doors [lua]"
+    ],
+    "wesnoth.current.map": [
+     "13_The_Dwarven_Doors [lua]",
+     "17_Scepter_of_Fire [lua]"
+    ],
+    "wesnoth.paths.find_path": [
+     "17_Scepter_of_Fire [lua]"
+    ],
+    "stringx.vformat (as a method)": [
+     "23_Test_of_the_Clans [lua]"
+    ]
+   },
+   "luaApiBridgedUsed": [
+    "gui.show_dialog",
+    "wesnoth.require",
+    "wesnoth.sync.evaluate_single",
+    "wesnoth.textdomain",
+    "wesnoth.units.find_on_map",
+    "wesnoth.wml_actions",
+    "wml.get_child",
+    "wml.load",
+    "wml.tag",
+    "wml.variables",
+    "wml.variables.all_targets",
+    "wml.variables.snowCoverage",
+    "wml.variables.student_hp",
+    "wml.variables.student_hp_heal_amount",
+    "wml.variables.student_store",
+    "wml.variables.target_enemies",
+    "wml.variables.target_loc"
+   ],
+   "audit": {
+    "missing": {
+     "find_path": 1,
+     "store_reachable_locations": 2
+    },
+    "campaignLua": {
+     "select_character": 1,
+     "print": 2,
+     "hint_message": 2,
+     "show_countdown": 1
+    },
+    "extension": {},
+    "noop": {
+     "floating_text": 1,
+     "redraw": 11,
+     "select_unit": 1
+    },
+    "conditions": {}
+   }
+  },
+  "Legend_of_Wesmere": {
+   "scenarios": 24,
+   "built": 24,
+   "buildFailures": [],
+   "buildWarnings": [],
+   "luaFiles": [
+    "campaigns/Legend_of_Wesmere/lua/wml_tags.lua"
+   ],
+   "luaLines": 163,
+   "requires": {},
+   "microAi": {
+    "patrol": [
+     "16_The_Chief_Must_Die"
+    ]
+   },
+   "customAi": [
+    "03_Kalian_under_Attack: [engine] name=lua",
+    "03_Kalian_under_Attack: [stage] name=leader_retreat"
+   ],
+   "dialogs": {
+    "showDialogCalls": 0,
+    "widgets": {},
+    "files": []
+   },
+   "achievements": 0,
+   "helpTopics": [],
+   "terrainGraphics": 0,
+   "terrainTypes": 0,
+   "unitTypes": 0,
+   "luaApiUnbridged": {
+    "wml.array_variables": [
+     "campaigns/Legend_of_Wesmere/lua/wml_tags.lua"
+    ],
+    "wesnoth.sides": [
+     "campaigns/Legend_of_Wesmere/lua/wml_tags.lua"
+    ],
+    "wml.child_array": [
+     "09_Bounty_Hunters [lua]"
+    ],
+    "stringx.format_conjunct_list": [
+     "09_Bounty_Hunters [lua]"
+    ]
+   },
+   "luaApiBridgedUsed": [
+    "wesnoth.dofile",
+    "wesnoth.units.get",
+    "wesnoth.wml_actions",
+    "wml.tag",
+    "wml.variables"
+   ],
+   "audit": {
+    "missing": {},
+    "campaignLua": {
+     "replace_map_section": 1,
+     "shift_labels": 1,
+     "persistent_carryover_store": 1
+    },
+    "extension": {},
+    "noop": {
+     "redraw": 11,
+     "unit_overlay": 1,
+     "remove_unit_overlay": 1
+    },
+    "conditions": {
+     "proceed_to_next_scenario": 7
+    }
+   }
+  },
+  "Northern_Rebirth": {
+   "scenarios": 16,
+   "built": 16,
+   "buildFailures": [],
+   "buildWarnings": [],
+   "luaFiles": [
+    "campaigns/Northern_Rebirth/lua/respawn_utils.lua"
+   ],
+   "luaLines": 38,
+   "requires": {},
+   "microAi": {
+    "return_guardian": [
+     "02_01_Infested_Caves"
+    ]
+   },
+   "customAi": [],
+   "dialogs": {
+    "showDialogCalls": 0,
+    "widgets": {},
+    "files": []
+   },
+   "achievements": 0,
+   "helpTopics": [],
+   "terrainGraphics": 0,
+   "terrainTypes": 0,
+   "unitTypes": 0,
+   "luaApiUnbridged": {
+    "wml.eval_conditional": [
+     "campaigns/Northern_Rebirth/lua/respawn_utils.lua"
+    ],
+    "wesnoth.map.find": [
+     "campaigns/Northern_Rebirth/lua/respawn_utils.lua"
+    ]
+   },
+   "luaApiBridgedUsed": [
+    "wesnoth.require",
+    "wesnoth.units.find_on_recall",
+    "wesnoth.wml_actions",
+    "wml.error",
+    "wml.tag",
+    "wml.variables"
+   ],
+   "audit": {
+    "missing": {},
+    "campaignLua": {
+     "find_respawn_point": 9
+    },
+    "extension": {},
+    "noop": {
+     "floating_text": 1,
+     "redraw": 11,
+     "unit_overlay": 4,
+     "remove_unit_overlay": 2
+    },
+    "conditions": {}
+   }
+  },
+  "Of_Pearls_and_Pirates": {
+   "scenarios": 6,
+   "built": 6,
+   "buildFailures": [],
+   "buildWarnings": [],
+   "luaFiles": [
+    "campaigns/Of_Pearls_and_Pirates/lua/popups.lua"
+   ],
+   "luaLines": 87,
+   "requires": {},
+   "microAi": {
+    "zone_guardian": [
+     "01_Pirates",
+     "02_Swimming_with_Serpents",
+     "04_Lee_Shore",
+     "05_Lady_Maudie"
+    ]
+   },
+   "customAi": [
+    "01_Pirates: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "01_Pirates: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "02_Swimming_with_Serpents: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "02_Swimming_with_Serpents: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "04_Lee_Shore: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "04_Lee_Shore: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "05_Lady_Maudie: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "05_Lady_Maudie: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua"
+   ],
+   "dialogs": {
+    "showDialogCalls": 1,
+    "widgets": {},
+    "files": []
+   },
+   "achievements": 1,
+   "helpTopics": [],
+   "terrainGraphics": 0,
+   "terrainTypes": 0,
+   "unitTypes": 7,
+   "luaApiUnbridged": {},
+   "luaApiBridgedUsed": [
+    "gui.show_dialog",
+    "wesnoth.dofile",
+    "wesnoth.require",
+    "wesnoth.sync.evaluate_single",
+    "wesnoth.textdomain",
+    "wesnoth.units.find",
+    "wesnoth.wml_actions",
+    "wml.tag",
+    "wml.variables",
+    "wml.variables.turn_number"
+   ],
+   "audit": {
+    "missing": {},
+    "campaignLua": {
+     "display_tip": 6
+    },
+    "extension": {},
+    "noop": {
+     "redraw": 4
+    },
+    "conditions": {}
+   }
+  },
+  "Sceptre_of_Fire": {
+   "scenarios": 14,
+   "built": 14,
+   "buildFailures": [],
+   "buildWarnings": [],
+   "luaFiles": [
+    "campaigns/Sceptre_of_Fire/lua/rune-equip.lua"
+   ],
+   "luaLines": 11,
+   "requires": {},
+   "microAi": {},
+   "customAi": [],
+   "dialogs": {
+    "showDialogCalls": 0,
+    "widgets": {},
+    "files": []
+   },
+   "achievements": 0,
+   "helpTopics": [],
+   "terrainGraphics": 3,
+   "terrainTypes": 2,
+   "unitTypes": 11,
+   "luaApiUnbridged": {
+    "stringx.vformat (as a method)": [
+     "campaigns/Sceptre_of_Fire/lua/rune-equip.lua"
+    ]
+   },
+   "luaApiBridgedUsed": [
+    "wesnoth.dofile",
+    "wesnoth.wml_actions",
+    "wml.literal",
+    "wml.tovconfig"
+   ],
+   "audit": {
+    "missing": {},
+    "campaignLua": {
+     "rune_choice": 8
+    },
+    "extension": {},
+    "noop": {
+     "floating_text": 1,
+     "redraw": 8,
+     "unit_overlay": 1
+    },
+    "conditions": {}
+   }
+  },
+  "Secrets_of_the_Ancients": {
+   "scenarios": 22,
+   "built": 22,
+   "buildFailures": [],
+   "buildWarnings": [],
+   "luaFiles": [
+    "campaigns/Secrets_of_the_Ancients/utils/zombie_recruit_dialog.lua"
+   ],
+   "luaLines": 104,
+   "requires": {},
+   "microAi": {
+    "zone_guardian": [
+     "04_Becalmed"
+    ],
+    "coward": [
+     "20_North_Knalga"
+    ],
+    "messenger_escort": [
+     "21_Against_the_World"
+    ]
+   },
+   "customAi": [],
+   "dialogs": {
+    "showDialogCalls": 1,
+    "widgets": {},
+    "files": [
+     "campaigns/Secrets_of_the_Ancients/gui/zombie_recruit_dialog.cfg"
+    ]
+   },
+   "achievements": 0,
+   "helpTopics": [],
+   "terrainGraphics": 33,
+   "terrainTypes": 33,
+   "unitTypes": 50,
+   "luaApiUnbridged": {
+    "wml.fire": [
+     "campaigns/Secrets_of_the_Ancients/utils/zombie_recruit_dialog.lua"
+    ],
+    "wml.array_access.get": [
+     "campaigns/Secrets_of_the_Ancients/utils/zombie_recruit_dialog.lua"
+    ],
+    "wesnoth.sides.find": [
+     "campaigns/Secrets_of_the_Ancients/utils/zombie_recruit_dialog.lua"
+    ],
+    "wesnoth.unit_types": [
+     "campaigns/Secrets_of_the_Ancients/utils/zombie_recruit_dialog.lua"
+    ],
+    "gui.show_prompt": [
+     "campaigns/Secrets_of_the_Ancients/utils/zombie_recruit_dialog.lua"
+    ]
+   },
+   "luaApiBridgedUsed": [
+    "gui.show_dialog",
+    "wesnoth.dofile",
+    "wesnoth.sync.evaluate_single",
+    "wesnoth.textdomain",
+    "wesnoth.units.find_on_map",
+    "wml.get_child",
+    "wml.load",
+    "wml.tag",
+    "wml.variables"
+   ],
+   "audit": {
+    "missing": {
+     "petrify": 2,
+     "store_reachable_locations": 2
+    },
+    "campaignLua": {},
+    "extension": {},
+    "noop": {
+     "redraw": 7
+    },
+    "conditions": {}
+   }
+  },
+  "Son_Of_The_Black_Eye": {
+   "scenarios": 19,
+   "built": 19,
+   "buildFailures": [],
+   "buildWarnings": [],
+   "luaFiles": [
+    "campaigns/Son_Of_The_Black_Eye/ai/ca_transport_S6.lua"
+   ],
+   "luaLines": 173,
+   "requires": {
+    "location_set": [
+     "campaigns/Son_Of_The_Black_Eye/ai/ca_transport_S6.lua"
+    ]
+   },
+   "microAi": {
+    "simple_attack": [
+     "03_Toward_Mountains_of_Haag",
+     "07_The_Desert_of_Death"
+    ],
+    "healer_support": [
+     "08_Silent_Forest"
+    ]
+   },
+   "customAi": [
+    "06_Black_Flag: [candidate_action] name=transport location=campaigns/Son_Of_The_Black_Eye/ai/ca_transport_S6.lua"
+   ],
+   "dialogs": {
+    "showDialogCalls": 0,
+    "widgets": {},
+    "files": []
+   },
+   "achievements": 0,
+   "helpTopics": [],
+   "terrainGraphics": 0,
+   "terrainTypes": 0,
+   "unitTypes": 1,
+   "luaApiUnbridged": {
+    "wesnoth.map": [
+     "campaigns/Son_Of_The_Black_Eye/ai/ca_transport_S6.lua"
+    ],
+    "wesnoth.current.side": [
+     "06_Black_Flag [lua]",
+     "campaigns/Son_Of_The_Black_Eye/ai/ca_transport_S6.lua"
+    ],
+    "wesnoth.map.find": [
+     "campaigns/Son_Of_The_Black_Eye/ai/ca_transport_S6.lua"
+    ],
+    "wesnoth.paths.find_reach": [
+     "campaigns/Son_Of_The_Black_Eye/ai/ca_transport_S6.lua"
+    ],
+    "wesnoth.current.map": [
+     "campaigns/Son_Of_The_Black_Eye/ai/ca_transport_S6.lua"
+    ],
+    "wesnoth.map.matches": [
+     "campaigns/Son_Of_The_Black_Eye/ai/ca_transport_S6.lua"
+    ],
+    "ai.move_full": [
+     "campaigns/Son_Of_The_Black_Eye/ai/ca_transport_S6.lua"
+    ],
+    "wesnoth.sync.invoke_command": [
+     "campaigns/Son_Of_The_Black_Eye/ai/ca_transport_S6.lua"
+    ],
+    "ai.stopunit_moves": [
+     "campaigns/Son_Of_The_Black_Eye/ai/ca_transport_S6.lua"
+    ],
+    "wesnoth.custom_synced_commands": [
+     "06_Black_Flag [lua]"
+    ],
+    "wml.child_array": [
+     "06_Black_Flag [lua]"
+    ],
+    "mathx.random_choice": [
+     "06_Black_Flag [lua]"
+    ],
+    "wesnoth.units.to_map": [
+     "06_Black_Flag [lua]"
+    ],
+    "wesnoth.add_known_unit": [
+     "06_Black_Flag [lua]"
+    ]
+   },
+   "luaApiBridgedUsed": [
+    "wesnoth.require",
+    "wesnoth.units.find_on_map",
+    "wesnoth.units.get",
+    "wml.tag",
+    "wml.tag.filter_adjacent_location"
+   ],
+   "audit": {
+    "missing": {},
+    "campaignLua": {},
+    "extension": {},
+    "noop": {
+     "redraw": 4
+    },
+    "conditions": {}
+   }
+  },
+  "The_Deceivers_Gambit": {
+   "scenarios": 20,
+   "built": 20,
+   "buildFailures": [],
+   "buildWarnings": [],
+   "luaFiles": [
+    "campaigns/The_Deceivers_Gambit/lua/skill_set.lua",
+    "campaigns/The_Deceivers_Gambit/lua/spellcasting.lua",
+    "campaigns/The_Deceivers_Gambit/lua/theme.lua"
+   ],
+   "luaLines": 661,
+   "requires": {
+    "wml-utils": [
+     "campaigns/The_Deceivers_Gambit/lua/spellcasting.lua"
+    ]
+   },
+   "microAi": {
+    "zone_guardian": [
+     "00_Graduation",
+     "01_Stirrings_of_War",
+     "02_Fort_Garard",
+     "03_The_Ambassador",
+     "05_The_Deceiver",
+     "06_Ring_of_Swords",
+     "07_The_Great_River",
+     "08_Ruins_of_Saurgrath",
+     "09_Omaranth",
+     "10_Houses_of_the_Dead",
+     "11_Clan_Blackcrest",
+     "12_The_Traitor",
+     "13_Revelry_Revisited",
+     "14_Long_Live_the_Queen"
+    ],
+    "goto": [
+     "00_Graduation",
+     "07_The_Great_River",
+     "11_Clan_Blackcrest",
+     "14_Long_Live_the_Queen"
+    ],
+    "simple_attack": [
+     "00_Graduation",
+     "01_Stirrings_of_War",
+     "02_Fort_Garard",
+     "03_The_Ambassador",
+     "04_The_Sylvan_Seer",
+     "05_The_Deceiver",
+     "06_Ring_of_Swords",
+     "07_The_Great_River",
+     "07x_Weldyn_Court",
+     "08_Ruins_of_Saurgrath",
+     "08x_Field_Hospital",
+     "09_Omaranth",
+     "10_Houses_of_the_Dead",
+     "10x_Elensefar_Outskirts",
+     "11_Clan_Blackcrest",
+     "11x_Revelry",
+     "12_The_Traitor",
+     "13_Revelry_Revisited",
+     "13x_The_King_is_Dead",
+     "14_Long_Live_the_Queen"
+    ],
+    "healer_support": [
+     "05_The_Deceiver"
+    ],
+    "patrol": [
+     "07_The_Great_River"
+    ],
+    "coward": [
+     "08_Ruins_of_Saurgrath"
+    ]
+   },
+   "customAi": [
+    "01_Stirrings_of_War: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "01_Stirrings_of_War: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "02_Fort_Garard: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "02_Fort_Garard: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "03_The_Ambassador: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "03_The_Ambassador: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "04_The_Sylvan_Seer: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "04_The_Sylvan_Seer: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "05_The_Deceiver: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "05_The_Deceiver: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "06_Ring_of_Swords: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "06_Ring_of_Swords: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "08_Ruins_of_Saurgrath: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "08_Ruins_of_Saurgrath: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "09_Omaranth: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "09_Omaranth: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "10_Houses_of_the_Dead: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "10_Houses_of_the_Dead: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "11_Clan_Blackcrest: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "11_Clan_Blackcrest: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "12_The_Traitor: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "12_The_Traitor: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "13_Revelry_Revisited: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "13_Revelry_Revisited: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "14_Long_Live_the_Queen: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "14_Long_Live_the_Queen: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua"
+   ],
+   "dialogs": {
+    "showDialogCalls": 2,
+    "widgets": {
+     "menu_button": 1,
+     "option": 1,
+     "rich_label": 1,
+     "filter_wml": 1,
+     "modifications": 1,
+     "object": 1,
+     "filter_location": 1,
+     "filter": 1
+    },
+    "files": []
+   },
+   "achievements": 2,
+   "helpTopics": [],
+   "terrainGraphics": 0,
+   "terrainTypes": 0,
+   "unitTypes": 27,
+   "luaApiUnbridged": {
+    "gui.show_help": [
+     "campaigns/The_Deceivers_Gambit/lua/spellcasting.lua"
+    ],
+    "gui.widget.close": [
+     "campaigns/The_Deceivers_Gambit/lua/spellcasting.lua"
+    ],
+    "wesnoth.sides": [
+     "campaigns/The_Deceivers_Gambit/lua/spellcasting.lua"
+    ],
+    "wesnoth.audio.play": [
+     "campaigns/The_Deceivers_Gambit/lua/spellcasting.lua"
+    ],
+    "wesnoth.game_events.on_mouse_action": [
+     "campaigns/The_Deceivers_Gambit/lua/spellcasting.lua"
+    ],
+    "wesnoth.game_events.on_mouse_move": [
+     "campaigns/The_Deceivers_Gambit/lua/spellcasting.lua"
+    ],
+    "wesnoth.interface.game_display": [
+     "campaigns/The_Deceivers_Gambit/lua/theme.lua"
+    ],
+    "wesnoth.interface.get_displayed_unit": [
+     "campaigns/The_Deceivers_Gambit/lua/theme.lua"
+    ],
+    "wesnoth.add_known_unit": [
+     "00_Graduation [lua]",
+     "07_The_Great_River [lua]"
+    ],
+    "wesnoth.interface.select_unit": [
+     "00_Graduation [lua]",
+     "01_Stirrings_of_War [lua]",
+     "02_Fort_Garard [lua]",
+     "03_The_Ambassador [lua]",
+     "04_The_Sylvan_Seer [lua]",
+     "05_The_Deceiver [lua]",
+     "06_Ring_of_Swords [lua]",
+     "07_The_Great_River [lua]",
+     "07x_Weldyn_Court [lua]",
+     "08_Ruins_of_Saurgrath [lua]",
+     "08x_Field_Hospital [lua]",
+     "09_Omaranth [lua]",
+     "10_Houses_of_the_Dead [lua]",
+     "10x_Elensefar_Outskirts [lua]",
+     "11_Clan_Blackcrest [lua]",
+     "11x_Revelry [lua]",
+     "12_The_Traitor [lua]",
+     "13_Revelry_Revisited [lua]",
+     "13x_The_King_is_Dead [lua]",
+     "14_Long_Live_the_Queen [lua]"
+    ],
+    "wesnoth.current.turn": [
+     "02_Fort_Garard [lua]",
+     "03_The_Ambassador [lua]",
+     "05_The_Deceiver [lua]",
+     "06_Ring_of_Swords [lua]",
+     "07_The_Great_River [lua]",
+     "11_Clan_Blackcrest [lua]",
+     "12_The_Traitor [lua]"
+    ]
+   },
+   "luaApiBridgedUsed": [
+    "gui.show_dialog",
+    "wesnoth.dofile",
+    "wesnoth.game_events.fire",
+    "wesnoth.interface.skip_messages",
+    "wesnoth.require",
+    "wesnoth.sync.evaluate_single",
+    "wesnoth.textdomain",
+    "wesnoth.units.find",
+    "wesnoth.units.find_on_map",
+    "wesnoth.wml_actions",
+    "wml.tag",
+    "wml.variables",
+    "wml.variables.turn_number"
+   ],
+   "audit": {
+    "missing": {
+     "set_extra_recruit": 8,
+     "do_command": 20,
+     "end_turn": 1,
+     "store_reachable_locations": 20
+    },
+    "campaignLua": {
+     "select_delfador_skills": 20,
+     "display_skills_dialog": 20,
+     "listen_for_mousemove": 14
+    },
+    "extension": {},
+    "noop": {
+     "floating_text": 20,
+     "redraw": 20,
+     "select_unit": 20
+    },
+    "conditions": {}
+   }
+  },
+  "The_Hammer_of_Thursagan": {
+   "scenarios": 11,
+   "built": 11,
+   "buildFailures": [],
+   "buildWarnings": [],
+   "luaFiles": [],
+   "luaLines": 0,
+   "requires": {},
+   "microAi": {
+    "zone_guardian": [
+     "01_At_the_East_Gate",
+     "03_Strange_Allies",
+     "05_Mages_and_Drakes",
+     "07_Forbidden_Forest",
+     "08_The_Siege_of_Kal_Kartha",
+     "09_The_Court_of_Karrag",
+     "10_The_Underlevels"
+    ]
+   },
+   "customAi": [
+    "01_At_the_East_Gate: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "01_At_the_East_Gate: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "03_Strange_Allies: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "03_Strange_Allies: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "05_Mages_and_Drakes: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "05_Mages_and_Drakes: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "08_The_Siege_of_Kal_Kartha: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "08_The_Siege_of_Kal_Kartha: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "10_The_Underlevels: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "10_The_Underlevels: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua"
+   ],
+   "dialogs": {
+    "showDialogCalls": 0,
+    "widgets": {},
+    "files": []
+   },
+   "achievements": 3,
+   "helpTopics": [],
+   "terrainGraphics": 0,
+   "terrainTypes": 0,
+   "unitTypes": 18,
+   "luaApiUnbridged": {},
+   "luaApiBridgedUsed": [
+    "wml.variables.turn_number"
+   ],
+   "audit": {
+    "missing": {},
+    "campaignLua": {},
+    "extension": {},
+    "noop": {
+     "redraw": 3,
+     "select_unit": 1
+    },
+    "conditions": {}
+   }
+  },
+  "The_Rise_Of_Wesnoth": {
+   "scenarios": 27,
+   "built": 27,
+   "buildFailures": [],
+   "buildWarnings": [],
+   "luaFiles": [
+    "campaigns/The_Rise_Of_Wesnoth/ai/ca_aggressive_attack_no_suicide.lua"
+   ],
+   "luaLines": 60,
+   "requires": {
+    "ai/lua/ai_helper.lua": [
+     "campaigns/The_Rise_Of_Wesnoth/ai/ca_aggressive_attack_no_suicide.lua"
+    ]
+   },
+   "microAi": {},
+   "customAi": [
+    "08_Clearwater_Port: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "08_Clearwater_Port: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "12_A_Final_Spring: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
+    "12_A_Final_Spring: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
+    "15_A_New_Land: [candidate_action] name=aggressive_attack_no_suicide location=campaigns/The_Rise_Of_Wesnoth/ai/ca_aggressive_attack_no_suicide.lua"
+   ],
+   "dialogs": {
+    "showDialogCalls": 0,
+    "widgets": {},
+    "files": []
+   },
+   "achievements": 0,
+   "helpTopics": [],
+   "terrainGraphics": 0,
+   "terrainTypes": 0,
+   "unitTypes": 14,
+   "luaApiUnbridged": {
+    "wesnoth.current.side": [
+     "campaigns/The_Rise_Of_Wesnoth/ai/ca_aggressive_attack_no_suicide.lua"
+    ],
+    "wesnoth.simulate_combat": [
+     "campaigns/The_Rise_Of_Wesnoth/ai/ca_aggressive_attack_no_suicide.lua"
+    ]
+   },
+   "luaApiBridgedUsed": [
+    "wesnoth.require",
+    "wesnoth.units.get"
+   ],
+   "audit": {
+    "missing": {
+     "unpetrify": 1,
+     "set_extra_recruit": 1
+    },
+    "campaignLua": {},
+    "extension": {},
+    "noop": {
+     "redraw": 10,
+     "unit_overlay": 1
+    },
+    "conditions": {}
+   }
+  },
+  "WL_Test": {
+   "scenarios": 2,
+   "built": 2,
+   "buildFailures": [],
+   "buildWarnings": [],
+   "luaFiles": [],
+   "luaLines": 0,
+   "requires": {},
+   "microAi": {},
+   "customAi": [],
+   "dialogs": {
+    "showDialogCalls": 0,
+    "widgets": {},
+    "files": []
+   },
+   "achievements": 0,
+   "helpTopics": [],
+   "terrainGraphics": 0,
+   "terrainTypes": 0,
+   "unitTypes": 0,
+   "luaApiUnbridged": {},
+   "luaApiBridgedUsed": [],
+   "audit": {
+    "missing": {},
+    "campaignLua": {},
+    "extension": {},
+    "noop": {},
+    "conditions": {}
+   }
+  },
+  "Winds_of_Fate": {
+   "scenarios": 16,
+   "built": 16,
+   "buildFailures": [],
+   "buildWarnings": [],
+   "luaFiles": [],
+   "luaLines": 0,
+   "requires": {},
+   "microAi": {
+    "big_animals": [
+     "01_The_Hunt",
+     "05_Threshold",
+     "09_Ancestor"
+    ],
+    "return_guardian": [
+     "11_Crosswind"
+    ]
+   },
+   "customAi": [],
+   "dialogs": {
+    "showDialogCalls": 0,
+    "widgets": {},
+    "files": []
+   },
+   "achievements": 0,
+   "helpTopics": [],
+   "terrainGraphics": 0,
+   "terrainTypes": 0,
+   "unitTypes": 8,
+   "luaApiUnbridged": {
+    "mathx.random": [
+     "01_The_Hunt [lua]",
+     "05_Threshold [lua]",
+     "09_Ancestor [lua]"
+    ]
+   },
+   "luaApiBridgedUsed": [
+    "wml.variables"
+   ],
+   "audit": {
+    "missing": {
+     "store_reachable_locations": 1
+    },
+    "campaignLua": {
+     "print": 1
+    },
+    "extension": {},
+    "noop": {
+     "floating_text": 9,
+     "redraw": 5
+    },
+    "conditions": {}
+   }
+  },
+  "World_Conquest": {
+   "scenarios": 1,
+   "built": 0,
+   "buildFailures": [
+    {
+     "file": "campaigns/World_Conquest/scenarios/WC_II_scenario.cfg",
+     "error": "TypeError: Cannot read properties of undefined (reading 'allChildren')"
+    }
+   ],
+   "buildWarnings": [],
+   "luaFiles": [
+    "campaigns/World_Conquest/lua/campaign/autorecall.lua",
+    "campaigns/World_Conquest/lua/campaign/enemy.lua",
+    "campaigns/World_Conquest/lua/campaign/enemy_data.lua",
+    "campaigns/World_Conquest/lua/campaign/enemy_themed.lua",
+    "campaigns/World_Conquest/lua/campaign/objectives.lua",
+    "campaigns/World_Conquest/lua/campaign/scenario.lua",
+    "campaigns/World_Conquest/lua/campaign_main.lua",
+    "campaigns/World_Conquest/lua/era/era.lua",
+    "campaigns/World_Conquest/lua/era_main.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/_load.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/ability_events.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/artifacts.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/bonus.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/bonus_point_definitions.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/color.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/dropping.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/effects.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/heroes.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/invest/invest.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/invest/invest_show_dialog.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/invest/invest_tellunit.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/items.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/pickup_confirmation_dialog.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/promote_commander.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/random_names.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/recall.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/supply.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/training.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/unittypedata.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/utils.lua",
+    "campaigns/World_Conquest/lua/game_mechanics/wocopedia/help.lua",
+    "campaigns/World_Conquest/lua/main.lua",
+    "campaigns/World_Conquest/lua/map/distmap.lua",
+    "campaigns/World_Conquest/lua/map/generator/classic.lua",
+    "campaigns/World_Conquest/lua/map/generator/clayey.lua",
+    "campaigns/World_Conquest/lua/map/generator/coral.lua",
+    "campaigns/World_Conquest/lua/map/generator/delta.lua",
+    "campaigns/World_Conquest/lua/map/generator/feudal.lua",
+    "campaigns/World_Conquest/lua/map/generator/industrial.lua",
+    "campaigns/World_Conquest/lua/map/generator/maritime.lua",
+    "campaigns/World_Conquest/lua/map/generator/paradise.lua",
+    "campaigns/World_Conquest/lua/map/generator/podzol.lua",
+    "campaigns/World_Conquest/lua/map/generator/provinces.lua",
+    "campaigns/World_Conquest/lua/map/generator/savannah.lua",
+    "campaigns/World_Conquest/lua/map/generator/sulfurous.lua",
+    "campaigns/World_Conquest/lua/map/generator/utilities.lua",
+    "campaigns/World_Conquest/lua/map/generator/wetland.lua",
+    "campaigns/World_Conquest/lua/map/generator/wicked.lua",
+    "campaigns/World_Conquest/lua/map/generator/wild.lua",
+    "campaigns/World_Conquest/lua/map/generator/wreck.lua",
+    "campaigns/World_Conquest/lua/map/main.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/1A_Start.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/2A_Springs.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/2B_Lakes.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/2C_Glaciers.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/2D_Provinces.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/2E_Paradise.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/2F_Clayey.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/3A_Savannah.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/3B_Wreck.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/3C_Delta.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/3D_Sulfurous.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/3E_Coral.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/3F_Wetland.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/4A_Thermal.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/4B_Volcanic.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/4C_Mines.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/4D_Podzol.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/4E_Wicked.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/4F_Wild.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/6A_Rural.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/6B_Maritime.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/6C_Industrial.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration/6D_Feudal.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration_utils/engine.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration_utils/events.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration_utils/noise.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration_utils/snow.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration_utils/utilities.lua",
+    "campaigns/World_Conquest/lua/map/postgeneration_utils/wild_zones.lua",
+    "campaigns/World_Conquest/lua/map/scenario_utils/bonus_points.lua",
+    "campaigns/World_Conquest/lua/map/scenario_utils/plot.lua",
+    "campaigns/World_Conquest/lua/map/scenario_utils/side_definitions.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_1p_scenario1.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_1p_scenario2.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_1p_scenario3.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_1p_scenario4.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_1p_scenario5.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_2p_scenario1.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_2p_scenario2.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_2p_scenario3.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_2p_scenario4.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_2p_scenario5.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_3p_scenario1.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_3p_scenario2.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_3p_scenario3.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_3p_scenario4.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_3p_scenario5.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_4p_scenario1.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_4p_scenario2.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_4p_scenario3.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_4p_scenario4.lua",
+    "campaigns/World_Conquest/lua/map/scenarios/WC_II_4p_scenario5.lua",
+    "campaigns/World_Conquest/lua/map/settings/settings_dialog.lua",
+    "campaigns/World_Conquest/lua/map/tools/filter_converter.lua",
+    "campaigns/World_Conquest/lua/map/utility.lua",
+    "campaigns/World_Conquest/lua/map/wct_map_generator.lua",
+    "campaigns/World_Conquest/lua/optional_mechanics/destruction.lua",
+    "campaigns/World_Conquest/lua/optional_mechanics/unitmarker.lua",
+    "campaigns/World_Conquest/lua/shared_utils/pretty_print.lua",
+    "campaigns/World_Conquest/lua/shared_utils/wml_converter.lua"
+   ],
+   "luaLines": 18017,
+   "requires": {
+    "on_event": [
+     "campaigns/World_Conquest/lua/campaign/autorecall.lua",
+     "campaigns/World_Conquest/lua/campaign/enemy.lua",
+     "campaigns/World_Conquest/lua/campaign/enemy_themed.lua",
+     "campaigns/World_Conquest/lua/campaign/scenario.lua",
+     "campaigns/World_Conquest/lua/era/era.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/ability_events.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/artifacts.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/bonus.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/dropping.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/invest/invest.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/promote_commander.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/training.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/utils.lua",
+     "campaigns/World_Conquest/lua/optional_mechanics/destruction.lua",
+     "campaigns/World_Conquest/lua/optional_mechanics/unitmarker.lua"
+    ],
+    "carryover_gold.lua": [
+     "campaigns/World_Conquest/lua/campaign/scenario.lua"
+    ],
+    "./era/era.lua": [
+     "campaigns/World_Conquest/lua/campaign_main.lua",
+     "campaigns/World_Conquest/lua/era_main.lua"
+    ],
+    "./game_mechanics/utils.lua": [
+     "campaigns/World_Conquest/lua/era_main.lua"
+    ],
+    "./game_mechanics/color.lua": [
+     "campaigns/World_Conquest/lua/era_main.lua"
+    ],
+    "./../shared_utils/wml_converter.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./ability_events.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./artifacts.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./bonus.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./color.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./dropping.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./effects.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./heroes.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./pickup_confirmation_dialog.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./random_names.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./recall.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./supply.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./training.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./unittypedata.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/heroes.lua"
+    ],
+    "./utils.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./wocopedia/help.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./invest/invest.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./invest/invest_show_dialog.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./invest/invest_tellunit.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./promote_commander.lua": [
+     "campaigns/World_Conquest/lua/game_mechanics/_load.lua"
+    ],
+    "./wml_converter.lua": [
+     "campaigns/World_Conquest/lua/main.lua"
+    ],
+    "wml-utils": [
+     "campaigns/World_Conquest/lua/map/main.lua"
+    ],
+    "functional": [
+     "campaigns/World_Conquest/lua/map/main.lua"
+    ],
+    "./../game_mechanics/utils.lua": [
+     "campaigns/World_Conquest/lua/optional_mechanics/unitmarker.lua"
+    ]
+   },
+   "microAi": {},
+   "customAi": [],
+   "dialogs": {
+    "showDialogCalls": 5,
+    "widgets": {
+     "linked_group": 6,
+     "tree_view": 5,
+     "node": 10,
+     "node_definition": 10,
+     "toggle_button": 5,
+     "multi_page": 2,
+     "page_definition": 8,
+     "unit_preview_pane": 1,
+     "size_lock": 1,
+     "scrollbar_panel": 1,
+     "definition": 1,
+     "slider": 1
+    },
+    "files": [
+     "campaigns/World_Conquest/gui/invest_dialog.cfg",
+     "campaigns/World_Conquest/gui/invest_tellunit.cfg",
+     "campaigns/World_Conquest/gui/pickup_confirmation.cfg",
+     "campaigns/World_Conquest/gui/help_dialog.cfg",
+     "campaigns/World_Conquest/gui/settings_dialog.cfg"
+    ]
+   },
+   "achievements": 0,
+   "helpTopics": [],
+   "terrainGraphics": 0,
+   "terrainTypes": 0,
+   "unitTypes": 0,
+   "luaApiUnbridged": {
+    "wesnoth.map.find": [
+     "campaigns/World_Conquest/lua/campaign/autorecall.lua",
+     "campaigns/World_Conquest/lua/campaign/enemy.lua",
+     "campaigns/World_Conquest/lua/campaign/enemy_themed.lua"
+    ],
+    "wesnoth.unit_types": [
+     "campaigns/World_Conquest/lua/campaign/enemy.lua",
+     "campaigns/World_Conquest/lua/era/era.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/effects.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/invest/invest_show_dialog.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/invest/invest_tellunit.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/pickup_confirmation_dialog.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/training.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/wocopedia/help.lua"
+    ],
+    "stringx.split": [
+     "campaigns/World_Conquest/lua/campaign/enemy.lua",
+     "campaigns/World_Conquest/lua/era/era.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/effects.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/invest/invest.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/utils.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/wocopedia/help.lua",
+     "campaigns/World_Conquest/lua/map/scenario_utils/bonus_points.lua"
+    ],
+    "mathx.random": [
+     "campaigns/World_Conquest/lua/campaign/enemy.lua",
+     "campaigns/World_Conquest/lua/campaign/enemy_themed.lua",
+     "campaigns/World_Conquest/lua/era/era.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/bonus.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/invest/invest.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/training.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/utils.lua",
+     "campaigns/World_Conquest/lua/map/generator/utilities.lua",
+     "campaigns/World_Conquest/lua/map/main.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/1A_Start.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/2A_Springs.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/2B_Lakes.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/2C_Glaciers.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/2D_Provinces.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/2E_Paradise.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/3A_Savannah.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/3C_Delta.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/3F_Wetland.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/4A_Thermal.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/4B_Volcanic.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/4C_Mines.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/4D_Podzol.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/4E_Wicked.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/4F_Wild.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/6A_Rural.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/6B_Maritime.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/6C_Industrial.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/6D_Feudal.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/engine.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/noise.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/snow.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/utilities.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/wild_zones.lua",
+     "campaigns/World_Conquest/lua/map/scenario_utils/bonus_points.lua",
+     "campaigns/World_Conquest/lua/map/scenario_utils/plot.lua",
+     "campaigns/World_Conquest/lua/optional_mechanics/destruction.lua"
+    ],
+    "wesnoth.current.turn": [
+     "campaigns/World_Conquest/lua/campaign/enemy.lua"
+    ],
+    "wesnoth.sides": [
+     "campaigns/World_Conquest/lua/campaign/enemy.lua",
+     "campaigns/World_Conquest/lua/campaign/scenario.lua",
+     "campaigns/World_Conquest/lua/era/era.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/color.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/invest/invest.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/invest/invest_tellunit.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/training.lua"
+    ],
+    "wesnoth.current.side": [
+     "campaigns/World_Conquest/lua/campaign/enemy.lua",
+     "campaigns/World_Conquest/lua/era/era.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/ability_events.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/bonus.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/color.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/invest/invest.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/invest/invest_show_dialog.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/invest/invest_tellunit.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/wocopedia/help.lua",
+     "campaigns/World_Conquest/lua/optional_mechanics/unitmarker.lua"
+    ],
+    "wesnoth.allow_undo": [
+     "campaigns/World_Conquest/lua/campaign/enemy.lua",
+     "campaigns/World_Conquest/lua/era/era.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/artifacts.lua",
+     "campaigns/World_Conquest/lua/optional_mechanics/unitmarker.lua"
+    ],
+    "wesnoth.interface.add_chat_message": [
+     "campaigns/World_Conquest/lua/campaign/enemy.lua",
+     "campaigns/World_Conquest/lua/era/era.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/effects.lua"
+    ],
+    "mathx.random_choice": [
+     "campaigns/World_Conquest/lua/campaign/enemy.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/bonus.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/1A_Start.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/2B_Lakes.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/2C_Glaciers.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/2E_Paradise.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/4A_Thermal.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/4B_Volcanic.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/4D_Podzol.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/4E_Wicked.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/6A_Rural.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/6B_Maritime.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/6C_Industrial.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/engine.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/utilities.lua",
+     "campaigns/World_Conquest/lua/map/scenario_utils/bonus_points.lua"
+    ],
+    "mathx.shuffle": [
+     "campaigns/World_Conquest/lua/campaign/enemy.lua",
+     "campaigns/World_Conquest/lua/era/era.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/2C_Glaciers.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/4B_Volcanic.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/engine.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/events.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/noise.lua",
+     "campaigns/World_Conquest/lua/map/utility.lua"
+    ],
+    "wesnoth.units.create": [
+     "campaigns/World_Conquest/lua/campaign/enemy.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/heroes.lua"
+    ],
+    "wesnoth.add_known_unit": [
+     "campaigns/World_Conquest/lua/campaign/enemy.lua"
+    ],
+    "wesnoth.current.map": [
+     "campaigns/World_Conquest/lua/campaign/enemy_themed.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/bonus.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/supply.lua",
+     "campaigns/World_Conquest/lua/optional_mechanics/destruction.lua"
+    ],
+    "wesnoth.map.replace_base": [
+     "campaigns/World_Conquest/lua/campaign/enemy_themed.lua"
+    ],
+    "stringx.vformat": [
+     "campaigns/World_Conquest/lua/campaign/enemy_themed.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/bonus.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/invest/invest_show_dialog.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/training.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/utils.lua"
+    ],
+    "wesnoth.audio.play": [
+     "campaigns/World_Conquest/lua/campaign/scenario.lua",
+     "campaigns/World_Conquest/lua/optional_mechanics/destruction.lua"
+    ],
+    "wesnoth.game_events.add_repeating": [
+     "campaigns/World_Conquest/lua/campaign_main.lua"
+    ],
+    "wml.array_access.get": [
+     "campaigns/World_Conquest/lua/era/era.lua"
+    ],
+    "stringx.map_split": [
+     "campaigns/World_Conquest/lua/era/era.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/artifacts.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/invest/invest.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/wocopedia/help.lua"
+    ],
+    "wesnoth.scenario": [
+     "campaigns/World_Conquest/lua/era/era.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/promote_commander.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/utils.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/wocopedia/help.lua"
+    ],
+    "wesnoth.interface.get_viewing_side": [
+     "campaigns/World_Conquest/lua/era/era.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/wocopedia/help.lua"
+    ],
+    "wesnoth.interface.get_items": [
+     "campaigns/World_Conquest/lua/game_mechanics/artifacts.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/dropping.lua"
+    ],
+    "wesnoth.map.matches": [
+     "campaigns/World_Conquest/lua/game_mechanics/bonus.lua"
+    ],
+    "wesnoth.paths.find_vacant_hex": [
+     "campaigns/World_Conquest/lua/game_mechanics/bonus.lua",
+     "campaigns/World_Conquest/lua/game_mechanics/heroes.lua"
+    ],
+    "wesnoth.colors": [
+     "campaigns/World_Conquest/lua/game_mechanics/color.lua"
+    ],
+    "wesnoth.sides.find": [
+     "campaigns/World_Conquest/lua/game_mechanics/color.lua"
+    ],
+    "wesnoth.current.event_context": [
+     "campaigns/World_Conquest/lua/game_mechanics/dropping.lua"
+    ],
+    "wesnoth.interface.remove_item": [
+     "campaigns/World_Conquest/lua/game_mechanics/dropping.lua"
+    ],
+    "wesnoth.effects": [
+     "campaigns/World_Conquest/lua/game_mechanics/effects.lua",
+     "campaigns/World_Conquest/lua/optional_mechanics/unitmarker.lua"
+    ],
+    "wesnoth.units.add_modification": [
+     "campaigns/World_Conquest/lua/game_mechanics/effects.lua"
+    ],
+    "wesnoth.units.chance_to_be_hit": [
+     "campaigns/World_Conquest/lua/game_mechanics/effects.lua"
+    ],
+    "wesnoth.units.matches": [
+     "campaigns/World_Conquest/lua/game_mechanics/effects.lua"
+    ],
+    "filesystem.have_file": [
+     "campaigns/World_Conquest/lua/game_mechanics/heroes.lua",
+     "campaigns/World_Conquest/lua/map/settings/settings_dialog.lua"
+    ],
+    "gui.widget.add_invest_category": [
+     "campaigns/World_Conquest/lua/game_mechanics/invest/invest_show_dialog.lua"
+    ],
+    "gui.widget.add_invest_item": [
+     "campaigns/World_Conquest/lua/game_mechanics/invest/invest_show_dialog.lua"
+    ],
+    "wesnoth.name_generator": [
+     "campaigns/World_Conquest/lua/game_mechanics/random_names.lua"
+    ],
+    "wesnoth.map.set_owner": [
+     "campaigns/World_Conquest/lua/game_mechanics/supply.lua"
+    ],
+    "wesnoth.units.extract": [
+     "campaigns/World_Conquest/lua/game_mechanics/training.lua"
+    ],
+    "wesnoth.map.get_relative_dir": [
+     "campaigns/World_Conquest/lua/game_mechanics/utils.lua"
+    ],
+    "wesnoth.experimental.wml": [
+     "campaigns/World_Conquest/lua/game_mechanics/utils.lua"
+    ],
+    "gui.widget.add_help_page": [
+     "campaigns/World_Conquest/lua/game_mechanics/wocopedia/help.lua"
+    ],
+    "wesnoth.format_conjunct_list": [
+     "campaigns/World_Conquest/lua/game_mechanics/wocopedia/help.lua"
+    ],
+    "wesnoth.log": [
+     "campaigns/World_Conquest/lua/map/distmap.lua",
+     "campaigns/World_Conquest/lua/map/main.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/events.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/snow.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/utilities.lua",
+     "campaigns/World_Conquest/lua/map/scenario_utils/bonus_points.lua",
+     "campaigns/World_Conquest/lua/map/scenario_utils/side_definitions.lua",
+     "campaigns/World_Conquest/lua/map/wct_map_generator.lua"
+    ],
+    "functional.map": [
+     "campaigns/World_Conquest/lua/map/distmap.lua"
+    ],
+    "wesnoth.map.generate": [
+     "campaigns/World_Conquest/lua/map/generator/utilities.lua"
+    ],
+    "wesnoth.map.get_adjacent_hexes": [
+     "campaigns/World_Conquest/lua/map/postgeneration/4F_Wild.lua"
+    ],
+    "functional.filter": [
+     "campaigns/World_Conquest/lua/map/postgeneration/6B_Maritime.lua"
+    ],
+    "wesnoth.map.filter": [
+     "campaigns/World_Conquest/lua/map/postgeneration/6C_Industrial.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration/6D_Feudal.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/engine.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/events.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/noise.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/utilities.lua",
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/wild_zones.lua",
+     "campaigns/World_Conquest/lua/map/scenario_utils/bonus_points.lua"
+    ],
+    "wesnoth.map.filter_tags": [
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/engine.lua"
+    ],
+    "wesnoth.map": [
+     "campaigns/World_Conquest/lua/map/postgeneration_utils/engine.lua"
+    ],
+    "items.only": [
+     "campaigns/World_Conquest/lua/map/scenario_utils/bonus_points.lua"
+    ],
+    "wesnoth.map.distance_between": [
+     "campaigns/World_Conquest/lua/map/scenario_utils/bonus_points.lua"
+    ],
+    "wml.parse": [
+     "campaigns/World_Conquest/lua/map/tools/filter_converter.lua"
+    ],
+    "filesystem.read_file": [
+     "campaigns/World_Conquest/lua/map/tools/filter_converter.lua",
+     "campaigns/World_Conquest/lua/map/wct_map_generator.lua"
+    ],
+    "wesnoth.ms_since_init": [
+     "campaigns/World_Conquest/lua/map/wct_map_generator.lua"
+    ],
+    "wesnoth.map.create": [
+     "campaigns/World_Conquest/lua/map/wct_map_generator.lua"
+    ],
+    "wesnoth.map.get": [
+     "campaigns/World_Conquest/lua/optional_mechanics/destruction.lua"
+    ]
+   },
+   "luaApiBridgedUsed": [
+    "gui.show_dialog",
+    "wesnoth.dofile",
+    "wesnoth.game_events.fire",
+    "wesnoth.require",
+    "wesnoth.sync.evaluate_single",
+    "wesnoth.textdomain",
+    "wesnoth.units.find_on_map",
+    "wesnoth.units.get",
+    "wesnoth.wml_actions",
+    "wml.child_range",
+    "wml.error",
+    "wml.get_child",
+    "wml.literal",
+    "wml.load",
+    "wml.parsed",
+    "wml.tag",
+    "wml.tag.advancement",
+    "wml.tag.ai",
+    "wml.tag.checkbox",
+    "wml.tag.effect",
+    "wml.tag.endlevel",
+    "wml.tag.enemy_of",
+    "wml.tag.filter",
+    "wml.tag.filter_adjacent",
+    "wml.tag.filter_adjacent_location",
+    "wml.tag.filter_location",
+    "wml.tag.filter_radius",
+    "wml.tag.filter_side",
+    "wml.tag.filter_wml",
+    "wml.tag.has_attack",
+    "wml.tag.has_unit",
+    "wml.tag.item",
+    "wml.tag.message",
+    "wml.tag.modifications",
+    "wml.tag.note",
+    "wml.tag.object",
+    "wml.tag.objective",
+    "wml.tag.player_sides",
+    "wml.tag.recall",
+    "wml.tag.set_variable",
+    "wml.tag.sound_source",
+    "wml.tag.trait",
+    "wml.tag.variables",
+    "wml.tag.wc2_enemy",
+    "wml.tag.wc2_enemy_themed",
+    "wml.tag.wc2_invest",
+    "wml.tag.wc2_map_supply_village",
+    "wml.tag.wc2_place_bonus",
+    "wml.tovconfig",
+    "wml.variables",
+    "wml.variables.test_nplayers",
+    "wml.variables.wc2_config_enable_terrain_destruction",
+    "wml.variables.wc2_config_enable_unitmarker",
+    "wml.variables.wc2_config_hero_chance",
+    "wml.variables.wc2_config_item_chance",
+    "wml.variables.wc2_config_training_chance",
+    "wml.variables.wc2_defeated_side",
+    "wml.variables.wc2_difficulty",
+    "wml.variables.wc2_early_victory_bonus",
+    "wml.variables.wc2_enemy_army",
+    "wml.variables.wc2_highest_player_side",
+    "wml.variables.wc2_min_players",
+    "wml.variables.wc2_nvillages",
+    "wml.variables.wc2_player_count",
+    "wml.variables.wc2_scenario",
+    "wml.variables.wc2_supply_image_counter"
+   ],
+   "audit": {
+    "missing": {},
+    "campaignLua": {},
+    "extension": {},
+    "noop": {},
+    "conditions": {}
+   }
+  }
+ }
+}
