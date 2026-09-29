@@ -566,7 +566,7 @@ clearly-bad one, village capture, and closing distance.
 
 - **Superseded by Phase 29** (2026-09-13): "port the candidate-action
   framework and relevant Lua micro-AIs" is now underway as its own
-  phase (`.claude/plans/wise-squishing-deer.md` has the full staged
+  phase (`docs/PHASE29_PLAN.md` has the full staged
   plan) rather than a deferred bullet here — real, dedicated scope, not
   optional. Real content leaning on `[modify_ai]`/`[aspect]`/`[facet]`/
   `[goal]`/`[stage]`/`[micro_ai]`/AI recruitment budgeting needs Phase 29,
@@ -2016,9 +2016,8 @@ but it will not stay that way. Therefore:
 Phase 7's own "Later" bullet (candidate-action framework + Lua micro-AI
 port), which is now this phase's full scope rather than a deferred
 aside. Full staged plan (13 stages S0–S12, module layout, upstream
-file:line citations, test plan per stage) at `.claude/plans/
-wise-squishing-deer.md` — kept there rather than duplicated here since
-it's long; this section is a pointer + milestone summary for the phase
+file:line citations, test plan per stage) in `docs/PHASE29_PLAN.md` —
+kept there rather than duplicated here since it's long; this section is a pointer + milestone summary for the phase
 list/coverage map's sake.
 
 Dead Water now plays a full turn under the real RCA default AI end to

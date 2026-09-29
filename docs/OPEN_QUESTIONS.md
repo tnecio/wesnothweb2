@@ -80,6 +80,6 @@ lines) was rejected as slow and translation-error-prone for content this
 large; the fengari bridge's host API (`wesnoth.*`/`ai.*`) needs real
 extension either way, but extending it is bounded, testable work,
 whereas a hand-port has to be re-verified line-by-line against upstream
-forever. See `.claude/plans/wise-squishing-deer.md` for the full staged
+forever. See `docs/PHASE29_PLAN.md` for the full staged
 plan; this supersedes decision 4's "later" with a real, in-progress phase
 (Phase 29).
