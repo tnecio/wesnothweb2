@@ -257,6 +257,14 @@ the real manifests, source-PNG bytes, before WebP):
 - The threshold is recomputed at build time as campaigns are added.
   Phase 28c's campaigns will mostly reuse the same core tiles, so the common
   bundle grows slowly.
+- **Phase 28c change: three tiers, keyed by campaigns.** With The South Guard's 11 scenarios the "≥5
+  scenarios" rule grew the common bundle from 9.2 to 12 MB, all of it loaded by every scenario of every
+  campaign, and it would keep growing with each campaign added. Now:
+  - `_common`: images used by at least half of the real campaigns (at least 2): 11.8 MB with five
+    campaigns (about 990 images really are used that widely);
+  - `<campaign>/_campaign`: the rest that 2 or more of that campaign's scenarios use (0.1–2.5 MB);
+  - the scenario's own.
+  A new campaign now adds to `_common` only what half of all campaigns use.
 
 **Why unit bundles stay per type:** a scenario uses 5–30 of ~440 types, and
 the same type recurs across campaigns. Per-type bundles give exact transfer

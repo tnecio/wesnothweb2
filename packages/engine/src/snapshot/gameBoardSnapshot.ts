@@ -295,6 +295,8 @@ export interface GameBoardSnapshot {
    * `wml.load`, preprocessed. Absent for a campaign without Lua.
    */
   luaSources?: { modules: Record<string, string>; wml: Record<string, WmlConfigJson> };
+  /** Phase 28c: the campaign's own `[color_range]`s by id (`team-colors.json`'s `ranges` shape), added to the colour table. */
+  colorRanges?: Record<string, { mid: number[]; max: number[]; min: number[]; rep: number[] }>;
   /** The scenario's `[story][part]` blocks (real narrative text + background art, if any), meant to be shown as a click-through sequence before interactive play begins. Empty if the scenario has no `[story]`. */
   story?: StoryPart[];
   /**

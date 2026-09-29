@@ -1865,7 +1865,9 @@ below exist yet.
 
 ### Phase 28c — The rest of the bundled single-player campaigns (added 2026-09-27)
 
-**Status: not started.** After Phase 28b. Built today: Dead Water (13
+**Status: in progress.** The South Guard done (2026-09-29, see `PROGRESS.md`): with it came a campaign
+Lua runtime (`lua-bridge`'s `LuaRuntime`, custom `gui.show_dialog` dialogs), the `[campaign]` block's
+events and resources merged into scenarios, and nine more mainline tags. After Phase 28b. Built before it: Dead Water (13
 scenarios), Liberty (8), Two Brothers (5), Under the Burning Suns (5 of
 15). Still to build: the other ten UtBS scenarios and Descent into
 Darkness, Dusk of Dawn, Eastern Invasion, Heir to the Throne (and its

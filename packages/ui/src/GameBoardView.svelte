@@ -535,18 +535,30 @@
       // resolves a side's color id up front (`resolveSideColorId`, using
       // `defaultColors`) rather than relying on `ImageCache`'s own
       // side-number fallback.
-      ImageCache.setColorData(teamColors ? { ...teamColors, sideRanges: {} } : null);
+      // Phase 28c: with the campaign's own `[color_range]`s added (`game_config::add_color_info`).
+      ImageCache.setColorData(
+        // (a plain copy: the snapshot may reach here as a reactive proxy, which workers cannot be sent)
+        teamColors
+          ? { ...teamColors, ranges: { ...teamColors.ranges, ...(JSON.parse(JSON.stringify(snapshot.colorRanges ?? {})) as typeof teamColors.ranges) }, sideRanges: {} }
+          : null,
+      );
       // Phase 28a P5: this scenario's terrain bundle (built by apps/web/scripts/build-image-atlases.mjs),
       // scoped under its campaign directory: a bare scenario id is only unique within its own campaign
       // (Dead Water and Under the Burning Suns both ship a 13_Epilogue), so the id alone could fetch the
       // wrong campaign's terrain bundle (a real bug, found 2026-09-27). Images not in the bundle are
       // fetched on their own, so a missing/mis-scoped one only costs requests, never a wrong-looking board.
-      // Ellipses, crowns, orbs and flags; terrain (and minimap tiles) shared by many scenarios, then this
-      // scenario's own. The first two are cached across every scenario.
+      // Ellipses, crowns, orbs and flags; terrain (and minimap tiles) most campaigns share, then what this
+      // campaign's scenarios share, then this scenario's own. The first two are cached across every scenario,
+      // the third across the campaign.
       ImageCache.setAtlasManifests([
         dataUrl('atlases/_ui/ui.json'),
         ...(snapshot.assetDir
-          ? [dataUrl('atlases/_common/terrain.json'), dataUrl(`atlases/${snapshot.assetDir}/${snapshot.scenario.id}/terrain.json`)]
+          ? [
+              dataUrl('atlases/_common/terrain.json'),
+              // Phase 28c: what this campaign's scenarios share (see build-image-atlases.mjs's three tiers).
+              dataUrl(`atlases/${snapshot.assetDir}/_campaign/terrain.json`),
+              dataUrl(`atlases/${snapshot.assetDir}/${snapshot.scenario.id}/terrain.json`),
+            ]
           : []),
       ]);
       // Phase 28a P6: recruitable types' bundles are registered (downloaded on first use)...

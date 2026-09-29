@@ -21,7 +21,7 @@ export const DATABASE_TABLES = ['unitTypes', 'unitTypeConfigs', 'movementTypeCon
 type DatabaseTable = (typeof DATABASE_TABLES)[number];
 
 /** Keys moved whole (not entry by entry) when every scenario has the same value. */
-export const DATABASE_WHOLE_KEYS = ['terrainTypeConfigs', 'luaSources'] as const;
+export const DATABASE_WHOLE_KEYS = ['terrainTypeConfigs', 'luaSources', 'colorRanges'] as const;
 type DatabaseWholeKey = (typeof DATABASE_WHOLE_KEYS)[number];
 
 /** One shared database file: some entries of the tables, and possibly whole keys. */

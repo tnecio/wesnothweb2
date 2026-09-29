@@ -686,6 +686,22 @@ if (isRealCampaign) {
   if (Object.keys(modules).length > 0) luaSources = { modules, wml };
 }
 
+// Phase 28c: a campaign's own `[color_range]`s (The South Guard's `wesred`, Liberty's ...), which upstream
+// adds to the game's colour table when the campaign is loaded (`game_config::add_color_info`). Same shape
+// as `team-colors.json`'s `ranges`: `rgb=mid,max,min,rep`.
+const colorRanges = {};
+for (const rangeCfg of campaignMainCfg.children('color_range')) {
+  const id = rangeCfg.getString('id');
+  const parts = rangeCfg.getString('rgb', '').split(',').map((hex) => {
+    const s = hex.trim();
+    return s.length === 3
+      ? [parseInt(s[0] + s[0], 16), parseInt(s[1] + s[1], 16), parseInt(s[2] + s[2], 16)]
+      : [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16)];
+  });
+  const [mid, max, min, rep] = parts;
+  if (id && mid && max && min && rep) colorRanges[id] = { mid, max, min, rep };
+}
+
 const snapshot = {
   generatedBy: 'apps/web/scripts/build-scenario-snapshot.mjs (see file header)',
   ...(difficulty ? { difficulty } : {}),
@@ -712,6 +728,7 @@ const snapshot = {
   abilityConfigs: abilityConfigsJson,
   scenarioConfigJson: scenario.toJSON(),
   ...(luaSources ? { luaSources } : {}),
+  ...(Object.keys(colorRanges).length > 0 ? { colorRanges } : {}),
 };
 
 /**

@@ -5663,3 +5663,83 @@ Ported from upstream's `mouse_handler`, `game_display` and `menu_handler::execut
     `t` takes him to the goal, and the interrupted move is forgotten at the end of the turn;
   - `displayPrefs.test.ts`;
   - two new browser blocks, `continue` and `no-auto-moves`, in `movement-orders-playthrough.mjs`.
+
+## 2026-09-29 — Phase 28c, part 1: The South Guard (campaign Lua, campaign-wide content, missing tags)
+
+The South Guard (upstream's tutorial campaign, "Start Here") is the first of Phase 28c's campaigns. The
+survey (`audit-wml.ts --campaign The_South_Guard`, now counting only the surveyed campaign's own Lua)
+found nine missing mainline tags, three Lua-defined tags with two custom dialogs, and `[lua]` actions --
+and, underneath, that the snapshot builder had never merged the `[campaign]` block's own content into
+scenarios. User's decision: run the campaigns' own Lua rather than rewrite it.
+
+- **Campaign-wide content** (`build-scenario-snapshot.mjs`, `saved_game::load_non_scenario`):
+  - The `[campaign]` block's `[event]`, `[lua]`, `[modify_unit_type]` and `[load_resource]` now go into
+    every scenario, and each `[load_resource]` is replaced by its `[resource]`'s children once.
+  - This also fixes the campaigns already shipped: Dead Water, Liberty and Two Brothers all load the
+    `stronger_amlas` resource (the AMLA choices), and Dead Water has a `[modify_unit_type]`. None of that
+    had been applied.
+  - The game config's own `[lua]` (a campaign's preload scripts) is put first, marked `game_config=yes`.
+  - `[replace_map] map_file=` is inlined as `map_data=`.
+  - The snapshot carries `luaSources` (the campaign's `.lua` files, and the WML files its Lua
+    `wml.load`s) and `colorRanges` (below). Both are shared per campaign in `_campaign.json`.
+- **Lua runtime** (`packages/lua-bridge/src/runtime.ts`, `LuaRuntime`):
+  - It runs `[lua]` actions, preload scripts, and WML tags defined in Lua. `wesnoth.wml_actions` is a
+    proxy: reading gives the Lua function or the engine's own handler, and assigning registers with the
+    action registry, so campaign Lua can wrap a native tag.
+  - Every piece of Lua runs in a coroutine driven by a generator. Calls that have to wait (a native tag
+    that shows a message, `game_events.fire`, a dialog) yield to the event pump, so a Lua tag can show a
+    `[message]` and carry on after the answer. Yields across Lua's own `pcall` work.
+  - Bridged API: `wml.variables`, `wml.load`, `wml.tag`/`get_child`, `wesnoth.require`/`dofile`,
+    `wesnoth.textdomain` (translatable strings as Lua values, `..` included), `game_events.fire`,
+    `interface.skip_messages`/`is_skipping_messages`, `units.find`/`find_on_map`/`find_on_recall`/`get`
+    (unit proxies: fields, a few writable, `remove_modifications`, `matches`), `sync.evaluate_single`
+    (run locally), and `gui.show_dialog`.
+  - `GameSession` creates the runtime for a scenario with any Lua, and runs the preload scripts before
+    `prestart`, as `game_lua_kernel::initialize`. `[lua]` code is not `$`-substituted, as upstream.
+- **Custom dialogs** (`gui.show_dialog`):
+  - The engine models the `[resolution]` WML as a widget tree (`guiDialog.ts`). Supported: grids with
+    borders and alignment, labels (markup, the title definition), images, buttons, spacers, and
+    listboxes built from `[list_definition]`/`[list_data]`.
+  - Preshow and callbacks change it (`label`, `visible`, `selected_index`, `on_modified`).
+  - It is shown as a new interaction, `guiDialog` (`GuiDialog.svelte`), sized to its content. Answers are
+    recorded for replay like `[message]` choices: a button's return value, or `select:<id>:<row>`.
+- **Mainline tags added** (`supportWml.ts`, `harmUnitWml.ts`):
+  - `[set/get/clear_global_variable]`, kept per namespace in `localStorage`;
+  - `[unsynced]`;
+  - `[allow/disallow_end_turn]`: End Turn shows the reason instead, and it is saved;
+  - `[allow/disallow_extra_recruit]`: `Unit.extraRecruit`, in the recruit list and check;
+  - `[set_achievement]` and friends: recorded in `localStorage`, with no screen yet (Phase 25);
+  - `[replace_map]`: `GameBoard.replaceMap`, resizing, units off the new map to the recall list, a
+    `mapReplaced` beat that remounts the board, saved with the game;
+  - `[harm_unit]`: a port of `harm_unit.lua`;
+  - `[open_help]`/`[change_theme]`: logged no-ops.
+- **Campaign colours:** a campaign's `[color_range]`s are added to the colour table
+  (`game_config::add_color_info`). The South Guard's `wesred` and Liberty's own ranges had drawn their
+  units in magenta.
+- **Terrain atlases in three tiers** (`build-image-atlases.mjs`, `docs/ASSETS.md`): core (images at least
+  half the real campaigns use), per campaign (`<campaign>/_campaign`), per scenario. Under the old rule
+  (5+ scenarios) the shared bundle grew to 12 MB with The South Guard, and every scenario of every campaign
+  loads all of it. With five campaigns, the core bundle is still 11.8 MB: those tiles really are used that
+  widely. `measure-load.mjs` (headless, software WebGL): Dead Water 1 ready in 10.3 s, 27 image requests,
+  14.5 MB; Liberty 1 in 4.4 s; UtBS 1 in 11.4 s. The longest main-thread task, about 2 s, is native work
+  (large atlas texture uploads) that software rendering makes slow.
+- **Found and fixed in the browser:** the campaign colour ranges reached the compositor workers inside a
+  reactive proxy, which cannot be posted to a worker. The workers never got their configuration, and
+  Liberty's terrain fell back to 413 broken single-image requests. The ranges are now copied to plain
+  data first.
+- **The South Guard registered:** `campaigns.json`, `scenario-list.json`, campaign images, audio,
+  translations and story assets.
+- **Checks:**
+  - engine `supportWml.test.ts` (11);
+  - lua-bridge `runtime.test.ts` (11);
+  - ui `theSouthGuard.test.ts` (13): every scenario opens without an error or unsupported tag (05a, 6a
+    and 6b expect a unit an earlier scenario stored, which a standalone start cannot have); in Westin,
+    the companion is chosen in the campaign's own dialog, which ends the scenario; scenario 2 plays to
+    its end AI against AI.
+  - In the browser, scenario 1's tip dialogs show as upstream's.
+- **Not done / limitations:**
+  - `[micro_ai]` is still a stub (Phase 29), so The South Guard's `zone_guardian` (scenarios 1 and 6b)
+    and `coward` (6a) units use the default AI.
+  - `[harm_unit]`'s floating damage label and `[floating_text]` are not drawn.
+  - `[open_help]`: there is no help browser.
+  - Achievements are recorded but not shown.
