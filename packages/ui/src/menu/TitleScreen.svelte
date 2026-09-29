@@ -142,7 +142,7 @@
 
   <div class="bar">
     <span class="version" data-testid="title-version" title={build.commit || undefined}
-      >{fmt(t('Version $version'), { version })}{#if build.version !== 'dev'}<span class="build"> · {fmt(tx('web $version'), { version: build.version })}</span>{/if}</span
+      >{fmt(t('Version $version'), { version })}{#if build.version !== 'dev'}<span class="build">&nbsp;· {fmt(tx('web $version'), { version: build.version })}</span>{/if}</span
     >
     <a class="source" href={SOURCE_URL} target="_blank" rel="noopener" data-testid="title-source">{tx('Source code')}</a>
     <button class="language" title={t('Change the language')} onclick={onLanguage} data-testid="title-language">
