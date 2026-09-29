@@ -66,6 +66,7 @@
     resolveSideColorId,
     type ColorData,
     type MinimapInput,
+    type RouteOverlay,
     type View,
   } from '@wesnothweb2/renderer';
   import {
@@ -87,6 +88,7 @@
     type HoveredHexInfo,
     type InteractionHost,
     type GameSessionOptions,
+    type HexClickOptions,
   } from './gameSession.js';
   import {
     saveGame,
@@ -605,6 +607,10 @@
     selectedHex = speakerHex ?? (session.selectedUnit ? { x: session.selectedUnit.location.x, y: session.selectedUnit.location.y } : null);
     reachable = session.reachable;
     attackTargets = session.attackCandidates.map((u) => ({ x: u.location.x, y: u.location.y }));
+    // "do not show footsteps during movement"
+    route = null;
+    attackIndicator = null;
+    hoverReach = null;
   }
 
   /** Re-derives every `$state` view from `session`'s current (just-mutated) state. Call after every session mutation. */
@@ -714,6 +720,7 @@
     // start-event [endlevel]) must still show its story, objectives and dialogue first --
     // `runStartupEvents`/`advanceObjectives` move on to 'ended' once those are done.
     if (session.scenarioResult && phase === 'playing') phase = 'ended';
+    updateMovementPreview();
   }
 
   /**
@@ -1111,7 +1118,11 @@
    */
   let armedMove = $state<HexPoint | null>(null);
 
-  /** `GameBoardView`'s `onHexClick`: a finger's tap on a move destination asks for a second tap first. */
+  /**
+   * `GameBoardView`'s `onHexClick`: a finger's tap on a move destination asks for a second tap first.
+   * Phase 28b: a click on an enemy attacks it from the hex `attackFrom` picks -- the side the mouse came
+   * from -- or, for a finger, the hex it tapped first, moving there first when that isn't the unit's own.
+   */
   function handleBoardHexClick(x: number, y: number, input?: { touch: boolean }): void {
     const armed = armedMove;
     armedMove = null;
@@ -1119,19 +1130,82 @@
       armedMove = { x, y };
       hoveredHexInfo = session.hoveredHexInfo(x, y);
       statusMessage = tx('Tap again to move here.');
+      updateMovementPreview();
       return;
     }
-    void handleHexClick(x, y);
+    const attackFrom = input?.touch ? armed : session.attackFrom({ x, y }, previousHex, previousFreeHex);
+    void handleHexClick(x, y, { attackFrom });
   }
 
-  /** A hex the selected unit can move to with nothing (visible) standing on it, and no recruit/recall/attack waiting. */
+  /**
+   * A hex the selected unit can be ordered to with nothing (visible) standing on it, and no
+   * recruit/recall/attack waiting: one it reaches this turn, or (Phase 28b) any it has a route to.
+   */
   function isPlainMoveTarget(x: number, y: number): boolean {
-    if (!session.selectedUnit || pendingRecruitTypeId || pendingRecallIndex !== null || pendingPreview) return false;
-    if (!reachable.some((h) => h.x === x && h.y === y)) return false;
-    return !units.some((u) => u.x === x && u.y === y);
+    const unit = session.selectedUnit;
+    if (!unit || pendingRecruitTypeId || pendingRecallIndex !== null || pendingPreview) return false;
+    if (units.some((u) => u.x === x && u.y === y)) return false;
+    if (reachable.some((h) => h.x === x && h.y === y)) return true;
+    return unit.side === session.activeSide && session.routePreview(x, y) !== null;
   }
 
-  async function handleHexClick(x: number, y: number): Promise<void> {
+  /**
+   * Phase 28b: what the board shows of the order the pointer is about to give (`mouse_handler::
+   * mouse_motion`): the footsteps to the hovered hex, or to the hex a click on the hovered enemy would
+   * attack it from, with the attack direction indicator; with nothing selected, the reach of the unit
+   * under the pointer and the route of its standing order. A finger's picked hex shows its route.
+   */
+  let route = $state.raw<RouteOverlay | null>(null);
+  let attackIndicator = $state.raw<{ src: HexPoint; dst: HexPoint } | null>(null);
+  let hoverReach = $state.raw<ReachableHexPoint[] | null>(null);
+  /** The hex the mouse (or the keyboard cursor) is on. */
+  let pointerHex: HexPoint | null = null;
+  /** `mouse_handler::previous_hex_`/`previous_free_hex_`: the last hex it left, and the last one without a unit (or with the selected one). */
+  let previousHex: HexPoint | null = null;
+  let previousFreeHex: HexPoint | null = null;
+
+  function pointerMovedTo(hex: HexPoint | null): void {
+    const last = pointerHex;
+    if (hex && last && (hex.x !== last.x || hex.y !== last.y)) {
+      previousHex = last;
+      const sel = session.selectedUnit;
+      const selectedThere = !!sel && sel.location.x === last.x && sel.location.y === last.y;
+      if (selectedThere || !units.some((u) => u.x === last.x && u.y === last.y)) previousFreeHex = last;
+    }
+    pointerHex = hex;
+    updateMovementPreview();
+  }
+
+  function updateMovementPreview(): void {
+    route = null;
+    attackIndicator = null;
+    hoverReach = null;
+    // Nothing while the player can't act, or while "show enemy moves" owns the reach display.
+    if (!canAct() || enemyReach || pendingRecruitTypeId || pendingRecallIndex !== null) return;
+    const pending = session.pendingAttack;
+    if (pending) {
+      route = session.routePreview(pending.from.x, pending.from.y);
+      attackIndicator = { src: { x: pending.from.x, y: pending.from.y }, dst: { x: pending.defender.location.x, y: pending.defender.location.y } };
+      return;
+    }
+    if (armedMove) {
+      route = session.routePreview(armedMove.x, armedMove.y);
+      return;
+    }
+    const hex = pointerHex;
+    if (!hex) return;
+    const from = session.attackFrom(hex, previousHex, previousFreeHex);
+    if (from) attackIndicator = { src: from, dst: hex };
+    const dest = from ?? hex;
+    route = session.routePreview(dest.x, dest.y);
+    const hover = session.hoverPreview(hex.x, hex.y);
+    if (hover) {
+      hoverReach = hover.reach;
+      route = hover.route;
+    }
+  }
+
+  async function handleHexClick(x: number, y: number, options: HexClickOptions = {}): Promise<void> {
     if (!canAct()) return;
     clearEnemyMoves();
     // Phase 17: the walk and the new recruit's appearance are cutscene
@@ -1139,8 +1213,20 @@
     // `GameSession.moveSelectedTo`), so they play at the point the WML
     // reaches them -- before whatever the `moveto`/`recruit` events they
     // trigger have to say, not after the click has fully resolved.
-    const message = await runPlayerAction(() => session.handleHexClick(x, y));
+    const message = await runPlayerAction(() => session.handleHexClick(x, y, options));
     sync(message);
+  }
+
+  /**
+   * Phase 28b: `play_human_turn`'s `execute_gotos` -- as the player's turn begins, units with a standing
+   * order (a multi-turn move) walk on towards it.
+   */
+  async function continueStandingOrders(): Promise<void> {
+    if (!canAct()) return;
+    const message = await runPlayerAction(() => session.executeGotos());
+    if (message === null) return;
+    sync(message);
+    await showDeferredInteractions();
   }
 
   /**
@@ -1188,11 +1274,13 @@
   }
 
   /** `GameBoardView`'s `onHexHoverChange` -- keeps the infobox's hovered-hex terrain section live. */
-  function handleHexHoverChange(hex: HexPoint | null): void {
+  function handleHexHoverChange(hex: HexPoint | null, input?: { touch: boolean }): void {
     // "A single pixel move would remove the enemy movement highlights" -- a move to another hex does.
     if (enemyReach && hex && (enemyReach.shownAt === null || hex.x !== enemyReach.shownAt.x || hex.y !== enemyReach.shownAt.y)) clearEnemyMoves();
     hoveredHexInfo = hex ? session.hoveredHexInfo(hex.x, hex.y) : null;
     if (hex) lastHoveredHex = hex;
+    // A finger dragging the map isn't pointing anywhere.
+    if (!input?.touch) pointerMovedTo(hex);
   }
 
   /** `menu_handler::label_terrain`: opens the label dialog on `hex`, with its current label if any. */
@@ -1248,6 +1336,8 @@
       clickHex: (x: number, y: number) => handleHexClick(x, y),
       /** Phase 22: the hexes "Show Enemy Moves" is showing, or null when it isn't. */
       enemyReach: () => enemyReach?.hexes ?? null,
+      /** Phase 28b: what the pointer's order preview is showing. */
+      movementPreview: () => ({ route, attackIndicator, hoverReach: hoverReach?.length ?? null, pointerHex, canAct: canAct(), phase }),
     };
   }
 
@@ -2037,6 +2127,7 @@
     // `endTurn` has cycled through every AI side and come back round, is
     // here.
     await autosave();
+    await continueStandingOrders();
     // Then, as `play_human_turn` does, the objectives if WML changed them.
     if (phase !== 'ended' && session.takeObjectivesChanged()) objectivesDialogOpen = true;
   }
@@ -2701,6 +2792,8 @@
     }
     hoveredHexInfo = session.hoveredHexInfo(cursorHex.x, cursorHex.y);
     cursorAnnouncement = session.describeHex(cursorHex.x, cursorHex.y);
+    // Upstream's keyboard cursor is the mouse's hex: the same footsteps and attack direction follow it.
+    pointerMovedTo(cursorHex);
     // Instant: a held arrow key would otherwise restart a glide from rest on every repeat.
     void boardView?.scrollToHexIfOffscreen(cursorHex.x, cursorHex.y, true);
   }
@@ -2732,7 +2825,7 @@
       hotkey: { key: 'Enter' },
       // The same path a left click takes, so keyboard and mouse can never diverge.
       handler: () => {
-        if (cursorHex) void handleHexClick(cursorHex.x, cursorHex.y);
+        if (cursorHex) void handleHexClick(cursorHex.x, cursorHex.y, { attackFrom: session.attackFrom(cursorHex, previousHex, previousFreeHex) });
       },
     },
     {
@@ -2859,8 +2952,10 @@
         {units}
         {selectedHex}
         cursorHex={cursorHex ?? armedMove}
-        reachable={enemyReach?.hexes ?? reachable}
+        reachable={enemyReach?.hexes ?? hoverReach ?? reachable}
         {attackTargets}
+        {route}
+        {attackIndicator}
         grid={displayPrefs.value.grid}
         {villageOwners}
         terrain={terrainHexes}

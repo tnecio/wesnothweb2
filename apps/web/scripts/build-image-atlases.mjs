@@ -371,13 +371,15 @@ if (!fs.existsSync(rulesFile)) {
 
 // ── Small images every board draws: unit ellipses, leader crown, orbs, village flags ──────────────
 // Phase 28 S4 (docs/ASSETS.md §4.6): about a dozen of these were fetched one by one per scenario. One
-// fixed bundle, `_ui/ui.json`, holds every ellipse, crown, orb and flag animation frame.
+// fixed bundle, `_ui/ui.json`, holds every ellipse, crown, orb and flag animation frame -- and (Phase 28b)
+// the route's footprints, its ZoC/capture/hidden markers and the attack direction indicator.
 const uiDir = path.join(outRoot, '_ui');
 if (!upToDate(path.join(uiDir, 'ui.json'), [scriptFile])) {
   const pick = (dir, rootedDir, test) =>
     fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.png') && test(f)).map((f) => `${rootedDir}/${f}`) : [];
   const sources = new Set([
-    ...pick(path.join(engineImagesRoot, 'misc'), 'engine/misc', (f) => /^(ellipse|leader-crown|orb)/.test(f)),
+    ...pick(path.join(engineImagesRoot, 'misc'), 'engine/misc', (f) => /^(ellipse|leader-crown|orb|attack-indicator-|zoc\.|capture\.|hidden\.)/.test(f)),
+    ...pick(path.join(engineImagesRoot, 'footsteps'), 'engine/footsteps', () => true),
     ...pick(path.join(dataRoot, 'core/images/flags'), 'core/images/flags', () => true),
   ]);
   const { files, summary: line } = writeBundle(uiDir, 'ui', sources, COMMON_ATLAS_SIZE);
