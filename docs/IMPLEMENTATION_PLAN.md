@@ -1815,8 +1815,8 @@ below exist yet.
 
 ### Phase 28b — Movement visualisation & multi-turn moves (added 2026-09-27)
 
-**Status: not started.** Directly after Phase 28 (user's call). Upstream's
-`mouse_handler` reach and route display, and `goto` moves:
+**Status: delivered 2026-09-29** (see `PROGRESS.md`). Directly after Phase 28
+(user's call). Upstream's `mouse_handler` reach and route display, and `goto` moves:
 
 - Hovering any unit (own or enemy, nothing selected) highlights its reach;
   an enemy's with full moves (`unit_movement_resetter`), as when selected.
@@ -2113,7 +2113,8 @@ pulled forward and delivered 2026-09-22.
 8. **Phase 28** (CI/CD/performance/platform) — brought forward to right
    after Phase 23 and its fixes (user's call, 2026-09-27); delivered
    2026-09-29 as `v0.1.0`, with S7/S8 moved to Phase 28d.
-9. **Phase 28b** (movement visualisation & multi-turn moves), then
+9. **Phase 28b** (movement visualisation & multi-turn moves) — delivered
+   2026-09-29; then
    **Phase 28c** (the rest of the bundled single-player campaigns).
 10. **Phase 24** (advanced UI), **Phase 25** (statistics & achievements),
    **Phase 27** (feature completeness assessment), then **Phase 28d**
