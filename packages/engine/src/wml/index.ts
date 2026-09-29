@@ -24,6 +24,7 @@ export {
   preprocessFile,
   preloadDefines,
   preloadDefinesFromDir,
+  makeNodeHost,
 } from './preprocessor.js';
 export type {
   MacroDefinition,

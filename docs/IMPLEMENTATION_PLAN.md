@@ -1865,7 +1865,9 @@ below exist yet.
 
 ### Phase 28c — The rest of the bundled single-player campaigns (added 2026-09-27)
 
-**Status: in progress.** The South Guard done (2026-09-29, see `PROGRESS.md`): with it came a campaign
+**Status: paused after The South Guard** (user's call, 2026-09-29): Phase 29, the help browser and
+achievements come first, built against `docs/CAMPAIGN_INVENTORY.md`; then the rest in batches. The South
+Guard done (2026-09-29, see `PROGRESS.md`): with it came a campaign
 Lua runtime (`lua-bridge`'s `LuaRuntime`, custom `gui.show_dialog` dialogs), the `[campaign]` block's
 events and resources merged into scenarios, and nine more mainline tags. After Phase 28b. Built before it: Dead Water (13
 scenarios), Liberty (8), Two Brothers (5), Under the Burning Suns (5 of
@@ -2116,15 +2118,27 @@ pulled forward and delivered 2026-09-22.
    after Phase 23 and its fixes (user's call, 2026-09-27); delivered
    2026-09-29 as `v0.1.0`, with S7/S8 moved to Phase 28d.
 9. **Phase 28b** (movement visualisation & multi-turn moves) — delivered
-   2026-09-29; then
-   **Phase 28c** (the rest of the bundled single-player campaigns).
-10. **Phase 24** (advanced UI), **Phase 25** (statistics & achievements),
-   **Phase 27** (feature completeness assessment), then **Phase 28d**
-   (performance budgets, cross-browser, offline; split from Phase 28).
-11. **Phase 29** (real AI: RCA framework + Lua on fengari) — underway
-   alongside the above rather than strictly after it (Phase 7's MVP
-   heuristic AI remains playable throughout).
-12. **Phase 30** (combat RNG modes, split from Phase 21) — last, after
+   2026-09-29. **Phase 28c** (the rest of the bundled campaigns) started
+   with The South Guard (delivered 2026-09-29, `v0.3.0`), then **paused**
+   (user's call, 2026-09-29): porting campaigns against missing subsystems
+   leaves stubs to audit later, so the subsystems come first, and the
+   campaigns after them in batches. First, every remaining campaign was
+   surveyed statically (`docs/CAMPAIGN_INVENTORY.md`,
+   `apps/web/scripts/survey-campaigns.mjs`), so the subsystems below are
+   built against what the campaigns actually use.
+10. **Phase 29** (real AI: RCA framework + Lua on fengari), including the
+   `[micro_ai]`s and custom Lua AI the inventory ranks by use.
+11. **Help browser** (from Phase 24): unit, terrain and topic pages,
+   `[open_help]`.
+12. **Achievements** (from Phase 25): the screen, and the statistics some
+   achievements count; the engine already records `[set_achievement]`.
+13. **Phase 28c resumed**: the remaining campaigns in batches, each
+   checked against the inventory.
+14. **Phase 24** (the rest of the advanced UI), **Phase 25** (the rest of
+   statistics), **Phase 27** (feature completeness assessment), then
+   **Phase 28d** (performance budgets, cross-browser, offline; split from
+   Phase 28).
+15. **Phase 30** (combat RNG modes, split from Phase 21) — last, after
    everything above.
 
 ### Old → new phase numbers

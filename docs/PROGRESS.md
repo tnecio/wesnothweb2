@@ -5743,3 +5743,39 @@ scenarios. User's decision: run the campaigns' own Lua rather than rewrite it.
   - `[harm_unit]`'s floating damage label and `[floating_text]` are not drawn.
   - `[open_help]`: there is no help browser.
   - Achievements are recorded but not shown.
+
+## 2026-09-29 — Campaign survey, and Phase 28c paused
+
+Phase 28c is paused after The South Guard (user's call): the real AI, the help browser and achievements come
+first, then the remaining campaigns in batches (`IMPLEMENTATION_PLAN.md`, order items 9–15). To build those
+subsystems against what the campaigns actually use, every unported campaign was surveyed first.
+
+- **`apps/web/scripts/survey-campaigns.mjs`** (new):
+  1. builds every scenario of each campaign not in `campaigns.json` at NORMAL difficulty into a scratch
+     directory;
+  2. audits them with `audit-wml.ts`, which gained `--dir` and `--json`;
+  3. scans the campaigns' Lua and WML for the Lua API they call (compared with what `lua-bridge`
+     provides), the core Lua modules they `require`, `[micro_ai]` types, custom Lua AI, `gui.show_dialog`
+     widgets, achievements, `[open_help]` topics and campaign terrain;
+  4. writes **`docs/CAMPAIGN_INVENTORY.md`** (the report) and `docs/campaign-inventory.json` (the data).
+- **Results:** 17 campaigns, 287 scenarios. All built except World Conquest, a random-map multiplayer
+  campaign whose maps Lua generates at game start. Headlines:
+  - `zone_guardian` is used in 6 campaigns (66 scenarios), then `simple_attack`, `coward` and `goto`.
+  - Mainline's Lua candidate actions `spread_poison` and `high_xp_attack` appear in 7 campaigns.
+  - The most-used Lua API the bridge lacks: `wesnoth.map.find`, `wesnoth.sides`, `wesnoth.current.*`,
+    `mathx.random`, `stringx.vformat`.
+  - Eight WML tags are missing, led by `[store_reachable_locations]`, `[set_extra_recruit]` and
+    `[do_command]`.
+  - No campaign besides The South Guard opens help pages.
+  - Three campaigns have their own terrain rules.
+- **Preprocessor fixes the survey forced** (each with a test that fails without it; the shipped campaigns'
+  snapshots rebuilt byte-identical):
+  - A scenario now sees the macro table as it stood when the campaign's preload reached its file, as in
+    upstream's single pass. Heir to the Throne's last scenario `#undef`s `HTTT_BIGMAP`; Secrets of the
+    Ancients swaps its `JOURNEY_STAGE*` macros.
+  - `#` inside a macro argument is a comment there too. Before, Eastern Invasion's `#including {GUARDIAN}
+    units!` expanded the macro, and its lines spilled out of the comment; that happens when the macro
+    comes from another textdomain.
+  - `#enddef` ends a definition when matched as a prefix, as upstream's scanner does. This covers the
+    `#enddefs` typo in Of Pearls and Pirates' and The Hammer of Thursagan's `utils/side_ai.cfg`.
+  - The theme macros (`data/themes/`) are loaded with core's.

@@ -5,6 +5,9 @@
  *   npx tsx packages/ui/scripts/audit-wml.ts [--out docs/WML_AUDIT.md] [--campaign The_South_Guard]
  *
  * `--campaign` (Phase 28c) limits the survey to one campaign's snapshots (its directory name).
+ * `--dir <path>` reads snapshots from another directory laid out the same way (`<campaign>/<id>.json`),
+ * e.g. the campaign survey's scratch build; `--json <file>` also writes every tag's status and users there
+ * (`survey-campaigns.mjs` reads it).
  *
  * Reads every committed scenario snapshot (`apps/web/public/scenarios/*.json`
  * -- each carries its scenario fully preprocessed, macros expanded, in
@@ -41,6 +44,9 @@ const outArg = args.indexOf('--out');
 const out = outArg >= 0 ? args[outArg + 1] : null;
 const campaignArg = args.indexOf('--campaign');
 const onlyCampaign = campaignArg >= 0 ? args[campaignArg + 1] : null;
+const dirArg = args.indexOf('--dir');
+const jsonArg = args.indexOf('--json');
+const jsonOut = jsonArg >= 0 ? args[jsonArg + 1] : null;
 
 // ---------------------------------------------------------------------------
 // What the port implements
@@ -154,7 +160,8 @@ function walkScenario(cfg: WmlConfig, scenario: string): void {
 const luaTags = new Map<string, string>();
 // Only the surveyed campaigns' own Lua: a tag another campaign happens to define (World Conquest defines
 // several mainline ones) is still missing for these.
-const surveyed = fs.readdirSync(path.join(repoRoot, 'apps/web/public/scenarios')).filter((d) => !onlyCampaign || d === onlyCampaign);
+const scenarioRoot = dirArg >= 0 ? path.resolve(args[dirArg + 1]!) : path.join(repoRoot, 'apps/web/public/scenarios');
+const surveyed = fs.readdirSync(scenarioRoot).filter((d) => !onlyCampaign || d === onlyCampaign);
 for (const campaign of fs.readdirSync(path.join(repoRoot, 'wesnoth/data/campaigns')).filter((c) => surveyed.includes(c))) {
   const dir = path.join(repoRoot, 'wesnoth/data/campaigns', campaign);
   const files: string[] = [];
@@ -181,7 +188,7 @@ for (const campaign of fs.readdirSync(path.join(repoRoot, 'wesnoth/data/campaign
 // `13_Epilogue`), so this walks every campaign, not just whichever happened to be found first. Difficulty
 // overlays (`@<DEFINE>.json`) carry only the WML that differs from the base and are skipped: the base
 // snapshot's own `scenarioConfigJson` is already a full survey of that scenario's action tags.
-const scenarioDir = path.join(repoRoot, 'apps/web/public/scenarios');
+const scenarioDir = scenarioRoot;
 let scenarioCount = 0;
 for (const campaignDir of fs.readdirSync(scenarioDir).sort()) {
   const campaignFull = path.join(scenarioDir, campaignDir);
@@ -242,6 +249,15 @@ for (const [tag, seen] of condRows) {
 lines.push('');
 
 const text = lines.join('\n');
+if (jsonOut) {
+  const users = (seen: Seen) => ({ uses: seen.count, scenarios: [...seen.scenarios].sort() });
+  const json = {
+    scenarios: scenarioCount,
+    actions: Object.fromEntries([...actions].map(([tag, seen]) => [tag, { status: actionStatus(tag), campaignLua: luaTags.get(tag), ...users(seen) }])),
+    conditions: Object.fromEntries([...conditions].map(([tag, seen]) => [tag, { evaluated: CONDITIONS_EVALUATED.has(tag), ...users(seen) }])),
+  };
+  fs.writeFileSync(path.resolve(jsonOut), JSON.stringify(json, null, 1));
+}
 if (out) fs.writeFileSync(path.join(repoRoot, out), text);
 else console.log(text);
 const missing = [...actions.keys()].filter((t) => actionStatus(t) === 'MISSING');
