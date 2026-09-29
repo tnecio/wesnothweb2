@@ -37,11 +37,11 @@
  *    unconditionally has the ability and wrong for a hypothetical
  *    conditionally-active one -- there are no mainline abilities like that
  *    for skirmisher specifically, so this is a safe approximation today.
- *  - `full_cost_map`/`mark_route`: higher-level helpers built on top of
- *    `find_routes`/`a_star_search` for other upstream features (AI cost-map
- *    aggregation, move-route annotations for the "marks" UI overlay). Not
- *    needed yet by anything in this project's scope; add when a caller
- *    needs them. (`find_vacant_tile` -- the other helper this bullet used
+ *  - `full_cost_map`: a higher-level helper built on top of `find_routes`
+ *    for AI cost-map aggregation. Not needed yet by anything in this
+ *    project's scope; add when a caller needs it. (`mark_route`, the route
+ *    annotations the footsteps overlay and multi-turn moves use, IS ported
+ *    as `markRoute` below, Phase 28b.) (`find_vacant_tile` -- the other helper this bullet used
  *    to list here -- IS now ported, see below: the `[move_unit]` WML action
  *    needs it, real content relies on that tag's "nearest vacant hex"
  *    fallback.)
@@ -56,7 +56,7 @@ import type { Team } from '../model/Team.js';
 import type { Unit } from '../model/Unit.js';
 import { aStarSearch, NO_PATH_VALUE, type CostCalculator, type PlainRoute } from './astar.js';
 import { IndexedHeap } from './heap.js';
-import { getVisibleUnit } from './visibility.js';
+import { getVisibleUnit, unitInvisible } from './visibility.js';
 
 export { NO_PATH_VALUE } from './astar.js';
 export type { PlainRoute } from './astar.js';
@@ -197,6 +197,86 @@ export function findPath(board: GameBoard, unit: Unit, dst: Location, options: F
   const calc = new ShortestPathCalculator(board, unit, viewingTeam, options);
   const teleports = (options.allowTeleport ?? true) ? getTeleportLocations(board, unit, { viewingTeam, seeAll: viewingTeam === undefined }) : undefined;
   return aStarSearch(unit.location, dst, stopAt, calc, board.map.w(), board.map.h(), 0, teleports);
+}
+
+// --- mark_route: where a multi-turn route ends each turn ---
+
+/** Mirrors `pathfind::marked_route::mark`: a hex where the unit ends a turn, or the route's last hex. */
+export interface RouteMark {
+  readonly loc: Location;
+  /** The turn the unit reaches this hex (1 = this turn). */
+  readonly turns: number;
+  /** The unit stops here because it entered an enemy's zone of control. */
+  readonly zoc: boolean;
+  /** Stopping here captures a village (or, for an enemy unit on a fogged village, might). */
+  readonly capture: boolean;
+  /** The unit would be invisible here (`hides`). */
+  readonly invisible: boolean;
+}
+
+/** Mirrors `pathfind::marked_route`. */
+export interface MarkedRoute {
+  /** The route's hexes, the unit's own first. */
+  readonly steps: readonly Location[];
+  /** One mark per turn-end hex plus the last hex, in route order. Ends early when the unit cannot go on. */
+  readonly marks: readonly RouteMark[];
+  /** `marked_route::move_cost` (upstream's `update_move_cost`): movement spent, a turn's leftover counted as spent. */
+  readonly moveCost: number;
+}
+
+/**
+ * Mirrors `pathfind::mark_route`: walks `steps` (a route from `unit`'s own
+ * hex, as `findPath` returns) with the unit's movement, marking each hex
+ * where it has to stop for the turn -- the next step costs more than it
+ * has left, or it entered an enemy zone of control -- and the last hex,
+ * each with the turn it gets there. `viewingTeam` is the side looking (its
+ * knowledge of zones of control and fog); the unit's own by default.
+ */
+export function markRoute(board: GameBoard, unit: Unit, steps: readonly Location[], viewingTeam?: Team): MarkedRoute {
+  const marks: RouteMark[] = [];
+  if (steps.length === 0) return { steps, marks, moveCost: 0 };
+  const unitTeam = board.getTeam(unit.side);
+  const viewer = viewingTeam ?? unitTeam;
+  const skirmisher = hasSkirmisher(unit);
+  let turns = 0;
+  let totalCosts = 0;
+  let movement = unit.movesLeft;
+  let zoc = false;
+
+  for (let i = 0; i < steps.length; i++) {
+    const loc = steps[i]!;
+    const lastStep = i + 1 === steps.length;
+    // The next step's cost is irrelevant for the last step.
+    const moveCost = lastStep ? 0 : unit.movementCost(board.map.getTerrain(steps[i + 1]!));
+
+    if (lastStep || zoc || moveCost > movement) {
+      // A village the unit's side doesn't own is captured by stopping on it;
+      // an enemy's fogged one is assumed captured (the viewer can't know).
+      const capture =
+        board.map.isVillage(loc) &&
+        (board.villageOwner(loc) !== unit.side || (!!viewer && !!unitTeam && viewer.isEnemy(unitTeam) && board.isFogged(viewer.side, loc)));
+      turns++;
+      marks.push({ loc, turns, zoc, capture, invisible: unitInvisible(board, unit, loc, false) });
+      if (lastStep) {
+        if (capture) totalCosts += movement;
+        break;
+      }
+      totalCosts += movement;
+      movement = unit.maxMoves;
+      // Can't reach the destination.
+      if (moveCost > movement) return { steps, marks, moveCost: totalCosts };
+    }
+
+    zoc = !!unitTeam && enemyZoc(board, unitTeam, steps[i + 1]!, viewer, false) && !skirmisher;
+    if (zoc) {
+      totalCosts += movement;
+      movement = 0;
+    } else {
+      movement -= moveCost;
+      totalCosts += moveCost;
+    }
+  }
+  return { steps, marks, moveCost: totalCosts };
 }
 
 // --- find_routes: the reachable-hexes flood fill ---

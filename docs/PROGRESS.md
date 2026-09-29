@@ -5575,3 +5575,69 @@ either orientation; tablets and desktops keep the full layout.
   - Wrangler is unpinned to `^4` (4.143), which needs Node 22 or newer.
   - Lint, typecheck and every unit suite pass on Node 24.
 - A production build is now 1,352 files and 93 MiB (265 MiB before the atlas work).
+
+## 2026-09-29 — Phase 28b: movement visualisation, multi-turn moves, move-and-attack
+
+Ported from upstream's `mouse_handler`, `game_display` and `menu_handler::execute_gotos`.
+
+- **Engine (S1).** `markRoute` in `pathfind.ts` is `mark_route`: along a route it marks each hex where
+  the unit ends a turn (the next step costs more than it has left, or it entered an enemy's zone of
+  control) and the last hex, each with the turn it gets there and upstream's ZoC, capture and hidden
+  flags. Tests on a synthetic board (`test/pathfind/markRoute.test.ts`).
+- **Session (S2), `gameSession.ts`.**
+  - `routePreview(x, y)`: the route from the selected (or viewed) unit, as `get_route` finds it (no turn
+    limit, what the viewing side can see), marked, with the defense on each marked hex.
+  - `hoverPreview(x, y)`: `show_reach_for_unit`. With nothing selected, the unit under the pointer shows its
+    reach (another side's with full moves) and, for the player's own or an allied human unit, the route
+    of its standing order.
+  - `attackFrom(target, previous, previousFree)`: `current_unit_attacks_from`. It picks the hex the
+    selected unit would attack from: next to the target, reachable, and on the side the pointer came
+    from (or, for ranged weapons, the reachable hex in range with the most moves left).
+  - **Multi-turn orders.** A click beyond this turn's reach orders the unit along the whole route. It
+    walks as far as it can now (the recorded `[move]` is still the walked part), and the rest is its
+    `goto`, as `unit_mover` leaves it. An interrupted move drops it: an ambush, a sighting, an enemy in
+    the way, a failed teleport, or WML removing the unit. A unit with no moves left gets the order
+    without moving. Any new move order replaces it, and clicking the selected unit itself cancels it
+    (`move_action`).
+  - `executeGotos()`: `execute_gotos`, run as a human side's turn begins, after the autosave (as
+    `play_human_turn` does). A unit whose next stop is taken waits for the others first.
+  - **Move-and-attack.** `PendingAttack.from` is the hex the attack is made from. The prediction is
+    computed with the attacker placed there for the calculation, so terrain, time of day, leadership and
+    backstab all apply as they will there. Confirming walks there first (an ordinary, undoable move). The
+    attack follows only if the unit arrived uninterrupted and the target is still next to it and
+    attackable; dismissing the dialog changes nothing.
+  - Tests: `movementOrders.test.ts` (11, on Dead Water 1), including an ambush on the way cancelling the
+    attack.
+- **Renderer (S3), `SnapshotBoard`.**
+  - `setRoute` draws `footsteps_images`: two half-hex prints per hex, in and out, with the pace (normal,
+    medium, slow) from the unit's movement cost there. The south-facing directions are the north-facing
+    images turned round, and teleports get their marker.
+  - On each marked hex it draws the `draw_movement_info` text: the defense (red to green), the turn number
+    (not a lone "1" on the destination), and the ZoC, capture and hidden icons. A marked hex hides the
+    reach's own defense label.
+  - `setAttackIndicator` draws `misc/attack-indicator-src/dst-<dir>`.
+  - Footprints lie under units (`drawing_layer::footsteps`), text over them (`move_info`), and the
+    indicator over the selection ring.
+  - The footprints, indicator and markers are in the `_ui` atlas bundle (110 images, 174 KB).
+- **UI (S4).**
+  - `GameShell` tracks the pointer's hex and the two it came from (`previous_hex_`, `previous_free_hex_`)
+    and shows the footsteps, the attack indicator, or the hovered unit's reach. The keyboard cursor
+    counts as the pointer, as upstream's does.
+  - A mouse click on an enemy attacks from `attackFrom`'s hex.
+  - On touch, the first tap on any hex the unit has a route to (not only a reachable one) picks it and
+    shows its footsteps. A second tap orders the move, and a tap on an enemy next to the picked hex is
+    move-and-attack from there.
+  - A dragging finger doesn't count as hovering.
+- **Milestone.** `apps/web/scripts/movement-orders-playthrough.mjs` checks, on Dead Water 1:
+  - hovering an enemy shows its reach;
+  - the footsteps to a four-turn hex carry the turn numbers 1–4 and defenses;
+  - Kai goes as far as he can, walks on at the start of turns 2 and 3, and a click on him cancels the
+    order (turn 4 leaves him be);
+  - mouse move-and-attack shows the indicator and the route; the dialog opens before any move, Cancel
+    leaves Kai in place and selected, and confirming moves him and then attacks;
+  - touch move-and-attack works the same way, and an ambush on the way stops him with no attack.
+- **Not done / deliberate.**
+  - A replay or redo of an order's first move replays only the walked part, so it does not recreate the
+    `goto`. The later turns' continuations are ordinary recorded moves.
+  - Upstream's "continue move" hotkey (`t`) and the `disable_auto_moves` preference are not ported.
+  - As before, every reachable hex shows its defense (for touch); upstream numbers only the hovered one.

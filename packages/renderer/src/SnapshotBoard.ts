@@ -72,7 +72,7 @@ import * as PIXI from 'pixi.js';
 // blend equation like `'add'`/`'normal'`, so it renders nothing (silently, no
 // error) until its extension is registered. `'add'` needs no such registration.
 PIXI.extensions.add(PIXI.SubtractBlend);
-import { Direction, Location, getAdjacentTiles } from '@wesnothweb2/engine/src/model/Location.js';
+import { Direction, Location, getAdjacentTiles, relativeDirection, tilesAdjacent, writeDirection } from '@wesnothweb2/engine/src/model/Location.js';
 import { hexOverlayImages, defaultAssetExists, type FogShroudHex } from './fogShroud.js';
 import { splitTodTintColors } from './todTint.js';
 import {
@@ -364,7 +364,8 @@ export interface SnapshotBoardOptions {
   /** Called with a hex's engine-convention (0-based) (x,y) when a terrain tile is clicked -- see module doc comment. */
   onHexClick?: (x: number, y: number) => void;
   /** Called with a hex's engine-convention (0-based) (x,y) when the pointer moves over a terrain tile -- lets a caller show a live coordinate readout, useful for describing positions precisely (e.g. reporting a bug). */
-  onHexHover?: (x: number, y: number) => void;
+  /** The pointer moved onto hex (x, y); `pointerType` is the DOM's (`'mouse'`, `'touch'`, `'pen'`). */
+  onHexHover?: (x: number, y: number, pointerType?: string) => void;
   /**
    * Phase 14: real Wesnoth's right-click context menu. Called with a hex's
    * engine-convention (0-based) (x,y) AND the raw browser viewport
@@ -413,6 +414,26 @@ export interface HighlightState {
    * at once (a unit selected while the cursor is over its destination).
    */
   cursor?: HexPoint | null;
+}
+
+/** Phase 28b: one hex of a route's footsteps, with the unit's movement cost there (which footprint image). */
+export interface RouteStepPoint extends HexPoint {
+  readonly moveCost: number;
+}
+
+/** Phase 28b: a hex where the route ends a turn, or its last hex (`marked_route::mark`), with the unit's defense there. */
+export interface RouteMarkPoint extends HexPoint {
+  readonly turns: number;
+  readonly zoc: boolean;
+  readonly capture: boolean;
+  readonly invisible: boolean;
+  readonly defensePercent: number;
+}
+
+/** Phase 28b: the route `setRoute` draws (`game_display::set_route`), from the unit's own hex to the destination. */
+export interface RouteOverlay {
+  readonly steps: readonly RouteStepPoint[];
+  readonly marks: readonly RouteMarkPoint[];
 }
 
 /** One currently-OWNED village -- unowned villages need no marker (the terrain colour alone already marks them as villages, see `colorForTerrain`). */
@@ -530,6 +551,19 @@ export class SnapshotBoard {
   private readonly hoverLayer = new PIXI.Container();
   /** Defense per reachable hex (by `x,y`) from the last `setHighlights`, for `setHoveredHex`. */
   private reachableDefense = new Map<string, number>();
+  /** The reachable hexes' defense labels (by `x,y`): hidden where the route draws its own (`setRoute`). */
+  private reachLabels = new Map<string, PIXI.Text>();
+  /** Phase 28b: the route's footprints (`drawing_layer::footsteps`: over the terrain, under units). */
+  private readonly footstepLayer = new PIXI.Container();
+  /** Phase 28b: the route's turn-end marks -- defense, turn number, ZoC/capture/hidden icons (`drawing_layer::move_info`). */
+  private readonly routeInfoLayer = new PIXI.Container();
+  /** Hexes (`x,y`) the current route marks. */
+  private routeMarkKeys = new Set<string>();
+  /** Bumped by every `setRoute`, so a route whose images arrive after a newer one was set is dropped. */
+  private routeToken = 0;
+  /** Phase 28b: the attack direction indicator (`drawing_layer::attack_indicator`). */
+  private readonly attackIndicatorLayer = new PIXI.Container();
+  private attackIndicatorToken = 0;
   private hoveredHex: HexPoint | null = null;
   private readonly unitLayer = new PIXI.Container();
   /** `applyStatusFilters`: which status set each sprite's filters were last built for. */
@@ -632,7 +666,7 @@ export class SnapshotBoard {
   /** `x,y` of the hex `setHighlights` last marked selected, whose unit gets the `-selected` ellipse. */
   private selectedHexKey: string | null = null;
   private readonly onHexClick?: (x: number, y: number) => void;
-  private readonly onHexHover?: (x: number, y: number) => void;
+  private readonly onHexHover?: (x: number, y: number, pointerType?: string) => void;
   private readonly onHexRightClick?: (x: number, y: number, clientX: number, clientY: number) => void;
   /** Persistent per-unit sprite/marker, keyed by `spriteKey` -- see module doc comment on why (animation needs a stable object to animate, not a fresh one every `updateUnits`). */
   private readonly unitVisuals = new Map<string, UnitVisual>();
@@ -678,10 +712,12 @@ export class SnapshotBoard {
       this.itemLayer,
       this.villageLayer,
       this.highlightLayer,
+      this.footstepLayer,
       this.unitLayer,
       this.terrainForegroundLayer,
       this.gridBottomLayer,
       this.moveInfoLayer,
+      this.routeInfoLayer,
       this.hoverLayer,
       this.fogShroudLayer,
       this.todTintLayer,
@@ -689,8 +725,12 @@ export class SnapshotBoard {
       this.labelLayer,
       this.animationOverlayLayer,
       this.selectionLayer,
+      this.attackIndicatorLayer,
       this.floatingLayer,
     );
+    this.footstepLayer.eventMode = 'none';
+    this.routeInfoLayer.eventMode = 'none';
+    this.attackIndicatorLayer.eventMode = 'none';
     this.animationOverlayLayer.eventMode = 'none';
     this.gridTopLayer.eventMode = 'none';
     this.gridBottomLayer.eventMode = 'none';
@@ -851,7 +891,7 @@ export class SnapshotBoard {
         const hex = hexAt(e);
         if (!hex || (last && last.x === hex.x && last.y === hex.y)) return;
         last = hex;
-        this.onHexHover?.(hex.x, hex.y);
+        this.onHexHover?.(hex.x, hex.y, e.pointerType);
       });
     }
   }
@@ -1338,6 +1378,141 @@ export class SnapshotBoard {
       filters.push(filter);
     }
     sprite.filters = filters.length > 0 ? filters : null;
+  }
+
+  /**
+   * Phase 28b: `game_display::set_route` -- a unit's route from its own hex
+   * (`null` clears it). Each hex gets its footprints (`footsteps_images`):
+   * two half-hex prints, in and out, in the direction walked, their pace
+   * from the unit's movement cost there, or a teleport's marker. Each hex
+   * where the route ends a turn, and its last, gets what
+   * `draw_movement_info` draws: the unit's defense there, the number of
+   * the turn it gets there (except a lone "1" on the destination), and the
+   * ZoC, capture and hidden markers.
+   */
+  setRoute(route: RouteOverlay | null): void {
+    const token = ++this.routeToken;
+    this.footstepLayer.removeChildren().forEach((child) => child.destroy());
+    this.routeInfoLayer.removeChildren().forEach((child) => child.destroy());
+    this.routeMarkKeys = new Set(route && route.steps.length >= 2 ? route.marks.map((m) => `${m.x},${m.y}`) : []);
+    for (const [key, label] of this.reachLabels) label.visible = !this.routeMarkKeys.has(key);
+    if (!route || route.steps.length < 2) return;
+    const steps = route.steps.map((s) => new Location(s.x, s.y));
+    const last = route.steps[route.steps.length - 1]!;
+
+    const place = (sprite: PIXI.Sprite, x: number, y: number, flip = false): void => {
+      const { x: cx, y: cy } = hexToPixel(toHexCoord(x, y));
+      sprite.anchor.set(0.5);
+      sprite.position.set(cx, cy);
+      // `~FL(horiz)~FL(vert)`: a half-turn.
+      if (flip) sprite.rotation = Math.PI;
+    };
+    void (async () => {
+      const prints: { ref: string; x: number; y: number; flip: boolean }[] = [];
+      route.steps.forEach((step, i) => {
+        const pace = Math.min(step.moveCost, FOOTPRINT_PACES.length);
+        if (pace < 1) return;
+        let teleport: string | null = null;
+        // The first hex has only the way out, the last only the way in.
+        for (let h = i === 0 ? 1 : 0; h <= (i === steps.length - 1 ? 0 : 1); h++) {
+          const from = steps[i + h - 1]!;
+          const to = steps[i + h]!;
+          if (!tilesAdjacent(from, to)) {
+            teleport = h === 0 ? 'engine/footsteps/teleport-in.png' : 'engine/footsteps/teleport-out.png';
+            continue;
+          }
+          let dir = relativeDirection(from, to);
+          // Only n/ne/se are drawn; the other three are those turned round.
+          const flip = dir > Direction.SouthEast;
+          if (flip) dir = (dir + 3) % 6;
+          prints.push({ ref: `engine/footsteps/${FOOTPRINT_PACES[pace - 1]}${h === 0 ? '-in' : '-out'}-${writeDirection(dir)}.png`, x: step.x, y: step.y, flip });
+        }
+        if (teleport) prints.push({ ref: teleport, x: step.x, y: step.y, flip: false });
+      });
+      const icons = route.marks.flatMap((m) =>
+        [m.invisible && 'engine/misc/hidden.png', m.zoc && 'engine/misc/zoc.png', m.capture && 'engine/misc/capture.png']
+          .filter((ref): ref is string => !!ref)
+          .map((ref) => ({ ref, x: m.x, y: m.y, flip: false })),
+      );
+      const textures = await Promise.all([...prints, ...icons].map((p) => ImageCache.resolve(p.ref)));
+      if (token !== this.routeToken) return;
+      [...prints, ...icons].forEach((p, i) => {
+        const texture = textures[i];
+        if (!texture) return;
+        const sprite = new PIXI.Sprite(texture);
+        place(sprite, p.x, p.y, p.flip);
+        (i < prints.length ? this.footstepLayer : this.routeInfoLayer).addChild(sprite);
+      });
+    })();
+
+    for (const mark of route.marks) {
+      if (mark.x === route.steps[0]!.x && mark.y === route.steps[0]!.y) continue; // the unit stands there
+      const { x: cx, y: cy } = hexToPixel(toHexCoord(mark.x, mark.y));
+      const defense = new PIXI.Text({
+        text: `${mark.defensePercent}%`,
+        style: { fontSize: 18, fontWeight: 'bold', fill: redToGreen(mark.defensePercent), stroke: { color: 0x000000, width: 3 } },
+      });
+      defense.anchor.set(0.5);
+      defense.position.set(cx, cy);
+      this.routeInfoLayer.addChild(defense);
+      const isLast = mark.x === last.x && mark.y === last.y;
+      if (mark.turns > 1 || (mark.turns === 1 && !isLast)) {
+        const turns = new PIXI.Text({
+          text: String(mark.turns),
+          style: { fontSize: 17, fontWeight: 'bold', fill: 0xdddddd, stroke: { color: 0x000000, width: 3 } },
+        });
+        turns.anchor.set(0.5);
+        // draw_text_in_hex(..., 0.5, 0.8): below the hex's centre.
+        turns.position.set(cx, cy + 0.3 * TILE_SIZE);
+        this.routeInfoLayer.addChild(turns);
+      }
+    }
+  }
+
+  /** Phase 28b, for checks: the route drawn now -- its marked hexes and their turn labels. */
+  routeState(): { footprints: number; marks: { x: number; y: number; texts: string[] }[] } {
+    const marks = [...this.routeMarkKeys].map((key) => {
+      const [x, y] = key.split(',').map(Number) as [number, number];
+      const { x: cx, y: cy } = hexToPixel(toHexCoord(x, y));
+      const texts = this.routeInfoLayer.children
+        .filter((c): c is PIXI.Text => c instanceof PIXI.Text && Math.abs(c.x - cx) < 1 && Math.abs(c.y - cy) < TILE_SIZE / 2)
+        .map((t) => t.text);
+      return { x, y, texts };
+    });
+    return { footprints: this.footstepLayer.children.length, marks };
+  }
+
+  /**
+   * Phase 28b: `game_display::set_attack_indicator` -- the arrow pair
+   * showing an attack from `src` on `dst` (`misc/attack-indicator-src-*`
+   * and `-dst-*`, in the direction from one to the other); `null` hides it.
+   */
+  setAttackIndicator(indicator: { src: HexPoint; dst: HexPoint } | null): void {
+    const token = ++this.attackIndicatorToken;
+    this.attackIndicatorLayer.removeChildren().forEach((child) => child.destroy());
+    if (!indicator) return;
+    const dir = writeDirection(relativeDirection(new Location(indicator.src.x, indicator.src.y), new Location(indicator.dst.x, indicator.dst.y)));
+    const parts = [
+      { ref: `engine/misc/attack-indicator-src-${dir}.png`, hex: indicator.src },
+      { ref: `engine/misc/attack-indicator-dst-${dir}.png`, hex: indicator.dst },
+    ];
+    void Promise.all(parts.map((p) => ImageCache.resolve(p.ref))).then((textures) => {
+      if (token !== this.attackIndicatorToken) return;
+      parts.forEach((p, i) => {
+        const texture = textures[i];
+        if (!texture) return;
+        const sprite = new PIXI.Sprite(texture);
+        const { x: cx, y: cy } = hexToPixel(toHexCoord(p.hex.x, p.hex.y));
+        sprite.anchor.set(0.5);
+        sprite.position.set(cx, cy);
+        this.attackIndicatorLayer.addChild(sprite);
+      });
+    });
+  }
+
+  /** Phase 28b, for checks: the hexes the attack indicator is drawn on (source first), or `null`. */
+  attackIndicatorState(): number {
+    return this.attackIndicatorLayer.children.length;
   }
 
   /**
@@ -2117,6 +2292,7 @@ export class SnapshotBoard {
     // hovered hex; every reachable one is numbered here, with touch input in
     // mind. The hovered hex's outline is `setHoveredHex`'s.
     this.reachableDefense = new Map();
+    this.reachLabels = new Map();
     for (const hex of state.reachable ?? []) {
       const coord = toHexCoord(hex.x, hex.y);
       const { x: cx, y: cy } = hexToPixel(coord);
@@ -2133,6 +2309,8 @@ export class SnapshotBoard {
         });
         label.anchor.set(0.5);
         label.position.set(cx, cy);
+        label.visible = !this.routeMarkKeys.has(`${hex.x},${hex.y}`);
+        this.reachLabels.set(`${hex.x},${hex.y}`, label);
         this.moveInfoLayer.addChild(label);
       }
     }
@@ -2182,6 +2360,9 @@ export class SnapshotBoard {
     }
   }
 }
+
+/** `game_config::foot_speed_prefix` (`footprint_prefix`): the footprints for a hex costing 1, 2, and 3 or more. */
+const FOOTPRINT_PACES = ['foot-normal', 'foot-medium', 'foot-slow'] as const;
 
 /** `game_config::flag_rgb`: the palette the flag images are drawn in. */
 const FLAG_RGB = 'flag_green';

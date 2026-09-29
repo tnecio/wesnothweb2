@@ -43,6 +43,7 @@
     type HexPoint,
     type SnapshotUnit,
     type VillageOwnerPoint,
+    type RouteOverlay,
     type UnitAnimationCue,
     type FogShroudHex,
     hexToPixel,
@@ -77,6 +78,8 @@
     cursorHex = null,
     reachable = [],
     attackTargets = [],
+    route = null,
+    attackIndicator = null,
     villageOwners = [],
     hexVisibility = [],
     terrain = null,
@@ -119,6 +122,10 @@
     cursorHex?: HexPoint | null;
     reachable?: readonly (HexPoint & { defensePercent?: number })[];
     attackTargets?: readonly HexPoint[];
+    /** Phase 28b: the route's footsteps and turn marks (`game_display::set_route`); `null` for none. */
+    route?: RouteOverlay | null;
+    /** Phase 28b: the attack direction indicator, from the hex the unit would attack from to its target. */
+    attackIndicator?: { src: HexPoint; dst: HexPoint } | null;
     /** Live village ownership (village hex -> owning side, or unowned if absent) -- re-applied whenever it changes, same as `units`. */
     villageOwners?: readonly VillageOwnerPoint[];
     /** Per-hex shroud/fog state for the board's fog overlay -- see `GameSession.hexVisibility`. Empty when the scenario uses neither. */
@@ -145,7 +152,7 @@
      */
     onHexRightClick?: (x: number, y: number, clientX: number, clientY: number) => void;
     /** Bubbles the hovered hex up to a caller that wants to show live terrain info elsewhere (the infobox's "hovered hex" section) -- `null` when the pointer leaves the board. Separate from `hoverDefensePercent` (used only for this component's own inline status line) so a caller doesn't need to reimplement hover tracking itself. */
-    onHexHoverChange?: (hex: HexPoint | null) => void;
+    onHexHoverChange?: (hex: HexPoint | null, input?: { touch: boolean }) => void;
     /** Called when the board's on-screen area changes size without the window resizing (e.g. a collapsed infobox), for overlays placed over it. */
     onViewportResize?: () => void;
     /** Real terrain-defense percentage the currently selected unit would have at (x, y), for the hover status line -- `undefined`/`null` when nothing is selected or the hex is off-board. */
@@ -552,9 +559,9 @@
         engineImageBaseUrl: ENGINE_IMAGES,
         onHexClick: wrappedOnHexClick,
         onHexRightClick,
-        onHexHover: (x, y) => {
+        onHexHover: (x, y, pointerType) => {
           hoveredHex = { x, y };
-          onHexHoverChange?.({ x, y });
+          onHexHoverChange?.({ x, y }, { touch: pointerType !== undefined && pointerType !== 'mouse' });
         },
         // Phase 28a P3: the rules (~17.5 MB JSON) are fetched, parsed and matched in a worker.
         terrainGraphicsRulesUrl: dataUrl('terrain-graphics-rules.json'),
@@ -685,6 +692,14 @@
 
   $effect(() => {
     board?.setHoveredHex(hoveredHex);
+  });
+
+  $effect(() => {
+    board?.setRoute(route);
+  });
+
+  $effect(() => {
+    board?.setAttackIndicator(attackIndicator);
   });
 
   $effect(() => {
@@ -856,6 +871,11 @@
       unitSpriteFilterCounts: () => board?.unitSpriteFilterCounts() ?? null,
       /** Missiles/halos on the latest animation frame, for checking particle effects. */
       animationOverlays: () => board?.lastAnimationOverlays ?? null,
+      /** Phase 28b: the route drawn (footprint count, marked hexes and their labels) and the attack indicator's sprite count. */
+      route: () => board?.routeState() ?? null,
+      attackIndicator: () => board?.attackIndicatorState() ?? 0,
+      /** Phase 28b: how many hexes the reach highlight covers. */
+      reachCount: () => reachable.length,
     };
   }
 
