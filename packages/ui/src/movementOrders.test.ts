@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Location, distanceBetween, getAdjacentTiles, type Unit } from '@wesnothweb2/engine';
+import { Location, distanceBetween, getAdjacentTiles, recalculateFog, type Unit } from '@wesnothweb2/engine';
 import { GameSession } from './gameSession.js';
 import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 
@@ -209,5 +209,42 @@ describe('move-and-attack', () => {
     expect(kai.attacksLeft).toBe(1);
     expect(malKevek.hitpoints).toBe(hp);
     expect(session.lastAttackAnimation).toBeNull();
+  });
+});
+
+describe('continue move (t)', () => {
+  /** Fog on for Kai's side, and an enemy just out of his sight along the way west. */
+  async function sightedOnTheWay(): Promise<{ session: GameSession; kai: Unit; dest: Location }> {
+    const { session, kai, malKevek } = await start();
+    const team = session.board.getTeam(1)!;
+    team.fog.enabled = true;
+    for (const u of session.board.allUnits()) if (u.side === 1 && u !== kai) session.board.removeUnitAt(u.location);
+    place(session, malKevek, 8, 12);
+    recalculateFog(session.board, 1);
+    session.selectUnit(kai);
+    return { session, kai, dest: new Location(14, 10) };
+  }
+
+  it('a move stopped by sighting units remembers where it was headed, and t walks on without stopping again', async () => {
+    const { session, kai, dest } = await sightedOnTheWay();
+    expect(session.board.isFogged(1, new Location(8, 12))).toBe(true);
+    const message = await session.handleHexClick(dest.x, dest.y);
+    expect(message).toContain('sighted');
+    expect(kai.location.equals(dest)).toBe(false);
+    expect(kai.interruptedMove?.equals(dest)).toBe(true);
+    expect(session.canContinueMove(kai.location.x, kai.location.y)).toBe(true);
+
+    await session.continueMove(kai.location.x, kai.location.y);
+    expect(kai.location.equals(dest)).toBe(true);
+    expect(kai.interruptedMove).toBeUndefined();
+    expect(session.canContinueMove(kai.location.x, kai.location.y)).toBe(false);
+  });
+
+  it('is forgotten at the end of the turn', async () => {
+    const { session, kai, dest } = await sightedOnTheWay();
+    await session.handleHexClick(dest.x, dest.y);
+    expect(kai.interruptedMove).toBeDefined();
+    kai.endTurn();
+    expect(kai.interruptedMove).toBeUndefined();
   });
 });

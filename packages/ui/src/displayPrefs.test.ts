@@ -26,4 +26,9 @@ describe('parseDisplayPrefs', () => {
     expect(parseDisplayPrefs(null)).toMatchObject({ topBarCollapsed: false, infoboxCollapsed: false });
     expect(parseDisplayPrefs('{"infoboxCollapsed": true, "topBarCollapsed": "yes"}')).toMatchObject({ topBarCollapsed: false, infoboxCollapsed: true });
   });
+
+  it("Phase 28b: automatic moves are on unless disabled (upstream's disable_auto_moves, off)", () => {
+    expect(parseDisplayPrefs(null).disableAutoMoves).toBe(false);
+    expect(parseDisplayPrefs('{"disableAutoMoves": true}').disableAutoMoves).toBe(true);
+  });
 });

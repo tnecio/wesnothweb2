@@ -10,6 +10,8 @@
  *  - `zoom` (`tile_size`, 72): the hex size the map opens at -- upstream saves every zoom change.
  *  - `minimap`: the five minimap buttons (`minimap_draw_terrain`, `minimap_terrain_coding`,
  *    `minimap_draw_units`, `minimap_movement_coding`, `minimap_draw_villages`), all on.
+ *  - Phase 28b: `disableAutoMoves` (`disable_auto_moves`, off): units don't carry on with their multi-turn
+ *    orders by themselves when a turn begins.
  *  - Phase 23, ours (upstream has no phone layout): `topBarCollapsed` and `infoboxCollapsed`, whether
  *    the compact layout shows the top bar's full status and the infobox's body. Both open by default.
  *
@@ -34,6 +36,7 @@ export interface DisplayPrefs {
   minimap: MinimapPrefs;
   topBarCollapsed: boolean;
   infoboxCollapsed: boolean;
+  disableAutoMoves: boolean;
 }
 
 export const DEFAULT_DISPLAY_PREFS: Readonly<DisplayPrefs> = {
@@ -45,6 +48,7 @@ export const DEFAULT_DISPLAY_PREFS: Readonly<DisplayPrefs> = {
   minimap: { drawTerrain: true, terrainCoding: true, drawUnits: true, movementCoding: true, drawVillages: true },
   topBarCollapsed: false,
   infoboxCollapsed: false,
+  disableAutoMoves: false,
 };
 
 export const DISPLAY_PREFS_KEY = 'wesnothweb2.display';
@@ -78,6 +82,7 @@ export function parseDisplayPrefs(raw: string | null | undefined): DisplayPrefs 
       drawVillages: bool(mini['drawVillages'], d.minimap.drawVillages),
     },
     topBarCollapsed: bool(data['topBarCollapsed'], d.topBarCollapsed),
+    disableAutoMoves: bool(data['disableAutoMoves'], d.disableAutoMoves),
     infoboxCollapsed: bool(data['infoboxCollapsed'], d.infoboxCollapsed),
   };
 }

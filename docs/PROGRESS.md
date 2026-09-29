@@ -5639,5 +5639,27 @@ Ported from upstream's `mouse_handler`, `game_display` and `menu_handler::execut
 - **Not done / deliberate.**
   - A replay or redo of an order's first move replays only the walked part, so it does not recreate the
     `goto`. The later turns' continuations are ordinary recorded moves.
-  - Upstream's "continue move" hotkey (`t`) and the `disable_auto_moves` preference are not ported.
+  - Upstream's "continue move" hotkey (`t`) and the `disable_auto_moves` preference: ported the same day,
+    see the next entry.
   - As before, every reachable hex shows its defense (for touch); upstream numbers only the hovered one.
+
+## 2026-09-29 — Continue Move (`t`) and "Disable automatic moves"
+
+- **Continue Move** (`menu_handler::continue_move`, hotkey `t`, first in the Actions menu, and in the
+  context menu when it applies).
+  - A move the player orders that is stopped by sighting units now remembers where it was headed
+    (`Unit.interruptedMove`, upstream's `interrupted_move_`). It is forgotten at the end of the side's turn
+    (`unit::end_turn`) and is not saved, as upstream.
+  - `t` walks the unit under the pointer (or the selected one) on to that hex, as a `[move]` with
+    `skip_sighted=all`, so sightings don't stop it again.
+- **`skip_sighted` honoured.** `MoveCommand` already carried `skip_sighted`, but the executor ignored it.
+  `executeMove` now takes `skipSighted` (`all`, or `only_ally`, `unit_mover`'s two flags). `execMove` passes
+  the recorded value, so a replayed continued move also walks on.
+- **"Disable automatic moves"** (`disable_auto_moves`, General tab, off by default): when on, standing
+  orders are not carried on as a turn begins. They stay, and the unit still shows its route on hover.
+- Tests:
+  - engine `moveFog.test.ts`: a `skip_sighted=all` move walks past a sighted enemy;
+  - `movementOrders.test.ts`: on Dead Water 1 with fog switched on, Kai is stopped by sighting Mal-Kevek,
+    `t` takes him to the goal, and the interrupted move is forgotten at the end of the turn;
+  - `displayPrefs.test.ts`;
+  - two new browser blocks, `continue` and `no-auto-moves`, in `movement-orders-playthrough.mjs`.
