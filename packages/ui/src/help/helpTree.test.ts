@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { topicText, type Section, type Topic } from './helpCommon.js';
-import type { HelpData } from './helpData.js';
+import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
+import { withSnapshot, type HelpData } from './helpData.js';
 import { findSection, findTopic, generateContents } from './helpTree.js';
 import { HelpWorld } from './helpWorld.js';
 import { parseMarkup, type MarkupNode } from './markup.js';
@@ -119,5 +120,35 @@ describe('the help tree built from the real data', () => {
   it('has terrain pages and the time-of-day notice outside a game', () => {
     expect(findTopic(toplevel, '..terrain_flat')).toBeDefined();
     expect(topicText(findTopic(toplevel, '..schedule')!)).toContain('Only available during a scenario.');
+  });
+});
+
+describe('the help in a game', () => {
+  it("adds the campaign's own units: The South Guard's [open_help] pages exist", () => {
+    const file = path.resolve(__dirname, '../../../../apps/web/public/scenarios/The_South_Guard/02x_Westin.json');
+    const snapshot = readScenarioSnapshot(file);
+    const { toplevel } = generateContents(new HelpWorld(withSnapshot(data, snapshot)));
+    for (const topic of ['unit_Veteran Fencer', 'unit_White Mage', 'unit_Veteran Infantryman']) {
+      const page = findTopic(toplevel, topic);
+      expect(page, topic).toBeDefined();
+      expect(() => parseMarkup(topicText(page!))).not.toThrow();
+    }
+    expect(topicText(findTopic(toplevel, 'unit_Veteran Fencer')!)).toContain('Level 2');
+  });
+
+  it("describes the scenario's schedule and the map's mixed terrains", () => {
+    const world = new HelpWorld(data, {
+      times: [
+        { id: 'dawn', name: 'Dawn', image: 'misc/time-schedules/default/schedule-dawn.png', lawfulBonus: 0, red: 0, green: 0, blue: 0, description: 'The sun rises.' },
+        { id: 'morning', name: 'Morning', image: 'misc/time-schedules/default/schedule-morning.png', lawfulBonus: 25, red: 0, green: 0, blue: 0 },
+      ],
+      mapTerrainCodes: ['Gg^Fp', 'Gg'],
+    });
+    const { toplevel } = generateContents(world);
+    expect(topicText(findTopic(toplevel, 'time_of_day_morning')!)).toContain("<span color='green'>25</span>");
+    expect(topicText(findTopic(toplevel, '..schedule')!)).toContain("<ref dst='time_of_day_dawn'>Dawn</ref>");
+    const mixed = findTopic(toplevel, '.terrain_grassland^pine_forest');
+    expect(mixed?.title).toBe('Green Grass / Pine Forest');
+    expect(topicText(mixed!)).toContain('Base terrain: ');
   });
 });

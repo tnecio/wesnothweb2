@@ -48,6 +48,28 @@ export async function skipToPlay(page, timeout = 360000) {
   throw new Error(`skipToPlay: still in a pre-play screen after timeout (pressed ${JSON.stringify(actions)})`);
 }
 
+/**
+ * Answers dialogue until the player has been able to act (`canAct`: no event, animation or dialogue
+ * running) for 8 s -- Dead Water's opening and the other side's turns pause between speakers, and a
+ * new turn plays the other side's animations and the standing orders before the player gets control.
+ */
+export async function untilPlayable(page, timeout = 300000) {
+  const started = Date.now();
+  let quietSince = Date.now();
+  while (Date.now() - started < timeout) {
+    if ((await page.$('.window[role="dialog"]')) || (await page.$('.story'))) {
+      await skipToPlay(page, 120000);
+      quietSince = Date.now();
+    } else if (!(await page.evaluate(() => window.__wesnoth?.movementPreview().canAct ?? false))) {
+      quietSince = Date.now();
+    } else if (Date.now() - quietSince > 8000) {
+      return;
+    }
+    await page.waitForTimeout(500);
+  }
+  throw new Error('untilPlayable: the game never became playable');
+}
+
 /** Viewport coordinates of hex (x, y), engine 0-based. */
 export async function hexPoint(page, x, y) {
   const point = await page.evaluate(([hx, hy]) => window.__wesnothDebug?.hexClientPoint(hx, hy) ?? null, [x, y]);

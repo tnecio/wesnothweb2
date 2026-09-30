@@ -99,6 +99,9 @@
     if (current !== topic) {
       current = topic;
       pageEl?.scrollTo?.(0, 0);
+      // A followed link is gone with the old page (and back/next may have just disabled itself): keep the
+      // keyboard in the dialog (Escape, Tab), once the page has been redrawn.
+      setTimeout(keepFocus, 0);
     }
     const nodeId = nodeIdOfTopic(topic.id);
     const path = ancestorsOf(tree.nodes, nodeId);
@@ -142,6 +145,7 @@
     const id = back ? history.back() : history.forward();
     historyVersion++;
     if (id !== undefined) showTopic(id, false);
+    setTimeout(keepFocus, 0);
   }
 
   function selectNode(node: HelpTreeNode): void {
@@ -192,6 +196,27 @@
 
   function treeItemId(nodeId: string): string {
     return 'help-node-' + encodeURIComponent(nodeId).replace(/%/g, '_');
+  }
+
+  /**
+   * Closing on Escape waits for the keypress to finish: an `[open_help]` event goes on as soon as the help
+   * closes, and its next `[message]` must not see the same Escape (which would skip it).
+   */
+  function closeAfterKey(): void {
+    setTimeout(() => helpBrowser.close(), 0);
+  }
+
+  function keepFocus(): void {
+    if (pageEl && !pageEl.closest('.modal-box')?.contains(document.activeElement)) pageEl.focus({ preventScroll: true });
+  }
+
+  /** Escape with the focus lost to the page behind (an element that was focused went away): still closes. */
+  function onWindowKey(e: KeyboardEvent): void {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    e.preventDefault();
+    closeAfterKey();
   }
 
   /** The mouse's own back and forward buttons walk the history, as upstream's `BACK_BUTTON_CLICK`/`FORWARD_BUTTON_CLICK`. */
@@ -248,7 +273,9 @@
   {/each}
 {/snippet}
 
-<Modal labelledBy={t('Help')} width="1350px" onClose={() => helpBrowser.close()}>
+<svelte:window onkeydown={onWindowKey} />
+
+<Modal labelledBy={t('Help')} width="1350px" onClose={closeAfterKey}>
   <div class="help" class:tree-hidden={!treeShown} class:compact={compactLayout.current} onmouseup={onMouseUp} role="presentation">
     {#if treeShown}
       <nav class="tree-panel" aria-label={tx('Help topics')}>
@@ -279,7 +306,7 @@
           }}
         />
       </div>
-      <div class="page" bind:this={pageEl} dir="auto">
+      <div class="page" bind:this={pageEl} dir="auto" tabindex="-1">
         {#if loadError}
           <p class="error">{loadError}</p>
         {:else if !contents}
@@ -424,6 +451,9 @@
     white-space: pre-wrap;
     line-height: 1.35;
     color: #dcd6c6;
+  }
+  .page:focus {
+    outline: none;
   }
   .page::after {
     content: '';
