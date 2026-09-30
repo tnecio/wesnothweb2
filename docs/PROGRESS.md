@@ -5868,3 +5868,36 @@ upstream's layers rather than by growing Phase 28c's hand-written bootstrap.
   - every shipped scenario that uses a micro AI (`zone_guardian`, `messenger_escort`, `coward`,
     `forest_animals`) plays two turns cleanly;
   - engine 824, lua-bridge 67, ui 410, all passing; lint is clean.
+
+## 2026-09-30: Phase 29 S10/S11 -- upstream's AI test scenarios
+
+- **Building them:** `build-scenario-snapshot.mjs` builds the `[test]`s under `data/ai/scenarios/` and
+  `data/ai/micro_ais/scenarios/` at `NORMAL`, filed as `ai_test/`. There are 24: one per mainline and test-only
+  micro AI, the Lua AI tests, poisoning, high-XP attack, and the AI arena. `rebuild-snapshots.mjs` and
+  `scenario-list.json` include them.
+- **Test:** `aiTestScenarios.test.ts` plays each for three turns and fails on any Lua or AI error. 23 pass,
+  in about 95 s together.
+  - `fast` is skipped: it pits the Fast micro AI against the default AI with 100 units a side, and once the armies
+    meet, the default side's turn takes about ten minutes here, almost all of it in `retreat_injured`.
+  - `assassin`, used by no upstream test scenario, gets a lua-bridge test of its own.
+- **What they found, all fixed:**
+  - **`[set_variables]`** was a simplification. It is now ported in full from `set_variables.lua`:
+    `to_variable`, `[literal]`, `[split]`, `[value]` substituted all the way down, `name=foo[i]`, and
+    `wml.merge`'s `replace`/`append`/`merge` (with `__remove`) and `insert`. Without `[split]`, the
+    `SCATTER_UNITS` macro placed units with no type.
+  - **`[store_reachable_locations]`** is in the engine; `wesnoth.paths.find_vision_range` is in the kernel.
+  - **`wml.eval_conditional`** now works.
+  - **`wesnoth.map.add_label`/`remove_label`/`get_label`** now work, on the game's labels.
+  - **`wesnoth.races`** is now available: snapshots carry every `[race]` as `raceConfigs`, in `_core.json`.
+  - **`wesnoth.sides.append_ai` and `[modify_side][ai]`** now work as `modify_side.lua` does:
+    - normally, the `[ai]` is appended to the live AI (`holder::append_ai`, `[stage]`s included);
+    - with `ai_algorithm=`, the side's AI is replaced (`switch_ai`).
+
+    Before, `[modify_side][ai]` rebuilt the side's AI, which dropped any micro AI added since.
+- **Speed:**
+  - `unit::max_ability_radius_type` is ported: ability owners out of range are skipped before their abilities
+    are read.
+  - `Location` keys are cached in a private field.
+  - The terrain map finds its methods in `wesnoth.map` without creating strings.
+  - The 200-unit `fast` scenario's first turn went from 139 s to about 45 s.
+- **Tests:** engine 828, lua-bridge 68, ui 410 plus the 23 AI scenarios; lint is clean.

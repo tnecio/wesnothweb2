@@ -16,8 +16,10 @@ const dir = path.join(repoRoot, 'apps/web/public/scenarios/ai_test');
 const ids = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5)).sort() : [];
 const TURNS = 3;
 /**
- * Too slow to run here yet: `fast` puts 200 units on the map, and the default AI's attack analysis on the side
- * without the Fast micro AI takes minutes a turn once the armies meet.
+ * Too slow for this suite: `fast` shows off the Fast micro AI against the default AI with 100 units a side. Once the
+ * armies meet, the default side's turn takes about ten minutes here: `retreat_injured` is evaluated some 175 times,
+ * each building every enemy's attack map in Lua (`battle_calcs.get_attack_map`), which on fengari costs about
+ * 3 s a time -- upstream's Lua, doing upstream's work, at fengari's speed.
  */
 const TOO_SLOW = new Set(['fast']);
 

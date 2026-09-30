@@ -54,6 +54,7 @@ export function installWorld(k: LuaKernel, host: GameKernelHost, units: LuaUnits
 
   // --- the terrain map ---
   const L = k.L;
+  let mapTableRef: number | undefined;
   lauxlib.luaL_newmetatable(L, to_luastring(TERRAIN_MAP_KEY));
   setFuncs(L, {
     __index: (T) => {
@@ -63,6 +64,20 @@ export function installWorld(k: LuaKernel, host: GameKernelHost, units: LuaUnits
       if (loc) {
         pushString(T, writeTerrainCode(map.getTerrain(loc)));
         return 1;
+      }
+      // Methods (`map:iter_adjacent(...)`, ...) are `wesnoth.map`'s functions: a raw lookup of the key already on
+      // the stack, in the table as it was first used -- this runs for every hex a Lua AI walks.
+      if (lua.lua_type(T, 2) === lua.LUA_TSTRING) {
+        if (mapTableRef === undefined) {
+          lua.lua_getglobal(T, to_luastring('wesnoth'));
+          lua.lua_getfield(T, -1, to_luastring('map'));
+          mapTableRef = lauxlib.luaL_ref(T, lua.LUA_REGISTRYINDEX);
+          lua.lua_pop(T, 1);
+        }
+        lua.lua_rawgeti(T, lua.LUA_REGISTRYINDEX, mapTableRef);
+        lua.lua_pushvalue(T, 2);
+        if (lua.lua_rawget(T, -2) !== lua.LUA_TNIL) return 1;
+        lua.lua_pop(T, 2);
       }
       const key = checkString(T, 2);
       switch (key) {
@@ -85,10 +100,7 @@ export function installWorld(k: LuaKernel, host: GameKernelHost, units: LuaUnits
           pushString(T, map.write());
           return 1;
         default:
-          lua.lua_getglobal(T, to_luastring('wesnoth'));
-          lua.lua_getfield(T, -1, to_luastring('map'));
-          lua.lua_getfield(T, -1, to_luastring(key));
-          return lua.lua_isnil(T, -1) ? 0 : 1;
+          return 0;
       }
     },
     __newindex: (T) => {

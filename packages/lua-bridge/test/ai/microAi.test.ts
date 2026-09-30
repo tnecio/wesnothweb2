@@ -61,3 +61,37 @@ describe('[micro_ai] zone_guardian', () => {
     expect(ids.filter((id) => id.startsWith('mai_zone_guardian'))).toEqual(['mai_zone_guardian_move', 'mai_zone_guardian1_move']);
   });
 });
+
+describe('[micro_ai] assassin', () => {
+  // Used by Under the Burning Suns 5 (not shipped yet), and by no upstream test scenario.
+  it('moves the assassin toward its target', () => {
+    const game = makeAiGame(rows(16), [
+      { type: 'Thief', side: 1, x: 2, y: 2 },
+      { type: 'Spearman', side: 2, x: 14, y: 14 },
+      { type: 'Spearman', side: 2, x: 8, y: 2 },
+    ]);
+    const [assassin] = game.board.unitsForSide(1);
+    assassin!.id = 'assassin';
+    game.board.unitsForSide(2)[0]!.id = 'target';
+    runActionSequence(
+      parseWml(`[micro_ai]
+  ai_type=assassin
+  side=1
+  action=add
+  [filter]
+    id=assassin
+  [/filter]
+  [filter_second]
+    id=target
+  [/filter_second]
+[/micro_ai]`),
+      game.pump.ctx,
+    );
+    const before = assassin!.location;
+    game.playTurn(1);
+    expect(game.logs.join('\n')).toBe('');
+    const target = game.board.unitsForSide(2)[0]!.location;
+    const dist = (a: { wmlX: number; wmlY: number }) => Math.max(Math.abs(a.wmlX - target.wmlX), Math.abs(a.wmlY - target.wmlY));
+    expect(dist(assassin!.location)).toBeLessThan(dist(before));
+  });
+});
