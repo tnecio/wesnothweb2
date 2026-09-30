@@ -487,10 +487,8 @@ export interface UnitAnimationCue {
    * Set by recruit cues (`GameShell.svelte`'s `buildRecruitAnimationCues`),
    * whose `dstHex` is the OTHER combatant's hex purely for `sampleAnimation`'s
    * own directional `offset=` math when a real `[recruit_anim]`/`[recruiting]`
-   * animation exists -- most real unit types don't author one (upstream's
-   * `fill_initial_animations`-synthesized implicit "recruited" fallback isn't
-   * ported, see `unitAnimation.ts`'s module doc comment), so `anim` is
-   * `undefined` far more often than not. Without this flag, both the
+   * animation exists -- the leader's "recruiting" is often not authored, so
+   * `anim` can be `undefined`. Without this flag, both the
    * recruiting leader and the newly recruited unit visibly lunged toward
    * each other and back -- the attack/defend convention -- reading as an
    * unwanted "movement" animation playing at the same time as recruitment.
@@ -1592,7 +1590,7 @@ export class SnapshotBoard {
    * visual on demand, without touching any other unit's state the way a
    * full `renderUnits()` pass would.
    */
-  private async updateOneUnit(unit: SnapshotUnit): Promise<UnitVisual> {
+  private async updateOneUnit(unit: SnapshotUnit, options: { hidden?: boolean } = {}): Promise<UnitVisual> {
     const key = spriteKey(unit);
     const coord = toHexCoord(unit.x, unit.y);
     const { x: cx, y: cy } = hexToPixel(coord);
@@ -1600,6 +1598,8 @@ export class SnapshotBoard {
     let visual = this.unitVisuals.get(key);
     if (!visual) {
       visual = await this.buildUnitVisual(unit);
+      // Hidden from the start: its ellipse and icons still load below, with the container on stage.
+      if (options.hidden) visual.container.visible = false;
       this.unitVisuals.set(key, visual);
       this.unitLayer.addChild(visual.container);
     } else if (visual.lastImage !== unit.image || visual.lastSide !== unit.side) {
@@ -1670,7 +1670,7 @@ export class SnapshotBoard {
    * directly, don't wait for the deferred sync" convention.
    */
   async ensureUnitVisual(unit: SnapshotUnit, options: { hidden?: boolean } = {}): Promise<void> {
-    const visual = await this.updateOneUnit(unit);
+    const visual = await this.updateOneUnit(unit, options);
     // `unit_recruited`: the new unit stays hidden (`set_hidden(true)`) while the view scrolls to it and its
     // frames load, and appears with the first frame of its "recruited" animation -- not standing there first.
     if (options.hidden && !visual.container.destroyed) visual.container.visible = false;
@@ -1820,8 +1820,6 @@ export class SnapshotBoard {
           // the dialogue it plays under was advanced): nothing left to move.
           // Touching it would throw and leave this promise unresolved.
           if (visual.container.destroyed) continue;
-          // A recruit is kept hidden until its animation draws (see `ensureUnitVisual`).
-          visual.container.visible = true;
           const t = Math.min(elapsed, duration);
           // Phase 19: frame sounds start when their frame first draws.
           const soundClock = grouped && cue.anim ? t * speedMultiplier + cue.anim.startTimeMs : clockStart + t * speedMultiplier;
@@ -1892,6 +1890,9 @@ export class SnapshotBoard {
             visual.container.x = offset * dst.x + (1 - offset) * src.x;
             visual.container.y = offset * dst.y + (1 - offset) * src.y;
           }
+          // A recruit is kept hidden until its animation draws (see `ensureUnitVisual`) -- shown only
+          // once this frame's image and alpha are on it.
+          visual.container.visible = true;
         }
 
         this.drawOverlays(overlayPool, elapsed >= totalMs ? [] : overlays, overlayTextures);
@@ -2079,6 +2080,23 @@ export class SnapshotBoard {
     const out: Record<string, [number, number]> = {};
     for (const [key, visual] of this.unitVisuals) {
       out[key] = [Math.round(visual.container.x), Math.round(visual.container.y)];
+    }
+    return out;
+  }
+
+  /** Debug: each unit sprite's visibility, alpha, image and position -- for checking when a unit shows. */
+  unitSpriteStates(): Record<string, { visible: boolean; alpha: number; image: string; x: number; y: number }> {
+    const out: Record<string, { visible: boolean; alpha: number; image: string; x: number; y: number }> = {};
+    for (const [key, visual] of this.unitVisuals) {
+      if (visual.container.destroyed) continue;
+      const source = visual.sprite?.texture?.source as { label?: string; resource?: { src?: string } } | undefined;
+      out[key] = {
+        visible: visual.container.visible,
+        alpha: Math.round((visual.sprite?.alpha ?? 1) * 100) / 100,
+        image: source?.label ?? source?.resource?.src?.slice(-60) ?? '',
+        x: Math.round(visual.container.x),
+        y: Math.round(visual.container.y),
+      };
     }
     return out;
   }
