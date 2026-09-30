@@ -23,8 +23,8 @@
  * tag runs the Lua. Upstream's `lua/wml-tags.lua` is not loaded: the engine implements those tags itself.
  *
  * ## What else is here
- * `wml.load` (files the snapshot carries, preprocessed at build time) and `gui.show_dialog`
- * (`guiDialog.ts`). Everything else is the kernel's.
+ * `wml.load` (files the snapshot carries, preprocessed at build time), `gui.show_dialog`
+ * (`guiDialog.ts`) and `gui.show_help` (an `openHelp` beat). Everything else is the kernel's.
  */
 import { WmlConfig, type WmlConfigJson } from '@wesnothweb2/engine/src/wml/config.js';
 import { TString } from '@wesnothweb2/engine/src/i18n/tstring.js';
@@ -116,6 +116,10 @@ function gui.show_dialog(wml, preshow, postshow)
   return result
 end
 `;
+
+function* openHelpFlow(topic: string): Flow {
+  yield { kind: 'beat', beat: { kind: 'openHelp', topic } };
+}
 
 interface OpenDialog {
   root: GuiNode;
@@ -401,6 +405,11 @@ export class LuaRuntime {
       return 0;
     });
     k.define(['wesnoth', '__gui_run'], (T) => this.yieldFlow(T, this.dialogFlow(Number(lua.lua_tointeger(T, 1)))));
+    // Phase 24: `gui.show_help(topic)` (`lua_gui2.cpp`): the help browser, until the player closes it.
+    k.define(['gui', 'show_help'], (T) => {
+      const topic = lua.lua_isnoneornil(T, 1) ? '' : checkString(T, 1);
+      return this.yieldFlow(T, openHelpFlow(topic));
+    });
   }
 
   private widget(T: LuaState): GuiNode | undefined {

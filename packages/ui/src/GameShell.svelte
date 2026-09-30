@@ -873,6 +873,12 @@
    * the event carries on.
    */
   async function playCutsceneBeat(beat: CutsceneBeat): Promise<InteractionResult> {
+    if (beat.kind === 'openHelp') {
+      // Phase 24: `[open_help]`: a modal dialog upstream, so no time cap -- the event waits for the player.
+      helpBrowser.open(beat.topic);
+      await helpBrowser.whenClosed();
+      return {};
+    }
     const started = performance.now();
     try {
       await capped(playBeatBody(beat));
@@ -3270,9 +3276,6 @@
   {#if languageDialogOpen}
     <LanguageDialog onClose={() => (languageDialogOpen = false)} />
   {/if}
-  {#if helpBrowser.isOpen}
-    <HelpBrowser snapshot={activeSnapshot} game={session.helpContext()} />
-  {/if}
   {#if preferencesOpen}
     <PreferencesDialog audioSettings={audioSettings} onAudioChange={changeAudio} onClose={() => (preferencesOpen = false)} />
   {/if}
@@ -3321,6 +3324,11 @@
   {/if}
 
   <AdvancementDialog pending={pendingAdvancement} onChoose={handleChooseAdvancement} />
+
+  <!-- Phase 24: last, so it is above whichever dialog opened it. -->
+  {#if helpBrowser.isOpen}
+    <HelpBrowser snapshot={activeSnapshot} game={session.helpContext()} />
+  {/if}
 
   {#if phase === 'replay' && replay}
     <div class="replay-bar" role="toolbar" aria-label={tx('Replay controls')} data-testid="replay-bar">

@@ -67,6 +67,22 @@ describe('[lua] actions', () => {
   });
 });
 
+describe('gui.show_help', () => {
+  it('shows the help (an openHelp beat), and the Lua goes on once it is closed', () => {
+    const { run, vars } = setup();
+    const seen: Interaction[] = [];
+    run(`[lua]
+      code=<< gui.show_help("unit_Fencer") ; wml.variables.after = "yes" >>
+    [/lua]`, (i) => {
+      seen.push(i);
+      expect(vars.getString('after')).toBe('');
+      return autoRespond(i);
+    });
+    expect(seen).toEqual([{ kind: 'beat', beat: { kind: 'openHelp', topic: 'unit_Fencer' } }]);
+    expect(vars.getString('after')).toBe('yes');
+  });
+});
+
 describe('WML tags defined in Lua', () => {
   it('run when WML reaches the tag, and can call native tags that stop for the player', () => {
     const { run, pump, vars } = setup();

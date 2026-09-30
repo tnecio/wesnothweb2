@@ -163,7 +163,12 @@ export type CutsceneBeat =
    * Phase 28c: `[replace_map]` gave the board a new map, possibly of another size (upstream's
    * `display::reload_map`): the display rebuilds the board before the event goes on.
    */
-  | { readonly kind: 'mapReplaced' };
+  | { readonly kind: 'mapReplaced' }
+  /**
+   * Phase 24: `[open_help]`/`gui.show_help` (`help::show_help`): the help browser, at `topic` (the
+   * introduction when empty). Upstream's is a modal dialog, so the event goes on once the player closes it.
+   */
+  | { readonly kind: 'openHelp'; readonly topic: string };
 
 /** A cutscene beat waiting to be played out. */
 export interface BeatInteraction {

@@ -24,6 +24,8 @@
    * not drift apart.
    */
   import IpfImage from './images/IpfImage.svelte';
+  import HelpButton from './help/HelpButton.svelte';
+  import { helpBrowser } from './help/helpBrowser.svelte.js';
   import { unitImageRef } from './images/unitImageRef.js';
   import type { PendingAdvancement } from './gameSession.js';
   import { alignmentName, damageTypeName, rangeName, raceName } from './i18n/gameText.js';
@@ -48,6 +50,7 @@
   }
 
   function handleKeydown(e: KeyboardEvent): void {
+    if (helpBrowser.isOpen) return; // The help opened from this dialog is on top and owns the keys.
     if (!pending) return;
     const options = pending.optionInfos;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -135,6 +138,7 @@
       </div>
 
       <div class="footer">
+        <HelpButton disabled={!selected} onclick={() => selected && helpBrowser.openUnitType(selected.typeId)} />
         <div class="spacer"></div>
         <button class="primary" data-autofocus disabled={!selected} onclick={() => selected && onChoose(selected.typeId)}>
           {t('OK')}

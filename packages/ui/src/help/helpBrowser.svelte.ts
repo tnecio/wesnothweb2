@@ -43,6 +43,17 @@ class HelpBrowserRequests {
 
   close(): void {
     this.request = null;
+    const waiting = this.waiting;
+    this.waiting = [];
+    for (const resolve of waiting) resolve();
+  }
+
+  private waiting: (() => void)[] = [];
+
+  /** Resolves once the help is closed (at once if it is not open): `[open_help]` waits on it. */
+  whenClosed(): Promise<void> {
+    if (!this.isOpen) return Promise.resolve();
+    return new Promise((resolve) => this.waiting.push(resolve));
   }
 }
 

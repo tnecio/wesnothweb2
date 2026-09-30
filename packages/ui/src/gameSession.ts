@@ -371,12 +371,16 @@ export interface CombatPreview {
 export interface WeaponSpecialInfo {
   name: string;
   description: string;
+  /** Phase 24: the special's help page (`weaponspecial_<unique_id or id>`). */
+  helpTopic: string;
 }
 
 /** One real `[abilities]` child (e.g. `[heals]`), reduced the same way as `WeaponSpecialInfo`. */
 export interface AbilityInfo {
   name: string;
   description: string;
+  /** Phase 24: the ability's help page (`ability_<unique_id or id>`). */
+  helpTopic: string;
 }
 
 /** A view-model of one of a unit's `[attack]` weapons, for the side panel/combat prediction -- addresses "UI is missing information about weapon type" (real, reported: melee/ranged and damage type were shown nowhere). */
@@ -401,6 +405,7 @@ export function buildWeaponInfo(weapon: AttackType): WeaponInfo {
     specials: weapon.specials.map((cfg) => ({
       name: cfg.getString('name') || cfg.getString('id'),
       description: cfg.getString('description'),
+      helpTopic: 'weaponspecial_' + cfg.getString('unique_id', cfg.getString('id')),
     })),
   };
 }
@@ -409,6 +414,7 @@ export function buildAbilityInfo(entry: RegistryEntry): AbilityInfo {
   return {
     name: entry.config.getString('name') || entry.tag,
     description: entry.config.getString('description'),
+    helpTopic: 'ability_' + entry.config.getString('unique_id', entry.config.getString('id')),
   };
 }
 
@@ -493,6 +499,12 @@ export interface SelectedUnitInfo {
   abilities: readonly AbilityInfo[];
   /** This unit's real `[trait]` modifications (e.g. "strong", "intelligent") -- real, reported bug: there was no way to see whether a unit had any traits, or what they were. See `Unit.traitNames`/`actions/recruit.ts`'s `generateTraits`. */
   traits: readonly string[];
+  /** Phase 24: each trait's help page (`traits_<id>`), in the order of `traits`. */
+  traitTopics: readonly string[];
+  /** Phase 24: the unit's `[variation]` (`''` for none), for its type's help page. */
+  variation: string;
+  /** Phase 24: the terrain code of the unit's hex, for that terrain's help page. */
+  terrainCode: string;
   /** This unit type's real portrait/map sprite path (`snapshot.unitTypes[typeId].image`), or `null` if the snapshot never recorded one -- same source `RecruitOption`/`RecallOption`/`CombatantPreview` already use for their own portraits. */
   image: string | null;
   /** This unit type's real `[unit_type] level=`. */
@@ -529,6 +541,9 @@ export function buildUnitInfo(board: GameBoard, unit: Unit, displayName: string,
     attacks: unit.attacks.map(buildWeaponInfo),
     abilities: visibleAbilityInfos(unit.abilities),
     traits: unit.traitNames,
+    traitTopics: unit.modifications.filter((m) => m.kind === 'trait').map((m) => 'traits_' + m.cfg.getString('id')),
+    variation: unit.variation,
+    terrainCode: writeTerrainCode(board.map.getTerrain(unit.location)),
     image,
     level: unit.type.level,
     alignment: unit.alignment,

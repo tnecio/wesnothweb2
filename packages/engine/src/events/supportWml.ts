@@ -9,8 +9,9 @@
  * - `[set_achievement]`/`[set_sub_achievement]`/`[progress_achievement]` (`wml-tags.lua`), through
  *   `EventContext.achievements`;
  * - `[replace_map]` (`action_wml.cpp`), `GameBoard.replaceMap`;
- * - `[open_help]` and `[change_theme]`: this port has no help browser or themes, so they log and do
- *   nothing (as a presentation tag with nothing to show would).
+ * - `[open_help]` (`wml-tags.lua`, `gui.show_help`): the help browser, as an `openHelp` beat (Phase 24);
+ * - `[change_theme]`: this port has no themes, so it logs and does nothing (as a presentation tag with
+ *   nothing to show would).
  *
  * `[harm_unit]` is `harmUnitWml.ts`.
  */
@@ -200,8 +201,9 @@ function* actionReplaceMap(cfg: WmlConfig, ctx: EventContext): Flow {
   yield { kind: 'beat', beat: { kind: 'mapReplaced' } };
 }
 
-function actionOpenHelp(cfg: WmlConfig, ctx: EventContext): void {
-  ctx.log('info', `[open_help] topic=${cfg.getString('topic')}: this port has no help browser (skipped)`);
+/** `wml_actions.open_help`: `gui.show_help(cfg.topic)`, which the display shows until the player closes it. */
+function* actionOpenHelp(cfg: WmlConfig): Flow {
+  yield { kind: 'beat', beat: { kind: 'openHelp', topic: cfg.getString('topic') } };
 }
 
 function actionChangeTheme(cfg: WmlConfig, ctx: EventContext): void {
