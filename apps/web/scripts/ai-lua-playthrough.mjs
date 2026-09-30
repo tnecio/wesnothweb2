@@ -61,14 +61,26 @@ try {
     await page.keyboard.press('Control+Space');
     await confirmEndTurnIfAsked(page);
     let after = null;
+    // With software rendering (a headless VM) the opening cutscene's animated beats take seconds each, and
+    // skipToPlay can return in the middle of one; End Turn is ignored until the cutscene is over. So while the
+    // game is still on the player's turn with nothing on screen, End Turn is pressed again every few seconds.
+    let quiet = 0;
     for (let i = 0; i < 240; i++) {
-      if (await page.$('.dismiss, .window[role="dialog"]')) await page.keyboard.press('Enter');
+      if (await page.$('.dismiss, .window[role="dialog"]')) {
+        await page.keyboard.press('Enter');
+        quiet = 0;
+      }
       after = await page.evaluate(() => ({
         turn: window.__wesnoth.session.turnNumber,
         side: window.__wesnoth.session.activeSide,
         enemyUnits: window.__wesnoth.session.board.unitsForSide(2).length,
       }));
       if (after.turn > before.turn && after.side === 1) break;
+      if (after.turn === before.turn && after.side === 1 && ++quiet >= 10) {
+        await page.keyboard.press('Control+Space');
+        await confirmEndTurnIfAsked(page);
+        quiet = 0;
+      }
       await page.waitForTimeout(500);
     }
     const seconds = ((Date.now() - started) / 1000).toFixed(1);

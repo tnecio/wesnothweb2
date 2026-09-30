@@ -2012,7 +2012,16 @@ but it will not stay that way. Therefore:
 
 ## Phase 29 — Real AI: RCA framework port + Lua CAs/micro-AIs on fengari
 
-**Status: S0–S6 delivered (2026-09-13); MILESTONE REACHED.** Supersedes
+**Status: delivered (S0–S12, 2026-09-30).**
+- The AI runs upstream's RCA framework (TS port) with upstream's Lua candidate actions and every micro AI
+  (`data/ai`, unchanged) on an upstream-shaped Lua kernel on fengari.
+- Every shipped scenario that uses a micro AI plays cleanly.
+- 23 of upstream's 24 AI test scenarios play three turns cleanly. `fast`, 100 units a side, is too slow on
+  fengari to run in the suite.
+- AI turns in shipped campaigns mostly take 20–300 ms. The outliers and the Lua-speed options (an upstream
+  fix, or wasmoon), postponed until needed, are in `docs/PROGRESS.md` (S12) and `docs/OPEN_QUESTIONS.md` #2.
+
+The rest of this section is as written at the S6 milestone (2026-09-13). Supersedes
 Phase 7's own "Later" bullet (candidate-action framework + Lua micro-AI
 port), which is now this phase's full scope rather than a deferred
 aside. Full staged plan (13 stages S0–S12, module layout, upstream
@@ -2126,7 +2135,7 @@ pulled forward and delivered 2026-09-22.
    `apps/web/scripts/survey-campaigns.mjs`), so the subsystems below are
    built against what the campaigns actually use.
 10. **Phase 29** (real AI: RCA framework + Lua on fengari), including the
-   `[micro_ai]`s and custom Lua AI the inventory ranks by use.
+   `[micro_ai]`s and custom Lua AI the inventory ranks by use -- delivered 2026-09-30.
 11. **Help browser** (from Phase 24): unit, terrain and topic pages,
    `[open_help]`.
 12. **Achievements** (from Phase 25): the screen, and the statistics some

@@ -5901,3 +5901,32 @@ upstream's layers rather than by growing Phase 28c's hand-written bootstrap.
   - The terrain map finds its methods in `wesnoth.map` without creating strings.
   - The 200-unit `fast` scenario's first turn went from 139 s to about 45 s.
 - **Tests:** engine 828, lua-bridge 68, ui 410 plus the 23 AI scenarios; lint is clean.
+
+## 2026-09-30: Phase 29 S12 -- AI speed measured; phase complete
+
+- **How AI turns were measured:** every shipped scenario, headless, with the human side passing each turn and
+  the AI sides' computing timed over 4 turns (`GameSession.playAiSide`, one process at a time on the 4-core
+  VM). With the player passive, the AI's armies meet and grow unopposed, so this errs on the heavy side.
+  - Most AI turns take 20--300 ms; almost every scenario's slowest turn is under 1.5 s.
+  - Dead Water 1: mean 0.56 s, max 0.9 s, down from 1.3 s mean before this stage's fixes.
+  - Outliers:
+    - **Dead Water 5 (Tirigaz):** max 27 s, when the two AI sides (29 units) fight each other with the player's
+      army gone. `spread_poison`'s Lua search (`AH.get_attacks` + `battle_calcs`, 12 s over 4 turns) and the
+      combat CA's attack analysis (11 s) dominate.
+    - **Liberty 4:** max 6.8 s, almost all `retreat_injured` (see below).
+    - **Liberty 2/3, Two Brothers 4:** max 1.1--1.7 s.
+- **Where the time goes:** a Lua-level sampling profiler, a `lua_sethook` count hook recording the Lua stack.
+  - In big battles, 99% of the Lua work is `retreat_injured` rebuilding every unit's attack map
+    (`battle_calcs.get_attack_map`) on each evaluation. Each map is ~140,000 `location_set` inserts for 100
+    units, and each insert allocates a named tuple in `read_location`.
+  - The same workload takes 2.9 s on fengari and 0.37 s on wasmoon (Lua 5.4 in WebAssembly).
+  - The long-term options are recorded in `docs/OPEN_QUESTIONS.md` #2: an upstream PR making
+    `retreat_injured` cheaper, or wasmoon. Both are postponed until it matters in practice, and so is running
+    the AI in a Web Worker.
+- **Fixed on the TS side, faithfully:**
+  - **A\*** (`pathfind/astar.ts`) now keeps its nodes in arrays indexed by map position with a heap of indices,
+    as upstream's `a_star_search` does, instead of a string-keyed `Map`. 3000 random searches give the same
+    routes and costs as before. `move_to_targets` in Dead Water 1 went from 3.5 s to 1.4 s over 4 turns.
+  - **`x=`/`y=` range lists** are parsed once per string rather than once per hex. The default `avoid` aspect
+    (`x=0,y=0`) is tested against every hex of the map by the move maps and `ai.aspects.avoid`.
+- **Tests:** engine 828, lua-bridge 68, renderer 263, ui 433 (+1 skipped); lint and svelte-check clean.

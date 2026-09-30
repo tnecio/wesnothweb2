@@ -291,16 +291,12 @@ export class Location {
    * leftover entries match on that coordinate alone). Both empty matches everything.
    */
   matchesRange(xloc: string, yloc: string): boolean {
-    const split = (s: string) => s.split(',').map((p) => p.trim()).filter((p) => p !== '');
-    const xs = split(xloc);
-    const ys = split(yloc);
+    const xs = parsedRangeList(xloc);
+    const ys = parsedRangeList(yloc);
     if (xs.length === 0 && ys.length === 0) return true;
     const x = this.wmlX;
     const y = this.wmlY;
-    const inRange = (r: string, v: number) => {
-      const [lo, hi] = parseRangeText(r);
-      return lo <= v && v <= hi;
-    };
+    const inRange = ([lo, hi]: readonly [number, number], v: number) => lo <= v && v <= hi;
     let i = 0;
     for (; i < xs.length && i < ys.length; i++) if (inRange(xs[i]!, x) && inRange(ys[i]!, y)) return true;
     for (; i < xs.length; i++) if (inRange(xs[i]!, x)) return true;
@@ -408,6 +404,22 @@ export function distanceBetween(a: Location, b: Location): number {
       ? 1
       : 0;
   return Math.max(hDistance, Math.abs(a.y - b.y) + vPenalty + Math.floor(hDistance / 2));
+}
+
+const rangeListCache = new Map<string, ReadonlyArray<readonly [number, number]>>();
+
+/**
+ * An `x=`/`y=` list (`1-5,7`) as its parsed ranges. Filters test the same few strings against every hex of the
+ * map, so the parse is kept; the cache is bounded, since content can build these strings from variables.
+ */
+function parsedRangeList(text: string): ReadonlyArray<readonly [number, number]> {
+  let parsed = rangeListCache.get(text);
+  if (!parsed) {
+    parsed = text.split(',').map((p) => p.trim()).filter((p) => p !== '').map(parseRangeText);
+    if (rangeListCache.size >= 4096) rangeListCache.clear();
+    rangeListCache.set(text, parsed);
+  }
+  return parsed;
 }
 
 /** `utils::parse_range`: "a", "a-b" (b below a counts as a), "a-infinity", "-infinity-b"; invalid text gives 0-0. */
