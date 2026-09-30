@@ -657,7 +657,12 @@ export class LuaUnits {
         pushString(T, `weapon: <${this.toWeapon(T, 1)?.id ?? ''}>`);
         return 1;
       },
-      matches: (T) => luaError(T, 'weapon:matches is not available in this port yet'),
+      matches: (T) => {
+        const attack = this.toWeapon(T, 1);
+        if (!attack) return argError(T, 1, 'invalid attack');
+        lua.lua_pushboolean(T, attack.matchesFilter(this.k.checkConfig(T, 2)));
+        return 1;
+      },
     });
     pushString(L, ATTACK_KEY);
     lua.lua_setfield(L, -2, to_luastring('__metatable'));

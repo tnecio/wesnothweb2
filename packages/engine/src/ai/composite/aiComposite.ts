@@ -18,8 +18,49 @@ import { IdleStage, type Stage } from './stage.js';
 
 export type CandidateActionFactory = (ctx: AiContext, cfg: WmlConfig) => CandidateAction;
 
+/**
+ * An AI engine other than the built-in C++ one (`ai::engine`, `engine_lua.cpp`): builds the candidate actions
+ * whose `engine=` names it. `sideConfigs` are the side's merged `[ai]` configs, for the engine's own
+ * `[engine]` block (its code and persistent data).
+ */
+export interface AiEngine {
+  candidateAction(ctx: AiContext, cfg: WmlConfig, sideConfigs: readonly WmlConfig[]): CandidateAction | undefined;
+}
+
+/** Builds one `[candidate_action]` through its engine (`engine::parse_candidate_action_from_config`). */
+export function buildCandidateAction(
+  ctx: AiContext,
+  caCfg: WmlConfig,
+  configs: readonly WmlConfig[],
+  registry: ReadonlyMap<string, CandidateActionFactory>,
+  engines: ReadonlyMap<string, AiEngine>,
+  where: string,
+): CandidateAction | undefined {
+  const engine = caCfg.getString('engine', 'cpp');
+  const caName = caCfg.getString('name', '');
+  if (engine !== 'cpp') {
+    const e = engines.get(engine);
+    if (!e) {
+      ctx.host.log('warn', `${where}: candidate_action id="${caCfg.getString('id', '')}" needs the ${engine} AI engine, which is not loaded -- skipped`);
+      return undefined;
+    }
+    return e.candidateAction(ctx, caCfg, configs);
+  }
+  const factory = registry.get(caName);
+  if (!factory) {
+    ctx.host.log('warn', `${where}: candidate_action id="${caCfg.getString('id', '')}" name="${caName}" has no registered factory yet -- skipped`);
+    return undefined;
+  }
+  return factory(ctx, caCfg);
+}
+
 /** Walks every `[stage]` child across `configs` (in order) and builds a real `Stage` for each -- `name=empty` becomes an `IdleStage`, anything else is treated as the (only real upstream variant this port implements) RCA main-loop stage. */
-export function buildStagesFromConfigs(ctx: AiContext, configs: readonly WmlConfig[], registry: ReadonlyMap<string, CandidateActionFactory>): Stage[] {
+export function buildStagesFromConfigs(
+  ctx: AiContext,
+  configs: readonly WmlConfig[],
+  registry: ReadonlyMap<string, CandidateActionFactory>,
+  engines: ReadonlyMap<string, AiEngine> = new Map(),
+): Stage[] {
   const stages: Stage[] = [];
   for (const cfg of configs) {
     for (const stageCfg of cfg.children('stage')) {
@@ -31,13 +72,8 @@ export function buildStagesFromConfigs(ctx: AiContext, configs: readonly WmlConf
       }
       const candidateActions: CandidateAction[] = [];
       for (const caCfg of stageCfg.children('candidate_action')) {
-        const caName = caCfg.getString('name', '');
-        const factory = registry.get(caName);
-        if (!factory) {
-          ctx.host.log('warn', `AI stage "${stageId}": candidate_action id="${caCfg.getString('id', '')}" name="${caName}" has no registered factory yet -- skipped`);
-          continue;
-        }
-        candidateActions.push(factory(ctx, caCfg));
+        const ca = buildCandidateAction(ctx, caCfg, configs, registry, engines, `AI stage "${stageId}"`);
+        if (ca) candidateActions.push(ca);
       }
       stages.push(new RcaStage(ctx, stageId, candidateActions));
     }
@@ -77,6 +113,11 @@ export class AiComposite {
   }
 }
 
-export function createAiComposite(ctx: AiContext, configs: readonly WmlConfig[], registry: ReadonlyMap<string, CandidateActionFactory>): AiComposite {
-  return new AiComposite(ctx, buildStagesFromConfigs(ctx, configs, registry));
+export function createAiComposite(
+  ctx: AiContext,
+  configs: readonly WmlConfig[],
+  registry: ReadonlyMap<string, CandidateActionFactory>,
+  engines: ReadonlyMap<string, AiEngine> = new Map(),
+): AiComposite {
+  return new AiComposite(ctx, buildStagesFromConfigs(ctx, configs, registry, engines));
 }

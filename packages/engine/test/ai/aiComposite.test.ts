@@ -52,8 +52,8 @@ describe('AiComposite end-to-end: real ai_default_rca config, S1 CAs only', () =
     composite.playTurn();
 
     expect(leader.location.equals(Location.fromWml(1, 1))).toBe(true); // walked onto the keep via move_leader_to_keep
-    // The real config references combat/recruitment/etc, none of which S1 registers yet -- confirmed logged, not thrown.
-    expect(warnings.some((w) => w.includes('has no registered factory yet'))).toBe(true);
+    // The real config's Lua candidate actions need the Lua engine, which this test does not attach -- logged, not thrown.
+    expect(warnings.some((w) => w.includes('needs the lua AI engine'))).toBe(true);
   });
 
   it('does not throw when a scenario has no [side][ai] at all (falls back to the real default algorithm)', () => {

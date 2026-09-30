@@ -23,7 +23,7 @@ import type { AiHost, AiAction } from './types.js';
 import { parseSideAiConfig } from './config/upgrade.js';
 import { DEFAULT_AI_CONFIG_JSON, AI_ALGORITHM_CONFIGS_JSON } from './config/builtinAiConfigs.generated.js';
 import { AiContext } from './context.js';
-import { AiComposite, createAiComposite, type CandidateActionFactory } from './composite/aiComposite.js';
+import { AiComposite, buildCandidateAction, createAiComposite, type AiEngine, type CandidateActionFactory } from './composite/aiComposite.js';
 import { RcaStage } from './composite/rca.js';
 import { buildGoalsFromConfigs } from './composite/goal.js';
 import { createDefaultCandidateActionRegistry } from './default/registry.js';
@@ -33,6 +33,7 @@ export type ModifyAiActionKind = 'add' | 'change' | 'delete' | 'try_delete';
 interface SideAiState {
   readonly ctx: AiContext;
   readonly composite: AiComposite;
+  readonly configs: readonly WmlConfig[];
 }
 
 export class AiManager {
@@ -45,6 +46,8 @@ export class AiManager {
     /** The real `[side][ai]` blocks for `side`, from the scenario's own config (typically `findSideConfig(scenarioConfigJson, side)?.children('ai') ?? []`). */
     private readonly sideAiConfigs: (side: number) => readonly WmlConfig[],
     registry: ReadonlyMap<string, CandidateActionFactory> = createDefaultCandidateActionRegistry(),
+    /** Engines besides the built-in one, by `engine=` name (`lua`: lua-bridge's Lua AI engine). */
+    private readonly engines: ReadonlyMap<string, AiEngine> = new Map(),
   ) {
     this.registry = registry;
   }
@@ -53,8 +56,8 @@ export class AiManager {
     const blocks = [...this.sideAiConfigs(side), ...(this.extraBlocks.get(side) ?? [])];
     const parsed = parseSideAiConfig(DEFAULT_AI_CONFIG_JSON, AI_ALGORITHM_CONFIGS_JSON, blocks);
     const ctx = new AiContext(this.host, side, parsed.aspects, parsed.goals);
-    const composite = createAiComposite(ctx, parsed.configs, this.registry);
-    return { ctx, composite };
+    const composite = createAiComposite(ctx, parsed.configs, this.registry, this.engines);
+    return { ctx, composite, configs: parsed.configs };
   }
 
   private getOrCreate(side: number): SideAiState {
@@ -124,7 +127,7 @@ export class AiManager {
     const caMatch = /^stage\[([^\]]*)\]\.candidate_action\[([^\]]*)\]$/.exec(trimmed);
     if (caMatch) {
       const [, stageId, caId] = caMatch;
-      const { ctx, composite } = this.getOrCreate(side);
+      const { ctx, composite, configs } = this.getOrCreate(side);
       const stage = composite.listStages().find((s) => s.id === stageId);
       if (!(stage instanceof RcaStage)) {
         this.host.log('warn', `[modify_ai] path="${path}": no RCA stage id="${stageId}" on side ${side}`);
@@ -138,13 +141,9 @@ export class AiManager {
           this.host.log('warn', `[modify_ai] action="${action}" path="${path}" needs a [candidate_action] body`);
           return false;
         }
-        const name = cfg.getString('name', '');
-        const factory = this.registry.get(name);
-        if (!factory) {
-          this.host.log('warn', `[modify_ai] candidate_action name="${name}" has no registered factory -- skipped`);
-          return false;
-        }
-        stage.addCandidateAction(factory(ctx, cfg));
+        const ca = buildCandidateAction(ctx, cfg, configs, this.registry, this.engines, `[modify_ai] path="${path}"`);
+        if (!ca) return false;
+        stage.addCandidateAction(ca);
       }
       return true;
     }

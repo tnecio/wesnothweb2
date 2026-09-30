@@ -220,6 +220,16 @@ export class AiContext {
     return this.aspects.get(id)?.resolve(this.turnNumber(), this.timeOfDayId());
   }
 
+  /** An aspect's active facet (`aspect::get`), for engines that read aspects by id (Lua's `ai.aspects`). */
+  aspect(id: string): WmlConfig | undefined {
+    return this.resolveAspect(id);
+  }
+
+  /** Every aspect this side's AI has. */
+  aspectIds(): string[] {
+    return [...this.aspects.keys()];
+  }
+
   getAggression(): number {
     return this.resolveAspect('aggression')?.getNumber('value', 0.4) ?? 0.4;
   }

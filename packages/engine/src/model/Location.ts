@@ -283,6 +283,28 @@ export class Location {
     });
   }
 
+  /**
+   * `map_location::matches_range`: `x=`/`y=` comma lists of ranges, paired element by element (a list's
+   * leftover entries match on that coordinate alone). Both empty matches everything.
+   */
+  matchesRange(xloc: string, yloc: string): boolean {
+    const split = (s: string) => s.split(',').map((p) => p.trim()).filter((p) => p !== '');
+    const xs = split(xloc);
+    const ys = split(yloc);
+    if (xs.length === 0 && ys.length === 0) return true;
+    const x = this.wmlX;
+    const y = this.wmlY;
+    const inRange = (r: string, v: number) => {
+      const [lo, hi] = parseRangeText(r);
+      return lo <= v && v <= hi;
+    };
+    let i = 0;
+    for (; i < xs.length && i < ys.length; i++) if (inRange(xs[i]!, x) && inRange(ys[i]!, y)) return true;
+    for (; i < xs.length; i++) if (inRange(xs[i]!, x)) return true;
+    for (; i < ys.length; i++) if (inRange(ys[i]!, y)) return true;
+    return false;
+  }
+
   getRing(min: number, max: number): Location[] {
     const tiles: Location[] = [];
     const center = this.toCubic();
@@ -383,4 +405,28 @@ export function distanceBetween(a: Location, b: Location): number {
       ? 1
       : 0;
   return Math.max(hDistance, Math.abs(a.y - b.y) + vPenalty + Math.floor(hDistance / 2));
+}
+
+/** `utils::parse_range`: "a", "a-b" (b below a counts as a), "a-infinity", "-infinity-b"; invalid text gives 0-0. */
+export function parseRangeText(str: string): [number, number] {
+  const pos = str.indexOf('-', 1);
+  const [a, b] = pos >= 0 && pos + 1 < str.length ? [str.slice(0, pos), str.slice(pos + 1)] : [str, undefined];
+  const stoi = (t: string): number => {
+    const m = /^\s*[+-]?\d+/.exec(t);
+    if (!m) throw new Error('invalid');
+    return Number(m[0]);
+  };
+  const res: [number, number] = [0, 0];
+  try {
+    res[0] = a === '-infinity' && b !== undefined ? -2147483648 : stoi(a);
+    if (b === undefined) res[1] = res[0];
+    else if (b.trim() === 'infinity') res[1] = 2147483647;
+    else {
+      res[1] = stoi(b);
+      if (res[1] < res[0]) res[1] = res[0];
+    }
+  } catch {
+    // Invalid range: upstream logs and keeps what it parsed.
+  }
+  return res;
 }
