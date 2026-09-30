@@ -26,7 +26,6 @@ import {
   argError,
   checkInteger,
   checkString,
-  checkStringArray,
   lauxlib,
   lua,
   luaError,

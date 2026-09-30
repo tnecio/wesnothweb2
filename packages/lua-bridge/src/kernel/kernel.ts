@@ -157,7 +157,7 @@ export class LuaKernel {
 
   /** The registry reference of the metatable registered as `name` (`luaL_newmetatable`), or undefined before it is. */
   private metatableRef(T: LuaState, name: string): number | undefined {
-    let ref = this.metatableRefs.get(name);
+    const ref = this.metatableRefs.get(name);
     if (ref === undefined) {
       if (lauxlib.luaL_getmetatable(T, ls(name)) === lua.LUA_TNIL) {
         lua.lua_pop(T, 1);

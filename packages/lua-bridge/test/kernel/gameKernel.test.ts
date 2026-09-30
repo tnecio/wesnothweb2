@@ -12,7 +12,6 @@ import { MtRng } from '@wesnothweb2/engine/src/rng/MtRng.js';
 import { RngDeterministic } from '@wesnothweb2/engine/src/rng/RngDeterministic.js';
 import { loadLuaDataDir } from '../../src/dataLua.js';
 import { createGameKernel } from '../../src/kernel/index.js';
-import { lua } from '../../src/kernel/kernel.js';
 
 const dataDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../wesnoth/data');
 const files = loadLuaDataDir(dataDir);

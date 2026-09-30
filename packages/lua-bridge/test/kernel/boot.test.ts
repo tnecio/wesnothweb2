@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, it } from 'vitest';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadLuaDataDir } from '../../src/dataLua.js';
 import { LuaKernel } from '../../src/kernel/kernel.js';
-import { BASE_GAME_CONFIG, installBase, installPackage, installStrictMode, loadCore } from '../../src/kernel/base.js';
+import { BASE_GAME_CONFIG, installBase, installPackage } from '../../src/kernel/base.js';
 import { installMathx, installStringx } from '../../src/kernel/stringx.js';
 import { MtRng } from '@wesnothweb2/engine/src/rng/MtRng.js';
 import { RngDeterministic } from '@wesnothweb2/engine/src/rng/RngDeterministic.js';
