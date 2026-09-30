@@ -5779,3 +5779,71 @@ subsystems against what the campaigns actually use, every unported campaign was 
   - `#enddef` ends a definition when matched as a prefix, as upstream's scanner does. This covers the
     `#enddefs` typo in Of Pearls and Pirates' and The Hammer of Thursagan's `utils/side_ai.cfg`.
   - The theme macros (`data/themes/`) are loaded with core's.
+
+## 2026-09-30 — Phase 29 S7/S8: the Lua kernel, the AI's Lua candidate actions, in the browser
+
+Phase 29 resumed where it stopped on 2026-09-13 (after S6). The staged plan, overwritten by the Phase 26
+plan in the meantime, is back in `docs/PHASE29_PLAN.md`, with an S7 revision: the Lua API is built in
+upstream's layers rather than by growing Phase 28c's hand-written bootstrap.
+
+- **The kernel (`packages/lua-bridge/src/kernel/`)**:
+  - The base layer ports `lua_kernel_base.cpp`:
+    - the sandbox, `print`/`load` and logging;
+    - gettext, and translatable strings as `"translatable string"` userdata;
+    - named tuples;
+    - the C++ halves of `stringx`, `mathx` (`random` draws from the game's `randomness::generator`) and
+      `wml`;
+    - `filesystem` over a virtual data directory, the `wesnoth.map` location operations and
+      `game_config`.
+  - Then `data/lua/package.lua` runs unchanged (upstream `require` resolution), then ilua strict mode
+    (reading an undefined global is an error, as upstream), then the game layer.
+  - The game layer:
+    - unit, side, unit-type, terrain-map and vconfig userdata;
+    - `wesnoth.units`/`map`/`current`/`scenario`/`sides`/`paths`/`schedule`/`sync`/`interface`/
+      `game_events`;
+    - `simulate_combat`, on the engine's pathfinder and battle simulation.
+  - Last, `data/lua/core/*.lua` runs unchanged (`load_core`), loading with a clean log.
+  - Upstream API not ported is a named function raising "not available in this port yet".
+  - `LuaRuntime` (a campaign's Lua) now sits on this kernel; the AI shares it, as upstream's does.
+- **The Lua AI engine (`kernel/ai/`)** ports `engine_lua.cpp`/`core.cpp`:
+  - a per-side Lua AI context (`dummy_engine_lua.lua` unless `[engine name=lua] code=`);
+  - the `ai` table: move maps, targets, attack analyses, `ai.aspects`, `suitable_keep`, `check_*`, and,
+    only while executing, the mutating actions;
+  - upstream's action checks and status codes (`aiActions.ts`, `actions.cpp`);
+  - `engine=lua` candidate actions (`location=`, inline, sticky).
+
+  The engine's `AiManager` takes AI engines by name, and never imports lua-bridge.
+- **The default AI's five Lua CAs** (`retreat_injured`, `spread_poison`, `high_xp_attack`, `place_healers`,
+  `move_to_any_enemy`) run from `data/ai/lua` unchanged; each acts on a board built for it.
+- **Engine fidelity fixes the Lua AI forced:**
+  - The unit filter is ported from `units/filter.cpp`:
+    - `formula=` sees the unit as its own context (the old `moves > 0` matched nothing);
+    - `[filter_side]` (it was ignored, so `enemy_of` matched every unit);
+    - `[filter_adjacent]`, `[filter_wml]`, `[has_attack]`;
+    - `role=` as one string;
+    - the missing attributes.
+  - `x=`/`y=` ranges pair element by element (`map_location::matches_range`).
+  - Weapon specials keep their WML tag, which the AI Lua reads.
+- **Combat prediction as upstream's** (`attackPrediction.ts`):
+  - the matrix touches only the rows and columns in use;
+  - the `one_strike_fight`/`no_death_fight` fast paths;
+  - Monte Carlo past `fight_complexity` 50000, drawing from the unsynced generator.
+
+  The port had dropped these as optimisations. With the Lua CAs they were most of an AI turn: 18 s a turn
+  on the benchmark, now about 3 s. Results match the old version on 4000 random fights. Level-ups now
+  follow upstream, which considers both sides' only when the attacker can advance.
+- **S8, the browser:**
+  - `apps/web/scripts/build-lua-bundle.mjs` writes `data/lua` and `data/ai` to `public/lua/data-lua.json`
+    (about 1 MB, 210 KB gzipped; `build:lua` runs in `predev`/`prebuild`).
+  - `PlayPage` fetches it once; `packages/ui/src/luaData.ts` holds it (the ui tests load it from disk).
+  - `GameSession` builds the kernel when it has the files; Lua and AI errors reach the console.
+  - `apps/web/scripts/ai-lua-playthrough.mjs` passes: Dead Water 1's AI turn and The South Guard 1's
+    campaign Lua, with a clean console.
+- **Speed:**
+  - A Dead Water AI turn takes about 0.5 s of computing (0.27 s without the Lua CAs); the kernel adds
+    0.3 s to starting a scenario.
+  - The benchmark's harder game (`synth_combat_02`, seed 2) is still about 6 s a turn: `retreat_injured`
+    rebuilds every unit's attack map each RCA iteration while a unit is hurt, as upstream does, but on
+    fengari. Running the AI off the main thread is S12.
+- **Tests:** engine 824, lua-bridge 64 (the kernel, the `ai` table, each Lua CA), renderer 263, ui 402 --
+  all passing; lint and both svelte-checks clean.
