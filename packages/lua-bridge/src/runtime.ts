@@ -55,6 +55,8 @@ export interface LuaRuntimeOptions {
   readonly currentSide?: () => number;
   /** A side's `[ai]` as `wesnoth.sides[n].__cfg` shows it. */
   readonly sideAiConfigs?: (side: number) => readonly WmlConfig[];
+  /** Where the kernel's messages go; defaults to the event context's log. */
+  readonly log?: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
 }
 
 /** A request a Lua coroutine yields to `drive`. */
@@ -140,7 +142,7 @@ export class LuaRuntime {
     };
     const game = createGameKernel(host, {
       files: { ...options.dataFiles, ...sources.modules },
-      log: (level, message) => ctx().log(level, message),
+      log: options.log ?? ((level, message) => ctx().log(level, message)),
       rng: options.rng ?? (() => ctx().rng ?? this.fallbackRng),
       sideAiConfigs: options.sideAiConfigs,
       beforeCore: (k) => this.installFunctions(k),
