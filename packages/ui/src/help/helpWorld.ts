@@ -6,6 +6,7 @@
  * player has met, unless the "show all units in help" preference or debug mode is on; the user chose to
  * show everything (2026-09-30).
  */
+import type { TerrainCode } from '@wesnothweb2/engine';
 import {
   mergeUnitTypeConfig,
   parseTerrainCode,
@@ -14,11 +15,11 @@ import {
   UnitType,
   WmlConfig,
   NONE_TERRAIN,
+  TerrainCode as TerrainCodeCtor,
   NO_LAYER,
   VOID_TERRAIN,
   type MoveType,
   type RegistryEntry,
-  type TerrainCode,
   type TimeOfDayEntry,
 } from '@wesnothweb2/engine';
 import type { HelpData, HelpGameContext } from './helpData.js';
@@ -256,38 +257,54 @@ export class HelpUnitType {
 
 /** A terrain type as the help sees it: upstream `terrain_type`'s help-facing fields. */
 export class HelpTerrain {
+  readonly id: string;
+  readonly name: string;
+  /** `editor_name()`: `editor_name=`, else `description()` (`description=`, else `name`). */
+  readonly editorName: string;
+  readonly iconImage: string;
+  /** `editor_image()`: `terrain/<editor_image or symbol_image>.png`, none when hidden in the editor. */
+  readonly editorImage: string;
+  readonly helpTopicText: string;
+  readonly hideHelp: boolean;
+  readonly hideIfImpassable: boolean;
+  /** `is_combined()`: a base and an overlay a map puts together, with no `[terrain_type]` of its own. */
+  readonly isCombined: boolean;
+  /** `default_base=`, for an overlay. */
+  readonly defaultBase: TerrainCode | null;
+
   constructor(
-    readonly cfg: WmlConfig,
     readonly code: TerrainCode,
     private readonly data: TerrainTypeData,
-  ) {}
-  get id(): string {
-    return this.cfg.getString('id');
-  }
-  get name(): string {
-    return this.cfg.getString('name');
-  }
-  /** `editor_name()`: `editor_name=`, else `description()` (`description=`, else `name`). */
-  get editorName(): string {
-    return this.cfg.getString('editor_name') || this.cfg.getString('description') || this.name;
-  }
-  get iconImage(): string {
-    return this.cfg.getString('icon_image');
-  }
-  /** `editor_image()`: `terrain/<editor_image or symbol_image>.png`, none when hidden in the editor. */
-  get editorImage(): string {
-    if (this.cfg.getBoolean('hidden', false)) return '';
-    const e = this.cfg.getString('editor_image');
-    return `terrain/${e || this.cfg.getString('symbol_image')}.png`;
-  }
-  get helpTopicText(): string {
-    return this.cfg.getString('help_topic_text');
-  }
-  get hideHelp(): boolean {
-    return this.cfg.getBoolean('hide_help', false);
-  }
-  get hideIfImpassable(): boolean {
-    return this.cfg.getBoolean('hide_if_impassable', false);
+    cfg: WmlConfig | null,
+    combined?: { base: HelpTerrain; overlay: HelpTerrain },
+  ) {
+    if (combined) {
+      // The `terrain_type(base, overlay)` constructor.
+      const { base, overlay } = combined;
+      this.id = `${base.id}^${overlay.id}`;
+      this.name = overlay.name;
+      this.editorName = `${base.editorName} / ${overlay.editorName}`;
+      this.iconImage = '';
+      this.editorImage = base.editorImage && overlay.editorImage ? `${base.editorImage}~BLIT(${overlay.editorImage})` : '';
+      this.helpTopicText = '';
+      this.hideHelp = true;
+      this.hideIfImpassable = base.hideIfImpassable || overlay.hideIfImpassable;
+      this.isCombined = true;
+      this.defaultBase = null;
+    } else {
+      const c = cfg ?? new WmlConfig();
+      this.id = c.getString('id');
+      this.name = c.getString('name');
+      this.editorName = c.getString('editor_name') || c.getString('description') || this.name;
+      this.iconImage = c.getString('icon_image');
+      this.editorImage = c.getBoolean('hidden', false) ? '' : `terrain/${c.getString('editor_image') || c.getString('symbol_image')}.png`;
+      this.helpTopicText = c.getString('help_topic_text');
+      this.hideHelp = c.getBoolean('hide_help', false);
+      this.hideIfImpassable = c.getBoolean('hide_if_impassable', false);
+      this.isCombined = false;
+      const d = c.getString('default_base');
+      this.defaultBase = d ? parseTerrainCode(d) : null;
+    }
   }
   /** `is_overlay()`: the code has no base layer. */
   get isOverlay(): boolean {
@@ -298,7 +315,7 @@ export class HelpTerrain {
     return !this.code.equals(NONE_TERRAIN) && !this.code.equals(VOID_TERRAIN);
   }
   private get info() {
-    return this.data.getTerrainInfo(this.code);
+    return this.data.findOrCreate(this.code) ?? this.data.getTerrainInfo(this.code);
   }
   get isIndivisible(): boolean {
     return this.info.isIndivisible();
@@ -323,11 +340,6 @@ export class HelpTerrain {
   }
   get defType(): readonly TerrainCode[] {
     return this.info.defType;
-  }
-  /** `has_default_base()` / `default_base()`. */
-  get defaultBase(): TerrainCode | null {
-    const s = this.cfg.getString('default_base');
-    return s ? parseTerrainCode(s) : null;
   }
 }
 
@@ -360,8 +372,20 @@ export class HelpWorld {
     this.globalTraits = data.traitConfigs.map((j) => WmlConfig.fromJSON(j));
     const terrainCfgs = data.terrainTypeConfigs.map((j) => WmlConfig.fromJSON(j));
     this.terrainData = TerrainTypeData.fromConfigs(terrainCfgs);
-    this.terrains = terrainCfgs.map((cfg) => new HelpTerrain(cfg, parseTerrainCode(cfg.getString('string')), this.terrainData));
-    for (const t of this.terrains) if (!this.terrainsByCode.has(t.code.key())) this.terrainsByCode.set(t.code.key(), t);
+    const terrains = terrainCfgs.map((cfg) => new HelpTerrain(parseTerrainCode(cfg.getString('string')), this.terrainData, cfg));
+    for (const t of terrains) if (!this.terrainsByCode.has(t.code.key())) this.terrainsByCode.set(t.code.key(), t);
+    // The mixed terrains the current map uses, which upstream creates as the map is loaded (`find_or_create`).
+    for (const s of game.mapTerrainCodes ?? []) {
+      const code = parseTerrainCode(s);
+      if (this.terrainsByCode.has(code.key()) || code.base === NO_LAYER || code.overlay === NO_LAYER) continue;
+      const base = this.terrainsByCode.get(parseTerrainCode(s.split('^')[0]!).key());
+      const overlay = this.terrainsByCode.get(new TerrainCodeCtor(NO_LAYER, code.overlay).key());
+      if (!base || !overlay) continue;
+      const t = new HelpTerrain(code, this.terrainData, null, { base, overlay });
+      terrains.push(t);
+      this.terrainsByCode.set(code.key(), t);
+    }
+    this.terrains = terrains;
     this.eras = data.eraConfigs.map((j) => WmlConfig.fromJSON(j));
   }
 

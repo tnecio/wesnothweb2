@@ -12,12 +12,19 @@ import { ENGINE_IMAGES, GAME_IMAGES } from '../gameData.js';
 
 let compositor: Compositor | null = null;
 const results = new Map<string, Promise<string | null>>();
+let baseUrlsSet = false;
+
+/** The same roots the game uses (`GameShell`), set here so the title screen does not depend on it having loaded. */
+function setBaseUrls(): void {
+  if (baseUrlsSet) return;
+  baseUrlsSet = true;
+  setImageBaseUrl(GAME_IMAGES);
+  setEngineImageBaseUrl(ENGINE_IMAGES);
+}
 
 async function getCompositor(): Promise<Compositor> {
   if (!compositor) {
-    // The same roots the game uses (`GameShell`), set here so the title screen does not depend on it having loaded.
-    setImageBaseUrl(GAME_IMAGES);
-    setEngineImageBaseUrl(ENGINE_IMAGES);
+    setBaseUrls();
     compositor = new Compositor();
     compositor.setColorData(await fetchTeamColors());
   }
@@ -27,6 +34,8 @@ async function getCompositor(): Promise<Compositor> {
 /** The URL to show for `ref`; null if the image cannot be built (a missing file: the caller shows nothing). */
 export function ipfImageUrl(ref: string): Promise<string | null> {
   const rooted = rootMenuImage(ref);
+  // A plain path is a URL straight away, and an `engine/` one needs the engine root set (the help's icons).
+  setBaseUrls();
   if (!rooted.includes('~')) return Promise.resolve(imageUrl(rooted));
   let result = results.get(rooted);
   if (!result) {

@@ -97,6 +97,24 @@ const stringTable = parse('english.cfg').child('language');
 if (!stringTable) throw new Error('data/english.cfg has no [language]');
 const erasCfg = parse('multiplayer/eras.cfg');
 
+// Upstream looks an image up in each binary path's `images/` (core's first), then in the game's own root, where
+// `images/...` is the engine's image directory. The help's pages name both kinds (`icons/profiles/blade.png`
+// is an engine image, `units/...` a core one), and the browser cannot list directories: the engine-only images,
+// by path relative to `wesnoth/images/`, go with the data.
+const engineImages = [];
+const engineRoot = path.join(repoRoot, 'wesnoth/images');
+(function walk(dir) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) walk(p);
+    else if (/\.(png|webp|jpg)$/.test(e.name) && !e.name.includes('@2x')) {
+      const rel = path.relative(engineRoot, p).split(path.sep).join('/');
+      if (!fs.existsSync(path.join(dataRoot, 'core/images', rel))) engineImages.push(rel);
+    }
+  }
+})(engineRoot);
+engineImages.sort();
+
 const data = {
   generatedBy: 'apps/web/scripts/build-help.mjs',
   help: helpCfg.toJSON(),
@@ -111,6 +129,7 @@ const data = {
   terrainTypeConfigs: terrainCfg.children('terrain_type').map((cfg) => cfg.toJSON()),
   eraConfigs: erasCfg.children('era').map((cfg) => cfg.toJSON()),
   stringTable: stringTable.toJSON().attrs,
+  engineImages,
 };
 
 fs.mkdirSync(outDir, { recursive: true });

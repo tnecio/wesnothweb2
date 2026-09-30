@@ -131,6 +131,8 @@
   import { fetchTeamColors } from './teamColorsCache.js';
   import StoryViewer from './StoryViewer.svelte';
   import PreferencesDialog from './PreferencesDialog.svelte';
+  import HelpBrowser from './help/HelpBrowser.svelte';
+  import { helpBrowser } from './help/helpBrowser.svelte.js';
   import LanguageDialog from './LanguageDialog.svelte';
   import { accessibility } from './accessibility.js';
   import { fmt, locale, t, tw, ts, tx } from './i18n/locale.js';
@@ -2672,6 +2674,14 @@
       handler: () => (preferencesOpen = true),
       hotkey: { key: 'p', ctrl: true },
     },
+    // Phase 24: upstream's `help` (F1), the entry after Preferences in the game menu.
+    {
+      id: 'help',
+      label: t('Help'),
+      enabled: true,
+      handler: () => helpBrowser.open(),
+      hotkey: { key: 'F1' },
+    },
     {
       id: 'language',
       label: `${t('Language')}...`,
@@ -2775,9 +2785,6 @@
       if (unitHere && unitHere.side === activeSide && unitHere !== session.selectedUnit) {
         hexCommands.push({ id: 'ctx-select', label: tx('Select Unit'), enabled: true, handler: () => handleHexClick(x, y) });
       }
-      if (unitHere && unitHere.side !== activeSide) {
-        hexCommands.push({ id: 'ctx-inspect', label: tx('Unit Description'), enabled: true, handler: () => handleHexClick(x, y) });
-      }
       hexCommands.push({ id: 'ctx-move', label: tx('Move Here'), enabled: isReachable, handler: () => handleHexClick(x, y) });
       hexCommands.push({ id: 'ctx-attack', label: t('Attack'), enabled: isAttackTarget, handler: () => handleHexClick(x, y) });
       hexCommands.push({
@@ -2798,6 +2805,16 @@
           recallDialogOpen = true;
         },
       });
+      // Phase 24: upstream's `describeterrain` and `describeunit`, which open the help on that terrain or unit type.
+      hexCommands.push({ id: 'ctx-describe-terrain', label: t('Terrain Description'), enabled: true, handler: () => helpBrowser.openTerrain(session.terrainCodeAt(x, y)) });
+      if (unitHere) {
+        hexCommands.push({
+          id: 'ctx-describe-unit',
+          label: t('Unit Type Description'),
+          enabled: true,
+          handler: () => helpBrowser.openUnitType(unitHere.type.id, unitHere.variation),
+        });
+      }
       hexCommands.push({ id: 'ctx-label', label: `${t('Place Label')}...`, enabled: true, handler: () => openLabelDialog({ x, y }, false) });
       // Real `[set_menu_item]` entries the scenario's own WML declared --
       // see `GameSession.menuItems`'s own doc comment on why these are
@@ -2963,6 +2980,7 @@
       labelSettingsOpen ||
       preferencesOpen ||
       languageDialogOpen ||
+      helpBrowser.isOpen ||
       pendingAdvancement !== null ||
       pendingPreview !== null ||
       // Phase 17: a suspended event's own dialogue owns the keyboard
@@ -3251,6 +3269,9 @@
 
   {#if languageDialogOpen}
     <LanguageDialog onClose={() => (languageDialogOpen = false)} />
+  {/if}
+  {#if helpBrowser.isOpen}
+    <HelpBrowser snapshot={activeSnapshot} game={session.helpContext()} />
   {/if}
   {#if preferencesOpen}
     <PreferencesDialog audioSettings={audioSettings} onAudioChange={changeAudio} onClose={() => (preferencesOpen = false)} />

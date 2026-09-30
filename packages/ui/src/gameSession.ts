@@ -32,6 +32,7 @@
 
 import {
   plainJsonValue,
+  writeTerrainCode,
   TString,
   type TStringJson,
   GameBoard,
@@ -177,6 +178,7 @@ import { LuaAiEngine } from '@wesnothweb2/lua-bridge/src/kernel/ai/luaAiEngine.j
 import { luaDataFiles, type LuaDataFiles } from './luaData.js';
 import { browserAchievements, browserPersistentVariables } from './persistentVariables.js';
 import { raceName, statusName } from './i18n/gameText.js';
+import type { HelpGameContext } from './help/helpData.js';
 import { fmt, t, tw, tx } from './i18n/locale.js';
 
 // `[lua]` conditions run in a real Lua VM (Fengari); see lua-bridge's conditionals.ts.
@@ -1817,6 +1819,23 @@ export class GameSession {
    */
   timeOfDayAt(loc: Location): TimeOfDayEntry {
     return effectiveTimeOfDayAt(this.board, this.schedule, this.turnNumber, loc);
+  }
+
+  /**
+   * Phase 24: what the help browser describes of this game -- the schedule (`tod_manager::times()`, for the
+   * time-of-day pages) and every terrain code on the map (the mixed ones get pages of their own, as upstream's
+   * `terrain_type_data` creates them when the map is loaded).
+   */
+  helpContext(): HelpGameContext {
+    const map = this.board.map;
+    const codes = new Set<string>();
+    for (let x = 0; x < map.w(); x++) for (let y = 0; y < map.h(); y++) codes.add(writeTerrainCode(map.getTerrain(new Location(x, y))));
+    return { times: this.schedule.globalTimes, maxLiminalBonus: this.schedule.maxLiminalBonus, mapTerrainCodes: [...codes] };
+  }
+
+  /** Phase 24: the terrain code at a hex (`Gg^Fp`), for "Terrain Description". */
+  terrainCodeAt(x: number, y: number): string {
+    return writeTerrainCode(this.board.map.getTerrain(new Location(x, y)));
   }
 
   /**

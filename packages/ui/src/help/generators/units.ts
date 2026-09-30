@@ -7,7 +7,6 @@ import { FOGGED, VOID_TERRAIN, terrainMatches, parseTerrainList, WmlConfig, type
 import { redToGreen } from '@wesnothweb2/renderer/src/colorScales.js';
 import { alignmentName } from '../../i18n/gameText.js';
 import {
-  _,
   ABILITY_PREFIX,
   BULLET,
   compareText,
@@ -30,6 +29,7 @@ import {
   type Section,
   type Topic,
 } from '../helpCommon.js';
+import { th, tw } from '../../i18n/locale.js';
 import type { HelpUnitType, HelpWorld, SpecialTooltip } from '../helpWorld.js';
 import { helpTopicIdOf } from '../helpWorld.js';
 import { bold, img, italic, makeLink, spanColor, tag, tagAttr } from '../markup.js';
@@ -114,7 +114,7 @@ export function generateRacesSections(world: HelpWorld, sec: Section, parseSecti
     const race = world.race(raceId);
     const cfg = new WmlConfig();
     cfg.setAttribute('id', hiddenSymbol(hidden) + RACE_PREFIX + raceId);
-    cfg.setAttribute('title', race ? race.getString('plural_name') : _('race^Miscellaneous'));
+    cfg.setAttribute('title', race ? race.getString('plural_name') : tw('race^Miscellaneous'));
     cfg.setAttribute('sections_generator', 'units:' + raceId);
     cfg.setAttribute('generator', 'units:' + raceId);
     const raceSection = parseSection(cfg);
@@ -199,7 +199,7 @@ export function generateUnitTopics(world: HelpWorld, race: string, sortGenerated
       topics.push({ title, id, text: extra.getString('text') });
     }
   } else {
-    raceName = _('race^Miscellaneous');
+    raceName = tw('race^Miscellaneous');
   }
 
   // Races whose `help_taxonomy=` points at this one, by id (a `std::map`).
@@ -213,22 +213,22 @@ export function generateUnitTopics(world: HelpWorld, race: string, sortGenerated
   if (raceDescription) text += raceDescription + '\n\n';
   const alignmentList = [...alignments].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   if (alignmentList.length > 0) {
-    text += (alignmentList.length > 1 ? _('Alignments: ') : _('Alignment: ')) + alignmentList.join(', ') + '\n\n';
+    text += (alignmentList.length > 1 ? tw('Alignments: ') : tw('Alignment: ')) + alignmentList.join(', ') + '\n\n';
   }
   if (raceTaxonomy) {
     const parent = world.race(raceTaxonomy);
     text +=
-      vgettext("This is a group of units, all of whom are <ref dst='$topic_id'>$help_taxonomy</ref>.", {
+      vgettext('wesnoth', "This is a group of units, all of whom are <ref dst='$topic_id'>$help_taxonomy</ref>.", {
         topic_id: '..race_' + raceTaxonomy,
         help_taxonomy: parent ? parent.getString('plural_name') : raceTaxonomy,
       }) + '\n\n';
   }
   if (subgroups.size > 0) {
-    text += tag('header', raceTaxonomy ? _('Subgroups of units within this group') : _('Groups of units within this race')) + '\n';
+    text += tag('header', raceTaxonomy ? tw('Subgroups of units within this group') : tw('Groups of units within this race')) + '\n';
     for (const [id, name] of subgroups) text += `${BULLET} ${makeLink(name, '..race_' + id)}\n`;
     text += '\n';
   }
-  text += tag('header', raceTaxonomy ? _('Units of this group') : _('Units of this race')) + '\n';
+  text += tag('header', raceTaxonomy ? tw('Units of this group') : tw('Units of this race')) + '\n';
   for (const u of stringSet(raceUnits)) text += `${BULLET} ${u}\n`;
 
   topics.push({ title: raceName, id: raceId, text });
@@ -299,7 +299,7 @@ export function unitTopicText(world: HelpWorld, type: HelpUnitType, variation: s
   const male = type.male;
   const screenWide = true; // `video::game_canvas_size().x >= 1200`: the help window is 1350 wide.
 
-  ss += _('Level') + ' ' + type.level;
+  ss += th('Level') + ' ' + type.level;
 
   const malePortrait = male.smallProfile || male.bigProfile;
   const femalePortrait = female.smallProfile || female.bigProfile;
@@ -326,7 +326,7 @@ export function unitTopicText(world: HelpWorld, type: HelpUnitType, variation: s
         const t = world.unitType(id);
         if (!t || t.hideHelp) continue;
         if (first) {
-          ss += (reverse ? _('Advances from:') : _('Advances to:')) + NBSP;
+          ss += (reverse ? th('Advances from:') : th('Advances to:')) + NBSP;
           first = false;
         } else ss += ', ';
         let name = t.typeName;
@@ -344,12 +344,12 @@ export function unitTopicText(world: HelpWorld, type: HelpUnitType, variation: s
 
   const parent = variation === '' ? type : (world.unitType(type.id) ?? type);
   if (variation !== '') {
-    ss += _('Base unit:') + NBSP + makeLink(parent.typeName, '..' + UNIT_PREFIX + type.id) + '\n';
+    ss += th('Base unit:') + NBSP + makeLink(parent.typeName, '..' + UNIT_PREFIX + type.id) + '\n';
   } else {
     let first = true;
     for (const baseId of type.cfg.getString('base_ids').split(',').map((s) => s.trim()).filter(Boolean)) {
       if (first) {
-        ss += _('Base units:') + NBSP;
+        ss += th('Base units:') + NBSP;
         first = false;
       }
       const baseType = world.unitType(baseId);
@@ -363,7 +363,7 @@ export function unitTopicText(world: HelpWorld, type: HelpUnitType, variation: s
     const vt = parent.variation(varId);
     if (vt.hideHelp) continue;
     if (firstVariation) {
-      ss += _('Variations:') + NBSP;
+      ss += th('Variations:') + NBSP;
       firstVariation = false;
     } else ss += ', ';
     let varName = vt.variationName;
@@ -379,8 +379,8 @@ export function unitTopicText(world: HelpWorld, type: HelpUnitType, variation: s
 
   // Race.
   let raceName = world.racePluralName(type.raceId);
-  if (!raceName) raceName = _('race^Miscellaneous');
-  ss += _('Race:') + NBSP + makeLink(raceName, '..race_' + type.raceId) + '\n';
+  if (!raceName) raceName = th('race^Miscellaneous');
+  ss += th('Race:') + NBSP + makeLink(raceName, '..race_' + type.raceId) + '\n';
 
   // Traits.
   const traits = type.possibleTraits;
@@ -406,9 +406,9 @@ export function unitTopicText(world: HelpWorld, type: HelpUnitType, variation: s
     const nrRandom = Math.min(type.numTraits - mustHave.length - mustHaveNameless, random.length);
     const randomOf = (n: number) => vngettext('(1 of):', '(random $number of):', n, { number: n });
     if (mustHave.length === 0) {
-      if (nrRandom > 0) ss += _('Traits') + ' ' + randomOf(nrRandom) + NBSP + printList(random) + '\n';
+      if (nrRandom > 0) ss += th('Traits') + ' ' + randomOf(nrRandom) + NBSP + printList(random) + '\n';
     } else {
-      ss += _('Traits');
+      ss += th('Traits');
       if (nrRandom > 0) {
         ss += `\n(${mustHave.length}):` + NBSP + printList(mustHave);
         ss += '\n' + randomOf(nrRandom) + NBSP + printList(random);
@@ -431,27 +431,27 @@ export function unitTopicText(world: HelpWorld, type: HelpUnitType, variation: s
     }
     return out + '\n\n';
   };
-  if (type.abilitiesMetadata.length > 0) ss += abilityLine(_('Abilities:'), type.abilitiesMetadata);
-  if (type.advAbilitiesMetadata.length > 0) ss += abilityLine(_('Ability Upgrades:'), type.advAbilitiesMetadata);
+  if (type.abilitiesMetadata.length > 0) ss += abilityLine(th('Abilities:'), type.abilitiesMetadata);
+  if (type.advAbilitiesMetadata.length > 0) ss += abilityLine(th('Ability Upgrades:'), type.advAbilitiesMetadata);
 
   // HP, moves...
-  ss += _('HP:') + NBSP + type.hitpoints + '  ' + _('Moves:') + NBSP + type.movement + '  ';
-  if (type.vision !== type.movement) ss += _('Vision:') + NBSP + type.vision + '  ';
-  if (type.jamming > 0) ss += _('Jamming:') + NBSP + type.jamming + '  ';
-  ss += _('Cost:') + NBSP + type.cost + '  ' + _('Alignment:') + NBSP + makeLink(alignmentDescription(type), 'time_of_day') + '  ';
-  if (type.canAdvance || type.modificationAdvancements.length > 0) ss += _('Required\u00a0XP:') + NBSP + type.experienceNeeded;
+  ss += th('HP:') + NBSP + type.hitpoints + '  ' + th('Moves:') + NBSP + type.movement + '  ';
+  if (type.vision !== type.movement) ss += th('Vision:') + NBSP + type.vision + '  ';
+  if (type.jamming > 0) ss += th('Jamming:') + NBSP + type.jamming + '  ';
+  ss += th('Cost:') + NBSP + type.cost + '  ' + th('Alignment:') + NBSP + makeLink(alignmentDescription(type), 'time_of_day') + '  ';
+  if (type.canAdvance || type.modificationAdvancements.length > 0) ss += th('Required XP:') /* a literal no-break space, as in the msgid */ + NBSP + type.experienceNeeded;
 
-  ss += '\n' + (type.description || _('No description available.'));
+  ss += '\n' + (type.description || tw('No description available.')) /* `unit_description()`, units/types.cpp */;
 
   const notes = type.specialNotes;
   if (notes.length > 0) {
-    ss += '\n' + tag('header', _('Special Notes')) + '\n';
+    ss += '\n' + tag('header', th('Special Notes')) + '\n';
     for (const note of notes) ss += `${BULLET} ${italic(note)}\n`;
   }
 
   // Attacks.
-  ss += '\n' + tag('header', _('Attacks'));
-  if (type.maxAttacks > 1) ss += '\n' + italic(_('Attacks per turn: ')) + type.maxAttacks;
+  ss += '\n' + tag('header', th('Attacks'));
+  if (type.maxAttacks > 1) ss += '\n' + italic(th('Attacks per turn: ')) + type.maxAttacks;
   const attacks = type.unitType.attacks;
   if (attacks.length > 0) {
     const hasSpecial = attacks.some((a) => specialTooltips(a.specials).length > 0);
@@ -459,11 +459,11 @@ export function unitTopicText(world: HelpWorld, type: HelpUnitType, variation: s
       'row',
       { bgcolor: 'table_header' },
       tag('col', NBSP),
-      tag('col', bold(_('Name'))),
-      tag('col', bold(_('Strikes'))),
-      tag('col', bold(_('Range'))),
-      tag('col', bold(_('Type'))),
-      hasSpecial ? tag('col', bold(_('Special'))) : '',
+      tag('col', bold(th('Name'))),
+      tag('col', bold(th('Strikes'))),
+      tag('col', bold(th('Range'))),
+      tag('col', bold(th('Type'))),
+      hasSpecial ? tag('col', bold(th('Special'))) : '',
     );
     const attackCfgs = type.cfg.children('attack');
     attacks.forEach((attack, i) => {
@@ -502,8 +502,8 @@ export function unitTopicText(world: HelpWorld, type: HelpUnitType, variation: s
   const hasJamming = type.moveType.hasJammingData();
 
   // Resistances.
-  ss += '\n' + tag('header', _('Resistances'));
-  let resTable = tagAttr('row', { bgcolor: 'table_header' }, tag('col', bold(_('Attack Type'))), tag('col', bold(_('Resistance'))));
+  ss += '\n' + tag('header', th('Resistances'));
+  let resTable = tagAttr('row', { bgcolor: 'table_header' }, tag('col', bold(th('Attack Type'))), tag('col', bold(th('Resistance'))));
   let odd = true;
   for (const [damageType, value] of damageTable(movementType)) {
     const resistance = 100 - value;
@@ -520,11 +520,11 @@ export function unitTopicText(world: HelpWorld, type: HelpUnitType, variation: s
   ss += tag('table', resTable);
 
   // Terrain modifiers.
-  ss += '\n' + tag('header', _('Terrain Modifiers'));
-  let header = tag('col', bold(_('Terrain'))) + tag('col', bold(_('Defense'))) + tag('col', bold(_('Movement Cost')));
-  if (hasDefenseCaps) header += tag('col', bold(_('Defense Cap')));
-  if (hasVision) header += tag('col', bold(_('Vision Cost')));
-  if (hasJamming) header += tag('col', bold(_('Jamming Cost')));
+  ss += '\n' + tag('header', th('Terrain Modifiers'));
+  let header = tag('col', bold(th('Terrain'))) + tag('col', bold(th('Defense'))) + tag('col', bold(th('Movement Cost')));
+  if (hasDefenseCaps) header += tag('col', bold(th('Defense Cap')));
+  if (hasVision) header += tag('col', bold(th('Vision Cost')));
+  if (hasJamming) header += tag('col', bold(th('Jamming Cost')));
   let terrainTable = tagAttr('row', { bgcolor: 'table_header' }, header);
 
   const offMap = parseTerrainList('_off^_usr,*^_fme');

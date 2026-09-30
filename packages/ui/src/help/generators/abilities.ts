@@ -3,7 +3,8 @@
  * `generate_weapon_special_topics`, `generate_trait_topics` and `add_remaining_pages` (`help_impl.cpp`).
  */
 import type { WmlConfig } from '@wesnothweb2/engine';
-import { _, ABILITY_PREFIX, BULLET, RACE_PREFIX, stringSet, titleLess, WEAPONSPECIAL_PREFIX, type Topic } from '../helpCommon.js';
+import { ABILITY_PREFIX, BULLET, RACE_PREFIX, stringSet, titleLess, WEAPONSPECIAL_PREFIX, type Topic } from '../helpCommon.js';
+import { tw } from '../../i18n/locale.js';
 import { helpTopicIdOf, type AbilityMetadata, type HelpWorld } from '../helpWorld.js';
 import { italic, makeLink, tag } from '../markup.js';
 import { hasFullDescription, makeUnitLink } from './units.js';
@@ -63,7 +64,7 @@ export function generateWeaponSpecialTopics(world: HelpWorld, sortGenerated: boo
   const topics: Topic[] = [];
   for (const [id, { name, description }] of byId(descriptions)) {
     let text = description;
-    text += '\n\n' + tag('header', _('Units with this special attack')) + '\n';
+    text += '\n\n' + tag('header', tw('Units with this special attack')) + '\n';
     for (const link of units.get(id)) text += `${BULLET} ${link}\n`;
     topics.push({ title: name, id: WEAPONSPECIAL_PREFIX + id, text });
   }
@@ -89,7 +90,7 @@ export function generateAbilityTopics(world: HelpWorld, sortGenerated: boolean):
   for (const [id, ability] of byId(data)) {
     if (!ability.name) continue;
     let text = ability.description;
-    text += '\n\n' + tag('header', _('Units with this ability')) + '\n';
+    text += '\n\n' + tag('header', tw('Units with this ability')) + '\n';
     for (const link of units.get(id)) text += `${BULLET} ${link}\n`;
     topics.push({ title: ability.name, id: ABILITY_PREFIX + id, text });
   }
@@ -103,9 +104,9 @@ function addRemainingPages(topics: Topic[], topicName: string, topicId: string, 
   let it = PAGE_LIMIT;
   for (let page = 2; page <= pageCount; page++) {
     const prevId = page > 2 ? `.${topicId}${suffix}_${page - 1}` : topicId;
-    let text = makeLink('&lt;&lt; ' + _('Previous'), prevId) + '\n\n';
+    let text = makeLink('&lt;&lt; ' + tw('Previous'), prevId) + '\n\n';
     for (let row = 0; row < PAGE_LIMIT && it < list.length; row++, it++) text += `${BULLET} ${list[it]}\n`;
-    if (page !== pageCount) text += '\n' + makeLink(_('Next') + ' &gt;&gt;', `.${topicId}${suffix}_${page + 1}`) + '\n';
+    if (page !== pageCount) text += '\n' + makeLink(tw('Next') + ' &gt;&gt;', `.${topicId}${suffix}_${page + 1}`) + '\n';
     topics.push({ title: `${topicName} (${page}/${pageCount})`, id: `.${topicId}${suffix}_${page}`, text });
   }
 }
@@ -158,31 +159,31 @@ export function generateTraitTopics(world: HelpWorld, sortGenerated: boolean): T
     const id = 'traits_' + traitId;
     const name = trait.getString('male_name') || trait.getString('female_name') || trait.getString('name');
     if (!name) continue; // A hidden trait.
-    let text = trait.getString('help_text') || trait.getString('description') || _('No description available.');
+    let text = trait.getString('help_text') || trait.getString('description') || tw('No description available.');
     if (globalTraits.has(traitId)) {
-      text += '\n\n' + italic(_('This is a global trait.'));
+      text += '\n\n' + italic(tw('This is a global trait.'));
       topics.push({ title: name, id, text });
       continue;
     }
     text += '\n';
     const racesWith = stringSet(traitRaces.get(traitId) ?? []);
-    if (racesWith.length > 0) text += '\n' + tag('header', _('Races with this trait')) + '\n';
+    if (racesWith.length > 0) text += '\n' + tag('header', tw('Races with this trait')) + '\n';
     for (let i = 0; i < racesWith.length; i++) {
       if (i < PAGE_LIMIT) {
         const raceId = racesWith[i]!;
         text += `${BULLET} ${makeLink(world.racePluralName(raceId), '..' + RACE_PREFIX + raceId)}\n`;
       } else {
-        text += makeLink(_('Next') + ' &gt;&gt;', `.${id}_races_2`) + '\n';
+        text += makeLink(tw('Next') + ' &gt;&gt;', `.${id}_races_2`) + '\n';
         addRemainingPages(topics, name, id, '_races', racesWith);
         break;
       }
     }
     const unitsWith = stringSet(traitUnits.get(traitId) ?? []);
-    if (unitsWith.length > 0) text += '\n' + tag('header', _('Units with this trait')) + '\n';
+    if (unitsWith.length > 0) text += '\n' + tag('header', tw('Units with this trait')) + '\n';
     for (let i = 0; i < unitsWith.length; i++) {
       if (i < PAGE_LIMIT) text += `${BULLET} ${makeUnitLink(world, unitsWith[i]!)}\n`;
       else {
-        text += makeLink(_('Next') + ' &gt;&gt;', `.${id}_units_2`) + '\n';
+        text += makeLink(tw('Next') + ' &gt;&gt;', `.${id}_units_2`) + '\n';
         addRemainingPages(topics, name, id, '_units', unitsWith);
         break;
       }

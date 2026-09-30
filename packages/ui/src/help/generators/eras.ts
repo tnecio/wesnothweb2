@@ -3,7 +3,8 @@
  * `generate_faction_topics` (`help_impl.cpp`), over the multiplayer eras the game config carries.
  */
 import { WmlConfig } from '@wesnothweb2/engine';
-import { _, BULLET, byteSet, ERA_PREFIX, FACTION_PREFIX, RACE_PREFIX, titleLess, type Section, type Topic } from '../helpCommon.js';
+import { BULLET, byteSet, ERA_PREFIX, FACTION_PREFIX, RACE_PREFIX, titleLess, type Section, type Topic } from '../helpCommon.js';
+import { tw } from '../../i18n/locale.js';
 import type { HelpWorld } from '../helpWorld.js';
 import { makeLink, tag } from '../markup.js';
 import { alignmentDescription, makeUnitLinksList } from './units.js';
@@ -29,7 +30,7 @@ export function generateEraTopics(world: HelpWorld, eraId: string, sortGenerated
   let text = '';
   const description = era.getString('description');
   if (description) text += description + '\n\n';
-  text += tag('header', _('Factions')) + '\n';
+  text += tag('header', tw('Factions')) + '\n';
   for (const link of factionLinks) text += `${BULLET} ${link}\n`;
   topics.push({ title: era.getString('name'), id: '..' + ERA_PREFIX + era.getString('id'), text });
   return topics;
@@ -54,13 +55,13 @@ function generateFactionTopics(world: HelpWorld, era: WmlConfig, sortGenerated: 
       alignments.push(makeLink(alignmentDescription(type), 'time_of_day'));
     }
     const raceSet = byteSet(races);
-    if (raceSet.length > 0) text += _('Races: ') + raceSet.join(', ') + '\n\n';
+    if (raceSet.length > 0) text += tw('Races: ') + raceSet.join(', ') + '\n\n';
     const alignmentSet = byteSet(alignments);
-    if (alignmentSet.length > 0) text += _('Alignments: ') + alignmentSet.join(', ') + '\n\n';
-    text += tag('header', _('Leaders')) + '\n';
+    if (alignmentSet.length > 0) text += tw('Alignments: ') + alignmentSet.join(', ') + '\n\n';
+    text += tag('header', tw('Leaders')) + '\n';
     for (const link of makeUnitLinksList(world, f.getString('leader').split(',').map((s) => s.trim()).filter(Boolean), true)) text += `${BULLET} ${link}\n`;
     text += '\n';
-    text += tag('header', _('Recruits')) + '\n';
+    text += tag('header', tw('Recruits')) + '\n';
     for (const link of makeUnitLinksList(world, recruits, true)) text += `${BULLET} ${link}\n`;
     topics.push({ title: f.getString('name'), id: FACTION_PREFIX + era.getString('id') + '_' + id, text });
   }

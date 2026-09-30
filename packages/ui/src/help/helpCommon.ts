@@ -1,10 +1,11 @@
 /**
  * What the help's modules share (Phase 24): the section/topic model and the id conventions of upstream's
- * `help_impl.hpp`, the translation helpers its generators use (`_`, `VGETTEXT`, `VNGETTEXT` in the
- * `wesnoth-help` domain), and the `font::` characters they print.
+ * `help_impl.hpp`, the translation helpers its generators use (`VGETTEXT`, `VNGETTEXT`; a plain `_` is the
+ * `wesnoth-help` helper in the files ported from `help_topic_generators.cpp` and the `wesnoth` one in those from
+ * `help_impl.cpp`, which has no textdomain of its own), and the `font::` characters they print.
  */
 import { formatMessage } from '@wesnothweb2/engine';
-import { locale, th } from '../i18n/locale.js';
+import { locale } from '../i18n/locale.js';
 
 /** A help page. `text` is markup (see `markup.ts`), generated on first read when it is a function. */
 export interface Topic {
@@ -65,12 +66,12 @@ export function isValidId(id: string): boolean {
   return true;
 }
 
-/** `_("...")` in the `wesnoth-help` domain. */
-export const _ = th;
-
-/** `VGETTEXT`: translate, then substitute `$name`. */
-export function vgettext(msgid: string, symbols: Readonly<Record<string, string | number>>): string {
-  return formatMessage(th(msgid), symbols);
+/**
+ * `VGETTEXT` in `domain`: translate, then substitute `$name`. (`help_impl.cpp` has no textdomain of its own, so
+ * its strings are `wesnoth`'s; `help.cpp`'s and `help_topic_generators.cpp`'s are `wesnoth-help`'s.)
+ */
+export function vgettext(domain: string, msgid: string, symbols: Readonly<Record<string, string | number>>): string {
+  return formatMessage(locale.translate(domain, msgid), symbols);
 }
 
 /** `VNGETTEXT`: the plural form for `n`, then substitute `$name`. */

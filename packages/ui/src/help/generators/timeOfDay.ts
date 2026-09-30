@@ -4,7 +4,8 @@
  * upstream shows.
  */
 import { combatModifier, DEFAULT_MAX_LIMINAL_BONUS, type Alignment } from '@wesnothweb2/engine';
-import { _, type Topic } from '../helpCommon.js';
+import { type Topic } from '../helpCommon.js';
+import { tw } from '../../i18n/locale.js';
 import type { HelpWorld } from '../helpWorld.js';
 import { img, makeLink, spanColor, tag } from '../markup.js';
 
@@ -14,7 +15,7 @@ function bonusColored(bonus: number): string {
 
 export function generateTimeOfDayTopics(world: HelpWorld): Topic[] {
   const times = world.times;
-  if (!times) return [{ title: _('Time of Day Schedule'), id: '..schedule', text: _('Only available during a scenario.') }];
+  if (!times) return [{ title: tw('Time of Day Schedule'), id: '..schedule', text: tw('Only available during a scenario.') }];
 
   const maxLiminal = world.game.maxLiminalBonus ?? DEFAULT_MAX_LIMINAL_BONUS;
   const topics: Topic[] = [];
@@ -31,12 +32,12 @@ export function generateTimeOfDayTopics(world: HelpWorld): Topic[] {
       tag('col', image),
       ...bonuses.map((b, i) => tag('col', icons[i]!, bonusColored(b))),
     );
-    const labels = [_('Lawful Bonus:'), _('Neutral Bonus:'), _('Chaotic Bonus:'), _('Liminal Bonus:')];
+    const labels = [tw('Lawful Bonus:'), tw('Neutral Bonus:'), tw('Chaotic Bonus:'), tw('Liminal Bonus:')];
     let text = image + '\n' + (time.description ?? '') + '\n';
     bonuses.forEach((b, i) => (text += icons[i]! + labels[i]! + ' ' + bonusColored(b) + '\n'));
-    text += '\n' + makeLink(_('Schedule'), '..schedule');
+    text += '\n' + makeLink(tw('Schedule'), '..schedule');
     topics.push({ title: time.name, id, text });
   }
-  topics.push({ title: _('Time of Day Schedule'), id: '..schedule', text: tag('table', toplevel) });
+  topics.push({ title: tw('Time of Day Schedule'), id: '..schedule', text: tag('table', toplevel) });
   return topics;
 }

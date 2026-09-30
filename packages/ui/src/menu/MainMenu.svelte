@@ -26,6 +26,8 @@
   import type { CompletedCampaigns } from './completion.js';
   import { menuPrefs } from './menuPrefs.js';
   import TitleScreen from './TitleScreen.svelte';
+  import HelpBrowser from '../help/HelpBrowser.svelte';
+  import { helpBrowser } from '../help/helpBrowser.svelte.js';
   import { fetchTips, shuffled, type Tip } from './tips.js';
 
   let {
@@ -150,13 +152,18 @@
   version={WESNOTH_CONTENT_VERSION}
   {tips}
   showTips={menuPrefs.showTips}
-  blocked={dialog !== null}
+  blocked={dialog !== null || helpBrowser.isOpen}
   onCampaigns={() => (dialog = 'campaigns')}
   onLoad={() => (dialog = 'load')}
   onPreferences={() => (dialog = 'preferences')}
   onCredits={() => (dialog = 'credits')}
   onLanguage={() => (dialog = 'language')}
+  onHelp={() => helpBrowser.open()}
 />
+
+{#if helpBrowser.isOpen}
+  <HelpBrowser />
+{/if}
 
 {#if dialog === 'campaigns'}
   <CampaignSelectionDialog {campaigns} {completed} onPlay={play} onCancel={() => (dialog = null)} />

@@ -27,6 +27,8 @@ export interface HelpData {
   eraConfigs: WmlConfigJson[];
   /** Upstream's `string_table` (`data/english.cfg`'s `[language]`): damage type and range names and the like. */
   stringTable: WmlConfigJson['attrs'];
+  /** The images only the engine's own `images/` directory has, relative to it (see `helpImages.ts`). */
+  engineImages: string[];
 }
 
 /** What the help knows about the game in progress, if any. */
@@ -34,6 +36,8 @@ export interface HelpGameContext {
   /** The current time-of-day schedule (`tod_manager::times()`), for the "Time of Day Schedule" pages. */
   times?: readonly TimeOfDayEntry[];
   maxLiminalBonus?: number;
+  /** Every terrain code on the current map (`Gg^Fp`...): the mixed ones get their own (hidden) pages, as upstream. */
+  mapTerrainCodes?: readonly string[];
 }
 
 let corePromise: Promise<HelpData> | null = null;

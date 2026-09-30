@@ -4,9 +4,9 @@
  *
  * Every terrain counts as encountered (see `helpWorld.ts`), so a terrain is hidden only by `hide_help=`.
  */
-import { BASE_MARKER, formatMessage, MINUS, PLUS, type TerrainCode } from '@wesnothweb2/engine';
-import { t as tLib } from '../../i18n/locale.js';
-import { _, BULLET, hiddenSymbol, newSection, TERRAIN_PREFIX, titleLess, vgettext, vngettext, type Section, type Topic } from '../helpCommon.js';
+import { BASE_MARKER, formatMessage, MINUS, NO_LAYER, PLUS, TerrainCode } from '@wesnothweb2/engine';
+import { t as tLib, th } from '../../i18n/locale.js';
+import { BULLET, hiddenSymbol, newSection, TERRAIN_PREFIX, titleLess, vgettext, vngettext, type Section, type Topic } from '../helpCommon.js';
 import type { HelpTerrain, HelpWorld } from '../helpWorld.js';
 import { img, makeLink, spanColor, tag } from '../markup.js';
 
@@ -41,7 +41,7 @@ export function generateTerrainSections(world: HelpWorld, sec: Section): void {
 }
 
 function bestStr(best: boolean): string {
-  return spanColor(best ? 'green' : 'red', best ? _('Best of') : _('Worst of'));
+  return spanColor(best ? 'green' : 'red', best ? th('Best of') : th('Worst of'));
 }
 
 /** `print_behavior_description`: an alias list as "Best of Hills, Mountains" and so on. */
@@ -64,7 +64,7 @@ function printBehaviorDescription(world: HelpWorld, list: readonly TerrainCode[]
     const names: string[] = [];
     for (let i = start; i !== end; i++) {
       // TRANSLATORS: in a description of an overlay terrain, the terrain that it's placed on
-      if (list[i]!.equals(BASE_MARKER)) names.push(_('base terrain'));
+      if (list[i]!.equals(BASE_MARKER)) names.push(th('base terrain'));
       else {
         const name = nameOf(list[i]!);
         if (name) names.push(name);
@@ -95,7 +95,7 @@ function printBehaviorDescription(world: HelpWorld, list: readonly TerrainCode[]
 /** `get_special_notes` for a terrain. */
 function specialNotes(t: HelpTerrain): string[] {
   const notes: string[] = [];
-  if (t.isVillage) notes.push(_('Villages allow any unit stationed therein to heal, or to be cured of poison.'));
+  if (t.isVillage) notes.push(th('Villages allow any unit stationed therein to heal, or to be cured of poison.'));
   else if (t.givesHealing > 0) {
     notes.push(
       vngettext(
@@ -106,10 +106,10 @@ function specialNotes(t: HelpTerrain): string[] {
       ),
     );
   }
-  if (t.isCastle) notes.push(_('This terrain is a castle — units can be recruited onto it from a connected keep.'));
-  if (t.isKeep && t.isCastle) notes.push(_('This terrain is a keep — a leader can recruit from this hex onto connected castle hexes.'));
+  if (t.isCastle) notes.push(th('This terrain is a castle — units can be recruited onto it from a connected keep.'));
+  if (t.isKeep && t.isCastle) notes.push(th('This terrain is a keep — a leader can recruit from this hex onto connected castle hexes.'));
   else if (t.isKeep && !t.isCastle) {
-    notes.push(_('This unusual keep allows a leader to recruit while standing on it, but does not allow a leader on a connected keep to recruit onto this hex.'));
+    notes.push(th('This unusual keep allows a leader to recruit while standing on it, but does not allow a leader on a connected keep to recruit onto this hex.'));
   }
   return notes;
 }
@@ -133,9 +133,19 @@ export function terrainTopicText(world: HelpWorld, t: HelpTerrain): string {
   ss += '\n';
   if (t.helpTopicText) ss += t.helpTopicText + '\n';
 
+  if (t.isCombined) {
+    // Untranslated upstream too.
+    const base = world.terrain(new TerrainCode(t.code.base, NO_LAYER));
+    const overlay = world.terrain(new TerrainCode(NO_LAYER, t.code.overlay));
+    if (base && overlay) {
+      ss += 'Base terrain: ' + makeLink(base.editorName, (base.hideHelp ? '.' : '') + TERRAIN_PREFIX + base.id) + ', ';
+      ss += 'Overlay terrain: ' + makeLink(overlay.editorName, (overlay.hideHelp ? '.' : '') + TERRAIN_PREFIX + overlay.id) + '\n';
+    }
+  }
+
   const notes = specialNotes(t);
   if (notes.length > 0) {
-    ss += '\n\n' + tag('header', _('Special Notes')) + '\n\n';
+    ss += '\n\n' + tag('header', th('Special Notes')) + '\n\n';
     for (const note of notes) ss += `${BULLET} ${note}\n`;
   }
 
@@ -152,12 +162,12 @@ export function terrainTopicText(world: HelpWorld, t: HelpTerrain): string {
       const base = world.terrain(defaultBase);
       if (base) {
         const type = makeLink(base.editorName, (base.isIndivisible ? '..' : '') + TERRAIN_PREFIX + base.id);
-        ss += '\n' + vgettext('Typical base terrain: $type', { type });
+        ss += '\n' + vgettext('wesnoth-help', 'Typical base terrain: $type', { type });
       }
     }
     ss += '\n';
-    ss += '\n' + _('Movement properties: ') + printBehaviorDescription(world, t.mvtType, 0, t.mvtType.length) + '\n';
-    ss += '\n' + _('Defense properties: ') + printBehaviorDescription(world, t.defType, 0, t.defType.length) + '\n';
+    ss += '\n' + th('Movement properties: ') + printBehaviorDescription(world, t.mvtType, 0, t.mvtType.length) + '\n';
+    ss += '\n' + th('Defense properties: ') + printBehaviorDescription(world, t.defType, 0, t.defType.length) + '\n';
   }
   return ss;
 }
