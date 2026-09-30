@@ -65,8 +65,102 @@ export class AiManager {
     if (!state) {
       state = this.build(side);
       this.sides.set(side, state);
+      this.applyInitialModifications(side, state);
     }
+    this.adoptUnitAi(side);
     return state;
+  }
+
+  /**
+   * `unit::init`'s `[ai]` handling: a unit's own `[micro_ai]`s (filtered to it, `action=add`) and
+   * `[candidate_action]`s (`[filter_own]` it, added to their stage) are appended to its side's AI
+   * (`holder::append_ai`). Upstream does this when the unit is created; here, before the side's AI is next used.
+   */
+  private adoptUnitAi(side: number): void {
+    if (this.adopting) return;
+    const units = [...this.host.board.unitsForSide(side), ...this.host.board.recallList(side)].filter((u) => u.pendingAi);
+    if (units.length === 0) return;
+    this.adopting = true;
+    try {
+      for (const unit of units) {
+        const ai = unit.pendingAi!;
+        unit.pendingAi = undefined;
+        const events = new WmlConfig();
+        for (const micro of ai.children('micro_ai')) {
+          const m = micro.clone();
+          m.removeChildren('filter');
+          m.addChild('filter').setAttribute('id', unit.id);
+          m.setAttribute('side', unit.side);
+          m.setAttribute('action', 'add');
+          events.addChild('micro_ai', m);
+        }
+        for (const caCfg of ai.children('candidate_action')) {
+          const ca = caCfg.clone();
+          ca.removeChildren('filter_own');
+          ca.addChild('filter_own').setAttribute('id', unit.id);
+          const stage = ca.getString('stage', '') || 'main_loop';
+          const mod = events.addChild('modify_ai');
+          mod.setAttribute('action', 'add');
+          mod.setAttribute('side', unit.side);
+          mod.setAttribute('path', `stage[${stage}].candidate_action[]`);
+          const body = new WmlConfig();
+          for (const key of ca.attributeNames()) if (key !== 'stage' && key !== 'sticky') body.setAttribute(key, ca.getRaw(key)!);
+          for (const c of ca.allChildren()) body.addChild(c.tag, c.config);
+          mod.addChild('candidate_action', body);
+        }
+        this.appendAi(side, events);
+      }
+    } finally {
+      this.adopting = false;
+    }
+  }
+
+  private adopting = false;
+
+  /** `holder::append_ai`: facets, goals, `[modify_ai]`s and `[micro_ai]`s added to the side's live AI. */
+  appendAi(side: number, cfg: WmlConfig): void {
+    const { ctx } = this.getOrCreate(side);
+    for (const aspect of cfg.children('aspect')) {
+      for (const facet of aspect.children('facet')) ctx.addFacet(aspect.getString('id'), facet);
+    }
+    for (const goal of cfg.children('goal')) this.modifyAi(side, 'add', 'goal[]', goal);
+    for (const mod of cfg.children('modify_ai')) {
+      this.modifyAi(side, (mod.getString('action', '') || 'add') as ModifyAiActionKind, mod.getString('path', ''), componentOf(mod));
+    }
+    for (const micro of cfg.children('micro_ai')) {
+      const m = micro.clone();
+      m.setAttribute('side', side);
+      m.setAttribute('action', 'add');
+      this.applyMicroAi(side, m);
+    }
+  }
+
+  /** `holder::init`: the `[ai]` blocks' `[modify_ai]`s, then their `[micro_ai]`s (as `action=add` for this side). */
+  private applyInitialModifications(side: number, state: SideAiState): void {
+    for (const cfg of state.configs) {
+      for (const mod of cfg.children('modify_ai')) {
+        this.modifyAi(side, (mod.getString('action', '') || 'add') as ModifyAiActionKind, mod.getString('path', ''), componentOf(mod));
+      }
+    }
+    for (const cfg of state.configs) {
+      for (const micro of cfg.children('micro_ai')) {
+        const body = micro.clone();
+        body.setAttribute('side', side);
+        body.setAttribute('action', 'add');
+        this.applyMicroAi(side, body);
+      }
+    }
+  }
+
+  /** `holder::micro_ai`: handed to the Lua engine, which runs the `[micro_ai]` tag's Lua. */
+  applyMicroAi(side: number, cfg: WmlConfig): void {
+    const state = this.getOrCreate(side);
+    const lua = this.engines.get('lua');
+    if (!lua?.applyMicroAi) {
+      this.host.log('warn', '[micro_ai]: the Lua AI engine is not loaded -- ignored');
+      return;
+    }
+    lua.applyMicroAi(state.ctx, state.configs, cfg);
   }
 
   /** Plays `side`'s entire AI turn (`ai_composite::new_turn`+`play_turn`) and returns everything it did, ready for a host with a renderer to replay -- mirrors `simpleAi.ts`'s own `playAiTurn` return contract exactly, so `GameShell.playAiAnimations` needs no changes. */
@@ -86,69 +180,128 @@ export class AiManager {
   }
 
   /**
-   * Mirrors `[modify_ai]`. Two path shapes are supported:
-   *  - `goal[<id>]` (by far the most common real-content shape, e.g. Son
-   *    of the Black Eye's "defend_Braga"/"defend_Meato"): add/delete a
-   *    `[goal]`.
-   *  - `stage[<id>].candidate_action[<ca_id>]`: add/delete a candidate
-   *    action inside one RCA stage.
-   * `add`/`change` need `cfg` (the `[goal]`/`[candidate_action]` body);
-   * `change` is delete-then-add; `delete`/`try_delete` differ only in
-   * whether a missing target is worth a warning (both are silent misses
-   * here, matching upstream's `try_delete`'s own forgiving intent for
-   * either). Any other path shape (`aspect[...]`, `stage[]` alone, ...) is
-   * logged and ignored -- a documented gap, see this module's doc comment.
+   * `holder::modify_ai` through `component_manager` (`src/ai/composite/component.cpp`): `path` names a
+   * component by `property[id]`/`property[position]` steps, as upstream's `find_component` reads it. `cfg` is
+   * the component itself (`add`/`change`). The shapes real content uses are handled:
+   *  - `goal[...]`: add/change/delete a `[goal]`;
+   *  - `stage[<id>].candidate_action[...]`: add/change/delete a candidate action in an RCA stage (`[<id>]`
+   *    names one, `[n]` a position, none appends);
+   *  - `aspect[<id>].facet[...]`: add/change/delete a facet (`*` deletes all).
+   * Anything else is logged and ignored.
    */
   modifyAi(side: number, action: ModifyAiActionKind, path: string, cfg?: WmlConfig): boolean {
-    const trimmed = path.trim();
+    const elements = parseComponentPath(path);
+    const last = elements[elements.length - 1];
+    if (!last) return this.unsupported(path);
+    const state = this.getOrCreate(side);
+    const { ctx, composite, configs } = state;
+    const removing = action === 'delete' || action === 'try_delete' || action === 'change';
+    const adding = action === 'add' || action === 'change';
+    if (adding && !cfg) {
+      this.host.log('warn', `[modify_ai] action="${action}" path="${path}" needs a component`);
+      return false;
+    }
 
-    const goalMatch = /^goal\[([^\]]*)\]$/.exec(trimmed);
-    if (goalMatch) {
-      const { ctx } = this.getOrCreate(side);
-      const [, goalId] = goalMatch;
-      if (action === 'delete' || action === 'try_delete' || action === 'change') {
-        ctx.deleteGoal(goalId ?? '');
-      }
-      if (action === 'add' || action === 'change') {
-        if (!cfg) {
-          this.host.log('warn', `[modify_ai] action="${action}" path="${path}" needs a [goal] body`);
-          return false;
-        }
-        const goals = buildGoalsFromConfigs([(() => {
-          const wrapper = new WmlConfig();
-          wrapper.addChild('goal', cfg);
-          return wrapper;
-        })()], (name) => this.host.log('warn', `[modify_ai]: goal name="${name}" not recognized`));
+    if (elements.length === 1 && last.property === 'goal') {
+      if (removing) ctx.deleteGoal(last.id);
+      if (adding) {
+        const wrapper = new WmlConfig();
+        wrapper.addChild('goal', cfg!);
+        const goals = buildGoalsFromConfigs([wrapper], (name) => this.host.log('warn', `[modify_ai]: goal name="${name}" not recognized`));
         for (const goal of goals) ctx.addGoal(goal);
       }
       return true;
     }
 
-    const caMatch = /^stage\[([^\]]*)\]\.candidate_action\[([^\]]*)\]$/.exec(trimmed);
-    if (caMatch) {
-      const [, stageId, caId] = caMatch;
-      const { ctx, composite, configs } = this.getOrCreate(side);
-      const stage = composite.listStages().find((s) => s.id === stageId);
+    const [first] = elements;
+    if (elements.length === 2 && first!.property === 'stage' && last.property === 'candidate_action') {
+      const stage = composite.listStages().find((s) => s.id === first!.id);
       if (!(stage instanceof RcaStage)) {
-        this.host.log('warn', `[modify_ai] path="${path}": no RCA stage id="${stageId}" on side ${side}`);
+        this.host.log('warn', `[modify_ai] path="${path}": no RCA stage id="${first!.id}" on side ${side}`);
         return false;
       }
-      if (action === 'delete' || action === 'try_delete' || action === 'change') {
-        stage.deleteCandidateAction(caId ?? '');
+      let position = last.position;
+      if (removing) {
+        const existing = stage.listCandidateActions();
+        const index = last.position >= 0 ? last.position : existing.findIndex((ca) => ca.id === last.id);
+        if (index >= 0 && index < existing.length) {
+          position = index;
+          stage.deleteCandidateAction(last.id === '*' ? '*' : existing[index]!.id);
+        } else if (last.id === '*') stage.deleteCandidateAction('*');
+        else if (action === 'change') return false;
       }
-      if (action === 'add' || action === 'change') {
-        if (!cfg) {
-          this.host.log('warn', `[modify_ai] action="${action}" path="${path}" needs a [candidate_action] body`);
-          return false;
-        }
-        const ca = buildCandidateAction(ctx, cfg, configs, this.registry, this.engines, `[modify_ai] path="${path}"`);
+      if (adding) {
+        const body = cfg!.clone();
+        if (action === 'change' && !body.hasAttribute('id') && last.id !== '') body.setAttribute('id', last.id);
+        const ca = buildCandidateAction(ctx, body, configs, this.registry, this.engines, `[modify_ai] path="${path}"`);
         if (!ca) return false;
-        stage.addCandidateAction(ca);
+        stage.insertCandidateAction(ca, position);
       }
       return true;
     }
 
-    this.host.log('warn', `[modify_ai] path="${path}" is not a supported shape (only goal[id] and stage[id].candidate_action[id] are) -- ignored`);
+    if (elements.length === 2 && first!.property === 'aspect' && last.property === 'facet') {
+      if (removing) ctx.deleteFacet(first!.id, last.id);
+      if (adding) {
+        const body = cfg!.clone();
+        if (action === 'change' && !body.hasAttribute('id') && last.id !== '') body.setAttribute('id', last.id);
+        ctx.addFacet(first!.id, body);
+      }
+      return true;
+    }
+
+    return this.unsupported(path);
+  }
+
+  private unsupported(path: string): boolean {
+    this.host.log('warn', `[modify_ai] path="${path}" is not supported here -- ignored`);
     return false;
   }
+
+  /**
+   * `holder::to_config`: the side's AI as it stands (its aspects, goals left out, stages with their candidate
+   * actions, and each engine's own block) -- what `wesnoth.sides[n].__cfg` shows as `[ai]`.
+   */
+  toConfig(side: number): WmlConfig {
+    const { ctx, composite } = this.getOrCreate(side);
+    const cfg = new WmlConfig();
+    for (const aspect of ctx.aspectConfigs()) cfg.addChild('aspect', aspect);
+    for (const stage of composite.listStages()) {
+      if (stage instanceof RcaStage) cfg.addChild('stage', stage.toConfig());
+      else {
+        const s = cfg.addChild('stage');
+        s.setAttribute('id', stage.id);
+        s.setAttribute('name', stage.name);
+      }
+    }
+    for (const engine of this.engines.values()) {
+      const e = engine.engineConfig?.(ctx);
+      if (e) cfg.addChild('engine', e);
+    }
+    return cfg;
+  }
+}
+
+/** A `[modify_ai]`'s component: its child named after the path's last element (`[candidate_action]`, `[facet]`, ...). */
+function componentOf(mod: WmlConfig): WmlConfig | undefined {
+  const last = parseComponentPath(mod.getString('path', '')).pop();
+  return last ? mod.child(last.property) : undefined;
+}
+
+interface PathElement {
+  readonly property: string;
+  /** `[n]`, or -2 when not given (upstream's convention). */
+  readonly position: number;
+  readonly id: string;
+}
+
+/** `find_component`'s path grammar: `property`, `property[n]` or `property[id]`, joined by dots. */
+export function parseComponentPath(path: string): PathElement[] {
+  const out: PathElement[] = [];
+  const re = /([^.[]+)(\[(\d*)\]|\[([^\]]+)\]|())/g;
+  for (const m of path.trim().matchAll(re)) {
+    const position = m[3] !== undefined && m[3] !== '' ? Number(m[3]) : -2;
+    out.push({ property: m[1]!.replace(/^\./, ''), position, id: m[4] ?? '' });
+  }
+  return out;
 }

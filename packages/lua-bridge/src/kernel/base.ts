@@ -97,6 +97,17 @@ export function installBase(k: LuaKernel, gameConfig: () => GameConfigValues): v
   });
   lua.lua_setglobal(L, to_luastring('print'));
 
+  // warn (Lua 5.4's, which upstream routes to its log with a traceback; fengari is Lua 5.3 and has none).
+  lua.lua_pushcfunction(L, (T: LuaState) => {
+    const n = lua.lua_gettop(T);
+    const parts: string[] = [];
+    for (let i = 1; i <= n; i++) parts.push(checkString(T, i));
+    lauxlib.luaL_traceback(T, T, to_luastring(`Warning:\n  ${parts.join('')}`), 1);
+    k.log('warn', lua.lua_tojsstring(T, -1));
+    return 0;
+  });
+  lua.lua_setglobal(L, to_luastring('warn'));
+
   // load: text chunks only (binary chunks are refused upstream, CVE-2018-1999023).
   lua.lua_pushcfunction(L, (T: LuaState) => {
     const chunk = checkString(T, 1);

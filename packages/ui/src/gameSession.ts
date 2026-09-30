@@ -80,6 +80,7 @@ import {
   UndoList,
   type UndoStep,
   type SyncedCommand,
+  type CustomCommand,
   type MoveCommand,
   type AttackCommand,
   type RecruitCommand,
@@ -1687,6 +1688,11 @@ export class GameSession {
       this.luaRuntime = new LuaRuntime(snapshot.luaSources ?? { modules: {}, wml: {} }, () => this.eventPump.ctx, {
         dataFiles: luaData,
         currentSide: () => this.activeSide,
+        invokeCommand: (name, data) => {
+          const cmd: CustomCommand = { kind: 'custom_command', name, data: data.toJSON() };
+          return this.runSynced(cmd, (action) => this.execCustomCommand(cmd, action), { present: true });
+        },
+        sideAiConfigs: (side) => (this.aiManager ? [this.aiManager.toConfig(side)] : []),
         log: (level, message) => {
           options.onLog?.(level, message);
           if (level === 'error') console.error(`[lua] ${message}`);
@@ -1715,14 +1721,17 @@ export class GameSession {
       scenarioEnded: () => !!this.scenarioResult,
       commands: this.aiCommands(),
     };
-    const aiEngines = this.luaRuntime ? new Map([['lua', new LuaAiEngine(this.luaRuntime, () => this.collectResponder)]]) : new Map();
+    // The AI's WML tags first: the Lua engine's own `[micro_ai]` (Lua, as upstream's) then replaces the stub.
+    registerAiWmlActions(this.eventPump.ctx.registry);
+    const luaEngine = this.luaRuntime ? new LuaAiEngine(this.luaRuntime, () => this.collectResponder) : null;
+    const aiEngines = luaEngine ? new Map([['lua', luaEngine]]) : new Map();
     this.aiManager = new AiManager(aiHost, (side) => findSideConfig(snapshot.scenarioConfigJson, side)?.children('ai') ?? [], undefined, aiEngines);
+    luaEngine?.attach(this.aiManager);
     const aiWmlHooks: AiWmlHooks = {
       modifyAi: (side, action, path, cfg) => this.aiManager.modifyAi(side, action, path, cfg),
       appendSideAi: (side, cfg) => this.aiManager.appendSideAi(side, cfg),
-      microAi: () => aiHost.log('warn', '[micro_ai]: not available yet (Phase 29 S9)'),
+      microAi: (side, cfg) => this.aiManager.applyMicroAi(side, cfg),
     };
-    registerAiWmlActions(this.eventPump.ctx.registry);
     this.eventPump.ctx.ai = aiWmlHooks;
 
     // The scenario's preload scripts and top-level `[lua]`, run now -- before `prestart`, as upstream's
@@ -2144,6 +2153,8 @@ export class GameSession {
         return yield* this.execStart();
       case 'stop_unit':
         return this.execStopUnit(command, action);
+      case 'custom_command':
+        return yield* this.execCustomCommand(command, action);
       case 'label':
       case 'clear_labels':
         this.applyLabelCommand(command);
@@ -2398,6 +2409,13 @@ export class GameSession {
   }
 
   /** This port's `[stop_unit]`: the AI giving up a unit's remaining moves and/or attacks. */
+  /** `[custom_command]`: the Lua function the command names (`game_lua_kernel::custom_command`). */
+  private *execCustomCommand(cmd: CustomCommand, action: ActionState): Flow<boolean | null> {
+    if (!this.luaRuntime) return this.reject(action, `custom command ${cmd.name}: this game has no Lua`);
+    yield* this.luaRuntime.customCommand(cmd.name, WmlConfig.fromJSON(cmd.data));
+    return true;
+  }
+
   private execStopUnit(cmd: StopUnitCommand, action: ActionState): boolean | null {
     const unit = this.board.unitAt(locOf(cmd.loc));
     if (!unit) return this.reject(action, `no unit to stop at ${locOf(cmd.loc)}`);

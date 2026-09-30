@@ -16,7 +16,7 @@
  * it's the one aspect where this actually matters for performance).
  */
 
-import type { WmlConfig } from '../../wml/config.js';
+import { WmlConfig } from '../../wml/config.js';
 
 /**
  * Parses upstream's `utils::parse_range`-style comma list ("3", "5-9",
@@ -108,11 +108,22 @@ export class CompositeAspect {
     this.facets.push(facet);
   }
 
-  /** Mirrors `[modify_ai] path=aspect[id].facet[<facetId>] action=delete`. Returns whether a facet was actually removed. */
+  /** Mirrors `[modify_ai] path=aspect[id].facet[<facetId>] action=delete` (`*` deletes every facet). Returns whether a facet was actually removed. */
   deleteFacet(facetId: string): boolean {
     const before = this.facets.length;
-    this.facets = this.facets.filter((f) => f.id !== facetId);
+    this.facets = facetId === '*' ? [] : this.facets.filter((f) => f.id !== facetId);
     return this.facets.length !== before;
+  }
+
+  /** `composite_aspect::to_config`: the `[aspect]` with its `[default]` and `[facet]`s. */
+  toConfig(): WmlConfig {
+    const cfg = new WmlConfig();
+    cfg.setAttribute('id', this.id);
+    cfg.setAttribute('engine', 'cpp');
+    cfg.setAttribute('name', 'composite_aspect');
+    cfg.addChild('default', this.defaultFacet.body.clone());
+    for (const f of this.facets) cfg.addChild('facet', f.body.clone());
+    return cfg;
   }
 
   setDefault(facet: AspectFacet): void {

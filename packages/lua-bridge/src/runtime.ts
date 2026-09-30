@@ -36,6 +36,7 @@ import { MtRng } from '@wesnothweb2/engine/src/rng/MtRng.js';
 import { RngDeterministic } from '@wesnothweb2/engine/src/rng/RngDeterministic.js';
 import { lua, lauxlib, to_luastring, type LuaState } from './luaEnv.js';
 import { createGameKernel, type LuaKernel, type LuaUnits, type VirtualDataDir } from './kernel/index.js';
+import { checkString } from './kernel/kernel.js';
 import type { GameKernelHost } from './kernel/game/host.js';
 
 /** What a scenario's Lua may load at run time: the browser has no data directory to read. */
@@ -57,6 +58,11 @@ export interface LuaRuntimeOptions {
   readonly sideAiConfigs?: (side: number) => readonly WmlConfig[];
   /** Where the kernel's messages go; defaults to the event context's log. */
   readonly log?: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
+  /**
+   * `wesnoth.sync.invoke_command`: records and runs `[custom_command]` as a synced command (the session's
+   * recorder), which calls `customCommand` back. Without it the command just runs.
+   */
+  readonly invokeCommand?: (name: string, data: WmlConfig) => Flow<unknown>;
 }
 
 /** A request a Lua coroutine yields to `drive`. */
@@ -125,6 +131,7 @@ export class LuaRuntime {
   private readonly natives = new Map<string, ActionHandler | undefined>();
   private readonly dialogs = new Map<number, OpenDialog>();
   private nextDialog = 1;
+  private readonly invokeCommand: (name: string, data: WmlConfig) => Flow<unknown>;
   /** Set while the AI runs Lua: flows run on the spot with this responder instead of suspending. */
   private inlineResponder: Responder | null = null;
   private readonly fallbackRng = new RngDeterministic(new MtRng(0));
@@ -150,6 +157,7 @@ export class LuaRuntime {
     this.kernel = game.kernel;
     this.units = game.units;
     this.L = this.kernel.L;
+    this.invokeCommand = options.invokeCommand ?? ((name, data) => this.customCommand(name, data));
     this.kernel.run(RUNTIME_LUA_SOURCE, '=runtime');
     this.ctx().registry.register('lua', (cfg) => this.runChunk(cfg.getString('code', ''), cfg.getString('name', '') || '=[lua]', cfg.child('args')));
   }
@@ -177,6 +185,26 @@ export class LuaRuntime {
       }
       if (args) this.kernel.pushConfig(T.state, args);
       else lua.lua_pushnil(T.state);
+      yield* this.drive(T.state, 1);
+    } finally {
+      this.release(T.ref);
+    }
+  }
+
+  /** `game_lua_kernel::custom_command`: `wesnoth.custom_synced_commands[name](data)` (a `[custom_command]`, live or replayed). */
+  *customCommand(name: string, data: WmlConfig): Flow {
+    const T = this.newThread();
+    try {
+      lua.lua_getglobal(T.state, to_luastring('wesnoth'));
+      lua.lua_getfield(T.state, -1, to_luastring('custom_synced_commands'));
+      lua.lua_getfield(T.state, -1, to_luastring(name));
+      if (lua.lua_type(T.state, -1) !== lua.LUA_TFUNCTION) {
+        this.ctx().log('error', `custom command '${name}' is not defined`);
+        return;
+      }
+      lua.lua_replace(T.state, 1);
+      lua.lua_settop(T.state, 1);
+      this.kernel.pushConfig(T.state, data);
       yield* this.drive(T.state, 1);
     } finally {
       this.release(T.ref);
@@ -287,6 +315,13 @@ export class LuaRuntime {
   // --- the runtime's own API ---
 
   private installFunctions(k: LuaKernel): void {
+    // wesnoth.sync.invoke_command: a synced `[custom_command]`.
+    k.define(['wesnoth', 'sync', 'invoke_command'], (T) => {
+      const name = checkString(T, 1);
+      const data = k.checkConfig(T, 2);
+      return this.yieldFlow(T, this.invokeCommand(name, data));
+    });
+
     // wml.load: the preprocessed files the snapshot carries.
     k.define(['wml', 'load'], (T) => {
       const path = normalisePath(lua.lua_tojsstring(T, 1));

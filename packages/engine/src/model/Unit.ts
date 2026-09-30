@@ -133,6 +133,11 @@ export class Unit {
    */
   goto: Location | undefined;
   /**
+   * The unit's own `[ai]`, not yet handed to its side's AI (`unit::init` does that at creation; this port's
+   * `AiManager` adopts it before the side's AI is next used). Phase 29.
+   */
+  pendingAi: WmlConfig | undefined = undefined;
+  /**
    * Mirrors `unit::get_interrupted_move()`: where the unit's last move was
    * headed when sighting other units stopped it, for "Continue Move"
    * (`menu_handler::continue_move`). Cleared at the end of its side's turn,
@@ -457,6 +462,8 @@ export class Unit {
     if (cfg.hasAttribute('level')) unit.level = cfg.getNumber('level');
     if (cfg.hasAttribute('max_attacks')) unit.maxAttacksPerTurn = Math.max(0, cfg.getNumber('max_attacks'));
     if (cfg.hasChild('attack')) unit.attacks = cfg.children('attack').map((a) => AttackType.fromConfig(a));
+    const ai = cfg.child('ai');
+    if (ai && (ai.hasChild('micro_ai') || ai.hasChild('candidate_action'))) unit.pendingAi = ai;
 
     unit.attacksLeft = Math.max(0, cfg.getNumber('attacks_left', unit.maxAttacksPerTurn));
     unit.movesLeft = Math.max(0, cfg.getNumber('moves', unit.maxMoves));

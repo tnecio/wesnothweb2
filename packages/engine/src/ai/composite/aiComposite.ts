@@ -25,6 +25,10 @@ export type CandidateActionFactory = (ctx: AiContext, cfg: WmlConfig) => Candida
  */
 export interface AiEngine {
   candidateAction(ctx: AiContext, cfg: WmlConfig, sideConfigs: readonly WmlConfig[]): CandidateAction | undefined;
+  /** `engine_lua::apply_micro_ai`: a `[micro_ai]` from the side's `[ai]` (`side=` and `action=add` set). */
+  applyMicroAi?(ctx: AiContext, sideConfigs: readonly WmlConfig[], cfg: WmlConfig): void;
+  /** The engine's own `[engine]` block for `to_config` (its code and persistent data). */
+  engineConfig?(ctx: AiContext): WmlConfig | undefined;
 }
 
 /** Builds one `[candidate_action]` through its engine (`engine::parse_candidate_action_from_config`). */

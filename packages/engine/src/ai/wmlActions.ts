@@ -14,7 +14,7 @@
 
 import type { WmlConfig } from '../wml/config.js';
 import type { ActionRegistry, EventContext } from '../events/context.js';
-import type { ModifyAiActionKind } from './manager.js';
+import { parseComponentPath, type ModifyAiActionKind } from './manager.js';
 
 export interface AiWmlHooks {
   modifyAi(side: number, action: ModifyAiActionKind, path: string, cfg: WmlConfig | undefined): void;
@@ -37,11 +37,9 @@ export function registerAiWmlActions(registry: ActionRegistry): void {
     const side = cfg.getNumber('side', 1);
     const action = parseModifyAiAction(cfg.getString('action', 'add'));
     const path = cfg.getString('path', '');
-    // The action's own non-side/action/path children ARE the body ([goal]/[candidate_action]/...); [modify_ai]'s
-    // real WML places that body directly inline (see MODIFY_AI_ADD_GOAL), so pass the whole tag through and let
-    // AiManager.modifyAi's path parser pick out the one child shape it understands.
-    const body = cfg.child('goal') ?? cfg.child('candidate_action') ?? cfg.child('aspect') ?? undefined;
-    ctx.ai.modifyAi(side, action, path, body);
+    // `component_manager::add_component`: the component is the child named after the path's last element.
+    const last = parseComponentPath(path).pop();
+    ctx.ai.modifyAi(side, action, path, last ? cfg.child(last.property) : undefined);
   });
 
   registry.register('modify_side', (cfg: WmlConfig, ctx: EventContext) => {

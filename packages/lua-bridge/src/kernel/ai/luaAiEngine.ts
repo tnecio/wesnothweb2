@@ -65,8 +65,14 @@ function locationHash(loc: Location): number {
   return loc.wmlX * 16384 + loc.wmlY + 2000;
 }
 
+/** What the Lua engine needs from the game's AI manager. */
+export interface AiComponentHost {
+  modifyAi(side: number, action: 'add' | 'change' | 'delete', path: string, cfg?: WmlConfig): boolean;
+}
+
 interface SideContext {
   readonly ctx: AiContext;
+  readonly code: string;
   /** Registry reference of the state table (`ai`, `params`, `data`, `self`, `update_self`). */
   readonly stateRef: number;
   /** The gamestate as of each move map's last fetch from Lua (`set_*_valid_lua`), or undefined. */
@@ -86,6 +92,67 @@ export class LuaAiEngine implements AiEngine {
   ) {
     this.k = runtime.kernel;
     this.units = runtime.units;
+    // The `[micro_ai]` tag is Lua (`lua/wml/micro_ai.lua`, which upstream loads with the other WML tags).
+    try {
+      this.k.run('wesnoth.require("lua/wml/micro_ai.lua")', '=micro_ai');
+    } catch (e) {
+      this.k.log('error', `[micro_ai] tag: ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * Attaches the game's AI manager: `wesnoth.sides.add_ai_component`/`delete_ai_component`/
+   * `change_ai_component` (`intf_modify_ai`) change a side's AI through it.
+   */
+  attach(manager: AiComponentHost): void {
+    const k = this.k;
+    const sideOf = (T: LuaState, idx: number): number => k.userdata<number>(T, idx, 'side') ?? Number(lauxlib.luaL_checkinteger(T, idx));
+    const modify = (action: 'add' | 'change' | 'delete'): LuaCFunction => (T) => {
+      const side = sideOf(T, 1);
+      const path = checkString(T, 2);
+      const cfg = action === 'delete' ? undefined : k.checkConfig(T, 3);
+      manager.modifyAi(side, action, path, cfg);
+      return 0;
+    };
+    k.defineAll(['wesnoth', 'sides'], {
+      add_ai_component: modify('add'),
+      delete_ai_component: modify('delete'),
+      change_ai_component: modify('change'),
+    });
+  }
+
+  /** `engine_lua::apply_micro_ai`: `wesnoth.wml_actions.micro_ai(cfg)`. */
+  applyMicroAi(_ctx: AiContext, _sideConfigs: readonly WmlConfig[], cfg: WmlConfig): void {
+    const L = this.k.L;
+    this.runtime.inline(this.respond(), () => {
+      const top = lua.lua_gettop(L);
+      lua.lua_getglobal(L, to_luastring('wesnoth'));
+      lua.lua_getfield(L, -1, to_luastring('wml_actions'));
+      lua.lua_getfield(L, -1, to_luastring('micro_ai'));
+      this.k.pushConfig(L, cfg);
+      try {
+        this.k.pcall(1, 0);
+      } catch (e) {
+        this.k.log('error', `[micro_ai]: ${(e as Error).message}`);
+      }
+      lua.lua_settop(L, top);
+    });
+  }
+
+  /** `engine_lua::to_config`: `[engine name=lua]` with its code and persistent data. */
+  engineConfig(ctx: AiContext): WmlConfig | undefined {
+    const side = this.contexts.get(ctx);
+    if (!side) return undefined;
+    const L = this.k.L;
+    const cfg = new WmlConfig();
+    cfg.setAttribute('name', 'lua');
+    cfg.setAttribute('code', side.code);
+    lua.lua_rawgeti(L, lua.LUA_REGISTRYINDEX, side.stateRef);
+    lua.lua_getfield(L, -1, to_luastring('data'));
+    const data = this.k.toConfig(L, -1);
+    lua.lua_pop(L, 2);
+    cfg.addChild('data', data ?? new WmlConfig());
+    return cfg;
   }
 
   /** `engine_lua::do_parse_candidate_action_from_config`. */
@@ -143,7 +210,7 @@ export class LuaAiEngine implements AiEngine {
     lua.lua_setfield(L, -2, to_luastring('params'));
     const stateRef = lauxlib.luaL_ref(L, lua.LUA_REGISTRYINDEX);
     lua.lua_pop(L, 1);
-    const side: SideContext = { ctx, stateRef, validAt: new Map() };
+    const side: SideContext = { ctx, code, stateRef, validAt: new Map() };
     this.contexts.set(ctx, side);
     // update_state: self = update_self(params, data), with the ai table loaded read-only.
     this.withAi(side, true, () => {
@@ -623,7 +690,7 @@ export class LuaCandidateAction extends CandidateAction {
     ctx: AiContext,
     readonly cfg: WmlConfig,
     private readonly luaEngine: LuaAiEngine,
-    private readonly side: { ctx: AiContext; stateRef: number; validAt: Map<string, number> },
+    private readonly side: SideContext,
     private readonly evalRef: number | undefined,
     private readonly execRef: number | undefined,
   ) {

@@ -62,7 +62,12 @@ export function makeAiGame(rows: readonly string[], units: readonly UnitSpec[], 
     log,
   });
   let currentSide = 1;
-  const runtime = new LuaRuntime({ modules: {}, wml: {} }, () => pump.ctx, { dataFiles, currentSide: () => currentSide });
+  const late: { manager?: AiManager } = {};
+  const runtime = new LuaRuntime({ modules: {}, wml: {} }, () => pump.ctx, {
+    dataFiles,
+    currentSide: () => currentSide,
+    sideAiConfigs: (side) => (late.manager ? [late.manager.toConfig(side)] : []),
+  });
   const host: AiHost = {
     board,
     rng,
@@ -79,6 +84,13 @@ export function makeAiGame(rows: readonly string[], units: readonly UnitSpec[], 
   };
   const engine = new LuaAiEngine(runtime, () => autoRespond);
   const manager = new AiManager(host, (side) => options.aiBlocks?.(side) ?? [], undefined, new Map([['lua', engine]]));
+  late.manager = manager;
+  engine.attach(manager);
+  pump.ctx.ai = {
+    modifyAi: (side, action, path, cfg) => void manager.modifyAi(side, action, path, cfg),
+    appendSideAi: (side, cfg) => manager.appendSideAi(side, cfg),
+    microAi: (side, cfg) => manager.applyMicroAi(side, cfg),
+  };
   return {
     board,
     manager,
@@ -86,6 +98,7 @@ export function makeAiGame(rows: readonly string[], units: readonly UnitSpec[], 
     variables: pump.ctx.variables,
     logs,
     unitAt: (x: number, y: number) => board.unitAt(Location.fromWml(x, y)),
+    pump,
     playTurn(side: number) {
       currentSide = side;
       return manager.playTurn(side);
