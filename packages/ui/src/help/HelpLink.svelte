@@ -10,6 +10,9 @@
 
   let { request, title, children }: { request: HelpRequest; title?: string; children: Snippet } = $props();
 
+  /** The thing's own tooltip (a special's description...), then the hint. */
+  const tooltip = $derived([title, tx('Click for help')].filter(Boolean).join('\n\n'));
+
   function open(): void {
     if ('topic' in request) helpBrowser.open(request.topic);
     else if ('unitType' in request) helpBrowser.openUnitType(request.unitType, request.variation);
@@ -17,7 +20,7 @@
   }
 </script>
 
-<button class="help-link" type="button" title={title ? `${title}\n\n${tx('Click for help')}` : tx('Click for help')} onclick={open}
+<button class="help-link" type="button" title={tooltip} onclick={open}
   >{@render children()}</button
 >
 

@@ -285,7 +285,8 @@ Every campaign's `[set_achievement]` is supported since Phase 28c (recorded, not
 
 ## Help topics opened (`[open_help]`)
 
-None outside The South Guard (which opens three unit pages).
+None outside The South Guard (which opens three unit pages). Supported since Phase 24 (2026-09-30): the
+help browser opens at the topic, and the event waits until it is closed.
 
 ## Campaign terrain
 

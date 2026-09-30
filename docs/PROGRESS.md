@@ -5960,3 +5960,63 @@ Six issues from playtesting:
 - **Checks:** `turn-end-playthrough.mjs` (new): the bell after the AI's turn, and a message after `[endlevel]`
   before the victory screen. `ai-lua-playthrough.mjs`: the AI's new units start hidden and appear with their
   animation. `movement-orders-playthrough.mjs`: the red targets after a tap.
+
+## 2026-09-30: Help browser (Phase 24, part 1; branch `help-browser`)
+
+The in-game help and encyclopedia: a port of upstream's `src/help/` and the 1.19 GUI2 `help_browser`.
+The real game's help is shown in `docs/reference/help/`; the port was compared against those screenshots.
+
+- **Data** (`apps/web/scripts/build-help.mjs`, run by `predev`/`prebuild` and CI's ui tests) writes
+  `public/help/core.json`, about 220 KB gzipped and fetched on the first open. It holds:
+  - the `[help]` config (`data/core/help.cfg` with the editor's help and the encyclopedia);
+  - every core unit type, flattened, without animations;
+  - races, traits, movetypes, abilities, specials and terrain types;
+  - the multiplayer eras;
+  - the `english.cfg` string table;
+  - the list of images that exist only in the engine's own `images/` directory (the help's icons).
+
+  In a game, the scenario snapshot's own tables are laid over it, so a campaign's units have pages
+  (The South Guard's `[open_help]` topics).
+- **Model** (`packages/ui/src/help/`):
+  - `markup.ts` ports `markup::parse_text`; every page of the real help parses.
+  - `helpTree.ts` ports `parse_config_internal` and `generate_contents`.
+  - `generators/` port the unit, race, ability, special, trait, terrain, time-of-day and era pages line by
+    line, with upstream's msgids. The ports of `help_impl.cpp` use the `wesnoth` domain, since that file has
+    no textdomain; those of `help_topic_generators.cpp` use `wesnoth-help`.
+  - A test follows every link on every page. Only one fails, and it is upstream's own: Lava's text links
+    `terrain_unwalkable`, whose page is `..terrain_unwalkable`.
+- **Every unit and terrain counts as encountered** (the user's call). Upstream lists only what the player has
+  met, unless its "show all units in help" preference is on.
+- **The browser** (`HelpBrowser.svelte`, `HelpNodes.svelte`):
+  - the tree with the book icons;
+  - the top bar: the title, Show Topics, back/next (also the mouse's back and forward buttons) and the search
+    box (upstream's word-by-word, case-insensitive matching);
+  - the page laid out as `rich_label` does: paragraphs, floated and inline images, tables with the theme's row
+    colours, yellow links;
+  - Close.
+
+  On a phone the tree is an overlay that Show Topics opens.
+  - Deliberate difference: following a link after going back drops the pages ahead, as a web browser does.
+    Upstream appends without truncating, so its Next can then lead anywhere.
+- **Entry points:**
+  - F1 and Help in the game menu;
+  - the title screen's Help button, in the tip panel as in 1.19;
+  - the context menu's Terrain Description and Unit Type Description. These are upstream's, and replace the
+    port's own "Unit Description", which only selected an enemy unit;
+  - the help button in the recruit, recall and advancement dialogs;
+  - the side panel's unit type, race, alignment, terrain, traits, abilities and specials, and the attack
+    dialog's specials;
+  - `[open_help]` and `gui.show_help`. These yield an `openHelp` beat, and the event waits until the help is
+    closed, as upstream's modal dialog.
+
+  A mixed terrain on the map, such as `Gg^Fp`, gets a hidden page of its own, as upstream's
+  `terrain_type_data` creates them.
+- **Fixed on the way:**
+  - The compositor's `~SCALE`/`~SCALE_INTO` read `200%` as nothing and stretched `_INTO`. They now follow
+    `parse_scale_args`: percentages, 0 keeps the size, and `_INTO` keeps the aspect ratio. This fixed the
+    help's 2x unit sprites.
+  - `ipfImageUrl` now sets the image roots before a plain engine image is asked for.
+- **Checks:**
+  - `help-playthrough.mjs` (new) runs on the menu, in a game and at phone width;
+  - `helpTree`, `helpNavigation` and `markup` tests over the real data;
+  - an `[open_help]` engine test, a `gui.show_help` Lua test and a `scaledSize` test.

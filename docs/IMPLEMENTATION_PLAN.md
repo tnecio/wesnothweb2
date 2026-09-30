@@ -1685,7 +1685,12 @@ Phase 23 on a phone and on desktop:
 
 ## Phase 24 — Advanced UI features
 
-**Status: not started.** The rest of the old Phase 17.
+**Status: help browser delivered 2026-09-30** (branch `help-browser`, see `docs/PROGRESS.md`; the real
+game's help is shown in `docs/reference/help/`). The milestone's first part is met: the help opens a real
+unit's stat and ability page, from F1, the menus, the context menu, the unit dialogs, the side panel and
+`[open_help]`/`gui.show_help`. Every unit and terrain is listed, with no encountered-only filter (the
+user's call). Still to do: the preferences dialog, the unit list, the statistics dialog (after Phase 25)
+and the advancement preview. The rest of the old Phase 17.
 
 - Preferences dialog (`preferences_dialog.cpp`): display (animation speed,
   turbo/acceleration, grid, show-floating-numbers), sound volumes, hotkey
