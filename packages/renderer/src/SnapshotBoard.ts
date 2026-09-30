@@ -67,11 +67,6 @@
  */
 
 import * as PIXI from 'pixi.js';
-// `'subtract'` (used by `updateTimeOfDayTint`'s negative-channel layer) is one of
-// PixiJS v8's "advanced" blend modes: a shader-based filter, not a native GL
-// blend equation like `'add'`/`'normal'`, so it renders nothing (silently, no
-// error) until its extension is registered. `'add'` needs no such registration.
-PIXI.extensions.add(PIXI.SubtractBlend);
 import { Direction, Location, getAdjacentTiles, relativeDirection, tilesAdjacent, writeDirection } from '@wesnothweb2/engine/src/model/Location.js';
 import { hexOverlayImages, defaultAssetExists, type FogShroudHex } from './fogShroud.js';
 import { splitTodTintColors } from './todTint.js';
@@ -110,6 +105,25 @@ import {
   ellipseImageBase,
 } from './unitOverlays.js';
 import { redToGreen } from './colorScales.js';
+
+/**
+ * Registers `'subtract'` (used by `updateTimeOfDayTint`'s negative-channel
+ * layer) as a NATIVE blend equation on a WebGL renderer: colour
+ * `dst - src`, alpha kept. Call once after `app.init`.
+ *
+ * PixiJS v8 ships `'subtract'` only as an "advanced" blend mode
+ * (`PIXI.SubtractBlend`): a filter that copies the backbuffer and blends in
+ * a shader. Real, playtested bug: that filter intermittently drew the
+ * whole board -- terrain and unit sprites -- solid black while the map
+ * scrolled or a unit was selected. A fixed blend equation reads no
+ * backbuffer and needs no `useBackBuffer`, so it cannot go black.
+ */
+export function installSubtractBlend(renderer: PIXI.Renderer): void {
+  if (!(renderer instanceof PIXI.WebGLRenderer)) return;
+  const gl = renderer.gl;
+  const map = (renderer.state as unknown as { blendModesMap: Record<string, number[]> }).blendModesMap;
+  map.subtract = [gl.ONE, gl.ONE, gl.ZERO, gl.ONE, gl.FUNC_REVERSE_SUBTRACT, gl.FUNC_ADD];
+}
 
 export interface SnapshotTerrainHex {
   x: number; // engine-convention 0-based
@@ -744,15 +758,7 @@ export class SnapshotBoard {
     this.moveInfoLayer.eventMode = 'none';
     this.hoverLayer.eventMode = 'none';
     this.todTintPositive.blendMode = 'add';
-    // 'subtract' is one of PixiJS v8's "advanced" (shader-based) blend
-    // modes, not a native GL blend equation like 'add' -- it needs its
-    // extension registered (see the `PIXI.extensions.add` call at this
-    // module's top) AND the application's renderer created with
-    // `useBackBuffer: true` (see `GameBoardView.svelte`'s `app.init`).
-    // Real, found-by-testing bug: without `useBackBuffer`, the blend
-    // filter has no valid backbuffer to read the composited scene from
-    // and silently renders solid black wherever it's applied -- not an
-    // error, not a warning in the common case, just a black board.
+    // A native blend equation -- see `installSubtractBlend`.
     this.todTintNegative.blendMode = 'subtract';
     this.todTintLayer.addChild(this.todTintPositive, this.todTintNegative);
     this.todTintLayer.eventMode = 'none';

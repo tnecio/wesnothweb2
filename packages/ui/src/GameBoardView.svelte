@@ -38,6 +38,7 @@
   import * as PIXI from 'pixi.js';
   import {
     SnapshotBoard,
+    installSubtractBlend,
     ImageCache,
     type ScenarioSnapshot,
     type HexPoint,
@@ -513,11 +514,8 @@
           backgroundColor: 0x111111,
           resizeTo: host,
           antialias: true,
-          // Required for the 'subtract' advanced blend mode used by
-          // SnapshotBoard's ToD tint layer -- without it, the blend
-          // filter has no valid backbuffer to read the composited scene
-          // from and renders solid black wherever it's applied.
-          useBackBuffer: true,
+          // WebGL: the ToD tint's 'subtract' is a native GL blend equation (`installSubtractBlend`).
+          preference: 'webgl',
         }),
         fetchTeamColors(),
       ]);
@@ -525,6 +523,7 @@
         destroyApp(app);
         return;
       }
+      installSubtractBlend(app.renderer);
       host.appendChild(app.canvas);
       pixiApp = app;
       // Real, reported bug (bugs3.md #3): unit sprites always rendered in
@@ -888,6 +887,8 @@
       attackIndicator: () => board?.attackIndicatorState() ?? 0,
       /** Phase 28b: how many hexes the reach highlight covers. */
       reachCount: () => reachable.length,
+      /** Set the board-wide ToD tint directly, for checking the tint's blending. */
+      setTodTint: (tod: { red: number; green: number; blue: number }) => board?.updateTimeOfDayTint(tod),
     };
   }
 
