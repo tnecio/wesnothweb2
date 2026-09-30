@@ -36,6 +36,52 @@ that needs re-checking on every submodule rebase (decision 1). See
 doesn't block the MVP milestone, but the patch is still needed since
 `Dead_Water` depends on `wml-tags.lua`/`wml-flow.lua` like everything else.
 
+**Revisited 2026-09-30 (Phase 29 S12): Lua is now a bottleneck in large
+battles.** The AI runs upstream's Lua candidate actions, and one of them,
+`retreat_injured`, is the slowest thing in an AI turn:
+
+- On every evaluation it rebuilds the enemies' and allies' attack maps
+  (`battle_calcs.get_attack_map`). The RCA loop evaluates it after every
+  action, and nothing is cached between evaluations.
+- Each map is every unit's reach plus each reached hex's neighbours,
+  inserted into two `location_set`s.
+- Each insert allocates a named tuple in `wesnoth.map.read_location`
+  (39% of the Lua work in the profile).
+
+In the `fast` AI test scenario (100 units a side) this is about 3 s per
+evaluation and about ten minutes per turn once the armies meet.
+
+The same insert workload in both VMs:
+
+| VM | One 100-unit attack map |
+|---|---|
+| fengari | 2.9 s |
+| wasmoon (Lua 5.4 in WebAssembly) | 0.37 s |
+
+Shipped campaign scenarios are far smaller. Most AI turns there take
+20–300 ms of computing. The worst turns measured are 27 s in Dead Water 5 (two
+AI sides, 29 units, fighting each other) and 6.8 s in Liberty 4
+(`retreat_injured`).
+
+**Decided: postponed until it matters in practice.** Two long-term options:
+
+1. **Fix it upstream.** Open a pull request to Wesnoth that makes
+   `retreat_injured` (or `battle_calcs.get_attack_map`/`location_set`)
+   cheaper, and pull the fix down with the submodule. Upstream's C++ game
+   would be faster too, and our Lua stays upstream's.
+2. **Switch the Lua VM to wasmoon.** That gives about 8× on Lua-heavy code,
+   and it runs Lua 5.4, so the 8 patched files could go back to upstream's
+   originals. The kernel (`packages/lua-bridge/src/kernel/`) is written
+   against fengari's JS API throughout. Suspending Lua for a player's choice
+   (`yieldFlow`, coroutines across JS calls) would also need a new design.
+   It would be a phase of its own.
+
+Rewriting upstream's Lua locally to make it faster stays ruled out: it would
+break the rule of running upstream's Lua unchanged. Running the AI in a Web
+Worker would keep the page responsive during a slow turn without making the
+turn any shorter; it is also postponed. Measured AI turn times for the
+shipped campaigns are in `docs/PROGRESS.md` (Phase 29 S12).
+
 ## 3. MVP target content
 
 **Decided: `Dead_Water`** (mainline campaign; used for debugging in
@@ -49,10 +95,9 @@ target before moving on to other mainline content.
 action AI (`packages/engine/src/ai/`) has replaced Phase 7's heuristic
 placeholder (`simpleAi.ts`, deleted). Dead Water plays a full turn under
 the real RCA default AI, headlessly and end-to-end. The Lua-dependent
-layers (S7+: `wesnoth/data/ai/**/*.lua` verbatim, micro-AIs) remain
-future work, explicitly scoped and handed off rather than attempted
-this session -- see Phase 29's own status note in `docs/
-IMPLEMENTATION_PLAN.md` and item 7 below.
+layers (S7–S12: `wesnoth/data/ai/**/*.lua` verbatim, every micro AI)
+followed and were delivered 2026-09-30 -- see Phase 29's status in `docs/
+IMPLEMENTATION_PLAN.md`, item 7 below, and item 2 for the Lua speed.
 
 ## 5. Multiplayer priority
 
@@ -80,6 +125,6 @@ lines) was rejected as slow and translation-error-prone for content this
 large; the fengari bridge's host API (`wesnoth.*`/`ai.*`) needs real
 extension either way, but extending it is bounded, testable work,
 whereas a hand-port has to be re-verified line-by-line against upstream
-forever. See `.claude/plans/wise-squishing-deer.md` for the full staged
+forever. See `docs/PHASE29_PLAN.md` for the full staged
 plan; this supersedes decision 4's "later" with a real, in-progress phase
 (Phase 29).

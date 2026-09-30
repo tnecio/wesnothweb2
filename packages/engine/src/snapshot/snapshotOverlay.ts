@@ -29,7 +29,7 @@ import type { GameBoardSnapshot } from './gameBoardSnapshot.js';
 export const OVERLAY_KEYS = ['difficulty', 'teams', 'units', 'scenarioConfigJson', 'map', 'terrain', 'story', 'textdomains'] as const;
 
 /** The keyed tables a difficulty may change entry by entry. */
-export const PATCH_KEYS = ['unitTypes', 'unitTypeConfigs', 'movementTypeConfigs', 'weaponSpecialConfigs', 'abilityConfigs'] as const;
+export const PATCH_KEYS = ['unitTypes', 'unitTypeConfigs', 'movementTypeConfigs', 'weaponSpecialConfigs', 'abilityConfigs', 'raceConfigs'] as const;
 type PatchKey = (typeof PATCH_KEYS)[number];
 
 export type SnapshotOverlay = Partial<Pick<GameBoardSnapshot, (typeof OVERLAY_KEYS)[number]>> & {

@@ -72,6 +72,7 @@ import {
   combatModifier,
   RngDeterministic,
   MtRng,
+  setPredictionRandom,
   SyncedRng,
   entropySeedStr,
   type RandomMode,
@@ -79,6 +80,7 @@ import {
   UndoList,
   type UndoStep,
   type SyncedCommand,
+  type CustomCommand,
   type MoveCommand,
   type AttackCommand,
   type RecruitCommand,
@@ -171,6 +173,8 @@ import {
 import type { MinimapInput, RouteOverlay } from '@wesnothweb2/renderer';
 import { createLuaConditionalEvaluator } from '@wesnothweb2/lua-bridge/src/conditionals.js';
 import { LuaRuntime } from '@wesnothweb2/lua-bridge/src/runtime.js';
+import { LuaAiEngine } from '@wesnothweb2/lua-bridge/src/kernel/ai/luaAiEngine.js';
+import { luaDataFiles, type LuaDataFiles } from './luaData.js';
 import { browserAchievements, browserPersistentVariables } from './persistentVariables.js';
 import { raceName, statusName } from './i18n/gameText.js';
 import { fmt, t, tw, tx } from './i18n/locale.js';
@@ -820,6 +824,8 @@ export interface GameSessionOptions {
   onVolume?: (scale: { music?: number; sound?: number }) => void;
   /** Set by `fromSaveData`: the save's own playlist is applied by `loadSaveData`, not the scenario's. */
   deferMusic?: boolean;
+  /** Phase 29: the data directory's Lua (`luaData.ts`); defaults to the page's registered files, `null` for none. */
+  luaData?: LuaDataFiles | null;
 }
 
 /**
@@ -1659,6 +1665,9 @@ export class GameSession {
       const json = this.snapshot.unitTypeConfigs?.[id];
       return json ? WmlConfig.fromJSON(json) : undefined;
     };
+    let races: Map<string, WmlConfig> | undefined;
+    this.eventPump.ctx.raceConfigs = () =>
+      (races ??= new Map(Object.entries(this.snapshot.raceConfigs ?? {}).map(([id, json]) => [id, WmlConfig.fromJSON(json)])));
     this.eventPump.ctx.setTurnNumber = (turn) => {
       this.turnNumber = turn;
       this.eventPump.ctx.variables.set('turn_number', turn);
@@ -1674,6 +1683,29 @@ export class GameSession {
       this.action?.steps.push({ kind: 'event', commands, loc1: this.eventPump.ctx.loc1, loc2: this.eventPump.ctx.loc2 });
     };
 
+    // Phase 28c/29: the Lua kernel (`game_lua_kernel`), shared by the scenario's own Lua and the AI's Lua
+    // candidate actions, as upstream's is. It needs the data directory's Lua; without it neither runs.
+    const luaData = options.luaData === null ? undefined : (options.luaData ?? luaDataFiles());
+    const scenarioHasLua = !!snapshot.luaSources || JSON.stringify(snapshot.scenarioConfigJson).includes('"tag":"lua"');
+    if (luaData) {
+      this.luaRuntime = new LuaRuntime(snapshot.luaSources ?? { modules: {}, wml: {} }, () => this.eventPump.ctx, {
+        dataFiles: luaData,
+        currentSide: () => this.activeSide,
+        invokeCommand: (name, data) => {
+          const cmd: CustomCommand = { kind: 'custom_command', name, data: data.toJSON() };
+          return this.runSynced(cmd, (action) => this.execCustomCommand(cmd, action), { present: true });
+        },
+        sideAiConfigs: (side) => (this.aiManager ? [this.aiManager.toConfig(side)] : []),
+        log: (level, message) => {
+          options.onLog?.(level, message);
+          if (level === 'error') console.error(`[lua] ${message}`);
+          else if (level === 'warn') console.warn(`[lua] ${message}`);
+        },
+      });
+    } else if (scenarioHasLua) {
+      options.onLog?.('error', 'this scenario has Lua, but the data directory\'s Lua is not loaded');
+    }
+
     const aiHost: AiHost = {
       board: this.board,
       rng: this.rng,
@@ -1685,29 +1717,30 @@ export class GameSession {
       raise: (name, loc1, loc2, data) => this.eventPump.raise(name, loc1, loc2, data),
       fire: (name, loc1, loc2) => this.eventPump.fire(name, loc1, loc2),
       pump: () => this.pumpEvents(),
-      log: () => {
-        /* no dedicated AI debug log sink yet -- warnings from a misconfigured [modify_ai]/aspect surface via the
-           browser console being the intended audience for now, not this session's own player-facing `log`. */
+      log: (level, message) => {
+        // The AI's own diagnostics: an error (a candidate action that threw) goes to the console; the rest stay quiet.
+        if (level === 'error') console.error(`[ai] ${message}`);
       },
       scenarioEnded: () => !!this.scenarioResult,
       commands: this.aiCommands(),
     };
-    this.aiManager = new AiManager(aiHost, (side) => findSideConfig(snapshot.scenarioConfigJson, side)?.children('ai') ?? []);
+    // The AI's WML tags first: the Lua engine's own `[micro_ai]` (Lua, as upstream's) then replaces the stub.
+    registerAiWmlActions(this.eventPump.ctx.registry);
+    const luaEngine = this.luaRuntime ? new LuaAiEngine(this.luaRuntime, () => this.collectResponder) : null;
+    const aiEngines = luaEngine ? new Map([['lua', luaEngine]]) : new Map();
+    this.aiManager = new AiManager(aiHost, (side) => findSideConfig(snapshot.scenarioConfigJson, side)?.children('ai') ?? [], undefined, aiEngines);
+    luaEngine?.attach(this.aiManager);
     const aiWmlHooks: AiWmlHooks = {
       modifyAi: (side, action, path, cfg) => this.aiManager.modifyAi(side, action, path, cfg),
       appendSideAi: (side, cfg) => this.aiManager.appendSideAi(side, cfg),
-      microAi: () => aiHost.log('warn', '[micro_ai]: Lua AI engine not loaded yet (Phase 29 S9+)'),
+      switchSideAi: (side, cfgs) => this.aiManager.switchSideAi(side, cfgs),
+      microAi: (side, cfg) => this.aiManager.applyMicroAi(side, cfg),
     };
-    registerAiWmlActions(this.eventPump.ctx.registry);
     this.eventPump.ctx.ai = aiWmlHooks;
 
-    // Phase 28c: the campaign's own Lua (`game_lua_kernel`), for a scenario that has any: `[lua]` actions,
-    // Lua-defined tags, and the preload scripts, run now -- before `prestart`, as upstream's
+    // The scenario's preload scripts and top-level `[lua]`, run now -- before `prestart`, as upstream's
     // `game_lua_kernel::initialize`. A loaded game runs them again (a new session), as upstream does.
-    if (snapshot.luaSources || JSON.stringify(snapshot.scenarioConfigJson).includes('"tag":"lua"')) {
-      this.luaRuntime = new LuaRuntime(snapshot.luaSources ?? { modules: {}, wml: {} }, () => this.eventPump.ctx);
-      runFlow(this.luaRuntime.initialize(WmlConfig.fromJSON(snapshot.scenarioConfigJson)));
-    }
+    if (this.luaRuntime && scenarioHasLua) runFlow(this.luaRuntime.initialize(WmlConfig.fromJSON(snapshot.scenarioConfigJson)));
   }
 
   /**
@@ -1723,6 +1756,12 @@ export class GameSession {
 
   /** Phase 28c: the scenario's Lua, when it has any. */
   private luaRuntime: LuaRuntime | null = null;
+  /** Phase 29: combat prediction's generator while this session's AI plays (see `playAiSide`). */
+  private predictionRngCache: RngDeterministic | null = null;
+  private get predictionRng(): RngDeterministic {
+    this.predictionRngCache ??= new RngDeterministic(this.rng.unsynced);
+    return this.predictionRngCache;
+  }
 
   /** Phase 19: the sound sources in effect, in id order; a replaced source is a new object (the app restarts it). */
   get soundSources(): readonly SoundSourceSpec[] {
@@ -2118,6 +2157,8 @@ export class GameSession {
         return yield* this.execStart();
       case 'stop_unit':
         return this.execStopUnit(command, action);
+      case 'custom_command':
+        return yield* this.execCustomCommand(command, action);
       case 'label':
       case 'clear_labels':
         this.applyLabelCommand(command);
@@ -2372,6 +2413,13 @@ export class GameSession {
   }
 
   /** This port's `[stop_unit]`: the AI giving up a unit's remaining moves and/or attacks. */
+  /** `[custom_command]`: the Lua function the command names (`game_lua_kernel::custom_command`). */
+  private *execCustomCommand(cmd: CustomCommand, action: ActionState): Flow<boolean | null> {
+    if (!this.luaRuntime) return this.reject(action, `custom command ${cmd.name}: this game has no Lua`);
+    yield* this.luaRuntime.customCommand(cmd.name, WmlConfig.fromJSON(cmd.data));
+    return true;
+  }
+
   private execStopUnit(cmd: StopUnitCommand, action: ActionState): boolean | null {
     const unit = this.board.unitAt(locOf(cmd.loc));
     if (!unit) return this.reject(action, `no unit to stop at ${locOf(cmd.loc)}`);
@@ -3524,6 +3572,9 @@ export class GameSession {
     // collected for the caller to show afterwards. See
     // `takeDeferredInteractions`.
     runFlow(this.fireFlow('ai turn'), this.collectResponder); // mirrors manager::play_turn's own pre-turn event, real content hooks WML on it.
+    // Combat prediction's Monte Carlo draws from the unsynced generator (`rng::default_instance()` upstream, which
+    // the AI's own random draws share): this session's unsynced stream, so a headless game repeats from its seed.
+    setPredictionRandom(this.predictionRng);
     const actions: AiAction[] = this.aiManager.playTurn(side);
     for (const action of actions) {
       if (action.message) this.log.unshift(action.message);

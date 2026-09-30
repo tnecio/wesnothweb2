@@ -40,12 +40,12 @@ function makeBoard(): GameBoard {
 }
 
 describe('SUF role=', () => {
-  it('matches a comma list of roles', () => {
+  it('matches the one role given (upstream compares the whole string, no list)', () => {
     const unit = Unit.create(makeType('x'), 1, new Location(0, 0), { role: 'scout' });
-    const cfg = parseWml('[u]\nrole=healer,scout\n[/u]').child('u')!;
-    expect(unitMatchesFilter(unit, cfg)).toBe(true);
+    expect(unitMatchesFilter(unit, parseWml('[u]\nrole=scout\n[/u]').child('u')!)).toBe(true);
+    expect(unitMatchesFilter(unit, parseWml('[u]\nrole=healer,scout\n[/u]').child('u')!)).toBe(false);
     unit.role = 'fighter';
-    expect(unitMatchesFilter(unit, cfg)).toBe(false);
+    expect(unitMatchesFilter(unit, parseWml('[u]\nrole=scout\n[/u]').child('u')!)).toBe(false);
   });
 });
 

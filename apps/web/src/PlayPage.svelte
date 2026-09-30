@@ -14,6 +14,7 @@
     GameShell,
     defaultDifficulty,
     fetchCampaigns,
+    fetchLuaData,
     fetchScenarioSnapshot,
     fetchStoryAssets,
     loadGame,
@@ -92,9 +93,11 @@
         if (fallback) console.warn(`[play] campaign ${campaignInfo.id} has no difficulty "${requested}"; using ${fallback}`);
         difficulty = fallback;
       }
+      // Phase 29: the data directory's Lua (the Lua kernel's core, the AI's candidate actions), fetched once.
       const [data, assets] = await Promise.all([
         fetchScenarioSnapshot(scenarioId, campaignInfo.assetDir, difficulty, fallback),
         fetchStoryAssets(scenarioId, campaignInfo.assetDir),
+        fetchLuaData(),
       ]);
       if (cancelled) return;
       snapshot = data;

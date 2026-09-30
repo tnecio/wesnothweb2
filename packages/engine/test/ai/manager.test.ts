@@ -39,7 +39,7 @@ describe('AiManager', () => {
     expect(actions).toHaveLength(0);
   });
 
-  it('appendSideAi ([modify_side][ai]) rebuilds the composite with the new block applied', () => {
+  it('switchSideAi ([modify_side][ai] ai_algorithm=) rebuilds the AI from the new block alone', () => {
     const board = makeBoard(terrainData);
     const type = makeUnitType('grunt', 20, flatMoveType(terrainData, 50), makeWeapon(3, 1));
     board.addUnit(Unit.create(type, 1, Location.fromWml(3, 3)));
@@ -48,9 +48,23 @@ describe('AiManager', () => {
 
     // Before: a normal side plays normally (produces some log activity via villages/goto/etc., or at least doesn't
     // throw). After appending idle_ai, the side must do nothing at all.
-    manager.appendSideAi(1, parseWml('[ai]\nai_algorithm=idle_ai\n[/ai]').child('ai')!);
+    manager.switchSideAi(1, [parseWml('[ai]\nai_algorithm=idle_ai\n[/ai]').child('ai')!]);
     const actions = manager.playTurn(1);
     expect(actions).toHaveLength(0);
+  });
+
+  it('appendSideAi ([modify_side][ai]) appends to the live AI: earlier changes stay, the new facet applies', () => {
+    const board = makeBoard(terrainData);
+    const type = makeUnitType('grunt', 20, flatMoveType(terrainData, 50), makeWeapon(3, 1));
+    board.addUnit(Unit.create(type, 1, Location.fromWml(3, 3)));
+    const manager = new AiManager(makeAiHost(board), () => []);
+    manager.modifyAi(1, 'delete', 'stage[main_loop].candidate_action[combat]');
+    manager.appendSideAi(1, parseWml('[ai]\naggression=0.9\n[/ai]').child('ai')!);
+    const cfg = manager.toConfig(1);
+    const cas = cfg.children('stage').flatMap((st) => st.children('candidate_action')).map((ca) => ca.getString('id'));
+    expect(cas).not.toContain('combat');
+    const aggression = cfg.children('aspect').find((a) => a.getString('id') === 'aggression')!;
+    expect(aggression.children('facet').some((f) => f.getString('value') === '0.9' || f.getNumber('value') === 0.9)).toBe(true);
   });
 
   it('modifyAi deletes a candidate action from a running stage (stage[id].candidate_action[id])', () => {

@@ -28,7 +28,7 @@ import type { AttackResult } from '../actions/combat.js';
 import { recruitUnit, recallUnit, type PlaceRecruitResult } from '../actions/recruit.js';
 import type { UnitType } from '../model/UnitType.js';
 import type { AiHost, AiAction } from './types.js';
-import { isAspectActive, type CompositeAspect } from './composite/aspect.js';
+import { CompositeAspect, facetFromConfig, isAspectActive } from './composite/aspect.js';
 import { calculateMoves, type MoveMap } from './moveMaps.js';
 import { powerProjection as powerProjectionFn, bestDefensivePosition as bestDefensivePositionFn, type DefensivePosition } from './powerProjection.js';
 import { nearestKeep as nearestKeepFn, suitableKeep as suitableKeepFn } from './keeps.js';
@@ -218,6 +218,42 @@ export class AiContext {
 
   private resolveAspect(id: string): WmlConfig | undefined {
     return this.aspects.get(id)?.resolve(this.turnNumber(), this.timeOfDayId());
+  }
+
+  /** An aspect's active facet (`aspect::get`), for engines that read aspects by id (Lua's `ai.aspects`). */
+  aspect(id: string): WmlConfig | undefined {
+    return this.resolveAspect(id);
+  }
+
+  /** Every aspect this side's AI has. */
+  aspectIds(): string[] {
+    return [...this.aspects.keys()];
+  }
+
+  /** `[modify_ai] path=aspect[<id>].facet`: adds a facet (the aspect is created if the side has none by that id). */
+  addFacet(aspectId: string, cfg: WmlConfig): boolean {
+    let aspect = this.aspects.get(aspectId);
+    if (!aspect) {
+      aspect = new CompositeAspect(aspectId, { id: '', turns: '', timeOfDay: '', body: new WmlConfig() });
+      (this.aspects as Map<string, CompositeAspect>).set(aspectId, aspect);
+    }
+    if (cfg.getString('id', '') !== '') aspect.deleteFacet(cfg.getString('id'));
+    aspect.addFacet(facetFromConfig(cfg));
+    this.attacksCache = undefined;
+    return true;
+  }
+
+  /** `[modify_ai] path=aspect[<id>].facet[<facetId>] action=delete` (`*`: every facet). */
+  deleteFacet(aspectId: string, facetId: string): boolean {
+    const aspect = this.aspects.get(aspectId);
+    if (!aspect) return false;
+    this.attacksCache = undefined;
+    return aspect.deleteFacet(facetId);
+  }
+
+  /** The side's aspects as `[aspect]` configs, for `AiManager.toConfig`. */
+  aspectConfigs(): WmlConfig[] {
+    return [...this.aspects.values()].map((a) => a.toConfig());
   }
 
   getAggression(): number {

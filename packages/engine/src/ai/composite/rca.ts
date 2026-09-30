@@ -32,7 +32,7 @@
  * necessity once user-authored/upstream Lua content can run.
  */
 
-import type { WmlConfig } from '../../wml/config.js';
+import { WmlConfig } from '../../wml/config.js';
 import type { Unit } from '../../model/Unit.js';
 import { unitMatchesFilter } from '../../events/filter.js';
 import type { AiContext } from '../context.js';
@@ -55,9 +55,12 @@ export abstract class CandidateAction {
   toBeRemoved = false;
   protected readonly filterOwn: WmlConfig | undefined;
   protected readonly ctx: AiContext;
+  /** The `[candidate_action]` it was built from (`candidate_action::to_config`). */
+  readonly config: WmlConfig;
 
   constructor(ctx: AiContext, cfg: WmlConfig) {
     this.ctx = ctx;
+    this.config = cfg;
     this.id = cfg.getString('id', '');
     this.engine = cfg.getString('engine', 'cpp');
     this.name = cfg.getString('name', '');
@@ -103,15 +106,31 @@ export class RcaStage implements Stage {
     this.candidateActions.push(ca);
   }
 
-  /** Mirrors `[modify_ai] path=stage[id].candidate_action[<caId>] action=delete`. Returns whether one was actually removed. */
+  /** Mirrors `[modify_ai] path=stage[id].candidate_action[<caId>] action=delete` (`*`: all of them). Returns whether one was actually removed. */
   deleteCandidateAction(caId: string): boolean {
     const before = this.candidateActions.length;
-    this.candidateActions = this.candidateActions.filter((ca) => ca.id !== caId);
+    this.candidateActions = caId === '*' ? [] : this.candidateActions.filter((ca) => ca.id !== caId);
     return this.candidateActions.length !== before;
   }
 
   listCandidateActions(): readonly CandidateAction[] {
     return this.candidateActions;
+  }
+
+  /** `vector_property_handler::handle_add`: an action with the same id is replaced; `position` inserts there, else appends. */
+  insertCandidateAction(ca: CandidateAction, position = -1): void {
+    if (ca.id !== '') this.deleteCandidateAction(ca.id);
+    if (position >= 0 && position < this.candidateActions.length) this.candidateActions.splice(position, 0, ca);
+    else this.candidateActions.push(ca);
+  }
+
+  /** `candidate_action_evaluation_loop::to_config`. */
+  toConfig(): WmlConfig {
+    const cfg = new WmlConfig();
+    cfg.setAttribute('id', this.id);
+    cfg.setAttribute('name', this.name);
+    for (const ca of this.candidateActions) cfg.addChild('candidate_action', ca.config.clone());
+    return cfg;
   }
 
   playStage(): boolean {

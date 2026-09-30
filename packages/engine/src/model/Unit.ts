@@ -133,6 +133,11 @@ export class Unit {
    */
   goto: Location | undefined;
   /**
+   * The unit's own `[ai]`, not yet handed to its side's AI (`unit::init` does that at creation; this port's
+   * `AiManager` adopts it before the side's AI is next used). Phase 29.
+   */
+  pendingAi: WmlConfig | undefined = undefined;
+  /**
    * Mirrors `unit::get_interrupted_move()`: where the unit's last move was
    * headed when sighting other units stopped it, for "Continue Move"
    * (`menu_handler::continue_move`). Cleared at the end of its side's turn,
@@ -159,9 +164,32 @@ export class Unit {
   }
   set abilities(list: readonly RegistryEntry[]) {
     this.abilityList = list;
+    this.#abilityRadii = undefined;
     abilitiesEpoch++;
   }
   private abilityList: readonly RegistryEntry[] = [];
+
+  /**
+   * `unit::max_ability_radius_type`: per ability tag, the widest `[affect_adjacent] radius=` among the unit's
+   * abilities (`all_map`: unbounded; 0: none), recomputed when the abilities change (`set_has_ability_distant`).
+   */
+  maxAbilityRadius(tag: string): number {
+    if (!this.#abilityRadii) {
+      const byTag = new Map<string, number>();
+      for (const entry of this.abilityList) {
+        for (const child of entry.config.children('affect_adjacent')) {
+          // `to_int(1)`: a number, else 1.
+          const raw = child.getString('radius', '1');
+          const n = Number(raw);
+          const radius = raw === 'all_map' ? Infinity : raw.trim() !== '' && Number.isFinite(n) ? Math.trunc(n) : 1;
+          if (radius > (byTag.get(entry.tag) ?? 0)) byTag.set(entry.tag, radius);
+        }
+      }
+      this.#abilityRadii = byTag;
+    }
+    return this.#abilityRadii.get(tag) ?? 0;
+  }
+  #abilityRadii: Map<string, number> | undefined;
   alignment: Alignment;
   /** `unit::emit_zoc_`. */
   emitZoc: boolean;
@@ -457,6 +485,8 @@ export class Unit {
     if (cfg.hasAttribute('level')) unit.level = cfg.getNumber('level');
     if (cfg.hasAttribute('max_attacks')) unit.maxAttacksPerTurn = Math.max(0, cfg.getNumber('max_attacks'));
     if (cfg.hasChild('attack')) unit.attacks = cfg.children('attack').map((a) => AttackType.fromConfig(a));
+    const ai = cfg.child('ai');
+    if (ai && (ai.hasChild('micro_ai') || ai.hasChild('candidate_action'))) unit.pendingAi = ai;
 
     unit.attacksLeft = Math.max(0, cfg.getNumber('attacks_left', unit.maxAttacksPerTurn));
     unit.movesLeft = Math.max(0, cfg.getNumber('moves', unit.maxMoves));

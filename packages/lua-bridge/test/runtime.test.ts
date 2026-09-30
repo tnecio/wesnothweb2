@@ -10,6 +10,11 @@ import { runActionSequence } from '@wesnothweb2/engine/src/events/actionWml.js';
 import { autoRespond, guiSelectionAnswer, runFlow, type Interaction, type InteractionResult } from '@wesnothweb2/engine/src/events/interaction.js';
 import type { GuiNode } from '@wesnothweb2/engine/src/events/guiDialog.js';
 import { LuaRuntime, type LuaSources } from '../src/runtime.js';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { loadLuaDataDir } from '../src/dataLua.js';
+
+const dataFiles = loadLuaDataDir(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../wesnoth/data'));
 
 /** Phase 28c: a campaign's own Lua -- `[lua]` actions, Lua-defined WML tags, and `gui.show_dialog`. */
 
@@ -27,7 +32,7 @@ function setup(sources: Partial<LuaSources> = {}) {
     },
     log: (level, message) => logs.push(`${level}: ${message}`),
   });
-  const runtime = new LuaRuntime({ modules: {}, wml: {}, ...sources }, () => pump.ctx);
+  const runtime = new LuaRuntime({ modules: {}, wml: {}, ...sources }, () => pump.ctx, { dataFiles });
   const run = (wml: string, respond?: (i: Interaction) => InteractionResult) => runActionSequence(parseWml(wml), pump.ctx, respond);
   return { pump, manager, runtime, run, logs, vars: pump.ctx.variables };
 }

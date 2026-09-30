@@ -63,8 +63,8 @@ describe('SUF [filter_vision]', () => {
     const enemy = Unit.create(makeType('enemy'), 2, new Location(2, 2));
     board.addUnit(enemy);
     const cfg = parseWml('[u]\n[filter_vision]\n[/filter_vision]\n[/u]').child('u')!;
-    // Fogged from everyone (including its own side 2's ally view, since side 2 always sees its own units)
-    expect(unitMatchesFilter(enemy, cfg, board)).toBe(true); // side 2 sees itself
+    // Upstream asks each side's fog map for the unit's hex; nothing has cleared any fog on this board yet.
+    expect(unitMatchesFilter(enemy, cfg, board)).toBe(false);
     t2.fog.enabled = false;
     t1.fog.enabled = false;
     expect(unitMatchesFilter(enemy, cfg, board)).toBe(true);

@@ -17,7 +17,7 @@
 import type { GameBoardSnapshot } from './gameBoardSnapshot.js';
 
 /** Keyed tables whose entries move to a shared database. */
-export const DATABASE_TABLES = ['unitTypes', 'unitTypeConfigs', 'movementTypeConfigs', 'weaponSpecialConfigs', 'abilityConfigs'] as const;
+export const DATABASE_TABLES = ['unitTypes', 'unitTypeConfigs', 'movementTypeConfigs', 'weaponSpecialConfigs', 'abilityConfigs', 'raceConfigs'] as const;
 type DatabaseTable = (typeof DATABASE_TABLES)[number];
 
 /** Keys moved whole (not entry by entry) when every scenario has the same value. */

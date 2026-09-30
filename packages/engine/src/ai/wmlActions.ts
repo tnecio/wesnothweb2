@@ -14,12 +14,14 @@
 
 import type { WmlConfig } from '../wml/config.js';
 import type { ActionRegistry, EventContext } from '../events/context.js';
-import type { ModifyAiActionKind } from './manager.js';
+import { parseComponentPath, type ModifyAiActionKind } from './manager.js';
 
 export interface AiWmlHooks {
   modifyAi(side: number, action: ModifyAiActionKind, path: string, cfg: WmlConfig | undefined): void;
   /** `[modify_side]`'s `[ai]` child(ren) -- every other `[modify_side]` field (`team_name=`, `controller=`, ...) is handled by the caller's own existing side-field logic, not here. */
   appendSideAi(side: number, cfg: WmlConfig): void;
+  /** `[modify_side][ai]` naming an `ai_algorithm=`: the side's AI replaced by these blocks. */
+  switchSideAi(side: number, cfgs: readonly WmlConfig[]): void;
   microAi(side: number, cfg: WmlConfig): void;
 }
 
@@ -37,11 +39,9 @@ export function registerAiWmlActions(registry: ActionRegistry): void {
     const side = cfg.getNumber('side', 1);
     const action = parseModifyAiAction(cfg.getString('action', 'add'));
     const path = cfg.getString('path', '');
-    // The action's own non-side/action/path children ARE the body ([goal]/[candidate_action]/...); [modify_ai]'s
-    // real WML places that body directly inline (see MODIFY_AI_ADD_GOAL), so pass the whole tag through and let
-    // AiManager.modifyAi's path parser pick out the one child shape it understands.
-    const body = cfg.child('goal') ?? cfg.child('candidate_action') ?? cfg.child('aspect') ?? undefined;
-    ctx.ai.modifyAi(side, action, path, body);
+    // `component_manager::add_component`: the component is the child named after the path's last element.
+    const last = parseComponentPath(path).pop();
+    ctx.ai.modifyAi(side, action, path, last ? cfg.child(last.property) : undefined);
   });
 
   registry.register('modify_side', (cfg: WmlConfig, ctx: EventContext) => {
@@ -69,13 +69,12 @@ export function registerAiWmlActions(registry: ActionRegistry): void {
       if (cfg.hasAttribute('gold')) team.gold = cfg.getNumber('gold');
       if (cfg.hasAttribute('income')) team.income = cfg.getNumber('income');
 
-      for (const aiCfg of cfg.children('ai')) {
-        if (!ctx.ai) {
-          ctx.log('warn', '[modify_side][ai]: no AI engine loaded for this session -- ignored');
-          continue;
-        }
-        ctx.ai.appendSideAi(side, aiCfg);
-      }
+      // modify_side.lua: an `[ai]` naming `ai_algorithm=` replaces the side's AI with the blocks (`switch_ai`);
+      // otherwise each is appended to it (`append_ai`).
+      const ais = cfg.children('ai');
+      if (ais.length > 0 && !ctx.ai) ctx.log('warn', '[modify_side][ai]: no AI engine loaded for this session -- ignored');
+      else if (ais.some((a) => a.hasAttribute('ai_algorithm'))) ctx.ai!.switchSideAi(side, ais);
+      else for (const aiCfg of ais) ctx.ai!.appendSideAi(side, aiCfg);
     }
   });
 

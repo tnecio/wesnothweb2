@@ -36,6 +36,7 @@ export { wesnothCampaignInfo, campaignAbbrev, defaultDifficulty, type CampaignIn
 export { fetchCampaigns, parseCampaigns, type Campaign } from './campaigns.js';
 export { default as MainMenu } from './menu/MainMenu.svelte';
 export { fetchScenarioSnapshot } from './scenarioFetch.js';
+export { fetchLuaData, luaDataFiles, setLuaDataFiles, type LuaDataFiles } from './luaData.js';
 export {
   scenarioLabel,
   autosaveName,

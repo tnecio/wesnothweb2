@@ -7,9 +7,10 @@
     "build:scenarios": "tsx scripts/rebuild-snapshots.mjs --if-stale",
     "build:atlases": "tsx scripts/build-image-atlases.mjs",
     "build:campaign-images": "node scripts/build-campaign-images.mjs",
-    "predev": "npm run build:scenarios && npm run build:atlases",
+    "build:lua": "tsx scripts/build-lua-bundle.mjs",
+    "predev": "npm run build:scenarios && npm run build:atlases && npm run build:lua",
     "dev": "vite",
-    "prebuild": "npm run build:scenarios && npm run build:atlases",
+    "prebuild": "npm run build:scenarios && npm run build:atlases && npm run build:lua",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "svelte-check --tsconfig ./tsconfig.json"

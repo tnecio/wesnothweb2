@@ -5779,3 +5779,154 @@ subsystems against what the campaigns actually use, every unported campaign was 
   - `#enddef` ends a definition when matched as a prefix, as upstream's scanner does. This covers the
     `#enddefs` typo in Of Pearls and Pirates' and The Hammer of Thursagan's `utils/side_ai.cfg`.
   - The theme macros (`data/themes/`) are loaded with core's.
+
+## 2026-09-30 — Phase 29 S7/S8: the Lua kernel, the AI's Lua candidate actions, in the browser
+
+Phase 29 resumed where it stopped on 2026-09-13 (after S6). The staged plan, overwritten by the Phase 26
+plan in the meantime, is back in `docs/PHASE29_PLAN.md`, with an S7 revision: the Lua API is built in
+upstream's layers rather than by growing Phase 28c's hand-written bootstrap.
+
+- **The kernel (`packages/lua-bridge/src/kernel/`)**:
+  - The base layer ports `lua_kernel_base.cpp`:
+    - the sandbox, `print`/`load` and logging;
+    - gettext, and translatable strings as `"translatable string"` userdata;
+    - named tuples;
+    - the C++ halves of `stringx`, `mathx` (`random` draws from the game's `randomness::generator`) and
+      `wml`;
+    - `filesystem` over a virtual data directory, the `wesnoth.map` location operations and
+      `game_config`.
+  - Then `data/lua/package.lua` runs unchanged (upstream `require` resolution), then ilua strict mode
+    (reading an undefined global is an error, as upstream), then the game layer.
+  - The game layer:
+    - unit, side, unit-type, terrain-map and vconfig userdata;
+    - `wesnoth.units`/`map`/`current`/`scenario`/`sides`/`paths`/`schedule`/`sync`/`interface`/
+      `game_events`;
+    - `simulate_combat`, on the engine's pathfinder and battle simulation.
+  - Last, `data/lua/core/*.lua` runs unchanged (`load_core`), loading with a clean log.
+  - Upstream API not ported is a named function raising "not available in this port yet".
+  - `LuaRuntime` (a campaign's Lua) now sits on this kernel; the AI shares it, as upstream's does.
+- **The Lua AI engine (`kernel/ai/`)** ports `engine_lua.cpp`/`core.cpp`:
+  - a per-side Lua AI context (`dummy_engine_lua.lua` unless `[engine name=lua] code=`);
+  - the `ai` table: move maps, targets, attack analyses, `ai.aspects`, `suitable_keep`, `check_*`, and,
+    only while executing, the mutating actions;
+  - upstream's action checks and status codes (`aiActions.ts`, `actions.cpp`);
+  - `engine=lua` candidate actions (`location=`, inline, sticky).
+
+  The engine's `AiManager` takes AI engines by name, and never imports lua-bridge.
+- **The default AI's five Lua CAs** (`retreat_injured`, `spread_poison`, `high_xp_attack`, `place_healers`,
+  `move_to_any_enemy`) run from `data/ai/lua` unchanged; each acts on a board built for it.
+- **Engine fidelity fixes the Lua AI forced:**
+  - The unit filter is ported from `units/filter.cpp`:
+    - `formula=` sees the unit as its own context (the old `moves > 0` matched nothing);
+    - `[filter_side]` (it was ignored, so `enemy_of` matched every unit);
+    - `[filter_adjacent]`, `[filter_wml]`, `[has_attack]`;
+    - `role=` as one string;
+    - the missing attributes.
+  - `x=`/`y=` ranges pair element by element (`map_location::matches_range`).
+  - Weapon specials keep their WML tag, which the AI Lua reads.
+- **Combat prediction as upstream's** (`attackPrediction.ts`):
+  - the matrix touches only the rows and columns in use;
+  - the `one_strike_fight`/`no_death_fight` fast paths;
+  - Monte Carlo past `fight_complexity` 50000, drawing from the unsynced generator.
+
+  The port had dropped these as optimisations. With the Lua CAs they were most of an AI turn: 18 s a turn
+  on the benchmark, now about 3 s. Results match the old version on 4000 random fights. Level-ups now
+  follow upstream, which considers both sides' only when the attacker can advance.
+- **S8, the browser:**
+  - `apps/web/scripts/build-lua-bundle.mjs` writes `data/lua` and `data/ai` to `public/lua/data-lua.json`
+    (about 1 MB, 210 KB gzipped; `build:lua` runs in `predev`/`prebuild`).
+  - `PlayPage` fetches it once; `packages/ui/src/luaData.ts` holds it (the ui tests load it from disk).
+  - `GameSession` builds the kernel when it has the files; Lua and AI errors reach the console.
+  - `apps/web/scripts/ai-lua-playthrough.mjs` passes: Dead Water 1's AI turn and The South Guard 1's
+    campaign Lua, with a clean console.
+- **Speed:**
+  - A Dead Water AI turn takes about 0.5 s of computing (0.27 s without the Lua CAs); the kernel adds
+    0.3 s to starting a scenario.
+  - The benchmark's harder game (`synth_combat_02`, seed 2) is still about 6 s a turn: `retreat_injured`
+    rebuilds every unit's attack map each RCA iteration while a unit is hurt, as upstream does, but on
+    fengari. Running the AI off the main thread is S12.
+- **Tests:** engine 824, lua-bridge 64 (the kernel, the `ai` table, each Lua CA), renderer 263, ui 402 --
+  all passing; lint and both svelte-checks clean.
+
+## 2026-09-30: Phase 29 S9 -- `[micro_ai]`
+
+- `data/lua/wml/micro_ai.lua` (the `[micro_ai]` tag) and `data/ai/micro_ais/**` run unchanged. The Lua engine
+  loads the tag, and `wesnoth.sides.add_ai_component`/`delete_ai_component`/`change_ai_component` change a
+  side's AI through `AiManager`.
+- `AiManager`:
+  - reads component paths as upstream's `find_component` does (`stage[..].candidate_action[..]`,
+    `aspect[..].facet[..]`, `goal[..]`; by id, by position, or `*`);
+  - when a side's `[ai]` is built, applies its `[modify_ai]`/`[micro_ai]`;
+  - adopts a unit's own `[ai]` (`unit::init`): `[micro_ai]` is filtered to that unit, and
+    `[candidate_action]` gets a `[filter_own]`;
+  - appends the way `holder::append_ai` does;
+  - serves `toConfig` as `sides[n].__cfg`'s `[ai]`, from which micro AIs derive unique ids.
+- `wesnoth.sync.invoke_command` records a synced `[custom_command]`, both live and on replay. Micro AIs use
+  it to set unit variables and to spawn the forest animals. `warn()` (Lua 5.4) is added.
+- **Tests:**
+  - `zone_guardian`, set both from `[ai]` and from the tag, and two guardians on one side get unique ids;
+  - every shipped scenario that uses a micro AI (`zone_guardian`, `messenger_escort`, `coward`,
+    `forest_animals`) plays two turns cleanly;
+  - engine 824, lua-bridge 67, ui 410, all passing; lint is clean.
+
+## 2026-09-30: Phase 29 S10/S11 -- upstream's AI test scenarios
+
+- **Building them:** `build-scenario-snapshot.mjs` builds the `[test]`s under `data/ai/scenarios/` and
+  `data/ai/micro_ais/scenarios/` at `NORMAL`, filed as `ai_test/`. There are 24: one per mainline and test-only
+  micro AI, the Lua AI tests, poisoning, high-XP attack, and the AI arena. `rebuild-snapshots.mjs` and
+  `scenario-list.json` include them.
+- **Test:** `aiTestScenarios.test.ts` plays each for three turns and fails on any Lua or AI error. 23 pass,
+  in about 95 s together.
+  - `fast` is skipped: it pits the Fast micro AI against the default AI with 100 units a side, and once the armies
+    meet, the default side's turn takes about ten minutes here, almost all of it in `retreat_injured`.
+  - `assassin`, used by no upstream test scenario, gets a lua-bridge test of its own.
+- **What they found, all fixed:**
+  - **`[set_variables]`** was a simplification. It is now ported in full from `set_variables.lua`:
+    `to_variable`, `[literal]`, `[split]`, `[value]` substituted all the way down, `name=foo[i]`, and
+    `wml.merge`'s `replace`/`append`/`merge` (with `__remove`) and `insert`. Without `[split]`, the
+    `SCATTER_UNITS` macro placed units with no type.
+  - **`[store_reachable_locations]`** is in the engine; `wesnoth.paths.find_vision_range` is in the kernel.
+  - **`wml.eval_conditional`** now works.
+  - **`wesnoth.map.add_label`/`remove_label`/`get_label`** now work, on the game's labels.
+  - **`wesnoth.races`** is now available: snapshots carry every `[race]` as `raceConfigs`, in `_core.json`.
+  - **`wesnoth.sides.append_ai` and `[modify_side][ai]`** now work as `modify_side.lua` does:
+    - normally, the `[ai]` is appended to the live AI (`holder::append_ai`, `[stage]`s included);
+    - with `ai_algorithm=`, the side's AI is replaced (`switch_ai`).
+
+    Before, `[modify_side][ai]` rebuilt the side's AI, which dropped any micro AI added since.
+- **Speed:**
+  - `unit::max_ability_radius_type` is ported: ability owners out of range are skipped before their abilities
+    are read.
+  - `Location` keys are cached in a private field.
+  - The terrain map finds its methods in `wesnoth.map` without creating strings.
+  - The 200-unit `fast` scenario's first turn went from 139 s to about 45 s.
+- **Tests:** engine 828, lua-bridge 68, ui 410 plus the 23 AI scenarios; lint is clean.
+
+## 2026-09-30: Phase 29 S12 -- AI speed measured; phase complete
+
+- **How AI turns were measured:** every shipped scenario, headless, with the human side passing each turn and
+  the AI sides' computing timed over 4 turns (`GameSession.playAiSide`, one process at a time on the 4-core
+  VM). With the player passive, the AI's armies meet and grow unopposed, so this errs on the heavy side.
+  - Most AI turns take 20--300 ms; almost every scenario's slowest turn is under 1.5 s.
+  - Dead Water 1: mean 0.56 s, max 0.9 s, down from 1.3 s mean before this stage's fixes.
+  - Outliers:
+    - **Dead Water 5 (Tirigaz):** max 27 s, when the two AI sides (29 units) fight each other with the player's
+      army gone. `spread_poison`'s Lua search (`AH.get_attacks` + `battle_calcs`, 12 s over 4 turns) and the
+      combat CA's attack analysis (11 s) dominate.
+    - **Liberty 4:** max 6.8 s, almost all `retreat_injured` (see below).
+    - **Liberty 2/3, Two Brothers 4:** max 1.1--1.7 s.
+- **Where the time goes:** a Lua-level sampling profiler, a `lua_sethook` count hook recording the Lua stack.
+  - In big battles, 99% of the Lua work is `retreat_injured` rebuilding every unit's attack map
+    (`battle_calcs.get_attack_map`) on each evaluation. Each map is ~140,000 `location_set` inserts for 100
+    units, and each insert allocates a named tuple in `read_location`.
+  - The same workload takes 2.9 s on fengari and 0.37 s on wasmoon (Lua 5.4 in WebAssembly).
+  - The long-term options are recorded in `docs/OPEN_QUESTIONS.md` #2: an upstream PR making
+    `retreat_injured` cheaper, or wasmoon. Both are postponed until it matters in practice, and so is running
+    the AI in a Web Worker.
+- **Fixed on the TS side, faithfully:**
+  - **A\*** (`pathfind/astar.ts`) now keeps its nodes in arrays indexed by map position with a heap of indices,
+    as upstream's `a_star_search` does, instead of a string-keyed `Map`. 3000 random searches give the same
+    routes and costs as before. `move_to_targets` in Dead Water 1 went from 3.5 s to 1.4 s over 4 turns.
+  - **`x=`/`y=` range lists** are parsed once per string rather than once per hex. The default `avoid` aspect
+    (`x=0,y=0`) is tested against every hex of the map by the move maps and `ai.aspects.avoid`.
+- **Tests:** engine 828, lua-bridge 68, renderer 263, ui 433 (+1 skipped); lint and svelte-check clean.

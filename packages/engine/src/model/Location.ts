@@ -172,8 +172,11 @@ export class Location {
 
   /** Stable string key for use in Map/Set, e.g. `GameBoard`'s unit-by-location index. */
   key(): string {
-    return `${this.x},${this.y}`;
+    return (this.#key ??= `${this.x},${this.y}`);
   }
+
+  // A private field, so it stays out of spreads, JSON and deep equality.
+  #key: string | undefined;
 
   static fromKey(key: string): Location {
     const [x, y] = key.split(',').map(Number);
@@ -283,6 +286,24 @@ export class Location {
     });
   }
 
+  /**
+   * `map_location::matches_range`: `x=`/`y=` comma lists of ranges, paired element by element (a list's
+   * leftover entries match on that coordinate alone). Both empty matches everything.
+   */
+  matchesRange(xloc: string, yloc: string): boolean {
+    const xs = parsedRangeList(xloc);
+    const ys = parsedRangeList(yloc);
+    if (xs.length === 0 && ys.length === 0) return true;
+    const x = this.wmlX;
+    const y = this.wmlY;
+    const inRange = ([lo, hi]: readonly [number, number], v: number) => lo <= v && v <= hi;
+    let i = 0;
+    for (; i < xs.length && i < ys.length; i++) if (inRange(xs[i]!, x) && inRange(ys[i]!, y)) return true;
+    for (; i < xs.length; i++) if (inRange(xs[i]!, x)) return true;
+    for (; i < ys.length; i++) if (inRange(ys[i]!, y)) return true;
+    return false;
+  }
+
   getRing(min: number, max: number): Location[] {
     const tiles: Location[] = [];
     const center = this.toCubic();
@@ -383,4 +404,44 @@ export function distanceBetween(a: Location, b: Location): number {
       ? 1
       : 0;
   return Math.max(hDistance, Math.abs(a.y - b.y) + vPenalty + Math.floor(hDistance / 2));
+}
+
+const rangeListCache = new Map<string, ReadonlyArray<readonly [number, number]>>();
+
+/**
+ * An `x=`/`y=` list (`1-5,7`) as its parsed ranges. Filters test the same few strings against every hex of the
+ * map, so the parse is kept; the cache is bounded, since content can build these strings from variables.
+ */
+function parsedRangeList(text: string): ReadonlyArray<readonly [number, number]> {
+  let parsed = rangeListCache.get(text);
+  if (!parsed) {
+    parsed = text.split(',').map((p) => p.trim()).filter((p) => p !== '').map(parseRangeText);
+    if (rangeListCache.size >= 4096) rangeListCache.clear();
+    rangeListCache.set(text, parsed);
+  }
+  return parsed;
+}
+
+/** `utils::parse_range`: "a", "a-b" (b below a counts as a), "a-infinity", "-infinity-b"; invalid text gives 0-0. */
+export function parseRangeText(str: string): [number, number] {
+  const pos = str.indexOf('-', 1);
+  const [a, b] = pos >= 0 && pos + 1 < str.length ? [str.slice(0, pos), str.slice(pos + 1)] : [str, undefined];
+  const stoi = (t: string): number => {
+    const m = /^\s*[+-]?\d+/.exec(t);
+    if (!m) throw new Error('invalid');
+    return Number(m[0]);
+  };
+  const res: [number, number] = [0, 0];
+  try {
+    res[0] = a === '-infinity' && b !== undefined ? -2147483648 : stoi(a);
+    if (b === undefined) res[1] = res[0];
+    else if (b.trim() === 'infinity') res[1] = 2147483647;
+    else {
+      res[1] = stoi(b);
+      if (res[1] < res[0]) res[1] = res[0];
+    }
+  } catch {
+    // Invalid range: upstream logs and keeps what it parsed.
+  }
+  return res;
 }

@@ -17,11 +17,11 @@
  * that from the scenario's side count); a game that hits the cap without
  * either leader dying is reported as `winner: "timeout"`, not an error.
  *
- * `--lua` is accepted but currently a no-op with a warning: the Lua-based
- * default-loop candidate actions (`retreat_injured`/`spread_poison`/
- * `high_xp_attack`/`place_healers`/`move_to_any_enemy`) don't exist until
- * Phase 29 S7, so every game today runs the pure-TS candidate actions
- * only, regardless of this flag.
+ * The default AI's Lua candidate actions (`retreat_injured`/`spread_poison`/
+ * `high_xp_attack`/`place_healers`/`move_to_any_enemy`, Phase 29 S7) run
+ * from `wesnoth/data` as in the game; `--no-lua` leaves them out (the
+ * TS-ported candidate actions only), for comparison. `luaErrors` counts the
+ * errors the Lua kernel logged.
  *
  * Output: one JSON line per game, then a plain-text summary (win rate per
  * side, mean/median turns, mean ms/turn) -- meant to be diffed across runs
@@ -34,6 +34,8 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { GameBoardSnapshot, AiAnimationEvent } from '@wesnothweb2/engine';
 import { GameSession } from '../src/gameSession.js';
+import { luaDataFiles, setLuaDataFiles } from '../src/luaData.js';
+import { loadLuaDataDir } from '@wesnothweb2/lua-bridge/src/dataLua.js';
 import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -49,7 +51,7 @@ interface Args {
 }
 
 export function parseArgs(argv: readonly string[]): Args {
-  const args: Args = { scenario: 'synth_combat_02', games: 10, seed: 1, maxTurns: 40, lua: false };
+  const args: Args = { scenario: 'synth_combat_02', games: 10, seed: 1, maxTurns: 40, lua: true };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const next = (): string => {
@@ -72,6 +74,9 @@ export function parseArgs(argv: readonly string[]): Args {
         break;
       case '--max-turns':
         args.maxTurns = Number(next());
+        break;
+      case '--no-lua':
+        args.lua = false;
         break;
       case '--lua':
         args.lua = true;
@@ -119,8 +124,16 @@ export interface GameResult {
   readonly luaErrors: number;
 }
 
-export async function playGame(snapshot: GameBoardSnapshot, seed: number, maxTurns: number): Promise<GameResult> {
-  const session = new GameSession(snapshot, { seed, playerSide: 1 });
+export async function playGame(snapshot: GameBoardSnapshot, seed: number, maxTurns: number, options: { lua?: boolean } = {}): Promise<GameResult> {
+  let luaErrors = 0;
+  const session = new GameSession(snapshot, {
+    seed,
+    playerSide: 1,
+    luaData: options.lua === false ? null : undefined,
+    onLog: (level) => {
+      if (level === 'error') luaErrors++;
+    },
+  });
   const numSides = session.board.teams().length;
   const start = Date.now();
   let actions = 0;
@@ -156,7 +169,7 @@ export async function playGame(snapshot: GameBoardSnapshot, seed: number, maxTur
   else if (session.scenarioResult === 'defeat') winner = session.playerSide === 1 ? 2 : 1;
   else winner = 'timeout';
 
-  return { seed, winner, turns, ms, msPerTurn: ms / Math.max(1, turns), actions, luaErrors: 0 };
+  return { seed, winner, turns, ms, msPerTurn: ms / Math.max(1, turns), actions, luaErrors };
 }
 
 function median(values: readonly number[]): number {
@@ -167,15 +180,13 @@ function median(values: readonly number[]): number {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  if (args.lua) {
-    console.warn('--lua requested, but Lua candidate actions do not exist until Phase 29 S7 -- ignoring.');
-  }
+  if (args.lua && !luaDataFiles()) setLuaDataFiles(loadLuaDataDir(path.join(repoRoot, 'wesnoth/data')));
   const snapshot = loadSnapshot(args.scenario, args.campaign);
 
   const results: GameResult[] = [];
   for (let i = 0; i < args.games; i++) {
     const seed = args.seed + i;
-    const result = await playGame(snapshot, seed, args.maxTurns);
+    const result = await playGame(snapshot, seed, args.maxTurns, { lua: args.lua });
     results.push(result);
     console.log(JSON.stringify(result));
   }

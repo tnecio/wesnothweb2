@@ -145,7 +145,18 @@ export interface ClearLabelsCommand {
   readonly force: boolean;
 }
 
+/**
+ * `[custom_command] name= [data]` (`synced_commands.cpp`): Lua's `wesnoth.sync.invoke_command`, which runs
+ * `wesnoth.custom_synced_commands[name](data)` -- live and in a replay alike. Phase 29 (micro AIs use it).
+ */
+export interface CustomCommand {
+  readonly kind: 'custom_command';
+  readonly name: string;
+  readonly data: WmlConfigJson;
+}
+
 export type SyncedCommand =
+  | CustomCommand
   | LabelCommand
   | ClearLabelsCommand
   | MoveCommand
@@ -266,6 +277,10 @@ export function commandToWml(command: SyncedCommand): { tag: string; cfg: WmlCon
       cfg.setAttribute('team_name', command.teamName);
       cfg.setAttribute('force', command.force);
       return { tag: 'clear_labels', cfg };
+    case 'custom_command':
+      cfg.setAttribute('name', command.name);
+      cfg.addChild('data', WmlConfig.fromJSON(command.data));
+      return { tag: 'custom_command', cfg };
     default: {
       const exhaustive: never = command;
       return exhaustive;
@@ -319,6 +334,8 @@ export function commandFromWml(tag: string, cfg: WmlConfig): SyncedCommand | nul
       return { kind: 'label', label: cfg.toJSON() };
     case 'clear_labels':
       return { kind: 'clear_labels', teamName: cfg.getString('team_name', ''), force: cfg.getBoolean('force', false) };
+    case 'custom_command':
+      return { kind: 'custom_command', name: cfg.getString('name'), data: (cfg.child('data') ?? new WmlConfig()).toJSON() };
     default:
       return null;
   }
