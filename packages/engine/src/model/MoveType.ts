@@ -317,6 +317,21 @@ export class MoveType {
   /** `defenseModifier` per terrain code object (the map shares one object per code). */
   private readonly defenseCache = new Map<TerrainCode, number>();
 
+  /** `terrain_defense::capped`: whether a cap (a negative `[defense]` value) applies on `terrain`. */
+  defenseCapped(terrain: TerrainCode): boolean {
+    return resolveValue(terrain, this.defenseTable, DEFENSE_MIN_PARAMS, this.terrainData, undefined) !== 0;
+  }
+
+  /** `movetype::has_vision_data`: the movetype has its own `[vision_costs]`. */
+  hasVisionData(): boolean {
+    return this.visionTable.size > 0;
+  }
+
+  /** `movetype::has_jamming_data`: the movetype has `[jamming_costs]`. */
+  hasJammingData(): boolean {
+    return this.jammingTable.size > 0;
+  }
+
   resistanceAgainst(damageType: string): number {
     return this.resistances.resistanceAgainst(damageType);
   }

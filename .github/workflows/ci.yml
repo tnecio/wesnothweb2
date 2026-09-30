@@ -77,6 +77,8 @@ jobs:
         with:
           name: scenarios
           path: apps/web/public/scenarios
+      - if: matrix.package == 'ui'
+        run: npm run build:help --workspace=apps/web
       - name: vitest
         working-directory: packages/${{ matrix.package }}
         run: npx vitest run --reporter=default --reporter=github-actions

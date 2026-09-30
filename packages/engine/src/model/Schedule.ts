@@ -42,6 +42,8 @@ import { WmlConfig, type WmlConfigJson } from '../wml/config.js';
 export interface TimeOfDayEntry {
   readonly id: string;
   readonly name: string;
+  /** `[time] description=`, shown by the help's time-of-day pages. */
+  readonly description?: string;
   readonly image: string;
   /** `[time] lawful_bonus=` -- positive favors lawful units, negative favors chaotic. Passed straight to `combatStats.ts`'s `combatModifier`. */
   readonly lawfulBonus: number;
@@ -60,6 +62,9 @@ export function parseTimes(cfg: WmlConfig): TimeOfDayEntry[] {
       // A getter, so the name is read (and translated) when it is shown, not when the schedule was parsed.
       get name(): string {
         return t.getString('name', '');
+      },
+      get description(): string {
+        return t.getString('description', '');
       },
       image: t.getString('image', ''),
       lawfulBonus: t.getNumber('lawful_bonus', 0),
