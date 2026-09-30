@@ -77,9 +77,25 @@ describe('parseUnitAnimations + matching (real Elvish Fighter content)', () => {
     expect(unitType.attacks.map((a) => a.id).sort()).toEqual(['bow', 'sword']);
   });
 
-  it('parses every real anim block: 1 movement_anim + 3 sword/1 bow attack_anim (each hit/miss-split by SOUND:HIT_AND_MISS) + 1 defend (hit/miss-split by DEFENSE_ANIM_RANGE) x2 ranges + the no-standing_anim default fallback + the generic engine-injected defend hit-flash fallback (2 variants: hit/kill-flash + miss-passthrough)', () => {
-    // 1 movement + (3 sword + 1 bow attack_anim blocks) x 2 (hit/miss split) + 2 defend blocks x 3 (miss/hit-or-kill auto-split + the DEFENSE_ANIM_RANGE hit-specific [if] branch) + 1 synthesized default + 2 generic defend fallback (see unitAnimation.ts's own doc comment -- always added, regardless of real content, but low-priority so real [defend] blocks like this unit's own still win).
-    expect(animations.length).toBe(1 + 4 * 2 + 2 * 3 + 1 + 2);
+  it('parses every real anim block: 1 movement_anim + 3 sword/1 bow attack_anim (each hit/miss-split by SOUND:HIT_AND_MISS) + 1 defend (hit/miss-split by DEFENSE_ANIM_RANGE) x2 ranges + the no-standing_anim default fallback + the generic engine-injected defend hit-flash fallback (2 variants: hit/kill-flash + miss-passthrough) + the recruited fade in', () => {
+    // 1 movement + (3 sword + 1 bow attack_anim blocks) x 2 (hit/miss split) + 2 defend blocks x 3 (miss/hit-or-kill auto-split + the DEFENSE_ANIM_RANGE hit-specific [if] branch) + 1 synthesized default + 2 generic defend fallback (see unitAnimation.ts's own doc comment -- always added, regardless of real content, but low-priority so real [defend] blocks like this unit's own still win) + 1 recruited.
+    expect(animations.length).toBe(1 + 4 * 2 + 2 * 3 + 1 + 2 + 1);
+  });
+
+  it('"recruited" fades the unit in over 600 ms, as fill_initial_animations synthesizes it', () => {
+    const unit = makeUnit();
+    const ctx: AnimationContext = {
+      loc: unit.location, secondLoc: unit.location, myUnit: unit, event: 'recruited',
+      value: 0, value2: 0, hit: 'invalid', terrainAtLoc: NONE_TERRAIN, secondUnit: undefined,
+    };
+    const anim = chooseAnimation(animations, ctx)!;
+    expect(anim).toBeDefined();
+    expect(animationDurationMs(anim)).toBe(600);
+    const at = (ms: number) => sampleAnimation(anim, Direction.SouthEast, ms, { x: 0, y: 0 }, { x: 0, y: 0 });
+    expect(at(0).alpha).toBe(0);
+    expect(at(300).alpha).toBeCloseTo(0.5, 1);
+    expect(at(599).alpha).toBeGreaterThan(0.95);
+    expect(at(0).imagePath).toBe('units/elves-wood/fighter/fighter.png');
   });
 
   it('registers no "standing" or "default" candidate other than the synthesized fallback (this unit type has no real [standing_anim] -- its idle_anim is commented out in the source)', () => {

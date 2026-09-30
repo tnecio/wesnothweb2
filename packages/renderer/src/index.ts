@@ -221,6 +221,7 @@ export {
 // ── Vertical-slice scenario snapshot board (see module doc comment) ────────
 export {
   SnapshotBoard,
+  installSubtractBlend,
   spriteKey,
   type ScenarioSnapshot,
   type SnapshotTerrainHex,

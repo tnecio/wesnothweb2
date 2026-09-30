@@ -28,8 +28,8 @@
  *    per-event *fallback* derivation from `[standing_anim]` when a unit
  *    type authors no explicit `attack`/`defend`/`movement`/`death`
  *    animation, is **not** ported — only the "no `[standing_anim]` at all"
- *    fallback (a trivial 1-frame `image=` default, `DEFAULT_ANIM` score)
- *    is. Real content that relies on the richer fallback chain (a unit
+ *    fallback (a trivial 1-frame `image=` default, `DEFAULT_ANIM` score),
+ *    the generic `defend` hit flash and the `recruited` fade in are. Real content that relies on the richer fallback chain (a unit
  *    type with, say, `[attack_anim]` but no `[movement_anim]`) will
  *    currently fail to match a movement animation rather than silently
  *    reusing standing — flagged rather than silently wrong.
@@ -537,7 +537,8 @@ export function parseUnitAnimations(unitTypeCfg: WmlConfig): UnitAnimationDef[] 
   // Fallback: a unit type with no [standing_anim] at all still needs
   // *something* to match "default"/"standing" against (fill_initial_
   // animations' no-animation_base branch, animation.cpp ~L517-521).
-  if (!out.some((a) => a.events.includes('default'))) {
+  const synthesizedDefault = !out.some((a) => a.events.includes('default'));
+  if (synthesizedDefault) {
     const image = unitTypeCfg.getString('image', '');
     out.push(buildAnimationDef({ attrs: new Map(), children: image ? [{ tag: 'frame', config: new WmlConfig().setAttribute('image', image) }] : [] }, ['default'], DEFAULT_ANIM));
   }
@@ -578,6 +579,42 @@ export function parseUnitAnimations(unitTypeCfg: WmlConfig): UnitAnimationDef[] 
     });
   }
 
+  // `fill_initial_animations`' "recruited" (animation.cpp ~L545): every
+  // default (standing) animation, as a 600 ms fade in (`highlight` = the
+  // frame's alpha), played once. The new unit appears with it, while its
+  // leader plays "recruiting".
+  const recruitedAlpha = new WmlConfig().setAttribute('alpha', '0~1:600');
+  for (const base of out.filter((a) => a.events.includes('default'))) {
+    out.push({
+      ...base,
+      events: ['recruited'],
+      baseScore: synthesizedDefault ? base.baseScore : base.baseScore + DEFAULT_ANIM,
+      frames: framesForDuration(base.frames, RECRUITED_MS),
+      startTimeMs: 0,
+      animationParams: { ...base.animationParams, durationMs: RECRUITED_MS, highlightRatio: buildFrameFields(recruitedAlpha, RECRUITED_MS).highlightRatio },
+    });
+  }
+
+  return out;
+}
+
+const RECRUITED_MS = 600;
+
+/**
+ * `particle::override`'s new duration: frames past it are cut, and a
+ * shorter animation holds its last frame for the rest.
+ */
+function framesForDuration(frames: readonly UnitFrameDef[], durationMs: number): UnitFrameDef[] {
+  const out: UnitFrameDef[] = [];
+  let total = 0;
+  for (const frame of frames) {
+    if (total >= durationMs) break;
+    const length = Math.min(frame.durationMs, durationMs - total);
+    out.push(length === frame.durationMs ? frame : { ...frame, durationMs: length });
+    total += length;
+  }
+  const last = out[out.length - 1];
+  if (last && total < durationMs) out.push({ ...last, durationMs: durationMs - total });
   return out;
 }
 

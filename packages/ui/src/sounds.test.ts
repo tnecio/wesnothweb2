@@ -29,6 +29,8 @@ describe('turn sounds', () => {
     const session = new GameSession(dw1(), { onSound: (r) => heard.push(r) });
     await session.runStartupEvents();
     expect(describeSounds(heard)).toEqual(['sources:ambient/morning.ogg', 'bell:bell.wav']);
+    // Both are turn-start sounds: a UI showing the AI's moves afterwards holds them until it has.
+    expect(heard.every((r) => r.turnStart)).toBe(true);
   });
 
   it('the ambient sound plays once per turn, and only turns whose time of day has one', async () => {

@@ -24,6 +24,12 @@ export interface SoundRequest {
    * would start noticeably late.
    */
   readonly dropIfLate?: boolean;
+  /**
+   * A side's turn-start sound (the time of day's, the turn bell). A UI that shows the other sides'
+   * moves after they were computed holds these until it has shown them, so they sound as the turn
+   * changes on screen.
+   */
+  readonly turnStart?: boolean;
 }
 
 /** `game_config::sounds` (`game_config.cfg`'s `[sounds]`, `game_config.cpp`). */

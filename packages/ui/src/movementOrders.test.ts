@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Location, distanceBetween, getAdjacentTiles, recalculateFog, type Unit } from '@wesnothweb2/engine';
+import { Location, WmlConfig, distanceBetween, getAdjacentTiles, recalculateFog, type Unit } from '@wesnothweb2/engine';
 import { GameSession } from './gameSession.js';
 import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 
@@ -188,6 +188,35 @@ describe('move-and-attack', () => {
     expect(kai.location.equals(from)).toBe(true);
     expect(kai.attacksLeft).toBe(0);
     expect(session.lastAttackAnimation).not.toBeNull();
+  });
+
+  it('closes the prediction as soon as it is confirmed: not open again during the move or the attack event\'s dialogue', async () => {
+    const { session, malKevek, from } = await facing();
+    const event = new WmlConfig().setAttribute('name', 'attack');
+    event.addChild('message').setAttribute('speaker', 'narrator').setAttribute('message', 'Have at you!');
+    session['eventPump'].manager.addFromWml(event);
+    await session.handleHexClick(malKevek.location.x, malKevek.location.y, { attackFrom: { x: from.x, y: from.y } });
+    expect(session.pendingAttack).not.toBeNull();
+    const seen: string[] = [];
+    session.interactionHost = {
+      async handle(interaction) {
+        seen.push(`${interaction.kind === 'beat' ? interaction.beat.kind : interaction.kind}:${session.pendingAttack !== null}`);
+        return {};
+      },
+    };
+    await session.confirmAttack();
+    expect(seen).toContain('moveUnit:false');
+    expect(seen).toContain('message:false');
+    expect(seen.filter((s) => s.endsWith(':true'))).toEqual([]);
+  });
+
+  it('marks the enemies it could attack from a hex it can reach this turn', async () => {
+    const { session, kai, malKevek, from } = await facing();
+    expect(session.attackCandidatesFrom(from.x, from.y)).toEqual([malKevek]);
+    // Not next to Mal-Kevek where Kai stands, and nothing to attack from a hex beyond this turn.
+    expect(session.attackCandidates).toEqual([]);
+    const far = farHex(session, kai, 2, 10);
+    expect(session.attackCandidatesFrom(far.x, far.y)).toEqual([]);
   });
 
   it('does not attack when an ambush stops the move', async () => {
