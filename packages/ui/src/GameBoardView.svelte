@@ -878,6 +878,8 @@
       scrollToHex: (x: number, y: number, type: ScrollType) => scrollToHex(x, y, type),
       /** Live sprite positions, for debugging movement animation glitches -- see `SnapshotBoard.unitSpritePositions`. */
       unitSpritePositions: () => board?.unitSpritePositions() ?? null,
+      /** Visibility, alpha, image and position per unit sprite -- see `SnapshotBoard.unitSpriteStates`. */
+      unitSpriteStates: () => board?.unitSpriteStates() ?? null,
       /** Filters per unit sprite, for checking status looks (slowed/poisoned/petrified). */
       unitSpriteFilterCounts: () => board?.unitSpriteFilterCounts() ?? null,
       /** Missiles/halos on the latest animation frame, for checking particle effects. */
@@ -887,6 +889,8 @@
       attackIndicator: () => board?.attackIndicatorState() ?? 0,
       /** Phase 28b: how many hexes the reach highlight covers. */
       reachCount: () => reachable.length,
+      /** The enemy hexes shown red as attackable. */
+      attackTargets: () => attackTargets.map((h) => ({ x: h.x, y: h.y })),
       /** Set the board-wide ToD tint directly, for checking the tint's blending. */
       setTodTint: (tod: { red: number; green: number; blue: number }) => board?.updateTimeOfDayTint(tod),
     };

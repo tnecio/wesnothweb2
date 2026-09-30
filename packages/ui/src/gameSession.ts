@@ -1934,6 +1934,11 @@ export class GameSession {
     return this.deferred.splice(0);
   }
 
+  /** Whether interactions are waiting for `takeDeferredInteractions` -- the scenario's end is not shown before them. */
+  get hasDeferredInteractions(): boolean {
+    return this.deferred.length > 0;
+  }
+
   private readonly collectResponder: Responder = (interaction) => {
     this.deferred.push(interaction);
     const replayed = this.replayedAnswer(interaction);
@@ -2765,10 +2770,10 @@ export class GameSession {
     if (this.todSoundTurn !== this.turnNumber) {
       this.todSoundTurn = this.turnNumber;
       const sounds = this.currentTimeOfDay.sounds ?? '';
-      if (sounds !== '') this.eventPump.ctx.playSound({ files: sounds, repeats: 0, group: 'sources' });
+      if (sounds !== '') this.eventPump.ctx.playSound({ files: sounds, repeats: 0, group: 'sources', turnStart: true });
     }
     if (this.board.getTeam(side)?.controller === 'human') {
-      this.eventPump.ctx.playSound({ files: GAME_SOUNDS.turnBell, repeats: 0, group: 'bell' });
+      this.eventPump.ctx.playSound({ files: GAME_SOUNDS.turnBell, repeats: 0, group: 'bell', turnStart: true });
     }
   }
 
@@ -2977,18 +2982,29 @@ export class GameSession {
     return buildUnitInfo(this.board, u, this.unitDisplayName(u), this.snapshot.unitTypes[u.type.id]?.image ?? null, todBonus);
   }
 
-  private computeAttackCandidates(unit: Unit): Unit[] {
+  private computeAttackCandidates(unit: Unit, from: Location = unit.location): Unit[] {
     if (unit.attacksLeft <= 0) return [];
     const team = this.board.getTeam(unit.side);
     if (!team) return [];
     const targets: Unit[] = [];
-    for (const adj of getAdjacentTiles(unit.location)) {
+    for (const adj of getAdjacentTiles(from)) {
       const other = getVisibleUnit(this.board, adj, team, false);
       if (!other) continue;
       const otherTeam = this.board.getTeam(other.side);
       if (otherTeam && team.isEnemy(otherTeam)) targets.push(other);
     }
     return targets;
+  }
+
+  /**
+   * The enemies the selected unit could attack after moving to (x, y) this turn -- for a finger's
+   * picked move hex, which a second tap on one of them attacks from. Empty when it can't get there
+   * this turn.
+   */
+  attackCandidatesFrom(x: number, y: number): Unit[] {
+    const unit = this.selectedUnit;
+    if (!unit || unit.side !== this.activeSide || !this.reachable.some((h) => h.x === x && h.y === y)) return [];
+    return this.computeAttackCandidates(unit, new Location(x, y));
   }
 
   /**
@@ -4245,6 +4261,9 @@ export class GameSession {
     if (this.scenarioResult) return null;
     let pending = this.pendingAttack;
     if (!pending) return null;
+    // Confirmed: the prediction is done with. Cleared now, not after the exchange, so the dialog
+    // stays closed through the move there and any `[message]` the move or attack events show.
+    this.pendingAttack = null;
 
     if (!pending.from.equals(pending.attacker.location)) {
       // Phase 28b: move-and-attack. The move is an ordinary one (undoable
@@ -4271,7 +4290,6 @@ export class GameSession {
         this.viableAttackerWeaponIndices(attacker).includes(attackerWeaponIndex);
       if (this.scenarioResult || !uninterrupted || !canStillAttack) return moveMessage;
       pending = this.buildPreview(attacker, defender, attackerWeaponIndex);
-      this.pendingAttack = pending;
     }
 
     // Phase 18b: one synced `[attack]` command -- the `attack` event, the

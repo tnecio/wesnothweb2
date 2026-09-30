@@ -260,6 +260,8 @@ try {
     await tap(24, 12);
     await page.waitForFunction(() => (window.__wesnothDebug.route()?.footprints ?? 0) > 0, null, { timeout: 15000 }).catch(() => {});
     check('a tap next to the enemy picks the hex (and shows the route)', ((await page.evaluate(() => window.__wesnothDebug.route()))?.footprints ?? 0) > 0);
+    const targets = await page.evaluate(() => window.__wesnothDebug.attackTargets());
+    check('...and marks the enemy it could attack from there red', targets.some((h) => h.x === 24 && h.y === 13), JSON.stringify(targets));
     await tap(24, 13);
     const attack = page.getByRole('button', { name: 'Attack', exact: true });
     await attack.waitFor({ timeout: 15000 });

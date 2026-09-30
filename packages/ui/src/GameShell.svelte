@@ -42,7 +42,7 @@
     CutsceneBeat,
     FakeUnitWalk,
   } from '@wesnothweb2/engine';
-  import { WmlConfig, type WmlConfigJson, playStoryMusic, extraHitSounds, GAME_SOUNDS, directionBetween, relativeDirection, tilesAdjacent, Direction, Location, unitCanAct, parseTerrainCode } from '@wesnothweb2/engine';
+  import { WmlConfig, parseConfig, type WmlConfigJson, playStoryMusic, extraHitSounds, GAME_SOUNDS, directionBetween, relativeDirection, tilesAdjacent, Direction, Location, unitCanAct, parseTerrainCode } from '@wesnothweb2/engine';
   import {
     type HexPoint,
     type UnitAnimationCue,
@@ -139,7 +139,7 @@
   import type { AudioSettings } from './audio/settings.js';
   import MessageViewer from './MessageViewer.svelte';
   import GuiDialog from './GuiDialog.svelte';
-  import type { GuiDialogInteraction } from '@wesnothweb2/engine';
+  import type { GuiDialogInteraction, SoundRequest } from '@wesnothweb2/engine';
   import AdvancementDialog from './AdvancementDialog.svelte';
   import ObjectivesDialog from './ObjectivesDialog.svelte';
   import ScenarioEndOverlay from './ScenarioEndOverlay.svelte';
@@ -298,7 +298,18 @@
    * every session, as upstream's global one survives scenarios.
    */
   const audio = getAudioEngine();
-  const SESSION_OPTIONS: GameSessionOptions = { actionSeeds: 'entropy', music: audio.music, onSound: (request) => audio.playSound(request), onVolume: (scale) => audio.setVolumeScale(scale) };
+  /**
+   * Turn-start sounds (the bell, the time of day's) held while the other sides' turns are computed
+   * and then shown (`handleEndTurn`): they play once the turn has changed on screen, not before the
+   * AI's moves play out. Null when not holding.
+   */
+  let heldTurnSounds: SoundRequest[] | null = null;
+  const SESSION_OPTIONS: GameSessionOptions = {
+    actionSeeds: 'entropy',
+    music: audio.music,
+    onSound: (request) => (heldTurnSounds && request.turnStart ? heldTurnSounds.push(request) : audio.playSound(request)),
+    onVolume: (scale) => audio.setVolumeScale(scale),
+  };
   /**
    * `startInReplay`'s session, built up front (rather than resumed normally and switched over after mount,
    * the way `startReplay` does for an in-game "Show replay") so the very first render is already the
@@ -731,7 +742,12 @@
     // Only from normal play: a scenario that ends during its own startup events (an epilogue's
     // start-event [endlevel]) must still show its story, objectives and dialogue first --
     // `runStartupEvents`/`advanceObjectives` move on to 'ended' once those are done.
-    if (session.scenarioResult && phase === 'playing') phase = 'ended';
+    // And only once the events have finished and everything they had to say was read: the
+    // `[message]`s after an `[endlevel]`, a `victory` event's, a dying leader's last words
+    // (shown after the blows, `showDeferredInteractions`) all come before the end screen.
+    if (session.scenarioResult && phase === 'playing' && !eventsRunning && currentMessage === null && currentGuiDialog === null && !session.hasDeferredInteractions) {
+      phase = 'ended';
+    }
     updateMovementPreview();
   }
 
@@ -1146,6 +1162,8 @@
    * change to the game (`sync`) and by a tap anywhere else.
    */
   let armedMove = $state<HexPoint | null>(null);
+  /** The enemies the unit could attack from `armedMove`, shown red instead of those next to it now. */
+  let armedAttackTargets = $state.raw<HexPoint[]>([]);
 
   /**
    * `GameBoardView`'s `onHexClick`: a finger's tap on a move destination asks for a second tap first.
@@ -1157,6 +1175,7 @@
     armedMove = null;
     if (input?.touch && canAct() && isPlainMoveTarget(x, y) && !(armed && armed.x === x && armed.y === y)) {
       armedMove = { x, y };
+      armedAttackTargets = session.attackCandidatesFrom(x, y).map((u) => ({ x: u.location.x, y: u.location.y }));
       hoveredHexInfo = session.hoveredHexInfo(x, y);
       statusMessage = tx('Tap again to move here.');
       updateMovementPreview();
@@ -1245,6 +1264,7 @@
     // trigger have to say, not after the click has fully resolved.
     const message = await runPlayerAction(() => session.handleHexClick(x, y, options));
     sync(message);
+    await showDeferredInteractions();
   }
 
   /** Whether "Continue Move" has a unit to move: the selected one, or the one under the pointer. */
@@ -1288,6 +1308,7 @@
       return text;
     });
     sync(message);
+    await showDeferredInteractions();
   }
 
   /** Phase 18b: redoes the last undone action (upstream's `r`) -- it runs again, with the same recorded outcome. */
@@ -1295,6 +1316,7 @@
     if (!canAct() || !session.canRedo) return;
     const message = await runPlayerAction(() => session.redo());
     sync(message);
+    await showDeferredInteractions();
   }
 
   /**
@@ -1382,6 +1404,14 @@
       enemyReach: () => enemyReach?.hexes ?? null,
       /** Phase 28b: what the pointer's order preview is showing. */
       movementPreview: () => ({ route, attackIndicator, hoverReach: hoverReach?.length ?? null, pointerHex, canAct: canAct(), phase }),
+      /** The audio engine, so a check can watch what is played when. */
+      audio,
+      /** Whether another side's turn is being computed or shown ('thinking'/'animating'), else null. */
+      get otherSidesTurn() {
+        return otherSidesTurn;
+      },
+      /** Adds a WML `[event]` (its text) to the running scenario, for checks. */
+      addEvent: (wml: string) => session['eventPump'].manager.addFromWml(parseConfig(wml).child('event')!),
     };
   }
 
@@ -1912,21 +1942,21 @@
    * Real, reported bug (bugs4.md #1): the AttackDialog modal used to stay
    * open (blocking the view of the board) for the ENTIRE combat animation,
    * only closing once the full `sync(message)` below ran afterward.
-   * `session.confirmAttack()` already clears `session.pendingAttack`
-   * synchronously (so `pendingPreview`/`attackerWeaponOptions` are already
-   * stale the instant it returns) -- close the dialog immediately by
-   * setting those two `$state` vars directly, before awaiting the
-   * animation, rather than waiting for the full `sync()` that also updates
+   * `session.confirmAttack()` clears `session.pendingAttack` as it starts
+   * -- close the dialog immediately by setting `pendingPreview`/
+   * `attackerWeaponOptions` directly, before the flow runs, rather than waiting for the full `sync()` that also updates
    * `units`/HP bars/etc. (which must stay deferred until AFTER the
    * animation finishes, or the board would jump straight to the final
    * post-combat state and the animation would have nothing left to show).
    */
   async function handleConfirmAttack(): Promise<void> {
     if (!canAct()) return;
+    // Closed before anything plays: a move-and-attack walks there first, and the move's and the
+    // attack's events may show `[message]`s, none of which the dialog may cover.
+    pendingPreview = null;
+    attackerWeaponOptions = [];
     const message = await runPlayerAction(async () => {
       const result = await session.confirmAttack();
-      pendingPreview = null;
-      attackerWeaponOptions = [];
       const anim = session.lastAttackAnimation;
       session.lastAttackAnimation = null;
       if (anim && boardView) {
@@ -2145,6 +2175,7 @@
     const message = await runPlayerAction(async () => {
       otherSidesTurn = 'thinking';
       skipOtherSidesAnimations = false;
+      heldTurnSounds = [];
       try {
         // The AI computes synchronously inside endTurn: let the greyed-out button paint first.
         // (A hidden tab gets no animation frames, hence the timeout.)
@@ -2172,6 +2203,10 @@
     });
     sync(message);
     await showDeferredInteractions();
+    // The turn is the player's now, on screen too: the bell (`before_human_turn`).
+    const turnSounds = heldTurnSounds ?? [];
+    heldTurnSounds = null;
+    for (const request of turnSounds) audio.playSound(request);
     // Upstream autosaves once per player turn, *before* that turn begins
     // (`playsingle_controller::before_human_turn`) -- which, after
     // `endTurn` has cycled through every AI side and come back round, is
@@ -2772,7 +2807,7 @@
           id: `wml-${item.id}`,
           label: item.label,
           enabled: true,
-          handler: () => void runPlayerAction(() => session.runMenuItem(item.id, x, y)).then((m) => sync(m)),
+          handler: () => void runPlayerAction(() => session.runMenuItem(item.id, x, y)).then(async (m) => (sync(m), await showDeferredInteractions())),
         });
       }
     }
@@ -3017,7 +3052,7 @@
         {selectedHex}
         cursorHex={cursorHex ?? armedMove}
         reachable={enemyReach?.hexes ?? hoverReach ?? reachable}
-        {attackTargets}
+        attackTargets={armedMove ? armedAttackTargets : attackTargets}
         {route}
         {attackIndicator}
         grid={displayPrefs.value.grid}

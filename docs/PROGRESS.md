@@ -5930,3 +5930,33 @@ upstream's layers rather than by growing Phase 28c's hand-written bootstrap.
   - **`x=`/`y=` range lists** are parsed once per string rather than once per hex. The default `avoid` aspect
     (`x=0,y=0`) is tested against every hex of the map by the move maps and `ai.aspects.avoid`.
 - **Tests:** engine 828, lua-bridge 68, renderer 263, ui 433 (+1 skipped); lint and svelte-check clean.
+
+## 2026-09-30: Playtest fixes (branch `playtest-fixes`)
+
+Six issues from playtesting:
+
+- **The board blacking out while scrolling or selecting a unit.** The ToD tint's darkening rect used PixiJS's
+  "advanced" `'subtract'` blend, a filter that copies the backbuffer and blends in a shader. It now uses a native
+  GL blend equation (`dst - src`, `installSubtractBlend`), which reads no backbuffer; `useBackBuffer` is gone.
+  Checked in the browser: darkening and mixed tints give the same colours as before.
+- **Mobile: attackable enemies marked red in the move preview.** After a first tap on a hex, the enemies the
+  unit could attack from there (if it gets there this turn) are marked red (`GameSession.attackCandidatesFrom`)
+  instead of those next to where it stands.
+- **The attack dialog closes as soon as Attack is pressed.** It used to stay up through a move-and-attack's
+  walk. The session also no longer puts the prediction back after that walk, where a `[message]` from the
+  `attack` event would reopen the dialog.
+- **Recruits appear with their animation.** Upstream's `fill_initial_animations` gives every unit a default
+  "recruited" animation, a 600 ms fade-in; the port lacked it, so a recruit popped in whole while its leader
+  gestured. Also, the recruit's sprite was on stage (at the map's corner) while its textures loaded, before it
+  was hidden for the animation; it is now hidden from the moment it is created. The leader's "recruiting"
+  plays alongside, its own `start_time` (the Dark Sorcerer's is -300 ms) as upstream's `unit_animator`.
+- **The turn bell sounds when the turn is the player's on screen.** The session runs the AI's turn before the
+  UI shows it, so the bell (and the time of day's sound) rang before the AI's moves played out. Turn-start
+  sounds are now tagged (`SoundRequest.turnStart`) and held by the shell until the AI's moves and messages
+  have been shown.
+- **The victory/defeat screen waits for the dialogue.** It now comes up only once no event is running, no
+  message or dialog is up, and the messages deferred from the AI's turn or a death have been shown. The
+  `[message]`s after an `[endlevel]` used to be hidden behind it.
+- **Checks:** `turn-end-playthrough.mjs` (new): the bell after the AI's turn, and a message after `[endlevel]`
+  before the victory screen. `ai-lua-playthrough.mjs`: the AI's new units start hidden and appear with their
+  animation. `movement-orders-playthrough.mjs`: the red targets after a tap.
