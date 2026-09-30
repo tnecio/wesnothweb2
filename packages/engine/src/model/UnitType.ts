@@ -160,6 +160,24 @@ export interface UnitTypeExtras {
  * upstream: `name=` is this weapon's *id* (`id()`/`id_`), `description=` is
  * its display name (`name()`/`description_`, defaulting to the id).
  */
+/**
+ * The WML tag of each weapon special config (`[poison]`, `[damage]`, ...), which `AttackType.specials` does
+ * not carry: upstream keeps specials as a config whose children keep their tags, and Lua reads them
+ * (`attack.specials`, `sp[1] == 'damage'`). Recorded wherever a special is parsed.
+ */
+const SPECIAL_TAGS = new WeakMap<WmlConfig, string>();
+
+export function specialTag(special: WmlConfig): string {
+  return SPECIAL_TAGS.get(special) ?? '';
+}
+
+function tagged(entries: ReadonlyArray<{ readonly tag: string; readonly config: WmlConfig }>): WmlConfig[] {
+  return entries.map((e) => {
+    SPECIAL_TAGS.set(e.config, e.tag);
+    return e.config;
+  });
+}
+
 export class AttackType {
   constructor(
     /** cfg["name"] -- yes, really; matches attack_type::id_. */
@@ -255,8 +273,8 @@ export class AttackType {
     const setSpecials = cfg.child('set_specials');
     if (setSpecials) {
       if (setSpecials.getString('mode', '') !== 'append') specials = [];
-      specials.push(...resolveIdList(setSpecials.getString('specials_list', ''), specialsRegistry).map((e) => e.config));
-      specials.push(...setSpecials.allChildren().map((c) => c.config));
+      specials.push(...tagged(resolveIdList(setSpecials.getString('specials_list', ''), specialsRegistry)));
+      specials.push(...tagged(setSpecials.allChildren()));
     }
     const removeSpecials = cfg.child('remove_specials');
     if (removeSpecials) {
@@ -326,8 +344,8 @@ export class AttackType {
     const name = cfg.hasAttribute('description') ? cfg.getString('description') : id;
     const alignmentStr = cfg.getString('alignment', '');
     const specialsCfg = cfg.child('specials');
-    const inlineSpecials = specialsCfg ? specialsCfg.allChildren().map((c) => c.config) : [];
-    const listedSpecials = resolveIdList(cfg.getString('specials_list', ''), specialsRegistry).map((e) => e.config);
+    const inlineSpecials = specialsCfg ? tagged(specialsCfg.allChildren()) : [];
+    const listedSpecials = tagged(resolveIdList(cfg.getString('specials_list', ''), specialsRegistry));
     const specials = [...inlineSpecials, ...listedSpecials];
 
     return new AttackType(

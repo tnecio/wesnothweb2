@@ -44,3 +44,24 @@ export function readDataLuaFile(dataRoot: string, relPath: string): string {
   }
   return fs.readFileSync(path.join(dataRoot, relPath), 'utf8');
 }
+
+/**
+ * Phase 29: the Lua half of the data directory as the kernel sees it (`kernel/kernel.ts`'s
+ * `VirtualDataDir`): every `.lua` file under `data/lua` and `data/ai`, keyed by data-relative path
+ * (`lua/core/mathx.lua`, `ai/lua/ai_helper.lua`), the Lua 5.4 files replaced by their patched copies.
+ * `dataDir` is the submodule's `data` directory.
+ */
+export function loadLuaDataDir(dataDir: string, roots: readonly string[] = ['lua', 'ai']): Record<string, string> {
+  const out: Record<string, string> = {};
+  const walk = (rel: string): void => {
+    for (const e of fs.readdirSync(path.join(dataDir, rel), { withFileTypes: true })) {
+      const child = `${rel}/${e.name}`;
+      if (e.isDirectory()) walk(child);
+      else if (e.name.endsWith('.lua')) {
+        out[child] = child.startsWith('lua/') ? readDataLuaFile(path.join(dataDir, 'lua'), child.slice(4)) : fs.readFileSync(path.join(dataDir, child), 'utf8');
+      }
+    }
+  };
+  for (const root of roots) walk(root);
+  return out;
+}
