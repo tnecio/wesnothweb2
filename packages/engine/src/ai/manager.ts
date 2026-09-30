@@ -20,10 +20,10 @@
 
 import { WmlConfig } from '../wml/config.js';
 import type { AiHost, AiAction } from './types.js';
-import { parseSideAiConfig } from './config/upgrade.js';
+import { expandSimplifiedAspects, parseSideAiConfig } from './config/upgrade.js';
 import { DEFAULT_AI_CONFIG_JSON, AI_ALGORITHM_CONFIGS_JSON } from './config/builtinAiConfigs.generated.js';
 import { AiContext } from './context.js';
-import { AiComposite, buildCandidateAction, createAiComposite, type AiEngine, type CandidateActionFactory } from './composite/aiComposite.js';
+import { AiComposite, buildCandidateAction, buildStagesFromConfigs, createAiComposite, type AiEngine, type CandidateActionFactory } from './composite/aiComposite.js';
 import { RcaStage } from './composite/rca.js';
 import { buildGoalsFromConfigs } from './composite/goal.js';
 import { createDefaultCandidateActionRegistry } from './default/registry.js';
@@ -38,7 +38,8 @@ interface SideAiState {
 
 export class AiManager {
   private readonly sides = new Map<number, SideAiState>();
-  private readonly extraBlocks = new Map<number, WmlConfig[]>();
+  /** `switch_ai`: a side's `[ai]` blocks replaced wholesale. */
+  private readonly replacedBlocks = new Map<number, readonly WmlConfig[]>();
   private readonly registry: ReadonlyMap<string, CandidateActionFactory>;
 
   constructor(
@@ -53,7 +54,7 @@ export class AiManager {
   }
 
   private build(side: number): SideAiState {
-    const blocks = [...this.sideAiConfigs(side), ...(this.extraBlocks.get(side) ?? [])];
+    const blocks = this.replacedBlocks.get(side) ?? this.sideAiConfigs(side);
     const parsed = parseSideAiConfig(DEFAULT_AI_CONFIG_JSON, AI_ALGORITHM_CONFIGS_JSON, blocks);
     const ctx = new AiContext(this.host, side, parsed.aspects, parsed.goals);
     const composite = createAiComposite(ctx, parsed.configs, this.registry, this.engines);
@@ -119,11 +120,18 @@ export class AiManager {
 
   /** `holder::append_ai`: facets, goals, `[modify_ai]`s and `[micro_ai]`s added to the side's live AI. */
   appendAi(side: number, cfg: WmlConfig): void {
-    const { ctx } = this.getOrCreate(side);
+    const state = this.getOrCreate(side);
+    const { ctx } = state;
     for (const aspect of cfg.children('aspect')) {
       for (const facet of aspect.children('facet')) ctx.addFacet(aspect.getString('id'), facet);
     }
     for (const goal of cfg.children('goal')) this.modifyAi(side, 'add', 'goal[]', goal);
+    for (const stageCfg of cfg.children('stage')) {
+      if (stageCfg.getString('name', '') === 'empty') continue;
+      const wrapper = new WmlConfig();
+      wrapper.addChild('stage', stageCfg);
+      for (const stage of buildStagesFromConfigs(ctx, [wrapper, ...state.configs], this.registry, this.engines)) state.composite.addStage(stage);
+    }
     for (const mod of cfg.children('modify_ai')) {
       this.modifyAi(side, (mod.getString('action', '') || 'add') as ModifyAiActionKind, mod.getString('path', ''), componentOf(mod));
     }
@@ -171,11 +179,20 @@ export class AiManager {
     return ctx.drainActionLog();
   }
 
-  /** Mirrors `[modify_side][ai]`: appends another `[ai]` block for `side` (merged the same way multiple real `[side][ai]` blocks already are) and rebuilds its composite from scratch next time it's needed. */
+  /**
+   * `wesnoth.sides.append_ai` (`intf_append_ai`), which `[modify_side][ai]` uses: the block's simplified
+   * aspects expanded, then appended to the side's live AI (`holder::append_ai`).
+   */
   appendSideAi(side: number, cfg: WmlConfig): void {
-    const list = this.extraBlocks.get(side);
-    if (list) list.push(cfg);
-    else this.extraBlocks.set(side, [cfg]);
+    this.appendAi(side, expandSimplifiedAspects(cfg));
+  }
+
+  /**
+   * `wesnoth.sides.switch_ai` with configs (`add_ai_for_side_from_config(side, cfg, replace=true)`), which
+   * `[modify_side]` uses when an `[ai]` names an `ai_algorithm=`: the side's AI is rebuilt from these blocks alone.
+   */
+  switchSideAi(side: number, cfgs: readonly WmlConfig[]): void {
+    this.replacedBlocks.set(side, cfgs);
     this.sides.delete(side);
   }
 

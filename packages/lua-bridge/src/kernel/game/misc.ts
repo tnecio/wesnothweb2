@@ -8,6 +8,7 @@
 import { WmlConfig } from '@wesnothweb2/engine/src/wml/config.js';
 import { Location } from '@wesnothweb2/engine/src/model/Location.js';
 import type { Flow } from '@wesnothweb2/engine/src/events/interaction.js';
+import { conditionalPassed } from '@wesnothweb2/engine/src/events/conditionalWml.js';
 import {
   argError,
   checkString,
@@ -159,7 +160,13 @@ export function installMisc(k: LuaKernel, host: GameKernelHost): void {
       return 1;
     },
   });
-  k.unported(['wml', 'eval_conditional']);
+  // `intf_eval_conditional`: `game_events::conditional_passed` over a vconfig (substituted as it is read).
+  k.define(['wml', 'eval_conditional'], (T) => {
+    const existing = k.userdata<VConfig>(T, 1, VCONFIG_KEY);
+    const c = ctx();
+    lua.lua_pushboolean(T, conditionalPassed(c.variables.expandConfig(existing ? existing.cfg : k.checkConfig(T, 1)), c));
+    return 1;
+  });
 
   // wesnoth.sync: single player, so a choice is this client's own.
   k.defineAll(['wesnoth', 'sync'], {

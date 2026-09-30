@@ -68,6 +68,7 @@ function locationHash(loc: Location): number {
 /** What the Lua engine needs from the game's AI manager. */
 export interface AiComponentHost {
   modifyAi(side: number, action: 'add' | 'change' | 'delete', path: string, cfg?: WmlConfig): boolean;
+  appendSideAi(side: number, cfg: WmlConfig): void;
 }
 
 interface SideContext {
@@ -118,6 +119,13 @@ export class LuaAiEngine implements AiEngine {
       add_ai_component: modify('add'),
       delete_ai_component: modify('delete'),
       change_ai_component: modify('change'),
+      // `intf_append_ai`: the table, or its `[ai]` child when it has one.
+      append_ai: (T) => {
+        const side = sideOf(T, 1);
+        const cfg = k.checkConfig(T, 2);
+        manager.appendSideAi(side, cfg.child('ai') ?? cfg);
+        return 0;
+      },
     });
   }
 

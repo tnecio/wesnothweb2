@@ -25,8 +25,10 @@
 import type { WmlConfig } from '../wml/config.js';
 import type { EventContext } from './context.js';
 import { conditionalPassed } from './conditionalWml.js';
-import { findLocations } from './filter.js';
-import { Location } from '../model/Location.js';
+import { findLocations, findUnits, locationMatchesFilterOnBoard } from './filter.js';
+import { Location, getAdjacentTiles } from '../model/Location.js';
+import { reachableHexes } from '../pathfind/pathfind.js';
+import { createJammingMap, unitVisionPath } from '../actions/vision.js';
 import { MapFormulaCallable, Variant, parseFormula } from '../formula/index.js';
 import { runActionFlow } from './actionWml.js';
 import { newVarNode, varNodeFromConfig, varNodeToConfig, type VarNode } from './variables.js';
@@ -219,6 +221,73 @@ function* actionRandomPlacement(cfg: WmlConfig, ctx: EventContext): Flow {
   }
 }
 
+// --- [store_reachable_locations] ---
+
+/**
+ * `data/lua/wml/store_reachable_locations.lua`: the hexes the `[filter]`ed units can reach (`range=movement`),
+ * reach or attack (`attack`: each reachable hex and its on-map neighbours), or see (`vision`,
+ * `wesnoth.paths.find_vision_range`), with their current moves or `moves=max`, narrowed by `[filter_location]`,
+ * stored as `$variable[i].x/.y` in `location_set` order (by x, then y). Without `viewing_side=` the reach
+ * ignores visibility.
+ */
+export function actionStoreReachableLocations(cfg: WmlConfig, ctx: EventContext): void {
+  const unitFilter = cfg.child('filter');
+  if (!unitFilter) {
+    ctx.log('error', '[store_reachable_locations] missing required [filter] tag');
+    return;
+  }
+  const variable = cfg.getString('variable', '');
+  if (variable === '') {
+    ctx.log('error', '[store_reachable_locations] missing required variable= key');
+    return;
+  }
+  const hasViewingSide = cfg.hasAttribute('viewing_side');
+  const viewingSide = cfg.getNumber('viewing_side', 0);
+  if (hasViewingSide && viewingSide === 0) {
+    ctx.log('error', '[store_reachable_locations] invalid viewing_side');
+    return;
+  }
+  const range = cfg.getString('range', 'movement');
+  const moves = cfg.getString('moves', 'current');
+  const board = ctx.board;
+  const reach = new Map<string, Location>();
+  const add = (loc: Location) => reach.set(loc.key(), loc);
+  for (const unit of findUnits(board, ctx.variables.expandConfig(unitFilter))) {
+    if (range === 'vision') {
+      const team = board.getTeam(unit.side);
+      const sight = unitVisionPath(board, unit, unit.location, team ? createJammingMap(board, team) : new Map());
+      for (const step of sight.destinations.values()) add(step.curr);
+      for (const key of sight.edges) add(Location.fromKey(key));
+      continue;
+    }
+    const saved = unit.movesLeft;
+    if (moves === 'max') unit.movesLeft = unit.maxMoves;
+    let steps;
+    try {
+      steps = reachableHexes(board, unit, {
+        viewingTeam: board.getTeam(hasViewingSide ? viewingSide : unit.side),
+        seeAll: !hasViewingSide,
+      }).destinations.values();
+    } finally {
+      unit.movesLeft = saved;
+    }
+    for (const step of steps) {
+      add(step.curr);
+      if (range === 'attack') for (const adj of getAdjacentTiles(step.curr)) if (board.map.onBoard(adj)) add(adj);
+    }
+  }
+  const filterLocation = cfg.child('filter_location');
+  const expandedFilter = filterLocation ? ctx.variables.expandConfig(filterLocation) : undefined;
+  const locs = [...reach.values()]
+    .filter((loc) => !expandedFilter || locationMatchesFilterOnBoard(board, loc, expandedFilter))
+    .sort((a, b) => a.x - b.x || a.y - b.y);
+  ctx.variables.clear(variable);
+  locs.forEach((loc, i) => {
+    ctx.variables.set(`${variable}[${i}].x`, loc.wmlX);
+    ctx.variables.set(`${variable}[${i}].y`, loc.wmlY);
+  });
+}
+
 function allLocations(ctx: EventContext): Location[] {
   const out: Location[] = [];
   for (let x = 0; x < ctx.board.map.w(); x++) for (let y = 0; y < ctx.board.map.h(); y++) out.push(new Location(x, y));
@@ -348,6 +417,7 @@ export function registerFlowActions(register: (tag: string, handler: (cfg: WmlCo
   register('while', actionWhile);
   register('repeat', actionRepeat);
   register('random_placement', actionRandomPlacement);
+  register('store_reachable_locations', actionStoreReachableLocations);
   register('for', actionFor);
   register('foreach', actionForeach);
   register('switch', actionSwitch);

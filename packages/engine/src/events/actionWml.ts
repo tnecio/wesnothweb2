@@ -17,8 +17,7 @@
  * `literal`, `to_variable`, `prefix`, `suffix`, `add`, `sub`, `multiply`,
  * `divide`, `modulo`, `abs`, `round` incl. ceil/floor/trunc, `power`,
  * `root` incl. square/cube, `ipart`/`fpart`, `min`/`max`, `string_length`,
- * `reverse`, `join`), `set_variables` (`replace`/`append`/`merge`≈append/
- * `insert` modes over `[value]` children), `clear_variable`, `store_unit`,
+ * `reverse`, `join`), `set_variables` (all of upstream's, see its doc comment), `clear_variable`, `store_unit`,
  * `unstore_unit` (real, reported bug: a common "hide units off-board during
  * a cutscene" idiom -- `[store_unit] kill=yes` then a later `[unstore_unit]`
  * -- silently never restored the unit at all, permanently removing it; see
@@ -80,7 +79,7 @@
 import type { EndLevelState } from './context.js';
 import { Direction, Location, parseDirection } from '../model/Location.js';
 import { Unit } from '../model/Unit.js';
-import { WmlConfig, plainValue } from '../wml/config.js';
+import { WmlConfig, plainValue, type WmlStoredValue } from '../wml/config.js';
 import { checkRecruitLocation, recallUnit, rollNewUnit } from '../actions/recruit.js';
 import { findPath, findVacantTile } from '../pathfind/pathfind.js';
 import type { Rng } from '../rng/Rng.js';
@@ -115,7 +114,7 @@ import {
   sidesFor,
 } from './miscWml.js';
 import { actionTimeArea, actionRemoveTimeArea, actionReplaceSchedule, actionStoreTimeOfDay } from './todWml.js';
-import { newVarNode, varNodeFromConfig, varNodeToConfig, VariableStore, type VarNode } from './variables.js';
+import { cloneVarNode, newVarNode, varNodeFromConfig, varNodeToConfig, VariableStore, type VarNode } from './variables.js';
 import { parseScenarioObjectives, type ScenarioObjectives } from './objectives.js';
 import { registerFlowActions } from './flowWml.js';
 import { registerSupportActions } from './supportWml.js';
@@ -625,33 +624,109 @@ function actionSetVariable(cfg: WmlConfig, ctx: EventContext): void {
 
 // --- [set_variables] ---
 
+/**
+ * `data/lua/wml/set_variables.lua`. The data is `to_variable=`'s array, or else one element per `[value]`
+ * (`wml.parsed`), `[literal]` (unsubstituted) and `[split]` piece, in order. `name=foo[3]` starts the operation
+ * at that element. The modes are `wml.merge`'s (`intf_wml_merge`) over the arrays as `[value]` children:
+ * `replace` clears them and takes the data (only when there is any data), `append` adds the data after them,
+ * `merge` merges element i of the data into element i (`config::merge_with`); `insert` inserts the data at the
+ * index (the front, with none).
+ */
 function actionSetVariables(cfg: WmlConfig, ctx: EventContext): void {
   const name = cfg.getString('name', '');
   if (name === '') {
-    ctx.log('error', 'trying to set variables with an empty name');
+    ctx.log('error', 'trying to set a variable with an empty name');
     return;
   }
-  const mode = cfg.getString('mode', 'replace');
-
-  const data: VarNode[] = [];
-  for (const { tag, config } of cfg.allChildren()) {
-    if (tag === 'value') data.push(varNodeFromConfig(ctx.variables.expandConfig(config)));
-    // [literal]/[split] (data/lua/wml/set_variables.lua) are not ported -- see module doc comment.
+  let data: VarNode[] = [];
+  const toVariable = cfg.getString('to_variable', '');
+  if (toVariable !== '') {
+    data = ctx.variables.getArray(toVariable).map(cloneVarNode);
+  } else {
+    for (const { tag, config } of cfg.allChildren()) {
+      if (tag === 'value') data.push(varNodeFromConfig(ctx.variables.expandConfigDeep(config)));
+      else if (tag === 'literal') data.push(varNodeFromConfig(config));
+      else if (tag === 'split') {
+        const split = ctx.variables.expandConfig(config);
+        const separator = split.getString('separator', '');
+        const key = split.getString('key', '');
+        // Without a separator, upstream iterates the string with `ipairs`, which yields nothing.
+        if (!split.hasAttribute('separator')) continue;
+        if (separator.length > 1) {
+          ctx.log('error', `[set_variables] [split] separator only supports 1 character, multiple passed: ${separator}`);
+          return;
+        }
+        const removeEmpty = split.getBoolean('remove_empty', false);
+        // `stringx.split(list, separator, {remove_empty, strip_spaces = true})`.
+        for (const piece of split.getString('list', '').split(separator).map((p) => p.trim())) {
+          if (removeEmpty && piece === '') continue;
+          const node = newVarNode();
+          node.attrs.set(key, piece);
+          data.push(node);
+        }
+      }
+    }
   }
-
-  if (mode === 'replace') {
-    ctx.variables.setArray(name, data);
-  } else if (mode === 'append' || mode === 'merge') {
-    // 'merge' (element-wise field merge) collapses to 'append' here -- see module doc comment.
-    for (const item of data) ctx.variables.pushArray(name, item);
+  const mode = cfg.getString('mode', 'replace');
+  const indexed = /^(.*)\[(\d+)\]$/.exec(name);
+  const realVar = indexed ? indexed[1]! : name;
+  const idx = indexed ? Number(indexed[2]) : 0;
+  const existing = ctx.variables.getArray(realVar).map(cloneVarNode);
+  if (mode === 'merge' || mode === 'append' || mode === 'replace') {
+    let head: VarNode[] = [];
+    let mergeWith = existing;
+    if (indexed) {
+      head = existing.slice(0, idx);
+      mergeWith = existing.slice(idx);
+      if (mode === 'merge') {
+        // All the values are merged together (`append` mode) before being merged into the element.
+        const merged = newVarNode();
+        for (const item of data) mergeVarNode(merged, item, true);
+        data = [merged];
+      } else if (mode === 'replace') {
+        // Elements after the index are pushed up but otherwise left untouched.
+        data = [...data, ...mergeWith.slice(1)];
+      }
+    }
+    let merged: VarNode[];
+    if (mode === 'append') merged = [...mergeWith, ...data];
+    else if (mode === 'replace') merged = data.length > 0 ? data : mergeWith;
+    else merged = mergeArrays(mergeWith, data);
+    ctx.variables.setArray(realVar, [...head, ...merged]);
   } else if (mode === 'insert') {
-    const idx = cfg.getNumber('insert_index', ctx.variables.arrayLength(name));
-    const existing = ctx.variables.getArray(name).slice();
     existing.splice(idx, 0, ...data);
-    ctx.variables.setArray(name, existing);
+    ctx.variables.setArray(realVar, existing);
   } else {
     ctx.log('error', `unknown mode for [set_variables]: ${mode}`);
   }
+}
+
+/** `config::merge_with` over one tag's children: element i merges into element i, `__remove=yes` drops it, extras are appended. */
+function mergeArrays(base: VarNode[], from: VarNode[]): VarNode[] {
+  const out: VarNode[] = [];
+  base.forEach((item, i) => {
+    const with_ = from[i];
+    if (!with_) out.push(item);
+    else if (!isTruthy(with_.attrs.get('__remove'))) {
+      mergeVarNode(item, with_, false);
+      out.push(item);
+    }
+  });
+  for (let i = base.length; i < from.length; i++) out.push(cloneVarNode(from[i]!));
+  return out;
+}
+
+/** `config::merge_with` (`append`: `merge_attributes` + `append_children`) of `from` into `into`. */
+function mergeVarNode(into: VarNode, from: VarNode, append: boolean): void {
+  for (const [k, v] of from.attrs) into.attrs.set(k, v);
+  for (const [tag, arr] of from.arrays) {
+    const mine = into.arrays.get(tag) ?? [];
+    into.arrays.set(tag, append ? [...mine, ...arr.map(cloneVarNode)] : mergeArrays(mine, arr));
+  }
+}
+
+function isTruthy(v: WmlStoredValue | undefined): boolean {
+  return v === true || v === 'yes' || v === 'true';
 }
 
 // --- [clear_variable] ---

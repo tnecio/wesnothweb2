@@ -83,5 +83,31 @@
     "06a_Vengeance",
     "06b_The_Tides_of_War",
     "06x_Epilogue"
+  ],
+  "ai_test": [
+    "The_Elves_Besieged",
+    "ai_arena_small",
+    "animals",
+    "bottleneck_defense",
+    "dragon",
+    "fast",
+    "goto",
+    "guardians",
+    "hang_out",
+    "healer_support",
+    "high_xp_attack",
+    "lua_ai",
+    "lua_ai_old_syntax",
+    "lurkers",
+    "messenger_escort",
+    "micro_ai_test",
+    "patrols",
+    "poison",
+    "protect_unit",
+    "recruiting",
+    "simple_attack",
+    "swarm",
+    "unit_actions",
+    "wolves"
   ]
 }

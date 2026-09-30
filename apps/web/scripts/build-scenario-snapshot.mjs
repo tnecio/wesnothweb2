@@ -163,12 +163,18 @@ if (!scenarioFileArg) {
 
 const isBareFilename = !scenarioFileArg.includes('/') && !path.isAbsolute(scenarioFileArg);
 const isSyntheticPath = !isBareFilename && scenarioFileArg.includes('synthetic-campaigns');
+// Phase 29 S10: upstream's AI test scenarios (`[test]`s under `data/ai/scenarios/` and
+// `data/ai/micro_ais/scenarios/`, loaded by `data/_main.cfg` for `wesnoth -t <id>`). Filed as `ai_test/<id>.json`.
+const isAiTestPath = !isBareFilename && /(^|\/)data\/ai\//.test(path.resolve(repoRoot, scenarioFileArg));
 
 let scenarioFile;
 let campaignDir; // the campaign root -- parent of scenarios/, maps/, images/, _main.cfg.
 if (isBareFilename) {
   campaignDir = path.join(campaignsRoot, 'Dead_Water');
   scenarioFile = path.join(campaignDir, 'scenarios', scenarioFileArg);
+} else if (isAiTestPath) {
+  scenarioFile = path.resolve(repoRoot, scenarioFileArg);
+  campaignDir = path.join(dataRoot, 'ai_test'); // not a real directory: only its name is used, as the asset dir
 } else if (isSyntheticPath) {
   scenarioFile = path.resolve(repoRoot, scenarioFileArg);
   campaignDir = path.dirname(path.dirname(scenarioFile)); // grandparent of the scenario file -- see module doc comment.
@@ -183,7 +189,7 @@ if (isBareFilename) {
   }
   campaignDir = path.join(campaignsRoot, campaignName);
 }
-const isRealCampaign = !isSyntheticPath;
+const isRealCampaign = !isSyntheticPath && !isAiTestPath;
 
 /**
  * The `[campaign] define=` symbol for the real campaign at `dir`, read via
@@ -256,6 +262,8 @@ function loadDefines() {
     if (campaignDefine) flag(campaignDefine);
     flag(difficulty);
   }
+  // A test scenario is started without a campaign, at the game's default difficulty (`NORMAL`).
+  if (isAiTestPath) flag('NORMAL');
   preloadDefinesFromDir(path.join(dataRoot, 'core'), defines, { dataRoot });
   // Phase 28c: the theme macros too (`{themes/}` in `data/_main.cfg`) -- Heir to the Throne's scenarios use
   // `CUTSCENE_THEME_BACKGROUND` from `themes/_initial.cfg`.
@@ -389,7 +397,7 @@ collectUnitTypeImages(flattenedUnitTypes, unitImages, unitFlagRgb);
 console.log(`Collected ${unitImages.size} unit-type image paths from real WML.`);
 
 const scenarioCfg = parseWmlFile(scenarioFile, { dataRoot, defines: new Map(defines) });
-const scenario = scenarioCfg.child('scenario');
+const scenario = scenarioCfg.child('scenario') ?? scenarioCfg.child('test');
 
 // Phase 28c: what upstream adds to every scenario of a campaign when the game starts
 // (`saved_game::expand_mp_events` -> `load_non_scenario("campaign", id)`): the `[campaign]` block's own
@@ -544,7 +552,7 @@ function resolveType(id) {
 // what's already on the board at build time.
 for (const id of unitImages.keys()) resolveType(id);
 
-const board = GameBoard.fromConfig(scenario, terrainData, resolveType, { spawnUnitsFromTree: !isRealCampaign });
+const board = GameBoard.fromConfig(scenario, terrainData, resolveType, { spawnUnitsFromTree: !isRealCampaign && !isAiTestPath });
 
 const terrain = [];
 for (let x = 0; x < board.map.w(); x++) {
@@ -739,6 +747,7 @@ const snapshot = {
   terrainFlags,
   terrainTypeConfigs: terrainTypeConfigsJson,
   movementTypeConfigs: movementTypeConfigsJson,
+  raceConfigs: Object.fromEntries([...raceConfigs].map(([id, cfg]) => [id, cfg.toJSON()])),
   unitTypeConfigs,
   weaponSpecialConfigs: weaponSpecialConfigsJson,
   abilityConfigs: abilityConfigsJson,

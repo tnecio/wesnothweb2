@@ -15,6 +15,7 @@ import { findLocations, locationMatchesFilterOnBoard } from '@wesnothweb2/engine
 import { findSides, sideMatchesFilter } from '@wesnothweb2/engine/src/events/sideFilter.js';
 import { effectiveTimeOfDayAt } from '@wesnothweb2/engine/src/actions/illumination.js';
 import type { TimeOfDayEntry } from '@wesnothweb2/engine/src/model/Schedule.js';
+import { labelFromConfig, labelToConfig } from '@wesnothweb2/engine/src/events/labelsWml.js';
 import {
   argError,
   checkInteger,
@@ -24,6 +25,7 @@ import {
   luaError,
   pushString,
   pushStringArray,
+  tableGet,
   to_luastring,
   toBoolean,
   typeError,
@@ -178,7 +180,45 @@ export function installWorld(k: LuaKernel, host: GameKernelHost, units: LuaUnits
       return 1;
     },
   });
-  for (const name of ['terrain_mask', 'add_label', 'remove_label', 'get_label', 'place_area', 'remove_area', 'get_area', 'replace_if_failed', 'create', 'generate_height_map']) {
+  // Labels (`intf_add_label`/`intf_remove_label`/`intf_get_label`), on the game's label store.
+  k.defineAll(['wesnoth', 'map'], {
+    add_label: (T) => {
+      const c = ctx();
+      c.labels.set(labelFromConfig(c.variables.expandConfig(k.checkConfig(T, 1)), c));
+      return 0;
+    },
+    remove_label: (T) => {
+      const loc = k.checkLocation(T, 1);
+      let teamName = '';
+      if (lua.lua_gettop(T) === 1 && lua.lua_istable(T, 1)) {
+        if (tableGet(T, 1, 'team_name')) {
+          teamName = lua.lua_isstring(T, -1) ? checkString(T, -1) : '';
+          lua.lua_pop(T, 1);
+        }
+      } else if (lua.lua_isstring(T, 2)) teamName = checkString(T, 2);
+      const c = ctx();
+      c.labels.set({ ...labelFromConfig(new WmlConfig(), c, loc), teamName, text: '' });
+      return 0;
+    },
+    get_label: (T) => {
+      const loc = k.checkLocation(T, 1);
+      const board = ctx().board;
+      let teamName: string | undefined;
+      if (lua.lua_isnoneornil(T, 2)) teamName = '';
+      else if (lua.lua_type(T, 2) === lua.LUA_TNUMBER) teamName = board.getTeam(checkInteger(T, 2))?.teamName;
+      else if (lua.lua_type(T, 2) === lua.LUA_TSTRING) teamName = checkString(T, 2);
+      else if (lua.lua_isuserdata(T, 2)) {
+        const side = k.userdata<number>(T, 2, SIDE_KEY);
+        if (side === undefined) return typeError(T, 2, 'side');
+        teamName = board.getTeam(side)?.teamName;
+      }
+      const label = teamName === undefined ? undefined : ctx().labels.get(loc, teamName);
+      if (!label) return 0;
+      k.pushConfig(T, labelToConfig(label));
+      return 1;
+    },
+  });
+  for (const name of ['terrain_mask', 'place_area', 'remove_area', 'get_area', 'replace_if_failed', 'create', 'generate_height_map']) {
     k.unported(['wesnoth', 'map', name]);
   }
 
@@ -217,6 +257,7 @@ export function installWorld(k: LuaKernel, host: GameKernelHost, units: LuaUnits
 
   // --- unit types and terrain types ---
   installUnitTypes(k, host, units);
+  installRaces(k, host);
   pushTableProxy(k, ['wesnoth'], 'terrain_types', 'terrain types', (T) => {
     const code = parseTerrainCode(checkString(T, 2));
     if (code.equals(NONE_TERRAIN)) return 0;
@@ -645,6 +686,69 @@ function installUnitTypes(k: LuaKernel, host: GameKernelHost, units: LuaUnits): 
     const t = resolve(checkString(T, 2));
     if (!t) return 0;
     k.pushUserdata(T, UNIT_TYPE_KEY, t);
+    return 1;
+  });
+}
+
+// --- races (lua_race.cpp) ---
+
+const RACE_KEY = 'race';
+
+/**
+ * `wesnoth.races`: a `race` userdata per `[race]` id (`luaW_pushracetable`), read-only. Upstream fills a plain
+ * table; here it is computed on lookup, so `pairs` over it sees nothing. `traits` lists the race's own
+ * `[trait]`s (the global ones are not in the snapshot); the name generators are not ported.
+ */
+function installRaces(k: LuaKernel, host: GameKernelHost): void {
+  const L = k.L;
+  const raceAt = (T: LuaState, idx: number): WmlConfig => {
+    const id = k.userdata<string>(T, idx, RACE_KEY);
+    const cfg = id === undefined ? undefined : host.ctx().raceConfigs?.().get(id);
+    if (!cfg) return typeError(T, idx, 'race');
+    return cfg;
+  };
+  const getters: Record<string, (T: LuaState, cfg: WmlConfig) => void> = {
+    id: (T, c) => pushString(T, c.getString('id')),
+    name: (T, c) => k.pushScalar(T, c.getRaw('name') ?? c.getRaw('male_name') ?? ''),
+    male_name: (T, c) => k.pushScalar(T, c.getRaw('male_name') ?? c.getRaw('name') ?? ''),
+    female_name: (T, c) => k.pushScalar(T, c.getRaw('female_name') ?? c.getRaw('name') ?? ''),
+    plural_name: (T, c) => k.pushScalar(T, c.getRaw('plural_name') ?? ''),
+    description: (T, c) => k.pushScalar(T, c.getRaw('description') ?? ''),
+    num_traits: (T, c) => lua.lua_pushinteger(T, c.getNumber('num_traits', 0)),
+    ignore_global_traits: (T, c) => lua.lua_pushboolean(T, c.getBoolean('ignore_global_traits', false)),
+    undead_variation: (T, c) => pushString(T, c.getString('undead_variation', '')),
+    __cfg: (T, c) => k.pushConfig(T, c),
+    traits: (T, c) => {
+      lua.lua_newtable(T);
+      for (const trait of c.children('trait')) {
+        pushString(T, trait.getString('id'));
+        k.pushConfig(T, trait);
+        lua.lua_rawset(T, -3);
+      }
+    },
+  };
+  lauxlib.luaL_newmetatable(L, to_luastring(RACE_KEY));
+  setFuncs(L, {
+    __index: (T) => {
+      const cfg = raceAt(T, 1);
+      const key = checkString(T, 2);
+      const get = getters[key];
+      if (!get) return 0;
+      get(T, cfg);
+      return 1;
+    },
+    __tostring: (T) => {
+      pushString(T, `race: <${raceAt(T, 1).getString('id')}>`);
+      return 1;
+    },
+  });
+  pushString(L, RACE_KEY);
+  lua.lua_setfield(L, -2, to_luastring('__metatable'));
+  lua.lua_pop(L, 1);
+  pushTableProxy(k, ['wesnoth'], 'races', 'races', (T) => {
+    const id = checkString(T, 2);
+    if (!host.ctx().raceConfigs?.().has(id)) return 0;
+    k.pushUserdata(T, RACE_KEY, id);
     return 1;
   });
 }

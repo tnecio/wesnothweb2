@@ -335,6 +335,8 @@ export interface GameBoardSnapshot {
    * comment. Optional, same backward-compatibility reason as `terrainFlags`.
    */
   unitTypeConfigs?: Record<string, WmlConfigJson>;
+  /** Phase 29: every `[race]`'s config, by id (`wesnoth.races`). */
+  raceConfigs?: Record<string, WmlConfigJson>;
   /**
    * The real `[units][weapon_specials]` registry (id -> that special's own
    * tag name + config, e.g. `poison` -> `{tag: "poison", config: [poison]

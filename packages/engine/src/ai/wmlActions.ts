@@ -20,6 +20,8 @@ export interface AiWmlHooks {
   modifyAi(side: number, action: ModifyAiActionKind, path: string, cfg: WmlConfig | undefined): void;
   /** `[modify_side]`'s `[ai]` child(ren) -- every other `[modify_side]` field (`team_name=`, `controller=`, ...) is handled by the caller's own existing side-field logic, not here. */
   appendSideAi(side: number, cfg: WmlConfig): void;
+  /** `[modify_side][ai]` naming an `ai_algorithm=`: the side's AI replaced by these blocks. */
+  switchSideAi(side: number, cfgs: readonly WmlConfig[]): void;
   microAi(side: number, cfg: WmlConfig): void;
 }
 
@@ -67,13 +69,12 @@ export function registerAiWmlActions(registry: ActionRegistry): void {
       if (cfg.hasAttribute('gold')) team.gold = cfg.getNumber('gold');
       if (cfg.hasAttribute('income')) team.income = cfg.getNumber('income');
 
-      for (const aiCfg of cfg.children('ai')) {
-        if (!ctx.ai) {
-          ctx.log('warn', '[modify_side][ai]: no AI engine loaded for this session -- ignored');
-          continue;
-        }
-        ctx.ai.appendSideAi(side, aiCfg);
-      }
+      // modify_side.lua: an `[ai]` naming `ai_algorithm=` replaces the side's AI with the blocks (`switch_ai`);
+      // otherwise each is appended to it (`append_ai`).
+      const ais = cfg.children('ai');
+      if (ais.length > 0 && !ctx.ai) ctx.log('warn', '[modify_side][ai]: no AI engine loaded for this session -- ignored');
+      else if (ais.some((a) => a.hasAttribute('ai_algorithm'))) ctx.ai!.switchSideAi(side, ais);
+      else for (const aiCfg of ais) ctx.ai!.appendSideAi(side, aiCfg);
     }
   });
 

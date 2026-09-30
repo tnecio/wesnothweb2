@@ -101,6 +101,11 @@ export class AiComposite {
     return this.stages;
   }
 
+  /** `ai_composite::add_stage`: appended after the others. */
+  addStage(stage: Stage): void {
+    this.stages.push(stage);
+  }
+
   /** Runs every stage in order, stopping immediately if a scenario-ending event fired mid-turn. */
   playTurn(): void {
     for (const stage of this.stages) {

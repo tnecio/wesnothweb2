@@ -72,6 +72,14 @@ function findScenarios() {
       if (m) found.push({ id: m[1], campaignDirName: camp, arg: path.relative(repoRoot, f) });
     }
   }
+  // Phase 29: upstream's AI test scenarios (`[test]`s), filed together as `ai_test`.
+  for (const dir of ['wesnoth/data/ai/scenarios', 'wesnoth/data/ai/micro_ais/scenarios']) {
+    for (const f of fs.readdirSync(path.join(repoRoot, dir)).filter((n) => n.endsWith('.cfg'))) {
+      const file = path.join(repoRoot, dir, f);
+      const m = /^\s*id\s*=\s*"?([\w-]+)"?\s*$/m.exec(fs.readFileSync(file, 'utf8'));
+      if (m) found.push({ id: m[1], campaignDirName: 'ai_test', arg: path.relative(repoRoot, file) });
+    }
+  }
   return found;
 }
 
@@ -99,6 +107,8 @@ function inputsHash() {
     'apps/web/public/campaigns.json',
     'apps/web/scenario-list.json',
     'synthetic-campaigns',
+    'wesnoth/data/ai/scenarios',
+    'wesnoth/data/ai/micro_ais/scenarios',
   ]) add(path.join(repoRoot, p));
   // The checked-out submodule's commit when it is its own repository (a local checkout, or CI's sparse clone);
   // otherwise the commit the superproject pins. (`git -C` on a plain directory would report the superproject.)

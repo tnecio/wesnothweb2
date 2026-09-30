@@ -214,6 +214,9 @@ export function getActiveAbilities(board: GameBoard, receiver: Unit, tag: string
 
   for (const owner of board.allUnits()) {
     if (owner === receiver || owner.incapacitated) continue;
+    // `foreach_distant_active_ability`: the owner's widest `[affect_adjacent] radius=` for this tag, checked first.
+    const radius = owner.maxAbilityRadius(tag);
+    if (!radius || distanceBetween(owner.location, at) > radius) continue;
     for (const entry of owner.abilities) {
       if (entry.tag !== tag) continue;
       if (!entry.config.allChildren().some((c) => c.tag === 'affect_adjacent')) continue;

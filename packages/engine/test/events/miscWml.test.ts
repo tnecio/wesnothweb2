@@ -501,3 +501,71 @@ describe('[store_map_dimensions]', () => {
     expect([vars.get('map_size.width'), vars.get('map_size.height'), vars.get('map_size.border_size')]).toEqual([4, 3, 1]);
   });
 });
+
+describe('[set_variables] (set_variables.lua)', () => {
+  const arr = (vars: VariableStore, name: string, key: string) =>
+    Array.from({ length: vars.arrayLength(name) }, (_, i) => vars.get(`${name}[${i}].${key}`));
+  const seed = `
+    [set_variables]
+      name=list
+      [value]
+        k=a
+      [/value]
+      [value]
+        k=b
+      [/value]
+      [value]
+        k=c
+      [/value]
+    [/set_variables]`;
+
+  it('[split] makes one element per piece, spaces stripped -- SCATTER_UNITS', () => {
+    const { vars } = setup(`
+      [set_variables]
+        name=types
+        [split]
+          list="Soulless, Skeleton,,Skeleton Archer"
+          key=type
+          separator=,
+          remove_empty=yes
+        [/split]
+      [/set_variables]`);
+    expect(arr(vars, 'types', 'type')).toEqual(['Soulless', 'Skeleton', 'Skeleton Archer']);
+  });
+
+  it('[literal] is not substituted, [value] is, all the way down', () => {
+    const { vars } = setup(`
+      [set_variable]
+        name=who
+        value=Kai
+      [/set_variable]
+      [set_variables]
+        name=out
+        [literal]
+          text=$who
+        [/literal]
+        [value]
+          text=$who
+          [inner]
+            text=$who
+          [/inner]
+        [/value]
+      [/set_variables]`);
+    expect(arr(vars, 'out', 'text')).toEqual(['$who', 'Kai']);
+    expect(vars.get('out[1].inner.text')).toBe('Kai');
+  });
+
+  it('modes: append, merge, explicit index, insert, to_variable', () => {
+    const run = (op: string) => setup(`${seed}\n${op}`).vars;
+    expect(arr(run(`[set_variables]\nname=list\nmode=append\n[value]\nk=d\n[/value]\n[/set_variables]`), 'list', 'k')).toEqual(['a', 'b', 'c', 'd']);
+    const merged = run(`[set_variables]\nname=list\nmode=merge\n[value]\nz=1\n[/value]\n[value]\n__remove=yes\n[/value]\n[/set_variables]`);
+    expect(arr(merged, 'list', 'k')).toEqual(['a', 'c']);
+    expect(merged.get('list[0].z')).toBe(1);
+    expect(arr(run(`[set_variables]\nname=list[1]\nmode=replace\n[value]\nk=X\n[/value]\n[/set_variables]`), 'list', 'k')).toEqual(['a', 'X', 'c']);
+    expect(arr(run(`[set_variables]\nname=list[1]\nmode=insert\n[value]\nk=X\n[/value]\n[/set_variables]`), 'list', 'k')).toEqual(['a', 'X', 'b', 'c']);
+    expect(arr(run(`[set_variables]\nname=list\nmode=insert\n[value]\nk=X\n[/value]\n[/set_variables]`), 'list', 'k')).toEqual(['X', 'a', 'b', 'c']);
+    expect(arr(run(`[set_variables]\nname=copy\nto_variable=list\n[/set_variables]`), 'copy', 'k')).toEqual(['a', 'b', 'c']);
+    // replace with no data leaves the array as it was (wml.merge only clears the tags it merges in)
+    expect(arr(run(`[set_variables]\nname=list\n[/set_variables]`), 'list', 'k')).toEqual(['a', 'b', 'c']);
+  });
+});

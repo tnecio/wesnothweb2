@@ -2,7 +2,8 @@
  * `wesnoth.paths` and `wesnoth.simulate_combat` (`game_lua_kernel.cpp`: `intf_find_reach`, `intf_find_path`,
  * `intf_find_vacant_tile`, `intf_simulate_combat`), on the engine's own pathfinder and battle simulation.
  */
-import { distanceBetween, type Location } from '@wesnothweb2/engine/src/model/Location.js';
+import { distanceBetween, Location as LocationClass, type Location } from '@wesnothweb2/engine/src/model/Location.js';
+import { createJammingMap, unitVisionPath } from '@wesnothweb2/engine/src/actions/vision.js';
 import type { Unit } from '@wesnothweb2/engine/src/model/Unit.js';
 import { reachableHexes, findVacantTile, ShortestPathCalculator } from '@wesnothweb2/engine/src/pathfind/pathfind.js';
 import { aStarSearch, type CostCalculator } from '@wesnothweb2/engine/src/pathfind/astar.js';
@@ -187,7 +188,35 @@ export function installPaths(k: LuaKernel, host: GameKernelHost, units: LuaUnits
       return 2;
     },
   });
-  for (const name of ['find_cost_map', 'find_vision_range']) k.unported(['wesnoth', 'paths', name]);
+  // `intf_find_vision_range`: `vision_path` with the side's jamming map; destinations, then edges with -1.
+  k.define(['wesnoth', 'paths', 'find_vision_range'], (T) => {
+    let unit: Unit;
+    if (lua.lua_isuserdata(T, 1)) unit = units.check(T, 1);
+    else {
+      const found = ctx().board.unitAt(k.checkLocation(T, 1));
+      if (!found) return argError(T, 1, 'unit not found');
+      unit = found;
+    }
+    const board = ctx().board;
+    const team = board.getTeam(unit.side);
+    const res = unitVisionPath(board, unit, unit.location, team ? createJammingMap(board, team) : new Map());
+    const rows: Array<[number, number, number]> = res.destinations.values().map((d) => [d.curr.wmlX, d.curr.wmlY, d.moveLeft]);
+    for (const key of res.edges) {
+      const loc = LocationClass.fromKey(key);
+      rows.push([loc.wmlX, loc.wmlY, -1]);
+    }
+    lua.lua_createtable(T, rows.length, 0);
+    rows.forEach((row, i) => {
+      k.pushNamedTuple(T, ['x', 'y', 'vision_left']);
+      row.forEach((v, j) => {
+        lua.lua_pushinteger(T, v);
+        lua.lua_rawseti(T, -2, j + 1);
+      });
+      lua.lua_rawseti(T, -2, i + 1);
+    });
+    return 1;
+  });
+  k.unported(['wesnoth', 'paths', 'find_cost_map']);
 
   k.define(['wesnoth', 'simulate_combat'], (T) => {
     let arg = 1;

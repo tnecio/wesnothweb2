@@ -1665,6 +1665,9 @@ export class GameSession {
       const json = this.snapshot.unitTypeConfigs?.[id];
       return json ? WmlConfig.fromJSON(json) : undefined;
     };
+    let races: Map<string, WmlConfig> | undefined;
+    this.eventPump.ctx.raceConfigs = () =>
+      (races ??= new Map(Object.entries(this.snapshot.raceConfigs ?? {}).map(([id, json]) => [id, WmlConfig.fromJSON(json)])));
     this.eventPump.ctx.setTurnNumber = (turn) => {
       this.turnNumber = turn;
       this.eventPump.ctx.variables.set('turn_number', turn);
@@ -1730,6 +1733,7 @@ export class GameSession {
     const aiWmlHooks: AiWmlHooks = {
       modifyAi: (side, action, path, cfg) => this.aiManager.modifyAi(side, action, path, cfg),
       appendSideAi: (side, cfg) => this.aiManager.appendSideAi(side, cfg),
+      switchSideAi: (side, cfgs) => this.aiManager.switchSideAi(side, cfgs),
       microAi: (side, cfg) => this.aiManager.applyMicroAi(side, cfg),
     };
     this.eventPump.ctx.ai = aiWmlHooks;

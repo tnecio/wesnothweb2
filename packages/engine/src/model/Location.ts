@@ -172,8 +172,11 @@ export class Location {
 
   /** Stable string key for use in Map/Set, e.g. `GameBoard`'s unit-by-location index. */
   key(): string {
-    return `${this.x},${this.y}`;
+    return (this.#key ??= `${this.x},${this.y}`);
   }
+
+  // A private field, so it stays out of spreads, JSON and deep equality.
+  #key: string | undefined;
 
   static fromKey(key: string): Location {
     const [x, y] = key.split(',').map(Number);

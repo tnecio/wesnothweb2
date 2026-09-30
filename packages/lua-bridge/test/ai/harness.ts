@@ -89,6 +89,7 @@ export function makeAiGame(rows: readonly string[], units: readonly UnitSpec[], 
   pump.ctx.ai = {
     modifyAi: (side, action, path, cfg) => void manager.modifyAi(side, action, path, cfg),
     appendSideAi: (side, cfg) => manager.appendSideAi(side, cfg),
+    switchSideAi: (side, cfgs) => manager.switchSideAi(side, cfgs),
     microAi: (side, cfg) => manager.applyMicroAi(side, cfg),
   };
   return {
