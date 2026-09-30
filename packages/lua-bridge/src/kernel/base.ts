@@ -246,12 +246,13 @@ export function installBase(k: LuaKernel, gameConfig: () => GameConfigValues): v
     },
     named_tuple: (T) => {
       if (!lua.lua_istable(T, 1)) return typeError(T, 1, 'table');
-      const names = checkStringArray(T, 2);
+      const names = k.tupleNames(T, 2);
       const len = lauxlib.luaL_len(T, 1);
       k.pushNamedTuple(T, names);
       for (let i = 1; i <= Math.max(len, names.length); i++) {
         lua.lua_geti(T, 1, i);
-        lua.lua_seti(T, -2, i);
+        // The tuple's own __newindex rawsets an integer key, so rawseti is the same, without the metamethod call.
+        lua.lua_rawseti(T, -2, i);
       }
       return 1;
     },

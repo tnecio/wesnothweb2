@@ -23,6 +23,11 @@ export { lua, lauxlib, to_luastring, type LuaState };
 
 export type LuaCFunction = (L: LuaState) => number;
 
+interface TupleNameNode {
+  readonly next: Map<object, TupleNameNode>;
+  readonly names: string[];
+}
+
 /** Where the kernel's messages go (`lg::log_domain` scripting/lua, and the Lua console's `cmd_log_`). */
 export type KernelLog = (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
 
@@ -36,10 +41,24 @@ export type VirtualDataDir = Readonly<Record<string, string>>;
 export const TSTRING_KEY = 'translatable string';
 export const GETTEXT_KEY = 'gettext';
 const NAMED_TUPLE_BASE = 'named tuple';
+const XY_NAMES: readonly string[] = ['x', 'y'];
+
+/** Interned Lua strings for keys used over and over (field names, metatable names). */
+const internedStrings = new Map<string, Uint8Array>();
+export function ls(s: string): Uint8Array {
+  let v = internedStrings.get(s);
+  if (!v) {
+    v = to_luastring(s) as Uint8Array;
+    internedStrings.set(s, v);
+  }
+  return v;
+}
 
 export class LuaKernel {
   readonly L: LuaState;
   private readonly dirs: Map<string, { dirs: Set<string>; files: Set<string> }>;
+  /** Registry references of metatables by name, so pushing or testing a userdata needs no string lookup. */
+  private readonly metatableRefs = new Map<string, number>();
 
   constructor(
     readonly files: VirtualDataDir,
@@ -136,17 +155,40 @@ export class LuaKernel {
 
   // --- userdata ---
 
+  /** The registry reference of the metatable registered as `name` (`luaL_newmetatable`), or undefined before it is. */
+  private metatableRef(T: LuaState, name: string): number | undefined {
+    let ref = this.metatableRefs.get(name);
+    if (ref === undefined) {
+      if (lauxlib.luaL_getmetatable(T, ls(name)) === lua.LUA_TNIL) {
+        lua.lua_pop(T, 1);
+        return undefined;
+      }
+      const created: number = lauxlib.luaL_ref(T, lua.LUA_REGISTRYINDEX);
+      this.metatableRefs.set(name, created);
+      return created;
+    }
+    return ref;
+  }
+
   /** A full userdata carrying `value`, with the metatable registered as `metatable`. */
   pushUserdata(T: LuaState, metatable: string, value: unknown): void {
     const data = lua.lua_newuserdata(T, 0) as { value?: unknown };
     data.value = value;
-    lauxlib.luaL_setmetatable(T, to_luastring(metatable));
+    const ref = this.metatableRef(T, metatable);
+    if (ref === undefined) return void lauxlib.luaL_setmetatable(T, ls(metatable));
+    lua.lua_rawgeti(T, lua.LUA_REGISTRYINDEX, ref);
+    lua.lua_setmetatable(T, -2);
   }
 
   /** The value of a userdata with metatable `metatable` at `idx` (`luaL_testudata`), else undefined. */
   userdata<V>(T: LuaState, idx: number, metatable: string): V | undefined {
-    const data = lauxlib.luaL_testudata(T, idx, to_luastring(metatable)) as { value?: V } | null;
-    return data ? data.value : undefined;
+    if (lua.lua_type(T, idx) !== lua.LUA_TUSERDATA) return undefined;
+    const ref = this.metatableRef(T, metatable);
+    if (ref === undefined || !lua.lua_getmetatable(T, idx)) return undefined;
+    lua.lua_rawgeti(T, lua.LUA_REGISTRYINDEX, ref);
+    const same = lua.lua_rawequal(T, -1, -2);
+    lua.lua_pop(T, 2);
+    return same ? (lua.lua_touserdata(T, idx) as { value?: V }).value : undefined;
   }
 
   // --- translatable strings (lua_common.cpp) ---
@@ -201,14 +243,28 @@ export class LuaKernel {
   /** `lua_named_tuple_builder::push`: an empty table with the tuple metatable for `names`. */
   pushNamedTuple(T: LuaState, names: readonly string[]): void {
     lua.lua_createtable(T, names.length, 0);
+    const known = this.tupleRefByNames.get(names);
+    if (known !== undefined) {
+      lua.lua_rawgeti(T, lua.LUA_REGISTRYINDEX, known);
+      lua.lua_setmetatable(T, -2);
+      return;
+    }
     const key = `${NAMED_TUPLE_BASE}(${names.join(', ')})`;
+    const ref = this.metatableRefs.get(key);
+    if (ref !== undefined) {
+      this.tupleRefByNames.set(names, ref);
+      lua.lua_rawgeti(T, lua.LUA_REGISTRYINDEX, ref);
+      lua.lua_setmetatable(T, -2);
+      return;
+    }
     if (lauxlib.luaL_newmetatable(T, to_luastring(key)) !== 0) {
       const set = (name: string, fn: LuaCFunction): void => {
         lua.lua_pushcfunction(T, fn);
         lua.lua_setfield(T, -2, to_luastring(name));
       };
-      set('__index', namedTupleGet);
-      set('__newindex', namedTupleSet);
+      // The accessors close over the names (upstream reads them back from `__names` on every access).
+      set('__index', (U) => namedTupleGet(U, names));
+      set('__newindex', (U) => namedTupleSet(U, names));
       set('__dir', (U) => {
         lauxlib.luaL_getmetafield(U, 1, to_luastring('__names'));
         return 1;
@@ -220,14 +276,50 @@ export class LuaKernel {
       pushStringArray(T, names);
       lua.lua_setfield(T, -2, to_luastring('__names'));
     }
+    lua.lua_pushvalue(T, -1);
+    const created: number = lauxlib.luaL_ref(T, lua.LUA_REGISTRYINDEX);
+    this.metatableRefs.set(key, created);
+    this.tupleRefByNames.set(names, created);
     lua.lua_setmetatable(T, -2);
   }
+
+  /** Tuple metatables by the names array object (the trie's, or a constant), to skip building the key. */
+  private readonly tupleRefByNames = new WeakMap<readonly string[], number>();
+
+  /**
+   * `named_tuple`'s names argument: short Lua strings are interned, so a names list is looked up by the string
+   * objects themselves (no decoding) in a small trie of the lists seen so far.
+   */
+  tupleNames(T: LuaState, idx: number): readonly string[] {
+    if (!lua.lua_istable(T, idx)) return checkStringArray(T, idx);
+    const n = lua.lua_rawlen(T, idx);
+    let node = this.tupleNameTrie;
+    for (let i = 1; i <= n; i++) {
+      if (lua.lua_rawgeti(T, idx, i) !== lua.LUA_TSTRING) {
+        lua.lua_pop(T, 1);
+        return checkStringArray(T, idx);
+      }
+      const key = lua.lua_tostring(T, -1) as object;
+      lua.lua_pop(T, 1);
+      let next = node.next.get(key);
+      if (!next) {
+        lua.lua_rawgeti(T, idx, i);
+        next = { next: new Map(), names: [...(node.names ?? []), lua.lua_tojsstring(T, -1)] };
+        lua.lua_pop(T, 1);
+        node.next.set(key, next);
+      }
+      node = next;
+    }
+    return node.names ?? [];
+  }
+
+  private readonly tupleNameTrie: TupleNameNode = { next: new Map(), names: [] };
 
   // --- locations ---
 
   /** `luaW_pushlocation`: a named tuple `(x, y)`, 1-based. */
   pushLocation(T: LuaState, loc: Location): void {
-    this.pushNamedTuple(T, ['x', 'y']);
+    this.pushNamedTuple(T, XY_NAMES);
     lua.lua_pushinteger(T, loc.wmlX);
     lua.lua_rawseti(T, -2, 1);
     lua.lua_pushinteger(T, loc.wmlY);
@@ -244,7 +336,7 @@ export class LuaKernel {
     const type = lua.lua_type(T, idx);
     if (type === lua.LUA_TTABLE || type === lua.LUA_TUSERDATA) {
       const read = (field: string | number): number | undefined => {
-        if (typeof field === 'string') lua.lua_getfield(T, idx, to_luastring(field));
+        if (typeof field === 'string') lua.lua_getfield(T, idx, ls(field));
         else lua.lua_rawgeti(T, idx, field);
         const v = lua.lua_isinteger(T, -1) || (lua.lua_type(T, -1) === lua.LUA_TNUMBER && Number.isInteger(lua.lua_tonumber(T, -1)))
           ? Number(lua.lua_tonumber(T, -1))
@@ -343,7 +435,7 @@ export class LuaKernel {
     });
     for (const key of cfg.attributeNames()) {
       this.pushScalar(T, cfg.getRaw(key));
-      lua.lua_setfield(T, -2, to_luastring(key));
+      lua.lua_setfield(T, -2, ls(key));
     }
   }
 
@@ -541,9 +633,9 @@ function namedTupleNames(T: LuaState, idx: number): string[] {
   return names;
 }
 
-function namedTupleGet(T: LuaState): number {
+function namedTupleGet(T: LuaState, names: readonly string[]): number {
   if (lua.lua_type(T, 2) === lua.LUA_TSTRING) {
-    const i = namedTupleNames(T, 1).indexOf(lua.lua_tojsstring(T, 2));
+    const i = names.indexOf(lua.lua_tojsstring(T, 2));
     if (i >= 0) {
       lua.lua_rawgeti(T, 1, i + 1);
       return 1;
@@ -552,9 +644,9 @@ function namedTupleGet(T: LuaState): number {
   return 0;
 }
 
-function namedTupleSet(T: LuaState): number {
+function namedTupleSet(T: LuaState, names: readonly string[]): number {
   if (lua.lua_type(T, 2) === lua.LUA_TSTRING) {
-    const i = namedTupleNames(T, 1).indexOf(lua.lua_tojsstring(T, 2));
+    const i = names.indexOf(lua.lua_tojsstring(T, 2));
     if (i >= 0) {
       lua.lua_pushvalue(T, 3);
       lua.lua_rawseti(T, 1, i + 1);

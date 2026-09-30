@@ -23,38 +23,20 @@
  * order), the matrix is summed back down to independent per-combatant HP
  * distributions (`hpDist`) for the next round or for the final result.
  *
- * ## Deliberate simplifications vs. upstream (see module doc comments below
- * for the specifics)
+ * ## As upstream (Phase 29)
  *
- *  - **Dense matrices, not upstream's sparse "used rows/cols" bookkeeping.**
- *    Upstream tracks which rows/columns of each plane are actually nonzero
- *    purely as a *performance* optimization (the AI evaluates huge numbers
- *    of hypothetical attacks). This port always processes the full
- *    `rows x cols` grid; every transfer already no-ops on a zero source
- *    (mirroring `xfer`'s `if (src != 0.0)` guard), so this is a pure
- *    constant-factor slowdown, not a correctness difference -- verified by
- *    literally replicating the same row/column *traversal order*
- *    (ascending/descending based on drain sign) that upstream's comments
- *    say is what actually matters for correctness when a plane transfers
- *    to itself.
- *  - **No Monte Carlo fallback.** Upstream switches to a 5000-iteration
- *    Monte Carlo simulation (`monte_carlo_combat_matrix`) once
- *    `fight_complexity() > 50000` (roughly: swarm-slice-count *
- *    maxHpA * maxHpB, doubled per slow-capable side) to keep the AI's combat
- *    evaluation fast. This port always runs the exact probability
- *    calculation. This is *slower* on very-high-HP combats (e.g. two
- *    100+-HP swarm units both slowed) but never less correct -- exact
- *    calculation is strictly more precise than the Monte Carlo path it
- *    replaces, and nothing in this project's scope yet needs the AI-scale
- *    performance that fallback exists for.
- *  - **No fast paths.** Upstream's `do_fight()` special-cases "at most one
- *    strike each" (`one_strike_fight`) and "nobody can possibly die this
- *    exchange" (`no_death_fight`) with closed-form Pascal's-triangle-style
- *    math, purely for speed -- `complex_fight()`'s general matrix approach
- *    produces identical results for those cases (upstream's own code
- *    comments and its `#if 0`-guarded self-check in `combatant::fight`
- *    confirm this). This port always takes the general `complexFight` path.
+ * The matrix tracks which rows and columns hold probability, so a blow only
+ * touches those; `do_fight` takes the closed-form paths for "at most one
+ * strike each" and "nobody can die this exchange"; and a fight whose
+ * `fight_complexity` exceeds 50000 is simulated 5000 times (Monte Carlo)
+ * instead, drawing from the prediction generator (`setPredictionRandom`,
+ * upstream's `rng::default_instance()` -- never the game's synced RNG). The
+ * AI evaluates a great many hypothetical fights; without these it was most
+ * of an AI turn.
  */
+
+import { RngDeterministic } from '../rng/RngDeterministic.js';
+import { MtRng } from '../rng/MtRng.js';
 
 /** One combatant's effective stats for a single simulated combat, mirroring `battle_context_unit_stats`. */
 export interface BattleContextUnitStats {
@@ -170,8 +152,10 @@ function splitSummary(stats: BattleContextUnitStats, summary: Summary): CombatSl
 }
 
 // ---------------------------------------------------------------------------
-// ProbMatrix: the dense 4-plane probability grid. See module doc comment for
-// why this is dense rather than upstream's sparse "used rows/cols" version.
+// ProbMatrix: the 4-plane probability grid, with upstream's bookkeeping of
+// which rows and columns of each plane hold probability (`used_rows_`/
+// `used_cols_`), so each blow touches only those -- the AI evaluates a great
+// many hypothetical fights.
 // ---------------------------------------------------------------------------
 
 const NEITHER_SLOWED = 0;
@@ -182,18 +166,15 @@ const NUM_PLANES = 4;
 
 class ProbMatrix {
   private readonly planes: (Float64Array | null)[] = [null, null, null, null];
-  private readonly rows: number;
-  private readonly cols: number;
+  protected readonly rows: number;
+  protected readonly cols: number;
+  /** `used_rows_`/`used_cols_` as flags: a set bit is a row/column that is (or was) nonzero in that plane. Row/column 0 always is. */
+  private readonly usedRows: Uint8Array[];
+  private readonly usedCols: Uint8Array[];
 
   /**
    * `aMax`/`bMax` are max-HP values, NOT row/column counts -- mirrors
-   * `prob_matrix::prob_matrix`'s `rows_(a_max + 1), cols_(b_max + 1)`
-   * member-init-list exactly. Representing HP states 0..maxHp inclusive
-   * needs maxHp+1 slots; the +1 must happen here, not at each call site
-   * (a prior version of this port passed maxHp straight through as `rows`/
-   * `cols`, silently dropping the top HP value and shifting every other
-   * outcome down by one -- caught by
-   * test/actions/attackPrediction.test.ts's hand-computed binomial cases).
+   * `prob_matrix::prob_matrix`'s `rows_(a_max + 1), cols_(b_max + 1)`.
    */
   constructor(
     aMax: number,
@@ -207,6 +188,14 @@ class ProbMatrix {
   ) {
     this.rows = aMax + 1;
     this.cols = bMax + 1;
+    const aCur = Math.min(aCurIn, this.rows - 1);
+    const bCur = Math.min(bCurIn, this.cols - 1);
+    this.usedRows = Array.from({ length: NUM_PLANES }, () => new Uint8Array(this.rows));
+    this.usedCols = Array.from({ length: NUM_PLANES }, () => new Uint8Array(this.cols));
+    for (let p = 0; p < NUM_PLANES; p++) {
+      this.usedRows[p]![0] = 1;
+      this.usedCols[p]![0] = 1;
+    }
     const needASlowed = needASlowedIn || aInitial[1].length > 0;
     const needBSlowed = needBSlowedIn || bInitial[1].length > 0;
 
@@ -215,15 +204,10 @@ class ProbMatrix {
     this.planes[B_SLOWED] = needBSlowed ? this.newPlane() : null;
     this.planes[BOTH_SLOWED] = needASlowed && needBSlowed ? this.newPlane() : null;
 
-    const aCur = Math.min(aCurIn, this.rows - 1);
-    const bCur = Math.min(bCurIn, this.cols - 1);
-
     this.initializePlane(NEITHER_SLOWED, aCur, bCur, aInitial[0], bInitial[0]);
     if (aInitial[1].length > 0) this.initializePlane(A_SLOWED, aCur, bCur, aInitial[1], bInitial[0]);
     if (bInitial[1].length > 0) this.initializePlane(B_SLOWED, aCur, bCur, aInitial[0], bInitial[1]);
-    if (aInitial[1].length > 0 && bInitial[1].length > 0) {
-      this.initializePlane(BOTH_SLOWED, aCur, bCur, aInitial[1], bInitial[1]);
-    }
+    if (aInitial[1].length > 0 && bInitial[1].length > 0) this.initializePlane(BOTH_SLOWED, aCur, bCur, aInitial[1], bInitial[1]);
   }
 
   private newPlane(): Float64Array {
@@ -241,170 +225,190 @@ class ProbMatrix {
     return this.cols;
   }
 
-  private val(p: number, r: number, c: number): number {
+  /** The used rows of plane `p`, ascending (a snapshot, like upstream's cached vector). */
+  protected usedRowList(p: number): number[] {
+    const flags = this.usedRows[p]!;
+    const out: number[] = [];
+    for (let i = 0; i < flags.length; i++) if (flags[i]) out.push(i);
+    return out;
+  }
+  protected usedColList(p: number): number[] {
+    const flags = this.usedCols[p]!;
+    const out: number[] = [];
+    for (let i = 0; i < flags.length; i++) if (flags[i]) out.push(i);
+    return out;
+  }
+
+  protected val(p: number, r: number, c: number): number {
     return this.planes[p]![r * this.cols + c]!;
-  }
-  private setVal(p: number, r: number, c: number, v: number): void {
-    this.planes[p]![r * this.cols + c] = v;
-  }
-  private addVal(p: number, r: number, c: number, d: number): void {
-    const plane = this.planes[p]!;
-    const idx = r * this.cols + c;
-    plane[idx] = plane[idx]! + d;
   }
 
   private initializePlane(plane: number, aCur: number, bCur: number, aInitial: number[], bInitial: number[]): void {
     if (aInitial.length > 0) {
       const rowCount = Math.min(aInitial.length, this.rows);
       for (let row = 0; row < rowCount; row++) {
-        if (aInitial[row] !== 0) this.initializeRow(plane, row, aInitial[row]!, bCur, bInitial);
+        if (aInitial[row] !== 0) {
+          this.usedRows[plane]![row] = 1;
+          this.initializeRow(plane, row, aInitial[row]!, bCur, bInitial);
+        }
       }
     } else {
+      this.usedRows[plane]![aCur] = 1;
       this.initializeRow(plane, aCur, 1.0, bCur, bInitial);
     }
   }
 
   private initializeRow(plane: number, row: number, rowProb: number, bCur: number, bInitial: number[]): void {
+    const values = this.planes[plane]!;
     if (bInitial.length > 0) {
       const colCount = Math.min(bInitial.length, this.cols);
       for (let col = 0; col < colCount; col++) {
-        if (bInitial[col] !== 0) this.addVal(plane, row, col, rowProb * bInitial[col]!);
+        if (bInitial[col] !== 0) {
+          this.usedCols[plane]![col] = 1;
+          values[row * this.cols + col] = rowProb * bInitial[col]!;
+        }
       }
     } else {
-      this.addVal(plane, row, bCur, rowProb);
+      this.usedCols[plane]![bCur] = 1;
+      values[row * this.cols + bCur] = rowProb;
     }
   }
 
   /** Mirrors the probability-weighted `xfer` overload. */
   private xferProb(dstPlane: number, srcPlane: number, rowDst: number, colDst: number, rowSrc: number, colSrc: number, prob: number): void {
-    const src = this.val(srcPlane, rowSrc, colSrc);
-    if (src !== 0.0) {
-      const diff = src * prob;
-      this.addVal(srcPlane, rowSrc, colSrc, -diff);
-      this.addVal(dstPlane, rowDst, colDst, diff);
+    const src = this.planes[srcPlane]!;
+    const srcIdx = rowSrc * this.cols + colSrc;
+    const v = src[srcIdx]!;
+    if (v !== 0.0) {
+      const diff = v * prob;
+      src[srcIdx] = v - diff;
+      const dst = this.planes[dstPlane]!;
+      const dstIdx = rowDst * this.cols + colDst;
+      if (dst[dstIdx] === 0.0) {
+        this.usedRows[dstPlane]![rowDst] = 1;
+        this.usedCols[dstPlane]![colDst] = 1;
+      }
+      dst[dstIdx] = dst[dstIdx]! + diff;
     }
   }
 
-  /** Mirrors the all-or-nothing `xfer` overload (used by the levelup/petrify-distortion moves). */
+  /** Mirrors the all-or-nothing `xfer` overload. */
   private xferAll(dstPlane: number, srcPlane: number, rowDst: number, colDst: number, rowSrc: number, colSrc: number): void {
     if (dstPlane === srcPlane && rowDst === rowSrc && colDst === colSrc) return;
-    const src = this.val(srcPlane, rowSrc, colSrc);
-    if (src !== 0.0) {
-      this.addVal(dstPlane, rowDst, colDst, src);
-      this.setVal(srcPlane, rowSrc, colSrc, 0);
+    const src = this.planes[srcPlane]!;
+    const srcIdx = rowSrc * this.cols + colSrc;
+    const v = src[srcIdx]!;
+    if (v !== 0.0) {
+      const dst = this.planes[dstPlane]!;
+      const dstIdx = rowDst * this.cols + colDst;
+      if (dst[dstIdx] === 0.0) {
+        this.usedRows[dstPlane]![rowDst] = 1;
+        this.usedCols[dstPlane]![colDst] = 1;
+      }
+      dst[dstIdx] = dst[dstIdx]! + v;
+      src[srcIdx] = 0;
     }
   }
 
-  private shiftColsInRow(
-    dst: number,
-    src: number,
-    row: number,
-    damage: number,
-    prob: number,
-    drainmax: number,
-    drainConstant: number,
-    drainPercent: number,
-  ): void {
+  private shiftColsInRow(dst: number, src: number, row: number, cols: readonly number[], damage: number, prob: number, drainmax: number, drainConstant: number, drainPercent: number): void {
     const maxRow = this.rows - 1;
-    let col = 1;
-    for (; col < damage && col < this.cols; col++) {
-      const drainAmount = Math.trunc((col * drainPercent) / 100) + drainConstant;
-      const newRow = clamp(row + drainAmount, 1, maxRow);
-      this.xferProb(dst, src, newRow, 0, row, col, prob);
+    let x = 1;
+    for (; x < cols.length && cols[x]! < damage; x++) {
+      const drainAmount = Math.trunc((cols[x]! * drainPercent) / 100) + drainConstant;
+      this.xferProb(dst, src, clamp(row + drainAmount, 1, maxRow), 0, row, cols[x]!, prob);
     }
     const newRow = clamp(row + drainmax, 1, maxRow);
-    for (; col < this.cols; col++) {
-      this.xferProb(dst, src, newRow, col - damage, row, col, prob);
-    }
+    for (; x < cols.length; x++) this.xferProb(dst, src, newRow, cols[x]! - damage, row, cols[x]!, prob);
   }
 
   /** Mirrors `prob_matrix::shift_cols`: B (columns) takes damage. */
   shiftCols(dst: number, src: number, damage: number, prob: number, drainConstant: number, drainPercent: number): void {
     if (!this.planeUsed(src)) return;
     const drainmax = Math.trunc((drainPercent * damage) / 100) + drainConstant;
+    const rows = this.usedRowList(src);
+    const cols = this.usedColList(src);
     if (drainmax > 0) {
-      for (let row = this.rows - 1; row >= 1; row--) {
-        this.shiftColsInRow(dst, src, row, damage, prob, drainmax, drainConstant, drainPercent);
-      }
+      for (let x = rows.length - 1; x !== 0; x--) this.shiftColsInRow(dst, src, rows[x]!, cols, damage, prob, drainmax, drainConstant, drainPercent);
     } else {
-      for (let row = 1; row < this.rows; row++) {
-        this.shiftColsInRow(dst, src, row, damage, prob, drainmax, drainConstant, drainPercent);
-      }
+      for (let x = 1; x !== rows.length; x++) this.shiftColsInRow(dst, src, rows[x]!, cols, damage, prob, drainmax, drainConstant, drainPercent);
     }
   }
 
-  private shiftRowsInCol(
-    dst: number,
-    src: number,
-    col: number,
-    damage: number,
-    prob: number,
-    drainmax: number,
-    drainConstant: number,
-    drainPercent: number,
-  ): void {
+  private shiftRowsInCol(dst: number, src: number, col: number, rows: readonly number[], damage: number, prob: number, drainmax: number, drainConstant: number, drainPercent: number): void {
     const maxCol = this.cols - 1;
-    let row = 1;
-    for (; row < damage && row < this.rows; row++) {
-      const drainAmount = Math.trunc((row * drainPercent) / 100) + drainConstant;
-      const newCol = clamp(col + drainAmount, 1, maxCol);
-      this.xferProb(dst, src, 0, newCol, row, col, prob);
+    let x = 1;
+    for (; x < rows.length && rows[x]! < damage; x++) {
+      const drainAmount = Math.trunc((rows[x]! * drainPercent) / 100) + drainConstant;
+      this.xferProb(dst, src, 0, clamp(col + drainAmount, 1, maxCol), rows[x]!, col, prob);
     }
     const newCol = clamp(col + drainmax, 1, maxCol);
-    for (; row < this.rows; row++) {
-      this.xferProb(dst, src, row - damage, newCol, row, col, prob);
-    }
+    for (; x < rows.length; x++) this.xferProb(dst, src, rows[x]! - damage, newCol, rows[x]!, col, prob);
   }
 
   /** Mirrors `prob_matrix::shift_rows`: A (rows) takes damage. */
   shiftRows(dst: number, src: number, damage: number, prob: number, drainConstant: number, drainPercent: number): void {
     if (!this.planeUsed(src)) return;
     const drainmax = Math.trunc((drainPercent * damage) / 100) + drainConstant;
+    const rows = this.usedRowList(src);
+    const cols = this.usedColList(src);
     if (drainmax > 0) {
-      for (let col = this.cols - 1; col >= 1; col--) {
-        this.shiftRowsInCol(dst, src, col, damage, prob, drainmax, drainConstant, drainPercent);
-      }
+      for (let x = cols.length - 1; x !== 0; x--) this.shiftRowsInCol(dst, src, cols[x]!, rows, damage, prob, drainmax, drainConstant, drainPercent);
     } else {
-      for (let col = 1; col < this.cols; col++) {
-        this.shiftRowsInCol(dst, src, col, damage, prob, drainmax, drainConstant, drainPercent);
-      }
+      for (let x = 1; x !== cols.length; x++) this.shiftRowsInCol(dst, src, cols[x]!, rows, damage, prob, drainmax, drainConstant, drainPercent);
     }
   }
 
   moveColumn(dPlane: number, sPlane: number, dCol: number, sCol: number): void {
-    if (!this.planeUsed(sPlane)) return;
-    for (let row = 0; row < this.rows; row++) this.xferAll(dPlane, sPlane, row, dCol, row, sCol);
+    for (const row of this.usedRowList(sPlane)) this.xferAll(dPlane, sPlane, row, dCol, row, sCol);
   }
 
   moveRow(dPlane: number, sPlane: number, dRow: number, sRow: number): void {
-    if (!this.planeUsed(sPlane)) return;
-    for (let col = 0; col < this.cols; col++) this.xferAll(dPlane, sPlane, dRow, col, sRow, col);
+    for (const col of this.usedColList(sPlane)) this.xferAll(dPlane, sPlane, dRow, col, sRow, col);
   }
 
   /** Excludes row 0 (the dead state). */
   mergeCol(dPlane: number, sPlane: number, col: number, dRow: number): void {
-    if (!this.planeUsed(sPlane)) return;
-    for (let row = 1; row < this.rows; row++) this.xferAll(dPlane, sPlane, dRow, col, row, col);
+    for (const row of this.usedRowList(sPlane).slice(1)) this.xferAll(dPlane, sPlane, dRow, col, row, col);
   }
 
   mergeCols(dPlane: number, sPlane: number, dRow: number): void {
-    if (!this.planeUsed(sPlane)) return;
-    for (let row = 1; row < this.rows; row++) {
-      for (let col = 0; col < this.cols; col++) this.xferAll(dPlane, sPlane, dRow, col, row, col);
+    const cols = this.usedColList(sPlane);
+    for (const row of this.usedRowList(sPlane).slice(1)) {
+      for (const col of cols) this.xferAll(dPlane, sPlane, dRow, col, row, col);
     }
   }
 
   /** Excludes column 0. */
   mergeRow(dPlane: number, sPlane: number, row: number, dCol: number): void {
-    if (!this.planeUsed(sPlane)) return;
-    for (let col = 1; col < this.cols; col++) this.xferAll(dPlane, sPlane, row, dCol, row, col);
+    for (const col of this.usedColList(sPlane).slice(1)) this.xferAll(dPlane, sPlane, row, dCol, row, col);
   }
 
   mergeRows(dPlane: number, sPlane: number, dCol: number): void {
-    if (!this.planeUsed(sPlane)) return;
-    for (let row = 0; row < this.rows; row++) {
-      for (let col = 1; col < this.cols; col++) this.xferAll(dPlane, sPlane, row, dCol, row, col);
+    const cols = this.usedColList(sPlane).slice(1);
+    for (const row of this.usedRowList(sPlane)) {
+      for (const col of cols) this.xferAll(dPlane, sPlane, row, dCol, row, col);
     }
+  }
+
+  /** `prob_matrix::clear`: every value zero, only row/column 0 used. */
+  clear(): void {
+    for (let p = 0; p < NUM_PLANES; p++) {
+      if (!this.planeUsed(p)) continue;
+      this.planes[p]!.fill(0);
+      this.usedRows[p]!.fill(0);
+      this.usedCols[p]!.fill(0);
+      this.usedRows[p]![0] = 1;
+      this.usedCols[p]![0] = 1;
+    }
+  }
+
+  /** `prob_matrix::record_monte_carlo_result`. */
+  recordMonteCarloResult(aHp: number, bHp: number, aSlowed: boolean, bSlowed: boolean): void {
+    const plane = (aSlowed ? 1 : 0) | (bSlowed ? 2 : 0);
+    const values = this.planes[plane]!;
+    values[aHp * this.cols + bHp] = values[aHp * this.cols + bHp]! + 1;
+    this.usedRows[plane]![aHp] = 1;
+    this.usedCols[plane]![bHp] = 1;
   }
 
   /** What is the chance that an indicated combatant (one of them) is at zero? */
@@ -412,12 +416,8 @@ class ProbMatrix {
     let prob = 0;
     for (let p = 0; p < NUM_PLANES; p++) {
       if (!this.planeUsed(p)) continue;
-      if (checkB) {
-        for (let row = 0; row < this.rows; row++) prob += this.val(p, row, 0);
-      }
-      if (checkA) {
-        for (let col = 0; col < this.cols; col++) prob += this.val(p, 0, col);
-      }
+      if (checkB) for (const row of this.usedRowList(p)) prob += this.val(p, row, 0);
+      if (checkA) for (const col of this.usedColList(p)) prob += this.val(p, 0, col);
     }
     return prob;
   }
@@ -425,52 +425,48 @@ class ProbMatrix {
   rowSum(plane: number, row: number): number {
     if (!this.planeUsed(plane)) return 0;
     let sum = 0;
-    for (let col = 0; col < this.cols; col++) sum += this.val(plane, row, col);
+    for (const col of this.usedColList(plane)) sum += this.val(plane, row, col);
     return sum;
   }
 
   colSum(plane: number, col: number): number {
     if (!this.planeUsed(plane)) return 0;
     let sum = 0;
-    for (let row = 0; row < this.rows; row++) sum += this.val(plane, row, col);
+    for (const row of this.usedRowList(plane)) sum += this.val(plane, row, col);
     return sum;
   }
 
   sum(plane: number, rowSums: number[], colSums: number[]): void {
-    if (!this.planeUsed(plane)) return;
-    for (let row = 0; row < this.rows; row++) {
-      for (let col = 0; col < this.cols; col++) {
+    const cols = this.usedColList(plane);
+    for (const row of this.usedRowList(plane)) {
+      for (const col of cols) {
         const prob = this.val(plane, row, col);
-        rowSums[row] = (rowSums[row] ?? 0) + prob;
-        colSums[col] = (colSums[col] ?? 0) + prob;
+        rowSums[row] = rowSums[row]! + prob;
+        colSums[col] = colSums[col]! + prob;
       }
     }
   }
 }
 
-// ---------------------------------------------------------------------------
-// CombatMatrix: prob_matrix plus the combat-specific operations layered on
-// top (petrify-distortion removal, forced/conditional levelup).
-// ---------------------------------------------------------------------------
-
+/** `combat_matrix`: a `prob_matrix` that knows how blows move probability. */
 class CombatMatrix extends ProbMatrix {
   constructor(
-    private readonly aMaxHp: number,
-    private readonly bMaxHp: number,
+    protected readonly aMaxHp: number,
+    protected readonly bMaxHp: number,
     aHp: number,
     bHp: number,
     aSummary: Summary,
     bSummary: Summary,
-    private readonly aSlows: boolean,
-    private readonly bSlows: boolean,
-    private readonly aDamage: number,
-    private readonly bDamage: number,
-    private readonly aSlowDamage: number,
-    private readonly bSlowDamage: number,
-    private readonly aDrainPercent: number,
-    private readonly bDrainPercent: number,
-    private readonly aDrainConstant: number,
-    private readonly bDrainConstant: number,
+    protected readonly aSlows: boolean,
+    protected readonly bSlows: boolean,
+    protected readonly aDamage: number,
+    protected readonly bDamage: number,
+    protected readonly aSlowDamage: number,
+    protected readonly bSlowDamage: number,
+    protected readonly aDrainPercent: number,
+    protected readonly bDrainPercent: number,
+    protected readonly aDrainConstant: number,
+    protected readonly bDrainConstant: number,
   ) {
     // Note the inversion of the *_slows args, matching upstream's combat_matrix ctor comment.
     super(aMaxHp, bMaxHp, bSlows, aSlows, aHp, bHp, aSummary, bSummary);
@@ -547,48 +543,317 @@ class CombatMatrix extends ProbMatrix {
     summaryB[0] = new Array(this.numCols()).fill(0);
     if (this.planeUsed(A_SLOWED)) summaryA[1] = new Array(this.numRows()).fill(0);
     if (this.planeUsed(B_SLOWED)) summaryB[1] = new Array(this.numCols()).fill(0);
-
     for (let p = 0; p < NUM_PLANES; p++) {
       if (!this.planeUsed(p)) continue;
-      const dstA = p & 1 ? 1 : 0;
-      const dstB = p & 2 ? 1 : 0;
-      this.sum(p, summaryA[dstA], summaryB[dstB]);
+      this.sum(p, summaryA[p & 1 ? 1 : 0], summaryB[p & 2 ? 1 : 0]);
     }
   }
 }
 
+/** Where the Monte Carlo simulation draws (`randomness::rng::default_instance()`: never the game's synced RNG). */
+export interface PredictionRandom {
+  getRandomBool(probability: number): boolean;
+  getRandomElement(weights: readonly number[]): number;
+}
+
+let predictionRandom: PredictionRandom | null = null;
+
+/** Sets the generator combat prediction's Monte Carlo simulation uses (a session gives its unsynced stream). */
+export function setPredictionRandom(rng: PredictionRandom | null): void {
+  predictionRandom = rng;
+}
+
+function predictionRng(): PredictionRandom {
+  predictionRandom ??= new RngDeterministic(new MtRng(0));
+  return predictionRandom;
+}
+
+/** `monte_carlo_combat_matrix`: 5000 simulated fights instead of exact probabilities, for very complex fights. */
+class MonteCarloCombatMatrix extends CombatMatrix {
+  private static readonly NUM_ITERATIONS = 5000;
+  private readonly aInitial: number[] = [];
+  private readonly bInitial: number[] = [];
+  private readonly aInitialSlowed: number[] = [];
+  private readonly bInitialSlowed: number[] = [];
+  private iterationsAHit = 0;
+  private iterationsBHit = 0;
+
+  constructor(
+    aMaxHp: number,
+    bMaxHp: number,
+    aHp: number,
+    bHp: number,
+    aSummary: Summary,
+    bSummary: Summary,
+    aSlows: boolean,
+    bSlows: boolean,
+    aDamage: number,
+    bDamage: number,
+    aSlowDamage: number,
+    bSlowDamage: number,
+    aDrainPercent: number,
+    bDrainPercent: number,
+    aDrainConstant: number,
+    bDrainConstant: number,
+    private readonly rounds: number,
+    private readonly aHitChance: number,
+    private readonly bHitChance: number,
+    private readonly aSplit: readonly CombatSlice[],
+    private readonly bSplit: readonly CombatSlice[],
+    private readonly aInitiallySlowedChance: number,
+    private readonly bInitiallySlowedChance: number,
+  ) {
+    super(aMaxHp, bMaxHp, aHp, bHp, aSummary, bSummary, aSlows, bSlows, aDamage, bDamage, aSlowDamage, bSlowDamage, aDrainPercent, bDrainPercent, aDrainConstant, bDrainConstant);
+    scaleProbabilities(aSummary[0], this.aInitial, 1.0 - aInitiallySlowedChance, aHp);
+    scaleProbabilities(aSummary[1], this.aInitialSlowed, aInitiallySlowedChance, aHp);
+    scaleProbabilities(bSummary[0], this.bInitial, 1.0 - bInitiallySlowedChance, bHp);
+    scaleProbabilities(bSummary[1], this.bInitialSlowed, bInitiallySlowedChance, bHp);
+    this.clear();
+  }
+
+  simulate(): void {
+    const rng = predictionRng();
+    for (let i = 0; i < MonteCarloCombatMatrix.NUM_ITERATIONS; i++) {
+      let aHit = false;
+      let bHit = false;
+      let aSlowed = rng.getRandomBool(this.aInitiallySlowedChance);
+      let bSlowed = rng.getRandomBool(this.bInitiallySlowedChance);
+      let aHp = rng.getRandomElement(aSlowed ? this.aInitialSlowed : this.aInitial);
+      let bHp = rng.getRandomElement(bSlowed ? this.bInitialSlowed : this.bInitial);
+      const aStrikes = calcBlowsFromSplit(this.aSplit, aHp);
+      const bStrikes = calcBlowsFromSplit(this.bSplit, bHp);
+      for (let j = 0; j < this.rounds && aHp > 0 && bHp > 0; j++) {
+        for (let k = 0; k < Math.max(aStrikes, bStrikes); k++) {
+          if (k < aStrikes && rng.getRandomBool(this.aHitChance)) {
+            const damage = Math.min(aSlowed ? this.aSlowDamage : this.aDamage, bHp);
+            bHit = true;
+            bSlowed ||= this.aSlows;
+            const drainAmount = Math.trunc((this.aDrainPercent * damage) / 100) + this.aDrainConstant;
+            aHp = clamp(aHp + drainAmount, 1, this.aMaxHp);
+            bHp -= damage;
+            if (bHp === 0) break;
+          }
+          if (k < bStrikes && rng.getRandomBool(this.bHitChance)) {
+            const damage = Math.min(bSlowed ? this.bSlowDamage : this.bDamage, aHp);
+            aHit = true;
+            aSlowed ||= this.bSlows;
+            const drainAmount = Math.trunc((this.bDrainPercent * damage) / 100) + this.bDrainConstant;
+            bHp = clamp(bHp + drainAmount, 1, this.bMaxHp);
+            aHp -= damage;
+            if (aHp === 0) break;
+          }
+        }
+      }
+      if (aHit) this.iterationsAHit++;
+      if (bHit) this.iterationsBHit++;
+      this.recordMonteCarloResult(aHp, bHp, aSlowed, bSlowed);
+    }
+  }
+
+  override extractResults(summaryA: Summary, summaryB: Summary): void {
+    super.extractResults(summaryA, summaryB);
+    const n = MonteCarloCombatMatrix.NUM_ITERATIONS;
+    const divide = (v: number[]) => {
+      for (let i = 0; i < v.length; i++) v[i] = v[i]! / n;
+    };
+    divide(summaryA[0]);
+    divide(summaryB[0]);
+    if (this.planeUsed(A_SLOWED)) divide(summaryA[1]);
+    if (this.planeUsed(B_SLOWED)) divide(summaryB[1]);
+  }
+
+  aHitProbability(): number {
+    return this.iterationsAHit / MonteCarloCombatMatrix.NUM_ITERATIONS;
+  }
+  bHitProbability(): number {
+    return this.iterationsBHit / MonteCarloCombatMatrix.NUM_ITERATIONS;
+  }
+}
+
+/** `monte_carlo_combat_matrix::calc_blows_a/b`: the strikes of the slice `hp` falls in (the last one past the end). */
+function calcBlowsFromSplit(split: readonly CombatSlice[], hp: number): number {
+  let i = 0;
+  while (i < split.length && split[i]!.endHp <= hp) i++;
+  if (i === split.length) i--;
+  return split[i]!.strikes;
+}
+
+/** `monte_carlo_combat_matrix::scale_probabilities`. */
+function scaleProbabilities(source: readonly number[], target: number[], divisor: number, singularHp: number): void {
+  if (divisor === 0.0) return;
+  if (source.length === 0) {
+    for (let i = 0; i <= singularHp; i++) target.push(0);
+    target[singularHp] = 1.0;
+  } else {
+    for (const prob of source) target.push(prob / divisor);
+  }
+}
+
 // ---------------------------------------------------------------------------
-// complexFight / doFight: the general matrix-based resolution of one round's
-// worth of interleaved blows (see module doc comment re: skipped fast paths).
+// do_fight: the fast paths for simple fights, else complex_fight.
 // ---------------------------------------------------------------------------
 
-function doFight(
+type NotHit = { self: number; opp: number };
+const MONTE_CARLO_SIMULATION_THRESHOLD = 50000;
+
+function forcedLevelup(hpDist: number[]): void {
+  for (let i = 1; i < hpDist.length; i++) hpDist[i] = 0;
+  hpDist[hpDist.length - 1] = 1 - hpDist[0]!;
+}
+
+function conditionalLevelup(hpDist: number[], killProb: number): void {
+  let scalefactor = 0;
+  const chanceToSurvive = 1 - hpDist[0]!;
+  if (chanceToSurvive > 2.2250738585072014e-308 /* DBL_MIN */) scalefactor = 1 - killProb / chanceToSurvive;
+  for (let i = 1; i < hpDist.length; i++) hpDist[i] = hpDist[i]! * scalefactor;
+  hpDist[hpDist.length - 1] = hpDist[hpDist.length - 1]! + killProb;
+}
+
+/** `min_hp`: the lowest hp with any probability, or `def`. */
+function minHp(hpDist: readonly number[], def: number): number {
+  for (let i = 0; i < hpDist.length; i++) if (hpDist[i] !== 0.0) return i;
+  return def;
+}
+
+/** `fight_complexity`. */
+function fightComplexity(numSlices: number, oppNumSlices: number, stats: BattleContextUnitStats, oppStats: BattleContextUnitStats): number {
+  return numSlices * oppNumSlices * (stats.slows || oppStats.isSlowed ? 2 : 1) * (oppStats.slows || stats.isSlowed ? 2 : 1) * stats.maxHp * oppStats.maxHp;
+}
+
+/** `no_death_fight`: neither side can die this exchange. */
+function noDeathFight(stats: BattleContextUnitStats, oppStats: BattleContextUnitStats, strikes: number, oppStrikes: number, summary: Summary, oppSummary: Summary, notHit: NotHit, levelupConsidered: boolean): void {
+  const aliveProb = summary[0].length === 0 ? 1.0 : 1.0 - summary[0][0]!;
+  const hitChance = (stats.chanceToHit / 100.0) * aliveProb;
+  if (oppSummary[0].length === 0) {
+    const dist = new Array(oppStats.maxHp + 1).fill(0);
+    dist[oppStats.hp] = 1.0;
+    for (let i = 0; i < strikes; i++) {
+      for (let j = i; j >= 0; j--) {
+        const srcIndex = oppStats.hp - j * stats.damage;
+        const move = dist[srcIndex] * hitChance;
+        dist[srcIndex] -= move;
+        dist[srcIndex - stats.damage] += move;
+      }
+      notHit.opp *= 1.0 - hitChance;
+    }
+    oppSummary[0] = dist;
+  } else {
+    const dist = oppSummary[0];
+    for (let i = 0; i < strikes; i++) {
+      for (let j = stats.damage; j < dist.length; j++) {
+        const move = dist[j]! * hitChance;
+        dist[j] = dist[j]! - move;
+        dist[j - stats.damage] = dist[j - stats.damage]! + move;
+      }
+      notHit.opp *= 1.0 - hitChance;
+    }
+  }
+  const oppAliveProb = oppSummary[0].length === 0 ? 1.0 : 1.0 - oppSummary[0][0]!;
+  const oppHitChance = (oppStats.chanceToHit / 100.0) * oppAliveProb;
+  if (summary[0].length === 0) {
+    const dist = new Array(stats.maxHp + 1).fill(0);
+    dist[stats.hp] = 1.0;
+    for (let i = 0; i < oppStrikes; i++) {
+      for (let j = i; j >= 0; j--) {
+        const srcIndex = stats.hp - j * oppStats.damage;
+        const move = dist[srcIndex] * oppHitChance;
+        dist[srcIndex] -= move;
+        dist[srcIndex - oppStats.damage] += move;
+      }
+      notHit.self *= 1.0 - oppHitChance;
+    }
+    summary[0] = dist;
+  } else {
+    const dist = summary[0];
+    for (let i = 0; i < oppStrikes; i++) {
+      for (let j = oppStats.damage; j < dist.length; j++) {
+        const move = dist[j]! * oppHitChance;
+        dist[j] = dist[j]! - move;
+        dist[j - oppStats.damage] = dist[j - oppStats.damage]! + move;
+      }
+      notHit.self *= 1.0 - oppHitChance;
+    }
+  }
+  if (!levelupConsidered || !stats.canAdvance) return;
+  if (stats.experience + oppStats.level >= stats.maxExperience) forcedLevelup(summary[0]);
+  if (oppStats.experience + stats.level >= oppStats.maxExperience) forcedLevelup(oppSummary[0]);
+}
+
+/** `one_strike_fight`: at most one strike each. */
+function oneStrikeFight(stats: BattleContextUnitStats, oppStats: BattleContextUnitStats, strikes: number, oppStrikes: number, summary: Summary, oppSummary: Summary, notHit: NotHit, levelupConsidered: boolean): void {
+  let aliveProb = summary[0].length === 0 ? 1.0 : 1.0 - summary[0][0]!;
+  if (stats.hp === 0) aliveProb = 0.0;
+  const hitChance = (stats.chanceToHit / 100.0) * aliveProb;
+  if (oppSummary[0].length === 0) {
+    const dist = new Array(oppStats.maxHp + 1).fill(0);
+    if (strikes === 1 && oppStats.hp > 0) {
+      dist[oppStats.hp] = 1.0 - hitChance;
+      dist[Math.max(oppStats.hp - stats.damage, 0)] = hitChance;
+      notHit.opp *= 1.0 - hitChance;
+    } else dist[oppStats.hp] = 1.0;
+    oppSummary[0] = dist;
+  } else if (strikes === 1) {
+    const dist = oppSummary[0];
+    for (let i = 1; i < dist.length; i++) {
+      const move = dist[i]! * hitChance;
+      dist[i] = dist[i]! - move;
+      const to = Math.max(i - stats.damage, 0);
+      dist[to] = dist[to]! + move;
+    }
+    notHit.opp *= 1.0 - hitChance;
+  }
+  const oppAttackProb = (1.0 - oppSummary[0][0]!) * aliveProb;
+  const oppHitChance = (oppStats.chanceToHit / 100.0) * oppAttackProb;
+  if (summary[0].length === 0) {
+    const dist = new Array(stats.maxHp + 1).fill(0);
+    if (oppStrikes === 1 && stats.hp > 0) {
+      dist[stats.hp] = 1.0 - oppHitChance;
+      dist[Math.max(stats.hp - oppStats.damage, 0)] = oppHitChance;
+      notHit.self *= 1.0 - oppHitChance;
+    } else dist[stats.hp] = 1.0;
+    summary[0] = dist;
+  } else if (oppStrikes === 1) {
+    const dist = summary[0];
+    for (let i = 1; i < dist.length; i++) {
+      const move = dist[i]! * oppHitChance;
+      dist[i] = dist[i]! - move;
+      const to = Math.max(i - oppStats.damage, 0);
+      dist[to] = dist[to]! + move;
+    }
+    notHit.self *= 1.0 - oppHitChance;
+  }
+  if (!levelupConsidered || !stats.canAdvance) return;
+  if (stats.experience + combatXpOf(oppStats.level) >= stats.maxExperience) forcedLevelup(summary[0]);
+  else if (stats.experience + killXpOf(oppStats.level) >= stats.maxExperience) conditionalLevelup(summary[0], oppSummary[0][0]!);
+  if (oppStats.experience + combatXpOf(stats.level) >= oppStats.maxExperience) forcedLevelup(oppSummary[0]);
+  else if (oppStats.experience + killXpOf(stats.level) >= oppStats.maxExperience) conditionalLevelup(oppSummary[0], summary[0][0]!);
+}
+
+/** `complex_fight`: the full matrix calculation, or (`monteCarlo`) the simulation. */
+function complexFight(
+  monteCarlo: boolean,
   stats: BattleContextUnitStats,
   oppStats: BattleContextUnitStats,
   strikes: number,
   oppStrikes: number,
   summary: Summary,
   oppSummary: Summary,
-  notHit: { self: number; opp: number },
+  notHit: NotHit,
   levelupConsidered: boolean,
+  split: readonly CombatSlice[],
+  oppSplit: readonly CombatSlice[],
+  initiallySlowedChance: number,
+  oppInitiallySlowedChance: number,
 ): void {
-  const rounds = Math.max(stats.rounds, oppStats.rounds);
+  let rounds = Math.max(stats.rounds, oppStats.rounds);
   const maxAttacks = Math.max(strikes, oppStrikes);
-
   let aDamage = stats.damage;
   let aSlowDamage = stats.slowDamage;
   let bDamage = oppStats.damage;
   let bSlowDamage = oppStats.slowDamage;
-
   // Simulate petrify by using a "damage" high enough to kill, then undo the distortion afterwards.
-  if (stats.petrifies) {
-    aDamage = oppStats.maxHp;
-    aSlowDamage = oppStats.maxHp;
-  }
-  if (oppStats.petrifies) {
-    bDamage = stats.maxHp;
-    bSlowDamage = stats.maxHp;
-  }
+  if (stats.petrifies) aDamage = aSlowDamage = oppStats.maxHp;
+  if (oppStats.petrifies) bDamage = bSlowDamage = stats.maxHp;
 
   const originalSelfNotHit = notHit.self;
   const originalOppNotHit = notHit.opp;
@@ -599,81 +864,94 @@ function doFight(
   let selfHitUnknown = 1.0;
   let oppHitUnknown = 1.0;
 
-  const matrix = new CombatMatrix(
-    stats.maxHp,
-    oppStats.maxHp,
-    stats.hp,
-    oppStats.hp,
-    summary,
-    oppSummary,
-    stats.slows,
-    oppStats.slows,
-    aDamage,
-    bDamage,
-    aSlowDamage,
-    bSlowDamage,
-    stats.drainPercent,
-    oppStats.drainPercent,
-    stats.drainConstant,
-    oppStats.drainConstant,
-  );
+  let matrix: CombatMatrix;
+  if (!monteCarlo) {
+    const pm = new CombatMatrix(stats.maxHp, oppStats.maxHp, stats.hp, oppStats.hp, summary, oppSummary, stats.slows, oppStats.slows, aDamage, bDamage, aSlowDamage, bSlowDamage, stats.drainPercent, oppStats.drainPercent, stats.drainConstant, oppStats.drainConstant);
+    do {
+      for (let i = 0; i < maxAttacks; i++) {
+        if (i < strikes) {
+          const bAlreadyDead = pm.deadProbB();
+          pm.receiveBlowB(hitChance);
+          const firstHit = hitChance * oppHitUnknown;
+          oppHit += firstHit;
+          oppHitUnknown -= firstHit;
+          const bothWereAlive = 1.0 - bAlreadyDead - pm.deadProbA();
+          const thisHitKilledB = bothWereAlive !== 0 ? (pm.deadProbB() - bAlreadyDead) / bothWereAlive : 1.0;
+          selfHitUnknown *= 1.0 - thisHitKilledB;
+        }
+        if (i < oppStrikes) {
+          const aAlreadyDead = pm.deadProbA();
+          pm.receiveBlowA(oppHitChance);
+          const firstHit = oppHitChance * selfHitUnknown;
+          selfHit += firstHit;
+          selfHitUnknown -= firstHit;
+          const bothWereAlive = 1.0 - aAlreadyDead - pm.deadProbB();
+          const thisHitKilledA = bothWereAlive !== 0 ? (pm.deadProbA() - aAlreadyDead) / bothWereAlive : 1.0;
+          oppHitUnknown *= 1.0 - thisHitKilledA;
+        }
+      }
+    } while (--rounds > 0 && pm.deadProb() < 0.99);
 
-  let roundsLeft = rounds;
-  do {
-    for (let i = 0; i < maxAttacks; i++) {
-      if (i < strikes) {
-        const bAlreadyDead = matrix.deadProbB();
-        matrix.receiveBlowB(hitChance);
-        const firstHit = hitChance * oppHitUnknown;
-        oppHit += firstHit;
-        oppHitUnknown -= firstHit;
-        const bothWereAlive = 1.0 - bAlreadyDead - matrix.deadProbA();
-        const thisHitKilledB = bothWereAlive !== 0 ? (matrix.deadProbB() - bAlreadyDead) / bothWereAlive : 1.0;
-        selfHitUnknown *= 1.0 - thisHitKilledB;
-      }
-      if (i < oppStrikes) {
-        const aAlreadyDead = matrix.deadProbA();
-        matrix.receiveBlowA(oppHitChance);
-        const firstHit = oppHitChance * selfHitUnknown;
-        selfHit += firstHit;
-        selfHitUnknown -= firstHit;
-        const bothWereAlive = 1.0 - aAlreadyDead - matrix.deadProbB();
-        const thisHitKilledA = bothWereAlive !== 0 ? (matrix.deadProbA() - aAlreadyDead) / bothWereAlive : 1.0;
-        oppHitUnknown *= 1.0 - thisHitKilledA;
-      }
+    selfHit = Math.min(selfHit, 1.0);
+    oppHit = Math.min(oppHit, 1.0);
+    notHit.self = originalSelfNotHit * (1.0 - selfHit);
+    notHit.opp = originalOppNotHit * (1.0 - oppHit);
+    if (stats.slows) {
+      const plane = (stats.isSlowed ? 1 : 0) | (oppStats.isSlowed ? 2 : 0);
+      notHit.opp = originalOppNotHit * (pm.colSum(plane, oppStats.hp) + (plane & 1 ? 0 : pm.colSum(plane | 1, oppStats.hp)));
     }
-    roundsLeft--;
-  } while (roundsLeft > 0 && matrix.deadProb() < 0.99);
-
-  selfHit = Math.min(selfHit, 1.0);
-  oppHit = Math.min(oppHit, 1.0);
-  notHit.self = originalSelfNotHit * (1.0 - selfHit);
-  notHit.opp = originalOppNotHit * (1.0 - oppHit);
-
-  if (stats.slows) {
-    const plane = (stats.isSlowed ? 1 : 0) | (oppStats.isSlowed ? 2 : 0);
-    const notHitB = matrix.colSum(plane, oppStats.hp) + (plane & 1 ? 0 : matrix.colSum(plane | 1, oppStats.hp));
-    notHit.opp = originalOppNotHit * notHitB;
-  }
-  if (oppStats.slows) {
-    const plane = (stats.isSlowed ? 1 : 0) | (oppStats.isSlowed ? 2 : 0);
-    const notHitA = matrix.rowSum(plane, stats.hp) + (plane & 2 ? 0 : matrix.rowSum(plane | 2, stats.hp));
-    notHit.self = originalSelfNotHit * notHitA;
+    if (oppStats.slows) {
+      const plane = (stats.isSlowed ? 1 : 0) | (oppStats.isSlowed ? 2 : 0);
+      notHit.self = originalSelfNotHit * (pm.rowSum(plane, stats.hp) + (plane & 2 ? 0 : pm.rowSum(plane | 2, stats.hp)));
+    }
+    matrix = pm;
+  } else {
+    const mcm = new MonteCarloCombatMatrix(stats.maxHp, oppStats.maxHp, stats.hp, oppStats.hp, summary, oppSummary, stats.slows, oppStats.slows, aDamage, bDamage, aSlowDamage, bSlowDamage, stats.drainPercent, oppStats.drainPercent, stats.drainConstant, oppStats.drainConstant, rounds, hitChance, oppHitChance, split, oppSplit, initiallySlowedChance, oppInitiallySlowedChance);
+    mcm.simulate();
+    notHit.self = 1.0 - mcm.aHitProbability();
+    notHit.opp = 1.0 - mcm.bHitProbability();
+    matrix = mcm;
   }
 
   if (stats.petrifies) matrix.removePetrifyDistortionA(stats.damage, stats.slowDamage, oppStats.hp);
   if (oppStats.petrifies) matrix.removePetrifyDistortionB(oppStats.damage, oppStats.slowDamage, stats.hp);
 
+  // As upstream, both sides' level-ups are considered only when this side can advance.
   if (levelupConsidered && stats.canAdvance) {
     if (stats.experience + combatXpOf(oppStats.level) >= stats.maxExperience) matrix.forcedLevelupA();
     else if (stats.experience + killXpOf(oppStats.level) >= stats.maxExperience) matrix.conditionalLevelupA();
-  }
-  if (levelupConsidered && oppStats.canAdvance) {
     if (oppStats.experience + combatXpOf(stats.level) >= oppStats.maxExperience) matrix.forcedLevelupB();
     else if (oppStats.experience + killXpOf(stats.level) >= oppStats.maxExperience) matrix.conditionalLevelupB();
   }
 
   matrix.extractResults(summary, oppSummary);
+}
+
+/** `do_fight`: the fast paths when they apply (no slow, drain, petrify, berserk or earlier slowed results). */
+function doFight(
+  stats: BattleContextUnitStats,
+  oppStats: BattleContextUnitStats,
+  strikes: number,
+  oppStrikes: number,
+  summary: Summary,
+  oppSummary: Summary,
+  notHit: NotHit,
+  levelupConsidered: boolean,
+): void {
+  if (
+    !stats.slows && !oppStats.slows && !stats.drains && !oppStats.drains && !stats.petrifies && !oppStats.petrifies &&
+    stats.rounds === 1 && oppStats.rounds === 1 && summary[1].length === 0 && oppSummary[1].length === 0
+  ) {
+    if (strikes <= 1 && oppStrikes <= 1) {
+      oneStrikeFight(stats, oppStats, strikes, oppStrikes, summary, oppSummary, notHit, levelupConsidered);
+      return;
+    }
+    if (strikes * stats.damage < minHp(oppSummary[0], oppStats.hp) && oppStrikes * oppStats.damage < minHp(summary[0], stats.hp)) {
+      noDeathFight(stats, oppStats, strikes, oppStrikes, summary, oppSummary, notHit, levelupConsidered);
+      return;
+    }
+  }
+  complexFight(false, stats, oppStats, strikes, oppStrikes, summary, oppSummary, notHit, levelupConsidered, [], [], 0, 0);
 }
 
 // Deliberately duplicated here (rather than importing from gameConfig.ts) to
@@ -810,7 +1088,10 @@ export class Combatant {
     const split = splitSummary(this.stats, this.summary);
     const oppSplit = splitSummary(opponent.stats, opponent.summary);
 
-    if (split.length === 1 && oppSplit.length === 1) {
+    if (fightComplexity(split.length, oppSplit.length, this.stats, opponent.stats) > MONTE_CARLO_SIMULATION_THRESHOLD) {
+      // A very complex fight: a Monte Carlo simulation instead of exact probabilities.
+      complexFight(true, this.stats, opponent.stats, this.stats.numBlows, opponent.stats.numBlows, this.summary, opponent.summary, notHit, levelupConsidered, split, oppSplit, this.slowed, opponent.slowed);
+    } else if (split.length === 1 && oppSplit.length === 1) {
       doFight(
         this.stats,
         opponent.stats,
