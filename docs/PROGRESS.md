@@ -5847,3 +5847,24 @@ upstream's layers rather than by growing Phase 28c's hand-written bootstrap.
     fengari. Running the AI off the main thread is S12.
 - **Tests:** engine 824, lua-bridge 64 (the kernel, the `ai` table, each Lua CA), renderer 263, ui 402 --
   all passing; lint and both svelte-checks clean.
+
+## 2026-09-30: Phase 29 S9 -- `[micro_ai]`
+
+- `data/lua/wml/micro_ai.lua` (the `[micro_ai]` tag) and `data/ai/micro_ais/**` run unchanged. The Lua engine
+  loads the tag, and `wesnoth.sides.add_ai_component`/`delete_ai_component`/`change_ai_component` change a
+  side's AI through `AiManager`.
+- `AiManager`:
+  - reads component paths as upstream's `find_component` does (`stage[..].candidate_action[..]`,
+    `aspect[..].facet[..]`, `goal[..]`; by id, by position, or `*`);
+  - when a side's `[ai]` is built, applies its `[modify_ai]`/`[micro_ai]`;
+  - adopts a unit's own `[ai]` (`unit::init`): `[micro_ai]` is filtered to that unit, and
+    `[candidate_action]` gets a `[filter_own]`;
+  - appends the way `holder::append_ai` does;
+  - serves `toConfig` as `sides[n].__cfg`'s `[ai]`, from which micro AIs derive unique ids.
+- `wesnoth.sync.invoke_command` records a synced `[custom_command]`, both live and on replay. Micro AIs use
+  it to set unit variables and to spawn the forest animals. `warn()` (Lua 5.4) is added.
+- **Tests:**
+  - `zone_guardian`, set both from `[ai]` and from the tag, and two guardians on one side get unique ids;
+  - every shipped scenario that uses a micro AI (`zone_guardian`, `messenger_escort`, `coward`,
+    `forest_animals`) plays two turns cleanly;
+  - engine 824, lua-bridge 67, ui 410, all passing; lint is clean.
