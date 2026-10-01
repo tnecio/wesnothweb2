@@ -12,6 +12,7 @@ import { VariableStore } from '../../src/events/variables.js';
 import { parseWml } from '../../src/wml/index.js';
 import { runActionFlow, runActionSequence } from '../../src/events/actionWml.js';
 import { autoRespond, runFlow, type Interaction } from '../../src/events/interaction.js';
+import { TString } from '../../src/i18n/tstring.js';
 import { memoryPersistentVariables } from '../../src/events/supportWml.js';
 
 /** Phase 28c: the mainline tags The South Guard needed (`supportWml.ts`, `harmUnitWml.ts`). */
@@ -208,6 +209,60 @@ describe('[open_help]', () => {
     const seen: Interaction[] = [];
     runFlow(runActionFlow(parseWml('[open_help]\n  topic=unit_Fencer\n[/open_help]'), ctx), (i) => (seen.push(i), autoRespond(i)));
     expect(seen).toEqual([{ kind: 'beat', beat: { kind: 'openHelp', topic: 'unit_Fencer' } }]);
+  });
+});
+
+describe('[story] in an event', () => {
+  it('shows its parts on the story screen (a story beat); title= or the scenario name titles show_title parts', () => {
+    const { ctx } = setup();
+    ctx.scenarioName = () => TString.literal('Squidville');
+    ctx.variables.set('ending', 'bad');
+    const seen: Interaction[] = [];
+    runFlow(
+      runActionFlow(
+        parseWml(`[story]
+          [part]
+            show_title=yes
+            story=The end.
+            background=story/end.webp
+          [/part]
+          [if]
+            [variable]
+              name=ending
+              equals=bad
+            [/variable]
+            [then]
+              [part]
+                story=A bad one.
+              [/part]
+            [/then]
+          [/if]
+        [/story]
+        [story]
+          title=Bad Ending
+          [part]
+            show_title=yes
+            story=Overrun.
+          [/part]
+          [part]
+            story=No title here.
+          [/part]
+        [/story]`),
+        ctx,
+      ),
+      (i) => (seen.push(i), autoRespond(i)),
+    );
+    const stories = seen.map((i) => (i.kind === 'beat' && i.beat.kind === 'story' ? i.beat.parts.map((p) => [p.title, p.text]) : null));
+    expect(stories).toEqual([
+      [
+        ['Squidville', 'The end.'],
+        ['', 'A bad one.'],
+      ],
+      [
+        ['Bad Ending', 'Overrun.'],
+        ['', 'No title here.'],
+      ],
+    ]);
   });
 });
 

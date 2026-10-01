@@ -331,6 +331,8 @@ export interface EventContext {
    * (`synced_context::run_in_synced_context_if_not_already`). Installed by the session.
    */
   doCommand?: (tag: string, cfg: WmlConfig) => Flow;
+  /** `wesnoth.scenario.name`: the scenario's `name=` (`[story]`'s default title). Installed by the session. */
+  scenarioName?: () => TString;
   /** Phase 28c: `[set_global_variable]` and friends' storage, kept across games. Absent: they log and do nothing. */
   persistent?: PersistentVariables;
   /** Phase 28c: `[set_achievement]` and friends. Absent: they do nothing. */

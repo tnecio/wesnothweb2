@@ -141,7 +141,7 @@
   import type { AudioSettings } from './audio/settings.js';
   import MessageViewer from './MessageViewer.svelte';
   import GuiDialog from './GuiDialog.svelte';
-  import type { GuiDialogInteraction, SoundRequest } from '@wesnothweb2/engine';
+  import type { GuiDialogInteraction, SoundRequest, ResolvedStoryPart } from '@wesnothweb2/engine';
   import AdvancementDialog from './AdvancementDialog.svelte';
   import ObjectivesDialog from './ObjectivesDialog.svelte';
   import ScenarioEndOverlay from './ScenarioEndOverlay.svelte';
@@ -336,6 +336,8 @@
   /** Resolved once per scenario, before its startup events run -- see `GameSession.storyParts`. A resumed save has already been past all of this. */
   let storyParts = $state.raw(initialSave ? [] : session.storyParts());
   let storyAssets = $state.raw(initialStoryAssets);
+  /** C1: a `[story]` an event is showing, over the game; the event goes on once `done` is called. */
+  let eventStory = $state.raw<{ parts: readonly ResolvedStoryPart[]; done: () => void } | null>(null);
   /** The live turn limit (`[modify_turns]` can change it); synced with the rest of the session state. */
   // Phase 18: the campaign's own images are searched before core (its [binary_path]).
   $effect.pre(() => {
@@ -881,6 +883,14 @@
       // Phase 24: `[open_help]`: a modal dialog upstream, so no time cap -- the event waits for the player.
       helpBrowser.open(beat.topic);
       await helpBrowser.whenClosed();
+      return {};
+    }
+    if (beat.kind === 'story') {
+      // C1: `[story]` in an event (`story_viewer::display`): modal, so no time cap either.
+      await new Promise<void>((resolve) => {
+        eventStory = { parts: beat.parts, done: resolve };
+      });
+      eventStory = null;
       return {};
     }
     const started = performance.now();
@@ -3026,7 +3036,8 @@
       // Phase 17: a suspended event's own dialogue owns the keyboard
       // while it is up (`MessageViewer` handles arrows/Enter/Escape).
       currentMessage !== null ||
-      currentGuiDialog !== null
+      currentGuiDialog !== null ||
+      eventStory !== null
     );
   }
 
@@ -3314,6 +3325,9 @@
     <PreferencesDialog audioSettings={audioSettings} onAudioChange={changeAudio} onClose={() => (preferencesOpen = false)} />
   {/if}
 
+  {#if eventStory}
+    <StoryViewer parts={eventStory.parts} assets={storyAssets} onDone={eventStory.done} onPartShown={playStoryPartSounds} />
+  {/if}
   {#if phase === 'story'}
     {#key session}
       <StoryViewer parts={storyParts} assets={storyAssets} onDone={finishStory} onPartShown={playStoryPartSounds} />

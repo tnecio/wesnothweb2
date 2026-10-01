@@ -1701,6 +1701,7 @@ export class GameSession {
     };
     // C1: `[do_command]`: the child as the command a player's action records, inside the running action if any.
     this.eventPump.ctx.doCommand = (tag, cfg) => this.doCommandFlow(tag, cfg);
+    this.eventPump.ctx.scenarioName = () => this.scenarioNameT;
     this.eventPump.ctx.addUndoCommands = (commands) => {
       this.action?.steps.push({ kind: 'event', commands, loc1: this.eventPump.ctx.loc1, loc2: this.eventPump.ctx.loc2 });
     };

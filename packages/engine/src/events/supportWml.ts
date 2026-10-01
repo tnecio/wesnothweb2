@@ -10,6 +10,7 @@
  * - `[end_turn]` (`wml-tags.lua`, `wesnoth.interface.end_turn`): `EventContext.endTurnForced`;
  * - `[petrify]`/`[unpetrify]` (`wml-tags.lua`): the `petrified` status, on the map and on recall lists;
  * - `[do_command]` (`action_wml.cpp`): player commands from WML, through `EventContext.doCommand`;
+ * - `[story]` (`wml-tags.lua`, `gui.show_story`): a story screen mid-scenario, as a `story` beat;
  * - `[set_achievement]`/`[set_sub_achievement]`/`[progress_achievement]` (`wml-tags.lua`), through
  *   `EventContext.achievements`;
  * - `[replace_map]` (`action_wml.cpp`), `GameBoard.replaceMap`;
@@ -29,6 +30,7 @@ import { findUnits } from './filter.js';
 import { UnitStatus } from '../model/Unit.js';
 import { varNodeFromConfig } from './variables.js';
 import { actionHarmUnit } from './harmUnitWml.js';
+import { resolveStory } from '../story/storyParser.js';
 
 /** Where `[set_global_variable]` keeps its values (upstream: a `persist_context` file per namespace). */
 export interface PersistentVariables {
@@ -154,6 +156,18 @@ function* actionDoCommand(cfg: WmlConfig, ctx: EventContext): Flow {
   }
 }
 
+/**
+ * `wml_actions.story` (`gui.show_story(cfg, cfg.title or wesnoth.scenario.name)`): this `[story]`'s parts,
+ * resolved now as the scenario's own are, shown on the story screen; the event waits for the player.
+ */
+function* actionStory(cfg: WmlConfig, ctx: EventContext): Flow {
+  const title = cfg.hasAttribute('title') ? (cfg.getTString('title') ?? TString.literal(cfg.getString('title'))) : (ctx.scenarioName?.() ?? TString.literal(''));
+  const holder = new WmlConfig();
+  holder.addChild('story', cfg);
+  const parts = resolveStory(holder, title, ctx);
+  if (parts.length > 0) yield { kind: 'beat', beat: { kind: 'story', parts } };
+}
+
 /** `wml_actions.end_turn`: `wesnoth.interface.end_turn()`, `play_controller::force_end_turn`. */
 function actionEndTurn(_cfg: WmlConfig, ctx: EventContext): void {
   ctx.endTurnForced = true;
@@ -271,6 +285,7 @@ export function registerSupportActions(register: (tag: string, handler: (cfg: Wm
   register('set_extra_recruit', actionSetExtraRecruit);
   register('end_turn', actionEndTurn);
   register('do_command', actionDoCommand);
+  register('story', actionStory);
   register('petrify', (cfg, ctx) => setPetrified(cfg, ctx, true));
   register('unpetrify', (cfg, ctx) => setPetrified(cfg, ctx, false));
   register('set_achievement', actionSetAchievement);
