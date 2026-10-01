@@ -17,7 +17,7 @@
  *     [--only orders,mouse-attack,touch-attack,continue,no-auto-moves]
  */
 import { chromium } from 'playwright';
-import { hexPoint, skipToPlay, waitBoardReady, confirmEndTurnIfAsked } from './lib/browserFlows.mjs';
+import { hexPoint, skipToPlay, waitBoardReady, confirmEndTurnIfAsked, untilPlayable } from './lib/browserFlows.mjs';
 
 const args = process.argv.slice(2);
 const base = args.includes('--base') ? args[args.indexOf('--base') + 1] : 'http://localhost:5173';
@@ -35,28 +35,6 @@ const kaiState = (page) =>
     const kai = window.__wesnoth.session.board.allUnits().find((u) => u.id === 'Kai Krellis');
     return { x: kai.location.x, y: kai.location.y, goto: kai.goto ? { x: kai.goto.x, y: kai.goto.y } : null, attacksLeft: kai.attacksLeft };
   });
-
-/**
- * Answers dialogue until the player has been able to act (`canAct`: no event, animation or dialogue
- * running) for 8 s -- Dead Water's opening and the other side's turns pause between speakers, and a
- * new turn plays the other side's animations and the standing orders before the player gets control.
- */
-async function untilPlayable(page, timeout = 300000) {
-  const started = Date.now();
-  let quietSince = Date.now();
-  while (Date.now() - started < timeout) {
-    if ((await page.$('.window[role="dialog"]')) || (await page.$('.story'))) {
-      await skipToPlay(page, 120000);
-      quietSince = Date.now();
-    } else if (!(await page.evaluate(() => window.__wesnoth?.movementPreview().canAct ?? false))) {
-      quietSince = Date.now();
-    } else if (Date.now() - quietSince > 8000) {
-      return;
-    }
-    await page.waitForTimeout(500);
-  }
-  throw new Error('untilPlayable: the game never became playable');
-}
 
 /** After End Turn: answers the other side's dialogue until it is the player's turn after `turn`, then lets it settle. */
 async function backToPlayer(page, turn) {

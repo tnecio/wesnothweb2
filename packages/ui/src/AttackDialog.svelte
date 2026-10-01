@@ -8,6 +8,8 @@
    * matching real Wesnoth's own "Damage Calculations" button.
    */
   import IpfImage from './images/IpfImage.svelte';
+  import HelpLink from './help/HelpLink.svelte';
+  import { helpBrowser } from './help/helpBrowser.svelte.js';
   import { unitImageRef } from './images/unitImageRef.js';
   import type { CombatPreview, CombatantPreview, AttackerWeaponOption } from './gameSession.js';
   import { alignmentName, damageTypeName, rangeName, raceName } from './i18n/gameText.js';
@@ -70,6 +72,7 @@
    */
   function handleKeydown(e: KeyboardEvent): void {
     if (showSimulation) return; // the simulation view is its own dialog on top
+    if (helpBrowser.isOpen) return; // so is the help, opened from a special's name
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       if (attackerWeaponOptions.length < 2) return;
       e.preventDefault();
@@ -135,7 +138,10 @@
           <div class="wstats">{preview.attacker.damagePerBlow}&times;{preview.attacker.numBlows} {rangeType(preview.attacker.weapon)}</div>
           <div class="wchance">{preview.attacker.chanceToHit}%{chanceToHitSuffix(preview.attacker)}</div>
           {#if preview.attacker.weapon.specials.length > 0}
-            <div class="specials">{preview.attacker.weapon.specials.map((s) => s.name).join(', ')}</div>
+            <div class="specials">
+              {#each preview.attacker.weapon.specials as special, i (i)}{#if i > 0},
+                {/if}<HelpLink request={{ topic: special.helpTopic }} title={special.description}>{special.name}</HelpLink>{/each}
+            </div>
           {/if}
           {#each modifierBadges(preview.attacker) as badge (badge)}
             <div class="modifier-badge">{badge}</div>
@@ -151,7 +157,10 @@
           <div class="wstats">{preview.defender.damagePerBlow}&times;{preview.defender.numBlows} {rangeType(preview.defender.weapon)}</div>
           <div class="wchance">{preview.defender.chanceToHit}%{chanceToHitSuffix(preview.defender)}</div>
           {#if preview.defender.weapon.specials.length > 0}
-            <div class="specials">{preview.defender.weapon.specials.map((s) => s.name).join(', ')}</div>
+            <div class="specials">
+              {#each preview.defender.weapon.specials as special, i (i)}{#if i > 0},
+                {/if}<HelpLink request={{ topic: special.helpTopic }} title={special.description}>{special.name}</HelpLink>{/each}
+            </div>
           {/if}
           {#each modifierBadges(preview.defender) as badge (badge)}
             <div class="modifier-badge">{badge}</div>

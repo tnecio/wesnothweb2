@@ -5,11 +5,12 @@
    * Layout as upstream's: the stretched `maps/background.webp` with `maps/titlescreen.webp` fitted and centred
    * over it, the logo 30 px from the top, the tip-of-the-day panel bottom-left and the button column
    * bottom-right (both translucent panels), and a bar along the bottom with the version and the Language
-   * button. Help, Multiplayer, the map editor, Add-ons, Achievements and Community have no counterpart here.
+   * button. Help is in the tip panel, as upstream's. Multiplayer, the map editor, Add-ons, Achievements and
+   * Community have no counterpart here.
    *
    * Presentational: it reports what was asked for; `MainMenu.svelte` owns the dialogs and the navigation.
    * Keys are upstream's (`hotkeys.cfg`): C campaigns, Ctrl+O load, Ctrl+P preferences, L language, Space
-   * credits, Left/Right the tips. They do nothing while a dialog is open (`blocked`) or while typing.
+   * credits, F1 help, Left/Right the tips. They do nothing while a dialog is open (`blocked`) or while typing.
    */
   import { fmt, t, ts, tw, tx } from '../i18n/locale.js';
   import Markup from '../markup/Markup.svelte';
@@ -49,6 +50,7 @@
     onPreferences,
     onCredits,
     onLanguage,
+    onHelp,
   }: {
     /** Shown as "Version $version". */
     version: string;
@@ -62,6 +64,8 @@
     onPreferences: () => void;
     onCredits: () => void;
     onLanguage: () => void;
+    /** Phase 24: the help browser. */
+    onHelp: () => void;
   } = $props();
 
   let tipIndex = $state(0);
@@ -83,6 +87,7 @@
       [{ key: 'p', ctrl: true }, onPreferences],
       [{ key: 'l' }, onLanguage],
       [{ key: ' ' }, onCredits],
+      [{ key: 'F1' }, onHelp],
       [{ key: 'ArrowRight' }, () => (tipIndex = stepTip(tipIndex, tips.length, false))],
       [{ key: 'ArrowLeft' }, () => (tipIndex = stepTip(tipIndex, tips.length, true))],
     ];
@@ -123,6 +128,7 @@
         <p class="tip" dir="auto" data-testid="tip-text"><Markup text={ts(tip.text)} /></p>
         <p class="source" dir="auto"><Markup text={ts(tip.source)} /></p>
         <div class="tip-buttons">
+          <button class="small" title={t('Show Battle for Wesnoth help')} onclick={onHelp} data-testid="title-help">{t('Help')}</button>
           <span class="spacer"></span>
           <button class="small" title={t('Show previous tip of the day')} onclick={() => (tipIndex = stepTip(tipIndex, tips.length, true))} data-testid="tip-previous">{t('Previous')}</button>
           <button class="small" title={t('Show next tip of the day')} onclick={() => (tipIndex = stepTip(tipIndex, tips.length, false))} data-testid="tip-next">{t('Next')}</button>

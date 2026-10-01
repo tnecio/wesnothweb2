@@ -1,5 +1,6 @@
 <script lang="ts">
   import IpfImage from './images/IpfImage.svelte';
+  import HelpLink from './help/HelpLink.svelte';
   import { unitImageRef } from './images/unitImageRef.js';
   import type { Snippet } from 'svelte';
   import { hpColor, xpColor, redToGreen } from '@wesnothweb2/renderer';
@@ -147,7 +148,13 @@
             </span>
           {/if}
         </div>
-        <div class="sub">{th('Level')} {info.level} {info.typeName} &middot; {info.raceName} &middot; {capitalizeFirst(alignmentName(info.alignment ?? 'neutral'))}</div>
+        <div class="sub">
+          {th('Level')}
+          {info.level}
+          <HelpLink request={{ unitType: info.typeId, variation: info.variation }}>{info.typeName}</HelpLink> &middot;
+          <HelpLink request={{ topic: '..race_' + info.raceId }}>{info.raceName}</HelpLink> &middot;
+          <HelpLink request={{ topic: 'time_of_day' }}>{capitalizeFirst(alignmentName(info.alignment ?? 'neutral'))}</HelpLink>
+        </div>
         <div class="sub">{t('Side')} {info.side} &middot; ({info.x}, {info.y})</div>
       </div>
     </div>
@@ -168,10 +175,16 @@
       <span class="bar-value">{info.movesLeft}/{info.maxMoves}</span>
     </div>
 
-    <div>{th('Terrain')}: {info.terrainName} ({th('Defense')}: {info.defensePercent}%)</div>
+    <div>
+      {th('Terrain')}: <HelpLink request={{ terrain: info.terrainCode }}>{info.terrainName}</HelpLink> ({th('Defense')}: {info.defensePercent}%)
+    </div>
     {#if info.traits.length > 0}
       <!-- Real character traits (e.g. strong, intelligent) -- addresses "no information about character traits in the unit infobox". -->
-      <div>{t('Traits')}: {info.traits.join(', ')}</div>
+      <div>
+        {t('Traits')}:
+        {#each info.traits as trait, i (i)}{#if i > 0},
+          {/if}<HelpLink request={{ topic: info.traitTopics[i] ?? '' }}>{trait}</HelpLink>{/each}
+      </div>
     {/if}
 
     <!-- Real resistances tooltip -- addresses "no way to see a unit's resistances". -->
@@ -201,8 +214,9 @@
               <span class="name">{atk.name}</span>
               <span class="stats">{atk.damage}&times;{atk.numAttacks} ({rangeType(atk)})</span>
               {#if atk.specials.length > 0}
-                <span class="specials" title={atk.specials.map((s) => s.description).join('\n\n')}>
-                  {atk.specials.map((s) => s.name).join(', ')}
+                <span class="specials">
+                  {#each atk.specials as special, i (i)}{#if i > 0},
+                    {/if}<HelpLink request={{ topic: special.helpTopic }} title={special.description}>{special.name}</HelpLink>{/each}
                 </span>
               {/if}
             </li>
@@ -216,7 +230,7 @@
         <div class="attacks-label">{t('Abilities:')}</div>
         <ul>
           {#each info.abilities as ab (ab.name)}
-            <li title={ab.description}>{ab.name}</li>
+            <li><HelpLink request={{ topic: ab.helpTopic }} title={ab.description}>{ab.name}</HelpLink></li>
           {/each}
         </ul>
       </div>

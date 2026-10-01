@@ -7,6 +7,8 @@
    * behavior as `RecruitDialog.svelte` -- see its own doc comment.
    */
   import IpfImage from './images/IpfImage.svelte';
+  import HelpButton from './help/HelpButton.svelte';
+  import { helpBrowser } from './help/helpBrowser.svelte.js';
   import { unitImageRef } from './images/unitImageRef.js';
   import type { RecallOption } from './gameSession.js';
   import { alignmentName, damageTypeName, rangeName, raceName } from './i18n/gameText.js';
@@ -66,6 +68,7 @@
    * should do there.
    */
   function handleKeydown(e: KeyboardEvent): void {
+    if (helpBrowser.isOpen) return; // The help opened from this dialog is on top and owns the keys.
     if (options.length === 0 || renaming) return;
     if (e.target instanceof HTMLInputElement) return;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -176,6 +179,7 @@
       </table>
     </div>
     <div class="footer">
+      <HelpButton disabled={!selected} onclick={() => selected && helpBrowser.openUnitType(selected.typeId)} />
       <button onclick={startRename} disabled={!selected}>{t('Rename')}</button>
       <button onclick={handleDismiss} disabled={!selected}>{t('Dismiss Unit')}</button>
       <div class="spacer"></div>

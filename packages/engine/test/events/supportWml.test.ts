@@ -10,7 +10,8 @@ import { MoveType } from '../../src/model/MoveType.js';
 import { EventManager, EventPump } from '../../src/events/pump.js';
 import { VariableStore } from '../../src/events/variables.js';
 import { parseWml } from '../../src/wml/index.js';
-import { runActionSequence } from '../../src/events/actionWml.js';
+import { runActionFlow, runActionSequence } from '../../src/events/actionWml.js';
+import { autoRespond, runFlow, type Interaction } from '../../src/events/interaction.js';
 import { memoryPersistentVariables } from '../../src/events/supportWml.js';
 
 /** Phase 28c: the mainline tags The South Guard needed (`supportWml.ts`, `harmUnitWml.ts`). */
@@ -160,6 +161,15 @@ describe('small tags', () => {
       id=tsg_s1
     [/set_achievement]`);
     expect(got).toEqual(['tsg:tsg_s1']);
+  });
+});
+
+describe('[open_help]', () => {
+  it('shows the help at its topic, and the event waits for it (an openHelp beat)', () => {
+    const { ctx } = setup();
+    const seen: Interaction[] = [];
+    runFlow(runActionFlow(parseWml('[open_help]\n  topic=unit_Fencer\n[/open_help]'), ctx), (i) => (seen.push(i), autoRespond(i)));
+    expect(seen).toEqual([{ kind: 'beat', beat: { kind: 'openHelp', topic: 'unit_Fencer' } }]);
   });
 });
 

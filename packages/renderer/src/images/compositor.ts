@@ -196,6 +196,31 @@ type Bitmap = ImageBitmap | HTMLImageElement
 /** A composited result: an OffscreenCanvas where available (always, in a worker), else a DOM canvas. */
 export type CompositedImage = OffscreenCanvas | HTMLCanvasElement
 
+/**
+ * The size `~SCALE`, `~SCALE_SHARP`, `~SCALE_INTO` and `~SCALE_INTO_SHARP` give a `srcW`x`srcH` image
+ * (`parse_scale_args` and `scale_modification::operator()`, image_modifications.cpp): each dimension is
+ * pixels, or a percentage of the original with `%`; 0 (or a negative or missing one) keeps the original;
+ * the `_INTO` forms fit the image inside that box, keeping its aspect ratio. Null when no argument is given.
+ */
+export function scaledSize(args: readonly string[], srcW: number, srcH: number, preserveAspect: boolean): [number, number] | null {
+  if (args.length === 0 || (args.length === 1 && args[0]!.trim() === '')) return null
+  const dim = (arg: string | undefined, original: number): number => {
+    const s = (arg ?? '').trim()
+    const relative = s.includes('%')
+    const n = parseInt(relative ? s.slice(0, s.lastIndexOf('%')) : s, 10)
+    if (!Number.isFinite(n) || n <= 0) return original
+    return relative ? Math.trunc(original * (n / 100)) : n
+  }
+  let w = dim(args[0], srcW)
+  let h = dim(args[1], srcH)
+  if (preserveAspect) {
+    const ratio = Math.min(w / srcW, h / srcH)
+    w = Math.trunc(srcW * ratio)
+    h = Math.trunc(srcH * ratio)
+  }
+  return w > 0 && h > 0 ? [w, h] : null
+}
+
 function makeCanvas(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {
   if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h)
   const c = document.createElement('canvas')
@@ -541,8 +566,9 @@ export class Compositor {
       case 'SCALE_SHARP':
       case 'SCALE_INTO':
       case 'SCALE_INTO_SHARP': {
-        const [w, h] = args.map(Number)
-        if (!Number.isFinite(w) || !Number.isFinite(h) || !w || !h || w <= 0 || h <= 0) return src
+        const size = scaledSize(args, src.width, src.height, name.startsWith('SCALE_INTO'))
+        if (!size) return src
+        const [w, h] = size
         const out = makeCanvas(w, h)
         const g = ctx2d(out)
         g.imageSmoothingEnabled = !name.endsWith('SHARP')

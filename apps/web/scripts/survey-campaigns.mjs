@@ -342,7 +342,7 @@ table(['Campaign', 'Achievements declared', '`[set_achievement]` / progress uses
 L.push('Every campaign\'s `[set_achievement]` is supported since Phase 28c (recorded, not shown).', '');
 L.push('## Help topics opened (`[open_help]`)', '');
 const topics = Object.entries(data.campaigns).filter(([, c]) => c.helpTopics.length);
-L.push(topics.length ? '' : 'None outside The South Guard (which opens three unit pages).');
+L.push(topics.length ? '' : 'None outside The South Guard (which opens three unit pages). Supported since Phase 24 (2026-09-30): the\nhelp browser opens at the topic, and the event waits until it is closed.');
 for (const [name, c] of topics) L.push(`- **${name}**: ${c.helpTopics.map((t) => `\`${t}\``).join(', ')}`);
 L.push('');
 L.push('## Campaign terrain', '');

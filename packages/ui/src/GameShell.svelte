@@ -131,6 +131,8 @@
   import { fetchTeamColors } from './teamColorsCache.js';
   import StoryViewer from './StoryViewer.svelte';
   import PreferencesDialog from './PreferencesDialog.svelte';
+  import HelpBrowser from './help/HelpBrowser.svelte';
+  import { helpBrowser } from './help/helpBrowser.svelte.js';
   import LanguageDialog from './LanguageDialog.svelte';
   import { accessibility } from './accessibility.js';
   import { fmt, locale, t, tw, ts, tx } from './i18n/locale.js';
@@ -871,6 +873,12 @@
    * the event carries on.
    */
   async function playCutsceneBeat(beat: CutsceneBeat): Promise<InteractionResult> {
+    if (beat.kind === 'openHelp') {
+      // Phase 24: `[open_help]`: a modal dialog upstream, so no time cap -- the event waits for the player.
+      helpBrowser.open(beat.topic);
+      await helpBrowser.whenClosed();
+      return {};
+    }
     const started = performance.now();
     try {
       await capped(playBeatBody(beat));
@@ -1286,7 +1294,7 @@
    */
   async function continueStandingOrders(): Promise<void> {
     // The "Disable automatic moves" preference (`disable_auto_moves`).
-    if (!canAct() || displayPrefs.value.disableAutoMoves) return;
+    if (!canActDuringTurnStart() || displayPrefs.value.disableAutoMoves) return;
     const message = await runPlayerAction(() => session.executeGotos());
     if (message === null) return;
     sync(message);
@@ -1336,8 +1344,21 @@
 
   /** True when the player may act: their own turn, no dialog up, no event mid-flight. */
   function canAct(): boolean {
+    return !turnStarting && canActDuringTurnStart();
+  }
+
+  /** `canAct`, but for the turn start's own steps (standing orders) while `turnStarting` holds the player back. */
+  function canActDuringTurnStart(): boolean {
     return phase === 'playing' && !eventsRunning && currentMessage === null && currentGuiDialog === null;
   }
+
+  /**
+   * True from the moment the other sides' turns are over until the player's turn has really begun: the
+   * deferred dialogue, the bell, the autosave and the standing orders (`before_human_turn`, then
+   * `play_human_turn`'s `execute_gotos`). Upstream gives no input until then; before this, a slow autosave
+   * left the player a few seconds to act before their own standing orders ran.
+   */
+  let turnStarting = $state(false);
 
   /** `GameBoardView`'s `onHexHoverChange` -- keeps the infobox's hovered-hex terrain section live. */
   function handleHexHoverChange(hex: HexPoint | null, input?: { touch: boolean }): void {
@@ -2201,18 +2222,23 @@
         skipOtherSidesAnimations = false;
       }
     });
-    sync(message);
-    await showDeferredInteractions();
-    // The turn is the player's now, on screen too: the bell (`before_human_turn`).
-    const turnSounds = heldTurnSounds ?? [];
-    heldTurnSounds = null;
-    for (const request of turnSounds) audio.playSound(request);
-    // Upstream autosaves once per player turn, *before* that turn begins
-    // (`playsingle_controller::before_human_turn`) -- which, after
-    // `endTurn` has cycled through every AI side and come back round, is
-    // here.
-    await autosave();
-    await continueStandingOrders();
+    turnStarting = true;
+    try {
+      sync(message);
+      await showDeferredInteractions();
+      // The turn is the player's now, on screen too: the bell (`before_human_turn`).
+      const turnSounds = heldTurnSounds ?? [];
+      heldTurnSounds = null;
+      for (const request of turnSounds) audio.playSound(request);
+      // Upstream autosaves once per player turn, *before* that turn begins
+      // (`playsingle_controller::before_human_turn`) -- which, after
+      // `endTurn` has cycled through every AI side and come back round, is
+      // here.
+      await autosave();
+      await continueStandingOrders();
+    } finally {
+      turnStarting = false;
+    }
     // Then, as `play_human_turn` does, the objectives if WML changed them.
     if (phase !== 'ended' && session.takeObjectivesChanged()) objectivesDialogOpen = true;
   }
@@ -2672,6 +2698,14 @@
       handler: () => (preferencesOpen = true),
       hotkey: { key: 'p', ctrl: true },
     },
+    // Phase 24: upstream's `help` (F1), the entry after Preferences in the game menu.
+    {
+      id: 'help',
+      label: t('Help'),
+      enabled: true,
+      handler: () => helpBrowser.open(),
+      hotkey: { key: 'F1' },
+    },
     {
       id: 'language',
       label: `${t('Language')}...`,
@@ -2775,9 +2809,6 @@
       if (unitHere && unitHere.side === activeSide && unitHere !== session.selectedUnit) {
         hexCommands.push({ id: 'ctx-select', label: tx('Select Unit'), enabled: true, handler: () => handleHexClick(x, y) });
       }
-      if (unitHere && unitHere.side !== activeSide) {
-        hexCommands.push({ id: 'ctx-inspect', label: tx('Unit Description'), enabled: true, handler: () => handleHexClick(x, y) });
-      }
       hexCommands.push({ id: 'ctx-move', label: tx('Move Here'), enabled: isReachable, handler: () => handleHexClick(x, y) });
       hexCommands.push({ id: 'ctx-attack', label: t('Attack'), enabled: isAttackTarget, handler: () => handleHexClick(x, y) });
       hexCommands.push({
@@ -2798,6 +2829,16 @@
           recallDialogOpen = true;
         },
       });
+      // Phase 24: upstream's `describeterrain` and `describeunit`, which open the help on that terrain or unit type.
+      hexCommands.push({ id: 'ctx-describe-terrain', label: t('Terrain Description'), enabled: true, handler: () => helpBrowser.openTerrain(session.terrainCodeAt(x, y)) });
+      if (unitHere) {
+        hexCommands.push({
+          id: 'ctx-describe-unit',
+          label: t('Unit Type Description'),
+          enabled: true,
+          handler: () => helpBrowser.openUnitType(unitHere.type.id, unitHere.variation),
+        });
+      }
       hexCommands.push({ id: 'ctx-label', label: `${t('Place Label')}...`, enabled: true, handler: () => openLabelDialog({ x, y }, false) });
       // Real `[set_menu_item]` entries the scenario's own WML declared --
       // see `GameSession.menuItems`'s own doc comment on why these are
@@ -2963,6 +3004,7 @@
       labelSettingsOpen ||
       preferencesOpen ||
       languageDialogOpen ||
+      helpBrowser.isOpen ||
       pendingAdvancement !== null ||
       pendingPreview !== null ||
       // Phase 17: a suspended event's own dialogue owns the keyboard
@@ -3300,6 +3342,11 @@
   {/if}
 
   <AdvancementDialog pending={pendingAdvancement} onChoose={handleChooseAdvancement} />
+
+  <!-- Phase 24: last, so it is above whichever dialog opened it. -->
+  {#if helpBrowser.isOpen}
+    <HelpBrowser snapshot={activeSnapshot} game={session.helpContext()} />
+  {/if}
 
   {#if phase === 'replay' && replay}
     <div class="replay-bar" role="toolbar" aria-label={tx('Replay controls')} data-testid="replay-bar">

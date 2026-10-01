@@ -10,6 +10,8 @@ build/
 apps/web/public/scenarios/
 # The data directory's Lua as one file (Phase 29; npm run build:lua --workspace=apps/web)
 apps/web/public/lua/
+# The help browser's data (Phase 24; npm run build:help --workspace=apps/web)
+apps/web/public/help/
 # Generated image bundles (Phase 28a P5+; npm run build:atlases --workspace=apps/web)
 apps/web/public/atlases/
 # Verification captures (apps/web/scripts/*-screenshots.mjs, dialogue-playthrough.mjs)
