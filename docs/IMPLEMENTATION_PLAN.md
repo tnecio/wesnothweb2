@@ -1870,7 +1870,9 @@ below exist yet.
 
 ### Phase 28c — The rest of the bundled single-player campaigns (added 2026-09-27)
 
-**Status: resumed 2026-10-01** (user's call, ahead of achievements). Plan:
+**Status: resumed 2026-10-01** (user's call, ahead of achievements); **C1 delivered 2026-10-01** (see
+`PROGRESS.md`: the shared tags, scenario end events, floating labels, unit overlays, campaign terrain and
+generated caves; the generated caves are made at build time, one per scenario, by the user's call). Plan:
 - **C1, shared gaps**, before any campaign:
   - the missing tags (`[set_extra_recruit]`, `[do_command]`, `[find_path]`, `[end_turn]`,
     `[petrify]`/`[unpetrify]`, `[story]`, `[print]`, `[proceed_to_next_scenario]`);

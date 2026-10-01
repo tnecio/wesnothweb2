@@ -9,53 +9,38 @@ what the port lacks; what it already supports is left out. Re-run after a subsys
 
 | Campaign | Scenarios (built) | Missing tags | Campaign Lua tags | Lua (files / lines) | Unbridged Lua API | Core Lua modules missing | Micro AIs | Custom Lua AI | Dialogs | Achievements | Help topics | Own terrain rules / types |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Descent_Into_Darkness | 13 (13) | 2 | 0 | 0 / 0 | 0 | 0 | — | 0 | 0 | 7 | 0 | 0 / 0 |
-| Dusk_of_Dawn | 6 (6) | 2 | 0 | 0 / 0 | 0 | 0 | — | 0 | 0 | 7 | 0 | 0 / 0 |
-| Eastern_Invasion | 24 (24) | 3 | 2 | 2 / 337 | 0 | 0 | coward, zone_guardian, hang_out, goto, forest_animals | 35 | 2 | 2 | 0 | 0 / 0 |
-| Heir_To_The_Throne | 35 (35) | 3 | 6 | 3 / 668 | 4 | 0 | zone_guardian, messenger_escort, simple_attack, goto, coward, wolves | 62 | 4 | 1 | 0 | 8 / 3 |
-| Heir_To_The_Throne_Classic | 31 (31) | 1 | 4 | 2 / 82 | 2 | 0 | assassin | 0 | 1 | 1 | 0 | 0 / 0 |
+| Descent_Into_Darkness | 13 (13) | 0 | 0 | 0 / 0 | 0 | 0 | — | 0 | 0 | 7 | 0 | 0 / 0 |
+| Dusk_of_Dawn | 6 (6) | 0 | 0 | 0 / 0 | 0 | 0 | — | 0 | 0 | 7 | 0 | 0 / 0 |
+| Eastern_Invasion | 24 (24) | 0 | 2 | 2 / 337 | 0 | 0 | coward, zone_guardian, hang_out, goto, forest_animals | 35 | 2 | 2 | 0 | 0 / 0 |
+| Heir_To_The_Throne | 35 (35) | 0 | 6 | 3 / 668 | 3 | 0 | zone_guardian, messenger_escort, simple_attack, goto, coward, wolves | 62 | 4 | 1 | 0 | 8 / 3 |
+| Heir_To_The_Throne_Classic | 31 (31) | 0 | 3 | 2 / 82 | 1 | 0 | assassin | 0 | 1 | 1 | 0 | 0 / 0 |
 | Legend_of_Wesmere | 24 (24) | 0 | 3 | 1 / 163 | 0 | 0 | patrol | 2 | 0 | 0 | 0 | 0 / 0 |
 | Northern_Rebirth | 16 (16) | 0 | 1 | 1 / 38 | 0 | 0 | return_guardian | 0 | 0 | 0 | 0 | 0 / 0 |
 | Of_Pearls_and_Pirates | 6 (6) | 0 | 1 | 1 / 87 | 0 | 0 | zone_guardian | 8 | 1 | 1 | 0 | 0 / 0 |
 | Sceptre_of_Fire | 14 (14) | 0 | 1 | 1 / 11 | 0 | 0 | — | 0 | 0 | 0 | 0 | 3 / 2 |
-| Secrets_of_the_Ancients | 22 (22) | 1 | 0 | 1 / 104 | 1 | 0 | zone_guardian, coward, messenger_escort | 0 | 1 | 0 | 0 | 33 / 33 |
+| Secrets_of_the_Ancients | 22 (22) | 0 | 0 | 1 / 104 | 1 | 0 | zone_guardian, coward, messenger_escort | 0 | 1 | 0 | 0 | 33 / 33 |
 | Son_Of_The_Black_Eye | 19 (19) | 0 | 0 | 1 / 173 | 1 | 0 | simple_attack, healer_support | 1 | 0 | 0 | 0 | 0 / 0 |
-| The_Deceivers_Gambit | 20 (20) | 3 | 3 | 3 / 661 | 7 | 0 | zone_guardian, goto, simple_attack, healer_support, patrol, coward | 26 | 2 | 2 | 0 | 0 / 0 |
+| The_Deceivers_Gambit | 20 (20) | 0 | 3 | 3 / 661 | 5 | 0 | zone_guardian, goto, simple_attack, healer_support, patrol, coward | 26 | 2 | 2 | 0 | 0 / 0 |
 | The_Hammer_of_Thursagan | 11 (11) | 0 | 0 | 0 / 0 | 0 | 0 | zone_guardian | 10 | 0 | 3 | 0 | 0 / 0 |
-| The_Rise_Of_Wesnoth | 27 (27) | 2 | 0 | 1 / 60 | 0 | 0 | — | 5 | 0 | 0 | 0 | 0 / 0 |
+| The_Rise_Of_Wesnoth | 27 (27) | 0 | 0 | 1 / 60 | 0 | 0 | — | 5 | 0 | 0 | 0 | 0 / 0 |
 | WL_Test | 2 (2) | 0 | 0 | 0 / 0 | 0 | 0 | — | 0 | 0 | 0 | 0 | 0 / 0 |
-| Winds_of_Fate | 16 (16) | 0 | 1 | 0 / 0 | 0 | 0 | big_animals, return_guardian | 0 | 0 | 0 | 0 | 0 / 0 |
+| Winds_of_Fate | 16 (16) | 0 | 0 | 0 / 0 | 0 | 0 | big_animals, return_guardian | 0 | 0 | 0 | 0 | 0 / 0 |
 | World_Conquest | 1 (0) | 0 | 0 | 111 / 18017 | 17 | 0 | — | 0 | 5 | 0 | 0 | 0 / 0 |
 
 ## WML action tags the port does not have
 
 | Tag | Campaigns | Uses | Which |
 |---|---|---|---|
-| `[set_extra_recruit]` | 4 | 36 | Eastern_Invasion, Heir_To_The_Throne, The_Deceivers_Gambit, The_Rise_Of_Wesnoth |
-| `[do_command]` | 3 | 30 | Eastern_Invasion, Heir_To_The_Throne, The_Deceivers_Gambit |
-| `[find_path]` | 3 | 3 | Descent_Into_Darkness, Eastern_Invasion, Heir_To_The_Throne_Classic |
-| `[end_turn]` | 2 | 3 | Heir_To_The_Throne, The_Deceivers_Gambit |
-| `[petrify]` | 2 | 3 | Dusk_of_Dawn, Secrets_of_the_Ancients |
-| `[unpetrify]` | 2 | 2 | Dusk_of_Dawn, The_Rise_Of_Wesnoth |
-| `[story]` | 1 | 2 | Descent_Into_Darkness |
 
 ## Presentation tags that do nothing here
 
 | Tag | Campaigns | Uses | Which |
 |---|---|---|---|
 | `[redraw]` | 15 | 161 | Descent_Into_Darkness, Dusk_of_Dawn, Eastern_Invasion, Heir_To_The_Throne, Heir_To_The_Throne_Classic, Legend_of_Wesmere, +9 |
-| `[floating_text]` | 8 | 84 | Descent_Into_Darkness, Eastern_Invasion, Heir_To_The_Throne, Heir_To_The_Throne_Classic, Northern_Rebirth, Sceptre_of_Fire, +2 |
-| `[unit_overlay]` | 6 | 11 | Descent_Into_Darkness, Dusk_of_Dawn, Legend_of_Wesmere, Northern_Rebirth, Sceptre_of_Fire, The_Rise_Of_Wesnoth |
-| `[select_unit]` | 3 | 22 | Heir_To_The_Throne_Classic, The_Deceivers_Gambit, The_Hammer_of_Thursagan |
-| `[remove_unit_overlay]` | 2 | 3 | Legend_of_Wesmere, Northern_Rebirth |
 
 ## Conditions not evaluated
 
-
-| Condition | Campaigns | Uses | Which |
-|---|---|---|---|
-| `[proceed_to_next_scenario]` | 1 | 7 | Legend_of_Wesmere |
-
+None.
 
 ## WML tags defined in campaign Lua
 
@@ -72,7 +57,6 @@ These run through the Lua runtime (Phase 28c); what they need is in the Lua API 
 | `[companion_message]` | Heir_To_The_Throne | 17 |
 | `[display_lisar_tutorial]` | Heir_To_The_Throne | 6 |
 | `[select_character]` | Heir_To_The_Throne_Classic | 1 |
-| `[print]` | Heir_To_The_Throne_Classic | 2 |
 | `[hint_message]` | Heir_To_The_Throne_Classic | 2 |
 | `[show_countdown]` | Heir_To_The_Throne_Classic | 1 |
 | `[replace_map_section]` | Legend_of_Wesmere | 1 |
@@ -84,7 +68,6 @@ These run through the Lua runtime (Phase 28c); what they need is in the Lua API 
 | `[select_delfador_skills]` | The_Deceivers_Gambit | 20 |
 | `[display_skills_dialog]` | The_Deceivers_Gambit | 20 |
 | `[listen_for_mousemove]` | The_Deceivers_Gambit | 14 |
-| `[print]` | Winds_of_Fate | 1 |
 
 ## Lua API the bridge does not provide yet
 
@@ -93,7 +76,6 @@ Names as the campaigns call them (`wesnoth.x.y`; a field read on a function's re
 | Lua API | Campaigns | Places | Which |
 |---|---|---|---|
 | `wesnoth.add_known_unit` | 4 | 5 | Heir_To_The_Throne_Classic, Son_Of_The_Black_Eye, The_Deceivers_Gambit, World_Conquest |
-| `wesnoth.interface.select_unit` | 2 | 21 | Heir_To_The_Throne, The_Deceivers_Gambit |
 | `wesnoth.audio.play` | 2 | 3 | The_Deceivers_Gambit, World_Conquest |
 | `wesnoth.units.create_animator` | 1 | 35 | Heir_To_The_Throne |
 | `filesystem.have_asset` | 1 | 28 | Heir_To_The_Throne |
@@ -111,8 +93,6 @@ Names as the campaigns call them (`wesnoth.x.y`; a field read on a function's re
 | `wesnoth.game_events.add_repeating` | 1 | 1 | World_Conquest |
 | `wesnoth.game_events.on_mouse_action` | 1 | 1 | The_Deceivers_Gambit |
 | `wesnoth.game_events.on_mouse_move` | 1 | 1 | The_Deceivers_Gambit |
-| `wesnoth.interface.add_overlay_text` | 1 | 1 | Heir_To_The_Throne_Classic |
-| `wesnoth.interface.get_displayed_unit` | 1 | 1 | The_Deceivers_Gambit |
 | `wesnoth.interface.remove_item` | 1 | 1 | World_Conquest |
 | `wesnoth.map.create` | 1 | 1 | World_Conquest |
 | `wesnoth.map.filter_tags` | 1 | 1 | World_Conquest |
@@ -194,7 +174,7 @@ help browser opens at the topic, and the event waits until it is closed.
 
 ## Campaign terrain
 
-This port's terrain graphics rules are core's only (`terrain-graphics-rules.json`); a campaign's own `[terrain_graphics]` or `[terrain_type]` would not be drawn or known.
+Supported since Phase 28c C1: a campaign's own `[terrain_type]`s and `[terrain_graphics]` (and a scenario's) are built into its snapshots and joined to the core rules. Listed so each can be checked when its campaign is ported.
 
 | Campaign | `[terrain_graphics]` | `[terrain_type]` |
 |---|---|---|

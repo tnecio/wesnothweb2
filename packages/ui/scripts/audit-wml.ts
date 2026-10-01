@@ -37,6 +37,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WmlConfig, createDefaultActionRegistry, registerAiWmlActions, type WmlConfigJson } from '@wesnothweb2/engine';
+import { builtinConditions } from '@wesnothweb2/engine/src/events/conditionalWml.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const args = process.argv.slice(2);
@@ -60,7 +61,7 @@ const NOOP = new Set([...noopList.matchAll(/'([^']+)'/g)].map((m) => m[1]!));
 // `[lua]` is registered by the Lua runtime a session creates (Phase 28c), not by the default registry.
 const EXTENSION = new Set([...actionSource.matchAll(/registry\.register\('([^']+)', extensionPoint\(/g)].map((m) => m[1]!).filter((t) => t !== 'lua'));
 /** `conditionalWml.ts`'s `builtinConditions`, `[lua]` (run by lua-bridge), plus the connectives and literals it handles itself. */
-const CONDITIONS_EVALUATED = new Set(['have_unit', 'have_location', 'found_item', 'lua', 'variable', 'true', 'false', 'and', 'or', 'not']);
+const CONDITIONS_EVALUATED = new Set([...Object.keys(builtinConditions), 'lua', 'true', 'false', 'and', 'or', 'not']);
 
 // ---------------------------------------------------------------------------
 // Which children of an action are themselves action bodies / conditions

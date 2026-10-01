@@ -355,7 +355,7 @@ L.push(topics.length ? '' : 'None outside The South Guard (which opens three uni
 for (const [name, c] of topics) L.push(`- **${name}**: ${c.helpTopics.map((t) => `\`${t}\``).join(', ')}`);
 L.push('');
 L.push('## Campaign terrain', '');
-L.push('This port\'s terrain graphics rules are core\'s only (`terrain-graphics-rules.json`); a campaign\'s own `[terrain_graphics]` or `[terrain_type]` would not be drawn or known.', '');
+L.push('Supported since Phase 28c C1: a campaign\'s own `[terrain_type]`s and `[terrain_graphics]` (and a scenario\'s) are built into its snapshots and joined to the core rules. Listed so each can be checked when its campaign is ported.', '');
 table(['Campaign', '`[terrain_graphics]`', '`[terrain_type]`'], Object.entries(data.campaigns).filter(([, c]) => c.terrainGraphics + c.terrainTypes > 0).map(([name, c]) => [name, c.terrainGraphics, c.terrainTypes]));
 L.push('## Preprocessor gaps the survey found (fixed)', '');
 L.push('Building every campaign exposed places where the port\'s preprocessor differed from upstream\'s; each is fixed and');

@@ -6020,3 +6020,74 @@ The real game's help is shown in `docs/reference/help/`; the port was compared a
   - `help-playthrough.mjs` (new) runs on the menu, in a game and at phone width;
   - `helpTree`, `helpNavigation` and `markup` tests over the real data;
   - an `[open_help]` engine test, a `gui.show_help` Lua test and a `scaledSize` test.
+
+## 2026-10-01: Phase 28c resumed, C1 -- the gaps the remaining campaigns share
+
+The user moved Phase 28c ahead of achievements: first everything several unported campaigns need, then the
+campaigns in four batches, easiest first (`IMPLEMENTATION_PLAN.md`, Phase 28c). World Conquest gets a phase of
+its own; WL_Test is not upstream content and is not ported.
+
+- **The survey asks a real Lua runtime.** `survey-campaigns.mjs` read the bridge's source files for the Lua
+  API, and after Phase 29's kernel it reported bridged names (`wesnoth.textdomain`, `units.find_on_map`...)
+  as missing. It now looks every name up in a `LuaRuntime` (`packages/ui/scripts/resolve-lua-api.ts`): an
+  `unported` stub counts as missing, `ai.*` is looked up in the AI's own table, and core modules count when
+  `wesnoth.require` loads them. `--only` also surveys a shipped campaign (UtBS's ten unbuilt scenarios). The
+  audit's list of evaluated conditions now comes from the engine's own table.
+- **Missing tags**, ported from upstream (`wml-tags.lua`, `action_wml.cpp`):
+  - `[set_extra_recruit]`; `[petrify]`/`[unpetrify]` (on the map and on recall lists);
+  - `[end_turn]`: `game_data::end_turn_forced`. The player's turn ends once the action that ran it is over,
+    even under `[disallow_end_turn]`; a human turn whose own turn events ran it is skipped; the action cannot
+    be undone. Kept in our saves; Wesnoth saves read `end_turn=` (upstream never writes it), and now carry
+    `[disallow_end_turn]`'s `can_end_turn`/`cannot_end_turn_reason` both ways, which were always written as
+    allowed.
+  - `[find_path]`, a port of `lua/wml/find_path.lua`. A test runs the same WML through the port and through
+    upstream's own file in the game's Lua runtime, and compares what each stores.
+  - `[do_command]`: each child (move, attack, recruit, recall, disband, fire_event, custom_command) runs
+    through the session's own command executors -- inside an event as part of its action, otherwise recorded
+    as a command of its own. The `fire_event` command fired only menu items; it now fires any event, after
+    `select` at `[last_select]`.
+  - `[story]` in an event: the story screen over the game; the event waits until it is read. The story
+    asset build now takes images from every `[story]` in a scenario.
+  - `[proceed_to_next_scenario]`, which needed the next item.
+- **Scenario end events (a bug in the shipped campaigns).** The session never fired `local_victory`/
+  `victory`/`scenario_end` (or the defeat ones), and fired nothing once a scenario was over. 224 places in
+  mainline hook them, shipped ones included: Dead Water 4 removes its revolt menu item, Two Brothers 1 grants
+  an achievement, Liberty's AI macros clean up. They now fire once, after the action that ended the scenario,
+  with `end_level_data` set; a loaded finished game does not fire them again.
+- **A bridge gap the `[find_path]` comparison found.** A tag defined in Lua got its config as a plain table,
+  top-level attributes substituted up front and children not at all. Upstream passes a vconfig that
+  substitutes as it is read, so a tag that sets `$this_unit` and then reads `[destination]` (as
+  `find_path.lua` does) saw the raw text. Lua-defined tags now get the kernel's vconfig of the config as
+  written.
+- **Presentation:**
+  - floating labels: `[floating_text]` and Lua `float_label` rise from a hex for a second (size 24, 100 px/s,
+    `LABEL_COLOR` or the given one, not on a fogged hex), drawn in board space; `[print]` and
+    `add_overlay_text` place a label over the map area as `intf_set_floating_label` does (alignment, offset,
+    width, background or outline, duration and fade), with a handle Lua can replace or remove. `[harm_unit]`
+    floats its damage and the statuses it gave, in red.
+  - unit overlays: the renderer never drew `unit::overlays()`, only a hard-coded loyal icon. Upstream has no
+    such special case -- the loyal trait's own effect adds `misc/loyal-icon.png`, a loyal hero's adds
+    `misc/hero-icon.png` (which the port drew wrong) -- so overlays are now drawn generically, after the orb
+    and crown. `[unit_overlay]`/`[remove_unit_overlay]` add an `[object]` as upstream does.
+  - `[select_unit]` and Lua `units.select`/`interface.select_unit` (no select event, as upstream's
+    command_disabler), `get_displayed_unit`, `scroll_to_hex`.
+  - `[redraw]` stays a no-op: the port redraws on every change.
+- **Campaign and scenario terrain.** The port knew core's terrain only. A campaign's own `[terrain_type]`s now
+  join core's in its snapshots; its `[terrain_graphics]` and a scenario's are parsed at build time with the
+  core parser (`campaignTerrainGraphicsRules`, shared in `_campaign.json`, and `scenarioTerrainGraphicsRules`)
+  and merged into the core rules in upstream's multiset order: precedence, then core, campaign, scenario. The
+  terrain worker and the atlas build both merge them; the atlas build now also roots campaign images as the
+  browser does. Under the Burning Suns 1, already shipped, draws its smashed great tree for the first time.
+  `terrainTypeConfigs` moves from `_core.json` into each campaign's database, UtBS's being different.
+- **Generated caves.** Heir to the Throne 31, HttT Classic 17 and Sceptre of Fire 4 have `map_generation=lua`.
+  A port of the map generator's kernel (`lua-bridge/src/kernel/mapgen.ts`: its own mt19937 `mathx.random`, the
+  generator's `find_path`, `data/lua/core`) runs upstream's `cave_map_generator.lua` unchanged at build time,
+  with a seed fixed by the scenario's id: every play gets the same cave, where upstream makes a new one each
+  time (the user's call).
+- **Survey after C1** (`docs/CAMPAIGN_INVENTORY.md`): no missing action tags, every condition evaluated, only
+  `[redraw]` among the presentation tags; the Lua API gaps left are campaign-specific (The Deceiver's Gambit
+  5, Heir to the Throne 3, three campaigns 1 each, World Conquest 17).
+- **Checks:** engine `supportWml.test.ts` (tags, labels, overlays, story), ui `sharedTags.test.ts` (end turn,
+  `[find_path]` against upstream, `[do_command]`, scenario end events, select), `campaignTerrain.test.ts`,
+  renderer `mergeBuildingRules.test.ts`, lua-bridge `gameKernel.test.ts` (labels) and `mapgen.test.ts`; in the
+  browser, `apps/web/scripts/shared-tags-playthrough.mjs` (new) on Dead Water 1.

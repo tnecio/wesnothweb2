@@ -30,8 +30,11 @@
   "wesnoth.format_conjunct_list",
   "wesnoth.game_events.fire",
   "wesnoth.interface.add_chat_message",
+  "wesnoth.interface.add_overlay_text",
   "wesnoth.interface.game_display",
+  "wesnoth.interface.get_displayed_unit",
   "wesnoth.interface.get_viewing_side",
+  "wesnoth.interface.select_unit",
   "wesnoth.interface.skip_messages",
   "wesnoth.log",
   "wesnoth.map",
@@ -183,16 +186,11 @@
     "wml.variables.orc_leader_store"
    ],
    "audit": {
-    "missing": {
-     "find_path": 1,
-     "story": 2
-    },
+    "missing": {},
     "campaignLua": {},
     "extension": {},
     "noop": {
-     "floating_text": 8,
-     "redraw": 10,
-     "unit_overlay": 3
+     "redraw": 10
     },
     "conditions": {}
    }
@@ -220,15 +218,11 @@
    "luaApiUnbridged": {},
    "luaApiBridgedUsed": [],
    "audit": {
-    "missing": {
-     "petrify": 1,
-     "unpetrify": 1
-    },
+    "missing": {},
     "campaignLua": {},
     "extension": {},
     "noop": {
-     "redraw": 6,
-     "unit_overlay": 1
+     "redraw": 6
     },
     "conditions": {}
    }
@@ -348,18 +342,13 @@
     "wml.variables.herbs_to_collect_obj"
    ],
    "audit": {
-    "missing": {
-     "find_path": 1,
-     "set_extra_recruit": 24,
-     "do_command": 4
-    },
+    "missing": {},
     "campaignLua": {
      "item_dialog": 24,
      "item_dialog_musttake": 1
     },
     "extension": {},
     "noop": {
-     "floating_text": 9,
      "redraw": 17
     },
     "conditions": {}
@@ -576,9 +565,6 @@
      "48_Dan_Tonk [lua]",
      "50_The_Battle_for_Wesnoth [lua]",
      "50x_Overlook [lua]"
-    ],
-    "wesnoth.interface.select_unit": [
-     "08a_Isle_of_the_Damned_part1 [lua]"
     ]
    },
    "luaApiBridgedUsed": [
@@ -590,6 +576,7 @@
     "wesnoth.current.turn",
     "wesnoth.dofile",
     "wesnoth.game_events.fire",
+    "wesnoth.interface.select_unit",
     "wesnoth.interface.skip_messages",
     "wesnoth.map.find",
     "wesnoth.map.get_adjacent_hexes",
@@ -615,11 +602,7 @@
     "wml.variables.turn_number"
    ],
    "audit": {
-    "missing": {
-     "set_extra_recruit": 3,
-     "do_command": 6,
-     "end_turn": 2
-    },
+    "missing": {},
     "campaignLua": {
      "display_overworld_tutorial": 1,
      "display_scenario_preview": 1,
@@ -630,7 +613,6 @@
     },
     "extension": {},
     "noop": {
-     "floating_text": 35,
      "redraw": 34
     },
     "conditions": {}
@@ -668,9 +650,6 @@
    "luaApiUnbridged": {
     "wesnoth.add_known_unit": [
      "campaigns/Heir_To_The_Throne_Classic/lua/character_selection.lua"
-    ],
-    "wesnoth.interface.add_overlay_text": [
-     "campaigns/Heir_To_The_Throne_Classic/lua/hint_message.lua"
     ]
    },
    "luaApiBridgedUsed": [
@@ -678,6 +657,7 @@
     "mathx.random",
     "stringx.vformat (as a method)",
     "wesnoth.current.map",
+    "wesnoth.interface.add_overlay_text",
     "wesnoth.map.find",
     "wesnoth.paths.find_path",
     "wesnoth.persistent_tags.hint_message",
@@ -703,20 +683,15 @@
     "wml.variables.target_loc"
    ],
    "audit": {
-    "missing": {
-     "find_path": 1
-    },
+    "missing": {},
     "campaignLua": {
      "select_character": 1,
-     "print": 2,
      "hint_message": 2,
      "show_countdown": 1
     },
     "extension": {},
     "noop": {
-     "floating_text": 1,
-     "redraw": 11,
-     "select_unit": 1
+     "redraw": 11
     },
     "conditions": {}
    }
@@ -771,13 +746,9 @@
     },
     "extension": {},
     "noop": {
-     "redraw": 11,
-     "unit_overlay": 1,
-     "remove_unit_overlay": 1
+     "redraw": 11
     },
-    "conditions": {
-     "proceed_to_next_scenario": 7
-    }
+    "conditions": {}
    }
   },
   "Northern_Rebirth": {
@@ -824,10 +795,7 @@
     },
     "extension": {},
     "noop": {
-     "floating_text": 1,
-     "redraw": 11,
-     "unit_overlay": 4,
-     "remove_unit_overlay": 2
+     "redraw": 11
     },
     "conditions": {}
    }
@@ -932,9 +900,7 @@
     },
     "extension": {},
     "noop": {
-     "floating_text": 1,
-     "redraw": 8,
-     "unit_overlay": 1
+     "redraw": 8
     },
     "conditions": {}
    }
@@ -994,9 +960,7 @@
     "wml.variables"
    ],
    "audit": {
-    "missing": {
-     "petrify": 2
-    },
+    "missing": {},
     "campaignLua": {},
     "extension": {},
     "noop": {
@@ -1199,34 +1163,9 @@
     "wesnoth.game_events.on_mouse_move": [
      "campaigns/The_Deceivers_Gambit/lua/spellcasting.lua"
     ],
-    "wesnoth.interface.get_displayed_unit": [
-     "campaigns/The_Deceivers_Gambit/lua/theme.lua"
-    ],
     "wesnoth.add_known_unit": [
      "00_Graduation [lua]",
      "07_The_Great_River [lua]"
-    ],
-    "wesnoth.interface.select_unit": [
-     "00_Graduation [lua]",
-     "01_Stirrings_of_War [lua]",
-     "02_Fort_Garard [lua]",
-     "03_The_Ambassador [lua]",
-     "04_The_Sylvan_Seer [lua]",
-     "05_The_Deceiver [lua]",
-     "06_Ring_of_Swords [lua]",
-     "07_The_Great_River [lua]",
-     "07x_Weldyn_Court [lua]",
-     "08_Ruins_of_Saurgrath [lua]",
-     "08x_Field_Hospital [lua]",
-     "09_Omaranth [lua]",
-     "10_Houses_of_the_Dead [lua]",
-     "10x_Elensefar_Outskirts [lua]",
-     "11_Clan_Blackcrest [lua]",
-     "11x_Revelry [lua]",
-     "12_The_Traitor [lua]",
-     "13_Revelry_Revisited [lua]",
-     "13x_The_King_is_Dead [lua]",
-     "14_Long_Live_the_Queen [lua]"
     ]
    },
    "luaApiBridgedUsed": [
@@ -1236,6 +1175,8 @@
     "wesnoth.dofile",
     "wesnoth.game_events.fire",
     "wesnoth.interface.game_display",
+    "wesnoth.interface.get_displayed_unit",
+    "wesnoth.interface.select_unit",
     "wesnoth.interface.skip_messages",
     "wesnoth.require",
     "wesnoth.sides",
@@ -1249,11 +1190,7 @@
     "wml.variables.turn_number"
    ],
    "audit": {
-    "missing": {
-     "set_extra_recruit": 8,
-     "do_command": 20,
-     "end_turn": 1
-    },
+    "missing": {},
     "campaignLua": {
      "select_delfador_skills": 20,
      "display_skills_dialog": 20,
@@ -1261,9 +1198,7 @@
     },
     "extension": {},
     "noop": {
-     "floating_text": 20,
-     "redraw": 20,
-     "select_unit": 20
+     "redraw": 20
     },
     "conditions": {}
    }
@@ -1318,8 +1253,7 @@
     "campaignLua": {},
     "extension": {},
     "noop": {
-     "redraw": 3,
-     "select_unit": 1
+     "redraw": 3
     },
     "conditions": {}
    }
@@ -1360,15 +1294,11 @@
     "wesnoth.units.get"
    ],
    "audit": {
-    "missing": {
-     "unpetrify": 1,
-     "set_extra_recruit": 1
-    },
+    "missing": {},
     "campaignLua": {},
     "extension": {},
     "noop": {
-     "redraw": 10,
-     "unit_overlay": 1
+     "redraw": 10
     },
     "conditions": {}
    }
@@ -1439,12 +1369,9 @@
    ],
    "audit": {
     "missing": {},
-    "campaignLua": {
-     "print": 1
-    },
+    "campaignLua": {},
     "extension": {},
     "noop": {
-     "floating_text": 9,
      "redraw": 5
     },
     "conditions": {}
