@@ -238,6 +238,8 @@ const { parseWmlFile, preloadDefines, preloadDefinesFromDir, makeNodeHost } = aw
 );
 const { TerrainTypeData, writeTerrainCode } = await import(path.join(repoRoot, 'packages/engine/src/model/Terrain.ts'));
 const { parseTerrainGraphicsRules } = await import(path.join(repoRoot, 'packages/renderer/src/terrain/terrainGraphicsRules.ts'));
+const { loadLuaDataDir } = await import(path.join(repoRoot, 'packages/lua-bridge/src/dataLua.ts'));
+const { generateLuaMap } = await import(path.join(repoRoot, 'packages/lua-bridge/src/kernel/mapgen.ts'));
 const { GameBoard } = await import(path.join(repoRoot, 'packages/engine/src/model/GameBoard.ts'));
 const { GameMap } = await import(path.join(repoRoot, 'packages/engine/src/model/Map.ts'));
 const { UnitType } = await import(path.join(repoRoot, 'packages/engine/src/model/UnitType.ts'));
@@ -474,6 +476,18 @@ if (mapFileName) {
   const campaignRelativePath = path.join(campaignDir, 'maps', mapFileName);
   const mapPath = fs.existsSync(dataRootPath) ? dataRootPath : campaignRelativePath;
   scenario.setAttribute('map_data', fs.readFileSync(mapPath, 'utf8'));
+} else if (!scenario.hasAttribute('map_data') && scenario.getString('map_generation', '') === 'lua' && scenario.child('generator')) {
+  // C1: `saved_game::expand_random_scenario`: `random_generate_map` runs the [generator]'s create_map in the
+  // map generator's Lua kernel (Heir to the Throne's and Sceptre of Fire's caves). Upstream does this as the
+  // scenario starts, so each play gets a new cave; here it is done once, at build time, with a seed fixed by
+  // the scenario's id, so every play gets the same one (the user's call, 2026-10-01).
+  const generator = scenario.child('generator');
+  const seed = [...`${campaignDirName}/${scenario.getString('id')}`].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0, 2166136261);
+  const files = loadLuaDataDir(dataRoot);
+  scenario.setAttribute('map_data', generateLuaMap(files, generator.getString('create_map'), generator, seed, (level, message) => {
+    if (level === 'error' || level === 'warn') console.warn(`map generator: ${message}`);
+  }));
+  console.log(`Generated the map with [generator] ${generator.getString('id')} (seed ${seed}).`);
 } else if (!scenario.hasAttribute('map_data')) {
   console.warn(`Warning: "${scenario.getString('id')}" has no map_file=/map_data= -- using a trivial 1-hex placeholder map.`);
   scenario.setAttribute('map_data', 'Gg');
