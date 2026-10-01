@@ -1735,6 +1735,8 @@ export class GameSession {
           else if (level === 'warn') console.warn(`[lua] ${message}`);
         },
       });
+      // `[lua]` conditions run in the same kernel, with its whole API (upstream's `wml_conditionals.lua`).
+      this.eventPump.ctx.evalLuaCondition = (cfg) => this.luaRuntime!.evaluateCondition(cfg);
     } else if (scenarioHasLua) {
       options.onLog?.('error', 'this scenario has Lua, but the data directory\'s Lua is not loaded');
     }

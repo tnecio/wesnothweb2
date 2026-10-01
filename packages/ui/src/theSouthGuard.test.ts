@@ -29,7 +29,7 @@ function start(id: string): { session: GameSession; problems: string[] } {
 /**
  * Scenarios that bring back a unit an earlier one stored (scenario 4's choice keeps Afalas or Ethiliel,
  * 6b brings Deoran back from 6a): started on their own, without that carryover, the variable is missing and
- * `[unstore_unit]` says so -- as upstream would. Only that is allowed for them.
+ * `[unstore_unit]` says so -- in upstream's words. Only that is allowed for them.
  */
 const NEEDS_CARRYOVER: Record<string, string> = {
   '05a_The_Long_March': 'stored_afalas',
@@ -43,7 +43,7 @@ describe('The South Guard', () => {
       const { session, problems } = start(id);
       await session.runStartupEvents();
       const carried = NEEDS_CARRYOVER[id];
-      const expected = carried ? [`error: [unstore_unit]: variable '${carried}' doesn't contain unit data`] : [];
+      const expected = carried ? [`error: [unstore_unit]: variable '${carried}' doesn't exist`] : [];
       expect(problems).toEqual(expected);
     });
   }

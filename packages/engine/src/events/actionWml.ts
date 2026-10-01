@@ -87,6 +87,7 @@ import type { EffectEnv } from '../model/effects.js';
 import type { ActionHandler, EventContext, RecordedMessage } from './context.js';
 import { ActionRegistry } from './context.js';
 import { TString } from '../i18n/tstring.js';
+import { FLOATING_LABEL_COLOR, parseRgbString } from './floatingLabels.js';
 import { isFlow, runFlow, type Flow, type MessageOption, type MessageTexts, type Responder, type TextInputSpec } from './interaction.js';
 import { conditionalPassed } from './conditionalWml.js';
 import { findUnits, locationMatchesFilter, unitMatchesFilter } from './filter.js';
@@ -749,37 +750,17 @@ function actionClearVariable(cfg: WmlConfig, ctx: EventContext): void {
 
 // --- [store_unit] ---
 
+/** `unit.__cfg` (`unit::write`) as a variable: what `[store_unit]` stores and `$unit` holds in an event. */
 export function unitToVarNode(unit: Unit): VarNode {
-  const node = newVarNode();
-  node.attrs.set('type', unit.type.id);
-  node.attrs.set('id', unit.id);
-  node.attrs.set('name', unit.name);
-  node.attrs.set('side', unit.side);
-  if (unit.location.valid()) {
-    node.attrs.set('x', unit.location.wmlX);
-    node.attrs.set('y', unit.location.wmlY);
-  } else {
-    node.attrs.set('x', 'recall');
-    node.attrs.set('y', 'recall');
-  }
-  node.attrs.set('hitpoints', unit.hitpoints);
-  node.attrs.set('max_hitpoints', unit.maxHitpoints);
-  node.attrs.set('moves', unit.movesLeft);
-  node.attrs.set('max_moves', unit.maxMoves);
-  node.attrs.set('experience', unit.experience);
-  node.attrs.set('max_experience', unit.maxExperience);
-  node.attrs.set('level', unit.level);
-  node.attrs.set('canrecruit', unit.canRecruit);
-  node.attrs.set('resting', unit.resting);
-  if (unit.variables) {
-    const varsNode = varNodeFromConfig(unit.variables);
-    if (varsNode.attrs.size > 0 || varsNode.arrays.size > 0) {
-      node.arrays.set('variables', [varsNode]);
-    }
-  }
-  return node;
+  return varNodeFromConfig(unit.toConfig());
 }
 
+/**
+ * `wml_actions.store_unit` (`wml-tags.lua`): every unit `[filter]` matches, on the map and on recall lists
+ * (`wesnoth.units.find`), as its full `__cfg` -- a recall-list unit with `x,y=recall` -- written to
+ * `variable=` (`unit` by default) as `utils.vwriter` writes: cleared first (`mode=always_clear`), added to
+ * (`append`) or overwritten in place (`replace`; an explicit `[n]` index always is). `kill=yes` erases them.
+ */
 function actionStoreUnit(cfg: WmlConfig, ctx: EventContext): void {
   const filterCfg = cfg.child('filter');
   if (!filterCfg) {
@@ -787,25 +768,22 @@ function actionStoreUnit(cfg: WmlConfig, ctx: EventContext): void {
     return;
   }
   const kill = cfg.getBoolean('kill', false);
+  // Found before the variable is cleared: the filter may read it.
+  const units = findUnits(ctx.board, ctx.variables.expandConfigDeep(filterCfg), true);
   const variable = cfg.getString('variable', 'unit');
-  const xStr = filterCfg.getString('x', '');
-  const yStr = filterCfg.getString('y', '');
-  const includeRecall = xStr === 'recall' && yStr === 'recall';
-  const units = findUnits(ctx.board, ctx.variables.expandConfig(filterCfg), includeRecall);
-
+  const explicitIndex = variable.endsWith(']');
   const mode = cfg.getString('mode', 'always_clear');
-  if (mode === 'append') {
-    for (const u of units) ctx.variables.pushArray(variable, unitToVarNode(u));
-  } else {
-    ctx.variables.setArray(
-      variable,
-      units.map((u) => unitToVarNode(u)),
-    );
+  let index = 0;
+  if (!explicitIndex) {
+    if (mode === 'append') index = ctx.variables.arrayLength(variable);
+    else if (mode !== 'replace') ctx.variables.clear(variable);
   }
-
-  if (kill) {
-    for (const u of units) {
-      if (u.location.valid()) ctx.board.removeUnitAt(u.location);
+  for (const unit of units) {
+    ctx.variables.setConfig(explicitIndex ? variable : `${variable}[${index}]`, unit.toConfig());
+    index++;
+    if (kill) {
+      if (unit.location.valid() && ctx.board.unitAt(unit.location) === unit) ctx.board.removeUnitAt(unit.location);
+      else for (const team of ctx.board.teams()) if (ctx.board.recallList(team.side).includes(unit)) ctx.board.removeFromRecallList(team.side, unit.underlyingId);
     }
   }
 }
@@ -813,53 +791,30 @@ function actionStoreUnit(cfg: WmlConfig, ctx: EventContext): void {
 // --- [unstore_unit] ---
 
 /**
- * Real, reported bug: Liberty scenario 1's `[store_unit] variable=
- * goodguys_store kill=yes [filter] side=1 [/filter] [/store_unit]` (hiding
- * Baldras off-board during the opening goblin conversation, a common real
- * WML idiom for a cutscene) has a matching `[unstore_unit] variable=
- * goodguys_store [/unstore_unit]` a few lines later meant to put him right
- * back -- but this tag was never registered as an action handler at all, so
- * `runActionSequence` silently skipped it (a `[tag] not supported` warn
- * log). Baldras stayed permanently removed: the scenario's own leader unit
- * was simply absent from the board for the entire rest of the playthrough,
- * making it unplayable (no unit to select/move/recruit with). Discovered
- * investigating a "white circle units that can't move" bug report -- the
- * OTHER half of that report was `[base_unit]` (see UnitTypeDatabase.ts's
- * fix, same session), but this is a distinct, more severe issue underneath.
- *
- * Ports `data/lua/wml-tags.lua`'s `wml_actions.unstore_unit`: reads the
- * stored unit config back out of `variable=` (the container-node rules --
- * implicit index 0 for a plain array-variable name, explicit `foo[n]`
- * otherwise -- are the same ones `[store_unit]`'s own `variable=` uses, see
- * `VariableStore.getContainerNode`), rebuilds a real `Unit` from it via the
- * exact same `Unit.fromConfig` path `[unit]` uses (their config shapes are
- * exact duals: `unitToVarNode` writes precisely the attributes
- * `Unit.fromConfig` reads), and places it at `x=`/`y=` if given, else the
- * unit's own stored position (matching upstream's `x = cfg.x or unit.x`).
- *
- * NOT ported: `advance=`/`animate=`/`text=`/`color=` (cosmetic-only, no
- * headless effect -- consistent with this file's other no-op cosmetic
- * tags), `find_vacant=`/`check_passability=` (no real content exercised so
- * far needs a vacant-hex fallback here), and restoring to a recall list
- * (`x,y=recall,recall` -- Liberty's own usage always restores to the map).
- * Also inherits `[store_unit]`'s own gap: `unitToVarNode` doesn't serialize
- * `[modifications]`, so a unit's `[object]` effects (Baldras's own
- * `mace-spiked` weapon override, granted in his `[side]` block) are lost
- * across a store/kill/unstore round-trip -- a real but lower-severity gap
- * than the unit being missing entirely, not fixed here.
+ * `wml_actions.unstore_unit` (`wml-tags.lua`): the unit stored in `variable=`, back on the map at `x=`/`y=`
+ * (else where it was stored, or the special location `location_id=`), on a vacant hex nearby with
+ * `find_vacant=yes` (passable for it unless `check_passability=no`), replacing any unit there; `unit_placed`
+ * fires with `fire_event=yes`; `text=`/`male_text=`/`female_text=` float over it (`color=` or
+ * `red=`/`green=`/`blue=`); then it advances if it has the experience (`advance=no` keeps it). A unit with no
+ * place on the map (`x,y=recall`, or stored from a recall list) goes to its side's recall list. Liberty 1
+ * stores Baldras and puts him back; Winds of Fate and others keep heroes stored between scenarios.
  */
-function actionUnstoreUnit(cfg: WmlConfig, ctx: EventContext): void {
+function* actionUnstoreUnit(cfg: WmlConfig, ctx: EventContext): Flow {
   const variable = cfg.getString('variable', '');
   if (!variable) {
-    ctx.log('error', '[unstore_unit] missing required variable= attribute');
+    ctx.log('error', "[unstore_unit] missing required 'variable' attribute");
     return;
   }
   const node = ctx.variables.getContainerNode(variable, false);
-  if (!node || node.attrs.size === 0) {
-    ctx.log('error', `[unstore_unit]: variable '${variable}' doesn't contain unit data`);
+  if (!node) {
+    ctx.log('error', `[unstore_unit]: variable '${variable}' doesn't exist`);
     return;
   }
   const unitCfg = varNodeToConfig(node);
+  if (!unitCfg.hasAttribute('type')) {
+    ctx.log('error', `[unstore_unit]: variable '${variable}' doesn't contain unit data`);
+    return;
+  }
   let unit: Unit;
   try {
     unit = Unit.fromConfig(unitCfg, ctx.resolveType);
@@ -867,15 +822,44 @@ function actionUnstoreUnit(cfg: WmlConfig, ctx: EventContext): void {
     ctx.log('error', `Error occurred inside [unstore_unit]: ${e instanceof Error ? e.message : String(e)}`);
     return;
   }
-  if (cfg.hasAttribute('x') && cfg.hasAttribute('y')) {
-    unit.location = Location.fromConfig(cfg);
+  const board = ctx.board;
+  // `cfg.x or unit.x or -1`: the raw text, so `recall` survives.
+  let x = cfg.getString('x', '') || (unit.location.valid() ? String(unit.location.wmlX) : '-1');
+  let y = cfg.getString('y', '') || (unit.location.valid() ? String(unit.location.wmlY) : '-1');
+  if (cfg.hasAttribute('location_id')) {
+    const special = board.map.specialLocation(cfg.getString('location_id'));
+    x = String(special.wmlX);
+    y = String(special.wmlY);
   }
-  if (!unit.location.valid()) {
-    ctx.log('error', "[unstore_unit]: stored unit has no valid location (recall-list restore isn't supported)");
+  let loc = Location.fromWml(Number(x), Number(y));
+  if (x === 'recall' || y === 'recall' || !board.map.onBoard(loc)) {
+    // unit:to_recall()
+    unit.location = Location.NULL;
+    board.addToRecallList(unit.side, unit);
     return;
   }
-  ctx.board.addUnit(unit);
-  ctx.board.captureVillage(unit.location, unit.side);
+  if (cfg.getBoolean('find_vacant', false)) {
+    const checkPassability = cfg.getBoolean('check_passability', true);
+    const vacant = findVacantTile(board, loc, checkPassability ? { passCheck: unit } : {});
+    if (vacant) loc = vacant;
+  }
+  // unit:to_map(x, y, fire_event): replaces whoever stands there.
+  if (board.unitAt(loc)) board.removeUnitAt(loc);
+  unit.location = loc;
+  board.addUnit(unit);
+  if (cfg.getBoolean('fire_event', false)) yield* ctx.fireNow('unit placed', loc, Location.NULL);
+  const text = (unitCfg.getString('gender', '') === 'female' ? cfg.getRaw('female_text') : cfg.getRaw('male_text')) ?? cfg.getRaw('text');
+  if (text !== undefined && !ctx.skipMessages) {
+    let color = FLOATING_LABEL_COLOR;
+    const parsed = cfg.hasAttribute('color')
+      ? parseRgbString(cfg.getString('color'))
+      : cfg.hasAttribute('red') && cfg.hasAttribute('green') && cfg.hasAttribute('blue')
+        ? parseRgbString(`${cfg.getString('red')},${cfg.getString('green')},${cfg.getString('blue')}`)
+        : null;
+    if (parsed) color = parsed;
+    ctx.floatLabel?.({ kind: 'hex', loc, text: text instanceof TString ? text : String(text), color });
+  }
+  if (cfg.getBoolean('advance', true)) ctx.advanceUnit?.(unit);
 }
 
 // --- [kill] ---

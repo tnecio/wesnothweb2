@@ -125,9 +125,9 @@ function internalConditionalPassed(cond: WmlConfig, ctx: EventContext): boolean 
 
   for (const { tag, config } of cond.allChildren()) {
     if (CONNECTIVE_OR_BRANCH_TAGS.has(tag)) continue;
-    if (tag === 'lua' && luaConditional) {
+    if (tag === 'lua' && (ctx.evalLuaCondition || luaConditional)) {
       // `wml.shallow_literal`: the code is not variable-substituted.
-      if (!luaConditional(config, ctx)) return false;
+      if (!(ctx.evalLuaCondition ? ctx.evalLuaCondition(config) : luaConditional!(config, ctx))) return false;
       continue;
     }
     const handler = builtinConditions[tag];

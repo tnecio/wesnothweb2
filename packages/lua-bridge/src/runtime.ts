@@ -182,6 +182,33 @@ export class LuaRuntime {
     }
   }
 
+  /**
+   * `wml_conditionals.lua` (`[lua]` as a condition), in this kernel: `load(cfg.code, cfg.name)` called with the
+   * `[args]` child, passing on a true result. Any error is a fail, logged (`run_wml_conditional`).
+   */
+  evaluateCondition(cfg: WmlConfig): boolean {
+    const L = this.L;
+    const top = lua.lua_gettop(L);
+    try {
+      const code = cfg.getString('code', '');
+      const name = cfg.getString('name', '') || code;
+      if (lauxlib.luaL_loadbuffer(L, to_luastring(code), null, to_luastring(name)) !== lua.LUA_OK) {
+        this.ctx().log('error', `[lua] condition: ~lua:${lua.lua_tojsstring(L, -1)}`);
+        return false;
+      }
+      const args = cfg.child('args');
+      if (args) this.kernel.pushConfig(L, args);
+      else lua.lua_pushnil(L);
+      if (lua.lua_pcall(L, 1, 1, 0) !== lua.LUA_OK) {
+        this.ctx().log('error', `[lua] condition: ${lua.lua_tojsstring(L, -1)}`);
+        return false;
+      }
+      return lua.lua_toboolean(L, -1);
+    } finally {
+      lua.lua_settop(L, top);
+    }
+  }
+
   /** Runs a chunk of Lua with `args` as its `...` (the `[lua]` tag). */
   *runChunk(code: string, chunkName: string, args?: WmlConfig): Flow {
     const T = this.newThread();
