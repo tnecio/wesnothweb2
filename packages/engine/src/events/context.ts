@@ -129,7 +129,13 @@ export interface EndLevelState {
  * pump decides how to answer it. `runActionFlow` delegates into either
  * shape, so a handler only opts in when it actually needs to block.
  */
-export type ActionHandler = (cfg: WmlConfig, ctx: EventContext) => void | Flow;
+export type ActionHandler = ((cfg: WmlConfig, ctx: EventContext) => void | Flow) & {
+  /**
+   * Gets its config exactly as written, not `$`-substituted first: a tag defined in Lua, which upstream hands
+   * a vconfig that substitutes as it is read (`wml-utils.lua`'s `handle_event_commands`).
+   */
+  rawConfig?: boolean;
+};
 
 /**
  * The `[tag] -> handler` lookup action-tag execution consults, mirroring

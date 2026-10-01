@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseConfig } from '@wesnothweb2/engine';
+import { parseConfig, runActionSequence } from '@wesnothweb2/engine';
 import { GameSession } from './gameSession.js';
 import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 
@@ -60,5 +60,42 @@ describe('[end_turn]', () => {
     await session.handleHexClick(dest.x, dest.y);
     const loaded = GameSession.fromSaveData(readScenarioSnapshot(snapshotPath), session.toSaveData());
     expect(loaded.endTurnForced).toBe(true);
+  });
+});
+
+describe('[find_path]', () => {
+  /**
+   * The port (`flowWml.ts`) against upstream's own `lua/wml/find_path.lua`, run by the game's Lua runtime:
+   * the same WML must store the same variables.
+   */
+  async function both(body: string): Promise<{ port: unknown; upstream: unknown; session: GameSession }> {
+    const session = await start();
+    const ctx = session['eventPump'].ctx;
+    runActionSequence(parseConfig(`[find_path]\nvariable=port\n${body}\n[/find_path]`), ctx);
+    session['luaRuntime']!.kernel.run('wesnoth.require "lua/wml/find_path.lua"', '=test');
+    runActionSequence(parseConfig(`[find_path]\nvariable=upstream\n${body}\n[/find_path]`), ctx);
+    return { port: ctx.variables.getConfig('port')?.toJSON(), upstream: ctx.variables.getConfig('upstream')?.toJSON(), session };
+  }
+
+  const cases: Record<string, string> = {
+    'the cheapest of several hexes, this turn': '[traveler]\nid=Kai Krellis\n[/traveler]\n[destination]\nterrain=Wwf\n[/destination]',
+    'a far hex, over several turns': '[traveler]\nid=Kai Krellis\n[/traveler]\n[destination]\nx=2\ny=2\n[/destination]\nallow_multiple_turns=yes',
+    'too far for this turn': '[traveler]\nid=Kai Krellis\n[/traveler]\n[destination]\nx=2\ny=2\n[/destination]',
+    'the nearest by hexes, ignoring zones of control': '[traveler]\nid=Kai Krellis\n[/traveler]\n[destination]\nterrain=Ww\n[/destination]\nnearest_by=hexes\ncheck_zoc=no\nallow_multiple_turns=yes',
+    '$this_unit in [destination]': '[traveler]\nid=Kai Krellis\n[/traveler]\n[destination]\nx=$this_unit.x\ny="$($this_unit.y + 2)"\n[/destination]',
+    'no hex matches': '[traveler]\nid=Kai Krellis\n[/traveler]\n[destination]\nx=999\ny=999\n[/destination]',
+  };
+  for (const [name, body] of Object.entries(cases)) {
+    it(`matches upstream: ${name}`, async () => {
+      const { port, upstream } = await both(body);
+      expect(port).toEqual(upstream);
+    });
+  }
+
+  it('stores a route with its steps', async () => {
+    const { port } = await both(cases['a far hex, over several turns']!);
+    const path = port as { attributes: Record<string, unknown>; children: unknown[] };
+    expect(JSON.stringify(path)).toContain('required_turns');
+    expect(JSON.stringify(path)).toContain('step');
   });
 });

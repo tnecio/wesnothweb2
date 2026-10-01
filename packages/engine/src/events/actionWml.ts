@@ -139,6 +139,11 @@ import { soundSourceFromConfig } from '../audio/soundSources.js';
 /** Action tags whose handler gets its config exactly as written (see `runActionFlow`); `[lua]`'s code is Lua, never `$`-substituted (`wml.shallow_literal` in `wml_actions.lua`). */
 const RAW_CONFIG_TAGS = new Set(['event', 'objectives', 'lua', 'harm_unit']);
 
+/** Whether `handler`, registered for `tag`, gets its config as written (see `RAW_CONFIG_TAGS`, `ActionHandler.rawConfig`). */
+export function wantsRawConfig(tag: string, handler: ActionHandler): boolean {
+  return RAW_CONFIG_TAGS.has(tag) || handler.rawConfig === true;
+}
+
 export function* runActionFlow(body: WmlConfig, ctx: EventContext): Flow {
   for (const child of body.allChildren()) {
     // `[insert_tag]` is resolved when the iteration reaches it (vconfig's
@@ -169,7 +174,7 @@ function* runOneAction(tag: string, config: WmlConfig, ctx: EventContext): Flow 
     // when it fires, not now (`delayed_variable_substitution` defaults to
     // yes), so it must not get the usual attribute expansion either.
     // [objectives] decides for itself (its own delayed_variable_substitution=).
-    const result = handler(RAW_CONFIG_TAGS.has(tag) ? config : ctx.variables.expandConfig(config), ctx);
+    const result = handler(wantsRawConfig(tag, handler) ? config : ctx.variables.expandConfig(config), ctx);
     // A handler that needs to block returns a generator (see
     // interaction.ts); delegating rather than driving it here is what
     // lets the suspension travel out to whoever is pumping.
