@@ -117,12 +117,22 @@ import { redToGreen } from './colorScales.js';
  * whole board -- terrain and unit sprites -- solid black while the map
  * scrolled or a unit was selected. A fixed blend equation reads no
  * backbuffer and needs no `useBackBuffer`, so it cannot go black.
+ *
+ * Installed again whenever the GL context changes: a phone drops the WebGL
+ * context under memory pressure, and on restore `GlStateSystem` rebuilds its
+ * blend table without `'subtract'`, which then falls back to a normal blend
+ * -- the darkening layer painted as a solid colour over the whole terrain
+ * (playtest, 2026-10-01: the board "blacking out" when a unit is selected).
  */
 export function installSubtractBlend(renderer: PIXI.Renderer): void {
   if (!(renderer instanceof PIXI.WebGLRenderer)) return;
-  const gl = renderer.gl;
-  const map = (renderer.state as unknown as { blendModesMap: Record<string, number[]> }).blendModesMap;
-  map.subtract = [gl.ONE, gl.ONE, gl.ZERO, gl.ONE, gl.FUNC_REVERSE_SUBTRACT, gl.FUNC_ADD];
+  const install = (gl: WebGL2RenderingContext | WebGLRenderingContext): void => {
+    const map = (renderer.state as unknown as { blendModesMap: Record<string, number[]> }).blendModesMap;
+    map.subtract = [gl.ONE, gl.ONE, gl.ZERO, gl.ONE, gl.FUNC_REVERSE_SUBTRACT, gl.FUNC_ADD];
+  };
+  install(renderer.gl);
+  // Runs after the state system's own `contextChange` (systems register first), so it re-adds the entry.
+  renderer.runners.contextChange.add({ contextChange: install });
 }
 
 export interface SnapshotTerrainHex {
@@ -1026,7 +1036,7 @@ export class SnapshotBoard {
   updateFogShroud(hexes: readonly FogShroudHex[]): void {
     this.lastFogShroud = hexes;
     if (hexes.length === 0) {
-      this.fogShroudLayer.removeChildren();
+      this.fogShroudLayer.removeChildren().forEach((child) => child.destroy());
       for (const c of this.terrainHexContainers.values()) {
         if (c.bg) c.bg.visible = true;
         if (c.fg) c.fg.visible = true;
@@ -1067,7 +1077,7 @@ export class SnapshotBoard {
 
     await ImageCache.preload(refs);
 
-    this.fogShroudLayer.removeChildren();
+    this.fogShroudLayer.removeChildren().forEach((child) => child.destroy());
     for (const hex of perHex) {
       for (const img of hex.images) {
         const texture = await ImageCache.resolve(img);
@@ -2291,9 +2301,11 @@ export class SnapshotBoard {
         if (at === previous || at === selectedKey) void this.updateEllipse(visual, visual.lastUnit);
       }
     }
-    this.highlightLayer.removeChildren();
+    // Destroyed, not just detached: a `Graphics` holds GPU geometry, and every select and deselect builds a
+    // new set (playtest: on a phone the leak grew until the GPU dropped the terrain for seconds at a time).
+    this.highlightLayer.removeChildren().forEach((child) => child.destroy());
     this.moveInfoLayer.removeChildren().forEach((child) => child.destroy());
-    this.selectionLayer.removeChildren();
+    this.selectionLayer.removeChildren().forEach((child) => child.destroy());
 
     // Attack targets: a colour-coded fill alone isn't reliably visible on
     // Dead Water's water/sand (confirmed by screenshot), so they also get
