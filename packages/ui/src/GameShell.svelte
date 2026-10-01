@@ -1294,7 +1294,7 @@
    */
   async function continueStandingOrders(): Promise<void> {
     // The "Disable automatic moves" preference (`disable_auto_moves`).
-    if (!canAct() || displayPrefs.value.disableAutoMoves) return;
+    if (!canActDuringTurnStart() || displayPrefs.value.disableAutoMoves) return;
     const message = await runPlayerAction(() => session.executeGotos());
     if (message === null) return;
     sync(message);
@@ -1344,8 +1344,21 @@
 
   /** True when the player may act: their own turn, no dialog up, no event mid-flight. */
   function canAct(): boolean {
+    return !turnStarting && canActDuringTurnStart();
+  }
+
+  /** `canAct`, but for the turn start's own steps (standing orders) while `turnStarting` holds the player back. */
+  function canActDuringTurnStart(): boolean {
     return phase === 'playing' && !eventsRunning && currentMessage === null && currentGuiDialog === null;
   }
+
+  /**
+   * True from the moment the other sides' turns are over until the player's turn has really begun: the
+   * deferred dialogue, the bell, the autosave and the standing orders (`before_human_turn`, then
+   * `play_human_turn`'s `execute_gotos`). Upstream gives no input until then; before this, a slow autosave
+   * left the player a few seconds to act before their own standing orders ran.
+   */
+  let turnStarting = $state(false);
 
   /** `GameBoardView`'s `onHexHoverChange` -- keeps the infobox's hovered-hex terrain section live. */
   function handleHexHoverChange(hex: HexPoint | null, input?: { touch: boolean }): void {
@@ -2209,18 +2222,23 @@
         skipOtherSidesAnimations = false;
       }
     });
-    sync(message);
-    await showDeferredInteractions();
-    // The turn is the player's now, on screen too: the bell (`before_human_turn`).
-    const turnSounds = heldTurnSounds ?? [];
-    heldTurnSounds = null;
-    for (const request of turnSounds) audio.playSound(request);
-    // Upstream autosaves once per player turn, *before* that turn begins
-    // (`playsingle_controller::before_human_turn`) -- which, after
-    // `endTurn` has cycled through every AI side and come back round, is
-    // here.
-    await autosave();
-    await continueStandingOrders();
+    turnStarting = true;
+    try {
+      sync(message);
+      await showDeferredInteractions();
+      // The turn is the player's now, on screen too: the bell (`before_human_turn`).
+      const turnSounds = heldTurnSounds ?? [];
+      heldTurnSounds = null;
+      for (const request of turnSounds) audio.playSound(request);
+      // Upstream autosaves once per player turn, *before* that turn begins
+      // (`playsingle_controller::before_human_turn`) -- which, after
+      // `endTurn` has cycled through every AI side and come back round, is
+      // here.
+      await autosave();
+      await continueStandingOrders();
+    } finally {
+      turnStarting = false;
+    }
     // Then, as `play_human_turn` does, the objectives if WML changed them.
     if (phase !== 'ended' && session.takeObjectivesChanged()) objectivesDialogOpen = true;
   }
