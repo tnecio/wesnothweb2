@@ -247,6 +247,16 @@ describe('toWesnothSave round trip (the fidelity contract)', () => {
       expect(u.facing).toBe(original.facing);
     }
   });
+
+  it("keeps [disallow_end_turn]'s state and reason (can_end_turn, cannot_end_turn_reason)", async () => {
+    const session = new GameSession(loadSnapshot());
+    await session.runStartupEvents();
+    const before = { ...session.toSaveData(), endTurnForbidden: { reason: { t: [['wesnoth', 'Not yet']] } } } as ReturnType<GameSession['toSaveData']>;
+    const wml = parseConfig(writeWml(toWesnothSave(before, loadSnapshot(), DEAD_WATER)));
+    expect(fromWesnothSave(wml).save.endTurnForbidden?.reason).toEqual(before.endTurnForbidden!.reason);
+    const allowed = parseConfig(writeWml(toWesnothSave(session.toSaveData(), loadSnapshot(), DEAD_WATER)));
+    expect(fromWesnothSave(allowed).save.endTurnForbidden).toBeUndefined();
+  });
 });
 
 /**

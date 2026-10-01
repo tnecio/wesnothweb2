@@ -1165,6 +1165,16 @@
       });
     }
     sync();
+    if (!turnStarting) endForcedTurn();
+  }
+
+  /**
+   * `[end_turn]` (`play_human_turn`'s loop stops on `end_turn_requested_`): once the action that ran it is
+   * over, the turn ends, whatever `[disallow_end_turn]` says. Deferred, so the caller finishes first.
+   */
+  function endForcedTurn(): void {
+    if (!session.endTurnForced || phase !== 'playing') return;
+    setTimeout(() => void handleEndTurn({ forced: true }), 0);
   }
 
   /**
@@ -2195,8 +2205,8 @@
     boardView?.skipAnimations();
   }
 
-  async function handleEndTurn(): Promise<void> {
-    if (!canAct() || session.endTurnBlocked !== null) return;
+  async function handleEndTurn(options: { forced?: boolean } = {}): Promise<void> {
+    if (!canAct() || (!options.forced && session.endTurnBlocked !== null)) return;
     const message = await runPlayerAction(async () => {
       otherSidesTurn = 'thinking';
       skipOtherSidesAnimations = false;
@@ -2245,6 +2255,8 @@
     }
     // Then, as `play_human_turn` does, the objectives if WML changed them.
     if (phase !== 'ended' && session.takeObjectivesChanged()) objectivesDialogOpen = true;
+    // A standing order's move may have run `[end_turn]`.
+    endForcedTurn();
   }
 
   /**

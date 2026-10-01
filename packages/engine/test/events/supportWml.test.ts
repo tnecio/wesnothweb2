@@ -152,6 +152,29 @@ describe('small tags', () => {
     void ctx;
   });
 
+  it('[set_extra_recruit] replaces a unit\'s extra_recruit=', () => {
+    const { board, run, logs } = setup();
+    const leader = Unit.create(makeType('Lieutenant'), 1, new Location(1, 1));
+    leader.id = 'Konrad';
+    leader.extraRecruit = ['Spearman'];
+    board.addUnit(leader);
+    run(`[set_extra_recruit]
+      id=Konrad
+      extra_recruit=Elvish Fighter, Elvish Archer
+    [/set_extra_recruit]`);
+    expect(leader.extraRecruit).toEqual(['Elvish Fighter', 'Elvish Archer']);
+    run('[set_extra_recruit]\nid=Konrad\n[/set_extra_recruit]');
+    expect(logs).toContain('error: [set_extra_recruit] missing required extra_recruit= attribute');
+    expect(leader.extraRecruit).toEqual(['Elvish Fighter', 'Elvish Archer']);
+  });
+
+  it('[end_turn] forces the end of the turn', () => {
+    const { ctx, run } = setup();
+    expect(ctx.endTurnForced).toBe(false);
+    run('[end_turn]\n[/end_turn]');
+    expect(ctx.endTurnForced).toBe(true);
+  });
+
   it('[set_achievement] reports to the achievement sink', () => {
     const { ctx, run } = setup();
     const got: string[] = [];

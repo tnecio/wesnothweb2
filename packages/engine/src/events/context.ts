@@ -307,6 +307,12 @@ export interface EventContext {
    * them if not.
    */
   endTurn: { allowed: boolean; reason?: TString };
+  /**
+   * C1: `[end_turn]` (`wesnoth.interface.end_turn`, `playsingle_controller::force_end_turn`): the side's turn
+   * ends once the current action is over, even where `[disallow_end_turn]` holds. `game_data::end_turn_forced_`,
+   * saved as `end_turn=`, cleared as the next side's turn begins; while set, the action cannot be undone.
+   */
+  endTurnForced: boolean;
   /** Phase 28c: `[set_global_variable]` and friends' storage, kept across games. Absent: they log and do nothing. */
   persistent?: PersistentVariables;
   /** Phase 28c: `[set_achievement]` and friends. Absent: they do nothing. */

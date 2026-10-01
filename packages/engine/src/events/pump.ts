@@ -199,6 +199,7 @@ export class EventPump {
       rng: options.rng,
       messages: [] as RecordedMessage[],
       endTurn: { allowed: true },
+      endTurnForced: false,
       choices: [],
       usedItems: new Set(),
       turnLimit: -1,

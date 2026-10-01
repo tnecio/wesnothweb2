@@ -5,7 +5,9 @@
  *   variables kept across games, per `namespace=`, through `EventContext.persistent`;
  * - `[unsynced]` (`wml-tags.lua`): its body, run as `[command]`;
  * - `[allow_end_turn]`/`[disallow_end_turn]` (`wesnoth.interface.allow_end_turn`): `EventContext.endTurn`;
- * - `[allow_extra_recruit]`/`[disallow_extra_recruit]` (`wml-tags.lua`): a unit's own `extra_recruit=`;
+ * - `[allow_extra_recruit]`/`[disallow_extra_recruit]`/`[set_extra_recruit]` (`wml-tags.lua`): a unit's own
+ *   `extra_recruit=`;
+ * - `[end_turn]` (`wml-tags.lua`, `wesnoth.interface.end_turn`): `EventContext.endTurnForced`;
  * - `[set_achievement]`/`[set_sub_achievement]`/`[progress_achievement]` (`wml-tags.lua`), through
  *   `EventContext.achievements`;
  * - `[replace_map]` (`action_wml.cpp`), `GameBoard.replaceMap`;
@@ -120,8 +122,23 @@ function actionDisallowEndTurn(cfg: WmlConfig, ctx: EventContext): void {
   ctx.endTurn = { allowed: false, reason: cfg.getTString('reason') };
 }
 
+/** `wml_actions.end_turn`: `wesnoth.interface.end_turn()`, `play_controller::force_end_turn`. */
+function actionEndTurn(_cfg: WmlConfig, ctx: EventContext): void {
+  ctx.endTurnForced = true;
+}
+
 function splitList(value: string): string[] {
   return value.split(',').map((s) => s.trim()).filter((s) => s !== '');
+}
+
+/** `wml_actions.set_extra_recruit`: each matching unit on the map may recruit exactly these types. */
+function actionSetExtraRecruit(cfg: WmlConfig, ctx: EventContext): void {
+  if (!cfg.hasAttribute('extra_recruit')) {
+    ctx.log('error', '[set_extra_recruit] missing required extra_recruit= attribute');
+    return;
+  }
+  const recruits = splitList(cfg.getString('extra_recruit'));
+  for (const unit of findUnits(ctx.board, cfg)) unit.extraRecruit = [...recruits];
 }
 
 /** `wml_actions.allow_extra_recruit`: each matching unit on the map may also recruit these types. */
@@ -219,6 +236,8 @@ export function registerSupportActions(register: (tag: string, handler: (cfg: Wm
   register('disallow_end_turn', actionDisallowEndTurn);
   register('allow_extra_recruit', actionAllowExtraRecruit);
   register('disallow_extra_recruit', actionDisallowExtraRecruit);
+  register('set_extra_recruit', actionSetExtraRecruit);
+  register('end_turn', actionEndTurn);
   register('set_achievement', actionSetAchievement);
   register('set_sub_achievement', actionSetSubAchievement);
   register('progress_achievement', actionProgressAchievement);

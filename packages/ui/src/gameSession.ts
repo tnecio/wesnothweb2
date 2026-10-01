@@ -1138,6 +1138,8 @@ export interface SaveGameData {
   usedItems?: string[];
   /** Phase 28c: `[disallow_end_turn]` in force (upstream's `can_end_turn`/`cannot_end_turn_reason`); absent when the turn may end. */
   endTurnForbidden?: { reason?: TStringJson };
+  /** C1: `[end_turn]` ran and the side's turn has not ended yet (`game_data::end_turn_forced_`). */
+  endTurnForced?: boolean;
   /**
    * Phase 18c: the live `[event]` handlers, in order -- spent
    * `first_time_only` ones gone, ones added at run time present, as
@@ -1771,6 +1773,11 @@ export class GameSession {
     return reason !== '' ? reason : tw('You cannot end your turn yet!');
   }
 
+  /** C1: `[end_turn]` ran during the player's turn: the shell ends it once the action is over. */
+  get endTurnForced(): boolean {
+    return this.eventPump.ctx.endTurnForced;
+  }
+
   /** Phase 28c: the scenario's Lua, when it has any. */
   private luaRuntime: LuaRuntime | null = null;
   /** Phase 29: combat prediction's generator while this session's AI plays (see `playAiSide`). */
@@ -2161,7 +2168,8 @@ export class GameSession {
       this.reportSync(action, `${action.source.length} recorded dependent(s) left unused`);
     }
     const eventsDisabledUndo = this.eventPump.takeUndoDisabled();
-    if (action.undoBlocked || eventsDisabledUndo || this.scenarioResult) this.undoList.clear(!TURN_BOOKKEEPING_COMMANDS.has(command.kind));
+    // `synced_context::undo_blocked`: an `[end_turn]` cannot be revoked, so neither can the action that ran it.
+    if (action.undoBlocked || eventsDisabledUndo || this.scenarioResult || this.eventPump.ctx.endTurnForced) this.undoList.clear(!TURN_BOOKKEEPING_COMMANDS.has(command.kind));
     else this.undoList.push({ steps: action.steps, command: rec });
     rec.digest = this.stateDigest();
     return result;
@@ -2533,6 +2541,8 @@ export class GameSession {
       if (this.scenarioResult) return;
     }
     this.setActiveSide(order.next);
+    // playsingle_controller: `set_end_turn_forced(false)` as the next side's turn begins.
+    this.eventPump.ctx.endTurnForced = false;
   }
 
   private mapItemsCache: { key: string; items: MapItemInfo[] } | null = null;
@@ -3591,8 +3601,12 @@ export class GameSession {
     // decides what an un-ended, capped-out game counts as.
     for (let guard = 0; guard < maxAiSideTurns && !this.scenarioResult; guard++) {
       const team = this.board.getTeam(this.activeSide);
-      if (!team || (team.controller !== 'ai' && team.controller !== 'network_ai')) break;
-      this.playAiSide(this.activeSide, aiAnimations);
+      if (!team || (team.controller !== 'ai' && team.controller !== 'network_ai')) {
+        // `play_side`: a human's turn is skipped when its own turn events ran `[end_turn]`.
+        if (!this.eventPump.ctx.endTurnForced) break;
+      } else {
+        this.playAiSide(this.activeSide, aiAnimations);
+      }
       if (this.scenarioResult) break;
       const next = yield* this.advanceOneTurn();
       if (!next) break;
@@ -4511,6 +4525,7 @@ export class GameSession {
       nextTeleportGroupId: this.board.tunnels.nextTeleportGroupId,
       usedItems: [...this.eventPump.ctx.usedItems],
       ...(this.eventPump.ctx.endTurn.allowed ? {} : { endTurnForbidden: { reason: this.eventPump.ctx.endTurn.reason?.toJSON() } }),
+      ...(this.eventPump.ctx.endTurnForced ? { endTurnForced: true } : {}),
       nextUnitId: this.board.nextUnitId,
       turnLimit: this.eventPump.ctx.turnLimit,
       items: this.eventPump.ctx.items.all().map((item) => itemToConfig(item).toJSON()),
@@ -4592,6 +4607,7 @@ export class GameSession {
     this.eventPump.ctx.endTurn = data.endTurnForbidden
       ? { allowed: false, reason: data.endTurnForbidden.reason ? TString.fromJSON(data.endTurnForbidden.reason) : undefined }
       : { allowed: true };
+    this.eventPump.ctx.endTurnForced = data.endTurnForced ?? false;
     if (data.turnLimit !== undefined) this.eventPump.ctx.turnLimit = data.turnLimit;
     if (data.items !== undefined) {
       this.eventPump.ctx.items.clear();
