@@ -241,6 +241,8 @@ try {
       );
       check('the recruit landed on the first free castle hex (2,3)', recruitedAt);
 
+      // The status bar catches up once the recruit's 600 ms "recruited" fade-in has played (slow here).
+      for (let i = 0; i < 40 && (await stat(page, 'Gold')) === goldBefore; i++) await page.waitForTimeout(250);
       const goldAfter = await stat(page, 'Gold');
       const unitsAfter = await stat(page, 'Units');
       check('recruit added a unit', unitsAfter === unitsBefore + 1, `units ${unitsBefore} -> ${unitsAfter}`);

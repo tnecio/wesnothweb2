@@ -123,7 +123,7 @@ async function libertyHard(browser) {
 
   await press(page, 'c', 700);
   check('C opens the campaign dialog', (await dialogs(page)).includes('Play a Campaign'));
-  check('the dialog lists the four real campaigns first, then the debug ones', (await visibleCampaigns(page)).slice(0, 4).join() === 'liberty,two_brothers,dead_water,under_the_burning_suns', (await visibleCampaigns(page)).join());
+  check('the dialog lists the five real campaigns first, then the debug ones', (await visibleCampaigns(page)).slice(0, 5).join() === 'the_south_guard,liberty,two_brothers,dead_water,under_the_burning_suns', (await visibleCampaigns(page)).join());
   check('with nothing chosen there is a landing text and Play is off', (await page.isDisabled('[data-testid="campaign-play"]')) && (await page.textContent('[data-testid="campaign-details"]')).includes('Select a campaign'));
   // The filter searches descriptions too, as upstream's does: "lib" would also match Two Brothers' mention of Liberty.
   await filterFor(page, 'marchlanders');
