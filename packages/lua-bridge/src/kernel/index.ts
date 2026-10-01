@@ -42,7 +42,7 @@ export function createGameKernel(host: GameKernelHost, options: GameKernelOption
   units.install();
   installWorld(k, host, units, options);
   installPaths(k, host, units);
-  installMisc(k, host);
+  installMisc(k, host, units);
   options.beforeCore?.(k, units);
   loadCore(k);
   return { kernel: k, units };

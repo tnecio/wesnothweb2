@@ -32,6 +32,7 @@ import {
   type LuaState,
 } from '../kernel.js';
 import type { GameKernelHost } from './host.js';
+import type { LuaUnits } from './units.js';
 
 export const VCONFIG_KEY = 'wml object';
 
@@ -40,7 +41,7 @@ interface VConfig {
   readonly cfg: WmlConfig;
 }
 
-export function installMisc(k: LuaKernel, host: GameKernelHost): void {
+export function installMisc(k: LuaKernel, host: GameKernelHost, units: LuaUnits): void {
   const L = k.L;
   const ctx = () => host.ctx();
   const expand = (value: ReturnType<WmlConfig['getRaw']>) => (typeof value === 'string' ? ctx().variables.substitute(value) : value);
@@ -217,10 +218,43 @@ export function installMisc(k: LuaKernel, host: GameKernelHost): void {
     },
   });
   installFloatingLabels(k, host);
+  // `intf_select_unit(loc, highlight = true, fire_event)`, which upstream registers as `wesnoth.units.select`
+  // (`core/interface.lua` makes it `wesnoth.interface.select_unit` too): under a command_disabler, so no select event.
+  k.define(['wesnoth', 'units', 'select'], (T) => {
+    if (lua.lua_isnoneornil(T, 1)) {
+      ctx().selectHex?.(null, false);
+      return 0;
+    }
+    const { loc, next } = locationArgs(k, T, 1);
+    if (!ctx().board.map.onBoard(loc)) return argError(T, 1, 'not on board');
+    ctx().selectHex?.(loc, lua.lua_isnoneornil(T, next) ? true : lua.lua_toboolean(T, next));
+    return 0;
+  });
+  k.defineAll(['wesnoth', 'interface'], {
+    // `intf_get_displayed_unit`: the unit the side panel shows, if any.
+    get_displayed_unit: (T) => {
+      const unit = ctx().displayedUnit?.();
+      if (!unit) return 0;
+      units.push(T, unit);
+      return 1;
+    },
+    // `intf_scroll_to_tile(loc, check_fogged, immediate, only_if_needed)`: the `[scroll_to]` beat.
+    scroll_to_hex: (T) => {
+      const { loc, next } = locationArgs(k, T, 1);
+      if (lua.lua_toboolean(T, next) && ctx().board.isFogged(host.currentSide(), loc)) return 0;
+      const beat = { kind: 'scrollTo' as const, location: loc, immediate: lua.lua_toboolean(T, next + 1), onlyIfNeeded: lua.lua_toboolean(T, next + 2), highlight: false };
+      return host.yieldFlow(
+        T,
+        (function* (): Flow {
+          yield { kind: 'beat', beat };
+        })(),
+      );
+    },
+  });
   for (const name of [
     'add_hex_overlay', 'remove_hex_overlay', 'get_color_adjust', 'color_adjust', 'screen_fade', 'delay', 'deselect_hex',
-    'highlight_hex', 'get_displayed_unit', 'get_hovered_hex', 'get_selected_hex', 'lock', 'is_locked',
-    'scroll', 'scroll_to_hex', 'zoom', 'clear_menu_item', 'set_menu_item', 'allow_end_turn', 'clear_chat_messages',
+    'highlight_hex', 'get_hovered_hex', 'get_selected_hex', 'lock', 'is_locked',
+    'scroll', 'zoom', 'clear_menu_item', 'set_menu_item', 'allow_end_turn', 'clear_chat_messages',
     'end_turn',
   ]) {
     k.unported(['wesnoth', 'interface', name]);
@@ -422,9 +456,7 @@ function installFloatingLabels(k: LuaKernel, host: GameKernelHost): void {
   k.defineAll(['wesnoth', 'interface'], {
     // `float_label(loc, text, color)` or, as `luaW_tolocation` reads two numbers, `float_label(x, y, text, color)`.
     float_label: (T) => {
-      const twoNumbers = lua.lua_type(T, 1) === lua.LUA_TNUMBER && lua.lua_type(T, 2) === lua.LUA_TNUMBER;
-      const loc = twoNumbers ? Location.fromWml(Number(lua.lua_tointeger(T, 1)), Number(lua.lua_tointeger(T, 2))) : k.checkLocation(T, 1);
-      const next = twoNumbers ? 3 : 2;
+      const { loc, next } = locationArgs(k, T, 1);
       const text = k.checkTString(T, next);
       let color = FLOATING_LABEL_COLOR;
       if (!lua.lua_isnoneornil(T, next + 1)) {
@@ -442,4 +474,16 @@ function installFloatingLabels(k: LuaKernel, host: GameKernelHost): void {
       return 1;
     },
   });
+}
+
+/**
+ * `luaW_checklocation(L, idx)` as upstream reads it: a location table, or two numbers -- of which upstream
+ * removes the first from the stack, so the arguments after it are one place earlier. Returns the location and
+ * where the next argument is.
+ */
+function locationArgs(k: LuaKernel, T: LuaState, idx: number): { loc: Location; next: number } {
+  if (lua.lua_type(T, idx) === lua.LUA_TNUMBER && lua.lua_type(T, idx + 1) === lua.LUA_TNUMBER) {
+    return { loc: Location.fromWml(Number(lua.lua_tointeger(T, idx)), Number(lua.lua_tointeger(T, idx + 1))), next: idx + 2 };
+  }
+  return { loc: k.checkLocation(T, idx), next: idx + 1 };
 }

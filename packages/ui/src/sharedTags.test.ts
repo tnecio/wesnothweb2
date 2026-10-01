@@ -199,3 +199,40 @@ describe('the end of the scenario (play_scenario_end)', () => {
     expect(loaded['eventPump'].ctx.variables.getString('order')).toBe(',local_victory,victory,scenario_end');
   });
 });
+
+describe('[select_unit] and wesnoth.interface.select_unit / get_displayed_unit / scroll_to_hex', () => {
+  const run = (session: GameSession, wml: string, respond?: Parameters<typeof runActionSequence>[2]) => runActionSequence(parseConfig(wml), session['eventPump'].ctx, respond);
+
+  it("selects the player's own unit, showing its reach, or not with highlight=no", async () => {
+    const session = await start();
+    run(session, '[select_unit]\nid=Kai Krellis\n[/select_unit]');
+    expect(session.selectedUnit?.id).toBe('Kai Krellis');
+    expect(session.reachable.length).toBeGreaterThan(1);
+    run(session, '[select_unit]\nid=Kai Krellis\nhighlight=no\n[/select_unit]');
+    expect(session.selectedUnit?.id).toBe('Kai Krellis');
+    expect(session.reachable).toEqual([]);
+  });
+
+  it("another side's unit is shown as inspected; Lua reads it back with get_displayed_unit", async () => {
+    const session = await start();
+    run(session, '[select_unit]\nid=Mal-Kevek\n[/select_unit]');
+    expect(session.selectedUnit).toBeNull();
+    expect(session.inspectedUnit?.id).toBe('Mal-Kevek');
+    run(session, '[lua]\ncode=<<wml.variables.shown = wesnoth.interface.get_displayed_unit().id>>\n[/lua]');
+    expect(session['eventPump'].ctx.variables.getString('shown')).toBe('Mal-Kevek');
+  });
+
+  it('Lua select_unit takes x, y; scroll_to_hex yields a scrollTo beat, unless check_fogged and fogged', async () => {
+    const session = await start();
+    const kai = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    const beats: unknown[] = [];
+    run(
+      session,
+      `[lua]\ncode=<<wesnoth.interface.select_unit(${kai.location.wmlX}, ${kai.location.wmlY}, false)\nwesnoth.interface.scroll_to_hex(${kai.location.wmlX}, ${kai.location.wmlY}, true, true)>>\n[/lua]`,
+      (i) => (i.kind === 'beat' && beats.push(i.beat), {}),
+    );
+    expect(session.selectedUnit?.id).toBe('Kai Krellis');
+    expect(session.reachable).toEqual([]);
+    expect(beats).toMatchObject([{ kind: 'scrollTo', immediate: true, onlyIfNeeded: false }]);
+  });
+});

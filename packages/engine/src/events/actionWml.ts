@@ -2031,7 +2031,7 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('sound_source', actionSoundSource);
   registry.register('remove_sound_source', actionRemoveSoundSource);
   registry.register('volume', actionVolume);
-  for (const tag of ['redraw', 'highlight', 'select_unit']) {
+  for (const tag of ['redraw', 'highlight']) {
     registry.register(tag, noop);
   }
   registerCutsceneActions((tag, handler) => registry.register(tag, handler));

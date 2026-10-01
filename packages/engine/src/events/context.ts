@@ -338,6 +338,13 @@ export interface EventContext {
   printLabelId?: number;
   /** The last overlay label id given out (`font::add_floating_label`'s counter). */
   overlayLabelCounter?: number;
+  /**
+   * C1: `mouse_handler::select_hex` from WML/Lua (`[select_unit]`, `wesnoth.interface.select_unit`): selects
+   * the unit at `loc` (null: deselects), showing where it can go when `highlight`. Installed by the session.
+   */
+  selectHex?: (loc: Location | null, highlight: boolean) => void;
+  /** `game_display::displayed_unit_hex`'s unit: the one the side panel shows. Installed by the session. */
+  displayedUnit?: () => Unit | undefined;
   /** `wesnoth.scenario.name`: the scenario's `name=` (`[story]`'s default title). Installed by the session. */
   scenarioName?: () => TString;
   /** Phase 28c: `[set_global_variable]` and friends' storage, kept across games. Absent: they log and do nothing. */

@@ -1710,6 +1710,8 @@ export class GameSession {
     // C1: `[do_command]`: the child as the command a player's action records, inside the running action if any.
     this.eventPump.ctx.doCommand = (tag, cfg) => this.doCommandFlow(tag, cfg);
     this.eventPump.ctx.scenarioName = () => this.scenarioNameT;
+    this.eventPump.ctx.selectHex = (loc, highlight) => this.selectHexFromScript(loc, highlight);
+    this.eventPump.ctx.displayedUnit = () => this.selectedUnit ?? this.inspectedUnit ?? undefined;
     this.eventPump.ctx.addUndoCommands = (commands) => {
       this.action?.steps.push({ kind: 'event', commands, loc1: this.eventPump.ctx.loc1, loc2: this.eventPump.ctx.loc2 });
     };
@@ -3206,6 +3208,23 @@ export class GameSession {
     this.clearSelection();
     this.inspectedUnit = unit;
     this.reachable = this.shownReachOf(unit);
+  }
+
+  /**
+   * `intf_select_unit` (`[select_unit]`): `mouse_handler::select_hex` under a `command_disabler`, so it only
+   * selects -- the viewing side's own unit on its turn as for a move, any other as inspected -- and shows
+   * the reach when `highlight`; no select sound or event (those are for commands).
+   */
+  private selectHexFromScript(loc: Location | null, highlight: boolean): void {
+    const unit = loc ? this.board.unitAt(loc) : undefined;
+    if (!unit || unit.hidden) {
+      this.clearSelection();
+      this.inspectedUnit = null;
+      return;
+    }
+    if (unit.side === this.activeSide && unit.side === this.viewingSide) this.selectUnit(unit);
+    else this.inspectUnit(unit);
+    if (!highlight) this.reachable = [];
   }
 
   /** `unit`'s reach as the board shows it for a unit the player isn't moving: another side's with its moves back (`unit_movement_resetter`). */

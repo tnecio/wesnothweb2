@@ -13,6 +13,7 @@
  * - `[story]` (`wml-tags.lua`, `gui.show_story`): a story screen mid-scenario, as a `story` beat;
  * - `[floating_text]`/`[print]` (`wml-tags.lua`): floating labels (`floatingLabels.ts`);
  * - `[unit_overlay]`/`[remove_unit_overlay]` (`wml-tags.lua`): an `[object]` adding or removing the image;
+ * - `[select_unit]` (`wml-tags.lua`): selects the unit, through `EventContext.selectHex`;
  * - `[set_achievement]`/`[set_sub_achievement]`/`[progress_achievement]` (`wml-tags.lua`), through
  *   `EventContext.achievements`;
  * - `[replace_map]` (`action_wml.cpp`), `GameBoard.replaceMap`;
@@ -193,6 +194,13 @@ function unitOverlay(cfg: WmlConfig, ctx: EventContext, add: boolean): void {
   }
 }
 
+/** `wml_actions.select_unit`: `wesnoth.interface.select_unit` on the first matching unit (`highlight` by default). */
+function actionSelectUnit(cfg: WmlConfig, ctx: EventContext): void {
+  const unit = findUnits(ctx.board, cfg)[0];
+  if (!unit) return;
+  ctx.selectHex?.(unit.location, cfg.getBoolean('highlight', true));
+}
+
 /** `wml_actions.end_turn`: `wesnoth.interface.end_turn()`, `play_controller::force_end_turn`. */
 function actionEndTurn(_cfg: WmlConfig, ctx: EventContext): void {
   ctx.endTurnForced = true;
@@ -313,6 +321,7 @@ export function registerSupportActions(register: (tag: string, handler: (cfg: Wm
   register('story', actionStory);
   register('floating_text', actionFloatingText);
   register('print', actionPrint);
+  register('select_unit', actionSelectUnit);
   register('unit_overlay', (cfg, ctx) => unitOverlay(cfg, ctx, true));
   register('remove_unit_overlay', (cfg, ctx) => unitOverlay(cfg, ctx, false));
   register('petrify', (cfg, ctx) => setPetrified(cfg, ctx, true));
