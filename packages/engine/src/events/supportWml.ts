@@ -9,6 +9,7 @@
  *   `extra_recruit=`;
  * - `[end_turn]` (`wml-tags.lua`, `wesnoth.interface.end_turn`): `EventContext.endTurnForced`;
  * - `[petrify]`/`[unpetrify]` (`wml-tags.lua`): the `petrified` status, on the map and on recall lists;
+ * - `[do_command]` (`action_wml.cpp`): player commands from WML, through `EventContext.doCommand`;
  * - `[set_achievement]`/`[set_sub_achievement]`/`[progress_achievement]` (`wml-tags.lua`), through
  *   `EventContext.achievements`;
  * - `[replace_map]` (`action_wml.cpp`), `GameBoard.replaceMap`;
@@ -132,6 +133,27 @@ function setPetrified(cfg: WmlConfig, ctx: EventContext, petrified: boolean): vo
   for (const unit of findUnits(ctx.board, cfg, true)) unit.setStatus(UnitStatus.Petrified, petrified);
 }
 
+/** The commands `[do_command]` may run (`action_wml.cpp`). */
+const DO_COMMAND_TAGS = new Set(['attack', 'move', 'recruit', 'recall', 'disband', 'fire_event', 'custom_command']);
+
+/**
+ * `[do_command]` (`action_wml.cpp`): each child runs as the same command a player's action records, events
+ * and all. Inside an action (an event) it is part of that action; otherwise it is recorded as its own.
+ */
+function* actionDoCommand(cfg: WmlConfig, ctx: EventContext): Flow {
+  for (const { tag, config } of cfg.allChildren()) {
+    if (!DO_COMMAND_TAGS.has(tag)) {
+      ctx.log('error', `unsupported tag [${tag}] in [do_command]; allowed tags: ${[...DO_COMMAND_TAGS].sort().join(' ')}`);
+      continue;
+    }
+    if (!ctx.doCommand) {
+      ctx.log('error', '[do_command]: no game to run commands in');
+      return;
+    }
+    yield* ctx.doCommand(tag, ctx.variables.expandConfigDeep(config));
+  }
+}
+
 /** `wml_actions.end_turn`: `wesnoth.interface.end_turn()`, `play_controller::force_end_turn`. */
 function actionEndTurn(_cfg: WmlConfig, ctx: EventContext): void {
   ctx.endTurnForced = true;
@@ -248,6 +270,7 @@ export function registerSupportActions(register: (tag: string, handler: (cfg: Wm
   register('disallow_extra_recruit', actionDisallowExtraRecruit);
   register('set_extra_recruit', actionSetExtraRecruit);
   register('end_turn', actionEndTurn);
+  register('do_command', actionDoCommand);
   register('petrify', (cfg, ctx) => setPetrified(cfg, ctx, true));
   register('unpetrify', (cfg, ctx) => setPetrified(cfg, ctx, false));
   register('set_achievement', actionSetAchievement);

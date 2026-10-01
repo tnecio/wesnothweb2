@@ -33,6 +33,7 @@ describe('synced commands: WML spelling', () => {
     { kind: 'init_side', side: 2 },
     { kind: 'end_turn', nextSide: 3 },
     { kind: 'fire_event', raise: 'menu item bribe', source: { x: 1, y: 1 } },
+    { kind: 'fire_event', raise: 'buy_elixir', source: { x: 2, y: 3 }, lastSelect: { x: 4, y: 5 } },
     { kind: 'start' },
   ];
 

@@ -319,6 +319,12 @@ export interface EventContext {
    * saved as `end_turn=`, cleared as the next side's turn begins; while set, the action cannot be undone.
    */
   endTurnForced: boolean;
+  /**
+   * C1: `[do_command]`'s child (`[move]`, `[attack]`, `[recruit]`, `[recall]`, `[disband]`, `[fire_event]`,
+   * `[custom_command]`, parsed), run as the player's own command would be
+   * (`synced_context::run_in_synced_context_if_not_already`). Installed by the session.
+   */
+  doCommand?: (tag: string, cfg: WmlConfig) => Flow;
   /** Phase 28c: `[set_global_variable]` and friends' storage, kept across games. Absent: they log and do nothing. */
   persistent?: PersistentVariables;
   /** Phase 28c: `[set_achievement]` and friends. Absent: they do nothing. */

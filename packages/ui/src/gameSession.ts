@@ -88,6 +88,7 @@ import {
   type RecallCommand,
   type DisbandCommand,
   type FireEventCommand,
+  commandFromWml,
   type StopUnitCommand,
   type RecordedCommand,
   type Dependent,
@@ -1698,6 +1699,8 @@ export class GameSession {
       this.queueAdvancement(unit);
       this.processAdvancementQueue(this.action?.rec ?? null, this.action?.source ? this.action : null);
     };
+    // C1: `[do_command]`: the child as the command a player's action records, inside the running action if any.
+    this.eventPump.ctx.doCommand = (tag, cfg) => this.doCommandFlow(tag, cfg);
     this.eventPump.ctx.addUndoCommands = (commands) => {
       this.action?.steps.push({ kind: 'event', commands, loc1: this.eventPump.ctx.loc1, loc2: this.eventPump.ctx.loc2 });
     };
@@ -2181,6 +2184,27 @@ export class GameSession {
     return null;
   }
 
+  /** `[do_command]`'s child: `run_in_synced_context_if_not_already`, errors logged as its spectator does. */
+  private *doCommandFlow(tag: string, cfg: WmlConfig): Flow {
+    const command = commandFromWml(tag, cfg);
+    if (!command) {
+      this.eventPump.ctx.log('error', `Error via [do_command]: cannot read [${tag}]`);
+      return;
+    }
+    let rejected: string | null = null;
+    yield* this.runSynced(command, function* (this: GameSession, action: ActionState) {
+      // A refused command is reported, as its spectator does; the action it ran in goes on.
+      const before = action.rejected;
+      const result = yield* this.execCommand(command, action);
+      if (action.rejected !== before) {
+        rejected = action.rejected;
+        action.rejected = before;
+      }
+      return result;
+    }.bind(this), { present: true });
+    if (rejected !== null) this.eventPump.ctx.log('error', `Error via [do_command]: ${rejected}`);
+  }
+
   /** Runs any command through its executor -- a replay's and a redo's entry point. */
   private *execCommand(command: SyncedCommand, action: ActionState): Flow<unknown> {
     switch (command.kind) {
@@ -2481,15 +2505,22 @@ export class GameSession {
    * so, like any event, it makes the action non-undoable unless it says
    * `[allow_undo]`.
    */
+  /**
+   * `[fire_event]` (`synced_commands.cpp`): `select` at `[last_select]` first, if given, then the event
+   * `raise=` at `[source]`. A menu item's event runs its `[command]`; any other name fires that event
+   * (`[do_command]`), whose handlers decide whether the action can still be undone.
+   */
   private *execFireEvent(cmd: FireEventCommand, action: ActionState): Flow<string | null> {
+    if (cmd.lastSelect) yield* this.fireFlow('select', locOf(cmd.lastSelect));
+    const loc = cmd.source ? locOf(cmd.source) : Location.NULL;
     const prefix = 'menu item ';
     const id = cmd.raise.startsWith(prefix) ? cmd.raise.slice(prefix.length) : null;
     const def = id !== null ? this.eventPump.ctx.menuItems.get(id) : undefined;
-    if (!def) return this.reject(action, `no menu item for event '${cmd.raise}'`);
-    const loc = cmd.source ? locOf(cmd.source) : Location.NULL;
-    yield* this.eventPump.runAsHandlerFlow(def.command, loc, Location.NULL);
+    if (id !== null && !def) return this.reject(action, `no menu item for event '${cmd.raise}'`);
+    if (def) yield* this.eventPump.runAsHandlerFlow(def.command, loc, Location.NULL);
+    else yield* this.eventPump.fireNowFlow(cmd.raise, loc, Location.NULL, new WmlConfig(), '');
     this.checkForGameEnd();
-    return def.description;
+    return def?.description ?? '';
   }
 
   /** `[start]`: `prestart`, every side's initial shroud clearing, then `start` (`play_controller::start_game`). */

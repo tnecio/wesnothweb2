@@ -99,3 +99,56 @@ describe('[find_path]', () => {
     expect(JSON.stringify(path)).toContain('step');
   });
 });
+
+describe('[do_command]', () => {
+  async function kaiMoves(session: GameSession): Promise<void> {
+    const kai = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    session.selectUnit(kai);
+    const dest = session.reachable.find((h) => h.x !== kai.location.x || h.y !== kai.location.y)!;
+    await session.handleHexClick(dest.x, dest.y);
+  }
+
+  it('[fire_event] inside an event fires the named event as part of the running action', async () => {
+    const session = await start([
+      '[event]\nname=moveto\nfirst_time_only=yes\n[do_command]\n[fire_event]\nraise=buy_elixir\n[/fire_event]\n[/do_command]\n[/event]',
+      '[event]\nname=buy_elixir\n[set_variable]\nname=bought\nvalue=yes\n[/set_variable]\n[/event]',
+    ]);
+    const before = session['recorder'].length;
+    await kaiMoves(session);
+    expect(session['eventPump'].ctx.variables.getBoolean('bought', false)).toBe(true);
+    // One command (the move); the fired event was part of it, not a command of its own.
+    expect(session['recorder'].commands.slice(before).map((r) => r.command.kind)).toEqual(['move']);
+  });
+
+  it('outside any action, a command of its own, written to the replay as [fire_event]', async () => {
+    const session = await start(['[event]\nname=buy_elixir\n[set_variable]\nname=bought\nvalue=yes\n[/set_variable]\n[/event]']);
+    const before = session['recorder'].length;
+    await session['drive'](session['eventPump'].ctx.doCommand!('fire_event', parseConfig('raise=buy_elixir')));
+    expect(session['eventPump'].ctx.variables.getBoolean('bought', false)).toBe(true);
+    const added = session['recorder'].commands.slice(before);
+    expect(added.map((r) => r.command)).toEqual([{ kind: 'fire_event', raise: 'buy_elixir' }]);
+  });
+
+  it('[move] walks a unit as a move order would, firing its moveto', async () => {
+    const session = await start(['[event]\nname=moveto\n[set_variable]\nname=moved_to\nvalue=$x1,$y1\n[/set_variable]\n[/event]']);
+    const kai = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    session.selectUnit(kai);
+    const dest = session.reachable.find((h) => h.x !== kai.location.x || h.y !== kai.location.y)!;
+    const steps = session.routePreview(dest.x, dest.y)!.steps;
+    session.clearSelection();
+    const wml = `x=${steps.map((s) => s.x + 1).join(',')}\ny=${steps.map((s) => s.y + 1).join(',')}`;
+    await session['drive'](session['eventPump'].ctx.doCommand!('move', parseConfig(wml)));
+    expect(kai.location.x).toBe(dest.x);
+    expect(kai.location.y).toBe(dest.y);
+    expect(session['eventPump'].ctx.variables.getString('moved_to')).toBe(`${dest.x + 1},${dest.y + 1}`);
+  });
+
+  it('refuses tags other than the commands, saying which are allowed', async () => {
+    const logs: string[] = [];
+    const session = new GameSession(readScenarioSnapshot(snapshotPath), { onLog: (level, message) => logs.push(`${level}: ${message}`) });
+    session['eventPump'].manager.addFromWml(parseConfig('[event]\nname=start\n[do_command]\n[kill]\nid=Kai Krellis\n[/kill]\n[/do_command]\n[/event]').child('event')!);
+    await session.runStartupEvents();
+    expect(logs).toContain('error: unsupported tag [kill] in [do_command]; allowed tags: attack custom_command disband fire_event move recall recruit');
+    expect(session.board.allUnits().some((u) => u.id === 'Kai Krellis')).toBe(true);
+  });
+});

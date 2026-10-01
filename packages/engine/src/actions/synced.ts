@@ -102,11 +102,15 @@ export interface EndTurnCommand {
   readonly nextSide: number;
 }
 
-/** `[fire_event] raise=`: a `[set_menu_item]` command (`menu item <id>`), fired at `[source]`. */
+/**
+ * `[fire_event] raise=`: a `[set_menu_item]` command (`menu item <id>`), or (`[do_command]`) any event, fired
+ * at `[source]`; `[last_select]` fires `select` there first.
+ */
 export interface FireEventCommand {
   readonly kind: 'fire_event';
   readonly raise: string;
   readonly source?: HexJson;
+  readonly lastSelect?: HexJson;
 }
 
 /** `[start]`: the scenario's `prestart`/`start` events and the first side's turn start, recorded as one action as upstream does. */
@@ -266,6 +270,7 @@ export function commandToWml(command: SyncedCommand): { tag: string; cfg: WmlCon
     case 'fire_event':
       cfg.setAttribute('raise', command.raise);
       if (command.source) cfg.addChild('source', writeHex(new WmlConfig(), command.source));
+      if (command.lastSelect) cfg.addChild('last_select', writeHex(new WmlConfig(), command.lastSelect));
       return { tag: 'fire_event', cfg };
     case 'start':
       return { tag: 'start', cfg };
@@ -326,7 +331,13 @@ export function commandFromWml(tag: string, cfg: WmlConfig): SyncedCommand | nul
       return { kind: 'end_turn', nextSide: cfg.getNumber('next_player_number', 0) };
     case 'fire_event': {
       const source = cfg.child('source');
-      return { kind: 'fire_event', raise: cfg.getString('raise'), ...(source ? { source: readHex(source) } : {}) };
+      const lastSelect = cfg.child('last_select');
+      return {
+        kind: 'fire_event',
+        raise: cfg.getString('raise'),
+        ...(source ? { source: readHex(source) } : {}),
+        ...(lastSelect ? { lastSelect: readHex(lastSelect) } : {}),
+      };
     }
     case 'start':
       return { kind: 'start' };
