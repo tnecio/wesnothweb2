@@ -20,6 +20,7 @@ import type { Rng } from '../rng/Rng.js';
 import type { VariableStore } from './variables.js';
 import type { ScenarioObjectives } from './objectives.js';
 import type { Flow } from './interaction.js';
+import type { FloatingLabelRequest } from './floatingLabels.js';
 import type { MusicList } from '../audio/musicList.js';
 import type { SoundRequest } from '../audio/sounds.js';
 import type { SoundSourceStore } from '../audio/soundSources.js';
@@ -331,6 +332,12 @@ export interface EventContext {
    * (`synced_context::run_in_synced_context_if_not_already`). Installed by the session.
    */
   doCommand?: (tag: string, cfg: WmlConfig) => Flow;
+  /** C1: where floating labels go to be drawn (`floatingLabels.ts`); the session installs it. Without one, nothing shows. */
+  floatLabel?: (request: FloatingLabelRequest) => void;
+  /** The overlay label the last `[print]` made, which the next replaces (`wml-tags.lua`'s `wml_floating_label`). */
+  printLabelId?: number;
+  /** The last overlay label id given out (`font::add_floating_label`'s counter). */
+  overlayLabelCounter?: number;
   /** `wesnoth.scenario.name`: the scenario's `name=` (`[story]`'s default title). Installed by the session. */
   scenarioName?: () => TString;
   /** Phase 28c: `[set_global_variable]` and friends' storage, kept across games. Absent: they log and do nothing. */

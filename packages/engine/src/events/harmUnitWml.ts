@@ -8,11 +8,12 @@
  * a list of `kill`/`fight`/`attack`/`defend`). `$this_unit` is the unit being harmed while each one's
  * attributes are read. `variable=` receives `{id, harm_amount}` per unit.
  *
- * Not ported: the red floating damage label (`wesnoth.interface.float_label`) -- a label nothing here can
- * draw yet; the status sounds are played when animated, as upstream.
+ * The red floating label (`wesnoth.interface.float_label`) shows the damage and the statuses given; the
+ * status sounds are played when animated, as upstream.
  */
 
 import type { EventContext } from './context.js';
+import { TString } from '../i18n/tstring.js';
 import { WmlConfig } from '../wml/config.js';
 import { isFlow, type Flow } from './interaction.js';
 import { findUnits } from './filter.js';
@@ -58,12 +59,16 @@ function truthy(cfg: WmlConfig, key: string): boolean {
   return !(typeof raw === 'string' && (raw === 'no' || raw === 'false'));
 }
 
-const STATUSES: readonly { name: string; status: string; sound?: string }[] = [
-  { name: 'poisoned', status: UnitStatus.Poisoned, sound: 'poison.ogg' },
-  { name: 'slowed', status: UnitStatus.Slowed, sound: 'slowed.wav' },
-  { name: 'petrified', status: UnitStatus.Petrified, sound: 'petrified.ogg' },
-  { name: 'unhealable', status: UnitStatus.Unhealable },
+/** The statuses `[harm_unit]` can give, with the label's words for them (`wesnoth` domain, as `harm_unit.lua`). */
+const STATUSES: readonly { name: string; status: string; sound?: string; male: string; female: string }[] = [
+  { name: 'poisoned', status: UnitStatus.Poisoned, sound: 'poison.ogg', male: 'poisoned', female: 'female^poisoned' },
+  { name: 'slowed', status: UnitStatus.Slowed, sound: 'slowed.wav', male: 'slowed', female: 'female^slowed' },
+  { name: 'petrified', status: UnitStatus.Petrified, sound: 'petrified.ogg', male: 'petrified', female: 'female^petrified' },
+  { name: 'unhealable', status: UnitStatus.Unhealable, male: 'unhealable', female: 'female^unhealable' },
 ];
+
+/** `float_label(..., "<span foreground='red'>%s</span>")`'s colour. */
+const HARM_LABEL_COLOR = { r: 255, g: 0, b: 0 };
 
 export function* actionHarmUnit(raw: WmlConfig, ctx: EventContext): Flow {
   const filterRaw = raw.child('filter');
@@ -134,12 +139,18 @@ export function* actionHarmUnit(raw: WmlConfig, ctx: EventContext): Flow {
       if (victim.hitpoints <= damage) damage = kill === false ? victim.hitpoints - 1 : victim.hitpoints;
       victim.hitpoints -= damage;
 
-      for (const { name, status, sound } of STATUSES) {
+      // The floating label: the damage, then each status given, a line each (`female^` forms for women).
+      const labelParts: (string | { domain: string; msgid: string })[] = [`${damage}\n`];
+      let addTab = false;
+      for (const { name, status, sound, male, female } of STATUSES) {
         if (name === 'poisoned' && victim.hasStatus('unpoisonable')) continue;
         if (!truthy(cfg, name) || victim.hasStatus(status)) continue;
+        labelParts.push({ domain: 'wesnoth', msgid: victim.gender === 'female' ? female : male }, '\n');
         victim.setStatus(status, true);
+        addTab = true;
         if (animate && sound) ctx.playSound({ files: sound, repeats: 0, group: 'sound' });
       }
+      if (addTab) labelParts.unshift('\t');
 
       if (animate && animateAs !== 'attacker') {
         yield* runNative(
@@ -153,6 +164,8 @@ export function* actionHarmUnit(raw: WmlConfig, ctx: EventContext): Flow {
           ctx,
         );
       }
+
+      ctx.floatLabel?.({ kind: 'hex', loc: victim.location, text: TString.fromParts(labelParts), color: HARM_LABEL_COLOR });
 
       // experience=: a boolean or a list of kill/fight/attack/defend (default: all of them).
       const xp = { kill: false, attack: false, defend: false };

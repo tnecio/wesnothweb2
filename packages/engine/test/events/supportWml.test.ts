@@ -13,6 +13,7 @@ import { parseWml } from '../../src/wml/index.js';
 import { runActionFlow, runActionSequence } from '../../src/events/actionWml.js';
 import { autoRespond, runFlow, type Interaction } from '../../src/events/interaction.js';
 import { TString } from '../../src/i18n/tstring.js';
+import type { FloatingLabelRequest } from '../../src/events/floatingLabels.js';
 import { memoryPersistentVariables } from '../../src/events/supportWml.js';
 
 /** Phase 28c: the mainline tags The South Guard needed (`supportWml.ts`, `harmUnitWml.ts`). */
@@ -266,6 +267,38 @@ describe('[story] in an event', () => {
   });
 });
 
+describe('floating labels ([floating_text], [print])', () => {
+  function capture(ctx: ReturnType<typeof setup>['ctx']): FloatingLabelRequest[] {
+    const seen: FloatingLabelRequest[] = [];
+    ctx.floatLabel = (r) => seen.push(r);
+    return seen;
+  }
+
+  it('[floating_text] floats its text on every matching hex, in LABEL_COLOR or color= (r,g,b)', () => {
+    const { ctx, run } = setup(5);
+    const seen = capture(ctx);
+    run('[floating_text]\nx=1\ny=1-2\ntext="+50 gold"\n[/floating_text]');
+    run('[floating_text]\nx=1\ny=3\ntext=Ouch\ncolor=255,0,0\n[/floating_text]');
+    expect(seen.map((r) => (r.kind === 'hex' ? [r.loc.wmlX, r.loc.wmlY, String(r.text), r.color] : null))).toEqual([
+      [1, 1, '+50 gold', { r: 107, g: 140, b: 255 }],
+      [1, 2, '+50 gold', { r: 107, g: 140, b: 255 }],
+      [1, 3, 'Ouch', { r: 255, g: 0, b: 0 }],
+    ]);
+  });
+
+  it('[print] shows one label over the map, replacing the last [print]\'s', () => {
+    const { ctx, run } = setup();
+    const seen = capture(ctx);
+    run('[print]\ntext=First\n[/print]');
+    run('[print]\ntext=Second\nsize=24\nduration=5000\nred=255\n[/print]');
+    expect(seen).toMatchObject([
+      { kind: 'overlay', id: 1, size: 15, duration: 2000, fadeTime: 100, color: { r: 107, g: 140, b: 255 }, halign: 'center', valign: 'center' },
+      { kind: 'removeOverlay', id: 1 },
+      { kind: 'overlay', id: 2, size: 24, duration: 5000, color: { r: 255, g: 0, b: 0 } },
+    ]);
+  });
+});
+
 describe('[replace_map]', () => {
   it('replaces the map, growing it only with expand=yes, and loses villages that are gone', () => {
     const { board, ctx, run, logs } = setup(3);
@@ -325,6 +358,16 @@ describe('[harm_unit]', () => {
     expect(victim.hasStatus(UnitStatus.Poisoned)).toBe(true);
     expect(ctx.variables.getNumber('harmed[0].harm_amount')).toBe(8);
     expect(ctx.variables.getString('harmed[0].id')).toBe('victim');
+  });
+
+  it('floats the damage and the statuses given, in red, over the victim', () => {
+    const { victim, run, ctx } = withUnits();
+    const seen: FloatingLabelRequest[] = [];
+    ctx.floatLabel = (r) => seen.push(r);
+    run('[harm_unit]\n[filter]\nid=victim\n[/filter]\namount=10\ndamage_type=blade\npoisoned=yes\nslowed=yes\n[/harm_unit]');
+    expect(seen).toHaveLength(1);
+    const label = seen[0]!;
+    expect(label.kind === 'hex' && [label.loc.equals(victim.location), String(label.text), label.color]).toEqual([true, '\t8\npoisoned\nslowed\n', { r: 255, g: 0, b: 0 }]);
   });
 
   it('reads $this_unit per unit, and kill=no leaves 1 HP', () => {

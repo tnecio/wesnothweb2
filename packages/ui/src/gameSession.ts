@@ -88,6 +88,7 @@ import {
   type RecallCommand,
   type DisbandCommand,
   type FireEventCommand,
+  type FloatingLabelRequest,
   commandFromWml,
   type StopUnitCommand,
   type RecordedCommand,
@@ -838,6 +839,8 @@ export interface GameSessionOptions {
   music?: MusicList;
   /** Phase 19: where sound effects go to be heard (the app's audio); without it they are only recorded on the context. */
   onSound?: (request: SoundRequest) => void;
+  /** C1: floating labels (`[floating_text]`, `[print]`, Lua's `float_label`/`add_overlay_text`) to draw. */
+  onFloatingLabel?: (request: FloatingLabelRequest) => void;
   /** Phase 19: `[volume]`, the scenario's percentages of the player's own music and sound volumes. */
   onVolume?: (scale: { music?: number; sound?: number }) => void;
   /** Set by `fromSaveData`: the save's own playlist is applied by `loadSaveData`, not the scenario's. */
@@ -1668,6 +1671,11 @@ export class GameSession {
       music: options.music,
     });
     this.eventPump.ctx.onSound = options.onSound;
+    // `game_display::float_label`: nothing on a hex the viewing side has fogged.
+    this.eventPump.ctx.floatLabel = (request) => {
+      if (request.kind === 'hex' && this.board.isFogged(this.viewingSide, request.loc)) return;
+      options.onFloatingLabel?.(request);
+    };
     this.eventPump.ctx.onVolume = options.onVolume;
     if (!options.deferMusic) startScenarioMusic(this.music, WmlConfig.fromJSON(snapshot.scenarioConfigJson));
     this.board.lawfulBonusAt = (loc) => this.timeOfDayAt(loc).lawfulBonus;

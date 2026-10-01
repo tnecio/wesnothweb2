@@ -2070,6 +2070,39 @@ export class SnapshotBoard {
   }
 
   /**
+   * C1: `game_display::float_label` (`[floating_text]`, `wesnoth.interface.float_label`): `text` rising from
+   * the middle of the top edge of hex (`x`, `y`) at 100 px a second, for a second, then gone (no fade:
+   * `set_lifetime(lifetime, 0)`). `SIZE_FLOAT_LABEL` (24), outlined, in `color`. Board coordinates, so size
+   * and speed follow the zoom as upstream's do.
+   */
+  spawnHexLabel(x: number, y: number, text: string, color: number): void {
+    if (text === '') return;
+    const { x: cx, y: cy } = hexToPixel(toHexCoord(x, y));
+    const label = new PIXI.Text({
+      text,
+      style: { fontSize: 24, fill: color, stroke: { color: 0x000000, width: 3 }, align: 'center' },
+    });
+    label.anchor.set(0.5, 0);
+    const startY = cy - HEX_ROW_HEIGHT / 2;
+    label.position.set(cx, startY);
+    this.floatingLayer.addChild(label);
+    const lifetimeMs = 1000;
+    const start = performance.now();
+    const tick = (): void => {
+      if (label.destroyed) return;
+      const elapsed = performance.now() - start;
+      if (elapsed >= lifetimeMs) {
+        this.floatingLayer.removeChild(label);
+        label.destroy();
+        return;
+      }
+      label.position.y = startY - 0.1 * elapsed;
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  /**
    * Immediately destroys and removes `key`'s unit visual, if it's
    * currently on screen -- the same "poke the renderer directly, don't
    * wait for the next full `updateUnits()`" convention as

@@ -11,6 +11,7 @@
  * - `[petrify]`/`[unpetrify]` (`wml-tags.lua`): the `petrified` status, on the map and on recall lists;
  * - `[do_command]` (`action_wml.cpp`): player commands from WML, through `EventContext.doCommand`;
  * - `[story]` (`wml-tags.lua`, `gui.show_story`): a story screen mid-scenario, as a `story` beat;
+ * - `[floating_text]`/`[print]` (`wml-tags.lua`): floating labels (`floatingLabels.ts`);
  * - `[set_achievement]`/`[set_sub_achievement]`/`[progress_achievement]` (`wml-tags.lua`), through
  *   `EventContext.achievements`;
  * - `[replace_map]` (`action_wml.cpp`), `GameBoard.replaceMap`;
@@ -31,6 +32,7 @@ import { UnitStatus } from '../model/Unit.js';
 import { varNodeFromConfig } from './variables.js';
 import { actionHarmUnit } from './harmUnitWml.js';
 import { resolveStory } from '../story/storyParser.js';
+import { actionFloatingText, actionPrint } from './floatingLabels.js';
 
 /** Where `[set_global_variable]` keeps its values (upstream: a `persist_context` file per namespace). */
 export interface PersistentVariables {
@@ -286,6 +288,8 @@ export function registerSupportActions(register: (tag: string, handler: (cfg: Wm
   register('end_turn', actionEndTurn);
   register('do_command', actionDoCommand);
   register('story', actionStory);
+  register('floating_text', actionFloatingText);
+  register('print', actionPrint);
   register('petrify', (cfg, ctx) => setPetrified(cfg, ctx, true));
   register('unpetrify', (cfg, ctx) => setPetrified(cfg, ctx, false));
   register('set_achievement', actionSetAchievement);

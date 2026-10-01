@@ -141,7 +141,9 @@
   import type { AudioSettings } from './audio/settings.js';
   import MessageViewer from './MessageViewer.svelte';
   import GuiDialog from './GuiDialog.svelte';
-  import type { GuiDialogInteraction, SoundRequest, ResolvedStoryPart } from '@wesnothweb2/engine';
+  import type { GuiDialogInteraction, SoundRequest, ResolvedStoryPart, FloatingLabelRequest, RgbColor, TString } from '@wesnothweb2/engine';
+  import OverlayLabels, { type OverlayLabelView } from './OverlayLabels.svelte';
+  import { stripPango } from './markup/pango.js';
   import AdvancementDialog from './AdvancementDialog.svelte';
   import ObjectivesDialog from './ObjectivesDialog.svelte';
   import ScenarioEndOverlay from './ScenarioEndOverlay.svelte';
@@ -311,7 +313,53 @@
     music: audio.music,
     onSound: (request) => (heldTurnSounds && request.turnStart ? heldTurnSounds.push(request) : audio.playSound(request)),
     onVolume: (scale) => audio.setVolumeScale(scale),
+    onFloatingLabel: (request) => showFloatingLabel(request),
   };
+
+  /** C1: `[print]`/`add_overlay_text` labels on screen (`OverlayLabels`). */
+  let overlayLabels = $state.raw<OverlayLabelView[]>([]);
+  const overlayLabelTimers = new Map<number, ReturnType<typeof setTimeout>[]>();
+
+  const cssColor = (c: RgbColor, a = 255): string => `rgba(${c.r}, ${c.g}, ${c.b}, ${a / 255})`;
+  const labelText = (text: string | TString): string => (typeof text === 'string' ? text : text.str());
+
+  function removeOverlayLabel(id: number): void {
+    for (const timer of overlayLabelTimers.get(id) ?? []) clearTimeout(timer);
+    overlayLabelTimers.delete(id);
+    overlayLabels = overlayLabels.filter((l) => l.id !== id);
+  }
+
+  /** Draws a floating label the game asked for: a hex's on the board, an overlay one over the map. */
+  function showFloatingLabel(request: FloatingLabelRequest): void {
+    if (request.kind === 'hex') {
+      const color = (request.color.r << 16) | (request.color.g << 8) | request.color.b;
+      boardView?.spawnHexLabel(request.loc.x, request.loc.y, stripPango(labelText(request.text)), color);
+      return;
+    }
+    removeOverlayLabel(request.id);
+    if (request.kind === 'removeOverlay') return;
+    const view: OverlayLabelView = {
+      id: request.id,
+      text: labelText(request.text),
+      size: request.size,
+      color: cssColor(request.color),
+      background: request.bgcolor ? cssColor(request.bgcolor, request.bgcolor.a) : null,
+      halign: request.halign,
+      valign: request.valign,
+      x: request.x,
+      y: request.y,
+      maxWidth: request.maxWidth,
+      fadingMs: null,
+    };
+    overlayLabels = [...overlayLabels, view];
+    if (request.duration < 0) return;
+    // `floating_label::get_alpha`: opaque for its lifetime, then fading out over `fade_time`.
+    const fade = setTimeout(() => {
+      overlayLabels = overlayLabels.map((l) => (l.id === request.id ? { ...l, fadingMs: request.fadeTime } : l));
+    }, request.duration);
+    const remove = setTimeout(() => removeOverlayLabel(request.id), request.duration + request.fadeTime);
+    overlayLabelTimers.set(request.id, [fade, remove]);
+  }
   /**
    * `startInReplay`'s session, built up front (rather than resumed normally and switched over after mount,
    * the way `startReplay` does for an in-game "Show replay") so the very first render is already the
@@ -3325,6 +3373,7 @@
     <PreferencesDialog audioSettings={audioSettings} onAudioChange={changeAudio} onClose={() => (preferencesOpen = false)} />
   {/if}
 
+  <OverlayLabels labels={overlayLabels} getMapRect={() => boardView?.viewportRect() ?? null} layoutTick={boardResizeTick} />
   {#if eventStory}
     <StoryViewer parts={eventStory.parts} assets={storyAssets} onDone={eventStory.done} onPartShown={playStoryPartSounds} />
   {/if}
