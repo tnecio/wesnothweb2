@@ -235,9 +235,15 @@ export class Team {
     this.fog.reset();
   }
 
-  /** Mirrors `team::is_enemy`: sides are hostile unless the same team_name (alliance) groups them. */
+  /**
+   * Mirrors `team::calculate_is_enemy`: a side is no enemy of itself, nor of any side it shares a team name
+   * with -- `team_name=` is a comma-separated list (The South Guard's Mari is `South_Guard,quintain`: an ally
+   * of the player's `South_Guard` and of the training dummies' `quintain`, which are each other's enemies).
+   */
   isEnemy(other: Team): boolean {
-    return this.teamName !== other.teamName;
+    if (other === this) return false;
+    const theirs = teamNames(other.teamName);
+    return !teamNames(this.teamName).some((name) => theirs.includes(name));
   }
 
   canRecruitType(unitTypeId: string): boolean {
@@ -253,4 +259,12 @@ export class Team {
   applyIncome(totalIncome: number): void {
     this.gold += totalIncome;
   }
+}
+
+/** `utils::split(team_name)`: the names, trimmed, empty ones dropped. */
+function teamNames(teamName: string): string[] {
+  return teamName
+    .split(',')
+    .map((n) => n.trim())
+    .filter((n) => n !== '');
 }
