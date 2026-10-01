@@ -3055,7 +3055,7 @@ export class GameSession {
       canMove,
       canAttackHere,
       statuses: [...unit.statuses],
-      loyal: unit.loyal,
+      overlays: unit.overlays,
       ellipse: unit.ellipse,
       emitsZoc: unit.emitZoc,
       underlyingId: this.renderKeyFor(unit),

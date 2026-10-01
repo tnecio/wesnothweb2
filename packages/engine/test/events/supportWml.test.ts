@@ -185,6 +185,19 @@ describe('small tags', () => {
     expect([statue.petrified, recalled.petrified, other.petrified]).toEqual([false, false, false]);
   });
 
+  it('[unit_overlay]/[remove_unit_overlay] add and remove an overlay through an [object], once', () => {
+    const { board, run } = setup();
+    const unit = Unit.create(makeType('Spearman'), 1, new Location(1, 1));
+    unit.role = 'gold_carrier';
+    board.addUnit(unit);
+    run('[unit_overlay]\nrole=gold_carrier\nimage=items/gold-coins-small.png\n[/unit_overlay]');
+    run('[unit_overlay]\nrole=gold_carrier\nimage=items/gold-coins-small.png\n[/unit_overlay]');
+    expect(unit.overlays).toEqual(['items/gold-coins-small.png']);
+    expect(unit.modifications.map((m) => [m.kind, m.cfg.getString('id')])).toEqual([['object', 'overlay_items/gold-coins-small.png']]);
+    run('[remove_unit_overlay]\nrole=gold_carrier\nimage=items/gold-coins-small.png\n[/remove_unit_overlay]');
+    expect(unit.overlays).toEqual([]);
+  });
+
   it('[end_turn] forces the end of the turn', () => {
     const { ctx, run } = setup();
     expect(ctx.endTurnForced).toBe(false);

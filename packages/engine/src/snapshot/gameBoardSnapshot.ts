@@ -161,8 +161,8 @@ export interface SnapshotUnit {
   canMove?: boolean;
   canAttackHere?: boolean;
   statuses?: readonly string[];
-  /** `Unit.loyal` -- whether to draw the real loyal-icon overlay (`misc/loyal-icon.png`). */
-  loyal?: boolean;
+  /** `unit::overlays()` -- see `@wesnothweb2/renderer`'s `SnapshotUnit.overlays`. */
+  overlays?: readonly string[];
   /** `unit::image_ellipse` (`''` = the default ellipse, `none` = no ellipse) and `emits_zoc`, which pick the ellipse image. */
   ellipse?: string;
   emitsZoc?: boolean;

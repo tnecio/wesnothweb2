@@ -12,6 +12,7 @@
  * - `[do_command]` (`action_wml.cpp`): player commands from WML, through `EventContext.doCommand`;
  * - `[story]` (`wml-tags.lua`, `gui.show_story`): a story screen mid-scenario, as a `story` beat;
  * - `[floating_text]`/`[print]` (`wml-tags.lua`): floating labels (`floatingLabels.ts`);
+ * - `[unit_overlay]`/`[remove_unit_overlay]` (`wml-tags.lua`): an `[object]` adding or removing the image;
  * - `[set_achievement]`/`[set_sub_achievement]`/`[progress_achievement]` (`wml-tags.lua`), through
  *   `EventContext.achievements`;
  * - `[replace_map]` (`action_wml.cpp`), `GameBoard.replaceMap`;
@@ -26,7 +27,7 @@ import type { EventContext } from './context.js';
 import { WmlConfig } from '../wml/config.js';
 import { TString } from '../i18n/tstring.js';
 import type { Flow } from './interaction.js';
-import { runActionFlow } from './actionWml.js';
+import { effectEnvFor, runActionFlow } from './actionWml.js';
 import { findUnits } from './filter.js';
 import { UnitStatus } from '../model/Unit.js';
 import { varNodeFromConfig } from './variables.js';
@@ -170,6 +171,28 @@ function* actionStory(cfg: WmlConfig, ctx: EventContext): Flow {
   if (parts.length > 0) yield { kind: 'beat', beat: { kind: 'story', parts } };
 }
 
+/**
+ * `wml_actions.unit_overlay`/`remove_unit_overlay`: each matching unit on the map that lacks (has) `image=`
+ * gets an `[object]` (id `object_id=`, else `overlay_<image>`; `[unit_overlay]` keeps `duration=`) whose
+ * `apply_to=overlay` effect adds (removes) it -- so it is saved, and a `duration` makes it expire.
+ */
+function unitOverlay(cfg: WmlConfig, ctx: EventContext, add: boolean): void {
+  const tag = add ? 'unit_overlay' : 'remove_unit_overlay';
+  if (!cfg.hasAttribute('image')) {
+    ctx.log('error', `[${tag}] missing required image= attribute`);
+    return;
+  }
+  const image = cfg.getString('image');
+  for (const unit of findUnits(ctx.board, cfg)) {
+    if (unit.overlays.includes(image) !== !add) continue;
+    const object = new WmlConfig();
+    object.setAttribute('id', cfg.getString('object_id', '') || `overlay_${image}`);
+    if (add && cfg.hasAttribute('duration')) object.setAttribute('duration', cfg.getString('duration'));
+    object.addChild('effect').setAttribute('apply_to', 'overlay').setAttribute(add ? 'add' : 'remove', image);
+    unit.addModification('object', object, effectEnvFor(ctx, unit));
+  }
+}
+
 /** `wml_actions.end_turn`: `wesnoth.interface.end_turn()`, `play_controller::force_end_turn`. */
 function actionEndTurn(_cfg: WmlConfig, ctx: EventContext): void {
   ctx.endTurnForced = true;
@@ -290,6 +313,8 @@ export function registerSupportActions(register: (tag: string, handler: (cfg: Wm
   register('story', actionStory);
   register('floating_text', actionFloatingText);
   register('print', actionPrint);
+  register('unit_overlay', (cfg, ctx) => unitOverlay(cfg, ctx, true));
+  register('remove_unit_overlay', (cfg, ctx) => unitOverlay(cfg, ctx, false));
   register('petrify', (cfg, ctx) => setPetrified(cfg, ctx, true));
   register('unpetrify', (cfg, ctx) => setPetrified(cfg, ctx, false));
   register('set_achievement', actionSetAchievement);

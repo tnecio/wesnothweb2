@@ -208,8 +208,12 @@ export interface SnapshotUnit {
   canAttackHere?: boolean;
   /** Real boolean status flags this unit currently has (e.g. `poisoned`, `slowed`, `petrified`) -- see `Unit.statuses`. Only the ones the renderer actually draws something for need to be present; harmless to include others. */
   statuses?: readonly string[];
-  /** `Unit.loyal` -- whether to draw the real loyal-icon overlay (`misc/loyal-icon.png`). */
-  loyal?: boolean;
+  /**
+   * `unit::overlays()`: images drawn over the unit with its orb and crown (`units/drawer.cpp`), from
+   * `apply_to=overlay` effects -- the loyal trait's `misc/loyal-icon.png`, a hero's `misc/hero-icon.png`,
+   * `[unit_overlay]`'s.
+   */
+  overlays?: readonly string[];
   /** `unit::image_ellipse` (`''` = `misc/ellipse`, `none` = no ellipse) and `emits_zoc` -- see `ellipseRef`. */
   ellipse?: string;
   emitsZoc?: boolean;
@@ -322,7 +326,9 @@ interface UnitVisual {
    * `lastOrbRef`.
    */
   crownIcon: PIXI.Sprite | null;
-  loyalIcon: PIXI.Sprite | null;
+  /** `unit::overlays()`'s images, in order, drawn after the orb and crown; `overlaysKey` is what they show. */
+  overlayIcons: PIXI.Sprite[];
+  overlaysKey: string;
   orbIcon: PIXI.Sprite | null;
   /** The `path~mods` ref `orbIcon`'s texture was last resolved from, so `updateIcons` only re-resolves when `MovesOrbStatus` (or its visibility) actually changed. */
   lastOrbRef: string | null;
@@ -1217,7 +1223,8 @@ export class SnapshotBoard {
       lastSide: unit.side,
       bars,
       crownIcon: null,
-      loyalIcon: null,
+      overlayIcons: [],
+      overlaysKey: '',
       orbIcon: null,
       lastOrbRef: null,
       flagRgb: unit.flagRgb,
@@ -1362,19 +1369,23 @@ export class SnapshotBoard {
       visual.crownIcon.visible = false;
     }
 
-    if (unit.loyal) {
-      if (!visual.loyalIcon) {
-        const texture = await ImageCache.resolve('misc/loyal-icon.png');
-        if (texture) {
-          const sprite = new PIXI.Sprite(texture);
-          sprite.anchor.set(0.5, 0.5);
-          visual.container.addChild(sprite);
-          visual.loyalIcon = sprite;
-        }
+    // `unit::overlays()`, after the orb and crown, each over the last, at the same place.
+    const overlays = unit.overlays ?? [];
+    const key = overlays.join('\n');
+    if (visual.overlaysKey !== key) {
+      visual.overlaysKey = key;
+      for (const sprite of visual.overlayIcons) sprite.destroy();
+      visual.overlayIcons = [];
+      const textures = await Promise.all(overlays.map((ref) => ImageCache.resolve(ref)));
+      // Another update may have changed them, or rebuilt the visual, while these loaded.
+      if (visual.overlaysKey !== key || visual.container.destroyed) return;
+      for (const texture of textures) {
+        if (!texture) continue;
+        const sprite = new PIXI.Sprite(texture);
+        sprite.anchor.set(0.5, 0.5);
+        visual.container.addChild(sprite);
+        visual.overlayIcons.push(sprite);
       }
-      if (visual.loyalIcon) visual.loyalIcon.visible = true;
-    } else if (visual.loyalIcon) {
-      visual.loyalIcon.visible = false;
     }
   }
 
@@ -1630,8 +1641,9 @@ export class SnapshotBoard {
       visual.lastEllipseKey = null;
       visual.bars = rebuilt.bars;
       visual.overlay = null; // the old overlay sprite (if any) was just destroyed along with its old container children.
-      visual.crownIcon = null; // ditto for the crown/loyal/orb icons, if any.
-      visual.loyalIcon = null;
+      visual.crownIcon = null; // ditto for the crown/overlay/orb icons, if any.
+      visual.overlayIcons = [];
+      visual.overlaysKey = '';
       visual.orbIcon = null;
       visual.lastOrbRef = null;
       visual.lastImage = unit.image;
