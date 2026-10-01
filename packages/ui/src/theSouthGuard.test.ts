@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GameSession } from './gameSession.js';
+import { getAdjacentTiles } from '@wesnothweb2/engine';
 import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 
 /**
@@ -46,6 +47,26 @@ describe('The South Guard', () => {
       expect(problems).toEqual(expected);
     });
   }
+
+  it('01_Born_to_the_Banner: in the tutorial, Mari (South_Guard,quintain) is the player\'s ally and never attacks Deoran', async () => {
+    const { session } = start('01_Born_to_the_Banner');
+    session.interactionHost = {
+      // The first option of every question: "play the tutorial".
+      async handle(interaction) {
+        return interaction.kind === 'message' && interaction.options.length > 0 ? { value: 1 } : {};
+      },
+    };
+    await session.runStartupEvents();
+    const units = () => session.board.allUnits();
+    const deoran = units().find((u) => u.id === 'Deoran')!;
+    const mari = units().find((u) => u.id === 'Mari')!;
+    expect(session.board.getTeam(mari.side)!.isEnemy(session.board.getTeam(deoran.side)!)).toBe(false);
+    // The tutorial's first step: Deoran next to Mari.
+    const next = getAdjacentTiles(mari.location).find((l) => session.board.map.onBoard(l) && !session.board.hasUnitAt(l))!;
+    session.board.moveUnit(deoran.location, next);
+    for (let turn = 0; turn < 2; turn++) await session.endTurn();
+    expect(deoran.hitpoints).toBe(deoran.maxHitpoints);
+  });
 
   it("02x_Westin: the companion is chosen in the campaign's own Lua dialog, which ends the scenario", async () => {
     const { session } = start('02x_Westin');
