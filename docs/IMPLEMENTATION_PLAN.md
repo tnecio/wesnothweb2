@@ -1870,8 +1870,22 @@ below exist yet.
 
 ### Phase 28c — The rest of the bundled single-player campaigns (added 2026-09-27)
 
-**Status: paused after The South Guard** (user's call, 2026-09-29): Phase 29, the help browser and
-achievements come first, built against `docs/CAMPAIGN_INVENTORY.md`; then the rest in batches. The South
+**Status: resumed 2026-10-01** (user's call, ahead of achievements). Plan:
+- **C1, shared gaps**, before any campaign:
+  - the missing tags (`[set_extra_recruit]`, `[do_command]`, `[find_path]`, `[end_turn]`,
+    `[petrify]`/`[unpetrify]`, `[story]`, `[print]`, `[proceed_to_next_scenario]`);
+  - `[floating_text]`, unit overlays and `[select_unit]`;
+  - campaign and scenario `[terrain_type]`/`[terrain_graphics]`;
+  - Lua-generated cave maps.
+- **Batches, easiest first:**
+  - **B1:** Hammer of Thursagan, Northern Rebirth, Winds of Fate, Of Pearls and Pirates, Dusk of Dawn,
+    Descent into Darkness;
+  - **B2:** The Rise of Wesnoth, Legend of Wesmere, Son of the Black Eye, Sceptre of Fire;
+  - **B3:** UtBS 05-12, Secrets of the Ancients, Eastern Invasion;
+  - **B4:** Heir to the Throne, HttT Classic, The Deceiver's Gambit.
+- World Conquest gets its own phase. WL_Test is not upstream and is not ported.
+
+Paused 2026-09-29 after The South Guard so that Phase 29 and the help browser came first. The South
 Guard done (2026-09-29, see `PROGRESS.md`): with it came a campaign
 Lua runtime (`lua-bridge`'s `LuaRuntime`, custom `gui.show_dialog` dialogs), the `[campaign]` block's
 events and resources merged into scenarios, and nine more mainline tags. After Phase 28b. Built before it: Dead Water (13
@@ -2142,11 +2156,13 @@ pulled forward and delivered 2026-09-22.
 10. **Phase 29** (real AI: RCA framework + Lua on fengari), including the
    `[micro_ai]`s and custom Lua AI the inventory ranks by use -- delivered 2026-09-30.
 11. **Help browser** (from Phase 24): unit, terrain and topic pages,
-   `[open_help]`.
-12. **Achievements** (from Phase 25): the screen, and the statistics some
+   `[open_help]` -- delivered 2026-09-30 (`v0.5.0`).
+12. **Phase 28c resumed** (user's call, 2026-10-01: before achievements):
+   first the gaps several campaigns share (C1), then the remaining
+   campaigns in four batches, easiest first (B1-B4); see Phase 28c.
+   World Conquest becomes its own later phase.
+13. **Achievements** (from Phase 25): the screen, and the statistics some
    achievements count; the engine already records `[set_achievement]`.
-13. **Phase 28c resumed**: the remaining campaigns in batches, each
-   checked against the inventory.
 14. **Phase 24** (the rest of the advanced UI), **Phase 25** (the rest of
    statistics), **Phase 27** (feature completeness assessment), then
    **Phase 28d** (performance budgets, cross-browser, offline; split from
