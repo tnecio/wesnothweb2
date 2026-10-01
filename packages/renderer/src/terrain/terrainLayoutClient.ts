@@ -10,7 +10,7 @@
  */
 import { layoutTerrain, type TerrainHexCode, type TerrainLayout } from './terrainLayout'
 import type { FromTerrainLayoutWorker, ToTerrainLayoutWorker } from './terrainLayout.worker'
-import { reviveBuildingRules, type BuildingRule } from './terrainGraphicsRules'
+import { mergeBuildingRules, reviveBuildingRules, type BuildingRule } from './terrainGraphicsRules'
 
 type WorkerAnswer = { layout: TerrainLayout | null } | null
 
@@ -72,6 +72,8 @@ export async function computeTerrainLayout(
   terrain: readonly TerrainHexCode[],
   width: number,
   height: number,
+  /** The campaign's and scenario's own rules, as JSON (`mergeBuildingRules`). */
+  extraRules: readonly BuildingRule[] = [],
 ): Promise<TerrainLayout | null> {
   const w = getWorker()
   if (w) {
@@ -82,6 +84,7 @@ export async function computeTerrainLayout(
         type: 'layout',
         id,
         rulesUrl,
+        extraRules: [...extraRules],
         terrain: terrain.map((h) => ({ x: h.x, y: h.y, code: h.code })),
         width,
         height,
@@ -91,5 +94,5 @@ export async function computeTerrainLayout(
     if (answer) return answer.layout
   }
   const rules = await fetchRulesInThread(rulesUrl)
-  return rules.length > 0 ? layoutTerrain(rules, terrain, width, height) : null
+  return rules.length > 0 ? layoutTerrain(mergeBuildingRules(rules, reviveBuildingRules(structuredClone([...extraRules]))), terrain, width, height) : null
 }

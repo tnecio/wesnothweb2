@@ -237,6 +237,7 @@ const { parseWmlFile, preloadDefines, preloadDefinesFromDir, makeNodeHost } = aw
   path.join(repoRoot, 'packages/engine/src/wml/index.ts')
 );
 const { TerrainTypeData, writeTerrainCode } = await import(path.join(repoRoot, 'packages/engine/src/model/Terrain.ts'));
+const { parseTerrainGraphicsRules } = await import(path.join(repoRoot, 'packages/renderer/src/terrain/terrainGraphicsRules.ts'));
 const { GameBoard } = await import(path.join(repoRoot, 'packages/engine/src/model/GameBoard.ts'));
 const { GameMap } = await import(path.join(repoRoot, 'packages/engine/src/model/Map.ts'));
 const { UnitType } = await import(path.join(repoRoot, 'packages/engine/src/model/UnitType.ts'));
@@ -358,7 +359,6 @@ function extractStory(scenarioCfg) {
 const defines = loadDefines();
 
 const terrainCfg = parseWmlFile(path.join(dataRoot, 'core/terrain.cfg'), { dataRoot, defines: new Map(defines) });
-const terrainData = TerrainTypeData.fromConfigs(terrainCfg.children('terrain_type'));
 
 console.log('Parsing data/core/units.cfg for real unit-type image paths (this takes a few seconds)...');
 const coreUnitsCfg = parseWmlFile(path.join(dataRoot, 'core/units.cfg'), { dataRoot, defines: new Map(defines) });
@@ -371,6 +371,11 @@ const coreUnitsCfg = parseWmlFile(path.join(dataRoot, 'core/units.cfg'), { dataR
 const campaignMainCfg = isRealCampaign
   ? parseWmlFile(path.join(campaignDir, '_main.cfg'), { dataRoot, defines: new Map(defines) })
   : new WmlConfig();
+
+// C1: the game config's terrain types are core's then the campaign's own (Heir to the Throne, Sceptre of
+// Fire, Secrets of the Ancients, Under the Burning Suns add theirs under their #ifdef).
+const terrainTypeCfgs = [...terrainCfg.children('terrain_type'), ...campaignMainCfg.children('terrain_type')];
+const terrainData = TerrainTypeData.fromConfigs(terrainTypeCfgs);
 
 // Real UnitType resolver -- see this file's "Real per-unit-type combat/
 // movement stats" doc comment above. `rawUnitTypeConfigs` collects every
@@ -664,7 +669,24 @@ const unitTypes = Object.fromEntries([...typeCache].map(([id, t]) => [id, unitTy
 // every id flattenAllUnitTypes happened to touch.
 const unitTypeConfigs = Object.fromEntries([...typeCache.keys()].map((id) => [id, flattenedUnitTypes.get(id).toJSON()]));
 const movementTypeConfigsJson = Object.fromEntries([...movementTypeConfigs].map(([name, cfg]) => [name, cfg.toJSON()]));
-const terrainTypeConfigsJson = terrainCfg.children('terrain_type').map((cfg) => cfg.toJSON());
+const terrainTypeConfigsJson = terrainTypeCfgs.map((cfg) => cfg.toJSON());
+
+// C1: the campaign's own [terrain_graphics] (global rules, after core's: `parse_global_config`) and the
+// scenario's (local: `parse_config(level)`), parsed as the core rules file is; the board joins them to it
+// (`mergeBuildingRules`). An image counts as existing in the campaign's images or core's.
+const campaignImagesDir = isRealCampaign ? path.join(campaignDir, 'images') : null;
+const terrainImageExists = (rel) => (campaignImagesDir !== null && fs.existsSync(path.join(campaignImagesDir, rel))) || fs.existsSync(path.join(dataRoot, 'core/images', rel));
+const rulesOf = (from) => {
+  const holder = new WmlConfig();
+  for (const br of from.children('terrain_graphics')) holder.addChild('terrain_graphics', br);
+  return holder;
+};
+const campaignTerrainRules = parseTerrainGraphicsRules(rulesOf(campaignMainCfg), { imageExists: terrainImageExists });
+const scenarioTerrainRules = parseTerrainGraphicsRules(rulesOf(scenario), { imageExists: terrainImageExists, local: true });
+const extraTerrainRules = [...campaignTerrainRules, ...scenarioTerrainRules];
+if (extraTerrainRules.length > 0) {
+  console.log(`Own terrain: ${campaignMainCfg.children('terrain_type').length} [terrain_type], ${campaignTerrainRules.length} campaign and ${scenarioTerrainRules.length} scenario terrain rules (rotations included).`);
+}
 // Shipped in full (a few dozen entries, negligible size next to the ~332
 // unit types above) so the browser can resolve specials_list=/
 // abilities_list= for real content the same way this build script just did.
@@ -746,6 +768,9 @@ const snapshot = {
   story,
   terrainFlags,
   terrainTypeConfigs: terrainTypeConfigsJson,
+  // Two keys, so the campaign's (the same in all its scenarios) is shared in `_campaign.json`.
+  ...(campaignTerrainRules.length > 0 ? { campaignTerrainGraphicsRules: JSON.parse(JSON.stringify(campaignTerrainRules)) } : {}),
+  ...(scenarioTerrainRules.length > 0 ? { scenarioTerrainGraphicsRules: JSON.parse(JSON.stringify(scenarioTerrainRules)) } : {}),
   movementTypeConfigs: movementTypeConfigsJson,
   raceConfigs: Object.fromEntries([...raceConfigs].map(([id, cfg]) => [id, cfg.toJSON()])),
   unitTypeConfigs,

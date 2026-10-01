@@ -87,7 +87,7 @@ import { sampleAnimation, animationTimeline, animationSoundCues, sampleParticles
 import { HEX_STEP_MS, type UnitAnimationDef } from './animation/unitAnimation.js';
 import { LABEL_FONT_SIZE, parseHaloFrames, type MapItemPoint, type MapLabelPoint } from './mapItems.js';
 import { makeLayerSprite } from './terrainPositioning.js';
-import type { BuildingRule } from './terrain/terrainGraphicsRules.js';
+import { ownTerrainGraphicsRules, type BuildingRule } from './terrain/terrainGraphicsRules.js';
 import { layoutTerrain, type TerrainLayout } from './terrain/terrainLayout.js';
 import { computeTerrainLayout } from './terrain/terrainLayoutClient.js';
 import {
@@ -251,6 +251,12 @@ export interface SnapshotTeam {
 
 export interface ScenarioSnapshot {
   scenario: { id: string; name: string };
+  /**
+   * C1: the campaign's and the scenario's own `[terrain_graphics]`, parsed at build time by
+   * `parseTerrainGraphicsRules` (so `BuildingRule` JSON), joined to the core rules (`ownTerrainGraphicsRules`).
+   */
+  campaignTerrainGraphicsRules?: readonly unknown[];
+  scenarioTerrainGraphicsRules?: readonly unknown[];
   /** Phase 28c: the campaign's own `[color_range]`s, added to the colour table (`ColorData.ranges`). */
   colorRanges?: Record<string, { mid: number[]; max: number[]; min: number[]; rep: number[] }>;
   map: { width: number; height: number };
@@ -721,6 +727,7 @@ export class SnapshotBoard {
 
   private readonly terrainGraphicsRules?: readonly BuildingRule[];
   private readonly terrainGraphicsRulesUrl?: string;
+  private readonly extraTerrainGraphicsRules: readonly BuildingRule[];
 
   constructor(
     private readonly snapshot: ScenarioSnapshot,
@@ -733,6 +740,8 @@ export class SnapshotBoard {
     this.onHexRightClick = options.onHexRightClick;
     this.terrainGraphicsRules = options.terrainGraphicsRules;
     this.terrainGraphicsRulesUrl = options.terrainGraphicsRulesUrl;
+    // Plain data: the snapshot may be a reactive proxy, which cannot be posted to the terrain worker.
+    this.extraTerrainGraphicsRules = JSON.parse(JSON.stringify(ownTerrainGraphicsRules(snapshot))) as BuildingRule[];
     this.units = snapshot.units;
     this.teamColor = new Map(snapshot.teams.map((t) => [t.side, t.color]));
     this.teamFlag = new Map(snapshot.teams.map((t) => [t.side, t.flag ?? '']));
@@ -960,7 +969,7 @@ export class SnapshotBoard {
       this.terrainGraphicsRules && this.terrainGraphicsRules.length > 0
         ? layoutTerrain(this.terrainGraphicsRules, this.terrain, width, height)
         : this.terrainGraphicsRulesUrl
-          ? await computeTerrainLayout(this.terrainGraphicsRulesUrl, this.terrain, width, height)
+          ? await computeTerrainLayout(this.terrainGraphicsRulesUrl, this.terrain, width, height, this.extraTerrainGraphicsRules)
           : null;
     performance.measure('board:terrain-layout', 'board:terrain-layout-start');
     if (!layout) {

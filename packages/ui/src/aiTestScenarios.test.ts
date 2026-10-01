@@ -13,7 +13,7 @@ import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotF
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const dir = path.join(repoRoot, 'apps/web/public/scenarios/ai_test');
-const ids = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5)).sort() : [];
+const ids = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.json') && !f.startsWith('_') && !f.includes('@')).map((f) => f.slice(0, -5)).sort() : [];
 const TURNS = 3;
 /**
  * Too slow for this suite: `fast` shows off the Fast micro AI against the default AI with 100 units a side. Once the

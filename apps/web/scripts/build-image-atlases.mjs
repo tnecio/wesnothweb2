@@ -53,9 +53,9 @@ import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
 import { layoutTerrain } from '../../../packages/renderer/src/terrain/terrainLayout.ts';
-import { reviveBuildingRules } from '../../../packages/renderer/src/terrain/terrainGraphicsRules.ts';
+import { mergeBuildingRules, ownTerrainGraphicsRules, reviveBuildingRules } from '../../../packages/renderer/src/terrain/terrainGraphicsRules.ts';
 import { parseIpf, splitRef } from '../../../packages/renderer/src/images/ipf.ts';
-import { HEX_MASK, rootedImagePath, unitBundleStem } from '../../../packages/renderer/src/images/compositor.ts';
+import { HEX_MASK, rootedImagePath, setCampaignImages, unitBundleStem } from '../../../packages/renderer/src/images/compositor.ts';
 import { parseStepSequence } from '../../../packages/renderer/src/animation/frame.ts';
 import { MINIMAP_FOG_IMAGE, MINIMAP_HIGHLIGHT_IMAGE, VOID_TERRAIN } from '../../../packages/renderer/src/minimap.ts';
 import { readScenarioSnapshot } from '../../../packages/engine/src/snapshot/snapshotFiles.node.ts';
@@ -350,9 +350,15 @@ if (!fs.existsSync(rulesFile)) {
 ) {
   const rules = reviveBuildingRules(JSON.parse(fs.readFileSync(rulesFile, 'utf8')));
   const started = Date.now();
+  // The campaign's own images come first in the search, as in the browser (`GameShell`'s `setCampaignImages`).
+  const campaignImageLists = JSON.parse(fs.readFileSync(path.join(repoRoot, 'packages/ui/src/campaignImages.json'), 'utf8'));
   const perScenario = snapshotFiles.map(({ campaignDirName, id, file }) => {
+    const files = campaignImageLists[campaignDirName];
+    setCampaignImages(files ? `campaigns/${campaignDirName}/images` : null, files ?? []);
     const snapshot = readScenarioSnapshot(file);
-    const layout = layoutTerrain(rules, snapshot.terrain, snapshot.map.width, snapshot.map.height);
+    // C1: with the campaign's and scenario's own rules, as the board lays it out.
+    const own = reviveBuildingRules(ownTerrainGraphicsRules(snapshot));
+    const layout = layoutTerrain(mergeBuildingRules(rules, own), snapshot.terrain, snapshot.map.width, snapshot.map.height);
     const sources = new Set();
     for (const ref of layout.refs) collectSources(ref, sources);
     for (const rooted of minimapImages(snapshot)) sources.add(rooted);

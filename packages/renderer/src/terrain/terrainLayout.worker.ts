@@ -5,12 +5,14 @@
  * matching touches the main thread. Spawned by `terrainLayoutClient.ts`.
  */
 import { layoutTerrain, type TerrainHexCode, type TerrainLayout } from './terrainLayout'
-import { reviveBuildingRules, type BuildingRule } from './terrainGraphicsRules'
+import { mergeBuildingRules, reviveBuildingRules, type BuildingRule } from './terrainGraphicsRules'
 
 export interface ToTerrainLayoutWorker {
   type: 'layout'
   id: number
   rulesUrl: string
+  /** The campaign's and scenario's own rules (`mergeBuildingRules`), as JSON. */
+  extraRules: BuildingRule[]
   terrain: TerrainHexCode[]
   width: number
   height: number
@@ -47,7 +49,8 @@ scope.onmessage = (event) => {
   const message = event.data
   loadRules(message.rulesUrl)
     .then((rules) => {
-      const layout = rules.length > 0 ? layoutTerrain(rules, message.terrain, message.width, message.height) : null
+      const all = mergeBuildingRules(rules, reviveBuildingRules(message.extraRules))
+      const layout = rules.length > 0 ? layoutTerrain(all, message.terrain, message.width, message.height) : null
       scope.postMessage({ type: 'layout', id: message.id, layout })
     })
     .catch((err: unknown) => {

@@ -101,6 +101,8 @@ function inputsHash() {
   };
   for (const p of [
     'packages/engine/src',
+    // C1: the campaign's and scenario's own [terrain_graphics] are parsed with the renderer's parser.
+    'packages/renderer/src/terrain',
     'apps/web/scripts/build-scenario-snapshot.mjs',
     'apps/web/scripts/rebuild-snapshots.mjs',
     'apps/web/scripts/split-snapshot-databases.mjs',

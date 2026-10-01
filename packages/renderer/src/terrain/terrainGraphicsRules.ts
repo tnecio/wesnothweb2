@@ -686,6 +686,37 @@ export function parseTerrainGraphicsRules(
 }
 
 /**
+ * C1: a campaign's and a scenario's own rules joined to the core ones as upstream's `multiset<building_rule>`
+ * holds them: by `precedence`, and for equal precedence in loading order -- core (the game config's first),
+ * then the campaign's (the rest of the game config), then the scenario's (`parse_config(level)`). Both lists
+ * must already be in that order (`parseTerrainGraphicsRules`' output, `extra` campaign first). Returns `core`
+ * itself when there is nothing to add.
+ */
+export function mergeBuildingRules(core: readonly BuildingRule[], extra: readonly BuildingRule[]): readonly BuildingRule[] {
+  if (extra.length === 0) return core
+  const out: BuildingRule[] = []
+  let i = 0
+  let j = 0
+  while (i < core.length || j < extra.length) {
+    if (j >= extra.length || (i < core.length && core[i]!.precedence <= extra[j]!.precedence)) out.push(core[i++]!)
+    else out.push(extra[j++]!)
+  }
+  return out
+}
+
+/**
+ * C1: a snapshot's own rules (still JSON) in the order `mergeBuildingRules` wants: the campaign's, then the
+ * scenario's, by precedence and otherwise in that order.
+ */
+export function ownTerrainGraphicsRules(snapshot: {
+  readonly campaignTerrainGraphicsRules?: readonly unknown[]
+  readonly scenarioTerrainGraphicsRules?: readonly unknown[]
+}): BuildingRule[] {
+  const own = [...(snapshot.campaignTerrainGraphicsRules ?? []), ...(snapshot.scenarioTerrainGraphicsRules ?? [])] as BuildingRule[]
+  return own.sort((a, b) => a.precedence - b.precedence)
+}
+
+/**
  * Reconstructs real `TerrainCode` instances inside a rule list that just
  * came back through `JSON.parse` (e.g. fetched by the browser from a
  * build-time-generated snapshot). `JSON.parse` produces plain `{base,
