@@ -59,6 +59,8 @@ export class LuaKernel {
   private readonly dirs: Map<string, { dirs: Set<string>; files: Set<string> }>;
   /** Registry references of metatables by name, so pushing or testing a userdata needs no string lookup. */
   private readonly metatableRefs = new Map<string, number>();
+  /** The functions `unported` installed, so the campaign survey can tell a stub from the real thing. */
+  readonly unportedStubs = new Set<LuaCFunction>();
 
   constructor(
     readonly files: VirtualDataDir,
@@ -108,7 +110,9 @@ export class LuaKernel {
    */
   unported(path: readonly string[]): void {
     const name = path.join('.');
-    this.define(path, (T) => lauxlib.luaL_error(T, to_luastring(`${name} is not available in this port yet`)));
+    const stub: LuaCFunction = (T) => lauxlib.luaL_error(T, to_luastring(`${name} is not available in this port yet`));
+    this.unportedStubs.add(stub);
+    this.define(path, stub);
   }
 
   /** Pushes the table at `path` (globals first), creating any that are missing. */
