@@ -262,6 +262,12 @@ export interface EventContext {
   exit: ExitState;
   /** Set by `[endlevel]` (first firing wins); the session ends the scenario when it sees this. */
   endLevel?: EndLevelState;
+  /**
+   * C1: `wesnoth.scenario.end_level_data` once the scenario is over (`play_controller::get_end_level_data`):
+   * whether the campaign goes on (`proceed_to_next_level`, a human side won) and whether this player won.
+   * Set by the session before the `victory`/`defeat`/`scenario_end` events.
+   */
+  endLevelData?: { proceedToNextLevel: boolean; isVictory: boolean };
   /** Queues a new event, processed once the current pump pass finishes (see pump.ts's module doc comment on batching). */
   raise: (name: string, loc1?: Location, loc2?: Location, data?: WmlConfig) => void;
   /**

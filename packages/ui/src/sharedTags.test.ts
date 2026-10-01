@@ -152,3 +152,50 @@ describe('[do_command]', () => {
     expect(session.board.allUnits().some((u) => u.id === 'Kai Krellis')).toBe(true);
   });
 });
+
+describe('the end of the scenario (play_scenario_end)', () => {
+  const recordOrder = (name: string) => `[event]\nname=${name}\n[set_variable]\nname=order\nvalue="$order,${name}"\n[/set_variable]\n[/event]`;
+  const endOnMove = (result: string) => `[event]\nname=moveto\n[endlevel]\nresult=${result}\n[/endlevel]\n[/event]`;
+  const proceeds = '[event]\nname=scenario_end\n[filter_condition]\n[proceed_to_next_scenario]\n[/proceed_to_next_scenario]\n[/filter_condition]\n[set_variable]\nname=proceeds\nvalue=yes\n[/set_variable]\n[/event]';
+
+  async function endBy(result: string): Promise<GameSession> {
+    const session = await start([endOnMove(result), ...['local_victory', 'local_defeat', 'victory', 'defeat', 'scenario_end'].map(recordOrder), proceeds]);
+    const kai = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    session.selectUnit(kai);
+    const dest = session.reachable.find((h) => h.x !== kai.location.x || h.y !== kai.location.y)!;
+    await session.handleHexClick(dest.x, dest.y);
+    return session;
+  }
+
+  it('a victory fires local_victory, victory, then scenario_end, where [proceed_to_next_scenario] holds', async () => {
+    const session = await endBy('victory');
+    expect(session.scenarioResult).toBe('victory');
+    const vars = session['eventPump'].ctx.variables;
+    expect(vars.getString('order')).toBe(',local_victory,victory,scenario_end');
+    expect(vars.getBoolean('proceeds', false)).toBe(true);
+  });
+
+  it('a defeat fires local_defeat, defeat, then scenario_end, where it does not', async () => {
+    const session = await endBy('defeat');
+    expect(session.scenarioResult).toBe('defeat');
+    const vars = session['eventPump'].ctx.variables;
+    expect(vars.getString('order')).toBe(',local_defeat,defeat,scenario_end');
+    expect(vars.getBoolean('proceeds', false)).toBe(false);
+  });
+
+  it('[proceed_to_next_scenario] is false while the scenario goes on', async () => {
+    const session = await start(['[event]\nname=moveto\n[if]\n[proceed_to_next_scenario]\n[/proceed_to_next_scenario]\n[then]\n[set_variable]\nname=early\nvalue=yes\n[/set_variable]\n[/then]\n[/if]\n[/event]']);
+    const kai = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    session.selectUnit(kai);
+    const dest = session.reachable.find((h) => h.x !== kai.location.x || h.y !== kai.location.y)!;
+    await session.handleHexClick(dest.x, dest.y);
+    expect(session['eventPump'].ctx.variables.getBoolean('early', false)).toBe(false);
+  });
+
+  it('runs once: a loaded finished game does not fire them again', async () => {
+    const session = await endBy('victory');
+    const loaded = GameSession.fromSaveData(readScenarioSnapshot(snapshotPath), session.toSaveData());
+    expect(loaded['scenarioEndEventsFired']).toBe(true);
+    expect(loaded['eventPump'].ctx.variables.getString('order')).toBe(',local_victory,victory,scenario_end');
+  });
+});

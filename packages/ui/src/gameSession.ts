@@ -2175,7 +2175,27 @@ export class GameSession {
     if (action.undoBlocked || eventsDisabledUndo || this.scenarioResult || this.eventPump.ctx.endTurnForced) this.undoList.clear(!TURN_BOOKKEEPING_COMMANDS.has(command.kind));
     else this.undoList.push({ steps: action.steps, command: rec });
     rec.digest = this.stateDigest();
+    if (this.scenarioResult && !this.scenarioEndEventsFired) yield* this.scenarioEndFlow();
     return result;
+  }
+
+  /** Whether `scenarioEndFlow` has run (saved, so a loaded finished game does not run it again). */
+  private scenarioEndEventsFired = false;
+
+  /**
+   * `playsingle_controller::play_scenario_end`, once the action that ended the scenario is over:
+   * `local_victory`/`local_defeat`, then `victory`/`defeat`, then `scenario_end`, with
+   * `wesnoth.scenario.end_level_data` set. (`heal_all_survivors` is `startNextScenario`'s `newScenario`.)
+   * These fire although the scenario is over, so not through `fireFlow`.
+   */
+  private *scenarioEndFlow(): Flow {
+    this.scenarioEndEventsFired = true;
+    const victory = this.scenarioResult === 'victory';
+    // A single-player campaign has one human side: the campaign goes on exactly when it won.
+    this.eventPump.ctx.endLevelData = { proceedToNextLevel: victory, isVictory: victory };
+    yield* this.eventPump.fireFlow(victory ? 'local_victory' : 'local_defeat');
+    yield* this.eventPump.fireFlow(victory ? 'victory' : 'defeat');
+    yield* this.eventPump.fireFlow('scenario_end');
   }
 
   /** Marks the running action as refused (`spectator.error`); returns `null` for the executor to pass on. */
@@ -4678,6 +4698,12 @@ export class GameSession {
     this.turnNumber = data.turnNumber;
     this.setActiveSide(data.activeSide);
     this.scenarioResult = data.scenarioResult;
+    // A game saved after its end has had its end events.
+    this.scenarioEndEventsFired = this.scenarioResult !== null && this.scenarioResult !== undefined;
+    if (this.scenarioEndEventsFired) {
+      const victory = this.scenarioResult === 'victory';
+      this.eventPump.ctx.endLevelData = { proceedToNextLevel: victory, isVictory: victory };
+    }
     this.startupEventsRun = data.startupEventsRun;
     // Optional-on-read (see `SaveGameData.schedule`'s own doc comment): an
     // older save simply leaves the schedule as freshly built from the
