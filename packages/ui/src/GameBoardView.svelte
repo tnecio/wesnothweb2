@@ -243,6 +243,8 @@
    * moment it becomes available, regardless of what else changed when.
    */
   let board: SnapshotBoard | undefined = $state();
+  /** The `terrain` array `board` was last redrawn with (not reactive: only the effect below reads it). */
+  let drawnTerrain: unknown = undefined;
   /** Resolves once the first full render -- terrain, then units, highlights, fog -- is on screen (or failed); see `whenReady`. */
   let markReady: () => void = () => {};
   const readyPromise = new Promise<void>((resolve) => (markReady = resolve));
@@ -582,6 +584,7 @@
         destroyApp(app, true);
         return;
       }
+      drawnTerrain = undefined; // a new board is drawn from the snapshot: the changed terrain goes on it again
       board = newBoard;
       app.stage.addChild(newBoard.stage);
 
@@ -726,7 +729,11 @@
   });
 
   $effect(() => {
-    if (terrain) void board?.updateTerrain(terrain);
+    // Only a terrain this board has not drawn yet: a rebuild blanks the map until it is redrawn.
+    if (terrain && board && terrain !== drawnTerrain) {
+      drawnTerrain = terrain;
+      void board.updateTerrain(terrain);
+    }
   });
 
   $effect(() => {
@@ -893,6 +900,8 @@
       attackTargets: () => attackTargets.map((h) => ({ x: h.x, y: h.y })),
       /** Set the board-wide ToD tint directly, for checking the tint's blending. */
       setTodTint: (tod: { red: number; green: number; blue: number }) => board?.updateTimeOfDayTint(tod),
+      /** The board itself, for checks that call one of its updates on its own. */
+      board: () => board,
     };
   }
 

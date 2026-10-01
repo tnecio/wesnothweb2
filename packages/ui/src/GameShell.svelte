@@ -572,8 +572,12 @@
   let gold = $state(session.board.getTeam(session.activeSide)?.gold ?? 0);
   let economyInfo = $state<EconomyInfo>(session.economyInfo);
   let villageOwners = $state<VillageOwnerInfo[]>(session.villageOwnership);
-  let hexVisibility = $state<HexVisibilityPoint[]>(session.hexVisibility);
-  let terrainHexes = $state(session.terrainHexes);
+  // Raw: replaced whole on every sync. A deep `$state` wraps each assignment in a new proxy, so the board saw a
+  // "new" terrain on every sync and rebuilt the whole terrain layer -- blank until it was redrawn (playtest: the
+  // map going dark for a moment, then for seconds, whenever a unit was selected, once WML or a loaded save had
+  // changed the map; `session.terrainHexes` is a new array only after a real change).
+  let hexVisibility = $state.raw<HexVisibilityPoint[]>(session.hexVisibility);
+  let terrainHexes = $state.raw(session.terrainHexes);
   let mapItems = $state(session.mapItems);
   let mapLabels = $state(session.mapLabels);
   let timeOfDay = $state<TimeOfDayEntry>(session.currentTimeOfDay);

@@ -916,6 +916,8 @@ export class SnapshotBoard {
   private terrain: readonly SnapshotTerrainHex[] = [];
   /** The last `updateFogShroud` input, re-applied after a terrain rebuild. */
   private lastFogShroud: readonly FogShroudHex[] = [];
+  /** `fogShroudKey` of `lastFogShroud`. */
+  private lastFogShroudKey: string | null = null;
   private terrainUpdate: Promise<void> = Promise.resolve();
 
   /**
@@ -932,6 +934,7 @@ export class SnapshotBoard {
       }
       this.terrainHexContainers.clear();
       await this.drawTerrain();
+      this.lastFogShroudKey = null; // the terrain was rebuilt: the overlay must be too
       this.updateFogShroud(this.lastFogShroud);
     });
     return this.terrainUpdate;
@@ -1034,6 +1037,12 @@ export class SnapshotBoard {
    * overlay and restore full terrain visibility.
    */
   updateFogShroud(hexes: readonly FogShroudHex[]): void {
+    // The UI passes the whole list on every sync (a selection, a hover): rebuild only when it changed.
+    const key = fogShroudKey(hexes);
+    if (key === this.lastFogShroudKey) return;
+    // Remembered only once there is terrain to apply it to (an early call, before the board is built, must not
+    // make the first real one look unchanged).
+    this.lastFogShroudKey = this.terrainHexContainers.size > 0 ? key : null;
     this.lastFogShroud = hexes;
     if (hexes.length === 0) {
       this.fogShroudLayer.removeChildren().forEach((child) => child.destroy());
@@ -2400,6 +2409,13 @@ export class SnapshotBoard {
 }
 
 /** `game_config::foot_speed_prefix` (`footprint_prefix`): the footprints for a hex costing 1, 2, and 3 or more. */
+/** Identity of a fog/shroud state, to tell an unchanged one apart. */
+function fogShroudKey(hexes: readonly FogShroudHex[]): string {
+  let key = '';
+  for (const h of hexes) key += `${h.x},${h.y}${h.visibility[0]};`;
+  return key;
+}
+
 const FOOTPRINT_PACES = ['foot-normal', 'foot-medium', 'foot-slow'] as const;
 
 /** `game_config::flag_rgb`: the palette the flag images are drawn in. */
