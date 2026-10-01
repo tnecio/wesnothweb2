@@ -37,7 +37,7 @@ const shipped = new Set(
 );
 const campaigns = fs
   .readdirSync(campaignsRoot)
-  .filter((c) => fs.statSync(path.join(campaignsRoot, c)).isDirectory() && !shipped.has(c) && (!only || only.has(c)))
+  .filter((c) => fs.statSync(path.join(campaignsRoot, c)).isDirectory() && (only ? only.has(c) : !shipped.has(c)))
   .sort();
 
 const walkFiles = (dir, test, out = []) => {
