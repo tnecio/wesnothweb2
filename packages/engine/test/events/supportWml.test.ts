@@ -168,6 +168,21 @@ describe('small tags', () => {
     expect(leader.extraRecruit).toEqual(['Elvish Fighter', 'Elvish Archer']);
   });
 
+  it('[petrify]/[unpetrify] change the petrified status on the map and on recall lists', () => {
+    const { board, run } = setup();
+    const statue = Unit.create(makeType('Spearman'), 2, new Location(1, 1));
+    const recalled = Unit.create(makeType('Spearman'), 2, Location.NULL);
+    const other = Unit.create(makeType('Bowman'), 2, new Location(2, 2));
+    board.addUnit(statue);
+    board.addUnit(other);
+    board.addToRecallList(2, recalled);
+    run('[petrify]\ntype=Spearman\n[/petrify]');
+    expect([statue.petrified, recalled.petrified, other.petrified]).toEqual([true, true, false]);
+    expect(statue.incapacitated).toBe(true);
+    run('[unpetrify]\nside=2\n[/unpetrify]');
+    expect([statue.petrified, recalled.petrified, other.petrified]).toEqual([false, false, false]);
+  });
+
   it('[end_turn] forces the end of the turn', () => {
     const { ctx, run } = setup();
     expect(ctx.endTurnForced).toBe(false);

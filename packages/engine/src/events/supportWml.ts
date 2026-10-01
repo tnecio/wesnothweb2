@@ -8,6 +8,7 @@
  * - `[allow_extra_recruit]`/`[disallow_extra_recruit]`/`[set_extra_recruit]` (`wml-tags.lua`): a unit's own
  *   `extra_recruit=`;
  * - `[end_turn]` (`wml-tags.lua`, `wesnoth.interface.end_turn`): `EventContext.endTurnForced`;
+ * - `[petrify]`/`[unpetrify]` (`wml-tags.lua`): the `petrified` status, on the map and on recall lists;
  * - `[set_achievement]`/`[set_sub_achievement]`/`[progress_achievement]` (`wml-tags.lua`), through
  *   `EventContext.achievements`;
  * - `[replace_map]` (`action_wml.cpp`), `GameBoard.replaceMap`;
@@ -24,6 +25,7 @@ import { TString } from '../i18n/tstring.js';
 import type { Flow } from './interaction.js';
 import { runActionFlow } from './actionWml.js';
 import { findUnits } from './filter.js';
+import { UnitStatus } from '../model/Unit.js';
 import { varNodeFromConfig } from './variables.js';
 import { actionHarmUnit } from './harmUnitWml.js';
 
@@ -120,6 +122,14 @@ function actionAllowEndTurn(_cfg: WmlConfig, ctx: EventContext): void {
 /** `wml_actions.disallow_end_turn`: `reason=` is what the player is told on trying. */
 function actionDisallowEndTurn(cfg: WmlConfig, ctx: EventContext): void {
   ctx.endTurn = { allowed: false, reason: cfg.getTString('reason') };
+}
+
+/**
+ * `wml_actions.petrify`/`unpetrify`: the matching units on the map, then on the recall lists (where upstream
+ * passes the same filter, wrapped in `[and]` for `[petrify]`), get or lose the `petrified` status.
+ */
+function setPetrified(cfg: WmlConfig, ctx: EventContext, petrified: boolean): void {
+  for (const unit of findUnits(ctx.board, cfg, true)) unit.setStatus(UnitStatus.Petrified, petrified);
 }
 
 /** `wml_actions.end_turn`: `wesnoth.interface.end_turn()`, `play_controller::force_end_turn`. */
@@ -238,6 +248,8 @@ export function registerSupportActions(register: (tag: string, handler: (cfg: Wm
   register('disallow_extra_recruit', actionDisallowExtraRecruit);
   register('set_extra_recruit', actionSetExtraRecruit);
   register('end_turn', actionEndTurn);
+  register('petrify', (cfg, ctx) => setPetrified(cfg, ctx, true));
+  register('unpetrify', (cfg, ctx) => setPetrified(cfg, ctx, false));
   register('set_achievement', actionSetAchievement);
   register('set_sub_achievement', actionSetSubAchievement);
   register('progress_achievement', actionProgressAchievement);
