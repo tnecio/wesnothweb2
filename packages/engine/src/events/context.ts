@@ -20,6 +20,7 @@ import type { Rng } from '../rng/Rng.js';
 import type { VariableStore } from './variables.js';
 import type { ScenarioObjectives } from './objectives.js';
 import type { Flow } from './interaction.js';
+import type { FloatingLabelRequest } from './floatingLabels.js';
 import type { MusicList } from '../audio/musicList.js';
 import type { SoundRequest } from '../audio/sounds.js';
 import type { SoundSourceStore } from '../audio/soundSources.js';
@@ -129,7 +130,13 @@ export interface EndLevelState {
  * pump decides how to answer it. `runActionFlow` delegates into either
  * shape, so a handler only opts in when it actually needs to block.
  */
-export type ActionHandler = (cfg: WmlConfig, ctx: EventContext) => void | Flow;
+export type ActionHandler = ((cfg: WmlConfig, ctx: EventContext) => void | Flow) & {
+  /**
+   * Gets its config exactly as written, not `$`-substituted first: a tag defined in Lua, which upstream hands
+   * a vconfig that substitutes as it is read (`wml-utils.lua`'s `handle_event_commands`).
+   */
+  rawConfig?: boolean;
+};
 
 /**
  * The `[tag] -> handler` lookup action-tag execution consults, mirroring
@@ -256,6 +263,12 @@ export interface EventContext {
   exit: ExitState;
   /** Set by `[endlevel]` (first firing wins); the session ends the scenario when it sees this. */
   endLevel?: EndLevelState;
+  /**
+   * C1: `wesnoth.scenario.end_level_data` once the scenario is over (`play_controller::get_end_level_data`):
+   * whether the campaign goes on (`proceed_to_next_level`, a human side won) and whether this player won.
+   * Set by the session before the `victory`/`defeat`/`scenario_end` events.
+   */
+  endLevelData?: { proceedToNextLevel: boolean; isVictory: boolean };
   /** Queues a new event, processed once the current pump pass finishes (see pump.ts's module doc comment on batching). */
   raise: (name: string, loc1?: Location, loc2?: Location, data?: WmlConfig) => void;
   /**
@@ -307,6 +320,33 @@ export interface EventContext {
    * them if not.
    */
   endTurn: { allowed: boolean; reason?: TString };
+  /**
+   * C1: `[end_turn]` (`wesnoth.interface.end_turn`, `playsingle_controller::force_end_turn`): the side's turn
+   * ends once the current action is over, even where `[disallow_end_turn]` holds. `game_data::end_turn_forced_`,
+   * saved as `end_turn=`, cleared as the next side's turn begins; while set, the action cannot be undone.
+   */
+  endTurnForced: boolean;
+  /**
+   * C1: `[do_command]`'s child (`[move]`, `[attack]`, `[recruit]`, `[recall]`, `[disband]`, `[fire_event]`,
+   * `[custom_command]`, parsed), run as the player's own command would be
+   * (`synced_context::run_in_synced_context_if_not_already`). Installed by the session.
+   */
+  doCommand?: (tag: string, cfg: WmlConfig) => Flow;
+  /** C1: where floating labels go to be drawn (`floatingLabels.ts`); the session installs it. Without one, nothing shows. */
+  floatLabel?: (request: FloatingLabelRequest) => void;
+  /** The overlay label the last `[print]` made, which the next replaces (`wml-tags.lua`'s `wml_floating_label`). */
+  printLabelId?: number;
+  /** The last overlay label id given out (`font::add_floating_label`'s counter). */
+  overlayLabelCounter?: number;
+  /**
+   * C1: `mouse_handler::select_hex` from WML/Lua (`[select_unit]`, `wesnoth.interface.select_unit`): selects
+   * the unit at `loc` (null: deselects), showing where it can go when `highlight`. Installed by the session.
+   */
+  selectHex?: (loc: Location | null, highlight: boolean) => void;
+  /** `game_display::displayed_unit_hex`'s unit: the one the side panel shows. Installed by the session. */
+  displayedUnit?: () => Unit | undefined;
+  /** `wesnoth.scenario.name`: the scenario's `name=` (`[story]`'s default title). Installed by the session. */
+  scenarioName?: () => TString;
   /** Phase 28c: `[set_global_variable]` and friends' storage, kept across games. Absent: they log and do nothing. */
   persistent?: PersistentVariables;
   /** Phase 28c: `[set_achievement]` and friends. Absent: they do nothing. */

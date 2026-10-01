@@ -87,7 +87,7 @@ import { sampleAnimation, animationTimeline, animationSoundCues, sampleParticles
 import { HEX_STEP_MS, type UnitAnimationDef } from './animation/unitAnimation.js';
 import { LABEL_FONT_SIZE, parseHaloFrames, type MapItemPoint, type MapLabelPoint } from './mapItems.js';
 import { makeLayerSprite } from './terrainPositioning.js';
-import type { BuildingRule } from './terrain/terrainGraphicsRules.js';
+import { ownTerrainGraphicsRules, type BuildingRule } from './terrain/terrainGraphicsRules.js';
 import { layoutTerrain, type TerrainLayout } from './terrain/terrainLayout.js';
 import { computeTerrainLayout } from './terrain/terrainLayoutClient.js';
 import {
@@ -208,8 +208,12 @@ export interface SnapshotUnit {
   canAttackHere?: boolean;
   /** Real boolean status flags this unit currently has (e.g. `poisoned`, `slowed`, `petrified`) -- see `Unit.statuses`. Only the ones the renderer actually draws something for need to be present; harmless to include others. */
   statuses?: readonly string[];
-  /** `Unit.loyal` -- whether to draw the real loyal-icon overlay (`misc/loyal-icon.png`). */
-  loyal?: boolean;
+  /**
+   * `unit::overlays()`: images drawn over the unit with its orb and crown (`units/drawer.cpp`), from
+   * `apply_to=overlay` effects -- the loyal trait's `misc/loyal-icon.png`, a hero's `misc/hero-icon.png`,
+   * `[unit_overlay]`'s.
+   */
+  overlays?: readonly string[];
   /** `unit::image_ellipse` (`''` = `misc/ellipse`, `none` = no ellipse) and `emits_zoc` -- see `ellipseRef`. */
   ellipse?: string;
   emitsZoc?: boolean;
@@ -247,6 +251,12 @@ export interface SnapshotTeam {
 
 export interface ScenarioSnapshot {
   scenario: { id: string; name: string };
+  /**
+   * C1: the campaign's and the scenario's own `[terrain_graphics]`, parsed at build time by
+   * `parseTerrainGraphicsRules` (so `BuildingRule` JSON), joined to the core rules (`ownTerrainGraphicsRules`).
+   */
+  campaignTerrainGraphicsRules?: readonly unknown[];
+  scenarioTerrainGraphicsRules?: readonly unknown[];
   /** Phase 28c: the campaign's own `[color_range]`s, added to the colour table (`ColorData.ranges`). */
   colorRanges?: Record<string, { mid: number[]; max: number[]; min: number[]; rep: number[] }>;
   map: { width: number; height: number };
@@ -322,7 +332,9 @@ interface UnitVisual {
    * `lastOrbRef`.
    */
   crownIcon: PIXI.Sprite | null;
-  loyalIcon: PIXI.Sprite | null;
+  /** `unit::overlays()`'s images, in order, drawn after the orb and crown; `overlaysKey` is what they show. */
+  overlayIcons: PIXI.Sprite[];
+  overlaysKey: string;
   orbIcon: PIXI.Sprite | null;
   /** The `path~mods` ref `orbIcon`'s texture was last resolved from, so `updateIcons` only re-resolves when `MovesOrbStatus` (or its visibility) actually changed. */
   lastOrbRef: string | null;
@@ -715,6 +727,7 @@ export class SnapshotBoard {
 
   private readonly terrainGraphicsRules?: readonly BuildingRule[];
   private readonly terrainGraphicsRulesUrl?: string;
+  private readonly extraTerrainGraphicsRules: readonly BuildingRule[];
 
   constructor(
     private readonly snapshot: ScenarioSnapshot,
@@ -727,6 +740,8 @@ export class SnapshotBoard {
     this.onHexRightClick = options.onHexRightClick;
     this.terrainGraphicsRules = options.terrainGraphicsRules;
     this.terrainGraphicsRulesUrl = options.terrainGraphicsRulesUrl;
+    // Plain data: the snapshot may be a reactive proxy, which cannot be posted to the terrain worker.
+    this.extraTerrainGraphicsRules = JSON.parse(JSON.stringify(ownTerrainGraphicsRules(snapshot))) as BuildingRule[];
     this.units = snapshot.units;
     this.teamColor = new Map(snapshot.teams.map((t) => [t.side, t.color]));
     this.teamFlag = new Map(snapshot.teams.map((t) => [t.side, t.flag ?? '']));
@@ -954,7 +969,7 @@ export class SnapshotBoard {
       this.terrainGraphicsRules && this.terrainGraphicsRules.length > 0
         ? layoutTerrain(this.terrainGraphicsRules, this.terrain, width, height)
         : this.terrainGraphicsRulesUrl
-          ? await computeTerrainLayout(this.terrainGraphicsRulesUrl, this.terrain, width, height)
+          ? await computeTerrainLayout(this.terrainGraphicsRulesUrl, this.terrain, width, height, this.extraTerrainGraphicsRules)
           : null;
     performance.measure('board:terrain-layout', 'board:terrain-layout-start');
     if (!layout) {
@@ -1217,7 +1232,8 @@ export class SnapshotBoard {
       lastSide: unit.side,
       bars,
       crownIcon: null,
-      loyalIcon: null,
+      overlayIcons: [],
+      overlaysKey: '',
       orbIcon: null,
       lastOrbRef: null,
       flagRgb: unit.flagRgb,
@@ -1362,19 +1378,23 @@ export class SnapshotBoard {
       visual.crownIcon.visible = false;
     }
 
-    if (unit.loyal) {
-      if (!visual.loyalIcon) {
-        const texture = await ImageCache.resolve('misc/loyal-icon.png');
-        if (texture) {
-          const sprite = new PIXI.Sprite(texture);
-          sprite.anchor.set(0.5, 0.5);
-          visual.container.addChild(sprite);
-          visual.loyalIcon = sprite;
-        }
+    // `unit::overlays()`, after the orb and crown, each over the last, at the same place.
+    const overlays = unit.overlays ?? [];
+    const key = overlays.join('\n');
+    if (visual.overlaysKey !== key) {
+      visual.overlaysKey = key;
+      for (const sprite of visual.overlayIcons) sprite.destroy();
+      visual.overlayIcons = [];
+      const textures = await Promise.all(overlays.map((ref) => ImageCache.resolve(ref)));
+      // Another update may have changed them, or rebuilt the visual, while these loaded.
+      if (visual.overlaysKey !== key || visual.container.destroyed) return;
+      for (const texture of textures) {
+        if (!texture) continue;
+        const sprite = new PIXI.Sprite(texture);
+        sprite.anchor.set(0.5, 0.5);
+        visual.container.addChild(sprite);
+        visual.overlayIcons.push(sprite);
       }
-      if (visual.loyalIcon) visual.loyalIcon.visible = true;
-    } else if (visual.loyalIcon) {
-      visual.loyalIcon.visible = false;
     }
   }
 
@@ -1630,8 +1650,9 @@ export class SnapshotBoard {
       visual.lastEllipseKey = null;
       visual.bars = rebuilt.bars;
       visual.overlay = null; // the old overlay sprite (if any) was just destroyed along with its old container children.
-      visual.crownIcon = null; // ditto for the crown/loyal/orb icons, if any.
-      visual.loyalIcon = null;
+      visual.crownIcon = null; // ditto for the crown/overlay/orb icons, if any.
+      visual.overlayIcons = [];
+      visual.overlaysKey = '';
       visual.orbIcon = null;
       visual.lastOrbRef = null;
       visual.lastImage = unit.image;
@@ -2064,6 +2085,39 @@ export class SnapshotBoard {
         text.destroy();
         return;
       }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  /**
+   * C1: `game_display::float_label` (`[floating_text]`, `wesnoth.interface.float_label`): `text` rising from
+   * the middle of the top edge of hex (`x`, `y`) at 100 px a second, for a second, then gone (no fade:
+   * `set_lifetime(lifetime, 0)`). `SIZE_FLOAT_LABEL` (24), outlined, in `color`. Board coordinates, so size
+   * and speed follow the zoom as upstream's do.
+   */
+  spawnHexLabel(x: number, y: number, text: string, color: number): void {
+    if (text === '') return;
+    const { x: cx, y: cy } = hexToPixel(toHexCoord(x, y));
+    const label = new PIXI.Text({
+      text,
+      style: { fontSize: 24, fill: color, stroke: { color: 0x000000, width: 3 }, align: 'center' },
+    });
+    label.anchor.set(0.5, 0);
+    const startY = cy - HEX_ROW_HEIGHT / 2;
+    label.position.set(cx, startY);
+    this.floatingLayer.addChild(label);
+    const lifetimeMs = 1000;
+    const start = performance.now();
+    const tick = (): void => {
+      if (label.destroyed) return;
+      const elapsed = performance.now() - start;
+      if (elapsed >= lifetimeMs) {
+        this.floatingLayer.removeChild(label);
+        label.destroy();
+        return;
+      }
+      label.position.y = startY - 0.1 * elapsed;
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);

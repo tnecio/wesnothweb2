@@ -12,6 +12,8 @@ import { VariableStore } from '../../src/events/variables.js';
 import { parseWml } from '../../src/wml/index.js';
 import { runActionFlow, runActionSequence } from '../../src/events/actionWml.js';
 import { autoRespond, runFlow, type Interaction } from '../../src/events/interaction.js';
+import { TString } from '../../src/i18n/tstring.js';
+import type { FloatingLabelRequest } from '../../src/events/floatingLabels.js';
 import { memoryPersistentVariables } from '../../src/events/supportWml.js';
 
 /** Phase 28c: the mainline tags The South Guard needed (`supportWml.ts`, `harmUnitWml.ts`). */
@@ -152,6 +154,57 @@ describe('small tags', () => {
     void ctx;
   });
 
+  it('[set_extra_recruit] replaces a unit\'s extra_recruit=', () => {
+    const { board, run, logs } = setup();
+    const leader = Unit.create(makeType('Lieutenant'), 1, new Location(1, 1));
+    leader.id = 'Konrad';
+    leader.extraRecruit = ['Spearman'];
+    board.addUnit(leader);
+    run(`[set_extra_recruit]
+      id=Konrad
+      extra_recruit=Elvish Fighter, Elvish Archer
+    [/set_extra_recruit]`);
+    expect(leader.extraRecruit).toEqual(['Elvish Fighter', 'Elvish Archer']);
+    run('[set_extra_recruit]\nid=Konrad\n[/set_extra_recruit]');
+    expect(logs).toContain('error: [set_extra_recruit] missing required extra_recruit= attribute');
+    expect(leader.extraRecruit).toEqual(['Elvish Fighter', 'Elvish Archer']);
+  });
+
+  it('[petrify]/[unpetrify] change the petrified status on the map and on recall lists', () => {
+    const { board, run } = setup();
+    const statue = Unit.create(makeType('Spearman'), 2, new Location(1, 1));
+    const recalled = Unit.create(makeType('Spearman'), 2, Location.NULL);
+    const other = Unit.create(makeType('Bowman'), 2, new Location(2, 2));
+    board.addUnit(statue);
+    board.addUnit(other);
+    board.addToRecallList(2, recalled);
+    run('[petrify]\ntype=Spearman\n[/petrify]');
+    expect([statue.petrified, recalled.petrified, other.petrified]).toEqual([true, true, false]);
+    expect(statue.incapacitated).toBe(true);
+    run('[unpetrify]\nside=2\n[/unpetrify]');
+    expect([statue.petrified, recalled.petrified, other.petrified]).toEqual([false, false, false]);
+  });
+
+  it('[unit_overlay]/[remove_unit_overlay] add and remove an overlay through an [object], once', () => {
+    const { board, run } = setup();
+    const unit = Unit.create(makeType('Spearman'), 1, new Location(1, 1));
+    unit.role = 'gold_carrier';
+    board.addUnit(unit);
+    run('[unit_overlay]\nrole=gold_carrier\nimage=items/gold-coins-small.png\n[/unit_overlay]');
+    run('[unit_overlay]\nrole=gold_carrier\nimage=items/gold-coins-small.png\n[/unit_overlay]');
+    expect(unit.overlays).toEqual(['items/gold-coins-small.png']);
+    expect(unit.modifications.map((m) => [m.kind, m.cfg.getString('id')])).toEqual([['object', 'overlay_items/gold-coins-small.png']]);
+    run('[remove_unit_overlay]\nrole=gold_carrier\nimage=items/gold-coins-small.png\n[/remove_unit_overlay]');
+    expect(unit.overlays).toEqual([]);
+  });
+
+  it('[end_turn] forces the end of the turn', () => {
+    const { ctx, run } = setup();
+    expect(ctx.endTurnForced).toBe(false);
+    run('[end_turn]\n[/end_turn]');
+    expect(ctx.endTurnForced).toBe(true);
+  });
+
   it('[set_achievement] reports to the achievement sink', () => {
     const { ctx, run } = setup();
     const got: string[] = [];
@@ -170,6 +223,92 @@ describe('[open_help]', () => {
     const seen: Interaction[] = [];
     runFlow(runActionFlow(parseWml('[open_help]\n  topic=unit_Fencer\n[/open_help]'), ctx), (i) => (seen.push(i), autoRespond(i)));
     expect(seen).toEqual([{ kind: 'beat', beat: { kind: 'openHelp', topic: 'unit_Fencer' } }]);
+  });
+});
+
+describe('[story] in an event', () => {
+  it('shows its parts on the story screen (a story beat); title= or the scenario name titles show_title parts', () => {
+    const { ctx } = setup();
+    ctx.scenarioName = () => TString.literal('Squidville');
+    ctx.variables.set('ending', 'bad');
+    const seen: Interaction[] = [];
+    runFlow(
+      runActionFlow(
+        parseWml(`[story]
+          [part]
+            show_title=yes
+            story=The end.
+            background=story/end.webp
+          [/part]
+          [if]
+            [variable]
+              name=ending
+              equals=bad
+            [/variable]
+            [then]
+              [part]
+                story=A bad one.
+              [/part]
+            [/then]
+          [/if]
+        [/story]
+        [story]
+          title=Bad Ending
+          [part]
+            show_title=yes
+            story=Overrun.
+          [/part]
+          [part]
+            story=No title here.
+          [/part]
+        [/story]`),
+        ctx,
+      ),
+      (i) => (seen.push(i), autoRespond(i)),
+    );
+    const stories = seen.map((i) => (i.kind === 'beat' && i.beat.kind === 'story' ? i.beat.parts.map((p) => [p.title, p.text]) : null));
+    expect(stories).toEqual([
+      [
+        ['Squidville', 'The end.'],
+        ['', 'A bad one.'],
+      ],
+      [
+        ['Bad Ending', 'Overrun.'],
+        ['', 'No title here.'],
+      ],
+    ]);
+  });
+});
+
+describe('floating labels ([floating_text], [print])', () => {
+  function capture(ctx: ReturnType<typeof setup>['ctx']): FloatingLabelRequest[] {
+    const seen: FloatingLabelRequest[] = [];
+    ctx.floatLabel = (r) => seen.push(r);
+    return seen;
+  }
+
+  it('[floating_text] floats its text on every matching hex, in LABEL_COLOR or color= (r,g,b)', () => {
+    const { ctx, run } = setup(5);
+    const seen = capture(ctx);
+    run('[floating_text]\nx=1\ny=1-2\ntext="+50 gold"\n[/floating_text]');
+    run('[floating_text]\nx=1\ny=3\ntext=Ouch\ncolor=255,0,0\n[/floating_text]');
+    expect(seen.map((r) => (r.kind === 'hex' ? [r.loc.wmlX, r.loc.wmlY, String(r.text), r.color] : null))).toEqual([
+      [1, 1, '+50 gold', { r: 107, g: 140, b: 255 }],
+      [1, 2, '+50 gold', { r: 107, g: 140, b: 255 }],
+      [1, 3, 'Ouch', { r: 255, g: 0, b: 0 }],
+    ]);
+  });
+
+  it('[print] shows one label over the map, replacing the last [print]\'s', () => {
+    const { ctx, run } = setup();
+    const seen = capture(ctx);
+    run('[print]\ntext=First\n[/print]');
+    run('[print]\ntext=Second\nsize=24\nduration=5000\nred=255\n[/print]');
+    expect(seen).toMatchObject([
+      { kind: 'overlay', id: 1, size: 15, duration: 2000, fadeTime: 100, color: { r: 107, g: 140, b: 255 }, halign: 'center', valign: 'center' },
+      { kind: 'removeOverlay', id: 1 },
+      { kind: 'overlay', id: 2, size: 24, duration: 5000, color: { r: 255, g: 0, b: 0 } },
+    ]);
   });
 });
 
@@ -232,6 +371,16 @@ describe('[harm_unit]', () => {
     expect(victim.hasStatus(UnitStatus.Poisoned)).toBe(true);
     expect(ctx.variables.getNumber('harmed[0].harm_amount')).toBe(8);
     expect(ctx.variables.getString('harmed[0].id')).toBe('victim');
+  });
+
+  it('floats the damage and the statuses given, in red, over the victim', () => {
+    const { victim, run, ctx } = withUnits();
+    const seen: FloatingLabelRequest[] = [];
+    ctx.floatLabel = (r) => seen.push(r);
+    run('[harm_unit]\n[filter]\nid=victim\n[/filter]\namount=10\ndamage_type=blade\npoisoned=yes\nslowed=yes\n[/harm_unit]');
+    expect(seen).toHaveLength(1);
+    const label = seen[0]!;
+    expect(label.kind === 'hex' && [label.loc.equals(victim.location), String(label.text), label.color]).toEqual([true, '\t8\npoisoned\nslowed\n', { r: 255, g: 0, b: 0 }]);
   });
 
   it('reads $this_unit per unit, and kill=no leaves 1 HP', () => {

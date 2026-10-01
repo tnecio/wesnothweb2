@@ -5,7 +5,15 @@
  *   variables kept across games, per `namespace=`, through `EventContext.persistent`;
  * - `[unsynced]` (`wml-tags.lua`): its body, run as `[command]`;
  * - `[allow_end_turn]`/`[disallow_end_turn]` (`wesnoth.interface.allow_end_turn`): `EventContext.endTurn`;
- * - `[allow_extra_recruit]`/`[disallow_extra_recruit]` (`wml-tags.lua`): a unit's own `extra_recruit=`;
+ * - `[allow_extra_recruit]`/`[disallow_extra_recruit]`/`[set_extra_recruit]` (`wml-tags.lua`): a unit's own
+ *   `extra_recruit=`;
+ * - `[end_turn]` (`wml-tags.lua`, `wesnoth.interface.end_turn`): `EventContext.endTurnForced`;
+ * - `[petrify]`/`[unpetrify]` (`wml-tags.lua`): the `petrified` status, on the map and on recall lists;
+ * - `[do_command]` (`action_wml.cpp`): player commands from WML, through `EventContext.doCommand`;
+ * - `[story]` (`wml-tags.lua`, `gui.show_story`): a story screen mid-scenario, as a `story` beat;
+ * - `[floating_text]`/`[print]` (`wml-tags.lua`): floating labels (`floatingLabels.ts`);
+ * - `[unit_overlay]`/`[remove_unit_overlay]` (`wml-tags.lua`): an `[object]` adding or removing the image;
+ * - `[select_unit]` (`wml-tags.lua`): selects the unit, through `EventContext.selectHex`;
  * - `[set_achievement]`/`[set_sub_achievement]`/`[progress_achievement]` (`wml-tags.lua`), through
  *   `EventContext.achievements`;
  * - `[replace_map]` (`action_wml.cpp`), `GameBoard.replaceMap`;
@@ -20,10 +28,13 @@ import type { EventContext } from './context.js';
 import { WmlConfig } from '../wml/config.js';
 import { TString } from '../i18n/tstring.js';
 import type { Flow } from './interaction.js';
-import { runActionFlow } from './actionWml.js';
+import { effectEnvFor, runActionFlow } from './actionWml.js';
 import { findUnits } from './filter.js';
+import { UnitStatus } from '../model/Unit.js';
 import { varNodeFromConfig } from './variables.js';
 import { actionHarmUnit } from './harmUnitWml.js';
+import { resolveStory } from '../story/storyParser.js';
+import { actionFloatingText, actionPrint } from './floatingLabels.js';
 
 /** Where `[set_global_variable]` keeps its values (upstream: a `persist_context` file per namespace). */
 export interface PersistentVariables {
@@ -120,8 +131,93 @@ function actionDisallowEndTurn(cfg: WmlConfig, ctx: EventContext): void {
   ctx.endTurn = { allowed: false, reason: cfg.getTString('reason') };
 }
 
+/**
+ * `wml_actions.petrify`/`unpetrify`: the matching units on the map, then on the recall lists (where upstream
+ * passes the same filter, wrapped in `[and]` for `[petrify]`), get or lose the `petrified` status.
+ */
+function setPetrified(cfg: WmlConfig, ctx: EventContext, petrified: boolean): void {
+  for (const unit of findUnits(ctx.board, cfg, true)) unit.setStatus(UnitStatus.Petrified, petrified);
+}
+
+/** The commands `[do_command]` may run (`action_wml.cpp`). */
+const DO_COMMAND_TAGS = new Set(['attack', 'move', 'recruit', 'recall', 'disband', 'fire_event', 'custom_command']);
+
+/**
+ * `[do_command]` (`action_wml.cpp`): each child runs as the same command a player's action records, events
+ * and all. Inside an action (an event) it is part of that action; otherwise it is recorded as its own.
+ */
+function* actionDoCommand(cfg: WmlConfig, ctx: EventContext): Flow {
+  for (const { tag, config } of cfg.allChildren()) {
+    if (!DO_COMMAND_TAGS.has(tag)) {
+      ctx.log('error', `unsupported tag [${tag}] in [do_command]; allowed tags: ${[...DO_COMMAND_TAGS].sort().join(' ')}`);
+      continue;
+    }
+    if (!ctx.doCommand) {
+      ctx.log('error', '[do_command]: no game to run commands in');
+      return;
+    }
+    yield* ctx.doCommand(tag, ctx.variables.expandConfigDeep(config));
+  }
+}
+
+/**
+ * `wml_actions.story` (`gui.show_story(cfg, cfg.title or wesnoth.scenario.name)`): this `[story]`'s parts,
+ * resolved now as the scenario's own are, shown on the story screen; the event waits for the player.
+ */
+function* actionStory(cfg: WmlConfig, ctx: EventContext): Flow {
+  const title = cfg.hasAttribute('title') ? (cfg.getTString('title') ?? TString.literal(cfg.getString('title'))) : (ctx.scenarioName?.() ?? TString.literal(''));
+  const holder = new WmlConfig();
+  holder.addChild('story', cfg);
+  const parts = resolveStory(holder, title, ctx);
+  if (parts.length > 0) yield { kind: 'beat', beat: { kind: 'story', parts } };
+}
+
+/**
+ * `wml_actions.unit_overlay`/`remove_unit_overlay`: each matching unit on the map that lacks (has) `image=`
+ * gets an `[object]` (id `object_id=`, else `overlay_<image>`; `[unit_overlay]` keeps `duration=`) whose
+ * `apply_to=overlay` effect adds (removes) it -- so it is saved, and a `duration` makes it expire.
+ */
+function unitOverlay(cfg: WmlConfig, ctx: EventContext, add: boolean): void {
+  const tag = add ? 'unit_overlay' : 'remove_unit_overlay';
+  if (!cfg.hasAttribute('image')) {
+    ctx.log('error', `[${tag}] missing required image= attribute`);
+    return;
+  }
+  const image = cfg.getString('image');
+  for (const unit of findUnits(ctx.board, cfg)) {
+    if (unit.overlays.includes(image) !== !add) continue;
+    const object = new WmlConfig();
+    object.setAttribute('id', cfg.getString('object_id', '') || `overlay_${image}`);
+    if (add && cfg.hasAttribute('duration')) object.setAttribute('duration', cfg.getString('duration'));
+    object.addChild('effect').setAttribute('apply_to', 'overlay').setAttribute(add ? 'add' : 'remove', image);
+    unit.addModification('object', object, effectEnvFor(ctx, unit));
+  }
+}
+
+/** `wml_actions.select_unit`: `wesnoth.interface.select_unit` on the first matching unit (`highlight` by default). */
+function actionSelectUnit(cfg: WmlConfig, ctx: EventContext): void {
+  const unit = findUnits(ctx.board, cfg)[0];
+  if (!unit) return;
+  ctx.selectHex?.(unit.location, cfg.getBoolean('highlight', true));
+}
+
+/** `wml_actions.end_turn`: `wesnoth.interface.end_turn()`, `play_controller::force_end_turn`. */
+function actionEndTurn(_cfg: WmlConfig, ctx: EventContext): void {
+  ctx.endTurnForced = true;
+}
+
 function splitList(value: string): string[] {
   return value.split(',').map((s) => s.trim()).filter((s) => s !== '');
+}
+
+/** `wml_actions.set_extra_recruit`: each matching unit on the map may recruit exactly these types. */
+function actionSetExtraRecruit(cfg: WmlConfig, ctx: EventContext): void {
+  if (!cfg.hasAttribute('extra_recruit')) {
+    ctx.log('error', '[set_extra_recruit] missing required extra_recruit= attribute');
+    return;
+  }
+  const recruits = splitList(cfg.getString('extra_recruit'));
+  for (const unit of findUnits(ctx.board, cfg)) unit.extraRecruit = [...recruits];
 }
 
 /** `wml_actions.allow_extra_recruit`: each matching unit on the map may also recruit these types. */
@@ -219,6 +315,17 @@ export function registerSupportActions(register: (tag: string, handler: (cfg: Wm
   register('disallow_end_turn', actionDisallowEndTurn);
   register('allow_extra_recruit', actionAllowExtraRecruit);
   register('disallow_extra_recruit', actionDisallowExtraRecruit);
+  register('set_extra_recruit', actionSetExtraRecruit);
+  register('end_turn', actionEndTurn);
+  register('do_command', actionDoCommand);
+  register('story', actionStory);
+  register('floating_text', actionFloatingText);
+  register('print', actionPrint);
+  register('select_unit', actionSelectUnit);
+  register('unit_overlay', (cfg, ctx) => unitOverlay(cfg, ctx, true));
+  register('remove_unit_overlay', (cfg, ctx) => unitOverlay(cfg, ctx, false));
+  register('petrify', (cfg, ctx) => setPetrified(cfg, ctx, true));
+  register('unpetrify', (cfg, ctx) => setPetrified(cfg, ctx, false));
   register('set_achievement', actionSetAchievement);
   register('set_sub_achievement', actionSetSubAchievement);
   register('progress_achievement', actionProgressAchievement);

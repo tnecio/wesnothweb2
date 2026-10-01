@@ -37,7 +37,7 @@ const shipped = new Set(
 );
 const campaigns = fs
   .readdirSync(campaignsRoot)
-  .filter((c) => fs.statSync(path.join(campaignsRoot, c)).isDirectory() && !shipped.has(c) && (!only || only.has(c)))
+  .filter((c) => fs.statSync(path.join(campaignsRoot, c)).isDirectory() && (only ? only.has(c) : !shipped.has(c)))
   .sort();
 
 const walkFiles = (dir, test, out = []) => {
@@ -99,18 +99,7 @@ const audit = JSON.parse(fs.readFileSync(auditJson, 'utf8'));
 const campaignOf = (scenarioKey) => scenarioKey.split('/')[0];
 
 // ── 3. Scans ───────────────────────────────────────────────────────────────
-/** What the Lua runtime provides (`lua-bridge`'s runtime and bootstrap): `a.b` or `a.b.c` names. */
-function bridgedLuaApi() {
-  const names = new Set(['wml.variables', 'wml.tag', 'wesnoth.wml_actions', 'gui.show_dialog', 'wesnoth.sync.evaluate_single', 'wesnoth.require', 'wesnoth.dofile']);
-  for (const file of ['packages/lua-bridge/src/runtime.ts', 'packages/lua-bridge/src/bridges/bootstrap.ts']) {
-    const src = fs.readFileSync(path.join(repoRoot, file), 'utf8');
-    for (const m of src.matchAll(/define\(\[((?:'[\w]+',?\s*)+)\]/g)) names.add([...m[1].matchAll(/'(\w+)'/g)].map((x) => x[1]).join('.'));
-    for (const m of src.matchAll(/function\s+((?:wml|wesnoth|gui|stringx)(?:\.\w+)+)\s*\(/g)) names.add(m[1]);
-  }
-  return names;
-}
-const bridged = bridgedLuaApi();
-const LUA_API = /\b(wesnoth|wml|gui|ai|filesystem|stringx|mathx|functional|utils|helper|items|unit_test)\s*\.\s*([A-Za-z_]\w*)(?:\s*\.\s*([A-Za-z_]\w*))?/g;
+const LUA_API = /(?<![.\w/])(wesnoth|wml|gui|ai|filesystem|stringx|mathx|functional|utils|helper|items|unit_test)\s*\.\s*([A-Za-z_]\w*)(?:\s*\.\s*([A-Za-z_]\w*))?/g;
 /** Sub-tables whose members are called as `wesnoth.x.y`; any other `wesnoth.x.y` is a field of a function's result. */
 const LUA_NAMESPACES = new Set(['units', 'sides', 'map', 'game_events', 'interface', 'sync', 'audio', 'schedule', 'current', 'game_config', 'achievements', 'paths', 'terrain_types', 'unit_types', 'races', 'persistent_tags', 'experimental', 'wml_actions', 'wml_conditionals', 'variables']);
 function luaApiNames(source) {
@@ -128,13 +117,6 @@ function luaApiNames(source) {
   for (const m of source.matchAll(/:(vformat|split|trim|join|parse_range|map_split|iter_range|iter_ranges|format_conjunct_list|format_disjunct_list|escaped_split|quoted_split|anim_split)\s*[({"']/g)) out.add(`stringx.${m[1]} (as a method)`);
   return out;
 }
-const LUA_KEYWORDS_OK = new Set(['wml.variables']);
-function isBridged(name) {
-  if (bridged.has(name) || LUA_KEYWORDS_OK.has(name)) return true;
-  // wesnoth.units.find_on_map is bridged; wml.variables["x"] etc.
-  return [...bridged].some((b) => name === b || name.startsWith(`${b}.`));
-}
-
 /** Every `{tag, config}` in a snapshot's scenario tree. */
 function* walkConfig(json, where = []) {
   for (const child of json.children ?? []) {
@@ -229,6 +211,33 @@ for (const [tag, info] of Object.entries(audit.conditions)) {
   }
 }
 
+/**
+ * What the port's Lua runtime has: every name the campaigns use, looked up in a real `LuaRuntime`
+ * (`resolve-lua-api.ts`), so the core Lua files and the kernel's own tables count, and `unported` stubs don't.
+ */
+const usedLuaApi = [...new Set(campaigns.flatMap((name) => Object.keys(perCampaign[name].luaApi)).filter((n) => !n.endsWith('.lua')))].sort();
+const namesJson = path.join(scratch, 'lua-api-names.json');
+const resolvedJson = path.join(scratch, 'lua-api-resolved.json');
+/** The name to look up: a method's function, and `wml.variables` for a variable read through it. */
+const lookupName = (name) => name.replace(/ \(as a method\)$/, '').replace(/^wml\.variables\..*/, 'wml.variables');
+/** Core modules the campaigns `require` (paths starting `./` are the campaign's own). */
+const usedModules = [...new Set(campaigns.flatMap((name) => Object.keys(perCampaign[name].requires)).filter((m) => !m.startsWith('./')))];
+fs.writeFileSync(namesJson, JSON.stringify([...new Set(usedLuaApi.map(lookupName)), ...usedModules.map((m) => `require:${m}`)]));
+await new Promise((resolve, reject) => {
+  const child = spawn(process.execPath, ['--import', 'tsx', path.join(repoRoot, 'packages/ui/scripts/resolve-lua-api.ts'), namesJson, resolvedJson], { cwd: repoRoot, stdio: 'inherit' });
+  child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`resolve-lua-api exited ${code}`))));
+});
+const resolvedLuaApi = JSON.parse(fs.readFileSync(resolvedJson, 'utf8'));
+/** `ai.*` exists only while the AI runs Lua (the table `luaAiEngine.ts` builds), so it is looked up there. */
+const aiTable = new Set([...fs.readFileSync(path.join(repoRoot, 'packages/lua-bridge/src/kernel/ai/luaAiEngine.ts'), 'utf8').matchAll(/^\s+(\w+):/gm)].map((m) => m[1]));
+const isBridged = (name) => (name.startsWith('ai.') ? aiTable.has(name.split('.')[1]) : resolvedLuaApi[lookupName(name)] === 'bridged');
+const bridged = usedLuaApi.filter(isBridged);
+const moduleLoads = (m) => resolvedLuaApi[`require:${m}`] === 'bridged';
+for (const name of campaigns) {
+  const c = perCampaign[name];
+  c.requires = Object.fromEntries(Object.entries(c.requires).filter(([m]) => !m.startsWith('./') && !moduleLoads(m)));
+}
+
 // ── 4. Report ──────────────────────────────────────────────────────────────
 const setSize = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v instanceof Set ? [...v].sort() : v]));
 const data = {
@@ -282,7 +291,7 @@ L.push('what the port lacks; what it already supports is left out. Re-run after 
 L.push('');
 L.push('## Summary', '');
 table(
-  ['Campaign', 'Scenarios (built)', 'Missing tags', 'Campaign Lua tags', 'Lua (files / lines)', 'Unbridged Lua API', 'Core Lua modules', 'Micro AIs', 'Custom Lua AI', 'Dialogs', 'Achievements', 'Help topics', 'Own terrain rules / types'],
+  ['Campaign', 'Scenarios (built)', 'Missing tags', 'Campaign Lua tags', 'Lua (files / lines)', 'Unbridged Lua API', 'Core Lua modules missing', 'Micro AIs', 'Custom Lua AI', 'Dialogs', 'Achievements', 'Help topics', 'Own terrain rules / types'],
   Object.entries(data.campaigns).map(([name, c]) => [
     name,
     `${c.scenarios} (${c.built})`,
@@ -320,14 +329,14 @@ table(['Tag', 'Campaign', 'Uses'], Object.entries(data.campaigns).flatMap(([name
 L.push('## Lua API the bridge does not provide yet', '');
 L.push('Names as the campaigns call them (`wesnoth.x.y`; a field read on a function\'s result may show as a name).', '');
 table(['Lua API', 'Campaigns', 'Places', 'Which'], tally((c) => c.luaApiUnbridged).map(([n, t]) => [`\`${n}\``, t.campaigns.length, t.count, short(t.campaigns)]));
-L.push('## Core Lua modules the campaigns load', '');
-L.push('`wesnoth.require` of mainline Lua (`data/lua/...`); the runtime carries only a campaign\'s own files today.', '');
+L.push('## Core Lua modules the runtime cannot load', '');
+L.push('`wesnoth.require` of mainline Lua (`data/lua/...`, `data/ai/lua/...`) that fails in the port\'s runtime; a campaign\'s own `./` modules are its Lua files, counted above.', '');
 table(['Module', 'Campaigns', 'Places', 'Which'], tally((c) => c.requires).map(([n, t]) => [`\`${n}\``, t.campaigns.length, t.count, short(t.campaigns)]));
 L.push('## Micro AIs (`[micro_ai] ai_type=`)', '');
 table(['ai_type', 'Campaigns', 'Scenarios', 'Which'], tally((c) => c.microAi).map(([n, t]) => [`\`${n}\``, t.campaigns.length, t.count, short(t.campaigns)]));
-L.push('The South Guard (ported) also uses `zone_guardian` (2 scenarios) and `coward` (1).', '');
+L.push('All run as upstream\'s own Lua (`lua/wml/micro_ai.lua`, Phase 29); listed so each can be checked when its campaign is ported.', '');
 L.push('## Custom Lua AI', '');
-L.push('`[ai]`/`[candidate_action]`/`[stage]`/`[engine]` with `engine=lua` or Lua code, per scenario.', '');
+L.push('`[ai]`/`[candidate_action]`/`[stage]`/`[engine]` with `engine=lua` or Lua code, per scenario. The Lua AI engine runs them (Phase 29); listed so each can be checked when its campaign is ported.', '');
 for (const [name, c] of Object.entries(data.campaigns)) if (c.customAi.length) L.push(`- **${name}** (${c.customAi.length}): ${short(c.customAi)}`);
 L.push('');
 L.push('## Custom dialogs (`gui.show_dialog`)', '');
@@ -346,7 +355,7 @@ L.push(topics.length ? '' : 'None outside The South Guard (which opens three uni
 for (const [name, c] of topics) L.push(`- **${name}**: ${c.helpTopics.map((t) => `\`${t}\``).join(', ')}`);
 L.push('');
 L.push('## Campaign terrain', '');
-L.push('This port\'s terrain graphics rules are core\'s only (`terrain-graphics-rules.json`); a campaign\'s own `[terrain_graphics]` or `[terrain_type]` would not be drawn or known.', '');
+L.push('Supported since Phase 28c C1: a campaign\'s own `[terrain_type]`s and `[terrain_graphics]` (and a scenario\'s) are built into its snapshots and joined to the core rules. Listed so each can be checked when its campaign is ported.', '');
 table(['Campaign', '`[terrain_graphics]`', '`[terrain_type]`'], Object.entries(data.campaigns).filter(([, c]) => c.terrainGraphics + c.terrainTypes > 0).map(([name, c]) => [name, c.terrainGraphics, c.terrainTypes]));
 L.push('## Preprocessor gaps the survey found (fixed)', '');
 L.push('Building every campaign exposed places where the port\'s preprocessor differed from upstream\'s; each is fixed and');

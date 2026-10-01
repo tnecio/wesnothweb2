@@ -161,8 +161,8 @@ export interface SnapshotUnit {
   canMove?: boolean;
   canAttackHere?: boolean;
   statuses?: readonly string[];
-  /** `Unit.loyal` -- whether to draw the real loyal-icon overlay (`misc/loyal-icon.png`). */
-  loyal?: boolean;
+  /** `unit::overlays()` -- see `@wesnothweb2/renderer`'s `SnapshotUnit.overlays`. */
+  overlays?: readonly string[];
   /** `unit::image_ellipse` (`''` = the default ellipse, `none` = no ellipse) and `emits_zoc`, which pick the ellipse image. */
   ellipse?: string;
   emitsZoc?: boolean;
@@ -324,6 +324,13 @@ export interface GameBoardSnapshot {
    * the same backward-compatibility reason as `terrainFlags`.
    */
   terrainTypeConfigs?: WmlConfigJson[];
+  /**
+   * C1: the campaign's own `[terrain_graphics]` (from its game config, so the same in all its scenarios) and
+   * the scenario's, parsed by the renderer's `parseTerrainGraphicsRules` at build time; the board joins them
+   * to the core rules file (`ownTerrainGraphicsRules`).
+   */
+  campaignTerrainGraphicsRules?: readonly unknown[];
+  scenarioTerrainGraphicsRules?: readonly unknown[];
   /** The real `[movetype]` registry (`name=` -> config) -- see this module's doc comment. Optional, same reason. */
   movementTypeConfigs?: Record<string, WmlConfigJson>;
   /**

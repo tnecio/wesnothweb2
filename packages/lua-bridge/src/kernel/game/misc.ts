@@ -10,8 +10,18 @@ import { Location } from '@wesnothweb2/engine/src/model/Location.js';
 import type { Flow } from '@wesnothweb2/engine/src/events/interaction.js';
 import { conditionalPassed } from '@wesnothweb2/engine/src/events/conditionalWml.js';
 import {
+  FLOATING_LABEL_COLOR,
+  OVERLAY_TEXT_SIZE,
+  nextOverlayLabelId,
+  parseHexColor,
+  parseRgbString,
+  type OverlayFloatingLabel,
+  type RgbColor,
+} from '@wesnothweb2/engine/src/events/floatingLabels.js';
+import {
   argError,
   checkString,
+  tableGet,
   lua,
   lauxlib,
   pushString,
@@ -22,6 +32,7 @@ import {
   type LuaState,
 } from '../kernel.js';
 import type { GameKernelHost } from './host.js';
+import type { LuaUnits } from './units.js';
 
 export const VCONFIG_KEY = 'wml object';
 
@@ -30,7 +41,7 @@ interface VConfig {
   readonly cfg: WmlConfig;
 }
 
-export function installMisc(k: LuaKernel, host: GameKernelHost): void {
+export function installMisc(k: LuaKernel, host: GameKernelHost, units: LuaUnits): void {
   const L = k.L;
   const ctx = () => host.ctx();
   const expand = (value: ReturnType<WmlConfig['getRaw']>) => (typeof value === 'string' ? ctx().variables.substitute(value) : value);
@@ -206,11 +217,45 @@ export function installMisc(k: LuaKernel, host: GameKernelHost): void {
       return 0;
     },
   });
+  installFloatingLabels(k, host);
+  // `intf_select_unit(loc, highlight = true, fire_event)`, which upstream registers as `wesnoth.units.select`
+  // (`core/interface.lua` makes it `wesnoth.interface.select_unit` too): under a command_disabler, so no select event.
+  k.define(['wesnoth', 'units', 'select'], (T) => {
+    if (lua.lua_isnoneornil(T, 1)) {
+      ctx().selectHex?.(null, false);
+      return 0;
+    }
+    const { loc, next } = locationArgs(k, T, 1);
+    if (!ctx().board.map.onBoard(loc)) return argError(T, 1, 'not on board');
+    ctx().selectHex?.(loc, lua.lua_isnoneornil(T, next) ? true : lua.lua_toboolean(T, next));
+    return 0;
+  });
+  k.defineAll(['wesnoth', 'interface'], {
+    // `intf_get_displayed_unit`: the unit the side panel shows, if any.
+    get_displayed_unit: (T) => {
+      const unit = ctx().displayedUnit?.();
+      if (!unit) return 0;
+      units.push(T, unit);
+      return 1;
+    },
+    // `intf_scroll_to_tile(loc, check_fogged, immediate, only_if_needed)`: the `[scroll_to]` beat.
+    scroll_to_hex: (T) => {
+      const { loc, next } = locationArgs(k, T, 1);
+      if (lua.lua_toboolean(T, next) && ctx().board.isFogged(host.currentSide(), loc)) return 0;
+      const beat = { kind: 'scrollTo' as const, location: loc, immediate: lua.lua_toboolean(T, next + 1), onlyIfNeeded: lua.lua_toboolean(T, next + 2), highlight: false };
+      return host.yieldFlow(
+        T,
+        (function* (): Flow {
+          yield { kind: 'beat', beat };
+        })(),
+      );
+    },
+  });
   for (const name of [
     'add_hex_overlay', 'remove_hex_overlay', 'get_color_adjust', 'color_adjust', 'screen_fade', 'delay', 'deselect_hex',
-    'highlight_hex', 'float_label', 'get_displayed_unit', 'get_hovered_hex', 'get_selected_hex', 'lock', 'is_locked',
-    'scroll', 'scroll_to_hex', 'zoom', 'clear_menu_item', 'set_menu_item', 'allow_end_turn', 'clear_chat_messages',
-    'end_turn', 'add_overlay_text',
+    'highlight_hex', 'get_hovered_hex', 'get_selected_hex', 'lock', 'is_locked',
+    'scroll', 'zoom', 'clear_menu_item', 'set_menu_item', 'allow_end_turn', 'clear_chat_messages',
+    'end_turn',
   ]) {
     k.unported(['wesnoth', 'interface', name]);
   }
@@ -259,4 +304,186 @@ function setFuncs(L: LuaState, fns: Readonly<Record<string, LuaCFunction>>): voi
     lua.lua_pushcfunction(L, fn);
     lua.lua_setfield(L, -2, to_luastring(name));
   }
+}
+
+const FLOATING_LABEL_KEY = 'floating label';
+
+/** A floating label's handle (`luaW_check_floating_label`): its id, 0 once removed. */
+interface LabelHandle {
+  id: number;
+}
+
+/**
+ * C1: `wesnoth.interface.float_label` (`intf_float_label`) and `add_overlay_text` (`intf_set_floating_label`),
+ * through the engine's `EventContext.floatLabel` (`floatingLabels.ts`).
+ */
+function installFloatingLabels(k: LuaKernel, host: GameKernelHost): void {
+  const L = k.L;
+  const ctx = () => host.ctx();
+
+  /** A colour option: `#rrggbb`, `{r, g, b}` as an array, or a table with `r`/`g`/`b` keys. */
+  const readColor = (T: LuaState, idx: number, what: string): RgbColor => {
+    if (lua.lua_type(T, idx) === lua.LUA_TSTRING) {
+      const parsed = parseHexColor(lua.lua_tojsstring(T, idx));
+      if (!parsed) return argError(T, idx, `invalid ${what}`);
+      return parsed;
+    }
+    const channel = (key: string | number): number | undefined => {
+      if (typeof key === 'number') lua.lua_rawgeti(T, idx, key);
+      else lua.lua_getfield(T, idx, to_luastring(key));
+      const v = lua.lua_isnumber(T, -1) ? Number(lua.lua_tointeger(T, -1)) : undefined;
+      lua.lua_pop(T, 1);
+      return v;
+    };
+    const arr = [channel(1), channel(2), channel(3)];
+    if (arr.every((c) => c !== undefined)) return { r: arr[0]!, g: arr[1]!, b: arr[2]! };
+    const named = [channel('r'), channel('g'), channel('b')];
+    if (named.every((c) => c !== undefined)) return { r: named[0]!, g: named[1]!, b: named[2]! };
+    return lauxlib.luaL_error(T, to_luastring(`floating label ${what} should be a hex string, an array of 3 integers, or a table with r,g,b keys`)) as never;
+  };
+
+  /** `intf_set_floating_label`: (re)creates `handle`'s label from the text at `idx` and the options after it. */
+  const setLabel = (T: LuaState, handle: LabelHandle, idx: number): void => {
+    const text = k.checkTString(T, idx);
+    const opts = idx + 1;
+    let size = OVERLAY_TEXT_SIZE;
+    let color = FLOATING_LABEL_COLOR;
+    let bgcolor: (RgbColor & { a: number }) | undefined;
+    let duration = 2000;
+    let fadeTime = 100;
+    let x = 0;
+    let y = 0;
+    let halign: OverlayFloatingLabel['halign'] = 'center';
+    let valign: OverlayFloatingLabel['valign'] = 'center';
+    let maxWidth: OverlayFloatingLabel['maxWidth'];
+    if (lua.lua_istable(T, opts)) {
+      if (tableGet(T, opts, 'size')) {
+        size = Number(lauxlib.luaL_checkinteger(T, -1));
+        lua.lua_pop(T, 1);
+      }
+      if (tableGet(T, opts, 'max_width')) {
+        if (lua.lua_isinteger(T, -1)) maxWidth = { px: Number(lua.lua_tointeger(T, -1)) };
+        else {
+          const value = lua.lua_tojsstring(T, -1) ?? '';
+          const pct = /^(\d+)%$/.exec(value);
+          if (!pct) return void argError(T, -1, 'max_width should be integer or percentage');
+          maxWidth = { ratio: Number(pct[1]) / 100 };
+        }
+        lua.lua_pop(T, 1);
+      }
+      if (tableGet(T, opts, 'color')) {
+        color = readColor(T, lua.lua_gettop(T), 'text color');
+        lua.lua_pop(T, 1);
+      }
+      if (tableGet(T, opts, 'bgcolor')) {
+        bgcolor = { ...readColor(T, lua.lua_gettop(T), 'background color'), a: 255 };
+        lua.lua_pop(T, 1);
+        if (tableGet(T, opts, 'bgalpha')) {
+          bgcolor = { ...bgcolor, a: Number(lauxlib.luaL_checkinteger(T, -1)) };
+          lua.lua_pop(T, 1);
+        }
+      }
+      if (tableGet(T, opts, 'duration')) {
+        if (lua.lua_isinteger(T, -1)) duration = Number(lua.lua_tointeger(T, -1));
+        else if (lua.lua_tojsstring(T, -1) === 'unlimited') duration = -1;
+        else return void argError(T, -1, "duration should be integer or 'unlimited'");
+        lua.lua_pop(T, 1);
+      }
+      if (tableGet(T, opts, 'fade_time')) {
+        fadeTime = Number(lua.lua_tointeger(T, -1));
+        lua.lua_pop(T, 1);
+      }
+      if (tableGet(T, opts, 'location')) {
+        const loc = k.checkLocation(T, lua.lua_gettop(T));
+        x = loc.wmlX;
+        y = loc.wmlY;
+        lua.lua_pop(T, 1);
+      }
+      if (tableGet(T, opts, 'halign')) {
+        const v = checkString(T, -1);
+        if (v !== 'left' && v !== 'center' && v !== 'right') return void argError(T, -1, `invalid option '${v}'`);
+        halign = v;
+        lua.lua_pop(T, 1);
+      }
+      if (tableGet(T, opts, 'valign')) {
+        const v = checkString(T, -1);
+        if (v !== 'top' && v !== 'center' && v !== 'bottom') return void argError(T, -1, `invalid option '${v}'`);
+        valign = v;
+        lua.lua_pop(T, 1);
+      }
+    }
+    const c = ctx();
+    if (handle.id !== 0) c.floatLabel?.({ kind: 'removeOverlay', id: handle.id });
+    handle.id = nextOverlayLabelId(c);
+    c.floatLabel?.({ kind: 'overlay', id: handle.id, text, size, color, bgcolor, duration, fadeTime, halign, valign, x, y, maxWidth });
+  };
+
+  lauxlib.luaL_newmetatable(L, to_luastring(FLOATING_LABEL_KEY));
+  setFuncs(L, {
+    __index: (T) => {
+      const handle = k.userdata<LabelHandle>(T, 1, FLOATING_LABEL_KEY)!;
+      const m = checkString(T, 2);
+      if (m === 'valid') {
+        lua.lua_pushboolean(T, handle.id !== 0);
+        return 1;
+      }
+      lua.lua_getmetatable(T, 1);
+      lua.lua_getfield(T, -1, to_luastring(m));
+      return 1;
+    },
+    remove: (T) => {
+      const handle = k.userdata<LabelHandle>(T, 1, FLOATING_LABEL_KEY);
+      if (!handle) return argError(T, 1, 'floating label expected');
+      if (handle.id !== 0) ctx().floatLabel?.({ kind: 'removeOverlay', id: handle.id });
+      handle.id = 0;
+      return 0;
+    },
+    move: (T) => {
+      if (!k.userdata<LabelHandle>(T, 1, FLOATING_LABEL_KEY)) return argError(T, 1, 'floating label expected');
+      k.log('debug', 'floating label:move is not drawn in this port (the label stays where it is)');
+      return 0;
+    },
+    replace: (T) => {
+      const handle = k.userdata<LabelHandle>(T, 1, FLOATING_LABEL_KEY);
+      if (!handle) return argError(T, 1, 'floating label expected');
+      setLabel(T, handle, 2);
+      lua.lua_settop(T, 1);
+      return 1;
+    },
+  });
+  lua.lua_pop(L, 1);
+
+  k.defineAll(['wesnoth', 'interface'], {
+    // `float_label(loc, text, color)` or, as `luaW_tolocation` reads two numbers, `float_label(x, y, text, color)`.
+    float_label: (T) => {
+      const { loc, next } = locationArgs(k, T, 1);
+      const text = k.checkTString(T, next);
+      let color = FLOATING_LABEL_COLOR;
+      if (!lua.lua_isnoneornil(T, next + 1)) {
+        const parsed = parseRgbString(checkString(T, next + 1));
+        if (!parsed) return argError(T, next + 1, 'invalid color');
+        color = parsed;
+      }
+      ctx().floatLabel?.({ kind: 'hex', loc, text, color });
+      return 0;
+    },
+    add_overlay_text: (T) => {
+      const handle: LabelHandle = { id: 0 };
+      setLabel(T, handle, 1);
+      k.pushUserdata(T, FLOATING_LABEL_KEY, handle);
+      return 1;
+    },
+  });
+}
+
+/**
+ * `luaW_checklocation(L, idx)` as upstream reads it: a location table, or two numbers -- of which upstream
+ * removes the first from the stack, so the arguments after it are one place earlier. Returns the location and
+ * where the next argument is.
+ */
+function locationArgs(k: LuaKernel, T: LuaState, idx: number): { loc: Location; next: number } {
+  if (lua.lua_type(T, idx) === lua.LUA_TNUMBER && lua.lua_type(T, idx + 1) === lua.LUA_TNUMBER) {
+    return { loc: Location.fromWml(Number(lua.lua_tointeger(T, idx)), Number(lua.lua_tointeger(T, idx + 1))), next: idx + 2 };
+  }
+  return { loc: k.checkLocation(T, idx), next: idx + 1 };
 }

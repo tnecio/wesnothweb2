@@ -38,6 +38,8 @@ import { lua, lauxlib, to_luastring, type LuaState } from './luaEnv.js';
 import { createGameKernel, type LuaKernel, type LuaUnits, type VirtualDataDir } from './kernel/index.js';
 import { checkString } from './kernel/kernel.js';
 import type { GameKernelHost } from './kernel/game/host.js';
+import { VCONFIG_KEY } from './kernel/game/misc.js';
+import { wantsRawConfig } from '@wesnothweb2/engine/src/events/actionWml.js';
 
 /** What a scenario's Lua may load at run time: the browser has no data directory to read. */
 export interface LuaSources {
@@ -284,7 +286,10 @@ export class LuaRuntime {
     return 1;
   }
 
-  /** Runs a Lua action a campaign defined: `wesnoth.wml_actions[tag](cfg)`, with the action's config as a vconfig. */
+  /**
+   * Runs a Lua action a campaign defined: `wesnoth.wml_actions[tag](cfg)`, `cfg` being the action's config as
+   * written, wrapped as a vconfig that substitutes `$variables` as it is read (`handle_event_commands`).
+   */
   private *runLuaAction(tag: string, cfg: WmlConfig): Flow {
     const T = this.newThread();
     try {
@@ -293,7 +298,7 @@ export class LuaRuntime {
       lua.lua_getfield(T.state, -1, to_luastring(tag));
       lua.lua_replace(T.state, 1);
       lua.lua_settop(T.state, 1);
-      this.kernel.pushConfig(T.state, cfg);
+      this.kernel.pushUserdata(T.state, VCONFIG_KEY, { cfg });
       yield* this.drive(T.state, 1);
     } finally {
       this.release(T.ref);
@@ -341,7 +346,10 @@ export class LuaRuntime {
       if (!handler) return 0;
       lua.lua_pushcfunction(T, (U: LuaState) => {
         const ctx = this.ctx();
-        const result = handler(k.checkConfig(U, 1), ctx);
+        // A vconfig reaches the native as the event pump would have passed it; a plain table is literal values.
+        const vconfig = k.userdata<{ cfg: WmlConfig }>(U, 1, VCONFIG_KEY);
+        const cfg = !vconfig ? k.checkConfig(U, 1) : wantsRawConfig(tag, handler) ? vconfig.cfg : ctx.variables.expandConfig(vconfig.cfg);
+        const result = handler(cfg, ctx);
         return isFlow(result) ? this.yieldFlow(U, result) : 0;
       });
       return 1;
@@ -350,7 +358,7 @@ export class LuaRuntime {
       const tag = lua.lua_tojsstring(T, 1);
       const registry = this.ctx().registry;
       if (!this.natives.has(tag)) this.natives.set(tag, registry.get(tag));
-      if (lua.lua_toboolean(T, 2)) registry.register(tag, (cfg) => this.runLuaAction(tag, cfg));
+      if (lua.lua_toboolean(T, 2)) registry.register(tag, Object.assign((cfg: WmlConfig) => this.runLuaAction(tag, cfg), { rawConfig: true }));
       else {
         const native = this.natives.get(tag);
         if (native) registry.register(tag, native);

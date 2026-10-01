@@ -12,6 +12,7 @@ import { MtRng } from '@wesnothweb2/engine/src/rng/MtRng.js';
 import { RngDeterministic } from '@wesnothweb2/engine/src/rng/RngDeterministic.js';
 import { loadLuaDataDir } from '../../src/dataLua.js';
 import { createGameKernel } from '../../src/kernel/index.js';
+import type { FloatingLabelRequest } from '@wesnothweb2/engine/src/events/floatingLabels.js';
 
 const dataDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../wesnoth/data');
 const files = loadLuaDataDir(dataDir);
@@ -71,5 +72,46 @@ describe('game kernel', () => {
   it('is strict about undefined globals, as upstream', () => {
     const { kernel } = makeGame();
     expect(() => kernel.run('local x = undefined_global_name', '=t')).toThrow(/undefined_global_name/);
+  });
+});
+
+describe('floating labels (wesnoth.interface.float_label, add_overlay_text)', () => {
+  function withLabels() {
+    const game = makeGame();
+    const seen: FloatingLabelRequest[] = [];
+    game.pump.ctx.floatLabel = (r) => seen.push(r);
+    return { ...game, seen };
+  }
+
+  it('float_label takes a location or two numbers, then the text and an r,g,b colour', () => {
+    const { kernel, seen } = withLabels();
+    kernel.run('wesnoth.interface.float_label(2, 1, "Hello")\nwesnoth.interface.float_label({x = 1, y = 2}, "Red", "255,0,0")', '=t');
+    expect(seen.map((r) => (r.kind === 'hex' ? [r.loc.wmlX, r.loc.wmlY, String(r.text), r.color] : r.kind))).toEqual([
+      [2, 1, 'Hello', { r: 107, g: 140, b: 255 }],
+      [1, 2, 'Red', { r: 255, g: 0, b: 0 }],
+    ]);
+  });
+
+  it('add_overlay_text reads its options and gives a handle to replace and remove it', () => {
+    const { kernel, seen } = withLabels();
+    kernel.run(`
+      local label = wesnoth.interface.add_overlay_text("Countdown", {
+        size = 30, color = "#ff8000", bgcolor = {0, 0, 0}, bgalpha = 128, duration = "unlimited", fade_time = 0,
+        location = {x = 10, y = 20}, halign = "left", valign = "top", max_width = "50%",
+      })
+      assert(label.valid)
+      label:replace("Again", {size = 12})
+      label:remove()
+      assert(not label.valid)
+    `, '=t');
+    expect(seen).toMatchObject([
+      {
+        kind: 'overlay', id: 1, size: 30, color: { r: 255, g: 128, b: 0 }, bgcolor: { r: 0, g: 0, b: 0, a: 128 }, duration: -1, fadeTime: 0,
+        x: 10, y: 20, halign: 'left', valign: 'top', maxWidth: { ratio: 0.5 },
+      },
+      { kind: 'removeOverlay', id: 1 },
+      { kind: 'overlay', id: 2, size: 12, duration: 2000, fadeTime: 100, halign: 'center' },
+      { kind: 'removeOverlay', id: 2 },
+    ]);
   });
 });

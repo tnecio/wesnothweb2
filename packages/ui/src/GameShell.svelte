@@ -141,7 +141,9 @@
   import type { AudioSettings } from './audio/settings.js';
   import MessageViewer from './MessageViewer.svelte';
   import GuiDialog from './GuiDialog.svelte';
-  import type { GuiDialogInteraction, SoundRequest } from '@wesnothweb2/engine';
+  import type { GuiDialogInteraction, SoundRequest, ResolvedStoryPart, FloatingLabelRequest, RgbColor, TString } from '@wesnothweb2/engine';
+  import OverlayLabels, { type OverlayLabelView } from './OverlayLabels.svelte';
+  import { stripPango } from './markup/pango.js';
   import AdvancementDialog from './AdvancementDialog.svelte';
   import ObjectivesDialog from './ObjectivesDialog.svelte';
   import ScenarioEndOverlay from './ScenarioEndOverlay.svelte';
@@ -311,7 +313,53 @@
     music: audio.music,
     onSound: (request) => (heldTurnSounds && request.turnStart ? heldTurnSounds.push(request) : audio.playSound(request)),
     onVolume: (scale) => audio.setVolumeScale(scale),
+    onFloatingLabel: (request) => showFloatingLabel(request),
   };
+
+  /** C1: `[print]`/`add_overlay_text` labels on screen (`OverlayLabels`). */
+  let overlayLabels = $state.raw<OverlayLabelView[]>([]);
+  const overlayLabelTimers = new Map<number, ReturnType<typeof setTimeout>[]>();
+
+  const cssColor = (c: RgbColor, a = 255): string => `rgba(${c.r}, ${c.g}, ${c.b}, ${a / 255})`;
+  const labelText = (text: string | TString): string => (typeof text === 'string' ? text : text.str());
+
+  function removeOverlayLabel(id: number): void {
+    for (const timer of overlayLabelTimers.get(id) ?? []) clearTimeout(timer);
+    overlayLabelTimers.delete(id);
+    overlayLabels = overlayLabels.filter((l) => l.id !== id);
+  }
+
+  /** Draws a floating label the game asked for: a hex's on the board, an overlay one over the map. */
+  function showFloatingLabel(request: FloatingLabelRequest): void {
+    if (request.kind === 'hex') {
+      const color = (request.color.r << 16) | (request.color.g << 8) | request.color.b;
+      boardView?.spawnHexLabel(request.loc.x, request.loc.y, stripPango(labelText(request.text)), color);
+      return;
+    }
+    removeOverlayLabel(request.id);
+    if (request.kind === 'removeOverlay') return;
+    const view: OverlayLabelView = {
+      id: request.id,
+      text: labelText(request.text),
+      size: request.size,
+      color: cssColor(request.color),
+      background: request.bgcolor ? cssColor(request.bgcolor, request.bgcolor.a) : null,
+      halign: request.halign,
+      valign: request.valign,
+      x: request.x,
+      y: request.y,
+      maxWidth: request.maxWidth,
+      fadingMs: null,
+    };
+    overlayLabels = [...overlayLabels, view];
+    if (request.duration < 0) return;
+    // `floating_label::get_alpha`: opaque for its lifetime, then fading out over `fade_time`.
+    const fade = setTimeout(() => {
+      overlayLabels = overlayLabels.map((l) => (l.id === request.id ? { ...l, fadingMs: request.fadeTime } : l));
+    }, request.duration);
+    const remove = setTimeout(() => removeOverlayLabel(request.id), request.duration + request.fadeTime);
+    overlayLabelTimers.set(request.id, [fade, remove]);
+  }
   /**
    * `startInReplay`'s session, built up front (rather than resumed normally and switched over after mount,
    * the way `startReplay` does for an in-game "Show replay") so the very first render is already the
@@ -336,6 +384,8 @@
   /** Resolved once per scenario, before its startup events run -- see `GameSession.storyParts`. A resumed save has already been past all of this. */
   let storyParts = $state.raw(initialSave ? [] : session.storyParts());
   let storyAssets = $state.raw(initialStoryAssets);
+  /** C1: a `[story]` an event is showing, over the game; the event goes on once `done` is called. */
+  let eventStory = $state.raw<{ parts: readonly ResolvedStoryPart[]; done: () => void } | null>(null);
   /** The live turn limit (`[modify_turns]` can change it); synced with the rest of the session state. */
   // Phase 18: the campaign's own images are searched before core (its [binary_path]).
   $effect.pre(() => {
@@ -883,6 +933,14 @@
       await helpBrowser.whenClosed();
       return {};
     }
+    if (beat.kind === 'story') {
+      // C1: `[story]` in an event (`story_viewer::display`): modal, so no time cap either.
+      await new Promise<void>((resolve) => {
+        eventStory = { parts: beat.parts, done: resolve };
+      });
+      eventStory = null;
+      return {};
+    }
     const started = performance.now();
     try {
       await capped(playBeatBody(beat));
@@ -1165,6 +1223,16 @@
       });
     }
     sync();
+    if (!turnStarting) endForcedTurn();
+  }
+
+  /**
+   * `[end_turn]` (`play_human_turn`'s loop stops on `end_turn_requested_`): once the action that ran it is
+   * over, the turn ends, whatever `[disallow_end_turn]` says. Deferred, so the caller finishes first.
+   */
+  function endForcedTurn(): void {
+    if (!session.endTurnForced || phase !== 'playing') return;
+    setTimeout(() => void handleEndTurn({ forced: true }), 0);
   }
 
   /**
@@ -2195,8 +2263,8 @@
     boardView?.skipAnimations();
   }
 
-  async function handleEndTurn(): Promise<void> {
-    if (!canAct() || session.endTurnBlocked !== null) return;
+  async function handleEndTurn(options: { forced?: boolean } = {}): Promise<void> {
+    if (!canAct() || (!options.forced && session.endTurnBlocked !== null)) return;
     const message = await runPlayerAction(async () => {
       otherSidesTurn = 'thinking';
       skipOtherSidesAnimations = false;
@@ -2245,6 +2313,8 @@
     }
     // Then, as `play_human_turn` does, the objectives if WML changed them.
     if (phase !== 'ended' && session.takeObjectivesChanged()) objectivesDialogOpen = true;
+    // A standing order's move may have run `[end_turn]`.
+    endForcedTurn();
   }
 
   /**
@@ -3014,7 +3084,8 @@
       // Phase 17: a suspended event's own dialogue owns the keyboard
       // while it is up (`MessageViewer` handles arrows/Enter/Escape).
       currentMessage !== null ||
-      currentGuiDialog !== null
+      currentGuiDialog !== null ||
+      eventStory !== null
     );
   }
 
@@ -3302,6 +3373,10 @@
     <PreferencesDialog audioSettings={audioSettings} onAudioChange={changeAudio} onClose={() => (preferencesOpen = false)} />
   {/if}
 
+  <OverlayLabels labels={overlayLabels} getMapRect={() => boardView?.viewportRect() ?? null} layoutTick={boardResizeTick} />
+  {#if eventStory}
+    <StoryViewer parts={eventStory.parts} assets={storyAssets} onDone={eventStory.done} onPartShown={playStoryPartSounds} />
+  {/if}
   {#if phase === 'story'}
     {#key session}
       <StoryViewer parts={storyParts} assets={storyAssets} onDone={finishStory} onPartShown={playStoryPartSounds} />

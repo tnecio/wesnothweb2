@@ -26,8 +26,11 @@ import type { WmlConfig } from '../wml/config.js';
 import type { EventContext } from './context.js';
 import { conditionalPassed } from './conditionalWml.js';
 import { findLocations, findUnits, locationMatchesFilterOnBoard } from './filter.js';
-import { Location, getAdjacentTiles } from '../model/Location.js';
-import { reachableHexes } from '../pathfind/pathfind.js';
+import { Location, distanceBetween, getAdjacentTiles } from '../model/Location.js';
+import type { Unit } from '../model/Unit.js';
+import { reachableHexes, ShortestPathCalculator } from '../pathfind/pathfind.js';
+import { aStarSearch } from '../pathfind/astar.js';
+import { getTeleportLocations } from '../pathfind/teleport.js';
 import { createJammingMap, unitVisionPath } from '../actions/vision.js';
 import { MapFormulaCallable, Variant, parseFormula } from '../formula/index.js';
 import { runActionFlow } from './actionWml.js';
@@ -288,6 +291,122 @@ export function actionStoreReachableLocations(cfg: WmlConfig, ctx: EventContext)
   });
 }
 
+// --- [find_path] ---
+
+/** What `wesnoth.paths.find_path` returns for an unreachable hex (`pathfind::cost_calculator::getNoPathValue`). */
+const NO_PATH = 42424241;
+
+/**
+ * `data/lua/wml/find_path.lua`: the route of the first `[traveler]` to the best `[destination]` hex -- the
+ * cheapest (`nearest_by=movement_cost`), nearest (`hexes`) or fewest steps (`steps`) -- stored in `$variable`
+ * (`path` by default) with `hexes`, `from_x/y`, `to_x/y`, `movement_cost`, `required_turns` and one `step[i]`
+ * per hex; just `hexes=0` when there is none. `$this_unit` is the traveler while `[destination]` is read.
+ * `check_zoc=no` ignores units, `check_teleport=no` teleports, and the route sees through fog and shroud
+ * unless `check_visibility=yes`. Without `allow_multiple_turns=yes`, only this turn's moves count.
+ */
+export function actionFindPath(cfg: WmlConfig, ctx: EventContext): void {
+  const travelerCfg = cfg.child('traveler');
+  if (!travelerCfg) {
+    ctx.log('error', '[find_path] missing required [traveler] tag');
+    return;
+  }
+  const board = ctx.board;
+  const unit = findUnits(board, ctx.variables.expandConfigDeep(travelerCfg))[0];
+  if (!unit) {
+    ctx.log('error', "[find_path]'s filter didn't match any unit");
+    return;
+  }
+  const destinationCfg = cfg.child('destination');
+  if (!destinationCfg) {
+    ctx.log('error', '[find_path] missing required [destination] tag');
+    return;
+  }
+  // utils.scoped_var("this_unit"): the traveler, restored afterwards.
+  const savedThisUnit = ctx.variables.getConfig('this_unit');
+  const savedThisUnitRaw = ctx.variables.getRaw('this_unit');
+  try {
+    ctx.variables.clear('this_unit');
+    ctx.variables.setConfig('this_unit', unit.toConfig());
+    findPathFor(cfg, ctx, unit, ctx.variables.expandConfigDeep(destinationCfg));
+  } finally {
+    ctx.variables.clear('this_unit');
+    if (savedThisUnit) ctx.variables.setConfig('this_unit', savedThisUnit);
+    else if (savedThisUnitRaw !== undefined) ctx.variables.set('this_unit', savedThisUnitRaw);
+  }
+}
+
+function findPathFor(cfg: WmlConfig, ctx: EventContext, unit: Unit, destination: WmlConfig): void {
+  const board = ctx.board;
+  const variable = cfg.getString('variable', 'path');
+  const ignoreUnits = cfg.hasAttribute('check_zoc') && !cfg.getBoolean('check_zoc', true);
+  const ignoreTeleport = cfg.hasAttribute('check_teleport') && !cfg.getBoolean('check_teleport', true);
+  const allowMultipleTurns = cfg.getBoolean('allow_multiple_turns', false);
+  const seeAll = !cfg.getBoolean('check_visibility', false);
+  const nearestBy = cfg.getString('nearest_by', 'movement_cost');
+  const byCost = nearestBy !== 'hexes' && nearestBy !== 'steps';
+  const byDistance = nearestBy === 'hexes';
+  const bySteps = nearestBy === 'steps';
+  // `wesnoth.paths.find_path(unit, loc, {max_cost, ignore_units, ignore_teleport, ignore_visibility})`.
+  const maxCost = allowMultipleTurns ? 10000 : unit.movesLeft;
+  const team = board.getTeam(unit.side);
+  const viewingTeam = seeAll ? undefined : team;
+  const teleports = ignoreTeleport ? undefined : getTeleportLocations(board, unit, { viewingTeam, seeAll, ignoreUnits });
+  const route = (dst: Location): { path: readonly Location[]; cost: number } => {
+    const calc = new ShortestPathCalculator(board, unit, viewingTeam, { ignoreUnit: ignoreUnits, seeAll });
+    const res = aStarSearch(unit.location, dst, maxCost, calc, board.map.w(), board.map.h(), 0, teleports);
+    return { path: res.steps, cost: Math.trunc(res.moveCost) };
+  };
+  const turnsFor = (cost: number): number => (cost === 0 ? 0 : Math.ceil((cost - unit.movesLeft) / unit.maxMoves + 1));
+
+  const locations = findLocations(board, destination, unit);
+  let best: { loc: Location; distance: number; cost: number; steps: number } | undefined;
+  for (const loc of locations) {
+    if (!board.map.onBoard(loc)) continue;
+    const distance = distanceBetween(unit.location, loc);
+    const { path, cost } = route(loc);
+    if (path.length === 0 || cost >= NO_PATH) continue;
+    const steps = path.length;
+    const current = best ?? { distance: Infinity, cost: Infinity, steps: Infinity };
+    let isBetter = false;
+    if (byCost && cost < current.cost) isBetter = true;
+    else if (byDistance && distance < current.distance) isBetter = true;
+    else if (bySteps && steps < current.steps) isBetter = true;
+    // Equivalent options: the first one stays (1.14's choice).
+    else if (cost === current.cost && distance === current.distance && steps === current.steps) isBetter = false;
+    else if (cost <= current.cost && distance <= current.distance && steps <= current.steps) isBetter = true;
+    if (isBetter) best = { loc, distance, cost, steps };
+  }
+
+  ctx.variables.clear(variable);
+  if (!best) {
+    if (locations.length === 0) ctx.log('warn', "WML warning: [find_path]'s filter didn't match any location");
+    ctx.variables.set(`${variable}.hexes`, 0);
+    return;
+  }
+  const { path, cost } = route(best.loc);
+  const turns = turnsFor(cost);
+  if (cost >= NO_PATH || (!allowMultipleTurns && turns > 1)) {
+    ctx.variables.set(`${variable}.hexes`, 0);
+    return;
+  }
+  ctx.variables.set(`${variable}.hexes`, best.distance);
+  ctx.variables.set(`${variable}.from_x`, unit.location.wmlX);
+  ctx.variables.set(`${variable}.from_y`, unit.location.wmlY);
+  ctx.variables.set(`${variable}.to_x`, best.loc.wmlX);
+  ctx.variables.set(`${variable}.to_y`, best.loc.wmlY);
+  ctx.variables.set(`${variable}.movement_cost`, cost);
+  ctx.variables.set(`${variable}.required_turns`, turns);
+  path.forEach((loc, i) => {
+    const sub = route(loc);
+    const step = `${variable}.step[${i}]`;
+    ctx.variables.set(`${step}.x`, loc.wmlX);
+    ctx.variables.set(`${step}.y`, loc.wmlY);
+    ctx.variables.set(`${step}.terrain`, board.map.getTerrain(loc).toString());
+    ctx.variables.set(`${step}.movement_cost`, sub.cost);
+    ctx.variables.set(`${step}.required_turns`, turnsFor(sub.cost));
+  });
+}
+
 function allLocations(ctx: EventContext): Location[] {
   const out: Location[] = [];
   for (let x = 0; x < ctx.board.map.w(); x++) for (let y = 0; y < ctx.board.map.h(); y++) out.push(new Location(x, y));
@@ -418,6 +537,7 @@ export function registerFlowActions(register: (tag: string, handler: (cfg: WmlCo
   register('repeat', actionRepeat);
   register('random_placement', actionRandomPlacement);
   register('store_reachable_locations', actionStoreReachableLocations);
+  register('find_path', actionFindPath);
   register('for', actionFor);
   register('foreach', actionForeach);
   register('switch', actionSwitch);

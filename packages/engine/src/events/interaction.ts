@@ -26,6 +26,7 @@
  *   parks on a real dialog between steps.
  */
 
+import type { ResolvedStoryPart } from '../story/storyParser.js';
 import type { TString } from '../i18n/tstring.js';
 import type { Location } from '../model/Location.js';
 import type { Unit } from '../model/Unit.js';
@@ -168,7 +169,12 @@ export type CutsceneBeat =
    * Phase 24: `[open_help]`/`gui.show_help` (`help::show_help`): the help browser, at `topic` (the
    * introduction when empty). Upstream's is a modal dialog, so the event goes on once the player closes it.
    */
-  | { readonly kind: 'openHelp'; readonly topic: string };
+  | { readonly kind: 'openHelp'; readonly topic: string }
+  /**
+   * C1: `[story]` in an event (`gui.show_story`, `story_viewer::display`): the story screen, over the game.
+   * Modal upstream, so the event goes on once the player has read it.
+   */
+  | { readonly kind: 'story'; readonly parts: readonly ResolvedStoryPart[] };
 
 /** A cutscene beat waiting to be played out. */
 export interface BeatInteraction {

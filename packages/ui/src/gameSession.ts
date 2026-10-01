@@ -88,6 +88,8 @@ import {
   type RecallCommand,
   type DisbandCommand,
   type FireEventCommand,
+  type FloatingLabelRequest,
+  commandFromWml,
   type StopUnitCommand,
   type RecordedCommand,
   type Dependent,
@@ -837,6 +839,8 @@ export interface GameSessionOptions {
   music?: MusicList;
   /** Phase 19: where sound effects go to be heard (the app's audio); without it they are only recorded on the context. */
   onSound?: (request: SoundRequest) => void;
+  /** C1: floating labels (`[floating_text]`, `[print]`, Lua's `float_label`/`add_overlay_text`) to draw. */
+  onFloatingLabel?: (request: FloatingLabelRequest) => void;
   /** Phase 19: `[volume]`, the scenario's percentages of the player's own music and sound volumes. */
   onVolume?: (scale: { music?: number; sound?: number }) => void;
   /** Set by `fromSaveData`: the save's own playlist is applied by `loadSaveData`, not the scenario's. */
@@ -1138,6 +1142,8 @@ export interface SaveGameData {
   usedItems?: string[];
   /** Phase 28c: `[disallow_end_turn]` in force (upstream's `can_end_turn`/`cannot_end_turn_reason`); absent when the turn may end. */
   endTurnForbidden?: { reason?: TStringJson };
+  /** C1: `[end_turn]` ran and the side's turn has not ended yet (`game_data::end_turn_forced_`). */
+  endTurnForced?: boolean;
   /**
    * Phase 18c: the live `[event]` handlers, in order -- spent
    * `first_time_only` ones gone, ones added at run time present, as
@@ -1665,6 +1671,11 @@ export class GameSession {
       music: options.music,
     });
     this.eventPump.ctx.onSound = options.onSound;
+    // `game_display::float_label`: nothing on a hex the viewing side has fogged.
+    this.eventPump.ctx.floatLabel = (request) => {
+      if (request.kind === 'hex' && this.board.isFogged(this.viewingSide, request.loc)) return;
+      options.onFloatingLabel?.(request);
+    };
     this.eventPump.ctx.onVolume = options.onVolume;
     if (!options.deferMusic) startScenarioMusic(this.music, WmlConfig.fromJSON(snapshot.scenarioConfigJson));
     this.board.lawfulBonusAt = (loc) => this.timeOfDayAt(loc).lawfulBonus;
@@ -1696,6 +1707,11 @@ export class GameSession {
       this.queueAdvancement(unit);
       this.processAdvancementQueue(this.action?.rec ?? null, this.action?.source ? this.action : null);
     };
+    // C1: `[do_command]`: the child as the command a player's action records, inside the running action if any.
+    this.eventPump.ctx.doCommand = (tag, cfg) => this.doCommandFlow(tag, cfg);
+    this.eventPump.ctx.scenarioName = () => this.scenarioNameT;
+    this.eventPump.ctx.selectHex = (loc, highlight) => this.selectHexFromScript(loc, highlight);
+    this.eventPump.ctx.displayedUnit = () => this.selectedUnit ?? this.inspectedUnit ?? undefined;
     this.eventPump.ctx.addUndoCommands = (commands) => {
       this.action?.steps.push({ kind: 'event', commands, loc1: this.eventPump.ctx.loc1, loc2: this.eventPump.ctx.loc2 });
     };
@@ -1769,6 +1785,11 @@ export class GameSession {
     if (state.allowed) return null;
     const reason = state.reason?.str() ?? '';
     return reason !== '' ? reason : tw('You cannot end your turn yet!');
+  }
+
+  /** C1: `[end_turn]` ran during the player's turn: the shell ends it once the action is over. */
+  get endTurnForced(): boolean {
+    return this.eventPump.ctx.endTurnForced;
   }
 
   /** Phase 28c: the scenario's Lua, when it has any. */
@@ -2161,16 +2182,58 @@ export class GameSession {
       this.reportSync(action, `${action.source.length} recorded dependent(s) left unused`);
     }
     const eventsDisabledUndo = this.eventPump.takeUndoDisabled();
-    if (action.undoBlocked || eventsDisabledUndo || this.scenarioResult) this.undoList.clear(!TURN_BOOKKEEPING_COMMANDS.has(command.kind));
+    // `synced_context::undo_blocked`: an `[end_turn]` cannot be revoked, so neither can the action that ran it.
+    if (action.undoBlocked || eventsDisabledUndo || this.scenarioResult || this.eventPump.ctx.endTurnForced) this.undoList.clear(!TURN_BOOKKEEPING_COMMANDS.has(command.kind));
     else this.undoList.push({ steps: action.steps, command: rec });
     rec.digest = this.stateDigest();
+    if (this.scenarioResult && !this.scenarioEndEventsFired) yield* this.scenarioEndFlow();
     return result;
+  }
+
+  /** Whether `scenarioEndFlow` has run (saved, so a loaded finished game does not run it again). */
+  private scenarioEndEventsFired = false;
+
+  /**
+   * `playsingle_controller::play_scenario_end`, once the action that ended the scenario is over:
+   * `local_victory`/`local_defeat`, then `victory`/`defeat`, then `scenario_end`, with
+   * `wesnoth.scenario.end_level_data` set. (`heal_all_survivors` is `startNextScenario`'s `newScenario`.)
+   * These fire although the scenario is over, so not through `fireFlow`.
+   */
+  private *scenarioEndFlow(): Flow {
+    this.scenarioEndEventsFired = true;
+    const victory = this.scenarioResult === 'victory';
+    // A single-player campaign has one human side: the campaign goes on exactly when it won.
+    this.eventPump.ctx.endLevelData = { proceedToNextLevel: victory, isVictory: victory };
+    yield* this.eventPump.fireFlow(victory ? 'local_victory' : 'local_defeat');
+    yield* this.eventPump.fireFlow(victory ? 'victory' : 'defeat');
+    yield* this.eventPump.fireFlow('scenario_end');
   }
 
   /** Marks the running action as refused (`spectator.error`); returns `null` for the executor to pass on. */
   private reject(action: ActionState, message: string): null {
     action.rejected = message;
     return null;
+  }
+
+  /** `[do_command]`'s child: `run_in_synced_context_if_not_already`, errors logged as its spectator does. */
+  private *doCommandFlow(tag: string, cfg: WmlConfig): Flow {
+    const command = commandFromWml(tag, cfg);
+    if (!command) {
+      this.eventPump.ctx.log('error', `Error via [do_command]: cannot read [${tag}]`);
+      return;
+    }
+    let rejected: string | null = null;
+    yield* this.runSynced(command, function* (this: GameSession, action: ActionState) {
+      // A refused command is reported, as its spectator does; the action it ran in goes on.
+      const before = action.rejected;
+      const result = yield* this.execCommand(command, action);
+      if (action.rejected !== before) {
+        rejected = action.rejected;
+        action.rejected = before;
+      }
+      return result;
+    }.bind(this), { present: true });
+    if (rejected !== null) this.eventPump.ctx.log('error', `Error via [do_command]: ${rejected}`);
   }
 
   /** Runs any command through its executor -- a replay's and a redo's entry point. */
@@ -2473,15 +2536,22 @@ export class GameSession {
    * so, like any event, it makes the action non-undoable unless it says
    * `[allow_undo]`.
    */
+  /**
+   * `[fire_event]` (`synced_commands.cpp`): `select` at `[last_select]` first, if given, then the event
+   * `raise=` at `[source]`. A menu item's event runs its `[command]`; any other name fires that event
+   * (`[do_command]`), whose handlers decide whether the action can still be undone.
+   */
   private *execFireEvent(cmd: FireEventCommand, action: ActionState): Flow<string | null> {
+    if (cmd.lastSelect) yield* this.fireFlow('select', locOf(cmd.lastSelect));
+    const loc = cmd.source ? locOf(cmd.source) : Location.NULL;
     const prefix = 'menu item ';
     const id = cmd.raise.startsWith(prefix) ? cmd.raise.slice(prefix.length) : null;
     const def = id !== null ? this.eventPump.ctx.menuItems.get(id) : undefined;
-    if (!def) return this.reject(action, `no menu item for event '${cmd.raise}'`);
-    const loc = cmd.source ? locOf(cmd.source) : Location.NULL;
-    yield* this.eventPump.runAsHandlerFlow(def.command, loc, Location.NULL);
+    if (id !== null && !def) return this.reject(action, `no menu item for event '${cmd.raise}'`);
+    if (def) yield* this.eventPump.runAsHandlerFlow(def.command, loc, Location.NULL);
+    else yield* this.eventPump.fireNowFlow(cmd.raise, loc, Location.NULL, new WmlConfig(), '');
     this.checkForGameEnd();
-    return def.description;
+    return def?.description ?? '';
   }
 
   /** `[start]`: `prestart`, every side's initial shroud clearing, then `start` (`play_controller::start_game`). */
@@ -2533,6 +2603,8 @@ export class GameSession {
       if (this.scenarioResult) return;
     }
     this.setActiveSide(order.next);
+    // playsingle_controller: `set_end_turn_forced(false)` as the next side's turn begins.
+    this.eventPump.ctx.endTurnForced = false;
   }
 
   private mapItemsCache: { key: string; items: MapItemInfo[] } | null = null;
@@ -2985,7 +3057,7 @@ export class GameSession {
       canMove,
       canAttackHere,
       statuses: [...unit.statuses],
-      loyal: unit.loyal,
+      overlays: unit.overlays,
       ellipse: unit.ellipse,
       emitsZoc: unit.emitZoc,
       underlyingId: this.renderKeyFor(unit),
@@ -3136,6 +3208,23 @@ export class GameSession {
     this.clearSelection();
     this.inspectedUnit = unit;
     this.reachable = this.shownReachOf(unit);
+  }
+
+  /**
+   * `intf_select_unit` (`[select_unit]`): `mouse_handler::select_hex` under a `command_disabler`, so it only
+   * selects -- the viewing side's own unit on its turn as for a move, any other as inspected -- and shows
+   * the reach when `highlight`; no select sound or event (those are for commands).
+   */
+  private selectHexFromScript(loc: Location | null, highlight: boolean): void {
+    const unit = loc ? this.board.unitAt(loc) : undefined;
+    if (!unit || unit.hidden) {
+      this.clearSelection();
+      this.inspectedUnit = null;
+      return;
+    }
+    if (unit.side === this.activeSide && unit.side === this.viewingSide) this.selectUnit(unit);
+    else this.inspectUnit(unit);
+    if (!highlight) this.reachable = [];
   }
 
   /** `unit`'s reach as the board shows it for a unit the player isn't moving: another side's with its moves back (`unit_movement_resetter`). */
@@ -3591,8 +3680,12 @@ export class GameSession {
     // decides what an un-ended, capped-out game counts as.
     for (let guard = 0; guard < maxAiSideTurns && !this.scenarioResult; guard++) {
       const team = this.board.getTeam(this.activeSide);
-      if (!team || (team.controller !== 'ai' && team.controller !== 'network_ai')) break;
-      this.playAiSide(this.activeSide, aiAnimations);
+      if (!team || (team.controller !== 'ai' && team.controller !== 'network_ai')) {
+        // `play_side`: a human's turn is skipped when its own turn events ran `[end_turn]`.
+        if (!this.eventPump.ctx.endTurnForced) break;
+      } else {
+        this.playAiSide(this.activeSide, aiAnimations);
+      }
       if (this.scenarioResult) break;
       const next = yield* this.advanceOneTurn();
       if (!next) break;
@@ -4511,6 +4604,7 @@ export class GameSession {
       nextTeleportGroupId: this.board.tunnels.nextTeleportGroupId,
       usedItems: [...this.eventPump.ctx.usedItems],
       ...(this.eventPump.ctx.endTurn.allowed ? {} : { endTurnForbidden: { reason: this.eventPump.ctx.endTurn.reason?.toJSON() } }),
+      ...(this.eventPump.ctx.endTurnForced ? { endTurnForced: true } : {}),
       nextUnitId: this.board.nextUnitId,
       turnLimit: this.eventPump.ctx.turnLimit,
       items: this.eventPump.ctx.items.all().map((item) => itemToConfig(item).toJSON()),
@@ -4592,6 +4686,7 @@ export class GameSession {
     this.eventPump.ctx.endTurn = data.endTurnForbidden
       ? { allowed: false, reason: data.endTurnForbidden.reason ? TString.fromJSON(data.endTurnForbidden.reason) : undefined }
       : { allowed: true };
+    this.eventPump.ctx.endTurnForced = data.endTurnForced ?? false;
     if (data.turnLimit !== undefined) this.eventPump.ctx.turnLimit = data.turnLimit;
     if (data.items !== undefined) {
       this.eventPump.ctx.items.clear();
@@ -4631,6 +4726,12 @@ export class GameSession {
     this.turnNumber = data.turnNumber;
     this.setActiveSide(data.activeSide);
     this.scenarioResult = data.scenarioResult;
+    // A game saved after its end has had its end events.
+    this.scenarioEndEventsFired = this.scenarioResult !== null && this.scenarioResult !== undefined;
+    if (this.scenarioEndEventsFired) {
+      const victory = this.scenarioResult === 'victory';
+      this.eventPump.ctx.endLevelData = { proceedToNextLevel: victory, isVictory: victory };
+    }
     this.startupEventsRun = data.startupEventsRun;
     // Optional-on-read (see `SaveGameData.schedule`'s own doc comment): an
     // older save simply leaves the schedule as freshly built from the

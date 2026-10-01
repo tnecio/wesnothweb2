@@ -852,7 +852,7 @@ export class LuaUnits {
         return 0;
       },
     });
-    for (const name of ['advance', 'transform', 'teleport', 'select', 'to_recall', 'jamming_on', 'add_modification', 'get_hovered', 'create_animator', 'create_weapon']) {
+    for (const name of ['advance', 'transform', 'teleport', 'to_recall', 'jamming_on', 'add_modification', 'get_hovered', 'create_animator', 'create_weapon']) {
       k.unported(['wesnoth', 'units', name]);
     }
   }

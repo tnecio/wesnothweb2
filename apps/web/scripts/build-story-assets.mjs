@@ -109,6 +109,19 @@ function collectPortraitImages(snapshot) {
   return [...found];
 }
 
+/** Every `[story]` in the scenario: its own, and those its events show (`[story]` as an action, C1). */
+function allStoryConfigs(scenarioCfg) {
+  const found = [];
+  const visit = (cfg) => {
+    for (const child of cfg.children ?? []) {
+      if (child.tag === 'story') found.push(child.config);
+      else visit(child.config);
+    }
+  };
+  visit(scenarioCfg);
+  return found;
+}
+
 /** Every image path referenced anywhere under the `[story]` configs (all branches). */
 function collectStoryImages(storyJsons) {
   const found = new Set();
@@ -242,7 +255,7 @@ for (const campaignDirName of fs.readdirSync(scenariosDir).sort()) {
     }
 
     const images = {};
-    for (const raw of [...collectStoryImages(storyJsons), ...collectPortraitImages(snapshot)]) {
+    for (const raw of [...collectStoryImages(allStoryConfigs(scenarioCfg)), ...collectPortraitImages(snapshot)]) {
       if (images[raw]) continue;
       if (raw.includes('$')) {
         console.warn(`${id}: skipping runtime-variable image path "${raw}"`);

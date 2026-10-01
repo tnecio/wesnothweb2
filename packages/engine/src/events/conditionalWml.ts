@@ -100,6 +100,8 @@ export const builtinConditions: Record<string, (cfg: WmlConfig, ctx: EventContex
   },
   // object.lua's wml_conditionals.found_item: was the [object] with this id taken?
   found_item: (cfg, ctx) => ctx.usedItems.has(cfg.getString('id', '')),
+  // wml-conditionals.lua: the scenario is over and the campaign goes on (end_level_data.proceed_to_next_level).
+  proceed_to_next_scenario: (_cfg, ctx) => ctx.endLevelData?.proceedToNextLevel ?? false,
 };
 
 /**

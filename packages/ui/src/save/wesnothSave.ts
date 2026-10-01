@@ -285,6 +285,11 @@ export function fromWesnothSave(cfg: WmlConfig): ImportedWesnothSave {
       usedItems: (snapshot.child('used_items')?.attributeNames() ?? []).filter((id) => snapshot.child('used_items')!.getBoolean(id, false)),
       tunnels: snapshot.children('tunnel').map((t) => t.toJSON()),
       nextTeleportGroupId: snapshot.getNumber('next_teleport_group_id', 0),
+      // game_data's constructor: `can_end_turn`, `cannot_end_turn_reason`, `end_turn`.
+      ...(snapshot.getBoolean('can_end_turn', true)
+        ? {}
+        : { endTurnForbidden: { reason: snapshot.getTString('cannot_end_turn_reason')?.toJSON() } }),
+      ...(snapshot.getBoolean('end_turn', false) ? { endTurnForced: true } : {}),
       rng: {
         seed: snapshot.getString('random_seed', '00000000'),
         calls: snapshot.getNumber('random_calls', 0),
@@ -608,7 +613,9 @@ export function toWesnothSave(
   }
   snapCfg.setAttribute('it_is_a_new_turn', false);
   snapCfg.setAttribute('do_healing', true);
-  snapCfg.setAttribute('can_end_turn', true);
+  // game_data::write_snapshot: `[disallow_end_turn]`'s state (`end_turn=` is read, never written).
+  snapCfg.setAttribute('can_end_turn', save.endTurnForbidden === undefined);
+  if (save.endTurnForbidden?.reason) snapCfg.setAttribute('cannot_end_turn_reason', TString.fromJSON(save.endTurnForbidden.reason));
   snapCfg.setAttribute('require_scenario', true);
   if (save.rng) {
     snapCfg.setAttribute('random_seed', save.rng.seed);
