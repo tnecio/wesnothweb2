@@ -87,6 +87,20 @@ describe('game kernel', () => {
     expect(() => kernel.run("filesystem.image_size('nope.png')", '=t')).toThrow(/not recorded/);
   });
 
+  it('game_events callbacks nobody set are functions that do nothing; audio.play asks for a sound', () => {
+    const { kernel, pump } = makeGame();
+    kernel.run(`
+      local old = wesnoth.game_events.on_mouse_action
+      assert(type(old) == "function")
+      wesnoth.game_events.on_mouse_action = function(x, y) wml.variables.clicked = x * 10 + y ; return old(x, y) end
+      wesnoth.game_events.on_mouse_action(2, 3)
+      assert(wesnoth.game_events.on_mouse_button(1, 1, "left", "click") == false)
+      wesnoth.audio.play("miss-2.ogg")
+    `, '=t');
+    expect(pump.ctx.variables.getNumber('clicked')).toBe(23);
+    expect(pump.ctx.sounds.map((s) => s.files)).toEqual(['miss-2.ogg']);
+  });
+
   it('add_known_unit accepts a unit type and rejects an unknown one (intf_add_known_unit)', () => {
     const { kernel, pump } = makeGame();
     pump.ctx.resolveType = (id: string) => {
