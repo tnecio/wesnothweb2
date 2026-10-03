@@ -90,7 +90,7 @@ wesnoth.__lua_actions = lua_actions
 
 local callbacks = {}
 wesnoth.__gui_callbacks = callbacks
-local CALLBACK_KEYS = { on_modified = true, on_button_click = true, on_left_click = true, callback = true }
+local CALLBACK_KEYS = { on_modified = true, on_button_click = true, on_left_click = true, on_link_click = true, callback = true }
 function gui.show_dialog(wml, preshow, postshow)
   local handle = wesnoth.__gui_new(wml)
   local widget
@@ -107,9 +107,10 @@ function gui.show_dialog(wml, preshow, postshow)
         if wesnoth.__gui_has(handle, id .. "/" .. key) then return widget(id .. "/" .. key) end
         return nil
       end,
-      __newindex = function(_, key, value)
+      __newindex = function(self, key, value)
         if CALLBACK_KEYS[key] then
-          callbacks[handle .. "|" .. id .. "|" .. key] = value
+          -- Upstream calls a widget's callback with the widget itself.
+          callbacks[handle .. "|" .. id .. "|" .. key] = value and function(...) return value(self, ...) end
           wesnoth.__gui_set(handle, id, key, value ~= nil)
         else
           wesnoth.__gui_set(handle, id, key, value)
@@ -119,6 +120,7 @@ function gui.show_dialog(wml, preshow, postshow)
   end
   local dialog = setmetatable({
     close = function() wesnoth.__gui_close(handle) end,
+    __handle = handle,
   }, { __index = function(_, id) return widget(id) end })
   if preshow then preshow(dialog) end
   local result = wesnoth.__gui_run(handle)
@@ -129,6 +131,13 @@ function gui.show_dialog(wml, preshow, postshow)
     if key:sub(1, #tostring(handle) + 1) == handle .. "|" then callbacks[key] = nil end
   end
   return result
+end
+
+-- gui.widget.close(window): what dialog:close() does (intf_dialog_close); the window is the dialog table.
+gui.widget = gui.widget or {}
+function gui.widget.close(window)
+  local handle = rawget(window, "__handle")
+  if handle then wesnoth.__gui_close(handle) end
 end
 
 -- lua_gui2.cpp's show_message_box: a title, the message and the buttons of a style ("" closes on a click,
@@ -476,6 +485,9 @@ export class LuaRuntime {
         else k.pushTString(T, TString.fromJSON(label));
       } else if (key === 'id') lua.lua_pushstring(T, to_luastring(widget.id));
       else if (key === 'item_count' && widget.type === 'listbox') lua.lua_pushinteger(T, widget.rows.length);
+      else if (key === 'selected_index' && widget.type === 'menu_button') lua.lua_pushinteger(T, widget.selectedIndex);
+      else if (key === 'enabled' && (widget.type === 'button' || widget.type === 'menu_button')) lua.lua_pushboolean(T, widget.enabled);
+      else if (key === 'type') lua.lua_pushstring(T, to_luastring(widget.type === 'panel' ? 'toggle_panel' : widget.type));
       else if (key === 'use_markup' && (widget.type === 'label' || widget.type === 'button')) lua.lua_pushboolean(T, widget.markup);
       else return 0;
       return 1;
@@ -490,13 +502,14 @@ export class LuaRuntime {
           const v = lua.lua_tojsstring(T, 4);
           widget.visibility = v === 'hidden' || v === 'invisible' ? v : 'visible';
         }
-      } else if (key === 'selected_index' && widget.type === 'listbox') widget.selectedIndex = Number(lua.lua_tointeger(T, 4));
+      } else if (key === 'selected_index' && (widget.type === 'listbox' || widget.type === 'menu_button')) widget.selectedIndex = Number(lua.lua_tointeger(T, 4));
+      else if (key === 'enabled' && (widget.type === 'button' || widget.type === 'menu_button')) widget.enabled = lua.lua_toboolean(T, 4);
       else if (key === 'label' && (widget.type === 'label' || widget.type === 'button')) {
         const ts = k.tstringAt(T, 4);
         widget.label = ts ? (ts.translatable ? ts.toJSON() : ts.str()) : luaString(T, 4);
       } else if (key === 'label' && widget.type === 'image') widget.label = luaString(T, 4);
       else if (key === 'use_markup' && (widget.type === 'label' || widget.type === 'button')) widget.markup = lua.lua_toboolean(T, 4);
-      else if (!['on_modified', 'on_button_click', 'on_left_click', 'callback', 'tooltip', 'enabled'].includes(key)) {
+      else if (!['on_modified', 'on_button_click', 'on_left_click', 'on_link_click', 'callback', 'tooltip', 'enabled'].includes(key)) {
         this.ctx().log('warn', `gui: widget property '${key}' is not supported (ignored)`);
       }
       return 0;
@@ -548,9 +561,17 @@ export class LuaRuntime {
         const selection = /^select:(.*):(\d+)$/.exec(answer.text ?? '');
         if (selection) {
           const widget = findGuiWidget(dialog.root, selection[1]!);
-          if (widget?.type === 'listbox') widget.selectedIndex = Number(selection[2]);
+          if (widget?.type === 'listbox' || widget?.type === 'menu_button') widget.selectedIndex = Number(selection[2]);
           yield* this.runCallback(`${handle}|${selection[1]}|on_modified`);
           continue;
+        }
+        // A button: its on_button_click runs first (it may close the dialog itself, as gui.widget.close does);
+        // then a button with a return value closes it with that, and one without (0) leaves it open.
+        const click = /^click:(.*)$/.exec(answer.text ?? '');
+        if (click) {
+          yield* this.runCallback(`${handle}|${click[1]}|on_button_click`);
+          if (dialog.closed) break;
+          if ((answer.value ?? 0) === GUI_RETVAL.NONE) continue;
         }
         dialog.retval = answer.value ?? GUI_RETVAL.CANCEL;
         dialog.closed = true;

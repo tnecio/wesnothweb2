@@ -2,8 +2,9 @@
   /**
    * Phase 28c: a campaign's own dialog (`gui.show_dialog`), drawn from its `[resolution]` WML as the engine
    * modelled it (`guiDialog.ts`): grids of rows and columns with their borders and alignment, labels (Pango
-   * markup when `use_markup=yes`, larger for `definition=title`), images, buttons, spacers, and listboxes whose
-   * rows the player picks. A button answers with its return value; picking a listbox row answers
+   * markup when `use_markup=yes`, larger for `definition=title`), images, buttons, menu buttons, spacers, and
+   * listboxes whose rows the player picks. A button answers `click:<id>` with its return value (its Lua callback
+   * runs; a return value of 0 leaves the dialog open); picking a listbox row or a menu button's option answers
    * `select:<id>:<row>` and the dialog stays open unless the campaign's callback closes it; Escape cancels.
    */
   import Modal from './Modal.svelte';
@@ -11,6 +12,7 @@
   import IpfImage from './images/IpfImage.svelte';
   import { TString, guiSelectionAnswer, type GuiDialogSpec, type GuiNode, type GuiCell, type GuiText, type InteractionResult } from '@wesnothweb2/engine';
   import { ts } from './i18n/locale.js';
+  import { stripPango } from './markup/pango.js';
 
   let { dialog, onAnswer }: { dialog: GuiDialogSpec; onAnswer: (answer: InteractionResult) => void } = $props();
 
@@ -66,9 +68,29 @@
     {:else if node.type === 'image'}
       {#if node.label}<span style={visibility(node)}><IpfImage src={node.label} /></span>{/if}
     {:else if node.type === 'button'}
-      <button class="button" style={visibility(node)} data-gui-id={node.id || undefined} onclick={() => onAnswer({ value: node.returnValue })}>
+      <button
+        class="button"
+        style={visibility(node)}
+        data-gui-id={node.id || undefined}
+        disabled={!node.enabled}
+        onclick={() => onAnswer({ value: node.returnValue, text: `click:${node.id}` })}
+      >
         {#if node.markup}<Markup text={text(node.label)} />{:else}{text(node.label)}{/if}
       </button>
+    {:else if node.type === 'menu_button'}
+      <select
+        class="menu-button"
+        style={visibility(node)}
+        data-gui-id={node.id || undefined}
+        disabled={!node.enabled}
+        value={node.selectedIndex}
+        onchange={(e) => onAnswer(guiSelectionAnswer(node.id, Number((e.currentTarget as HTMLSelectElement).value)))}
+      >
+        {#each node.options as option, i}
+          <!-- A <select> shows plain text: the option's markup is stripped. -->
+          <option value={i + 1}>{stripPango(text(option))}</option>
+        {/each}
+      </select>
     {:else if node.type === 'spacer'}
       <div style="width: {node.width}px; height: {node.height}px;"></div>
     {:else if node.type === 'listbox'}
@@ -124,6 +146,18 @@
     background: #1a3350;
     color: #d7e8f5;
     cursor: pointer;
+  }
+  .button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .menu-button {
+    font: inherit;
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    border: 1px solid #2f5a7a;
+    background: #1a3350;
+    color: #d7e8f5;
   }
   .button:hover,
   .button:focus-visible {
