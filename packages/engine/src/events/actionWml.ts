@@ -1199,6 +1199,22 @@ function withCreationRolls(cfg: WmlConfig, ctx: EventContext): WmlConfig {
 }
 
 function* actionUnit(cfg: WmlConfig, ctx: EventContext): Flow {
+  // `to_variable=`: the unit is made and written to the variable (`unit::write`, with the x,y given), not placed.
+  const toVariable = cfg.getString('to_variable', '');
+  if (toVariable !== '') {
+    let made: Unit;
+    try {
+      made = Unit.fromConfig(withCreationRolls(cfg, ctx), ctx.resolveType);
+    } catch (e) {
+      ctx.log('error', `Error occurred inside [unit]: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+    ctx.board.assignUnitId(made);
+    const out = made.toConfig();
+    for (const key of ['x', 'y']) if (cfg.hasAttribute(key)) out.setAttribute(key, cfg.getRaw(key)!);
+    ctx.variables.setConfig(toVariable, out);
+    return;
+  }
   const side = cfg.getNumber('side', 1);
   const team = ctx.board.getTeam(side);
   if (!team) {

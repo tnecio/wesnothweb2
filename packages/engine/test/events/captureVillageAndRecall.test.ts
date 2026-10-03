@@ -277,3 +277,29 @@ id=Hero
     expect(logs.some((l) => l.includes('[recall]'))).toBe(true);
   });
 });
+
+describe('[unit] to_variable= (WML_HANDLER_FUNCTION(unit))', () => {
+  it('writes the new unit to the variable, with the x,y given, and places nothing', () => {
+    const { board } = makeBoard();
+    const { manager, pump } = makePump(board);
+    manager.addFromWml(parseWml(`
+[event]
+name=go
+[unit]
+type=mover
+id=Ardonna
+side=1
+x=3
+y=4
+hitpoints=7
+to_variable=new_lich
+[/unit]
+[/event]`).child('event')!);
+    pump.fire('go');
+    expect(board.allUnits()).toHaveLength(0);
+    const stored = pump.ctx.variables.getConfig('new_lich');
+    expect(stored?.getString('id')).toBe('Ardonna');
+    expect(stored?.getString('type')).toBe('mover');
+    expect([stored?.getNumber('x'), stored?.getNumber('y'), stored?.getNumber('hitpoints')]).toEqual([3, 4, 7]);
+  });
+});
