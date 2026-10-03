@@ -67,7 +67,7 @@ import {
 } from '../events/index.js';
 import { Location, type Direction } from '../model/Location.js';
 import { GameMap } from '../model/Map.js';
-import { Team, parseController, type SideController } from '../model/Team.js';
+import { Team, parseController } from '../model/Team.js';
 import { Unit } from '../model/Unit.js';
 import { AttackType, UnitType, type Alignment, type RegistryEntry } from '../model/UnitType.js';
 import { MoveType } from '../model/MoveType.js';
