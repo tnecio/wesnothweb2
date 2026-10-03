@@ -160,8 +160,10 @@ if (flags.has('--inputs-hash')) {
   console.log(inputsHash());
   process.exit(0);
 }
+// The inputs as this build reads them: what it vouches for at the end (a file changed while it runs is not built).
+const startHash = inputsHash();
 if (flags.has('--if-stale')) {
-  const current = inputsHash();
+  const current = startHash;
   if (fs.existsSync(hashFile) && fs.readFileSync(hashFile, 'utf8').trim() === current) {
     console.log('scenario snapshots are up to date');
     process.exit(0);
@@ -277,5 +279,5 @@ const split = spawn(
 // A crash (out of memory, a signal) closes with a null code: a failure, not `process.exit(null)`'s 0.
 const splitCode = await new Promise((resolve) => split.on('close', (code) => resolve(code ?? 1)));
 // Only a full build (every listed scenario) vouches for the whole directory.
-if (splitCode === 0 && wantedIds.length === 0) fs.writeFileSync(hashFile, inputsHash() + '\n');
+if (splitCode === 0 && wantedIds.length === 0) fs.writeFileSync(hashFile, startHash + '\n');
 process.exit(splitCode);
