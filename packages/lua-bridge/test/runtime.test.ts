@@ -202,6 +202,45 @@ describe('modules and files', () => {
   });
 });
 
+describe('gui.show_prompt (show_message_box)', () => {
+  /** The labels and buttons a prompt shows. */
+  function texts(node: GuiNode, out: string[] = []): string[] {
+    if ((node.type === 'label' || node.type === 'button') && 'label' in node) {
+      const l = node.label;
+      out.push(`${node.type}:${typeof l === 'string' ? l : JSON.stringify(l).replace(/.*\["wesnoth-lib","([^"]+)"\].*/, '$1')}`);
+    }
+    if (node.type === 'grid') for (const row of node.rows) for (const cell of row) texts(cell.widget, out);
+    return out;
+  }
+
+  it('shows the message with an OK button by default, and returns nothing', () => {
+    const { run, vars } = setup();
+    const shown: string[][] = [];
+    run(`[lua]
+      code=<< wml.variables.r = select("#", gui.show_prompt("", "There are no corpses available.", "")) >>
+    [/lua]`, (i) => {
+      if (i.kind === 'guiDialog') shown.push(texts(i.dialog.root));
+      return { value: -1 };
+    });
+    expect(shown).toEqual([['label:There are no corpses available.', 'button:OK']]);
+    expect(vars.getNumber('r')).toBe(0);
+  });
+
+  it('yes_no returns whether Yes was chosen; a title shows above the message', () => {
+    const { run, vars } = setup();
+    const shown: string[][] = [];
+    run(`[lua]
+      code=<< wml.variables.yes = gui.show_prompt("Title", "Sure?", "yes_no") ; wml.variables.no = gui.show_prompt("Title", "Sure?", "yes_no") >>
+    [/lua]`, (i) => {
+      if (i.kind !== 'guiDialog') return {};
+      shown.push(texts(i.dialog.root));
+      return { value: shown.length === 1 ? -1 : -2 };
+    });
+    expect(shown[0]).toEqual(['label:Title', 'label:Sure?', 'button:Yes', 'button:No']);
+    expect([vars.getBoolean('yes'), vars.getBoolean('no')]).toEqual([true, false]);
+  });
+});
+
 describe('gui.show_dialog', () => {
   const DIALOG = `[resolution]
     [grid]

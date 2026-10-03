@@ -117,6 +117,35 @@ function gui.show_dialog(wml, preshow, postshow)
   end
   return result
 end
+
+-- lua_gui2.cpp's show_message_box: a title, the message and the buttons of a style ("" closes on a click,
+-- "ok", "close", "cancel", "ok_cancel", "yes_no", or any other text as one button's label), shown as a
+-- dialog. ok_cancel and yes_no return whether OK/Yes was chosen.
+function gui.show_prompt(title, message, button, markup)
+  local _ = wesnoth.textdomain("wesnoth-lib")
+  if button ~= nil and type(button) ~= "string" then button, markup = nil, button end
+  local style = string.lower(button or "ok")
+  local labels
+  if style == "" or style == "ok" then labels = { { _ "OK", "ok" } }
+  elseif style == "close" then labels = { { _ "Close", "ok" } }
+  elseif style == "cancel" then labels = { { _ "Cancel", "cancel" } }
+  elseif style == "ok_cancel" then labels = { { _ "OK", "ok" }, { _ "Cancel", "cancel" } }
+  elseif style == "yes_no" then labels = { { _ "Yes", "ok" }, { _ "No", "cancel" } }
+  else labels = { { button, "ok" } } end
+  local T = wml.tag
+  local buttons = {}
+  for _, b in ipairs(labels) do
+    table.insert(buttons, T.column { T.button { id = b[2], label = b[1], return_value_id = b[2] } })
+  end
+  local rows = {}
+  if title ~= nil and tostring(title) ~= "" then
+    table.insert(rows, T.row { T.column { T.label { id = "title", definition = "title", label = title, use_markup = markup } } })
+  end
+  table.insert(rows, T.row { T.column { T.label { id = "label", label = message, use_markup = markup, wrap = true } } })
+  table.insert(rows, T.row { T.column { T.grid { T.row(buttons) } } })
+  local result = gui.show_dialog { T.grid(rows) }
+  if style == "ok_cancel" or style == "yes_no" then return result == -1 end
+end
 `;
 
 function* openHelpFlow(topic: string): Flow {
