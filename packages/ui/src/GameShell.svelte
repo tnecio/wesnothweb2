@@ -2288,16 +2288,16 @@
         });
         const result = await session.endTurn();
         otherSidesTurn = 'animating';
-        const healOutcomes = session.lastHealAnimations;
+        // In the order it happened (`lastTurnTimeline`): each side's turn-start healing and poison, then
+        // that side's moves -- the player's own healers last, as their turn begins.
+        const timeline = session.lastTurnTimeline ?? [];
+        session.lastTurnTimeline = null;
         session.lastHealAnimations = null;
-        // Heals/poison happen at the START of each side's turn, before that
-        // side's own actions -- played first, ahead of aiAnimations below (see
-        // `lastHealAnimations`'s own doc comment on why this isn't fully
-        // interleaved turn-by-turn across multiple AI sides).
-        if (healOutcomes) await playHealAnimations(healOutcomes);
-        const aiAnimations = session.lastAiAnimations;
         session.lastAiAnimations = null;
-        if (aiAnimations) await playAiAnimations(aiAnimations);
+        for (const entry of timeline) {
+          if (entry.kind === 'heals') await playHealAnimations(entry.outcomes);
+          else await playAiAnimations(entry.events);
+        }
         return result;
       } finally {
         otherSidesTurn = null;

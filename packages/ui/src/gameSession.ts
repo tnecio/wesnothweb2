@@ -1211,6 +1211,11 @@ export interface SaveGameData {
  * (`executeMove`/`executeAttack`) -- this class never hand-rolls movement or
  * combat math itself.
  */
+/** One step of `GameSession.lastTurnTimeline`: a side's turn-start healing, or an AI side's moves. */
+export type TurnTimelineEntry =
+  | { readonly kind: 'heals'; readonly outcomes: readonly HealOutcome[] }
+  | { readonly kind: 'ai'; readonly events: readonly AiAnimationEvent[] };
+
 export class GameSession {
   /** `game_config::base_income` upstream (wesnoth/src/game_config.cpp) -- a hardcoded constant added to every side's `income=` WML attribute, NOT itself WML-configurable. */
   private static readonly BASE_INCOME = 2;
@@ -1371,6 +1376,14 @@ export class GameSession {
    * "no incremental sync() between events" simplification.
    */
   lastHealAnimations: readonly HealOutcome[] | null = null;
+
+  /**
+   * What one `endTurn()` call showed, in the order it happened: each side's turn-start healing and poison
+   * (`calculate_healing` at the start of that side's turn), then that side's AI moves. The player's own
+   * healers heal at the start of the player's turn, after the other sides have played -- not with theirs.
+   * Read once and cleared, as the `lastXAnimations`; null when nothing is to be shown.
+   */
+  lastTurnTimeline: readonly TurnTimelineEntry[] | null = null;
 
   /**
    * The real terrain defense `selectedUnit` would have at `(x, y)` (the
@@ -3673,7 +3686,35 @@ export class GameSession {
   }
 
   private *endTurnLoop(maxAiSideTurns: number, aiAnimations: AiAnimationEvent[], healOutcomes: HealOutcome[]): Flow<string> {
+    const timeline: TurnTimelineEntry[] = [];
+    // Whatever was added to `list` since `from`, as one timeline entry.
+    const record = <T>(list: readonly T[], from: number, entry: (items: readonly T[]) => TurnTimelineEntry) => {
+      if (list.length > from) timeline.push(entry(list.slice(from)));
+    };
+    try {
+      // Each step (a side-turn change, an AI side's turn) records what it added.
+      return yield* this.endTurnSides(maxAiSideTurns, aiAnimations, healOutcomes, () => {
+        const heals = healOutcomes.length;
+        const ai = aiAnimations.length;
+        return () => {
+          record(healOutcomes, heals, (outcomes) => ({ kind: 'heals', outcomes }));
+          record(aiAnimations, ai, (events) => ({ kind: 'ai', events }));
+        };
+      });
+    } finally {
+      this.lastTurnTimeline = timeline.length > 0 ? timeline : null;
+    }
+  }
+
+  private *endTurnSides(
+    maxAiSideTurns: number,
+    aiAnimations: AiAnimationEvent[],
+    healOutcomes: HealOutcome[],
+    step: () => () => void,
+  ): Flow<string> {
+    let done = step();
     let message = yield* this.advanceOneTurn();
+    done();
     if (!message) return '';
     // Auto-play consecutive AI-controlled sides. Bounded by `sides.length`
     // guard-multiples rather than true unbounded recursion, so a
@@ -3691,10 +3732,14 @@ export class GameSession {
         // `play_side`: a human's turn is skipped when its own turn events ran `[end_turn]`.
         if (!this.eventPump.ctx.endTurnForced) break;
       } else {
+        done = step();
         this.playAiSide(this.activeSide, aiAnimations);
+        done();
       }
       if (this.scenarioResult) break;
+      done = step();
       const next = yield* this.advanceOneTurn();
+      done();
       if (!next) break;
       message = next;
     }
