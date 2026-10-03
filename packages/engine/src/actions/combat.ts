@@ -24,8 +24,9 @@
 
 import { recalculateFog, type RaiseEvent } from './vision.js';
 import { rollNewUnit } from './recruit.js';
-import { Location, getAdjacentTiles, ALL_DIRECTIONS, distanceBetween, type Direction } from '../model/Location.js';
+import { Location, getAdjacentTiles, ALL_DIRECTIONS, distanceBetween, oppositeDirection, type Direction } from '../model/Location.js';
 import type { GameBoard } from '../model/GameBoard.js';
+import { WmlConfig } from '../wml/config.js';
 import { Unit, UnitStatus } from '../model/Unit.js';
 import type { UnitType } from '../model/UnitType.js';
 import type { Rng } from '../rng/Rng.js';
@@ -264,13 +265,17 @@ export function executeAttack(
 
     const killerWeapon = killerIsAttacker ? attackerWeapon : defenderWeapon;
     if (!killerWeapon) return;
+    // `battle_context_unit_stats`: plague needs the special, a victim that is not `unplagueable` and whose
+    // undead variation is not `null`, and a hex that is not a village.
     const plagueSpecials = killerWeapon.specials.filter((s) => s.getString('id', '') === 'plague');
     if (plagueSpecials.length === 0) return;
-    if (deadUnit.type.undeadVariation === 'null') return;
+    if (deadUnit.hasStatus('unplagueable')) return;
+    const undeadVariation = deadUnit.undeadVariation;
+    if (undeadVariation === 'null') return;
     if (board.map.isVillage(deadLoc)) return;
 
-    const plagueType = plagueSpecials[0]!.getString('type', '');
-    if (!plagueType) return;
+    // No `type=`: the killer's own kind (`u.type().parent_id()`).
+    const plagueType = plagueSpecials[0]!.getString('type', '') || killerUnit.baseType.id;
 
     const type = options.resolveType?.(plagueType);
     if (!type) {
@@ -284,6 +289,16 @@ export function executeAttack(
     board.assignUnitId(spawned);
     spawned.attacksLeft = 0;
     spawned.movesLeft = 0;
+    spawned.facing = oppositeDirection(killerUnit.facing);
+    // The corpse takes the victim's shape: `[effect] apply_to=variation name=<undead_variation>`, healed full.
+    if (undeadVariation !== '') {
+      const mod = new WmlConfig();
+      const effect = mod.addChild('effect');
+      effect.setAttribute('apply_to', 'variation');
+      effect.setAttribute('name', undeadVariation);
+      spawned.addModification('variation', mod);
+      spawned.healToFull();
+    }
     board.addUnit(spawned);
     plagueSpawn = { type: plagueType, at: deadLoc, spawned: true };
   };

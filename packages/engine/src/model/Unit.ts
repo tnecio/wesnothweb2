@@ -109,6 +109,8 @@ export class Unit {
   attacksLeft: number;
   maxAttacksPerTurn: number;
   level: number;
+  /** `unit::undead_variation()`: the variation of a plague's corpse; the type's, unless the unit's `undead_variation=` says otherwise. */
+  undeadVariation = '';
   facing: Direction;
   canRecruit: boolean;
   resting: boolean;
@@ -299,6 +301,7 @@ export class Unit {
     this.advancesTo = [...type.advancesTo];
     this.maxExperience = type.experienceNeeded(this.experienceModifier);
     this.level = type.level;
+    this.undeadVariation = type.undeadVariation;
     this.recallCost = type.recallCost;
     this.alignment = type.alignment;
     this.maxHitpoints = type.hitpoints;
@@ -483,6 +486,7 @@ export class Unit {
     if (cfg.hasAttribute('max_moves')) unit.maxMoves = Math.max(0, cfg.getNumber('max_moves'));
     if (cfg.hasAttribute('max_experience')) unit.maxExperience = Math.max(1, cfg.getNumber('max_experience'));
     if (cfg.hasAttribute('level')) unit.level = cfg.getNumber('level');
+    if (cfg.hasAttribute('undead_variation')) unit.undeadVariation = cfg.getString('undead_variation');
     if (cfg.hasAttribute('max_attacks')) unit.maxAttacksPerTurn = Math.max(0, cfg.getNumber('max_attacks'));
     if (cfg.hasChild('attack')) unit.attacks = cfg.children('attack').map((a) => AttackType.fromConfig(a));
     const ai = cfg.child('ai');
@@ -557,6 +561,7 @@ export class Unit {
     cfg.setAttribute('experience', this.experience);
     cfg.setAttribute('max_experience', this.maxExperience);
     cfg.setAttribute('level', this.level);
+    cfg.setAttribute('undead_variation', this.undeadVariation);
     cfg.setAttribute('canrecruit', this.canRecruit);
     cfg.setAttribute('resting', this.resting);
     cfg.setAttribute('hidden', this.hidden);
