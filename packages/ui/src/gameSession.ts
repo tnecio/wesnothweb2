@@ -62,6 +62,7 @@ import {
   type AiAction,
   type AiAnimationEvent,
   type ScenarioObjectives,
+  parseScenarioObjectives,
   advanceUnitTo,
   advanceUnitAmla,
   type AttackBlowResult,
@@ -1171,8 +1172,13 @@ export interface SaveGameData {
   turnLimit?: number;
   /** Phase 18c: `[set_menu_item]`s in effect (lost on reload before). */
   menuItems?: { id: string; description: string; command: WmlConfigJson }[];
-  /** Phase 18c: each side's current `[objectives]` (lost on reload before). */
+  /**
+   * Phase 18c, old saves: the objectives as plain data, which lost their translatable texts (and crashed the Objectives
+   * dialog after a load). Read only to know which sides had objectives; see `objectivesShown`.
+   */
   objectives?: { side: number; objectives: ScenarioObjectives }[];
+  /** Each side's objectives as generated (`ScenarioObjectives.source`): rebuilt from these on load. */
+  objectivesShown?: { side: number; cfg: WmlConfigJson }[];
   /** Phase 18d: the raw `[objectives]` per side (0: every side), for `[show_objectives]` (upstream's persistent `[objectives]` tags). */
   objectiveConfigs?: { side: number; cfg: WmlConfigJson }[];
   /** Phase 18b: upstream's `random_mode`; absent means `per_action`. */
@@ -4667,7 +4673,7 @@ export class GameSession {
       mapData: this.board.terrainVersion > 0 ? this.board.map.write() : undefined,
       events: this.eventPump.manager.activeConfigs().map((c) => c.toJSON()),
       menuItems: [...this.eventPump.ctx.menuItems.values()].map((m) => ({ id: m.id, description: m.description, command: m.command.toJSON() })),
-      objectives: [...this.eventPump.ctx.objectivesBySide].map(([side, objectives]) => ({ side, objectives })),
+      objectivesShown: [...this.eventPump.ctx.objectivesBySide].map(([side, objectives]) => ({ side, cfg: objectives.source.toJSON() })),
       objectiveConfigs: [...this.eventPump.ctx.objectivesConfigBySide].map(([side, cfg]) => ({ side, cfg: cfg.toJSON() })),
       randomMode: this.rng.mode,
       doHealing: this.doHealing,
@@ -4762,11 +4768,21 @@ export class GameSession {
         data.menuItems.map((m) => [m.id, { id: m.id, description: m.description, command: WmlConfig.fromJSON(m.command) }]),
       );
     }
-    if (data.objectives) {
-      this.eventPump.ctx.objectivesBySide = new Map(data.objectives.map((o) => [o.side, o.objectives]));
-    }
     if (data.objectiveConfigs) {
       this.eventPump.ctx.objectivesConfigBySide = new Map(data.objectiveConfigs.map((o) => [o.side, WmlConfig.fromJSON(o.cfg)]));
+    }
+    if (data.objectivesShown) {
+      this.eventPump.ctx.objectivesBySide = new Map(data.objectivesShown.map((o) => [o.side, parseScenarioObjectives(WmlConfig.fromJSON(o.cfg))]));
+    } else if (data.objectives) {
+      // An older save kept only the generated texts, as plain data: regenerate them from the stored
+      // [objectives] config (the side's own, else the one for every side), every entry shown.
+      const configs = this.eventPump.ctx.objectivesConfigBySide;
+      const rebuilt = new Map<number, ScenarioObjectives>();
+      for (const { side } of data.objectives) {
+        const cfg = configs.get(side) ?? configs.get(0);
+        if (cfg) rebuilt.set(side, parseScenarioObjectives(cfg));
+      }
+      this.eventPump.ctx.objectivesBySide = rebuilt;
     }
     this.doHealing = data.doHealing ?? data.startupEventsRun;
     this.replayStartData = data.replay?.start ?? null;

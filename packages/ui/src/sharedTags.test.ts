@@ -261,3 +261,18 @@ describe('[lua] as a condition', () => {
     expect(ctx.variables.getBoolean('passed', false)).toBe(true);
   });
 });
+
+describe('objectives after a save and load', () => {
+  it('come back whole, translatable texts included (the Objectives dialog crashed after a load)', async () => {
+    const file = path.join(repoRoot, 'apps/web/public/scenarios/Dead_Water/02_Flight.json');
+    const session = new GameSession(readScenarioSnapshot(file));
+    await session.runStartupEvents();
+    const before = session.scenarioObjectives!;
+    // A stored save comes back as plain data.
+    const loaded = GameSession.fromSaveData(readScenarioSnapshot(file), JSON.parse(JSON.stringify(session.toSaveData())));
+    const after = loaded.scenarioObjectives!;
+    expect(after.summaryT.str()).toBe(before.summaryT.str());
+    expect(after.victoryLabelT.str()).toBe(before.victoryLabelT.str());
+    expect(after.objectives).toEqual(before.objectives);
+  });
+});

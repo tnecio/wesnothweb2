@@ -19,7 +19,7 @@
 import { formatMessage } from '../i18n/format.js';
 import { dsngettext } from '../i18n/gettext.js';
 import { TString } from '../i18n/tstring.js';
-import type { WmlConfig } from '../wml/config.js';
+import { WmlConfig } from '../wml/config.js';
 
 export type ObjectiveCondition = 'win' | 'lose';
 
@@ -50,6 +50,11 @@ export interface ScenarioObjectives {
   /** Every text below has a plain form (the language now) and a `...T` form a display can hold across a language switch. */
   readonly summary: string;
   readonly summaryT: TString;
+  /**
+   * The `[objectives]` config as these were generated: entries whose `[show_if]` failed dropped, the rest
+   * without it. What a save keeps (upstream saves the generated objectives, not re-evaluating `[show_if]`).
+   */
+  readonly source: WmlConfig;
   readonly victoryLabel: string;
   readonly victoryLabelT: TString;
   readonly defeatLabel: string;
@@ -171,8 +176,24 @@ export function parseScenarioObjectives(cfg: WmlConfig, passes?: ShowIf): Scenar
       },
       silent: cfg.getBoolean('silent', false),
     },
-    { summaryT, victoryLabelT, defeatLabelT, goldCarryoverLabelT, notesLabelT, notesT },
+    { summaryT, victoryLabelT, defeatLabelT, goldCarryoverLabelT, notesLabelT, notesT, source: resolvedSource(cfg, passes) },
   );
+}
+
+/** `cfg` with each `[objective]`/`[gold_carryover]`/`[note]` whose `[show_if]` fails left out, and `[show_if]` removed. */
+function resolvedSource(cfg: WmlConfig, passes?: ShowIf): WmlConfig {
+  const out = new WmlConfig();
+  for (const key of cfg.attributeNames()) out.setAttribute(key, cfg.getRaw(key)!);
+  for (const { tag, config } of cfg.allChildren()) {
+    if (tag === 'objective' || tag === 'gold_carryover' || tag === 'note') {
+      if (shown([config], passes).length === 0) continue;
+      const entry = new WmlConfig();
+      for (const key of config.attributeNames()) entry.setAttribute(key, config.getRaw(key)!);
+      for (const child of config.allChildren()) if (child.tag !== 'show_if') entry.addChild(child.tag, child.config.clone());
+      out.addChild(tag, entry);
+    } else out.addChild(tag, config.clone());
+  }
+  return out;
 }
 
 /**
