@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  parseWml,
   parseWmlFile,
   preloadDefines,
   preloadDefinesFromDir,
@@ -12,6 +13,7 @@ import { WmlConfig } from '../../src/wml/config.js';
 import { GameMap } from '../../src/model/Map.js';
 import { TerrainTypeData, GRASS_LAND, SHALLOW_WATER } from '../../src/model/Terrain.js';
 import { GameBoard } from '../../src/model/GameBoard.js';
+import { distanceBetween } from '../../src/model/Location.js';
 import { UnitType, AttackType } from '../../src/model/UnitType.js';
 import { MoveType } from '../../src/model/MoveType.js';
 
@@ -189,5 +191,57 @@ describe('GameBoard (real Dead_Water scenario 1 content)', () => {
     // Home_1.map content.
     expect(board.map.terrainName(leader!.location).length).toBeGreaterThan(0);
     expect(board.map.terrainName(board.map.villages[0]!)).toMatch(/[Vv]illage/);
+  });
+});
+
+describe('GameBoard.fromConfig: [side][leader] (team_builder::handle_leader)', () => {
+  const terrainData = TerrainTypeData.fromConfigs([]);
+  const resolveType = makeStubResolveType(terrainData);
+  const scenario = parseWml(`
+[scenario]
+    map_data="Gg, Gg, Gg, Gg, Gg, Gg
+Gg, 1 Gg, Gg, Gg, Gg, Gg
+Gg, Gg, Gg, Gg, Gg, Gg
+Gg, Gg, Gg, 2 Gg, Gg, Gg
+Gg, Gg, Gg, Gg, Gg, Gg
+Gg, Gg, Gg, Gg, Gg, Gg"
+    [side]
+        side=1
+        type=Elvish Captain
+        id=Glildur
+        [leader]
+            type=Elvish Fighter
+            id=leader2
+            x,y=4,1
+        [/leader]
+    [/side]
+    [side]
+        side=2
+        [leader]
+            type=Orcish Warrior
+            id=Gorlack
+        [/leader]
+        [leader]
+            type=Orcish Grunt
+            id=second
+            canrecruit=no
+        [/leader]
+    [/side]
+[/scenario]`).child('scenario')!;
+  const board = GameBoard.fromConfig(scenario, terrainData, resolveType);
+  const byId = (id: string) => board.allUnits().find((u) => u.id === id);
+
+  it('creates each [leader] as a recruiting unit of its side, at its x,y', () => {
+    expect(byId('leader2')).toMatchObject({ side: 1, canRecruit: true });
+    expect([byId('leader2')!.location.wmlX, byId('leader2')!.location.wmlY]).toEqual([4, 1]);
+    expect(byId('Glildur')?.canRecruit).toBe(true);
+  });
+
+  it("puts one with no x,y on the side's starting position, the next on the nearest free hex", () => {
+    expect(byId('Gorlack')!.location.equals(board.map.startingPosition(2))).toBe(true);
+    expect(byId('Gorlack')?.side).toBe(2);
+    const second = byId('second')!;
+    expect(second.canRecruit).toBe(false);
+    expect(distanceBetween(second.location, byId('Gorlack')!.location)).toBe(1);
   });
 });

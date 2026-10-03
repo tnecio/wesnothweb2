@@ -9,6 +9,7 @@
  */
 
 import { TunnelManager } from '../pathfind/tunnels.js';
+import { findVacantTile } from '../pathfind/pathfind.js';
 import { Location } from './Location.js';
 import { GameMap, type OverlayRule } from './Map.js';
 import { Team } from './Team.js';
@@ -395,6 +396,23 @@ export class GameBoard {
         // Hunter`). A side recruits what `[side] recruit=` names, plus
         // any `extra_recruit=`; a leader's own type is not recruitable
         // for being a leader's type.
+      }
+      // `team_builder::leader`/`handle_leader`: each `[leader]` child is one more unit, canrecruit=yes unless
+      // it says otherwise, placed (`placement=map,leader`) at its x,y, else the side's starting position, else
+      // the nearest free hex. Sceptre of Fire 1 gives the elves a second leader this way.
+      for (const leaderCfg of sideCfg.children('leader')) {
+        if (!leaderCfg.hasAttribute('type')) continue;
+        const cfg = leaderCfg.clone();
+        cfg.setAttribute('side', team.side);
+        if (!cfg.hasAttribute('canrecruit')) cfg.setAttribute('canrecruit', true);
+        const leader = Unit.fromConfig(cfg, resolveType);
+        if (!leader.location.valid()) leader.location = map.startingPosition(team.side);
+        if (leader.location.valid() && board.unitAt(leader.location)) {
+          leader.location = findVacantTile(board, leader.location) ?? Location.NULL;
+        }
+        if (!leader.location.valid()) continue;
+        board.addUnit(leader);
+        board.captureVillage(leader.location, leader.side);
       }
       for (const unitCfg of sideCfg.children('unit')) {
         const unit = Unit.fromConfig(unitCfg, resolveType);
