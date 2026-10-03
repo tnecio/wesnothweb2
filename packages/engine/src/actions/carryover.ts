@@ -169,12 +169,12 @@ export function computeGoldCarryover(input: GoldCarryoverInput): GoldCarryoverRe
   return { finishingBonusPerTurn, turnsLeft, finishingBonus, carryoverGoldValue, nextScenarioGold };
 }
 
-/** Unit ids inline-declared directly inside one `[side]` block: the leader's own `id=` plus any nested `[unit] id=`. Deliberately does NOT look at `[recall]` children (those name units already ON the recall list, not a fresh re-declaration that should suppress carryover) or events elsewhere in the scenario (e.g. `{RECALL_LOYAL_UNITS}`, which upstream calls from a `prestart` `[event]`, not from `[side]` itself -- see this module's doc comment on why that auto-placement isn't replicated). */
+/** Unit ids inline-declared directly inside one `[side]` block: the leader's own `id=` plus any nested `[leader]`/`[unit] id=`. Deliberately does NOT look at `[recall]` children (those name units already ON the recall list, not a fresh re-declaration that should suppress carryover) or events elsewhere in the scenario (e.g. `{RECALL_LOYAL_UNITS}`, which upstream calls from a `prestart` `[event]`, not from `[side]` itself -- see this module's doc comment on why that auto-placement isn't replicated). */
 function inlineDeclaredIds(sideCfg: WmlConfig): Set<string> {
   const ids = new Set<string>();
   const leaderId = sideCfg.getString('id', '');
   if (leaderId) ids.add(leaderId);
-  for (const unitCfg of sideCfg.children('unit')) {
+  for (const unitCfg of [...sideCfg.children('leader'), ...sideCfg.children('unit')]) {
     const id = unitCfg.getString('id', '');
     if (id) ids.add(id);
   }
