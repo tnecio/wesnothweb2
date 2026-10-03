@@ -271,7 +271,8 @@ function actionProgressAchievement(cfg: WmlConfig, ctx: EventContext): void {
  * would be off the map is put on its side's recall list.
  */
 function* actionReplaceMap(cfg: WmlConfig, ctx: EventContext): Flow {
-  const data = cfg.getString('map_data', '') || cfg.getString('map', '');
+  // A `map_file=` the builder could not inline (its name built at run time) comes from the snapshot's map files.
+  const data = cfg.getString('map_data', '') || cfg.getString('map', '') || (cfg.hasAttribute('map_file') ? (ctx.mapFile?.(cfg.getString('map_file')) ?? '') : '');
   if (data === '') {
     ctx.log('error', `replace_map: Unable to load map ${cfg.getString('map_file', '')}`);
     return;

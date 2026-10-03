@@ -1725,6 +1725,8 @@ export class GameSession {
     };
     // Phase 28c: global variables and achievements, kept in the browser; unit:advance() for [harm_unit].
     this.eventPump.ctx.persistent = options.persistent ?? browserPersistentVariables();
+    this.eventPump.ctx.mapFile = (name) => snapshot.mapFiles?.[name.split('/').pop() ?? name];
+    this.eventPump.ctx.imageSize = (path) => snapshot.imageSizes?.[path.split('~')[0] ?? path];
     this.eventPump.ctx.achievements = browserAchievements((contentFor, id) => this.log.unshift(`Achievement: ${contentFor}/${id}`));
     this.eventPump.ctx.advanceUnit = (unit) => {
       this.queueAdvancement(unit);

@@ -74,6 +74,19 @@ describe('game kernel', () => {
     expect(() => kernel.run('local x = undefined_global_name', '=t')).toThrow(/undefined_global_name/);
   });
 
+  it('filesystem.have_asset finds the map files the snapshot carries; image_size the measured images', () => {
+    const { kernel, pump } = makeGame();
+    pump.ctx.mapFile = (name) => (name === '02_Flight_of_the_Elves-winter.map' ? 'Gg' : undefined);
+    pump.ctx.imageSize = (p) => (p === 'units/elves-wood/marksman-die-5.png' ? [144, 120] : undefined);
+    kernel.run(`
+      assert(filesystem.have_asset(filesystem.asset_type.MAP, '02_Flight_of_the_Elves-winter.map'))
+      assert(not filesystem.have_asset(filesystem.asset_type.MAP, '02_Flight_of_the_Elves-summer.map'))
+      local w, h = filesystem.image_size('units/elves-wood/marksman-die-5.png')
+      assert(w == 144 and h == 120)
+    `, '=t');
+    expect(() => kernel.run("filesystem.image_size('nope.png')", '=t')).toThrow(/not recorded/);
+  });
+
   it('add_known_unit accepts a unit type and rejects an unknown one (intf_add_known_unit)', () => {
     const { kernel, pump } = makeGame();
     pump.ctx.resolveType = (id: string) => {

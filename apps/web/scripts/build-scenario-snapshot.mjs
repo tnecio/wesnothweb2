@@ -724,6 +724,45 @@ const abilityConfigsJson = Object.fromEntries([...abilityRegistry].map(([id, ent
   }
 })(scenario);
 
+// Phase 28c B4: map files a scenario may load at run time by a name its Lua builds (Heir to the Throne's
+// seasons: `filesystem.have_asset(MAP, id..'-winter.map')`, then `[replace_map] map_file=`): the campaign's
+// maps named after the scenario or its map, followed by `-`. The browser has no data directory to look in.
+const mapFiles = {};
+if (isRealCampaign && fs.existsSync(path.join(campaignDir, 'maps'))) {
+  const prefixes = new Set([scenario.getString('id'), path.basename(mapFileName, '.map')].filter(Boolean).map((p) => `${p}-`));
+  for (const name of fs.readdirSync(path.join(campaignDir, 'maps'))) {
+    if (name.endsWith('.map') && [...prefixes].some((p) => name.startsWith(p))) mapFiles[name] = fs.readFileSync(path.join(campaignDir, 'maps', name), 'utf8');
+  }
+}
+
+/** A PNG's width and height from its IHDR chunk, or undefined for anything else. */
+function pngSize(file) {
+  const head = Buffer.alloc(24);
+  const fd = fs.openSync(file, 'r');
+  try {
+    fs.readSync(fd, head, 0, 24, 0);
+  } finally {
+    fs.closeSync(fd);
+  }
+  return head.toString('latin1', 1, 4) === 'PNG' ? [head.readUInt32BE(16), head.readUInt32BE(20)] : undefined;
+}
+
+// Phase 28c B4: `filesystem.image_size` is synchronous Lua; the browser learns an image's size only by loading
+// it. The images Heir to the Throne's `[multihex_image]` cuts up are measured now (their base files: the image
+// path functions it uses there, ~RC and ~FL, keep the size).
+const imageSizes = {};
+(function measure(cfg) {
+  for (const { tag, config } of cfg.allChildren()) {
+    if (tag === 'multihex_image') {
+      const base = config.getString('image', '').split('~')[0];
+      const file = [path.join(campaignDir, 'images', base), path.join(dataRoot, 'core/images', base)].find((p) => base && fs.existsSync(p));
+      const size = file ? pngSize(file) : undefined;
+      if (size) imageSizes[base] = size;
+    }
+    measure(config);
+  }
+})(scenario);
+
 // Phase 28c: the campaign's Lua sources, and the WML files that Lua reads with `wml.load "path"` (found by
 // scanning the sources for literal paths), preprocessed with this build's defines -- the browser has no data
 // directory and no preprocessor.
@@ -794,6 +833,8 @@ const snapshot = {
   abilityConfigs: abilityConfigsJson,
   scenarioConfigJson: scenario.toJSON(),
   ...(luaSources ? { luaSources } : {}),
+  ...(Object.keys(mapFiles).length > 0 ? { mapFiles } : {}),
+  ...(Object.keys(imageSizes).length > 0 ? { imageSizes } : {}),
   ...(Object.keys(colorRanges).length > 0 ? { colorRanges } : {}),
 };
 

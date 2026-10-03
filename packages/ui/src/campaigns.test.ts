@@ -28,7 +28,7 @@ interface CampaignCase {
   expectedProblems?: Record<string, readonly string[]>;
 }
 
-/** Batches B1-B3 (`IMPLEMENTATION_PLAN.md`, Phase 28c); Under the Burning Suns as a whole since B3 added 05-12. */
+/** Batches B1-B4 (`IMPLEMENTATION_PLAN.md`, Phase 28c); Under the Burning Suns as a whole since B3 added 05-12. */
 const CAMPAIGNS: Record<string, CampaignCase> = {
   The_Hammer_of_Thursagan: { playThrough: '01_At_the_East_Gate' },
   Northern_Rebirth: {
@@ -72,6 +72,9 @@ const CAMPAIGNS: Record<string, CampaignCase> = {
   Under_the_Burning_Suns: { playThrough: '05_A_Subterranean_Struggle' },
   Secrets_of_the_Ancients: { playThrough: '01_Slipping_Away' },
   Eastern_Invasion: { playThrough: '01_Eastern_Invasion' },
+  Heir_To_The_Throne: { playThrough: '01_The_Elves_Besieged' },
+  Heir_To_The_Throne_Classic: { playThrough: '01_The_Elves_Besieged' },
+  The_Deceivers_Gambit: { playThrough: '01_Stirrings_of_War' },
   Sceptre_of_Fire: {
     playThrough: '1_A_Bargain_is_Struck',
     // Alanin and Krawg, stored in earlier scenarios, come back.

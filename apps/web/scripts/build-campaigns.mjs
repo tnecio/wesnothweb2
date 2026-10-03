@@ -49,6 +49,9 @@ function newDefines(...flags) {
   const defines = new Map();
   for (const f of flags) flag(defines, f);
   preloadDefinesFromDir(path.join(dataRoot, 'core'), defines, { dataRoot });
+  // The theme macros too (`{themes/}` in `data/_main.cfg`): Heir to the Throne's `_main.cfg` uses
+  // `CUTSCENE_THEME_BACKGROUND`.
+  preloadDefinesFromDir(path.join(dataRoot, 'themes'), defines, { dataRoot });
   return defines;
 }
 

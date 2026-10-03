@@ -283,6 +283,23 @@ export function installMisc(k: LuaKernel, host: GameKernelHost, units: LuaUnits)
     lua.lua_pop(L, 1);
   }
   k.define(['wesnoth', 'redraw'], () => 0);
+  // `intf_have_asset`: maps are the ones the snapshot carries (`GameBoardSnapshot.mapFiles`); the browser has
+  // no data directory to search for the other asset types, so they are reported absent.
+  k.define(['filesystem', 'have_asset'], (T) => {
+    const type = checkString(T, 1);
+    const name = checkString(T, 2);
+    lua.lua_pushboolean(T, type === 'maps' && ctx().mapFile?.(name) !== undefined);
+    return 1;
+  });
+  // `intf_get_image_size` for the images measured at build time (`GameBoardSnapshot.imageSizes`).
+  k.define(['filesystem', 'image_size'], (T) => {
+    const name = checkString(T, 1);
+    const size = ctx().imageSize?.(name);
+    if (!size) return lauxlib.luaL_error(T, to_luastring(`filesystem.image_size: the size of '${name}' was not recorded when this scenario was built`));
+    lua.lua_pushinteger(T, size[0]);
+    lua.lua_pushinteger(T, size[1]);
+    return 2;
+  });
   // `intf_add_known_unit`: marks the type encountered for the help. Every type already counts as encountered
   // in the port's help (`helpWorld.ts`), so only the argument check is left.
   k.define(['wesnoth', 'add_known_unit'], (T) => {
