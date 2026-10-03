@@ -440,6 +440,7 @@ export class LuaRuntime {
         if (typeof label === 'string') lua.lua_pushstring(T, to_luastring(label));
         else k.pushTString(T, TString.fromJSON(label));
       } else if (key === 'id') lua.lua_pushstring(T, to_luastring(widget.id));
+      else if (key === 'use_markup' && (widget.type === 'label' || widget.type === 'button')) lua.lua_pushboolean(T, widget.markup);
       else return 0;
       return 1;
     });
@@ -458,6 +459,7 @@ export class LuaRuntime {
         const ts = k.tstringAt(T, 4);
         widget.label = ts ? (ts.translatable ? ts.toJSON() : ts.str()) : luaString(T, 4);
       } else if (key === 'label' && widget.type === 'image') widget.label = luaString(T, 4);
+      else if (key === 'use_markup' && (widget.type === 'label' || widget.type === 'button')) widget.markup = lua.lua_toboolean(T, 4);
       else if (!['on_modified', 'on_button_click', 'on_left_click', 'callback', 'tooltip', 'enabled'].includes(key)) {
         this.ctx().log('warn', `gui: widget property '${key}' is not supported (ignored)`);
       }

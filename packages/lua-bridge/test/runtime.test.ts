@@ -241,6 +241,31 @@ describe('gui.show_prompt (show_message_box)', () => {
   });
 });
 
+describe('gui widget use_markup', () => {
+  it('a label set to use_markup from Lua is shown with markup (Eastern Invasion\'s [item_dialog])', () => {
+    const { run, logs } = setup();
+    let markup: boolean | undefined;
+    run(`[lua]
+      code=<<
+        local T = wml.tag
+        gui.show_dialog({ T.grid { T.row { T.column { T.label { id = "text" } } }, T.row { T.column { T.button { id = "ok" } } } } }, function(dialog)
+          dialog.text.use_markup = true
+          dialog.text.label = "<b>bold</b>"
+          wml.variables.read_back = dialog.text.use_markup
+        end)
+      >>
+    [/lua]`, (i) => {
+      if (i.kind === 'guiDialog') {
+        const cell = i.dialog.root.type === 'grid' ? i.dialog.root.rows[0]![0]!.widget : undefined;
+        markup = cell?.type === 'label' ? cell.markup : undefined;
+      }
+      return { value: -1 };
+    });
+    expect(markup).toBe(true);
+    expect(logs.filter((l) => l.startsWith('warn') || l.startsWith('error'))).toEqual([]);
+  });
+});
+
 describe('gui.show_dialog', () => {
   const DIALOG = `[resolution]
     [grid]

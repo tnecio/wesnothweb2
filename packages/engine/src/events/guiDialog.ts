@@ -40,9 +40,9 @@ interface GuiBase {
 
 export type GuiNode =
   | (GuiBase & { readonly type: 'grid'; readonly rows: GuiCell[][] })
-  | (GuiBase & { readonly type: 'label'; label: GuiText; readonly markup: boolean; readonly title: boolean; readonly textAlignment: string })
+  | (GuiBase & { readonly type: 'label'; label: GuiText; markup: boolean; readonly title: boolean; readonly textAlignment: string })
   | (GuiBase & { readonly type: 'image'; label: string })
-  | (GuiBase & { readonly type: 'button'; label: GuiText; readonly returnValue: number; readonly markup: boolean })
+  | (GuiBase & { readonly type: 'button'; label: GuiText; readonly returnValue: number; markup: boolean })
   | (GuiBase & { readonly type: 'spacer'; readonly width: number; readonly height: number })
   | (GuiBase & {
       readonly type: 'listbox';
