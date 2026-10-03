@@ -32,6 +32,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
+import { scenarioIdOf } from './lib/scenarioId.mjs';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import * as os from 'node:os';
@@ -41,6 +42,35 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const outDir = path.join(repoRoot, 'apps/web/public/scenarios');
 const campaignsRoot = path.join(repoRoot, 'wesnoth/data/campaigns');
 const syntheticRoot = path.join(repoRoot, 'synthetic-campaigns');
+
+/**
+ * A real campaign's scenario id when its text does not say it plainly (Heir to the Throne sets it through
+ * `{MAP_DYNAMIC <id>}`): the file preprocessed with the campaign's define and macros, and parsed. Macro
+ * tables are built once per campaign.
+ */
+const campaignDefines = new Map();
+async function parsedScenarioId(camp, file) {
+  const { parseWmlFile, preloadDefines, preloadDefinesFromDir } = await import('../../../packages/engine/src/wml/index.ts');
+  const dataRoot = path.join(repoRoot, 'wesnoth/data');
+  if (!campaignDefines.has(camp)) {
+    const main = path.join(campaignsRoot, camp, '_main.cfg');
+    const define = /^\s*define\s*=\s*(\w+)/m.exec(fs.readFileSync(main, 'utf8'))?.[1];
+    const defines = new Map();
+    for (const name of [define, 'NORMAL'].filter(Boolean)) {
+      defines.set(name, { name, params: [], optionalParams: new Map(), body: '', dir: dataRoot, location: '<rebuild-snapshots>' });
+    }
+    preloadDefinesFromDir(path.join(dataRoot, 'core'), defines, { dataRoot });
+    preloadDefinesFromDir(path.join(dataRoot, 'themes'), defines, { dataRoot });
+    preloadDefines(main, defines, { dataRoot });
+    campaignDefines.set(camp, defines);
+  }
+  try {
+    const cfg = parseWmlFile(file, { dataRoot, defines: new Map(campaignDefines.get(camp)) });
+    return cfg.child('scenario')?.getString('id', '') || null;
+  } catch {
+    return null;
+  }
+}
 
 function cfgFilesUnder(dir) {
   const out = [];
@@ -58,21 +88,12 @@ function cfgFilesUnder(dir) {
  * `build-scenario-snapshot.mjs` computes (and what `CampaignInfo.assetDir` names) -- the plain directory
  * name under `wesnoth/data/campaigns/` or `synthetic-campaigns/`. `arg` is what to pass that script.
  */
-/**
- * A scenario file's own `id=`: the first one one level under `[scenario]`/`[test]` (upstream's files indent
- * by four), else the first anywhere. A plain first match picks up ids inside macros and filters defined
- * earlier in the file (Legend of Wesmere 21 opens with a `#define` naming `id=Kalenz`).
- */
-function scenarioIdOf(text) {
-  const own = /^\[(?:scenario|test)\][\s\S]*?^ {4}id\s*=\s*"?([\w-]+)"?\s*$/m.exec(text);
-  return (own ?? /^\s*id\s*=\s*"?([\w-]+)"?\s*$/m.exec(text))?.[1];
-}
-
-function findScenarios() {
+async function findScenarios() {
   const found = [];
   for (const camp of fs.readdirSync(campaignsRoot)) {
     for (const f of cfgFilesUnder(path.join(campaignsRoot, camp, 'scenarios'))) {
-      const id = scenarioIdOf(fs.readFileSync(f, 'utf8'));
+      const text = fs.readFileSync(f, 'utf8');
+      const id = scenarioIdOf(text) ?? (/^\s*\[scenario\]/m.test(text) ? await parsedScenarioId(camp, f) : null);
       if (id) found.push({ id, campaignDirName: camp, arg: path.relative(campaignsRoot, f) });
     }
   }
@@ -147,7 +168,7 @@ if (flags.has('--if-stale')) {
   }
 }
 
-const allScenarios = findScenarios();
+const allScenarios = await findScenarios();
 const wantedIds = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 
 /** The jobs to run: every scenario matching a requested id (or, with none given, every scenario already built). */
