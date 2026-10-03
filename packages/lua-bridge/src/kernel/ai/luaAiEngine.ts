@@ -20,6 +20,7 @@ import { reachableHexes } from '@wesnothweb2/engine/src/pathfind/pathfind.js';
 import { CandidateAction, BAD_SCORE } from '@wesnothweb2/engine/src/ai/composite/rca.js';
 import type { AiEngine } from '@wesnothweb2/engine/src/ai/composite/aiComposite.js';
 import type { AiContext } from '@wesnothweb2/engine/src/ai/context.js';
+import type { Stage } from '@wesnothweb2/engine/src/ai/composite/stage.js';
 import type { MoveMap } from '@wesnothweb2/engine/src/ai/moveMaps.js';
 import type { AttackAnalysis } from '@wesnothweb2/engine/src/ai/default/attackAnalysis.js';
 import { findTargets } from '@wesnothweb2/engine/src/ai/default/findTargets.js';
@@ -181,6 +182,13 @@ export class LuaAiEngine implements AiEngine {
     const evalRef = this.compile(evalCode);
     const execRef = this.compile(execCode);
     return new LuaCandidateAction(ctx, cfg, this, side, evalRef, execRef);
+  }
+
+  /** `engine_lua::do_parse_stage_from_config`: a `lua_stage_wrapper` running the stage's `code`. */
+  stage(ctx: AiContext, cfg: WmlConfig, sideConfigs: readonly WmlConfig[]): Stage | undefined {
+    const side = this.contextFor(ctx, sideConfigs);
+    if (!side) return undefined;
+    return new LuaStage(ctx, cfg, this, side, this.compile(cfg.getString('code', '')));
   }
 
   /** `lua_ai_action_handler::create`: a compiled chunk kept in the registry, or undefined on a syntax error. */
@@ -723,5 +731,30 @@ export class LuaCandidateAction extends CandidateAction {
   execute(): void {
     if (this.execRef !== undefined) this.luaEngine.handle(this.side, this.execRef, this.args, this.filterOwnCfg, false, false);
     if (this.boundUnit !== undefined) this.disable();
+  }
+}
+
+/** `lua_stage_wrapper`: the stage's code run once per turn with the mutating functions, `[args]` as its params. */
+export class LuaStage implements Stage {
+  readonly id: string;
+  readonly name: string;
+  private readonly args: WmlConfig;
+
+  constructor(
+    private readonly ctx: AiContext,
+    cfg: WmlConfig,
+    private readonly luaEngine: LuaAiEngine,
+    private readonly side: SideContext,
+    private readonly ref: number | undefined,
+  ) {
+    this.id = cfg.getString('id', '');
+    this.name = cfg.getString('name', '');
+    this.args = cfg.child('args') ?? new WmlConfig();
+  }
+
+  playStage(): boolean {
+    const before = this.ctx.gamestateSnapshot();
+    if (this.ref !== undefined) this.luaEngine.handle(this.side, this.ref, this.args, undefined, false, false);
+    return this.ctx.gamestateSnapshot() !== before;
   }
 }

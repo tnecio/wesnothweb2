@@ -25,6 +25,8 @@ export type CandidateActionFactory = (ctx: AiContext, cfg: WmlConfig) => Candida
  */
 export interface AiEngine {
   candidateAction(ctx: AiContext, cfg: WmlConfig, sideConfigs: readonly WmlConfig[]): CandidateAction | undefined;
+  /** `engine::do_parse_stage_from_config`: a `[stage]` whose `engine=` names this engine. */
+  stage?(ctx: AiContext, cfg: WmlConfig, sideConfigs: readonly WmlConfig[]): Stage | undefined;
   /** `engine_lua::apply_micro_ai`: a `[micro_ai]` from the side's `[ai]` (`side=` and `action=add` set). */
   applyMicroAi?(ctx: AiContext, sideConfigs: readonly WmlConfig[], cfg: WmlConfig): void;
   /** The engine's own `[engine]` block for `to_config` (its code and persistent data). */
@@ -72,6 +74,14 @@ export function buildStagesFromConfigs(
       const stageName = stageCfg.getString('name', '');
       if (stageName === 'empty') {
         stages.push(new IdleStage(stageId));
+        continue;
+      }
+      // `engine::parse_stage_from_config`: a stage of another engine (`engine=lua`'s `lua_stage_wrapper`).
+      const engine = stageCfg.getString('engine', 'cpp');
+      if (engine !== 'cpp') {
+        const built = engines.get(engine)?.stage?.(ctx, stageCfg, configs);
+        if (built) stages.push(built);
+        else ctx.host.log('warn', `AI stage "${stageId}" needs the ${engine} AI engine, which is not loaded -- skipped`);
         continue;
       }
       const candidateActions: CandidateAction[] = [];

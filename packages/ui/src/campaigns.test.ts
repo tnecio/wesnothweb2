@@ -24,7 +24,7 @@ interface CampaignCase {
   expectedProblems?: Record<string, readonly string[]>;
 }
 
-/** Batch B1 (`IMPLEMENTATION_PLAN.md`, Phase 28c). */
+/** Batches B1 and B2 (`IMPLEMENTATION_PLAN.md`, Phase 28c). */
 const CAMPAIGNS: Record<string, CampaignCase> = {
   The_Hammer_of_Thursagan: { playThrough: '01_At_the_East_Gate' },
   Northern_Rebirth: {
@@ -45,6 +45,10 @@ const CAMPAIGNS: Record<string, CampaignCase> = {
     // Darken Volk, stored in scenario 5, is put back on the recall list.
     expectedProblems: { '07a_A_Small_Favor': ["error: [unstore_unit]: variable 'darken_volk_store' doesn't contain unit data"] },
   },
+  The_Rise_Of_Wesnoth: { playThrough: '01_A_Summer_of_Storms' },
+  Legend_of_Wesmere: { playThrough: '01_The_Uprooting' },
+  Son_Of_The_Black_Eye: { playThrough: '01_End_of_Peace' },
+  Sceptre_of_Fire: { playThrough: '1_A_Bargain_is_Struck' },
 };
 
 function start(campaign: string, id: string): { session: GameSession; problems: string[] } {
