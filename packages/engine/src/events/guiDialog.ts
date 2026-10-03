@@ -162,13 +162,15 @@ function nodeOf(tag: string, source: WmlConfig, overrides?: Map<string, WmlConfi
         const columns = definition?.children('column') ?? [];
         rows.push({ type: 'grid', id: '', visibility: 'visible', rows: [columns.map((c) => cellOf(c, values))] });
       }
-      return {
+      const listbox: GuiNode = {
         ...base,
         type: 'listbox',
         horizontal: tag === 'horizontal_listbox',
         rows,
         selectedIndex: cfg.getBoolean('has_minimum', true) && rows.length > 0 ? 1 : 0,
       };
+      listDefinitions.set(listbox, { definition, hasMinimum: cfg.getBoolean('has_minimum', true) });
+      return listbox;
     }
     case 'toggle_panel':
     case 'panel': {
@@ -184,6 +186,38 @@ function merged(base: WmlConfig, over: WmlConfig): WmlConfig {
   const out = base.clone();
   for (const key of over.attributeNames()) if (key !== 'id') out.setAttribute(key, over.getRaw(key)!);
   return out;
+}
+
+/** Each listbox's `[list_definition]` row, for rows added later (kept off the node, which is cloned to show). */
+const listDefinitions = new WeakMap<GuiNode, { definition: WmlConfig | undefined; hasMinimum: boolean }>();
+
+/**
+ * `listbox::add_row` with no data (Lua's `listbox:add_item()`): a new row from the `[list_definition]`,
+ * appended; its 1-based index, or 0 for a widget that is not a listbox. Selects it when it is the first
+ * and the listbox must always have a selection (`has_minimum`).
+ */
+export function addListboxRow(node: GuiNode): number {
+  if (node.type !== 'listbox') return 0;
+  const list = listDefinitions.get(node);
+  const columns = list?.definition?.children('column') ?? [];
+  node.rows.push({ type: 'grid', id: '', visibility: 'visible', rows: [columns.map((c) => cellOf(c))] });
+  if (node.rows.length === 1 && list?.hasMinimum !== false) node.selectedIndex = 1;
+  return node.rows.length;
+}
+
+/**
+ * The widget a Lua path names: `/`-separated widget ids from `root`, each optionally `#n` for a listbox's
+ * n-th row (`unit_list#3/unit_type`), the way upstream's widget proxies reach a row's children.
+ */
+export function findGuiWidgetByPath(root: GuiNode, path: string): GuiNode | undefined {
+  let node: GuiNode | undefined = root;
+  for (const segment of path.split('/')) {
+    if (!node) return undefined;
+    const m = /^(.*?)(?:#(\d+))?$/.exec(segment)!;
+    if (m[1]) node = findGuiWidget(node, m[1]);
+    if (node && m[2] !== undefined) node = node.type === 'listbox' ? node.rows[Number(m[2]) - 1] : undefined;
+  }
+  return node;
 }
 
 /** The widget tree of a `[resolution]` (or a `[grid]` directly). */

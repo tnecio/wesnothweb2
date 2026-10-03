@@ -266,6 +266,54 @@ describe('gui widget use_markup', () => {
   });
 });
 
+describe('listbox:add_item()', () => {
+  it("adds rows from the [list_definition], whose widgets Lua reaches by id (Secrets of the Ancients' zombie recruit dialog)", () => {
+    const { run, vars, logs } = setup();
+    let labels: string[] = [];
+    let selected = -1;
+    run(`[lua]
+      code=<<
+        local T = wml.tag
+        local layout = { T.grid {
+          T.row { T.column { T.listbox { id = "unit_list",
+            T.list_definition { T.row { T.column { T.toggle_panel { T.grid { T.row {
+              T.column { T.label { id = "unit_type" } }, T.column { T.label { id = "unit_cost" } },
+            } } } } } },
+          } } },
+          T.row { T.column { T.button { id = "ok" } } },
+        } }
+        gui.show_dialog(layout, function(dialog)
+          for i, name in ipairs { "Soulless", "Walking Corpse" } do
+            local item = dialog.unit_list:add_item()
+            item.unit_type.label = name
+            item.unit_cost.label = tostring(i * 8)
+            wml.variables["count" .. i] = dialog.unit_list.item_count
+          end
+          dialog.unit_list.selected_index = 2
+        end)
+      >>
+    [/lua]`, (i) => {
+      if (i.kind === 'guiDialog') {
+        const list = i.dialog.root.type === 'grid' ? i.dialog.root.rows[0]![0]!.widget : undefined;
+        if (list?.type === 'listbox') {
+          selected = list.selectedIndex;
+          const collect = (n: GuiNode): void => {
+            if (n.type === 'label') labels.push(String(n.label));
+            else if (n.type === 'grid') for (const row of n.rows) for (const cell of row) collect(cell.widget);
+            else if (n.type === 'panel') collect(n.child);
+          };
+          labels = [];
+          for (const row of list.rows) collect(row);
+        }
+      }
+      return { value: -1 };
+    });
+    expect(logs.filter((l) => l.startsWith('error') || l.startsWith('warn'))).toEqual([]);
+    expect(labels).toEqual(['Soulless', '8', 'Walking Corpse', '16']);
+    expect([vars.getNumber('count1'), vars.getNumber('count2'), selected]).toEqual([1, 2, 2]);
+  });
+});
+
 describe('gui.show_dialog', () => {
   const DIALOG = `[resolution]
     [grid]

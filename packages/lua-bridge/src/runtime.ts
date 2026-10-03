@@ -30,7 +30,7 @@ import { WmlConfig, type WmlConfigJson } from '@wesnothweb2/engine/src/wml/confi
 import { TString } from '@wesnothweb2/engine/src/i18n/tstring.js';
 import type { ActionHandler, EventContext } from '@wesnothweb2/engine/src/events/context.js';
 import { isFlow, runFlow, type Flow, type InteractionResult, type Responder } from '@wesnothweb2/engine/src/events/interaction.js';
-import { buildGuiDialog, findGuiWidget, GUI_RETVAL, type GuiDialogSpec, type GuiNode } from '@wesnothweb2/engine/src/events/guiDialog.js';
+import { addListboxRow, buildGuiDialog, findGuiWidget, findGuiWidgetByPath, GUI_RETVAL, type GuiDialogSpec, type GuiNode } from '@wesnothweb2/engine/src/events/guiDialog.js';
 import type { Rng } from '@wesnothweb2/engine/src/rng/Rng.js';
 import { MtRng } from '@wesnothweb2/engine/src/rng/MtRng.js';
 import { RngDeterministic } from '@wesnothweb2/engine/src/rng/RngDeterministic.js';
@@ -93,9 +93,20 @@ wesnoth.__gui_callbacks = callbacks
 local CALLBACK_KEYS = { on_modified = true, on_button_click = true, on_left_click = true, callback = true }
 function gui.show_dialog(wml, preshow, postshow)
   local handle = wesnoth.__gui_new(wml)
-  local function widget(id)
+  local widget
+  -- A widget by path (see findGuiWidgetByPath): its properties, else a child widget by id, as upstream's
+  -- widget proxies; a listbox also has add_item().
+  function widget(id)
     return setmetatable({}, {
-      __index = function(_, key) return wesnoth.__gui_get(handle, id, key) end,
+      __index = function(_, key)
+        if key == "add_item" then
+          return function() return widget(id .. "#" .. wesnoth.__gui_add_item(handle, id)) end
+        end
+        local value = wesnoth.__gui_get(handle, id, key)
+        if value ~= nil then return value end
+        if wesnoth.__gui_has(handle, id .. "/" .. key) then return widget(id .. "/" .. key) end
+        return nil
+      end,
       __newindex = function(_, key, value)
         if CALLBACK_KEYS[key] then
           callbacks[handle .. "|" .. id .. "|" .. key] = value
@@ -442,6 +453,7 @@ export class LuaRuntime {
         if (typeof label === 'string') lua.lua_pushstring(T, to_luastring(label));
         else k.pushTString(T, TString.fromJSON(label));
       } else if (key === 'id') lua.lua_pushstring(T, to_luastring(widget.id));
+      else if (key === 'item_count' && widget.type === 'listbox') lua.lua_pushinteger(T, widget.rows.length);
       else if (key === 'use_markup' && (widget.type === 'label' || widget.type === 'button')) lua.lua_pushboolean(T, widget.markup);
       else return 0;
       return 1;
@@ -467,6 +479,16 @@ export class LuaRuntime {
       }
       return 0;
     });
+    k.define(['wesnoth', '__gui_add_item'], (T) => {
+      const widget = this.widget(T);
+      if (widget?.type !== 'listbox') return lauxlib.luaL_error(T, to_luastring(`gui: '${lua.lua_tojsstring(T, 2)}' is not a listbox`));
+      lua.lua_pushinteger(T, addListboxRow(widget));
+      return 1;
+    });
+    k.define(['wesnoth', '__gui_has'], (T) => {
+      lua.lua_pushboolean(T, this.widget(T) !== undefined);
+      return 1;
+    });
     k.define(['wesnoth', '__gui_close'], (T) => {
       const dialog = this.dialogs.get(Number(lua.lua_tointeger(T, 1)));
       if (dialog) dialog.closed = true;
@@ -482,7 +504,7 @@ export class LuaRuntime {
 
   private widget(T: LuaState): GuiNode | undefined {
     const dialog = this.dialogs.get(Number(lua.lua_tointeger(T, 1)));
-    return dialog ? findGuiWidget(dialog.root, lua.lua_tojsstring(T, 2)) : undefined;
+    return dialog ? findGuiWidgetByPath(dialog.root, lua.lua_tojsstring(T, 2)) : undefined;
   }
 
   /**
