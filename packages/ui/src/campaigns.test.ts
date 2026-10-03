@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { GameSession } from './gameSession.js';
+import { GameSession, type GameSessionOptions } from './gameSession.js';
+import { memoryPersistentVariables } from '@wesnothweb2/engine/src/events/supportWml.js';
+import { WmlConfig } from '@wesnothweb2/engine/src/wml/config.js';
+import { Location } from '@wesnothweb2/engine/src/model/Location.js';
+import { runFlow } from '@wesnothweb2/engine/src/events/interaction.js';
 import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 
 /**
@@ -45,15 +49,45 @@ const CAMPAIGNS: Record<string, CampaignCase> = {
     // Darken Volk, stored in scenario 5, is put back on the recall list.
     expectedProblems: { '07a_A_Small_Favor': ["error: [unstore_unit]: variable 'darken_volk_store' doesn't contain unit data"] },
   },
-  The_Rise_Of_Wesnoth: { playThrough: '01_A_Summer_of_Storms' },
-  Legend_of_Wesmere: { playThrough: '01_The_Uprooting' },
+  The_Rise_Of_Wesnoth: {
+    playThrough: '01_A_Summer_of_Storms',
+    // Lady Jessene joins in 2 and travels with Haldric: on its own, a scenario has no Jessene to store, so her
+    // stored copy is empty, and the [move_unit_fake]/[unit] that read its type get none.
+    expectedProblems: {
+      '07_Return_to_Oldwood': [
+        'error: [move_unit_fake] missing required type=',
+        "error: [unstore_unit]: variable 'lady_store' doesn't contain unit data",
+        'error: Error occurred inside [unit]: createTypeResolver: unknown typeId ""',
+      ],
+      '18_A_Spy_in_the_Woods': ["error: [unstore_unit]: variable 'stored_Jessene' doesn't contain unit data"],
+      '21_The_Plan': ["error: [unstore_unit]: variable 'jessica_store' doesn't contain unit data", 'error: [move_unit_fake] missing required type='],
+    },
+  },
+  Legend_of_Wesmere: {
+    playThrough: '01_The_Uprooting',
+    // Landar, a hero carried over since scenario 1, is stored and put back.
+    expectedProblems: { '13_News_from_the_Front': ["error: [unstore_unit]: variable 'landar_store' doesn't exist"] },
+  },
   Son_Of_The_Black_Eye: { playThrough: '01_End_of_Peace' },
-  Sceptre_of_Fire: { playThrough: '1_A_Bargain_is_Struck' },
+  Sceptre_of_Fire: {
+    playThrough: '1_A_Bargain_is_Struck',
+    // Alanin and Krawg, stored in earlier scenarios, come back.
+    expectedProblems: {
+      '2t_In_the_Dwarven_City': ["error: [unstore_unit]: variable 'changealanin' doesn't contain unit data"],
+      '7_Outriding_the_Outriders': ["error: [unstore_unit]: variable 'alanin' doesn't exist"],
+      Epilogue: [
+        "error: [unstore_unit]: variable 'alanin' doesn't exist",
+        'error: [move_unit_fake] missing required type=',
+        "error: [unstore_unit]: variable 'krawg' doesn't contain unit data",
+      ],
+    },
+  },
 };
 
-function start(campaign: string, id: string): { session: GameSession; problems: string[] } {
+function start(campaign: string, id: string, options: GameSessionOptions = {}): { session: GameSession; problems: string[] } {
   const problems: string[] = [];
   const session = new GameSession(readScenarioSnapshot(path.join(repoRoot, 'apps/web/public/scenarios', campaign, `${id}.json`)), {
+    ...options,
     onLog: (level, message) => {
       if (level === 'error' || (level === 'warn' && /not supported|not implemented|extension point/.test(message))) problems.push(`${level}: ${message}`);
     },
@@ -89,3 +123,63 @@ for (const [campaign, spec] of Object.entries(CAMPAIGNS)) {
     }, 900_000);
   });
 }
+
+describe('the B2 campaigns\' own Lua tags', () => {
+  it("Sceptre of Fire's [rune_choice]: a dwarf on a rune chest is offered the rune with its cost in the label", async () => {
+    const { session, problems } = start('Sceptre_of_Fire', '1_A_Bargain_is_Struck');
+    const offers: string[][] = [];
+    session.interactionHost = {
+      async handle(interaction) {
+        if (interaction.kind === 'message' && interaction.options.length > 0) {
+          offers.push(interaction.options.map((o) => o.label));
+          return { value: 0 };
+        }
+        return {};
+      },
+    };
+    await session.runStartupEvents();
+    const rugnur = session.board.allUnits().find((u) => u.id === 'Rugnur')!;
+    // The swiftness chest (SOF_RUNIC_CHEST_SWIFTNESS 13 9), next to Rugnur's keep.
+    await session.handleHexClick(rugnur.location.x, rugnur.location.y);
+    await session.handleHexClick(12, 8);
+    expect(offers).toHaveLength(1);
+    expect(offers[0]![0]).toBe('No');
+    expect(offers[0]![1]).toMatch(/^Swiftness <span style='italic'> \(8g\)<\/span>$/);
+    expect(problems).toEqual([]);
+  });
+
+  it("Legend of Wesmere's [replace_map_section] and [shift_labels]: when Kalenz arrives in 3, the map grows around the units", async () => {
+    const { session, problems } = start('Legend_of_Wesmere', '03_Kalian_under_Attack');
+    await session.runStartupEvents();
+    const before = { width: session.board.map.totalWidth(), height: session.board.map.totalHeight() };
+    const where = new Map(session.board.allUnits().map((u) => [u.underlyingId, [u.location.wmlX, u.location.wmlY]]));
+    session['eventPump'].fire('kalenz_arrives');
+    expect(problems).toEqual([]);
+    expect(session.board.map.totalWidth()).toBeGreaterThan(before.width);
+    expect(session.board.map.totalHeight()).toBeGreaterThan(before.height);
+    // LOAD_SUBMAP's offset is 2,2: every unit kept, two hexes right and down.
+    for (const u of session.board.allUnits()) {
+      const was = where.get(u.underlyingId);
+      if (was) expect([u.location.wmlX, u.location.wmlY]).toEqual([was[0]! + 2, was[1]! + 2]);
+    }
+  });
+
+  it("Legend of Wesmere's [persistent_carryover_store]: the persistent sides' units and gold go to a global variable", async () => {
+    const persistent = memoryPersistentVariables();
+    const { session, problems } = start('Legend_of_Wesmere', '07_Elves_Last_Stand', { persistent });
+    await session.runStartupEvents();
+    const tag = new WmlConfig();
+    tag.addChild('persistent_carryover_store').setAttribute('scenario_id', 'LoW_Chapter_Two');
+    runFlow(session['eventPump'].runAsHandlerFlow(tag, Location.NULL, Location.NULL));
+    expect(problems).toEqual([]);
+    const sides = session.board.teams().filter((t) => t.persistent);
+    expect(sides.length).toBeGreaterThan(0);
+    // Kalenz's side (save_id=Kalenz): its gold, and its units without their place, moves or hitpoints.
+    expect(sides.map((t) => t.saveId)).toEqual(['Kalenz', 'Galtrid']);
+    const stored = persistent.get('LoW_Chapter_Two', 'Kalenz')?.child('Kalenz');
+    expect(stored?.getNumber('gold')).toBe(session.board.getTeam(1)!.gold);
+    const units = stored!.children('unit');
+    expect(units.map((u) => u.getString('id'))).toContain('Kalenz');
+    for (const key of ['x', 'y', 'hitpoints', 'moves', 'side']) expect(units[0]!.hasAttribute(key)).toBe(false);
+  });
+});

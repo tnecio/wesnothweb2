@@ -1138,6 +1138,392 @@
       ]
     },
     {
+      "id": "the_rise_of_wesnoth",
+      "firstScenario": "01_A_Summer_of_Storms",
+      "wesnothId": "The_Rise_Of_Wesnoth",
+      "abbrev": "TRoW",
+      "define": "CAMPAIGN_THE_RISE_OF_WESNOTH",
+      "assetDir": "The_Rise_Of_Wesnoth",
+      "name": {
+        "t": [
+          [
+            "wesnoth-trow",
+            "The Rise of Wesnoth"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-trow",
+            "Lead Prince Haldric through the destruction of the Green Isle and across the Ocean to establish the very Kingdom of Wesnoth itself. The confrontation with Lich-Lord Jevyan awaits...\n\n"
+          ],
+          [
+            "wesnoth-trow",
+            "(Hard level, 20 scenarios.)"
+          ]
+        ]
+      },
+      "icon": "data/campaigns/The_Rise_Of_Wesnoth/images/units/noble-lord.png",
+      "background": "data/campaigns/The_Rise_Of_Wesnoth/images/story/trow_story_04b-The_Midlands.webp",
+      "rank": 150,
+      "startYear": "2 BW",
+      "endYear": "1 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-trow",
+                "Fighter"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-trow",
+                "Normal"
+              ]
+            ]
+          },
+          "image": "data/campaigns/The_Rise_Of_Wesnoth/images/units/noble-fighter.png"
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-trow",
+                "Commander"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-trow",
+                "Challenging"
+              ]
+            ]
+          },
+          "image": "data/campaigns/The_Rise_Of_Wesnoth/images/units/noble-commander.png",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-trow",
+                "Lord"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-trow",
+                "Difficult"
+              ]
+            ]
+          },
+          "image": "data/campaigns/The_Rise_Of_Wesnoth/images/units/noble-lord.png"
+        }
+      ]
+    },
+    {
+      "id": "legend_of_wesmere",
+      "firstScenario": "01_The_Uprooting",
+      "wesnothId": "Legend_of_Wesmere",
+      "abbrev": "LoW",
+      "define": "CAMPAIGN_LOW",
+      "assetDir": "Legend_of_Wesmere",
+      "name": {
+        "t": [
+          [
+            "wesnoth-low",
+            "Legend of Wesmere"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-low",
+            "The tale of Kalenz, the High Lord who rallied his people after the second orcish invasion of the Great Continent and became the most renowned hero in the recorded history of the elves.\n\n"
+          ],
+          [
+            "wesnoth-low",
+            "(Hard level, 18 scenarios.)"
+          ]
+        ]
+      },
+      "icon": "units/elves-wood/high-lord.png~RC(magenta>brown)",
+      "image": "data/campaigns/Legend_of_Wesmere/images/campaign_image.png",
+      "rank": 160,
+      "startYear": "19 YW",
+      "endYear": "93 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-low",
+                "Soldier"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-low",
+                "Normal"
+              ]
+            ]
+          },
+          "image": "units/elves-wood/fighter/fighter.png~RC(magenta>brown)"
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-low",
+                "Lord"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-low",
+                "Challenging"
+              ]
+            ]
+          },
+          "image": "units/elves-wood/lord.png~RC(magenta>brown)",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-low",
+                "High Lord"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-low",
+                "Difficult"
+              ]
+            ]
+          },
+          "image": "units/elves-wood/high-lord.png~RC(magenta>brown)"
+        }
+      ]
+    },
+    {
+      "id": "son_of_the_black_eye",
+      "firstScenario": "01_End_of_Peace",
+      "wesnothId": "Son_Of_The_Black_Eye",
+      "abbrev": "SotBE",
+      "define": "CAMPAIGN_SON_OF_THE_BLACK_EYE",
+      "assetDir": "Son_Of_The_Black_Eye",
+      "name": {
+        "t": [
+          [
+            "wesnoth-sotbe",
+            "Son of the Black-Eye"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-sotbe",
+            "Your father Karun Black-Eye was the greatest orcish leader that ever lived. Now, as his son, it’s up to you to thwart the selfish designs of the humans who have broken the old agreements with the orcs and are bent upon taking your lands. Unite the warring orcish tribes, bring together the Orcish Council and call up the Great Horde to send the human-worms and their wose-born allies to the Land of the Dead!\n\n"
+          ],
+          [
+            "wesnoth-sotbe",
+            "(Expert level, 18 scenarios.)"
+          ]
+        ]
+      },
+      "icon": "units/orcs/ruler.png~RC(magenta>red)",
+      "image": "data/campaigns/Son_Of_The_Black_Eye/images/campaign_image.png",
+      "background": "data/campaigns/The_Rise_Of_Wesnoth/images/story/trow_story_02-The_Fall.jpg",
+      "rank": 200,
+      "startYear": "842 YW",
+      "endYear": "858 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-sotbe",
+                "Grunt"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-sotbe",
+                "Challenging"
+              ]
+            ]
+          },
+          "image": "units/orcs/grunt.png~RC(magenta>red)"
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-sotbe",
+                "Warrior"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-sotbe",
+                "Difficult"
+              ]
+            ]
+          },
+          "image": "units/orcs/warrior.png~RC(magenta>red)",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-sotbe",
+                "Warlord"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-sotbe",
+                "Nightmare"
+              ]
+            ]
+          },
+          "image": "units/orcs/warlord.png~RC(magenta>red)"
+        }
+      ]
+    },
+    {
+      "id": "sceptre_of_fire",
+      "firstScenario": "1_A_Bargain_is_Struck",
+      "wesnothId": "Sceptre_of_Fire",
+      "abbrev": "SoF",
+      "define": "CAMPAIGN_SCEPTRE_FIRE",
+      "assetDir": "Sceptre_of_Fire",
+      "name": {
+        "t": [
+          [
+            "wesnoth-sof",
+            "The Sceptre of Fire"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-sof",
+            "<i>The mark of Wesnoth’s banner bold\nComes not from its own land;\nIt comes from Dwarfdom, grim and old\nMade by a runesmith’s hand.\nSo now I tell from whence it came —\nThe Fire-sceptre great —\nAnd of the makers of the same,\nTheir tale I now relate...</i>\n\n"
+          ],
+          [
+            "wesnoth-sof",
+            "(Hard level, 10 scenarios.)"
+          ]
+        ]
+      },
+      "icon": "items/sceptre-of-fire.png",
+      "image": "data/campaigns/Sceptre_of_Fire/images/campaign_image.png",
+      "rank": 155,
+      "startYear": "25 YW",
+      "endYear": "40 YW",
+      "descriptionAlignment": "center",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-sof",
+                "Fighter"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-sof",
+                "Normal"
+              ]
+            ]
+          },
+          "image": "units/dwarves/fighter.png~RC(magenta>red)"
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-sof",
+                "Steelclad"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-sof",
+                "Challenging"
+              ]
+            ]
+          },
+          "image": "units/dwarves/steelclad.png~RC(magenta>red)",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-sof",
+                "Lord"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-sof",
+                "Difficult"
+              ]
+            ]
+          },
+          "image": "units/dwarves/lord.png~RC(magenta>red)"
+        }
+      ]
+    },
+    {
       "id": "synthetic_combat",
       "name": "[Debug] Combat",
       "description": "Two adjacent leaders on a tiny grassland map -- for fast combat-math debugging, no setup turns needed.",
