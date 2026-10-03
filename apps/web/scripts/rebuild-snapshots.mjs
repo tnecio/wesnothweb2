@@ -58,26 +58,36 @@ function cfgFilesUnder(dir) {
  * `build-scenario-snapshot.mjs` computes (and what `CampaignInfo.assetDir` names) -- the plain directory
  * name under `wesnoth/data/campaigns/` or `synthetic-campaigns/`. `arg` is what to pass that script.
  */
+/**
+ * A scenario file's own `id=`: the first one one level under `[scenario]`/`[test]` (upstream's files indent
+ * by four), else the first anywhere. A plain first match picks up ids inside macros and filters defined
+ * earlier in the file (Legend of Wesmere 21 opens with a `#define` naming `id=Kalenz`).
+ */
+function scenarioIdOf(text) {
+  const own = /^\[(?:scenario|test)\][\s\S]*?^ {4}id\s*=\s*"?([\w-]+)"?\s*$/m.exec(text);
+  return (own ?? /^\s*id\s*=\s*"?([\w-]+)"?\s*$/m.exec(text))?.[1];
+}
+
 function findScenarios() {
   const found = [];
   for (const camp of fs.readdirSync(campaignsRoot)) {
     for (const f of cfgFilesUnder(path.join(campaignsRoot, camp, 'scenarios'))) {
-      const m = /^\s*id\s*=\s*"?([\w-]+)"?\s*$/m.exec(fs.readFileSync(f, 'utf8'));
-      if (m) found.push({ id: m[1], campaignDirName: camp, arg: path.relative(campaignsRoot, f) });
+      const id = scenarioIdOf(fs.readFileSync(f, 'utf8'));
+      if (id) found.push({ id, campaignDirName: camp, arg: path.relative(campaignsRoot, f) });
     }
   }
   for (const camp of fs.readdirSync(syntheticRoot)) {
     for (const f of cfgFilesUnder(path.join(syntheticRoot, camp, 'scenarios'))) {
-      const m = /^\s*id\s*=\s*"?([\w-]+)"?\s*$/m.exec(fs.readFileSync(f, 'utf8'));
-      if (m) found.push({ id: m[1], campaignDirName: camp, arg: path.relative(repoRoot, f) });
+      const id = scenarioIdOf(fs.readFileSync(f, 'utf8'));
+      if (id) found.push({ id, campaignDirName: camp, arg: path.relative(repoRoot, f) });
     }
   }
   // Phase 29: upstream's AI test scenarios (`[test]`s), filed together as `ai_test`.
   for (const dir of ['wesnoth/data/ai/scenarios', 'wesnoth/data/ai/micro_ais/scenarios']) {
     for (const f of fs.readdirSync(path.join(repoRoot, dir)).filter((n) => n.endsWith('.cfg'))) {
       const file = path.join(repoRoot, dir, f);
-      const m = /^\s*id\s*=\s*"?([\w-]+)"?\s*$/m.exec(fs.readFileSync(file, 'utf8'));
-      if (m) found.push({ id: m[1], campaignDirName: 'ai_test', arg: path.relative(repoRoot, file) });
+      const id = scenarioIdOf(fs.readFileSync(file, 'utf8'));
+      if (id) found.push({ id, campaignDirName: 'ai_test', arg: path.relative(repoRoot, file) });
     }
   }
   return found;
