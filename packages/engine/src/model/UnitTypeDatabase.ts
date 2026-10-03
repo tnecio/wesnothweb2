@@ -352,5 +352,10 @@ export function resolveTraitPools(
     cfg.setAttribute('name_draws_male', nameDrawCount(race, 'male'));
     cfg.setAttribute('name_draws_female', nameDrawCount(race, 'female'));
     cfg.setAttribute('traits_resolved', true);
+    // `unit_type::build_full`: a type without its own `undead_variation=` takes its race's (a merman's plague
+    // corpse swims, a dwarf's is a dwarf).
+    if (!cfg.getString('undead_variation', '') && race?.getString('undead_variation', '')) {
+      cfg.setAttribute('undead_variation', race.getString('undead_variation'));
+    }
   }
 }

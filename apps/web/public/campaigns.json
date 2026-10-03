@@ -1602,6 +1602,14 @@
       "firstScenario": "synth_keyboard_01",
       "debug": true,
       "assetDir": "keyboard"
+    },
+    {
+      "id": "synthetic_plague",
+      "name": "[Debug] Plague",
+      "description": "Twelve player units at 1 HP, each next to an AI Walking Corpse or Soulless: end the turn and each victim rises as a Walking Corpse in its own shape (swimmer, dwarf, mounted, drake, troll...), except on a village or when unplagueable.",
+      "firstScenario": "synth_plague_01",
+      "debug": true,
+      "assetDir": "plague"
     }
   ]
 }

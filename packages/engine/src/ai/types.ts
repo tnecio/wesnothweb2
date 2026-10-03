@@ -35,6 +35,9 @@ export type AiAnimationEvent =
       readonly result: AttackResult;
       readonly attackerTypeId: string;
       readonly defenderTypeId: string;
+      /** Their variations then (`unit.variation`), with the type ids: the sprites and animations to play. */
+      readonly attackerVariation: string;
+      readonly defenderVariation: string;
       readonly attackerHitpointsBefore: number;
       readonly defenderHitpointsBefore: number;
       /**

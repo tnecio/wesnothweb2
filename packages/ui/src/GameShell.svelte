@@ -1086,7 +1086,7 @@
       [
         {
           key: spriteKey({ underlyingId: session.renderKeyFor(unit), typeId: unit.type.id, x: unit.location.x, y: unit.location.y }),
-          anim: chooseAnimation(animationsFor(unit.type.id), context),
+          anim: chooseAnimation(animationsFor(unit.type.id, unit.variation), context),
           direction: unit.facing,
           srcHex: { x: unit.location.x, y: unit.location.y },
           dstHex: { x: unit.location.x, y: unit.location.y },
@@ -1535,8 +1535,8 @@
    * cheap enough not to need a cache -- revisit if profiling ever says
    * otherwise.
    */
-  function animationsFor(typeId: string): ReturnType<typeof parseUnitAnimations> {
-    const cfg = session.rawUnitTypeConfig(typeId);
+  function animationsFor(typeId: string, variation = ''): ReturnType<typeof parseUnitAnimations> {
+    const cfg = session.rawUnitTypeConfig(typeId, variation);
     return cfg ? parseUnitAnimations(WmlConfig.fromJSON(cfg)) : [];
   }
 
@@ -1568,8 +1568,8 @@
     // visually finishes. Use the type id captured at combat-resolution time.
     const attackerTypeId = info.attackerTypeId;
     const defenderTypeId = info.defenderTypeId;
-    const attackerAnims = animationsFor(attackerTypeId);
-    const defenderAnims = animationsFor(defenderTypeId);
+    const attackerAnims = animationsFor(attackerTypeId, info.attackerVariation);
+    const defenderAnims = animationsFor(defenderTypeId, info.defenderVariation);
     const attackerKey = spriteKey({
       underlyingId: session.renderKeyFor(info.attacker),
       typeId: attackerTypeId,
@@ -1781,7 +1781,7 @@
    */
   function buildMoveAnimationCues(info: LastMoveAnimation): UnitAnimationCue[][] {
     const contexts = buildMovementAnimationContexts(info.unit, info.path, terrainLookup(session.board));
-    const anims = animationsFor(info.unit.type.id);
+    const anims = animationsFor(info.unit.type.id, info.unit.variation);
     const key = spriteKey({
       underlyingId: session.renderKeyFor(info.unit),
       typeId: info.unit.type.id,
@@ -1928,7 +1928,7 @@
       [
         {
           key: unitKey,
-          anim: chooseAnimation(animationsFor(info.unit.type.id), unitContext),
+          anim: chooseAnimation(animationsFor(info.unit.type.id, info.unit.variation), unitContext),
           direction: info.unit.facing,
           srcHex: unitHex,
           dstHex: leaderHex,
@@ -1936,7 +1936,7 @@
         },
         {
           key: leaderKey,
-          anim: chooseAnimation(animationsFor(info.leader.type.id), leaderContext),
+          anim: chooseAnimation(animationsFor(info.leader.type.id, info.leader.variation), leaderContext),
           direction: directionBetween(info.leaderLocation, info.unitLocation) ?? info.leader.facing,
           srcHex: leaderHex,
           dstHex: unitHex,
@@ -1981,7 +1981,7 @@
     const beat: UnitAnimationCue[] = [
       {
         key: healedKey,
-        anim: chooseAnimation(animationsFor(outcome.unit.type.id), healedContext),
+        anim: chooseAnimation(animationsFor(outcome.unit.type.id, outcome.unit.variation), healedContext),
         direction: outcome.unit.facing,
         srcHex: healedHex,
         dstHex: healedHex,
@@ -2009,7 +2009,7 @@
       };
       beat.push({
         key: healerKey,
-        anim: chooseAnimation(animationsFor(healer.type.id), healerContext),
+        anim: chooseAnimation(animationsFor(healer.type.id, healer.variation), healerContext),
         direction: directionBetween(healer.location, outcome.unit.location) ?? healer.facing,
         srcHex: healerHex,
         dstHex: healedHex,
