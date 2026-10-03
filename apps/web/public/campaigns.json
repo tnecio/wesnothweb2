@@ -1524,6 +1524,194 @@
       ]
     },
     {
+      "id": "secrets_of_the_ancients",
+      "firstScenario": "01_Slipping_Away",
+      "wesnothId": "Secrets_of_the_Ancients",
+      "abbrev": "SotA",
+      "define": "CAMPAIGN_SECRETS_OF_THE_ANCIENTS",
+      "assetDir": "Secrets_of_the_Ancients",
+      "name": {
+        "t": [
+          [
+            "wesnoth-sota",
+            "Secrets of the Ancients"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-sota",
+            "Rediscover the secrets known by the lich lords of the Green Isle. They knew how to live forever, so why can’t you?\n\n(Hard level, 18 scenarios.)\n"
+          ]
+        ]
+      },
+      "icon": "data/campaigns/Secrets_of_the_Ancients/images/units/ancient-lich/ancient-lich.png~RC(magenta>red)",
+      "image": "data/campaigns/Secrets_of_the_Ancients/images/portraits/campaign-image.webp",
+      "rank": 165,
+      "startYear": "22 YW",
+      "endYear": "23 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-sota",
+                "Unpleasant"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-sota",
+                "Normal"
+              ]
+            ]
+          },
+          "image": "units/undead-skeletal/skeleton/skeleton-idle-2.png~RC(magenta>red)"
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-sota",
+                "Corrupt"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-sota",
+                "Challenging"
+              ]
+            ]
+          },
+          "image": "units/undead-skeletal/revenant/revenant-defend-2.png~RC(magenta>red)",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-sota",
+                "Diabolic"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-sota",
+                "Difficult"
+              ]
+            ]
+          },
+          "image": "units/undead-skeletal/deathknight.png~RC(magenta>red)"
+        }
+      ]
+    },
+    {
+      "id": "eastern_invasion",
+      "firstScenario": "01_Eastern_Invasion",
+      "wesnothId": "Eastern_Invasion",
+      "abbrev": "EI",
+      "define": "CAMPAIGN_EASTERN_INVASION",
+      "assetDir": "Eastern_Invasion",
+      "name": {
+        "t": [
+          [
+            "wesnoth-ei",
+            "Eastern Invasion"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-ei",
+            "There are rumors of undead attacks on the eastern border of Wesnoth. You, an officer in the Royal Army, have been sent to the eastern front to protect the villagers and find out what is happening.\n\n"
+          ],
+          [
+            "wesnoth-ei",
+            "(Intermediate level, 16 scenarios.)"
+          ]
+        ]
+      },
+      "icon": "units/human-loyalists/general.png~RC(magenta>red)",
+      "image": "data/campaigns/Eastern_Invasion/images/campaign_image.png~FL()",
+      "rank": 108,
+      "startYear": "626 YW",
+      "endYear": "627 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-ei",
+                "Skirmish"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-ei",
+                "1x enemies"
+              ]
+            ]
+          },
+          "image": "units/human-loyalists/sergeant.png~RC(magenta>red)"
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-ei",
+                "Incursion"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-ei",
+                "3x enemies"
+              ]
+            ]
+          },
+          "image": "units/human-loyalists/lieutenant.png~RC(magenta>red)",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-ei",
+                "Invasion"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-ei",
+                "5x enemies"
+              ]
+            ]
+          },
+          "image": "units/human-loyalists/general.png~RC(magenta>red)"
+        }
+      ]
+    },
+    {
       "id": "synthetic_combat",
       "name": "[Debug] Combat",
       "description": "Two adjacent leaders on a tiny grassland map -- for fast combat-math debugging, no setup turns needed.",

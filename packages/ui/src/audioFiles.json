@@ -47,6 +47,10 @@
   ],
   "Winds_of_Fate": [
    "scary_ambient_wind.ogg"
+  ],
+  "Eastern_Invasion": [
+   "heavens-remix.ogg",
+   "journeys_end_faststart.ogg"
   ]
  },
  "sounds": {
@@ -364,6 +368,17 @@
   "Winds_of_Fate": [
    "gust.wav",
    "wind.wav"
+  ],
+  "The_Rise_Of_Wesnoth": [
+   "familiar-teeth.ogg"
+  ],
+  "Eastern_Invasion": [
+   "gate-fall.ogg",
+   "lich_die_wail.ogg",
+   "magic-twilight-miss.ogg",
+   "magic-twilight.ogg",
+   "warhammer.ogg",
+   "wind.ogg"
   ]
  }
 }

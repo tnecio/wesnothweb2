@@ -43,7 +43,12 @@
     "wesnoth-nr",
     "wesnoth-wof",
     "wesnoth-did",
-    "wesnoth-sotbe"
+    "wesnoth-trow",
+    "wesnoth-low",
+    "wesnoth-sotbe",
+    "wesnoth-sof",
+    "wesnoth-sota",
+    "wesnoth-ei"
    ]
   },
   {
@@ -72,7 +77,12 @@
     "wesnoth-pap",
     "wesnoth-dod",
     "wesnoth-did",
-    "wesnoth-sotbe"
+    "wesnoth-trow",
+    "wesnoth-low",
+    "wesnoth-sotbe",
+    "wesnoth-sof",
+    "wesnoth-sota",
+    "wesnoth-ei"
    ]
   },
   {
@@ -111,7 +121,12 @@
     "wesnoth-pap",
     "wesnoth-dod",
     "wesnoth-did",
-    "wesnoth-sotbe"
+    "wesnoth-trow",
+    "wesnoth-low",
+    "wesnoth-sotbe",
+    "wesnoth-sof",
+    "wesnoth-sota",
+    "wesnoth-ei"
    ]
   },
   {
@@ -171,7 +186,12 @@
     "wesnoth-pap",
     "wesnoth-dod",
     "wesnoth-did",
-    "wesnoth-sotbe"
+    "wesnoth-trow",
+    "wesnoth-low",
+    "wesnoth-sotbe",
+    "wesnoth-sof",
+    "wesnoth-sota",
+    "wesnoth-ei"
    ]
   },
   {
@@ -198,7 +218,12 @@
     "wesnoth-wof",
     "wesnoth-dod",
     "wesnoth-did",
-    "wesnoth-sotbe"
+    "wesnoth-trow",
+    "wesnoth-low",
+    "wesnoth-sotbe",
+    "wesnoth-sof",
+    "wesnoth-sota",
+    "wesnoth-ei"
    ]
   },
   {
@@ -226,7 +251,12 @@
     "wesnoth-pap",
     "wesnoth-dod",
     "wesnoth-did",
-    "wesnoth-sotbe"
+    "wesnoth-trow",
+    "wesnoth-low",
+    "wesnoth-sotbe",
+    "wesnoth-sof",
+    "wesnoth-sota",
+    "wesnoth-ei"
    ]
   },
   {
@@ -252,7 +282,12 @@
     "wesnoth-nr",
     "wesnoth-wof",
     "wesnoth-did",
-    "wesnoth-sotbe"
+    "wesnoth-trow",
+    "wesnoth-low",
+    "wesnoth-sotbe",
+    "wesnoth-sof",
+    "wesnoth-sota",
+    "wesnoth-ei"
    ]
   },
   {
@@ -277,7 +312,12 @@
     "wesnoth-thot",
     "wesnoth-nr",
     "wesnoth-did",
-    "wesnoth-sotbe"
+    "wesnoth-trow",
+    "wesnoth-low",
+    "wesnoth-sotbe",
+    "wesnoth-sof",
+    "wesnoth-sota",
+    "wesnoth-ei"
    ]
   },
   {
@@ -303,7 +343,12 @@
     "wesnoth-nr",
     "wesnoth-wof",
     "wesnoth-did",
-    "wesnoth-sotbe"
+    "wesnoth-trow",
+    "wesnoth-low",
+    "wesnoth-sotbe",
+    "wesnoth-sof",
+    "wesnoth-sota",
+    "wesnoth-ei"
    ]
   }
  ]

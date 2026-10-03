@@ -28,7 +28,7 @@ interface CampaignCase {
   expectedProblems?: Record<string, readonly string[]>;
 }
 
-/** Batches B1 and B2 (`IMPLEMENTATION_PLAN.md`, Phase 28c). */
+/** Batches B1-B3 (`IMPLEMENTATION_PLAN.md`, Phase 28c); Under the Burning Suns as a whole since B3 added 05-12. */
 const CAMPAIGNS: Record<string, CampaignCase> = {
   The_Hammer_of_Thursagan: { playThrough: '01_At_the_East_Gate' },
   Northern_Rebirth: {
@@ -69,6 +69,9 @@ const CAMPAIGNS: Record<string, CampaignCase> = {
     expectedProblems: { '13_News_from_the_Front': ["error: [unstore_unit]: variable 'landar_store' doesn't exist"] },
   },
   Son_Of_The_Black_Eye: { playThrough: '01_End_of_Peace' },
+  Under_the_Burning_Suns: { playThrough: '05_A_Subterranean_Struggle' },
+  Secrets_of_the_Ancients: { playThrough: '01_Slipping_Away' },
+  Eastern_Invasion: { playThrough: '01_Eastern_Invasion' },
   Sceptre_of_Fire: {
     playThrough: '1_A_Bargain_is_Struck',
     // Alanin and Krawg, stored in earlier scenarios, come back.
