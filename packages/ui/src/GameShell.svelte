@@ -1328,6 +1328,10 @@
     }
     pointerHex = hex;
     updateMovementPreview();
+    // `mouse_over_hex_callback`, only when content listens (The Deceiver's Gambit's `[listen_for_mousemove]`).
+    if (hex && (!last || hex.x !== last.x || hex.y !== last.y) && session.hasMouseMoveCallback && canAct()) {
+      void runPlayerAction(() => session.mouseOverHex(hex.x, hex.y).then(() => null));
+    }
   }
 
   function updateMovementPreview(): void {

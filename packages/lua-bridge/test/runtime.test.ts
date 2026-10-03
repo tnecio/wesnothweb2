@@ -314,6 +314,21 @@ describe('listbox:add_item()', () => {
   });
 });
 
+describe('mouse callbacks (select_hex_callback, mouse_over_hex_callback)', () => {
+  it('runs content that set on_mouse_action, and reports whether any is set', () => {
+    const { runtime, run, vars } = setup();
+    expect(runtime.hasCallback('on_mouse_action')).toBe(false);
+    run(`[lua]
+      code=<< local old = wesnoth.game_events.on_mouse_action
+        wesnoth.game_events.on_mouse_action = function(x, y) wml.variables.hex = x .. "," .. y ; return old(x, y) end >>
+    [/lua]`);
+    expect(runtime.hasCallback('on_mouse_action')).toBe(true);
+    expect(runtime.hasCallback('on_mouse_move')).toBe(false);
+    runFlow(runtime.mouseCallbackFlow('on_mouse_action', 4, 7));
+    expect(vars.getString('hex')).toBe('4,7');
+  });
+});
+
 describe('gui.show_dialog', () => {
   const DIALOG = `[resolution]
     [grid]

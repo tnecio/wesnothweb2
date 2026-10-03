@@ -1492,6 +1492,19 @@ export class GameSession {
    * a `[clear_menu_item]` ran). Returns a log message for the caller's
    * `sync()`, matching every other mutating method here.
    */
+  /** Whether content listens to the pointer moving over hexes (`wesnoth.game_events.on_mouse_move`). */
+  get hasMouseMoveCallback(): boolean {
+    return this.luaRuntime?.hasCallback('on_mouse_move') ?? false;
+  }
+
+  /** `mouse_over_hex_callback`: the pointer entered hex `x,y` (0-based); runs the content's `on_mouse_move`. */
+  async mouseOverHex(x: number, y: number): Promise<void> {
+    if (this.scenarioResult || !this.luaRuntime || !this.hasMouseMoveCallback) return;
+    const loc = new Location(x, y);
+    const runtime = this.luaRuntime;
+    await this.drive(runtime.mouseCallbackFlow('on_mouse_move', loc.wmlX, loc.wmlY));
+  }
+
   async runMenuItem(id: string, x: number, y: number): Promise<string | null> {
     const def = this.eventPump.ctx.menuItems.get(id);
     if (!def) return null;
@@ -4356,6 +4369,12 @@ export class GameSession {
   private *handleHexClickFlow(x: number, y: number, options: HexClickOptions): Flow<string | null> {
     if (this.scenarioResult) return null;
     const loc = new Location(x, y);
+    // `select_hex_callback`: the content's `on_mouse_action` hears every hex the player clicks (The Deceiver's
+    // Gambit opens its spell dialog on a double-click on Delfador).
+    if (this.luaRuntime?.hasCallback('on_mouse_action')) {
+      yield* this.luaRuntime.mouseCallbackFlow('on_mouse_action', loc.wmlX, loc.wmlY);
+      if (this.scenarioResult) return null;
+    }
     // Real, reported bug: this used to read `board.unitAt(loc)` directly,
     // which ignores fog/shroud entirely -- a player could click any hex
     // (e.g. one under shroud they've never seen) and get full info on

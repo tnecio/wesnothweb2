@@ -253,6 +253,26 @@ export class LuaRuntime {
     }
   }
 
+  /** Whether content has set `wesnoth.game_events[name]` (rather than reading upstream's do-nothing default). */
+  hasCallback(name: string): boolean {
+    const L = this.L;
+    lua.lua_getglobal(L, to_luastring('wesnoth'));
+    lua.lua_getfield(L, -1, to_luastring('game_events'));
+    lua.lua_pushstring(L, to_luastring(name));
+    lua.lua_rawget(L, -2);
+    const set = lua.lua_isfunction(L, -1);
+    lua.lua_pop(L, 3);
+    return set;
+  }
+
+  /**
+   * `game_lua_kernel::select_hex_callback`/`mouse_over_hex_callback`: the content's `on_mouse_action` or
+   * `on_mouse_move` with the hex, run as a flow, since it may open a dialog or fire events.
+   */
+  *mouseCallbackFlow(name: 'on_mouse_action' | 'on_mouse_move', x: number, y: number): Flow {
+    yield* this.runChunk(`wesnoth.game_events.${name}(${Math.trunc(x)}, ${Math.trunc(y)})`, `=${name}`);
+  }
+
   /** Runs a chunk of Lua with `args` as its `...` (the `[lua]` tag). */
   *runChunk(code: string, chunkName: string, args?: WmlConfig): Flow {
     const T = this.newThread();
