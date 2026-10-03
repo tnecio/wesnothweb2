@@ -214,6 +214,8 @@ export interface SnapshotTeam {
    * to `false` for older snapshots, same pattern as the fields above.
    */
   noLeader?: boolean;
+  /** Phase 28c B4: the units the `[side]` put on its recall list, as unit configs (`Unit.toConfig`). */
+  recall?: WmlConfigJson[];
   /** `[side] save_id=` (defaulting to the side's or its `[leader]`'s id): `side.save_id`, global-variable carryover. */
   saveId?: string;
   /** `[side] persistent=` (default: a human side): `side.persistent`. Absent in older snapshots: a human side. */
@@ -682,6 +684,23 @@ export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBo
     // the same result without needing a new snapshot field.
     board.captureVillage(unit.location, unit.side);
     unitsByKey.set(unitKeyFor(u), unit);
+  }
+
+  // The sides' recall lists (a leader with no hex for it, `[unit] x,y=recall`), rebuilt in full.
+  const recallTeams = snapshot.teams.filter((t) => t.recall && t.recall.length > 0);
+  if (recallTeams.length > 0) {
+    const resolveType = (id: string): UnitType => {
+      const type = typeCache.get(id);
+      if (!type) throw new Error(`gameBoardFromSnapshot: recall-list unit references unknown typeId "${id}"`);
+      return type;
+    };
+    for (const t of recallTeams) {
+      for (const cfg of t.recall!) {
+        const unit = Unit.fromConfig(WmlConfig.fromJSON(cfg), resolveType);
+        board.assignUnitId(unit);
+        board.addToRecallList(t.side, unit);
+      }
+    }
   }
 
   return { board, unitsByKey };

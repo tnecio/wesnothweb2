@@ -386,6 +386,10 @@ export class GameBoard {
         if (leader.location.valid()) {
           board.addUnit(leader);
           board.captureVillage(leader.location, leader.side);
+        } else {
+          // `unit_creator::add_unit` with `allow_add_to_recall`: no hex for it (no x,y and no starting
+          // position on this map, as Heir to the Throne 1's) puts the leader on the recall list.
+          board.addToRecallList(team.side, leader);
         }
         // Deliberately NOT adding the leader's own type to `recruit=`.
         // Real, reported gameplay bug (bugs6.md): Dead Water 1 offered
@@ -410,7 +414,10 @@ export class GameBoard {
         if (leader.location.valid() && board.unitAt(leader.location)) {
           leader.location = findVacantTile(board, leader.location) ?? Location.NULL;
         }
-        if (!leader.location.valid()) continue;
+        if (!leader.location.valid()) {
+          board.addToRecallList(team.side, leader);
+          continue;
+        }
         board.addUnit(leader);
         board.captureVillage(leader.location, leader.side);
       }
