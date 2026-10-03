@@ -6233,4 +6233,5 @@ shipped without its campaigns' translations into the other languages); they come
   - new tests for `gui.show_prompt`, `add_item`, `use_markup`, `[unit] to_variable=`, `equals=yes`, and Eastern
     Invasion's Crystal Quiver taken through `[item_dialog]`;
   - `campaign-playthrough.mjs` (new `--scenario` for mid-campaign starts) on Secrets of the Ancients, Eastern
-    Invasion and Under the Burning Suns 05 and 10.
+    Invasion and Under the Burning Suns 05 and 08 (10, a long cutscene of about 58 lines and moves, outlasts
+    15 minutes at this VM's frame rate; it runs through headless).
