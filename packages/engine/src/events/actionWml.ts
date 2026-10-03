@@ -578,6 +578,8 @@ function randomChoice(spec: string, rng: Rng): string {
   let total = 0;
   for (const raw of spec.split(',')) {
     const token = raw.trim();
+    // `utils::split` drops empty entries: "Goblin Spearman,Wolf Rider," (Heir to the Throne 26) has two.
+    if (token === '') continue;
     const range = /^(-?\d+)\.\.(-?\d+)$/.exec(token);
     if (range) {
       const from = Number(range[1]);
