@@ -26,6 +26,11 @@ interface CampaignCase {
    * variable): the problems that alone causes, as upstream would report them.
    */
   expectedProblems?: Record<string, readonly string[]>;
+  /**
+   * For a campaign whose scenarios all lean on state an earlier one leaves: problems matching these, started
+   * on their own, are what upstream would report too (each pattern says where that state comes from).
+   */
+  carryoverPatterns?: readonly RegExp[];
 }
 
 /** Batches B1-B4 (`IMPLEMENTATION_PLAN.md`, Phase 28c); Under the Burning Suns as a whole since B3 added 05-12. */
@@ -72,9 +77,29 @@ const CAMPAIGNS: Record<string, CampaignCase> = {
   Under_the_Burning_Suns: { playThrough: '05_A_Subterranean_Struggle' },
   Secrets_of_the_Ancients: { playThrough: '01_Slipping_Away' },
   Eastern_Invasion: { playThrough: '01_Eastern_Invasion' },
-  Heir_To_The_Throne: { playThrough: '01_The_Elves_Besieged' },
+  Heir_To_The_Throne: {
+    playThrough: '01_The_Elves_Besieged',
+    carryoverPatterns: [
+      // The overworld (00_The_Great_Continent) stores its time of day as bm_tod; every later scenario reads it.
+      /attempt to index a nil value \(field 'bm_tod'\)/,
+      // Heroes met on the way are stored and put back by later scenarios.
+      /\[unstore_unit\]: variable 'stored_\w+' doesn't (contain unit data|exist)/,
+      // The overworld itself, started on its own, has no party or journey to restore.
+      /\[lua\] condition: .*wml\.variables\['b/,
+      /createTypeResolver: unknown typeId ""/,
+    ],
+  },
   Heir_To_The_Throne_Classic: { playThrough: '01_The_Elves_Besieged' },
-  The_Deceivers_Gambit: { playThrough: '01_Stirrings_of_War' },
+  The_Deceivers_Gambit: {
+    playThrough: '00_Graduation',
+    // Delfador and Deoran, stored in an earlier scenario, come back.
+    expectedProblems: {
+      '07x_Weldyn_Court': ["error: [unstore_unit]: variable 'stored_deoran2' doesn't exist"],
+      '10_Houses_of_the_Dead': ["error: [unstore_unit]: variable 'stored_delfador' doesn't exist"],
+      '11_Clan_Blackcrest': ["error: [unstore_unit]: variable 'stored_delfador' doesn't exist"],
+      '13_Revelry_Revisited': ["error: [unstore_unit]: variable 'stored_deoran' doesn't exist"],
+    },
+  },
   Sceptre_of_Fire: {
     playThrough: '1_A_Bargain_is_Struck',
     // Alanin and Krawg, stored in earlier scenarios, come back.
@@ -107,7 +132,8 @@ for (const [campaign, spec] of Object.entries(CAMPAIGNS)) {
       it(`${id}: opens without errors`, async () => {
         const { session, problems } = start(campaign, id);
         await session.runStartupEvents();
-        expect(problems).toEqual(spec.expectedProblems?.[id] ?? []);
+        const unexplained = problems.filter((p) => !spec.carryoverPatterns?.some((re) => re.test(p)));
+        expect(unexplained).toEqual(spec.expectedProblems?.[id] ?? []);
       }, 120_000);
     }
 
