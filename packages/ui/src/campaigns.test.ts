@@ -73,7 +73,11 @@ for (const [campaign, spec] of Object.entries(CAMPAIGNS)) {
       for (const team of session.board.teams()) if (team.controller === 'human') team.controller = 'ai';
       session.playAiSide(session.activeSide, []);
       const limit = (session.turnLimit ?? 0) > 0 ? session.turnLimit! : 40;
-      for (let guard = 0; guard <= limit + 1 && !session.scenarioResult; guard++) await session.endTurn();
+      for (let guard = 0; guard <= limit + 1 && !session.scenarioResult; guard++) {
+        await session.endTurn();
+        // Let the test worker answer vitest between turns: a long synchronous AI game otherwise times out its RPC.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
       expect(session.scenarioResult).not.toBeNull();
       expect(problems).toEqual([]);
     }, 900_000);

@@ -106,7 +106,11 @@ describe('The South Guard', () => {
     session.board.getTeam(1)!.controller = 'ai';
     session.playAiSide(1, []);
     const limit = session.turnLimit ?? 40;
-    for (let guard = 0; guard <= limit + 1 && !session.scenarioResult; guard++) await session.endTurn();
+    for (let guard = 0; guard <= limit + 1 && !session.scenarioResult; guard++) {
+        await session.endTurn();
+        // Let the test worker answer vitest between turns: a long synchronous AI game otherwise times out its RPC.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
     expect(session.scenarioResult).not.toBeNull();
     expect(problems).toEqual([]);
   }, 600_000);
