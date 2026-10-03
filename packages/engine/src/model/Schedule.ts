@@ -184,6 +184,11 @@ export class Schedule {
   }
 
   /** Every distinct time-area id currently active, in area order -- mirrors `get_area_ids`. */
+  /** `tod_manager::get_area_by_id`: the hexes (location keys) of the first time area with this id. */
+  areaHexes(id: string): ReadonlySet<string> | undefined {
+    return this.areas.find((a) => a.id === id)?.hexes;
+  }
+
   get areaIds(): readonly string[] {
     return this.areas.map((a) => a.id);
   }

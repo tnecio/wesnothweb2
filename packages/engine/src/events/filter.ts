@@ -32,7 +32,7 @@
  */
 
 import type { GameBoard } from '../model/GameBoard.js';
-import { Direction, Location, distanceBetween, getAdjacentTiles, parseDirection, writeDirection } from '../model/Location.js';
+import { ALL_DIRECTIONS, Direction, Location, distanceBetween, getAdjacentTiles, parseDirection, writeDirection } from '../model/Location.js';
 import type { AttackType } from '../model/UnitType.js';
 import { getActiveAbilities } from '../actions/abilityEffects.js';
 import { findSides } from './sideFilter.js';
@@ -506,23 +506,94 @@ export function locationMatchesFilterOnBoard(board: GameBoard, loc: Location, cf
 }
 
 /**
- * The per-hex part of a standard location filter (`terrain_filter::
- * match_internal`): `x,y=`, `gives_income=` (is a village), `terrain=`,
- * `[filter]` on the unit standing there, `owner_side=`, and `formula=`
- * (with `teleport_unit` bound to `refUnit`, as tunnels need).
+ * What a location filter reads beyond the board (upstream's `filter_context`, the game's global state): the
+ * WML variables (`find_in=`), the time areas (`area=`) and the time of day at a hex (`time_of_day=`). The game
+ * session installs it; without one those keys match nothing.
+ */
+export interface FilterEnvironment {
+  /** The `{x, y}` (1-based) entries of a WML array variable. */
+  locationsIn(variable: string): readonly { x: number; y: number }[];
+  /** `tod_manager::get_area_by_id`: the location keys of a time area, if there is one. */
+  areaHexes(id: string): ReadonlySet<string> | undefined;
+  /** The time of day at a hex, with illumination (`get_illuminated_time_of_day`). */
+  timeOfDayAt(loc: Location): { readonly id: string; readonly lawfulBonus: number };
+}
+
+let filterEnvironment: FilterEnvironment | undefined;
+
+/** Installs the game state location filters read (see `FilterEnvironment`). */
+export function setFilterEnvironment(env: FilterEnvironment | undefined): void {
+  filterEnvironment = env;
+}
+
+/** `utils::parse_ranges_unsigned` + `in_ranges`: `count=` such as `1-6` or `0,2-3`. */
+function inCountRanges(n: number, text: string): boolean {
+  return text.split(',').some((part) => {
+    const [lo, hi] = part.trim().split('-');
+    const min = Number(lo);
+    const max = hi === undefined ? min : hi.trim() === '' ? Infinity : Number(hi);
+    return n >= min && n <= max;
+  });
+}
+
+/**
+ * The per-hex part of a standard location filter (`terrain_filter::match_internal`): `area=`,
+ * `gives_income=`, `terrain=`, `x,y=`, `find_in=`, `location_id=`, `[filter]` on the unit standing there,
+ * `[filter_adjacent_location]` (`adjacent=`, `count=`), `time_of_day=`/`time_of_day_id=`, `[filter_owner]` or
+ * `owner_side=`, and `formula=` (with `teleport_unit` bound to `refUnit`, as tunnels need).
  */
 function locationSelfMatches(board: GameBoard, loc: Location, cfg: WmlConfig, refUnit?: Unit): boolean {
-  if (!locationMatchesFilter(loc, cfg)) return false;
+  const env = filterEnvironment;
+  if (cfg.hasAttribute('area') && !env?.areaHexes(cfg.getString('area'))?.has(loc.key())) return false;
   if (cfg.hasAttribute('gives_income') && cfg.getBoolean('gives_income') !== board.map.isVillage(loc)) return false;
   if (cfg.hasAttribute('terrain') && !terrainMatches(board.map.getTerrain(loc), parseTerrainList(cfg.getString('terrain')))) {
     return false;
+  }
+  if (!locationMatchesFilter(loc, cfg)) return false;
+  if (cfg.hasAttribute('find_in')) {
+    const found = env?.locationsIn(cfg.getString('find_in')).some((p) => p.x === loc.wmlX && p.y === loc.wmlY) ?? false;
+    if (!found) return false;
+  }
+  if (cfg.hasAttribute('location_id')) {
+    const ids = cfg.getString('location_id').split(',').map((s) => s.trim()).filter(Boolean);
+    if (!ids.some((id) => board.map.specialLocation(id).equals(loc))) return false;
   }
   const unitFilter = cfg.child('filter');
   if (unitFilter) {
     const u = board.unitAt(loc);
     if (!u || !unitMatchesFilter(u, unitFilter, board)) return false;
   }
-  if (cfg.hasAttribute('owner_side') && (board.villageOwner(loc) ?? 0) !== cfg.getNumber('owner_side', 0)) return false;
+  for (const adjCfg of cfg.children('filter_adjacent_location')) {
+    const adjacent = getAdjacentTiles(loc);
+    const dirs = adjCfg.hasAttribute('adjacent')
+      ? adjCfg.getString('adjacent').split(',').map((d) => parseDirection(d.trim())).filter((d) => d !== Direction.Indeterminate)
+      : ALL_DIRECTIONS;
+    let count = 0;
+    for (const dir of dirs) {
+      const adj = adjacent[dir];
+      if (adj && board.map.onBoard(adj) && locationMatchesFilterOnBoard(board, adj, adjCfg, refUnit)) count++;
+    }
+    if (!inCountRanges(count, adjCfg.getString('count', '1-6'))) return false;
+  }
+  const todType = cfg.getString('time_of_day', '');
+  const todId = cfg.getString('time_of_day_id', '');
+  if (todType !== '' || todId !== '') {
+    const tod = env?.timeOfDayAt(loc);
+    if (!tod) return false;
+    if (todType !== '') {
+      const vals = todType.split(',').map((s) => s.trim());
+      const ok = tod.lawfulBonus < 0 ? vals.includes('chaotic') : tod.lawfulBonus > 0 ? vals.includes('lawful') : vals.includes('neutral') || vals.includes('liminal');
+      if (!ok) return false;
+    }
+    if (todId !== '' && !todId.split(',').map((s) => s.trim()).includes(tod.id)) return false;
+  }
+  const ownerFilter = cfg.child('filter_owner');
+  if (ownerFilter) {
+    if (!board.map.isVillage(loc)) return false;
+    const sides = findSides(board, ownerFilter);
+    const owner = board.villageOwner(loc) ?? 0;
+    if (!(sides.length === 0 ? owner === 0 : sides.includes(owner))) return false;
+  } else if (cfg.hasAttribute('owner_side') && (board.villageOwner(loc) ?? 0) !== cfg.getNumber('owner_side', 0)) return false;
   if (cfg.hasAttribute('formula') && !locationFormulaMatches(board, loc, cfg.getString('formula'), refUnit)) return false;
   return true;
 }
@@ -533,8 +604,8 @@ function locationSelfMatches(board: GameBoard, loc: Location, cfg: WmlConfig, re
  * `terrain=` and `[filter]`, then `[and]`/`[or]`/`[not]` applied in
  * document order, then expanded by `radius=` (through hexes matching
  * `[filter_radius]`, if given). `refUnit` is `get_locations`' reference unit,
- * bound as `teleport_unit` in `formula=`. Not covered: `find_in=`,
- * `[filter_adjacent_location]`, `[filter_owner]`, `time_of_day=`, `area=`.
+ * bound as `teleport_unit` in `formula=`. Not covered: `lua_function=`, `[filter_vision]`,
+ * `include_borders=`.
  */
 export function findLocations(board: GameBoard, cfg: WmlConfig, refUnit?: Unit): Location[] {
   const map = board.map;

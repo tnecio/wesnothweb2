@@ -111,6 +111,7 @@ import {
   VariableStore,
   WmlConfig,
   mergeUnitTypeConfig,
+  setFilterEnvironment,
   resolveStory,
   type ResolvedStoryPart,
   clearShroud,
@@ -1738,6 +1739,13 @@ export class GameSession {
     };
     // Phase 28c: global variables and achievements, kept in the browser; unit:advance() for [harm_unit].
     this.eventPump.ctx.persistent = options.persistent ?? browserPersistentVariables();
+    // `filter_context`: what location filters read beyond the board -- `find_in=`, `area=`, `time_of_day=`.
+    setFilterEnvironment({
+      locationsIn: (variable) =>
+        this.eventPump.ctx.variables.getArray(variable).map((node) => ({ x: Number(node.attrs.get('x') ?? 0), y: Number(node.attrs.get('y') ?? 0) })),
+      areaHexes: (id) => this.schedule.areaHexes(id),
+      timeOfDayAt: (loc) => this.timeOfDayAt(loc),
+    });
     this.eventPump.ctx.mapFile = (name) => snapshot.mapFiles?.[name.split('/').pop() ?? name];
     this.eventPump.ctx.imageSize = (path) => snapshot.imageSizes?.[path.split('~')[0] ?? path];
     this.eventPump.ctx.achievements = browserAchievements((contentFor, id) => this.log.unshift(`Achievement: ${contentFor}/${id}`));
