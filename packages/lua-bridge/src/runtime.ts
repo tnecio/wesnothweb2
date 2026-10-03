@@ -102,6 +102,9 @@ function gui.show_dialog(wml, preshow, postshow)
         if key == "add_item" then
           return function() return widget(id .. "#" .. wesnoth.__gui_add_item(handle, id)) end
         end
+        if key == "find" then
+          return function(_, ...) return widget(table.concat({ id, ... }, "/")) end
+        end
         local value = wesnoth.__gui_get(handle, id, key)
         if value ~= nil then return value end
         if wesnoth.__gui_has(handle, id .. "/" .. key) then return widget(id .. "/" .. key) end
@@ -120,6 +123,8 @@ function gui.show_dialog(wml, preshow, postshow)
   end
   local dialog = setmetatable({
     close = function() wesnoth.__gui_close(handle) end,
+    -- widget:find(id, ...): the widget at that path of ids below (here, the whole window).
+    find = function(_, ...) return widget(table.concat({ ... }, "/")) end,
     __handle = handle,
   }, { __index = function(_, id) return widget(id) end })
   if preshow then preshow(dialog) end

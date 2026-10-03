@@ -347,6 +347,7 @@ describe("buttons, menu buttons and gui.widget.close (The Deceiver's Gambit's sp
           T.row { T.column { T.button { id = "cast", label = "Cast" } } },
         } }
         local r = gui.show_dialog(layout, function(window)
+          assert(window:find("spells").type == "menu_button")
           window.info.on_button_click = function() wml.variables.info = (wml.variables.info or 0) + 1 end
           window.spells.on_modified = function(button) wml.variables.picked = button.selected_index end
           window.cast.on_button_click = function() wml.variables.cast = window.spells.selected_index ; gui.widget.close(window) end
