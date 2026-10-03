@@ -1040,6 +1040,18 @@
       case 'animateUnit':
         if (boardView) await boardView.playAnimationSequence(buildFlagAnimationCues(beat.unit, beat.flag), 1);
         break;
+      case 'animateUnits':
+        // `unit_animator::start_animations`: every unit's animation at once, each one's text floating over it.
+        if (boardView) {
+          for (const e of beat.entries) {
+            if (e.text !== '') boardView.spawnHexLabel(e.unit.location.x, e.unit.location.y, stripPango(e.text), (e.color.r << 16) | (e.color.g << 8) | e.color.b);
+          }
+          const cues = beat.entries.flatMap(
+            (e) => buildFlagAnimationCues(e.unit, e.flag, { hit: e.hits, target: e.target, value: e.value, value2: e.value2 })[0] ?? [],
+          );
+          if (cues.length > 0) await boardView.playAnimationSequence([cues], 1);
+        }
+        break;
       case 'unitDeath':
         if (boardView) {
           if (beat.scroll) await boardView.scrollToHexIfOffscreen(beat.unit.location.x, beat.unit.location.y);
@@ -1071,15 +1083,19 @@
   const MAX_BEAT_MS = 4000;
 
   /** One unit, one named animation, in place -- `[animate_unit] flag=`, a death, a plain appearance. */
-  function buildFlagAnimationCues(unit: Unit, flag: string): UnitAnimationCue[][] {
+  function buildFlagAnimationCues(
+    unit: Unit,
+    flag: string,
+    options: { hit?: AnimationContext['hit']; target?: Location; value?: number; value2?: number } = {},
+  ): UnitAnimationCue[][] {
     const context: AnimationContext = {
       loc: unit.location,
-      secondLoc: unit.location,
+      secondLoc: options.target ?? unit.location,
       myUnit: unit,
       event: flag,
-      value: 0,
-      value2: 0,
-      hit: 'invalid',
+      value: options.value ?? 0,
+      value2: options.value2 ?? 0,
+      hit: options.hit ?? 'invalid',
       terrainAtLoc: terrainLookup(session.board)(unit.location),
     };
     return [
