@@ -417,3 +417,41 @@ describe('loops are suspendable (Phase 17 E2)', () => {
     expect(shown.map((i) => i.message.message)).toEqual(['Nym reporting.', 'Zhul reporting.', 'All present.']);
   });
 });
+
+describe('[variable] equals= compares WML strings (attribute_value::str)', () => {
+  it('equals=yes matches a variable holding the text "yes", as one set from Lua does', () => {
+    const { manager, pump } = makePump();
+    pump.ctx.variables.set('item_picked', 'yes');
+    manager.addFromWml(parseWml(`
+      [event]
+        name=go
+        [if]
+          [variable]
+            name=item_picked
+            equals=yes
+          [/variable]
+          [then]
+            [set_variable]
+              name=took
+              value=1
+            [/set_variable]
+          [/then]
+        [/if]
+        [if]
+          [variable]
+            name=item_picked
+            not_equals=no
+          [/variable]
+          [then]
+            [set_variable]
+              name=not_no
+              value=1
+            [/set_variable]
+          [/then]
+        [/if]
+      [/event]
+    `).child('event')!);
+    pump.fire('go');
+    expect([pump.ctx.variables.getNumber('took'), pump.ctx.variables.getNumber('not_no')]).toEqual([1, 1]);
+  });
+});
