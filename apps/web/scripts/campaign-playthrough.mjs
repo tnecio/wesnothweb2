@@ -62,7 +62,7 @@ try {
 
     try {
       await waitBoardReady(page);
-      await skipToPlay(page);
+      await skipToPlay(page, 900000);
       // Some campaigns open with a cutscene scenario and long dialogue: minutes at this VM's frame rate.
       await untilPlayable(page, 900000);
     } catch (e) {
