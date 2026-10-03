@@ -34,7 +34,15 @@ describe.skipIf(ids.length === 0)('upstream AI test scenarios', () => {
         },
       });
       await session.runStartupEvents();
-      for (let turn = 0; turn < TURNS && !session.scenarioResult; turn++) await session.endTurn();
+      // Side by side: an AI side plays, then endTurn(0) passes the turn on, with a yield in between -- a whole
+      // round in one endTurn() can block the worker past vitest's one-minute RPC timeout.
+      for (let guard = 0; guard < 200 && !session.scenarioResult && session.turnNumber <= TURNS; guard++) {
+        const team = session.board.getTeam(session.activeSide);
+        if (team && (team.controller === 'ai' || team.controller === 'network_ai')) session.playAiSide(session.activeSide, []);
+        if (session.scenarioResult) break;
+        await session.endTurn(0);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
       expect(problems).toEqual([]);
     });
   }
