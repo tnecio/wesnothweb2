@@ -510,6 +510,634 @@
       "assetDir": "Under_the_Burning_Suns"
     },
     {
+      "id": "the_hammer_of_thursagan",
+      "firstScenario": "01_At_the_East_Gate",
+      "wesnothId": "The_Hammer_of_Thursagan",
+      "abbrev": "THoT",
+      "define": "CAMPAIGN_THE_HAMMER_OF_THURSAGAN",
+      "assetDir": "The_Hammer_of_Thursagan",
+      "name": {
+        "t": [
+          [
+            "wesnoth-thot",
+            "The Hammer of Thursagan"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-thot",
+            "In the first years of the Northern Alliance, an expedition from Knalga seeks out their kin at Kal Kartha and to learn the fate of the legendary Hammer of Thursagan. The perils of their journey through the wild Northlands, though great, pale beside the evil they will face at its end.\n\n"
+          ],
+          [
+            "wesnoth-thot",
+            "(Intermediate level, 9 scenarios.)"
+          ]
+        ]
+      },
+      "icon": "items/hammer-runic.png",
+      "image": "data/campaigns/The_Hammer_of_Thursagan/images/campaign_image.png",
+      "rank": 80,
+      "startYear": "550 YW",
+      "endYear": "551 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-thot",
+                "Easy"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-thot",
+                "1x enemies"
+              ]
+            ]
+          },
+          "image": "units/dwarves/miner.png~RC(magenta>red)"
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-thot",
+                "Normal"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-thot",
+                "2x enemies"
+              ]
+            ]
+          },
+          "image": "units/dwarves/fighter.png~RC(magenta>red)",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-thot",
+                "Hard"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-thot",
+                "3x enemies"
+              ]
+            ]
+          },
+          "image": "units/dwarves/steelclad.png~RC(magenta>red)"
+        },
+        {
+          "define": "NIGHTMARE",
+          "label": {
+            "t": [
+              [
+                "wesnoth-thot",
+                "Deadly"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-thot",
+                "4x enemies"
+              ]
+            ]
+          },
+          "image": "units/dwarves/lord.png~RC(magenta>red)"
+        }
+      ]
+    },
+    {
+      "id": "northern_rebirth",
+      "firstScenario": "01_Breaking_the_Chains",
+      "wesnothId": "Northern_Rebirth",
+      "abbrev": "NR",
+      "define": "CAMPAIGN_NORTHERN_REBIRTH",
+      "assetDir": "Northern_Rebirth",
+      "name": {
+        "t": [
+          [
+            "wesnoth-nr",
+            "Northern Rebirth"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-nr",
+            "For the people of Dwarven Doors the choice was stark: either drudge as downtrodden slaves for the orcs until the end of their brief and miserable lives, or risk all for freedom and rise up against their cruel overlords. Little did they suspect that their struggle would be the hinge of great events that might restore the Northlands to the glory they had once known.\n\n"
+          ],
+          [
+            "wesnoth-nr",
+            "(Expert level, 13 scenarios.)"
+          ]
+        ]
+      },
+      "icon": "scenery/dwarven-doors-closed.png",
+      "background": "data/campaigns/The_Rise_Of_Wesnoth/images/story/trow_story_02-The_Fall.jpg",
+      "rank": 210,
+      "startYear": "534 YW",
+      "endYear": "535 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-nr",
+                "Spearman"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-nr",
+                "Challenging"
+              ]
+            ]
+          },
+          "image": "units/human-loyalists/spearman.png~RC(magenta>red)",
+          "default": true
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-nr",
+                "Swordsman"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-nr",
+                "Difficult"
+              ]
+            ]
+          },
+          "image": "units/human-loyalists/swordsman.png~RC(magenta>red)"
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-nr",
+                "Royal Guard"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-nr",
+                "Nightmare"
+              ]
+            ]
+          },
+          "image": "units/human-loyalists/royalguard.png~RC(magenta>red)"
+        }
+      ]
+    },
+    {
+      "id": "winds_of_fate",
+      "firstScenario": "01_The_Hunt",
+      "wesnothId": "Winds_of_Fate",
+      "abbrev": "WoF",
+      "define": "CAMPAIGN_WINDS_OF_FATE",
+      "assetDir": "Winds_of_Fate",
+      "name": {
+        "t": [
+          [
+            "wesnoth-wof",
+            "Winds of Fate"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-wof",
+            "As the once plentiful hunting grounds of Morogor slip below the waves, war looms between drakes driven rogue by hunger and those still honorable. Yet the winds of fate may be shifting, for inspired by legends of vast far away lands, a pack of fledgling hunters makes ready to lead their kind on a journey towards salvation."
+          ],
+          "\n\n",
+          [
+            "wesnoth-wof",
+            "<i>Features XP-based recall costs and frequent scenarios with no turn limits.</i>"
+          ],
+          "\n",
+          [
+            "wesnoth-wof",
+            "(Hard level, 11 scenarios.)"
+          ]
+        ]
+      },
+      "icon": "units/drakes/inferno-fly-2-upstroke.png~CROP(0,0,72,72)~RC(magenta>red)",
+      "image": "data/core/images/portraits/drakes/inferno.webp~SCALE(350,350)",
+      "background": "story/landscape-mountains-05.webp",
+      "rank": 152,
+      "startYear": "3 YW",
+      "endYear": "4 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-wof",
+                "Aspirant"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-wof",
+                "Easy"
+              ]
+            ]
+          },
+          "image": "units/drakes/burner-fly-1.png~CROP(0,0,72,72)~RC(magenta>red)"
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-wof",
+                "Intendant"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-wof",
+                "Normal"
+              ]
+            ]
+          },
+          "image": "units/drakes/fire-fire-se-1.png~RC(magenta>red)",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-wof",
+                "Dominant"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-wof",
+                "Hard"
+              ]
+            ]
+          },
+          "image": "units/drakes/inferno-fire-se-3.png~RC(magenta>red)"
+        },
+        {
+          "define": "NIGHTMARE",
+          "label": {
+            "t": [
+              [
+                "wesnoth-wof",
+                "Ancestor"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-wof",
+                "Nightmare"
+              ]
+            ]
+          },
+          "image": "units/drakes/armageddon-melee-6.png~CROP(0,19,62,64)~RC(magenta>red)"
+        }
+      ]
+    },
+    {
+      "id": "of_pearls_and_pirates",
+      "firstScenario": "01_Pirates",
+      "wesnothId": "Of_Pearls_and_Pirates",
+      "abbrev": "PaP",
+      "define": "CAMPAIGN_PEARLS_AND_PIRATES",
+      "assetDir": "Of_Pearls_and_Pirates",
+      "name": {
+        "t": [
+          [
+            "wesnoth-pap",
+            "Of Pearls and Pirates"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-pap",
+            "A sleepy fishing village on Wesnoth’s west coast finds itself suddenly beset by corsairs. With requests for royal aid falling on deaf ears, the villagers must join forces with the local merfolk and bring the fight to the pirates."
+          ],
+          "\n\n",
+          [
+            "wesnoth-pap",
+            "(Novice level, 5 scenarios.)"
+          ]
+        ]
+      },
+      "icon": "units/transport/pirate-galleon.png",
+      "rank": 15,
+      "startYear": "471 YW",
+      "endYear": "472 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-pap",
+                "Easy"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-pap",
+                "1x enemies, 70% XP"
+              ]
+            ]
+          },
+          "image": "units/human-peasants/woodsman.png~RC(magenta>red)"
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-pap",
+                "Normal"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-pap",
+                "2x enemies, 90% XP"
+              ]
+            ]
+          },
+          "image": "units/human-loyalists/bowman.png~RC(magenta>red)",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-pap",
+                "Hard"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-pap",
+                "3x enemies, 100% XP"
+              ]
+            ]
+          },
+          "image": "units/human-loyalists/longbowman.png~RC(magenta>red)"
+        },
+        {
+          "define": "NIGHTMARE",
+          "label": {
+            "t": [
+              [
+                "wesnoth-pap",
+                "Deadly"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-pap",
+                "4x enemies, 100% XP"
+              ]
+            ]
+          },
+          "image": "units/human-loyalists/masterbowman.png~RC(magenta>red)"
+        }
+      ]
+    },
+    {
+      "id": "dusk_of_dawn",
+      "firstScenario": "00_Being_Born",
+      "wesnothId": "Dusk_of_Dawn",
+      "abbrev": "DoD",
+      "define": "CAMPAIGN_DUSK_OF_DAWN",
+      "assetDir": "Dusk_of_Dawn",
+      "name": {
+        "t": [
+          [
+            "wesnoth-dod",
+            "Dusk of Dawn"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-dod",
+            "Deep underneath the Heart Mountains, a new tribe of trolls awakens. Help them grow and eventually fulfill Ougl Firstborn’s biggest dream."
+          ],
+          "\n\n<i>",
+          [
+            "wesnoth-dod",
+            "This is an exerpt from the Book of Crelanu, as transcribed by the Weldyn Royal Scholars Society."
+          ],
+          "</i>\n\n",
+          [
+            "wesnoth-dod",
+            "(Novice level, 4 scenarios)"
+          ]
+        ]
+      },
+      "icon": "data/campaigns/Dusk_of_Dawn/images/campaign_icon.png",
+      "background": "data/campaigns/Dusk_of_Dawn/images/background.png",
+      "rank": 75,
+      "startYear": "16 YW",
+      "endYear": "17 YW",
+      "difficulties": [
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-dod",
+                "Spark"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-dod",
+                "Easy"
+              ]
+            ]
+          },
+          "image": "units/monsters/fireghost/fireghost-defend.png~RC(magenta>brightorange)",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-dod",
+                "Flame"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-dod",
+                "Normal"
+              ]
+            ]
+          },
+          "image": "units/monsters/fireghost/fireghost-ranged2.png~RC(magenta>brightorange)"
+        }
+      ]
+    },
+    {
+      "id": "descent_into_darkness",
+      "firstScenario": "01_Saving_Parthyn",
+      "wesnothId": "Descent_Into_Darkness",
+      "abbrev": "DiD",
+      "define": "CAMPAIGN_DESCENT",
+      "assetDir": "Descent_Into_Darkness",
+      "name": {
+        "t": [
+          [
+            "wesnoth-did",
+            "Descent into Darkness"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-did",
+            "The northern frontier town of Parthyn is annually raided by neighboring tribes of orcs. Malin Keshar, an outcast mage, seeks to defend his home and wreak vengeance on the orcs by any means necessary, even if it means sacrificing his own soul in the process.\n\n"
+          ],
+          [
+            "wesnoth-did",
+            "(Intermediate level, 10 scenarios.)"
+          ]
+        ]
+      },
+      "icon": "data/campaigns/Descent_Into_Darkness/images/units/dark-mage.png~RC(magenta>red)",
+      "background": "data/campaigns/The_Rise_Of_Wesnoth/images/story/trow_intro_03.webp",
+      "rank": 100,
+      "year": "389 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-did",
+                "Neophyte"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-did",
+                "Easy"
+              ]
+            ]
+          },
+          "image": "units/undead-necromancers/adept.png~RC(magenta>black)"
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-did",
+                "Evoker"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-did",
+                "Normal"
+              ]
+            ]
+          },
+          "image": "units/undead-necromancers/dark-sorcerer.png~RC(magenta>black)",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-did",
+                "Summoner"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-did",
+                "Challenging"
+              ]
+            ]
+          },
+          "image": "units/undead-necromancers/lich.png~RC(magenta>black)"
+        }
+      ]
+    },
+    {
       "id": "synthetic_combat",
       "name": "[Debug] Combat",
       "description": "Two adjacent leaders on a tiny grassland map -- for fast combat-math debugging, no setup turns needed.",

@@ -1506,7 +1506,7 @@
       /** Phase 22: the hexes "Show Enemy Moves" is showing, or null when it isn't. */
       enemyReach: () => enemyReach?.hexes ?? null,
       /** Phase 28b: what the pointer's order preview is showing. */
-      movementPreview: () => ({ route, attackIndicator, hoverReach: hoverReach?.length ?? null, pointerHex, canAct: canAct(), phase }),
+      movementPreview: () => ({ route, attackIndicator, hoverReach: hoverReach?.length ?? null, pointerHex, canAct: canAct(), phase, eventsRunning, turnStarting, message: currentMessage !== null, guiDialog: currentGuiDialog !== null }),
       /** The audio engine, so a check can watch what is played when. */
       audio,
       /** Whether another side's turn is being computed or shown ('thinking'/'animating'), else null. */

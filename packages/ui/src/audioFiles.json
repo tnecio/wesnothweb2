@@ -44,6 +44,9 @@
    "victory2.ogg",
    "wanderer.ogg",
    "weight_of_revenge.ogg"
+  ],
+  "Winds_of_Fate": [
+   "scary_ambient_wind.ogg"
   ]
  },
  "sounds": {
@@ -350,6 +353,17 @@
    "tauroch-hit-1.ogg",
    "tauroch-hit-2.ogg",
    "tauroch-hit-3.ogg"
+  ],
+  "The_Hammer_of_Thursagan": [
+   "skill-illusion-quiet.wav",
+   "unlock.ogg"
+  ],
+  "Northern_Rebirth": [
+   "gate-fall.ogg"
+  ],
+  "Winds_of_Fate": [
+   "gust.wav",
+   "wind.wav"
   ]
  }
 }
