@@ -6235,3 +6235,57 @@ shipped without its campaigns' translations into the other languages); they come
   - `campaign-playthrough.mjs` (new `--scenario` for mid-campaign starts) on Secrets of the Ancients, Eastern
     Invasion and Under the Burning Suns 05 and 08 (10, a long cutscene of about 58 lines and moves, outlasts
     15 minutes at this VM's frame rate; it runs through headless).
+
+## 2026-10-03: Phase 28c, batch B4 -- Heir to the Throne, HttT Classic, The Deceiver's Gambit
+
+Heir to the Throne (35 scenarios), Heir to the Throne Classic (31) and The Deceiver's Gambit (20) are
+registered, the last as two campaigns as upstream has them (part II starts at scenario 7). With them, every
+mainline single-player campaign except World Conquest ships. Several of the fixes below change campaigns
+already shipped.
+
+**Engine:**
+- **Event priority ran backwards.** Upstream stable-sorts handlers over their reversed range, so the highest
+  `priority=` runs first; the port ran the lowest first. HttT's `priority=-50` prestarts (storing the units
+  the others create) ran before them. Campaigns already shipped with `priority=`: EI, OPP, SoF, TSG, UtBS.
+- **Location filters** gained the rest of `terrain_filter::match_internal`. `[filter_adjacent_location]` was
+  ignored, so it matched anything: HttT Classic 7's ambush placement found no hex. Also new: `[filter_owner]`,
+  `find_in=`, `area=`, `time_of_day=`/`time_of_day_id=` and `location_id=`, reading the game state through a
+  filter environment the session installs (upstream's `filter_context`).
+- **Clearing an array element.** `[clear_variable] name=locs[3]` did nothing. TDG's blizzard empties an
+  array that way in a `[while]`, so TDG 7's opening ran for most of an hour headless.
+- **Leaders and recall lists.** A side's leader with no hex for it goes to the recall list (HttT 1's
+  Konrad), as `unit_creator` does. Snapshots now carry recall lists at all: a `[side]`'s
+  `[unit] x,y=recall` was lost before.
+- **`rand=`** skips empty entries (`utils::split`); HttT 26 spawned units of no type.
+- **`[sound] name=""`** plays nothing; only a missing name is an error.
+
+**Lua and dialogs:**
+- **`wesnoth.units.create_animator`:** add/run/clear, played as one `animateUnits` beat, each text floating
+  over its unit.
+- **`filesystem.have_asset`/`image_size`:** answered from the map files and image sizes the snapshot carries
+  (HttT's seasonal map variants, whose names its Lua builds; `[multihex_image]`). `[replace_map]` reads a
+  `map_file=` that could not be inlined.
+- **`wesnoth.audio.play`.**
+- **Mouse callbacks:** the `game_events` callbacks default to doing nothing, as upstream. `on_mouse_action`
+  runs on a hex click and `on_mouse_move` when the pointer enters a hex, only when content set one. TDG casts
+  spells on a double-click on Delfador.
+- **Gui:**
+  - buttons close as upstream (`return_value`, else ok/cancel by id, else 0, which keeps the dialog open);
+    `on_button_click` runs first and may close the window (`gui.widget.close`);
+  - callbacks get their widget;
+  - `[menu_button]`, `[rich_label]`, `enabled`/`type`, and `widget:find()`.
+  - SotA's help buttons used to close its recruit dialog.
+
+**Tooling:**
+- Scenario ids are read from the `[scenario]` itself (multi-key assignments, `#define`s) and, when a macro
+  sets one (HttT's `{MAP_DYNAMIC <id>}`), by preprocessing the file.
+- `build-campaigns` picks the `[campaign]` block by `first_scenario` and loads the theme macros.
+- `rebuild-snapshots` records the inputs as the build read them.
+
+**Checks:**
+- **Tests:** all suites pass. `campaigns.test.ts` opens every B4 scenario; HttT 1 and TDG 0 play to their end
+  AI against AI.
+- **Expected problems when started alone:** most HttT scenarios read state the overworld (00) leaves
+  (`bm_tod`, stored heroes); `carryoverPatterns` lists those. Four TDG openings miss a stored Delfador or Deoran.
+- **New unit tests:** location filters, priority order, indexed clears, the animator, mouse callbacks, the
+  gui changes, `[unit]` recall placement, `rand=`.
