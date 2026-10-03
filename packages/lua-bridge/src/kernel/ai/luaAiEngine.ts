@@ -19,6 +19,7 @@ import { findLocations, unitMatchesFilter } from '@wesnothweb2/engine/src/events
 import { reachableHexes } from '@wesnothweb2/engine/src/pathfind/pathfind.js';
 import { CandidateAction, BAD_SCORE } from '@wesnothweb2/engine/src/ai/composite/rca.js';
 import type { AiEngine } from '@wesnothweb2/engine/src/ai/composite/aiComposite.js';
+import { FallbackAiToHumanError } from '@wesnothweb2/engine/src/ai/manager.js';
 import type { AiContext } from '@wesnothweb2/engine/src/ai/context.js';
 import type { Stage } from '@wesnothweb2/engine/src/ai/composite/stage.js';
 import type { MoveMap } from '@wesnothweb2/engine/src/ai/moveMaps.js';
@@ -86,6 +87,8 @@ export class LuaAiEngine implements AiEngine {
   private readonly k: LuaKernel;
   private readonly units: LuaUnits;
   private loadDepth = 0;
+  /** Set by `ai.fallback_human()` until `handle` turns it into `FallbackAiToHumanError`. */
+  private fallbackRequested = false;
 
   constructor(
     private readonly runtime: LuaRuntime,
@@ -268,9 +271,13 @@ export class LuaAiEngine implements AiEngine {
           this.k.pcall(n, wantResult ? 1 : 0);
           if (wantResult) result = lua.lua_tonumber(L, -1) || 0;
         } catch (e) {
-          this.k.log('error', `Lua AI: ${(e as Error).message}`);
+          if (!this.fallbackRequested) this.k.log('error', `Lua AI: ${(e as Error).message}`);
         }
         lua.lua_settop(L, top);
+        if (this.fallbackRequested) {
+          this.fallbackRequested = false;
+          throw new FallbackAiToHumanError();
+        }
         return result;
       }),
     );
@@ -380,7 +387,12 @@ export class LuaAiEngine implements AiEngine {
       stopunit_all: stopunit(true, true, true),
       stopunit_attacks: stopunit(true, false, true),
       stopunit_moves: stopunit(true, true, false),
-      fallback_human: (T) => lauxlib.luaL_error(T, to_luastring('ai.fallback_human is not available in this port')),
+      // `cfun_ai_fallback_human` throws past Lua to `play_ai_turn`: here a Lua error, turned into the
+      // exception once the call is back out of Lua (`handle`).
+      fallback_human: (T) => {
+        this.fallbackRequested = true;
+        return lauxlib.luaL_error(T, to_luastring('ai.fallback_human'));
+      },
     };
 
     const side = () => this.contexts.get(ctx);

@@ -37,6 +37,7 @@ import type { Unit } from '../../model/Unit.js';
 import { unitMatchesFilter } from '../../events/filter.js';
 import type { AiContext } from '../context.js';
 import type { Stage } from './stage.js';
+import { FallbackAiToHumanError } from '../fallback.js';
 
 export const BAD_SCORE = 0;
 export const DEFAULT_MAX_SCORE = 1e7;
@@ -153,6 +154,7 @@ export class RcaStage implements Stage {
         try {
           score = ca.evaluate();
         } catch (e) {
+          if (e instanceof FallbackAiToHumanError) throw e;
           this.ctx.host.log('error', `candidate_action ${ca.id} evaluate() threw: ${String(e)}`);
           ca.disable();
           continue;
@@ -168,6 +170,7 @@ export class RcaStage implements Stage {
         try {
           best.execute();
         } catch (e) {
+          if (e instanceof FallbackAiToHumanError) throw e;
           this.ctx.host.log('error', `candidate_action ${best.id} execute() threw: ${String(e)}`);
           best.disable();
           // A throw is treated like "lied about having a move": disabled, but OTHER candidate actions still deserve a

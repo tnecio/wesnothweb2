@@ -27,6 +27,9 @@ import { AiComposite, buildCandidateAction, buildStagesFromConfigs, createAiComp
 import { RcaStage } from './composite/rca.js';
 import { buildGoalsFromConfigs } from './composite/goal.js';
 import { createDefaultCandidateActionRegistry } from './default/registry.js';
+import { FallbackAiToHumanError } from './fallback.js';
+
+export { FallbackAiToHumanError };
 
 export type ModifyAiActionKind = 'add' | 'change' | 'delete' | 'try_delete';
 
@@ -175,9 +178,23 @@ export class AiManager {
   playTurn(side: number): AiAction[] {
     const { ctx, composite } = this.getOrCreate(side);
     composite.newTurn();
-    composite.playTurn();
+    this.fellBack.delete(side);
+    try {
+      composite.playTurn();
+    } catch (e) {
+      // `playsingle_controller::play_ai_turn`: the turn stops and the caller hands the side to a human.
+      if (!(e instanceof FallbackAiToHumanError)) throw e;
+      this.fellBack.add(side);
+    }
     return ctx.drainActionLog();
   }
+
+  /** Whether `side`'s last turn ended in `ai.fallback_human()` (the session then makes the side human). */
+  fellBackToHuman(side: number): boolean {
+    return this.fellBack.has(side);
+  }
+
+  private readonly fellBack = new Set<number>();
 
   /**
    * `wesnoth.sides.append_ai` (`intf_append_ai`), which `[modify_side][ai]` uses: the block's simplified

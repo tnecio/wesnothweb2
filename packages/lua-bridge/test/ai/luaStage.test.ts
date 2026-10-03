@@ -54,4 +54,21 @@ describe('a Lua AI stage', () => {
     expect(game.logs.join('\n')).toBe('');
     expect(game.unitAt(5, 5)?.id).toBe('Urudin');
   });
+
+  it('ai.fallback_human() ends the turn there and asks for the side to go to a human, with nothing logged', () => {
+    const ai = retreatAi();
+    const fallback = ai.children('stage')[0]!;
+    fallback.setAttribute('code', 'ai.fallback_human()\n(...):retreat()');
+    const game = makeAiGame(rows(8), [
+      { type: 'Orcish Warrior', side: 1, x: 5, y: 5, hp: 10, canrecruit: true },
+      { type: 'Spearman', side: 2, x: 8, y: 8 },
+    ], { aiBlocks: (s) => (s === 1 ? [ai] : []) });
+    game.board.unitsForSide(1)[0]!.id = 'Urudin';
+    game.playTurn(1);
+    expect(game.logs.join('\n')).toBe('');
+    expect(game.manager.fellBackToHuman(1)).toBe(true);
+    expect(game.unitAt(5, 5)?.id).toBe('Urudin');
+    game.playTurn(2);
+    expect(game.manager.fellBackToHuman(2)).toBe(false);
+  });
 });
