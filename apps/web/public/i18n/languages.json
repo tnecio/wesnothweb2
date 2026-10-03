@@ -48,7 +48,9 @@
     "wesnoth-sotbe",
     "wesnoth-sof",
     "wesnoth-sota",
-    "wesnoth-ei"
+    "wesnoth-ei",
+    "wesnoth-httt",
+    "wesnoth-tdg"
    ]
   },
   {
@@ -82,7 +84,10 @@
     "wesnoth-sotbe",
     "wesnoth-sof",
     "wesnoth-sota",
-    "wesnoth-ei"
+    "wesnoth-ei",
+    "wesnoth-h2tt",
+    "wesnoth-httt",
+    "wesnoth-tdg"
    ]
   },
   {
@@ -126,7 +131,10 @@
     "wesnoth-sotbe",
     "wesnoth-sof",
     "wesnoth-sota",
-    "wesnoth-ei"
+    "wesnoth-ei",
+    "wesnoth-h2tt",
+    "wesnoth-httt",
+    "wesnoth-tdg"
    ]
   },
   {
@@ -191,7 +199,10 @@
     "wesnoth-sotbe",
     "wesnoth-sof",
     "wesnoth-sota",
-    "wesnoth-ei"
+    "wesnoth-ei",
+    "wesnoth-h2tt",
+    "wesnoth-httt",
+    "wesnoth-tdg"
    ]
   },
   {
@@ -223,7 +234,9 @@
     "wesnoth-sotbe",
     "wesnoth-sof",
     "wesnoth-sota",
-    "wesnoth-ei"
+    "wesnoth-ei",
+    "wesnoth-httt",
+    "wesnoth-tdg"
    ]
   },
   {
@@ -256,7 +269,10 @@
     "wesnoth-sotbe",
     "wesnoth-sof",
     "wesnoth-sota",
-    "wesnoth-ei"
+    "wesnoth-ei",
+    "wesnoth-h2tt",
+    "wesnoth-httt",
+    "wesnoth-tdg"
    ]
   },
   {
@@ -287,7 +303,8 @@
     "wesnoth-sotbe",
     "wesnoth-sof",
     "wesnoth-sota",
-    "wesnoth-ei"
+    "wesnoth-ei",
+    "wesnoth-httt"
    ]
   },
   {
@@ -317,7 +334,8 @@
     "wesnoth-sotbe",
     "wesnoth-sof",
     "wesnoth-sota",
-    "wesnoth-ei"
+    "wesnoth-ei",
+    "wesnoth-httt"
    ]
   },
   {
@@ -348,7 +366,9 @@
     "wesnoth-sotbe",
     "wesnoth-sof",
     "wesnoth-sota",
-    "wesnoth-ei"
+    "wesnoth-ei",
+    "wesnoth-httt",
+    "wesnoth-tdg"
    ]
   }
  ]
