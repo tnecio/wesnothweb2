@@ -6179,3 +6179,28 @@ and playable, built the same way as B1. What they needed, and what turned up on 
     lua-bridge tests for Lua stages and `ai.fallback_human`.
   - `campaign-playthrough.mjs` on the four, and again on Winds of Fate and Of Pearls and Pirates after the
     `[leader]` fix: all pass. `main-menu-playthrough.mjs` expects fifteen campaigns.
+
+## 2026-10-03: Plague fixes (playtest report)
+
+Reported: a player's unit killed by a Walking Corpse or Soulless during the AI's turn did not turn into a
+Walking Corpse, and should become the matching variant (a merman a swimming corpse, and so on). A new debug
+campaign, `synthetic-campaigns/plague` ("[Debug] Plague"), puts twelve player units at 1 HP next to AI plague
+units, one per undead variation, plus one on a village and one unplagueable victim; ending turn 1 lets the AI
+kill them.
+
+- **The corpse never took the victim's shape.** Upstream's `attack::unit_killed` applies the victim's
+  `undead_variation` to the new unit and heals it full. The port did not, and only read a type's own
+  `undead_variation=`, while most come from the race (`unit_type::build_full`). Both are ported, with the
+  unit-level override, the `unplagueable` check, an empty plague `type=` meaning the killer's own type, and
+  the corpse facing away from its killer.
+- **The board drew every unit as its base type.** Its sprite, side-panel image and animations ignored
+  `unit.variation`, so even a correct corpse looked like the plain Walking Corpse. They now come from the
+  variation sub-type (`create_sub_type`), and the attack animations record each fighter's variation.
+- **Must-have traits.** A unit placed without rolled traits (a snapshot's pre-placed units) lacked its type's
+  `availability=musthave` traits, so a Walking Corpse was not unplagueable. Upstream always adds them.
+- In the engine, an AI plague kill did spawn a corpse before these fixes. In the reproduction it then showed
+  as the plain human corpse whatever the victim was. A case where no corpse appears at all was not
+  reproduced.
+- **Checks:** ui `plague.test.ts`: the AI turn raises each victim in its own variation at full HP, none on a
+  village or for an unplagueable victim, and a corpse is drawn and animated as its variation. Browser: after
+  the AI turn the board shows dwarf, mounted, drake, troll, saurian, wose and gryphon corpses.
