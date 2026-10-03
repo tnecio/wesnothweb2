@@ -6148,3 +6148,34 @@ browser found general bugs instead.
 - **Recall list missing after loading a scenario-2 save:** not reproduced. A save made in Dead Water 2 after
   carrying over from 1 keeps all six recall-list units when loaded from the page URL, as the scenario-start
   save, or through the in-game Load dialog. Waiting for the player's save file.
+
+## 2026-10-03: Phase 28c, batch B2 -- four more campaigns
+
+The Rise of Wesnoth, Legend of Wesmere, Son of the Black Eye and Sceptre of Fire (84 scenarios) are registered
+and playable, built the same way as B1. What they needed, and what turned up on the way:
+
+- **A `[side]`'s `[leader]` children were ignored (also in the shipped campaigns).** Upstream's
+  `team_builder::handle_leader` makes each one a unit of the side, `canrecruit=yes` unless it says otherwise,
+  at its x,y, else the starting position, else the nearest free hex. Without it Winds of Fate started with no
+  Gorlack at all, Of Pearls and Pirates 3-5 without their enemy leaders, and Sceptre of Fire 1 without its
+  second elvish leader (whose event then failed). Carryover now treats a `[leader]`'s id like a `[unit]`'s.
+- **`save_id` and `persistent`** default as upstream (the side's id, then its `[leader]`'s; a human side is
+  persistent) and now survive the snapshot. Lua's `side.save_id` was empty and every side persistent; Legend
+  of Wesmere's `[persistent_carryover_store]` reads both.
+- **Lua AI stages.** `[stage] engine=lua` (`lua_stage_wrapper`) was built as an empty RCA stage and did
+  nothing; Legend of Wesmere 3 retreats its orc leader with one. With them, `ai.fallback_human()` became
+  reachable (one of upstream's AI test scenarios ends its turn with it): the AI's turn stops and the side
+  becomes human, as `play_ai_turn` does.
+- **`wesnoth.add_known_unit`** (Son of the Black Eye): checks the type, as upstream; every type already counts
+  as encountered in the port's help.
+- **Scenario index.** `rebuild-snapshots.mjs` indexed a scenario by the first `id=` in its file; Legend of
+  Wesmere 21 opens with a macro naming `id=Kalenz`. It now takes the `[scenario]`'s own.
+- **Checks:**
+  - `campaigns.test.ts`: every scenario opens; one per campaign plays to its end AI against AI; seven
+    openings miss what an earlier scenario carried over (Lady Jessene, Landar, Alanin, Krawg) and report what
+    upstream would. New tests: Sceptre of Fire's `[rune_choice]` (a dwarf on a rune chest is offered the rune
+    at its price), Legend of Wesmere's `[replace_map_section]`/`[shift_labels]` (the map grows around the
+    units when Kalenz arrives in 3) and `[persistent_carryover_store]`; engine tests for `[leader]`,
+    lua-bridge tests for Lua stages and `ai.fallback_human`.
+  - `campaign-playthrough.mjs` on the four, and again on Winds of Fate and Of Pearls and Pirates after the
+    `[leader]` fix: all pass. `main-menu-playthrough.mjs` expects fifteen campaigns.

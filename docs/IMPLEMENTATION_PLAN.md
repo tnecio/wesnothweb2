@@ -1873,7 +1873,7 @@ below exist yet.
 **Status: resumed 2026-10-01** (user's call, ahead of achievements); **C1 delivered 2026-10-01** (see
 `PROGRESS.md`: the shared tags, scenario end events, floating labels, unit overlays, campaign terrain and
 generated caves; the generated caves are made at build time, one per scenario, by the user's call); **B1 delivered 2026-10-03**
-(six campaigns, 68 scenarios; see `PROGRESS.md`). Plan:
+(six campaigns, 68 scenarios; see `PROGRESS.md`); **B2 delivered 2026-10-03** (four campaigns, 84 scenarios). Plan:
 - **C1, shared gaps**, before any campaign:
   - the missing tags (`[set_extra_recruit]`, `[do_command]`, `[find_path]`, `[end_turn]`,
     `[petrify]`/`[unpetrify]`, `[story]`, `[print]`, `[proceed_to_next_scenario]`);
