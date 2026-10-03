@@ -276,6 +276,9 @@ export class Unit {
     // `unit::init`: the type's stats, then every modification's effects,
     // then a new unit starts full (`movement_ = max_movement_` and friends).
     this.resetFromType(this.type);
+    // `generate_traits`: a unit always has its type's `availability=musthave` traits (undead, mechanical...),
+    // even one placed without rolled traits.
+    this.addMustHaveTraits();
     this.applyModifications(options.effectEnv ?? {});
     this.hitpoints = this.maxHitpoints;
     this.movesLeft = this.maxMoves;
