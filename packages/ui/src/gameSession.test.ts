@@ -2156,7 +2156,7 @@ describe('GameSession.nextScenarioId: next_scenario=null ends the campaign (Phas
     expect(messages.length).toBeGreaterThan(0);
     expect(session.scenarioResult).toBe('victory');
     expect(session.nextScenarioId).toBeNull();
-    expect(session.endLevelPresentation).toEqual({ endText: undefined, endTextDuration: undefined, endCredits: undefined });
+    expect(session.endLevelPresentation).toEqual({ endText: undefined, endTextDuration: undefined, endCredits: undefined, lingerMode: true, carryoverReport: true });
 
     const first = new GameSession(readScenarioSnapshot(snapshotPath));
     expect(first.nextScenarioId).toBe('02_Flight');

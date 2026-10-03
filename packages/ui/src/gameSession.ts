@@ -1897,9 +1897,11 @@ export class GameSession {
    * ended through `[endlevel]`; null otherwise (e.g. a leader kill), which
    * means upstream's defaults.
    */
-  get endLevelPresentation(): { endText?: string; endTextDuration?: number; endCredits?: boolean } | null {
+  get endLevelPresentation(): { endText?: string; endTextDuration?: number; endCredits?: boolean; lingerMode?: boolean; carryoverReport?: boolean } | null {
     const endLevel = this.eventPump.ctx.endLevel;
-    return endLevel ? { endText: endLevel.endText, endTextDuration: endLevel.endTextDuration, endCredits: endLevel.endCredits } : null;
+    return endLevel
+      ? { endText: endLevel.endText, endTextDuration: endLevel.endTextDuration, endCredits: endLevel.endCredits, lingerMode: endLevel.lingerMode, carryoverReport: endLevel.carryoverReport }
+      : null;
   }
 
   /**
@@ -2571,8 +2573,11 @@ export class GameSession {
 
   /** The side after `side` in turn order, and whether reaching it starts a new turn. */
   private sideAfter(side: number): { next: number; wrapped: boolean } | null {
+    // `skip_empty_sides`: a side with `controller=null` takes no turns. The ending side stays in the list, so
+    // the search starts after it even if it has just been emptied.
     const sides = this.board
       .teams()
+      .filter((t) => t.controller !== 'null' || t.side === side)
       .map((t) => t.side)
       .sort((a, b) => a - b);
     const idx = sides.indexOf(side);

@@ -538,6 +538,16 @@
       .then((json) => (creditsData = json))
       .catch((err) => console.error('[outro] could not load credits.json:', err));
   });
+  /**
+   * `[endlevel] linger_mode=no carryover_report=no` (a cutscene scenario such as Dusk of Dawn's prologue):
+   * upstream neither stays on the map nor shows the victory summary, and goes straight on to the next scenario.
+   */
+  $effect(() => {
+    const presentation = session.endLevelPresentation;
+    if (!continuing && phase === 'ended' && session.scenarioResult === 'victory' && session.nextScenarioId !== null && presentation?.lingerMode === false && presentation.carryoverReport === false) {
+      void continueToNextScenario();
+    }
+  });
   /** Upstream shows the outro only for a victory with no next scenario, and only when `end_credits` is not turned off. */
   const showOutro = $derived(
     phase === 'ended' &&

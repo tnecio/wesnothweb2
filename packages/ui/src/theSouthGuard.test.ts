@@ -91,6 +91,15 @@ describe('The South Guard', () => {
     expect(session.scenarioResult).toBe('victory');
   });
 
+  it("02_Proven_by_the_Sword: side 3 (controller=null) takes no turns, as upstream's skip_empty_sides", async () => {
+    const { session } = start('02_Proven_by_the_Sword');
+    await session.runStartupEvents();
+    expect(session.board.getTeam(3)!.controller).toBe('null');
+    expect(session['sideAfter'](2)).toEqual({ next: 1, wrapped: true });
+    await session.endTurn();
+    expect([session.turnNumber, session.activeSide]).toEqual([2, 1]);
+  });
+
   it('02_Proven_by_the_Sword plays to its end, AI against AI', async () => {
     const { session, problems } = start('02_Proven_by_the_Sword');
     await session.runStartupEvents();

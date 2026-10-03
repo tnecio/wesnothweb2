@@ -118,6 +118,8 @@ export interface EndLevelState {
   endCredits?: boolean;
   /** `carryover_report=` (default yes): whether the victory summary is shown -- and the victory stinger played. */
   carryoverReport?: boolean;
+  /** `linger_mode=` (default yes): whether the player stays on the map before the scenario is left. */
+  lingerMode?: boolean;
   /** `music=`: the tracks to choose the stinger from, in place of the scenario's `victory_music=`/`defeat_music=`. */
   music?: string[];
 }

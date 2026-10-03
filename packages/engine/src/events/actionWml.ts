@@ -1726,6 +1726,7 @@ function actionEndlevel(cfg: WmlConfig, ctx: EventContext): void {
     ...(cfg.hasAttribute('end_text_duration') ? { endTextDuration: Math.min(Math.max(Math.trunc(cfg.getNumber('end_text_duration', 0)), 0), 5000) } : {}),
     ...(cfg.hasAttribute('end_credits') ? { endCredits: cfg.getBoolean('end_credits', true) } : {}),
     carryoverReport: cfg.getBoolean('carryover_report', true),
+    lingerMode: cfg.getBoolean('linger_mode', true),
     ...(cfg.getString('music', '') !== '' ? { music: cfg.getString('music').split(',').map((t) => t.trim()).filter((t) => t !== '') } : {}),
   };
 }

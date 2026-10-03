@@ -30,18 +30,21 @@ function parseSharedVision(cfg: WmlConfig): SharedVision {
   return v === 'shroud' || v === 'none' ? v : 'all';
 }
 
-export type SideController = 'human' | 'ai' | 'network' | 'network_ai' | 'reserved';
+/** `side_controller::type`; `null` is an empty side, which takes no turns (`team::is_empty`). */
+export type SideController = 'human' | 'ai' | 'network' | 'network_ai' | 'reserved' | 'null';
 
-function parseController(str: string): SideController {
+/** `side_controller::get_enum(cfg["controller"]).value_or(side_controller::type::ai)` (`team::team_info::read`). */
+export function parseController(str: string): SideController {
   switch (str) {
     case 'human':
     case 'ai':
     case 'network':
     case 'network_ai':
     case 'reserved':
+    case 'null':
       return str;
     default:
-      return 'human';
+      return 'ai';
   }
 }
 
@@ -151,7 +154,7 @@ export class Team {
       sideName: cfg.getString('side_name', ''),
       faction: cfg.getString('faction', ''),
       saveId: cfg.getString('save_id', ''),
-      controller: parseController(cfg.getString('controller', 'human')),
+      controller: parseController(cfg.getString('controller', '')),
       color: cfg.getString('color', String(side)),
       flag: cfg.getString('flag', ''),
       noLeader: cfg.getBoolean('no_leader', false),
