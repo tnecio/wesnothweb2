@@ -6204,3 +6204,34 @@ kill them.
 - **Checks:** ui `plague.test.ts`: the AI turn raises each victim in its own variation at full HP, none on a
   village or for an unplagueable victim, and a corpse is drawn and animated as its variation. Browser: after
   the AI turn the board shows dwarf, mounted, drake, troll, saurian, wose and gryphon corpses.
+
+## 2026-10-03: Phase 28c, batch B3 -- Under the Burning Suns complete, Secrets of the Ancients, Eastern Invasion
+
+Under the Burning Suns 05-12, Secrets of the Ancients and Eastern Invasion (with its bonus scenario `99_Empire`)
+are registered: 56 more scenarios. B2's story assets, derived images and translations had not been generated (B2
+shipped without its campaigns' translations into the other languages); they come with this batch.
+
+- **Secrets of the Ancients' zombie recruit dialog** needed:
+  - `gui.show_prompt` (`show_message_box`);
+  - `listbox:add_item()`, `item_count` and a row's widgets by id (Lua addresses widgets by path, and a proxy
+    falls back to its child widgets, as upstream's);
+  - `image`/`icon`/`profile` on unit types.
+
+  It also waits for the player inside `wesnoth.dofile`, which now calls with a continuation, and its `postshow`
+  reads the widgets after the dialog closes, so a dialog is kept until `postshow` has run.
+- **`[unit] to_variable=`** stores the new unit instead of placing it (SotA's liches).
+- **`[variable] equals=`** compared JavaScript strings: the parser keeps `yes` as a boolean, so `equals=yes` became
+  "true" and never matched a "yes" stored from Lua. Eastern Invasion's `[item_dialog]` offered items but taking
+  one did nothing. Values compare as upstream's `attribute_value::str()` (yes/no).
+- **Gui widgets' `use_markup`** can be set from Lua (Eastern Invasion's item dialog).
+- **Time-of-day icon:** the top bar now draws it through the image path functions; SotA's 24-hour schedule crops
+  each hour from one image.
+- **Asset build:** the database split holds every snapshot in memory and passed Node's default heap with this
+  batch; it gets 6 GB, and a crash now fails the build (it reported success).
+- **Checks:**
+  - every new scenario opens; one per campaign plays to its end AI against AI;
+  - new tests for `gui.show_prompt`, `add_item`, `use_markup`, `[unit] to_variable=`, `equals=yes`, and Eastern
+    Invasion's Crystal Quiver taken through `[item_dialog]`;
+  - `campaign-playthrough.mjs` (new `--scenario` for mid-campaign starts) on Secrets of the Ancients, Eastern
+    Invasion and Under the Burning Suns 05 and 08 (10, a long cutscene of about 58 lines and moves, outlasts
+    15 minutes at this VM's frame rate; it runs through headless).

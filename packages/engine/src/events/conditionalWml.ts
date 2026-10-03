@@ -63,6 +63,17 @@ function haveUnit(cfg: WmlConfig, ctx: EventContext): boolean {
   return inCounts(matched.length, counts);
 }
 
+/**
+ * A value as `config::attribute_value::str()` gives it: the parser keeps `yes`/`no` as booleans, which print as
+ * yes/no, not JavaScript's true/false. Eastern Invasion's items compare `item_picked equals=yes` against the
+ * "yes" its Lua stored.
+ */
+function wmlString(value: unknown): string {
+  if (value === true) return 'yes';
+  if (value === false) return 'no';
+  return value === undefined || value === null ? '' : String(value);
+}
+
 function variableMatches(cfg: WmlConfig, ctx: EventContext): boolean {
   const name = cfg.getString('name', '');
   if (name === '') {
@@ -70,12 +81,12 @@ function variableMatches(cfg: WmlConfig, ctx: EventContext): boolean {
     return true;
   }
   const value = ctx.variables.get(name);
-  const strValue = value === undefined ? '' : String(value);
+  const strValue = value === undefined ? '' : wmlString(value);
   const numValue = value === undefined ? 0 : Number(value);
   const boolValue = value === undefined ? false : value === true || value === 'yes' || value === 'true' || value === 1 || value === '1';
 
-  if (cfg.hasAttribute('equals')) return strValue === cfg.getString('equals');
-  if (cfg.hasAttribute('not_equals')) return strValue !== cfg.getString('not_equals');
+  if (cfg.hasAttribute('equals')) return strValue === wmlString(cfg.getRaw('equals'));
+  if (cfg.hasAttribute('not_equals')) return strValue !== wmlString(cfg.getRaw('not_equals'));
   if (cfg.hasAttribute('numerical_equals')) return numValue === cfg.getNumber('numerical_equals');
   if (cfg.hasAttribute('numerical_not_equals')) return numValue !== cfg.getNumber('numerical_not_equals');
   if (cfg.hasAttribute('greater_than')) return numValue > cfg.getNumber('greater_than');
@@ -84,7 +95,7 @@ function variableMatches(cfg: WmlConfig, ctx: EventContext): boolean {
   if (cfg.hasAttribute('less_than_equal_to')) return numValue <= cfg.getNumber('less_than_equal_to');
   if (cfg.hasAttribute('boolean_equals')) return boolValue === cfg.getBoolean('boolean_equals');
   if (cfg.hasAttribute('boolean_not_equals')) return boolValue !== cfg.getBoolean('boolean_not_equals');
-  if (cfg.hasAttribute('contains')) return strValue.includes(cfg.getString('contains'));
+  if (cfg.hasAttribute('contains')) return strValue.includes(wmlString(cfg.getRaw('contains')));
 
   ctx.log('error', `[variable] name='${name}' found with no comparison attribute`);
   return true;

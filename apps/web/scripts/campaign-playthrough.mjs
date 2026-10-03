@@ -1,12 +1,14 @@
 /**
  * Phase 28c: a newly added campaign, started the way a player starts it, in a real browser.
  *
- *   node apps/web/scripts/campaign-playthrough.mjs --campaign <id>[,<id>...] [--base http://localhost:5173] [--headed] [--shots dir]
+ *   node apps/web/scripts/campaign-playthrough.mjs --campaign <id>[,<id>...] [--scenario <id>[,<id>...]] [--base http://localhost:5173] [--headed] [--shots dir]
  *
  * For each campaign (its `campaigns.json` id): the title screen's Campaigns dialog, the campaign chosen, Play
  * at its default difficulty; through the story and the opening dialogue to the board; End Turn, the other sides'
  * turns (their dialogue answered) and back to the player's turn 2 -- with no page error and no failed request
- * for the game's own files. `--shots dir` saves the board at turn 1. Exits non-zero if any check fails.
+ * for the game's own files. `--shots dir` saves the board at turn 1. `--scenario` instead opens each named
+ * scenario of the (one) campaign straight from its page URL (`?scenario=`), for ones later in a campaign.
+ * Exits non-zero if any check fails.
  */
 import { chromium } from 'playwright';
 import { confirmEndTurnIfAsked, skipToPlay, untilPlayable, waitBoardReady } from './lib/browserFlows.mjs';
@@ -20,6 +22,10 @@ const base = arg('base', 'http://localhost:5173');
 const shots = arg('shots', null);
 const campaigns = (arg('campaign', '') ?? '').split(',').filter(Boolean);
 if (campaigns.length === 0) throw new Error('usage: campaign-playthrough.mjs --campaign <id>[,<id>...]');
+const scenarios = (arg('scenario', '') ?? '').split(',').filter(Boolean);
+if (scenarios.length > 0 && campaigns.length !== 1) throw new Error('--scenario needs exactly one --campaign');
+/** What each run starts: a campaign from the menu, or one of its scenarios by URL. */
+const runs = scenarios.length > 0 ? scenarios.map((scenario) => ({ id: campaigns[0], scenario })) : campaigns.map((id) => ({ id, scenario: null }));
 
 const failures = [];
 function check(label, ok, detail) {
@@ -29,7 +35,8 @@ function check(label, ok, detail) {
 
 const browser = await chromium.launch({ headless: !args.includes('--headed') });
 try {
-  for (const id of campaigns) {
+  for (const { id: campaignId, scenario } of runs) {
+    const id = scenario ? `${campaignId}/${scenario}` : campaignId;
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     const errors = [];
     const missing = [];
@@ -37,32 +44,36 @@ try {
     page.on('response', (r) => {
       if (r.status() >= 400 && r.url().startsWith(base)) missing.push(`${r.status()} ${r.url().slice(base.length)}`);
     });
-    await page.goto(`${base}/`);
-    await page.waitForSelector('[data-testid="title-help"]', { timeout: 120000 });
-    await page.keyboard.press('c');
-    await page.waitForSelector(`[data-testid="campaign-${id}"]`, { timeout: 30000 });
-    await page.click(`[data-testid="campaign-${id}"]`);
-    await page.click('[data-testid="campaign-play"]');
-    const opened = await page
-      .waitForURL(new RegExp(`/play/${id}`), { timeout: 30000 })
-      .then(() => true)
-      .catch(() => false);
-    check(`${id}: Play opens the campaign`, opened, page.url());
+    if (scenario) {
+      await page.goto(`${base}/play/${campaignId}?scenario=${encodeURIComponent(scenario)}`);
+    } else {
+      await page.goto(`${base}/`);
+      await page.waitForSelector('[data-testid="title-help"]', { timeout: 120000 });
+      await page.keyboard.press('c');
+      await page.waitForSelector(`[data-testid="campaign-${id}"]`, { timeout: 30000 });
+      await page.click(`[data-testid="campaign-${id}"]`);
+      await page.click('[data-testid="campaign-play"]');
+      const opened = await page
+        .waitForURL(new RegExp(`/play/${id}`), { timeout: 30000 })
+        .then(() => true)
+        .catch(() => false);
+      check(`${id}: Play opens the campaign`, opened, page.url());
+    }
 
     try {
       await waitBoardReady(page);
-      await skipToPlay(page);
+      await skipToPlay(page, 900000);
       // Some campaigns open with a cutscene scenario and long dialogue: minutes at this VM's frame rate.
       await untilPlayable(page, 900000);
     } catch (e) {
       check(`${id}: reaches the board and the player's turn`, false, String(e).slice(0, 200));
-      if (shots) await page.screenshot({ path: `${shots}/${id}-stuck.png` });
+      if (shots) await page.screenshot({ path: `${shots}/${id.replace('/', '-')}-stuck.png` });
       await page.close();
       continue;
     }
     const first = await page.evaluate(() => ({ scenario: window.__wesnoth.session.snapshot.scenario.id, turn: window.__wesnoth.session.turnNumber }));
-    check(`${id}: its first scenario reaches the player's turn`, first.turn === 1, JSON.stringify(first));
-    if (shots) await page.screenshot({ path: `${shots}/${id}.png` });
+    check(`${id}: its first scenario reaches the player's turn`, first.turn === 1 && (!scenario || first.scenario === scenario), JSON.stringify(first));
+    if (shots) await page.screenshot({ path: `${shots}/${id.replace('/', '-')}.png` });
 
     await page.getByRole('button', { name: 'End Turn' }).click();
     await confirmEndTurnIfAsked(page);

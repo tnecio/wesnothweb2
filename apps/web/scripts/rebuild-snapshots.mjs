@@ -247,8 +247,14 @@ for (const job of jobs) {
 if (listChanged) fs.writeFileSync(listFile, JSON.stringify(scenarioList, null, 2) + '\n');
 
 // The builder writes complete snapshots; move their shared unit/terrain tables into the database files.
-const split = spawn(process.execPath, ['--import', 'tsx', path.join(repoRoot, 'apps/web/scripts/split-snapshot-databases.mjs')], { cwd: repoRoot, stdio: 'inherit' });
-const splitCode = await new Promise((resolve) => split.on('close', resolve));
+// It holds every snapshot at once (about 1.2 GB of JSON after batch B3): past Node's default heap.
+const split = spawn(
+  process.execPath,
+  ['--max-old-space-size=6144', '--import', 'tsx', path.join(repoRoot, 'apps/web/scripts/split-snapshot-databases.mjs')],
+  { cwd: repoRoot, stdio: 'inherit' },
+);
+// A crash (out of memory, a signal) closes with a null code: a failure, not `process.exit(null)`'s 0.
+const splitCode = await new Promise((resolve) => split.on('close', (code) => resolve(code ?? 1)));
 // Only a full build (every listed scenario) vouches for the whole directory.
 if (splitCode === 0 && wantedIds.length === 0) fs.writeFileSync(hashFile, inputsHash() + '\n');
 process.exit(splitCode);

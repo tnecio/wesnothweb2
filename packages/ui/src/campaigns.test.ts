@@ -28,7 +28,7 @@ interface CampaignCase {
   expectedProblems?: Record<string, readonly string[]>;
 }
 
-/** Batches B1 and B2 (`IMPLEMENTATION_PLAN.md`, Phase 28c). */
+/** Batches B1-B3 (`IMPLEMENTATION_PLAN.md`, Phase 28c); Under the Burning Suns as a whole since B3 added 05-12. */
 const CAMPAIGNS: Record<string, CampaignCase> = {
   The_Hammer_of_Thursagan: { playThrough: '01_At_the_East_Gate' },
   Northern_Rebirth: {
@@ -69,6 +69,9 @@ const CAMPAIGNS: Record<string, CampaignCase> = {
     expectedProblems: { '13_News_from_the_Front': ["error: [unstore_unit]: variable 'landar_store' doesn't exist"] },
   },
   Son_Of_The_Black_Eye: { playThrough: '01_End_of_Peace' },
+  Under_the_Burning_Suns: { playThrough: '05_A_Subterranean_Struggle' },
+  Secrets_of_the_Ancients: { playThrough: '01_Slipping_Away' },
+  Eastern_Invasion: { playThrough: '01_Eastern_Invasion' },
   Sceptre_of_Fire: {
     playThrough: '1_A_Bargain_is_Struck',
     // Alanin and Krawg, stored in earlier scenarios, come back.
@@ -124,7 +127,7 @@ for (const [campaign, spec] of Object.entries(CAMPAIGNS)) {
   });
 }
 
-describe('the B2 campaigns\' own Lua tags', () => {
+describe('the campaigns\' own Lua tags', () => {
   it("Sceptre of Fire's [rune_choice]: a dwarf on a rune chest is offered the rune with its cost in the label", async () => {
     const { session, problems } = start('Sceptre_of_Fire', '1_A_Bargain_is_Struck');
     const offers: string[][] = [];
@@ -181,5 +184,25 @@ describe('the B2 campaigns\' own Lua tags', () => {
     const units = stored!.children('unit');
     expect(units.map((u) => u.getString('id'))).toContain('Kalenz');
     for (const key of ['x', 'y', 'hitpoints', 'moves', 'side']) expect(units[0]!.hasAttribute(key)).toBe(false);
+  });
+
+  it("Eastern Invasion's [item_dialog]: stepping on the Crystal Quiver offers it, and Take gives its abilities", async () => {
+    const { session, problems } = start('Eastern_Invasion', '02_The_Escape_Tunnel');
+    await session.runStartupEvents();
+    const unit = session.board.unitsForSide(1).find((u) => !u.canRecruit) ?? session.board.unitsForSide(1)[0]!;
+    const quiver = Location.fromWml(32, 2);
+    session.board.moveUnit(unit.location, quiver);
+    const shown: string[] = [];
+    session['eventPump'].fire('moveto', quiver, Location.NULL, undefined, (i) => {
+      if (i.kind !== 'guiDialog') return {};
+      shown.push(JSON.stringify(i.dialog.root));
+      return { value: 1 }; // Take
+    });
+    expect(problems).toEqual([]);
+    expect(shown).toHaveLength(1);
+    expect(shown[0]).toContain('Crystal Quiver');
+    expect(shown[0]).toContain('crystal-quiver.png');
+    expect(session['eventPump'].ctx.variables.getString('item_picked')).toBe('yes');
+    expect(unit.abilities.map((a) => a.tag)).toContain('illuminates');
   });
 });

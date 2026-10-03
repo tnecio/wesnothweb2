@@ -15,7 +15,7 @@
    * `Command[]` `GameShell.svelte` hands them, the same way
    * `ContextMenu.svelte`'s right-click menu does.
    */
-  import { imageUrl } from '@wesnothweb2/renderer';
+  import IpfImage from './images/IpfImage.svelte';
   import type { TimeOfDayEntry } from '@wesnothweb2/engine';
   import type { EconomyInfo } from './gameSession.js';
   import { formatHotkey, type Command } from './commands.js';
@@ -156,7 +156,8 @@
     {#if timeOfDay && timeOfDay.id}
       <span class="stat tod" title="{t('Lawful Bonus:')} {timeOfDay.lawfulBonus >= 0 ? '+' : ''}{timeOfDay.lawfulBonus}%">
         {#if timeOfDay.image}
-          <img class="tod-icon" src={imageUrl(timeOfDay.image)} alt="" />
+          <!-- Through the image path functions: Secrets of the Ancients' schedule crops one strip (`~CROP`). -->
+          <IpfImage class="tod-icon" src={timeOfDay.image} />
         {/if}
         <span class="tod-name">{timeOfDay.name}</span>
       </span>
@@ -293,7 +294,7 @@
     align-items: center;
     gap: 0.3rem;
   }
-  .tod-icon {
+  .tod :global(.tod-icon) {
     width: 18px;
     height: 18px;
     object-fit: contain;

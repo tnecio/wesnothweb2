@@ -229,7 +229,9 @@ export function installBase(k: LuaKernel, gameConfig: () => GameConfigValues): v
       lua.lua_rotate(T, 1, -1);
       loadFile(k, T);
       lua.lua_rotate(T, 1, 1);
-      lua.lua_call(T, lua.lua_gettop(T) - 1, lua.LUA_MULTRET);
+      // With a continuation: the file may wait for the player (a gui dialog yields the coroutine here,
+      // where upstream's modal dialogs block), as Secrets of the Ancients' recruit dialog does.
+      lua.lua_callk(T, lua.lua_gettop(T) - 1, lua.LUA_MULTRET, 0, (C: LuaState) => lua.lua_gettop(C));
       return lua.lua_gettop(T);
     },
     // Only used to load package.lua, which replaces it with the real wesnoth.require.

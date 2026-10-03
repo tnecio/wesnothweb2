@@ -30,7 +30,7 @@ import { WmlConfig, type WmlConfigJson } from '@wesnothweb2/engine/src/wml/confi
 import { TString } from '@wesnothweb2/engine/src/i18n/tstring.js';
 import type { ActionHandler, EventContext } from '@wesnothweb2/engine/src/events/context.js';
 import { isFlow, runFlow, type Flow, type InteractionResult, type Responder } from '@wesnothweb2/engine/src/events/interaction.js';
-import { buildGuiDialog, findGuiWidget, GUI_RETVAL, type GuiDialogSpec, type GuiNode } from '@wesnothweb2/engine/src/events/guiDialog.js';
+import { addListboxRow, buildGuiDialog, findGuiWidget, findGuiWidgetByPath, GUI_RETVAL, type GuiDialogSpec, type GuiNode } from '@wesnothweb2/engine/src/events/guiDialog.js';
 import type { Rng } from '@wesnothweb2/engine/src/rng/Rng.js';
 import { MtRng } from '@wesnothweb2/engine/src/rng/MtRng.js';
 import { RngDeterministic } from '@wesnothweb2/engine/src/rng/RngDeterministic.js';
@@ -93,9 +93,20 @@ wesnoth.__gui_callbacks = callbacks
 local CALLBACK_KEYS = { on_modified = true, on_button_click = true, on_left_click = true, callback = true }
 function gui.show_dialog(wml, preshow, postshow)
   local handle = wesnoth.__gui_new(wml)
-  local function widget(id)
+  local widget
+  -- A widget by path (see findGuiWidgetByPath): its properties, else a child widget by id, as upstream's
+  -- widget proxies; a listbox also has add_item().
+  function widget(id)
     return setmetatable({}, {
-      __index = function(_, key) return wesnoth.__gui_get(handle, id, key) end,
+      __index = function(_, key)
+        if key == "add_item" then
+          return function() return widget(id .. "#" .. wesnoth.__gui_add_item(handle, id)) end
+        end
+        local value = wesnoth.__gui_get(handle, id, key)
+        if value ~= nil then return value end
+        if wesnoth.__gui_has(handle, id .. "/" .. key) then return widget(id .. "/" .. key) end
+        return nil
+      end,
       __newindex = function(_, key, value)
         if CALLBACK_KEYS[key] then
           callbacks[handle .. "|" .. id .. "|" .. key] = value
@@ -111,12 +122,45 @@ function gui.show_dialog(wml, preshow, postshow)
   }, { __index = function(_, id) return widget(id) end })
   if preshow then preshow(dialog) end
   local result = wesnoth.__gui_run(handle)
+  -- postshow reads the widgets as they were left, before the dialog is gone (window::show's caller).
   if postshow then postshow(dialog) end
+  wesnoth.__gui_free(handle)
   for key in pairs(callbacks) do
     if key:sub(1, #tostring(handle) + 1) == handle .. "|" then callbacks[key] = nil end
   end
   return result
 end
+
+-- lua_gui2.cpp's show_message_box: a title, the message and the buttons of a style ("" closes on a click,
+-- "ok", "close", "cancel", "ok_cancel", "yes_no", or any other text as one button's label), shown as a
+-- dialog. ok_cancel and yes_no return whether OK/Yes was chosen.
+function gui.show_prompt(title, message, button, markup)
+  local _ = wesnoth.textdomain("wesnoth-lib")
+  if button ~= nil and type(button) ~= "string" then button, markup = nil, button end
+  local style = string.lower(button or "ok")
+  local labels
+  if style == "" or style == "ok" then labels = { { _ "OK", "ok" } }
+  elseif style == "close" then labels = { { _ "Close", "ok" } }
+  elseif style == "cancel" then labels = { { _ "Cancel", "cancel" } }
+  elseif style == "ok_cancel" then labels = { { _ "OK", "ok" }, { _ "Cancel", "cancel" } }
+  elseif style == "yes_no" then labels = { { _ "Yes", "ok" }, { _ "No", "cancel" } }
+  else labels = { { button, "ok" } } end
+  local T = wml.tag
+  local buttons = {}
+  for _, b in ipairs(labels) do
+    table.insert(buttons, T.column { T.button { id = b[2], label = b[1], return_value_id = b[2] } })
+  end
+  local rows = {}
+  if title ~= nil and tostring(title) ~= "" then
+    table.insert(rows, T.row { T.column { T.label { id = "title", definition = "title", label = title, use_markup = markup } } })
+  end
+  table.insert(rows, T.row { T.column { T.label { id = "label", label = message, use_markup = markup, wrap = true } } })
+  table.insert(rows, T.row { T.column { T.grid { T.row(buttons) } } })
+  local result = gui.show_dialog { T.grid(rows) }
+  if style == "ok_cancel" or style == "yes_no" then return result == -1 end
+end
+-- core/gui.lua made its deprecated alias from the placeholder this replaces.
+wesnoth.show_message_box = wesnoth.deprecate_api('wesnoth.show_message_box', 'gui.show_prompt', 1, nil, gui.show_prompt)
 `;
 
 function* openHelpFlow(topic: string): Flow {
@@ -411,6 +455,8 @@ export class LuaRuntime {
         if (typeof label === 'string') lua.lua_pushstring(T, to_luastring(label));
         else k.pushTString(T, TString.fromJSON(label));
       } else if (key === 'id') lua.lua_pushstring(T, to_luastring(widget.id));
+      else if (key === 'item_count' && widget.type === 'listbox') lua.lua_pushinteger(T, widget.rows.length);
+      else if (key === 'use_markup' && (widget.type === 'label' || widget.type === 'button')) lua.lua_pushboolean(T, widget.markup);
       else return 0;
       return 1;
     });
@@ -429,9 +475,24 @@ export class LuaRuntime {
         const ts = k.tstringAt(T, 4);
         widget.label = ts ? (ts.translatable ? ts.toJSON() : ts.str()) : luaString(T, 4);
       } else if (key === 'label' && widget.type === 'image') widget.label = luaString(T, 4);
+      else if (key === 'use_markup' && (widget.type === 'label' || widget.type === 'button')) widget.markup = lua.lua_toboolean(T, 4);
       else if (!['on_modified', 'on_button_click', 'on_left_click', 'callback', 'tooltip', 'enabled'].includes(key)) {
         this.ctx().log('warn', `gui: widget property '${key}' is not supported (ignored)`);
       }
+      return 0;
+    });
+    k.define(['wesnoth', '__gui_add_item'], (T) => {
+      const widget = this.widget(T);
+      if (widget?.type !== 'listbox') return lauxlib.luaL_error(T, to_luastring(`gui: '${lua.lua_tojsstring(T, 2)}' is not a listbox`));
+      lua.lua_pushinteger(T, addListboxRow(widget));
+      return 1;
+    });
+    k.define(['wesnoth', '__gui_has'], (T) => {
+      lua.lua_pushboolean(T, this.widget(T) !== undefined);
+      return 1;
+    });
+    k.define(['wesnoth', '__gui_free'], (T) => {
+      this.dialogs.delete(Number(lua.lua_tointeger(T, 1)));
       return 0;
     });
     k.define(['wesnoth', '__gui_close'], (T) => {
@@ -449,7 +510,7 @@ export class LuaRuntime {
 
   private widget(T: LuaState): GuiNode | undefined {
     const dialog = this.dialogs.get(Number(lua.lua_tointeger(T, 1)));
-    return dialog ? findGuiWidget(dialog.root, lua.lua_tojsstring(T, 2)) : undefined;
+    return dialog ? findGuiWidgetByPath(dialog.root, lua.lua_tojsstring(T, 2)) : undefined;
   }
 
   /**
@@ -476,7 +537,8 @@ export class LuaRuntime {
       }
       return dialog.retval;
     } finally {
-      this.dialogs.delete(handle);
+      // Kept until gui.show_dialog's postshow has run (`__gui_free`).
+      dialog.closed = true;
     }
   }
 }

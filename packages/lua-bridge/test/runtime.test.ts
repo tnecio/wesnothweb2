@@ -202,6 +202,118 @@ describe('modules and files', () => {
   });
 });
 
+describe('gui.show_prompt (show_message_box)', () => {
+  /** The labels and buttons a prompt shows. */
+  function texts(node: GuiNode, out: string[] = []): string[] {
+    if ((node.type === 'label' || node.type === 'button') && 'label' in node) {
+      const l = node.label;
+      out.push(`${node.type}:${typeof l === 'string' ? l : JSON.stringify(l).replace(/.*\["wesnoth-lib","([^"]+)"\].*/, '$1')}`);
+    }
+    if (node.type === 'grid') for (const row of node.rows) for (const cell of row) texts(cell.widget, out);
+    return out;
+  }
+
+  it('shows the message with an OK button by default, and returns nothing', () => {
+    const { run, vars } = setup();
+    const shown: string[][] = [];
+    run(`[lua]
+      code=<< wml.variables.r = select("#", gui.show_prompt("", "There are no corpses available.", "")) >>
+    [/lua]`, (i) => {
+      if (i.kind === 'guiDialog') shown.push(texts(i.dialog.root));
+      return { value: -1 };
+    });
+    expect(shown).toEqual([['label:There are no corpses available.', 'button:OK']]);
+    expect(vars.getNumber('r')).toBe(0);
+  });
+
+  it('yes_no returns whether Yes was chosen; a title shows above the message', () => {
+    const { run, vars } = setup();
+    const shown: string[][] = [];
+    run(`[lua]
+      code=<< wml.variables.yes = gui.show_prompt("Title", "Sure?", "yes_no") ; wml.variables.no = gui.show_prompt("Title", "Sure?", "yes_no") >>
+    [/lua]`, (i) => {
+      if (i.kind !== 'guiDialog') return {};
+      shown.push(texts(i.dialog.root));
+      return { value: shown.length === 1 ? -1 : -2 };
+    });
+    expect(shown[0]).toEqual(['label:Title', 'label:Sure?', 'button:Yes', 'button:No']);
+    expect([vars.getBoolean('yes'), vars.getBoolean('no')]).toEqual([true, false]);
+  });
+});
+
+describe('gui widget use_markup', () => {
+  it('a label set to use_markup from Lua is shown with markup (Eastern Invasion\'s [item_dialog])', () => {
+    const { run, logs } = setup();
+    let markup: boolean | undefined;
+    run(`[lua]
+      code=<<
+        local T = wml.tag
+        gui.show_dialog({ T.grid { T.row { T.column { T.label { id = "text" } } }, T.row { T.column { T.button { id = "ok" } } } } }, function(dialog)
+          dialog.text.use_markup = true
+          dialog.text.label = "<b>bold</b>"
+          wml.variables.read_back = dialog.text.use_markup
+        end)
+      >>
+    [/lua]`, (i) => {
+      if (i.kind === 'guiDialog') {
+        const cell = i.dialog.root.type === 'grid' ? i.dialog.root.rows[0]![0]!.widget : undefined;
+        markup = cell?.type === 'label' ? cell.markup : undefined;
+      }
+      return { value: -1 };
+    });
+    expect(markup).toBe(true);
+    expect(logs.filter((l) => l.startsWith('warn') || l.startsWith('error'))).toEqual([]);
+  });
+});
+
+describe('listbox:add_item()', () => {
+  it("adds rows from the [list_definition], whose widgets Lua reaches by id (Secrets of the Ancients' zombie recruit dialog)", () => {
+    const { run, vars, logs } = setup();
+    let labels: string[] = [];
+    let selected = -1;
+    run(`[lua]
+      code=<<
+        local T = wml.tag
+        local layout = { T.grid {
+          T.row { T.column { T.listbox { id = "unit_list",
+            T.list_definition { T.row { T.column { T.toggle_panel { T.grid { T.row {
+              T.column { T.label { id = "unit_type" } }, T.column { T.label { id = "unit_cost" } },
+            } } } } } },
+          } } },
+          T.row { T.column { T.button { id = "ok" } } },
+        } }
+        gui.show_dialog(layout, function(dialog)
+          for i, name in ipairs { "Soulless", "Walking Corpse" } do
+            local item = dialog.unit_list:add_item()
+            item.unit_type.label = name
+            item.unit_cost.label = tostring(i * 8)
+            wml.variables["count" .. i] = dialog.unit_list.item_count
+          end
+          dialog.unit_list.selected_index = 2
+        end)
+      >>
+    [/lua]`, (i) => {
+      if (i.kind === 'guiDialog') {
+        const list = i.dialog.root.type === 'grid' ? i.dialog.root.rows[0]![0]!.widget : undefined;
+        if (list?.type === 'listbox') {
+          selected = list.selectedIndex;
+          const collect = (n: GuiNode): void => {
+            if (n.type === 'label') labels.push(String(n.label));
+            else if (n.type === 'grid') for (const row of n.rows) for (const cell of row) collect(cell.widget);
+            else if (n.type === 'panel') collect(n.child);
+          };
+          labels = [];
+          for (const row of list.rows) collect(row);
+        }
+      }
+      return { value: -1 };
+    });
+    expect(logs.filter((l) => l.startsWith('error') || l.startsWith('warn'))).toEqual([]);
+    expect(labels).toEqual(['Soulless', '8', 'Walking Corpse', '16']);
+    expect([vars.getNumber('count1'), vars.getNumber('count2'), selected]).toEqual([1, 2, 2]);
+  });
+});
+
 describe('gui.show_dialog', () => {
   const DIALOG = `[resolution]
     [grid]

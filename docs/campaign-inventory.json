@@ -1,7 +1,6 @@
 {
  "generated": "2026-10-03",
  "bridgedLuaApi": [
-  "ai.stopunit_moves",
   "filesystem.asset_type.MAP",
   "filesystem.have_file",
   "filesystem.read_file",
@@ -46,7 +45,6 @@
   "wesnoth.map.set_owner",
   "wesnoth.ms_since_init",
   "wesnoth.paths.find_path",
-  "wesnoth.paths.find_reach",
   "wesnoth.paths.find_vacant_hex",
   "wesnoth.persistent_tags.hint_message",
   "wesnoth.redraw",
@@ -71,7 +69,6 @@
   "wml.array_variables",
   "wml.child_range",
   "wml.error",
-  "wml.fire",
   "wml.get_child",
   "wml.literal",
   "wml.load",
@@ -113,9 +110,6 @@
   "wml.tovconfig",
   "wml.variables",
   "wml.variables.all_targets",
-  "wml.variables.gold_cost",
-  "wml.variables.herbs_needed",
-  "wml.variables.herbs_to_collect_obj",
   "wml.variables.magic_item_count",
   "wml.variables.regen",
   "wml.variables.regen_description",
@@ -144,133 +138,6 @@
   "wml.variables.wc2_supply_image_counter"
  ],
  "campaigns": {
-  "Eastern_Invasion": {
-   "scenarios": 24,
-   "built": 24,
-   "buildFailures": [],
-   "buildWarnings": [],
-   "luaFiles": [
-    "campaigns/Eastern_Invasion/ai/ca_ogres_flee.lua",
-    "campaigns/Eastern_Invasion/lua/items.lua"
-   ],
-   "luaLines": 337,
-   "requires": {},
-   "microAi": {
-    "coward": [
-     "01_Eastern_Invasion",
-     "10_Dark_Sanctuary"
-    ],
-    "zone_guardian": [
-     "04a_An_Elven_Interlude",
-     "04b_Ill_Humors",
-     "05_Northern_Outpost",
-     "07b_Ogre_Crossing",
-     "09_Castle_in_the_Ice",
-     "10_Dark_Sanctuary",
-     "11_Captured",
-     "13_Spoils_of_War",
-     "14_The_Drowned_Plains",
-     "17b_All-In"
-    ],
-    "hang_out": [
-     "06b_Soradoc"
-    ],
-    "goto": [
-     "07a_Capturing_the_Ogres",
-     "16_Eleventh_Hour"
-    ],
-    "forest_animals": [
-     "14_The_Drowned_Plains"
-    ]
-   },
-   "customAi": [
-    "01_Eastern_Invasion: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "01_Eastern_Invasion: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "03_An_Unexpected_Appearance: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "03_An_Unexpected_Appearance: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "04a_An_Elven_Interlude: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "04a_An_Elven_Interlude: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "04b_Ill_Humors: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "04b_Ill_Humors: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "04c_Mal-Ravanals_Capital: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "04c_Mal-Ravanals_Capital: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "05_Northern_Outpost: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "05_Northern_Outpost: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "06a_Undead_Crossing: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "06a_Undead_Crossing: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "06b_Soradoc: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "06b_Soradoc: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "07a_Capturing_the_Ogres: [candidate_action] name=ogres_flee location=campaigns/Eastern_Invasion/ai/ca_ogres_flee.lua",
-    "08_Xenophobia: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "08_Xenophobia: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "12_Evacuation: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "12_Evacuation: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "13_Spoils_of_War: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "13_Spoils_of_War: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "14_The_Drowned_Plains: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "14_The_Drowned_Plains: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "15_Return_to_Wesnoth: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "15_Return_to_Wesnoth: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "16_Eleventh_Hour: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "16_Eleventh_Hour: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "17a_The_Duel: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "17a_The_Duel: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "17b_All-In: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "17b_All-In: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "99_Empire: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "99_Empire: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua"
-   ],
-   "dialogs": {
-    "showDialogCalls": 2,
-    "widgets": {},
-    "files": []
-   },
-   "achievements": 2,
-   "helpTopics": [],
-   "terrainGraphics": 0,
-   "terrainTypes": 0,
-   "unitTypes": 28,
-   "luaApiUnbridged": {},
-   "luaApiBridgedUsed": [
-    "ai.stopunit_moves",
-    "gui.show_dialog",
-    "stringx.vformat (as a method)",
-    "wesnoth.current.map",
-    "wesnoth.current.side",
-    "wesnoth.current.turn",
-    "wesnoth.dofile",
-    "wesnoth.game_events.fire",
-    "wesnoth.map",
-    "wesnoth.map.find",
-    "wesnoth.paths.find_reach",
-    "wesnoth.require",
-    "wesnoth.sync.evaluate_single",
-    "wesnoth.textdomain",
-    "wesnoth.units.find_on_map",
-    "wesnoth.units.get",
-    "wesnoth.wml_actions",
-    "wml.error",
-    "wml.tag",
-    "wml.tag.enemy_of",
-    "wml.tag.filter_side",
-    "wml.variables",
-    "wml.variables.gold_cost",
-    "wml.variables.herbs_needed",
-    "wml.variables.herbs_to_collect_obj"
-   ],
-   "audit": {
-    "missing": {},
-    "campaignLua": {
-     "item_dialog": 24,
-     "item_dialog_musttake": 1
-    },
-    "extension": {},
-    "noop": {
-     "redraw": 17
-    },
-    "conditions": {}
-   }
-  },
   "Heir_To_The_Throne": {
    "scenarios": 35,
    "built": 35,
@@ -606,70 +473,6 @@
     "extension": {},
     "noop": {
      "redraw": 11
-    },
-    "conditions": {}
-   }
-  },
-  "Secrets_of_the_Ancients": {
-   "scenarios": 22,
-   "built": 22,
-   "buildFailures": [],
-   "buildWarnings": [],
-   "luaFiles": [
-    "campaigns/Secrets_of_the_Ancients/utils/zombie_recruit_dialog.lua"
-   ],
-   "luaLines": 104,
-   "requires": {},
-   "microAi": {
-    "zone_guardian": [
-     "04_Becalmed"
-    ],
-    "coward": [
-     "20_North_Knalga"
-    ],
-    "messenger_escort": [
-     "21_Against_the_World"
-    ]
-   },
-   "customAi": [],
-   "dialogs": {
-    "showDialogCalls": 1,
-    "widgets": {},
-    "files": [
-     "campaigns/Secrets_of_the_Ancients/gui/zombie_recruit_dialog.cfg"
-    ]
-   },
-   "achievements": 0,
-   "helpTopics": [],
-   "terrainGraphics": 33,
-   "terrainTypes": 33,
-   "unitTypes": 50,
-   "luaApiUnbridged": {
-    "gui.show_prompt": [
-     "campaigns/Secrets_of_the_Ancients/utils/zombie_recruit_dialog.lua"
-    ]
-   },
-   "luaApiBridgedUsed": [
-    "gui.show_dialog",
-    "wesnoth.dofile",
-    "wesnoth.sides.find",
-    "wesnoth.sync.evaluate_single",
-    "wesnoth.textdomain",
-    "wesnoth.unit_types",
-    "wesnoth.units.find_on_map",
-    "wml.array_access.get",
-    "wml.fire",
-    "wml.get_child",
-    "wml.load",
-    "wml.tag",
-    "wml.variables"
-   ],
-   "audit": {
-    "missing": {},
-    "campaignLua": {},
-    "extension": {},
-    "noop": {
-     "redraw": 7
     },
     "conditions": {}
    }
