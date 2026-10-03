@@ -1,7 +1,6 @@
 {
  "generated": "2026-10-03",
  "bridgedLuaApi": [
-  "ai.move_full",
   "ai.stopunit_moves",
   "filesystem.asset_type.MAP",
   "filesystem.have_file",
@@ -13,17 +12,16 @@
   "mathx.random",
   "mathx.random_choice",
   "mathx.shuffle",
-  "stringx.format_conjunct_list",
   "stringx.join",
   "stringx.map_split",
   "stringx.split",
   "stringx.vformat",
   "stringx.vformat (as a method)",
+  "wesnoth.add_known_unit",
   "wesnoth.current.event_context",
   "wesnoth.current.map",
   "wesnoth.current.side",
   "wesnoth.current.turn",
-  "wesnoth.custom_synced_commands",
   "wesnoth.dofile",
   "wesnoth.effects",
   "wesnoth.experimental.wml",
@@ -56,9 +54,7 @@
   "wesnoth.scenario",
   "wesnoth.sides",
   "wesnoth.sides.find",
-  "wesnoth.simulate_combat",
   "wesnoth.sync.evaluate_single",
-  "wesnoth.sync.invoke_command",
   "wesnoth.textdomain",
   "wesnoth.unit_types",
   "wesnoth.units.chance_to_be_hit",
@@ -73,7 +69,6 @@
   "wesnoth.wml_actions",
   "wml.array_access.get",
   "wml.array_variables",
-  "wml.child_array",
   "wml.child_range",
   "wml.error",
   "wml.fire",
@@ -569,15 +564,12 @@
    "terrainGraphics": 0,
    "terrainTypes": 0,
    "unitTypes": 14,
-   "luaApiUnbridged": {
-    "wesnoth.add_known_unit": [
-     "campaigns/Heir_To_The_Throne_Classic/lua/character_selection.lua"
-    ]
-   },
+   "luaApiUnbridged": {},
    "luaApiBridgedUsed": [
     "gui.show_dialog",
     "mathx.random",
     "stringx.vformat (as a method)",
+    "wesnoth.add_known_unit",
     "wesnoth.current.map",
     "wesnoth.interface.add_overlay_text",
     "wesnoth.map.find",
@@ -614,103 +606,6 @@
     "extension": {},
     "noop": {
      "redraw": 11
-    },
-    "conditions": {}
-   }
-  },
-  "Legend_of_Wesmere": {
-   "scenarios": 24,
-   "built": 24,
-   "buildFailures": [],
-   "buildWarnings": [],
-   "luaFiles": [
-    "campaigns/Legend_of_Wesmere/lua/wml_tags.lua"
-   ],
-   "luaLines": 163,
-   "requires": {},
-   "microAi": {
-    "patrol": [
-     "16_The_Chief_Must_Die"
-    ]
-   },
-   "customAi": [
-    "03_Kalian_under_Attack: [engine] name=lua",
-    "03_Kalian_under_Attack: [stage] name=leader_retreat"
-   ],
-   "dialogs": {
-    "showDialogCalls": 0,
-    "widgets": {},
-    "files": []
-   },
-   "achievements": 0,
-   "helpTopics": [],
-   "terrainGraphics": 0,
-   "terrainTypes": 0,
-   "unitTypes": 0,
-   "luaApiUnbridged": {},
-   "luaApiBridgedUsed": [
-    "stringx.format_conjunct_list",
-    "wesnoth.dofile",
-    "wesnoth.sides",
-    "wesnoth.units.get",
-    "wesnoth.wml_actions",
-    "wml.array_variables",
-    "wml.child_array",
-    "wml.tag",
-    "wml.variables"
-   ],
-   "audit": {
-    "missing": {},
-    "campaignLua": {
-     "replace_map_section": 1,
-     "shift_labels": 1,
-     "persistent_carryover_store": 1
-    },
-    "extension": {},
-    "noop": {
-     "redraw": 11
-    },
-    "conditions": {}
-   }
-  },
-  "Sceptre_of_Fire": {
-   "scenarios": 14,
-   "built": 14,
-   "buildFailures": [],
-   "buildWarnings": [],
-   "luaFiles": [
-    "campaigns/Sceptre_of_Fire/lua/rune-equip.lua"
-   ],
-   "luaLines": 11,
-   "requires": {},
-   "microAi": {},
-   "customAi": [],
-   "dialogs": {
-    "showDialogCalls": 0,
-    "widgets": {},
-    "files": []
-   },
-   "achievements": 0,
-   "helpTopics": [],
-   "terrainGraphics": 3,
-   "terrainTypes": 2,
-   "unitTypes": 11,
-   "luaApiUnbridged": {},
-   "luaApiBridgedUsed": [
-    "stringx.vformat (as a method)",
-    "wesnoth.dofile",
-    "wesnoth.wml_actions",
-    "wml.literal",
-    "wml.tovconfig"
-   ],
-   "audit": {
-    "missing": {},
-    "campaignLua": {
-     "rune_choice": 8
-    },
-    "extension": {},
-    "noop": {
-     "redraw": 8
     },
     "conditions": {}
    }
@@ -775,73 +670,6 @@
     "extension": {},
     "noop": {
      "redraw": 7
-    },
-    "conditions": {}
-   }
-  },
-  "Son_Of_The_Black_Eye": {
-   "scenarios": 19,
-   "built": 19,
-   "buildFailures": [],
-   "buildWarnings": [],
-   "luaFiles": [
-    "campaigns/Son_Of_The_Black_Eye/ai/ca_transport_S6.lua"
-   ],
-   "luaLines": 173,
-   "requires": {},
-   "microAi": {
-    "simple_attack": [
-     "03_Toward_Mountains_of_Haag",
-     "07_The_Desert_of_Death"
-    ],
-    "healer_support": [
-     "08_Silent_Forest"
-    ]
-   },
-   "customAi": [
-    "06_Black_Flag: [candidate_action] name=transport location=campaigns/Son_Of_The_Black_Eye/ai/ca_transport_S6.lua"
-   ],
-   "dialogs": {
-    "showDialogCalls": 0,
-    "widgets": {},
-    "files": []
-   },
-   "achievements": 0,
-   "helpTopics": [],
-   "terrainGraphics": 0,
-   "terrainTypes": 0,
-   "unitTypes": 1,
-   "luaApiUnbridged": {
-    "wesnoth.add_known_unit": [
-     "06_Black_Flag [lua]"
-    ]
-   },
-   "luaApiBridgedUsed": [
-    "ai.move_full",
-    "ai.stopunit_moves",
-    "mathx.random_choice",
-    "wesnoth.current.map",
-    "wesnoth.current.side",
-    "wesnoth.custom_synced_commands",
-    "wesnoth.map",
-    "wesnoth.map.find",
-    "wesnoth.map.matches",
-    "wesnoth.paths.find_reach",
-    "wesnoth.require",
-    "wesnoth.sync.invoke_command",
-    "wesnoth.units.find_on_map",
-    "wesnoth.units.get",
-    "wesnoth.units.to_map",
-    "wml.child_array",
-    "wml.tag",
-    "wml.tag.filter_adjacent_location"
-   ],
-   "audit": {
-    "missing": {},
-    "campaignLua": {},
-    "extension": {},
-    "noop": {
-     "redraw": 4
     },
     "conditions": {}
    }
@@ -972,15 +800,12 @@
     ],
     "wesnoth.game_events.on_mouse_move": [
      "campaigns/The_Deceivers_Gambit/lua/spellcasting.lua"
-    ],
-    "wesnoth.add_known_unit": [
-     "00_Graduation [lua]",
-     "07_The_Great_River [lua]"
     ]
    },
    "luaApiBridgedUsed": [
     "gui.show_dialog",
     "gui.show_help",
+    "wesnoth.add_known_unit",
     "wesnoth.current.turn",
     "wesnoth.dofile",
     "wesnoth.game_events.fire",
@@ -1009,51 +834,6 @@
     "extension": {},
     "noop": {
      "redraw": 20
-    },
-    "conditions": {}
-   }
-  },
-  "The_Rise_Of_Wesnoth": {
-   "scenarios": 27,
-   "built": 27,
-   "buildFailures": [],
-   "buildWarnings": [],
-   "luaFiles": [
-    "campaigns/The_Rise_Of_Wesnoth/ai/ca_aggressive_attack_no_suicide.lua"
-   ],
-   "luaLines": 60,
-   "requires": {},
-   "microAi": {},
-   "customAi": [
-    "08_Clearwater_Port: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "08_Clearwater_Port: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "12_A_Final_Spring: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua",
-    "12_A_Final_Spring: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua",
-    "15_A_New_Land: [candidate_action] name=aggressive_attack_no_suicide location=campaigns/The_Rise_Of_Wesnoth/ai/ca_aggressive_attack_no_suicide.lua"
-   ],
-   "dialogs": {
-    "showDialogCalls": 0,
-    "widgets": {},
-    "files": []
-   },
-   "achievements": 0,
-   "helpTopics": [],
-   "terrainGraphics": 0,
-   "terrainTypes": 0,
-   "unitTypes": 14,
-   "luaApiUnbridged": {},
-   "luaApiBridgedUsed": [
-    "wesnoth.current.side",
-    "wesnoth.require",
-    "wesnoth.simulate_combat",
-    "wesnoth.units.get"
-   ],
-   "audit": {
-    "missing": {},
-    "campaignLua": {},
-    "extension": {},
-    "noop": {
-     "redraw": 10
     },
     "conditions": {}
    }
@@ -1251,9 +1031,6 @@
      "campaigns/World_Conquest/lua/game_mechanics/artifacts.lua",
      "campaigns/World_Conquest/lua/optional_mechanics/unitmarker.lua"
     ],
-    "wesnoth.add_known_unit": [
-     "campaigns/World_Conquest/lua/campaign/enemy.lua"
-    ],
     "wesnoth.audio.play": [
      "campaigns/World_Conquest/lua/campaign/scenario.lua",
      "campaigns/World_Conquest/lua/optional_mechanics/destruction.lua"
@@ -1321,6 +1098,7 @@
     "stringx.map_split",
     "stringx.split",
     "stringx.vformat",
+    "wesnoth.add_known_unit",
     "wesnoth.current.event_context",
     "wesnoth.current.map",
     "wesnoth.current.side",
