@@ -122,7 +122,9 @@ function gui.show_dialog(wml, preshow, postshow)
   }, { __index = function(_, id) return widget(id) end })
   if preshow then preshow(dialog) end
   local result = wesnoth.__gui_run(handle)
+  -- postshow reads the widgets as they were left, before the dialog is gone (window::show's caller).
   if postshow then postshow(dialog) end
+  wesnoth.__gui_free(handle)
   for key in pairs(callbacks) do
     if key:sub(1, #tostring(handle) + 1) == handle .. "|" then callbacks[key] = nil end
   end
@@ -489,6 +491,10 @@ export class LuaRuntime {
       lua.lua_pushboolean(T, this.widget(T) !== undefined);
       return 1;
     });
+    k.define(['wesnoth', '__gui_free'], (T) => {
+      this.dialogs.delete(Number(lua.lua_tointeger(T, 1)));
+      return 0;
+    });
     k.define(['wesnoth', '__gui_close'], (T) => {
       const dialog = this.dialogs.get(Number(lua.lua_tointeger(T, 1)));
       if (dialog) dialog.closed = true;
@@ -531,7 +537,8 @@ export class LuaRuntime {
       }
       return dialog.retval;
     } finally {
-      this.dialogs.delete(handle);
+      // Kept until gui.show_dialog's postshow has run (`__gui_free`).
+      dialog.closed = true;
     }
   }
 }
