@@ -36,7 +36,8 @@ export async function skipToPlay(page, timeout = 360000) {
     } else {
       const ok = page.getByRole('button', { name: 'OK', exact: true });
       if ((await ok.count()) > 0) {
-        await ok.first().click();
+        // The button can go away mid-click (a navigation re-renders the page): the loop looks again.
+        await ok.first().click({ timeout: 30000 }).catch(() => {});
         actions.ok++;
         quietRounds = 0;
       } else if (++quietRounds >= 3) {
@@ -57,7 +58,8 @@ export async function untilPlayable(page, timeout = 300000) {
   const started = Date.now();
   let quietSince = Date.now();
   while (Date.now() - started < timeout) {
-    if ((await page.$('.window[role="dialog"]')) || (await page.$('.story'))) {
+    // Dialogue, a story, or the objectives (whose OK can come after a long opening dialogue).
+    if ((await page.$('.window[role="dialog"]')) || (await page.$('.story')) || (await page.getByRole('button', { name: 'OK', exact: true }).count()) > 0) {
       await skipToPlay(page, 120000);
       quietSince = Date.now();
     } else if (!(await page.evaluate(() => window.__wesnoth?.movementPreview().canAct ?? false))) {

@@ -37,7 +37,19 @@ const ownPoRoot = path.join(repoRoot, 'apps/web/i18n');
 export const SHIPPED_LOCALES = ['en_US', 'it_IT', 'es_ES', 'en_GB', 'gl_ES', 'cs_CZ', 'ar_AR', 'hu_HU', 'fi_FI', 'pl_PL'];
 
 const CORE_DOMAINS = ['wesnoth', 'wesnoth-lib', 'wesnoth-units', 'wesnoth-help'];
-const CAMPAIGN_DOMAINS = ['wesnoth-dw', 'wesnoth-tb', 'wesnoth-l', 'wesnoth-utbs', 'wesnoth-sotbe'];
+/**
+ * Every shipped campaign's own domain (the `#textdomain` its `_main.cfg` opens with, from `campaigns.json`), and
+ * `wesnoth-sotbe`, which core content also uses. A fixed list here had left out The South Guard's.
+ */
+const CAMPAIGN_DOMAINS = [
+  ...new Set([
+    ...JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/campaigns.json'), 'utf8'))
+      .campaigns.filter((c) => c.wesnothId)
+      .map((c) => /^#textdomain\s+(\S+)/m.exec(fs.readFileSync(path.join(repoRoot, 'wesnoth/data/campaigns', c.wesnothId, '_main.cfg'), 'utf8'))?.[1])
+      .filter(Boolean),
+    'wesnoth-sotbe',
+  ]),
+];
 const OWN_DOMAINS = ['wesnothweb'];
 const DOMAINS = [...CORE_DOMAINS, ...CAMPAIGN_DOMAINS, ...OWN_DOMAINS];
 

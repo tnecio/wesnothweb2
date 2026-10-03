@@ -29,7 +29,7 @@ function start(id: string): { session: GameSession; problems: string[] } {
 /**
  * Scenarios that bring back a unit an earlier one stored (scenario 4's choice keeps Afalas or Ethiliel,
  * 6b brings Deoran back from 6a): started on their own, without that carryover, the variable is missing and
- * `[unstore_unit]` says so -- as upstream would. Only that is allowed for them.
+ * `[unstore_unit]` says so -- in upstream's words. Only that is allowed for them.
  */
 const NEEDS_CARRYOVER: Record<string, string> = {
   '05a_The_Long_March': 'stored_afalas',
@@ -43,7 +43,7 @@ describe('The South Guard', () => {
       const { session, problems } = start(id);
       await session.runStartupEvents();
       const carried = NEEDS_CARRYOVER[id];
-      const expected = carried ? [`error: [unstore_unit]: variable '${carried}' doesn't contain unit data`] : [];
+      const expected = carried ? [`error: [unstore_unit]: variable '${carried}' doesn't exist`] : [];
       expect(problems).toEqual(expected);
     });
   }
@@ -91,13 +91,28 @@ describe('The South Guard', () => {
     expect(session.scenarioResult).toBe('victory');
   });
 
+  it("02_Proven_by_the_Sword: side 3 (controller=null) takes no turns, as upstream's skip_empty_sides", async () => {
+    const { session } = start('02_Proven_by_the_Sword');
+    await session.runStartupEvents();
+    expect(session.board.getTeam(3)!.controller).toBe('null');
+    expect(session['sideAfter'](2)).toEqual({ next: 1, wrapped: true });
+    await session.endTurn();
+    expect([session.turnNumber, session.activeSide]).toEqual([2, 1]);
+  });
+
   it('02_Proven_by_the_Sword plays to its end, AI against AI', async () => {
     const { session, problems } = start('02_Proven_by_the_Sword');
     await session.runStartupEvents();
     session.board.getTeam(1)!.controller = 'ai';
-    session.playAiSide(1, []);
     const limit = session.turnLimit ?? 40;
-    for (let guard = 0; guard <= limit + 1 && !session.scenarioResult; guard++) await session.endTurn();
+    // One side's turn at a time: the active side plays, then endTurn(0) passes the turn on (it plays no AI side
+    // itself), with a yield in between -- vitest's worker gives up on a synchronous stretch of over a minute.
+    for (let guard = 0; guard < 2000 && !session.scenarioResult && session.turnNumber <= limit + 1; guard++) {
+      session.playAiSide(session.activeSide, []);
+      if (session.scenarioResult) break;
+      await session.endTurn(0);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
     expect(session.scenarioResult).not.toBeNull();
     expect(problems).toEqual([]);
   }, 600_000);

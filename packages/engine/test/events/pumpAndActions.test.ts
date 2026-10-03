@@ -243,7 +243,10 @@ describe('EventPump + action WML (synthetic content)', () => {
   });
 
   it('[store_unit] kill=yes then [unstore_unit] round-trips a unit off and back onto the board at its original position -- real, reported bug: Liberty scenario 1\'s Baldras was permanently removed because [unstore_unit] wasn\'t implemented at all (silently skipped as an unregistered tag)', () => {
-    const board = makeBoard();
+    // Big enough that wml 1,2 is on the map inside its border (upstream sends an off-map unit to the recall list).
+    const board = new GameBoard(GameMap.fromMapString(Array.from({ length: 5 }, () => 'Gg, Gg, Gg, Gg, Gg').join('\n'), TerrainTypeData.fromConfigs([])));
+    board.addTeam(new Team(1, { gold: 100 }));
+    board.addTeam(new Team(2, { gold: 100 }));
     const { manager, pump } = makePump(board);
     const leader = Unit.fromConfig(
       parseWml(`[unit]\n  type=Merman Fighter\n  side=1\n  x=1\n  y=2\n  id=Baldras\n  name=Baldras\n  canrecruit=yes\n  experience=25\n[/unit]`).child('unit')!,
@@ -279,6 +282,32 @@ describe('EventPump + action WML (synthetic content)', () => {
     expect(restored!.hitpoints).toBe(30);
     expect(restored!.location.x).toBe(0); // wml x=1,y=2 -> onboard (0,1)
     expect(restored!.location.y).toBe(1);
+  });
+
+  it('[unstore_unit] with x,y=recall (or no place on the map) puts the unit on its side\'s recall list, as unit:to_recall()', () => {
+    const board = makeBoard();
+    const { manager, pump } = makePump(board);
+    const hero = Unit.fromConfig(parseWml(`[unit]\n  type=Merman Fighter\n  side=1\n  x=1\n  y=1\n  id=Hero\n[/unit]`).child('unit')!, makeResolveType());
+    board.addUnit(hero);
+    manager.addFromWml(
+      parseWml(`[event]
+        name=go
+        [store_unit]
+          variable=stored
+          kill=yes
+          [filter]
+            id=Hero
+          [/filter]
+        [/store_unit]
+        [unstore_unit]
+          variable=stored
+          x,y=recall,recall
+        [/unstore_unit]
+      [/event]`).child('event')!,
+    );
+    pump.fire('go');
+    expect(board.allUnits().some((u) => u.id === 'Hero')).toBe(false);
+    expect(board.recallList(1).map((u) => u.id)).toEqual(['Hero']);
   });
 
   it('[unstore_unit] logs an error rather than throwing when the variable is empty/missing', () => {

@@ -236,3 +236,43 @@ describe('[select_unit] and wesnoth.interface.select_unit / get_displayed_unit /
     expect(beats).toMatchObject([{ kind: 'scrollTo', immediate: true, onlyIfNeeded: false }]);
   });
 });
+
+describe('[lua] as a condition', () => {
+  it("runs in the game's kernel, with its whole API and [args] (wml_conditionals.lua)", async () => {
+    const session = await start();
+    const ctx = session['eventPump'].ctx;
+    runActionSequence(
+      parseConfig(`[if]
+        [lua]
+          code=<<local args = ... ; return mathx.random(1, 1) == 1 and wesnoth.units.find_on_map({ id = "Kai Krellis" })[1] ~= nil and args.n == 3>>
+          [args]
+            n=3
+          [/args]
+        [/lua]
+        [then]
+          [set_variable]
+            name=passed
+            value=yes
+          [/set_variable]
+        [/then]
+      [/if]`),
+      ctx,
+    );
+    expect(ctx.variables.getBoolean('passed', false)).toBe(true);
+  });
+});
+
+describe('objectives after a save and load', () => {
+  it('come back whole, translatable texts included (the Objectives dialog crashed after a load)', async () => {
+    const file = path.join(repoRoot, 'apps/web/public/scenarios/Dead_Water/02_Flight.json');
+    const session = new GameSession(readScenarioSnapshot(file));
+    await session.runStartupEvents();
+    const before = session.scenarioObjectives!;
+    // A stored save comes back as plain data.
+    const loaded = GameSession.fromSaveData(readScenarioSnapshot(file), JSON.parse(JSON.stringify(session.toSaveData())));
+    const after = loaded.scenarioObjectives!;
+    expect(after.summaryT.str()).toBe(before.summaryT.str());
+    expect(after.victoryLabelT.str()).toBe(before.victoryLabelT.str());
+    expect(after.objectives).toEqual(before.objectives);
+  });
+});

@@ -530,9 +530,9 @@ export class Unit {
    * matter for Phase 29's AI/Lua bridge (`goto_x`/`goto_y`, `attacks_left`,
    * `status`, `ai_special`) that `unitToVarNode` doesn't need. Used for
    * `unit.__cfg` in the Lua host API and for persisting AI-visible unit
-   * state (e.g. a pending `goto`) across save/load. Does NOT serialize
-   * `modifications` (same known gap `unitToVarNode`/`actionUnstoreUnit`
-   * document) or attack overrides beyond the base type's weapons.
+   * state (e.g. a pending `goto`) across save/load. `[modifications]` (traits,
+   * objects, advancements) are written as `unit::write` writes them, so a unit
+   * stored and put back (`[store_unit]`/`[unstore_unit]`) keeps them.
    */
   toConfig(): WmlConfig {
     const cfg = new WmlConfig();
@@ -577,6 +577,10 @@ export class Unit {
     }
     if (this.variables) {
       cfg.addChild('variables', this.variables);
+    }
+    if (this.modifications.length > 0) {
+      const mods = cfg.addChild('modifications');
+      for (const m of this.modifications) mods.addChild(m.kind, m.cfg.clone());
     }
     return cfg;
   }

@@ -6091,3 +6091,60 @@ its own; WL_Test is not upstream content and is not ported.
   `[find_path]` against upstream, `[do_command]`, scenario end events, select), `campaignTerrain.test.ts`,
   renderer `mergeBuildingRules.test.ts`, lua-bridge `gameKernel.test.ts` (labels) and `mapgen.test.ts`; in the
   browser, `apps/web/scripts/shared-tags-playthrough.mjs` (new) on Dead Water 1.
+
+## 2026-10-01: Phase 28c, batch B1 -- six more campaigns
+
+The Hammer of Thursagan, Northern Rebirth, Winds of Fate, Of Pearls and Pirates, Dusk of Dawn and Descent into
+Darkness (68 scenarios) are registered and playable: `campaigns.json`, `scenario-list.json`, then the usual
+builds (campaign metadata and credits, snapshots at every difficulty, story assets, campaign images, audio,
+translations, atlases). The survey had found nothing campaign-specific missing for them; the tests and the
+browser found general bugs instead.
+
+- **`[store_unit]` lost most of a unit.** It stored about fifteen attributes, so a unit stored and put back
+  lost its traits, objects, statuses and underlying id. It now stores `unit.__cfg` (`Unit.toConfig`, which now
+  writes `[modifications]` as `unit::write` does), finds units on recall lists too, as `wesnoth.units.find`
+  does, and writes through `utils.vwriter`'s modes. `$unit` in events gets the same full config. Losing the
+  underlying id broke the Lua AI's unit proxies every turn in The Hammer of Thursagan 1.
+- **`[unstore_unit]` could not restore to a recall list** (Winds of Fate, Of Pearls and Pirates, Descent into
+  Darkness keep heroes stored between scenarios). Ported from `wml-tags.lua`: `x,y=recall` or a place off
+  the map goes to the recall list; `location_id=`, `find_vacant=`, `fire_event=`, the floating `text=`,
+  `advance=`. As upstream's `to_map`, it replaces a unit standing on the hex and does not capture the
+  village (the old port did).
+- **`[lua]` conditions ran in an old, minimal Lua state** with only `wml.variables`, so `mathx` and the rest
+  of the API were missing (Winds of Fate 1). They now run in the game's kernel, as `wml_conditionals.lua`
+  does, with `[args]`.
+- **Side controllers (also in the shipped campaigns).** A side without `controller=` became human, so the
+  player had to end its turn by hand (Dead Water 4's side 2, Two Brothers 2's side 3, Northern Rebirth 1's
+  hidden side 4); upstream reads it as ai. `controller=null`, an empty side, also became human (most of The
+  South Guard, Dead Water 10); it is now its own controller and takes no turns (`skip_empty_sides`).
+- **Cutscene scenarios.** `[endlevel] linger_mode=no carryover_report=no` (Dusk of Dawn's prologue) now goes
+  straight to the next scenario, as upstream; the shell waited for Continue.
+- **Translations.** The campaign text domains were a fixed list that had left out The South Guard's, so it
+  was untranslated in every language. The list now comes from `campaigns.json` (each campaign's
+  `#textdomain`).
+- **Checks:**
+  - ui `campaigns.test.ts` (new, table-driven for every batch): every scenario of each campaign opens
+    without an error or an unsupported tag, and one scenario per campaign plays to its end AI against AI.
+    Started on their own, four scenarios miss what an earlier one carried over (Northern Rebirth 13a's
+    leaders, Of Pearls and Pirates 4's naga, Descent into Darkness 7a's Darken Volk), and report exactly
+    what upstream would.
+  - `apps/web/scripts/campaign-playthrough.mjs` (new): from the title screen's Campaigns dialog, Play, the
+    story and dialogue, the board, End Turn and back to turn 2, with no page error or failed request -- run
+    on all six.
+  - `main-menu-playthrough.mjs` now expects the eleven real campaigns by rank.
+- **Size after B1:** about 2,100 data files for the Workers upload (atlases 66 MB, snapshots 50 MB), far
+  inside its limits (20,000 files, 25 MiB per file); atlases stay where they are.
+
+## 2026-10-03: Playtest fixes (Dead Water 1-2)
+
+- **Healing shown at the wrong time.** One end of turn played every side's turn-start healing and poison as a
+  batch before the AI's moves, so the player's healers (a Mermaid Priestess) seemed to heal as the AI's turn
+  began. The session now records a timeline (`lastTurnTimeline`): each side's healing at the start of its own
+  turn, then that side's moves; the player's own healing comes last.
+- **Objectives crashed after loading a save** (Dead Water 2, from the menu). A save kept the generated
+  objectives as plain data, losing their translatable texts. Objectives now keep the config they were
+  generated from, `[show_if]` already applied, and a load rebuilds them from it (older saves regenerate from
+  their stored `[objectives]`).
+- **Recall list missing after loading a scenario-2 save:** not reproduced. A save made in Dead Water 2 after
+  carrying over from 1 keeps all six recall-list units when loaded from the page URL, as the scenario-start
+  save, or through the in-game Load dialog. Waiting for the player's save file.

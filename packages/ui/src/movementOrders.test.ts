@@ -277,3 +277,21 @@ describe('continue move (t)', () => {
     expect(kai.interruptedMove).toBeUndefined();
   });
 });
+
+describe("end of turn: each side's healing is shown at the start of its own turn", () => {
+  it("the player's units heal after the other sides have played, not before", async () => {
+    const { session, kai } = await start();
+    const priestess = session.board.allUnits().find((u) => u.side === 1 && /Priestess/.test(u.type.id));
+    expect(priestess).toBeDefined();
+    // A wounded unit next to the healer.
+    const hex = getAdjacentTiles(priestess!.location).find((h) => session.board.map.onBoard(h) && !session.board.unitAt(h) && kai.movementCost(session.board.map.getTerrain(h)) < 99)!;
+    place(session, kai, hex.x, hex.y);
+    kai.hitpoints = kai.maxHitpoints - 10;
+    await session.endTurn();
+    const timeline = session.lastTurnTimeline ?? [];
+    const lastAi = timeline.map((e) => e.kind).lastIndexOf('ai');
+    const kaiHealed = timeline.findIndex((e) => e.kind === 'heals' && e.outcomes.some((o) => o.unit === kai && o.amount > 0));
+    expect(lastAi).toBeGreaterThanOrEqual(0);
+    expect(kaiHealed).toBeGreaterThan(lastAi);
+  });
+});

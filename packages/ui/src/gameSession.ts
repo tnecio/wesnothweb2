@@ -62,6 +62,7 @@ import {
   type AiAction,
   type AiAnimationEvent,
   type ScenarioObjectives,
+  parseScenarioObjectives,
   advanceUnitTo,
   advanceUnitAmla,
   type AttackBlowResult,
@@ -1171,8 +1172,13 @@ export interface SaveGameData {
   turnLimit?: number;
   /** Phase 18c: `[set_menu_item]`s in effect (lost on reload before). */
   menuItems?: { id: string; description: string; command: WmlConfigJson }[];
-  /** Phase 18c: each side's current `[objectives]` (lost on reload before). */
+  /**
+   * Phase 18c, old saves: the objectives as plain data, which lost their translatable texts (and crashed the Objectives
+   * dialog after a load). Read only to know which sides had objectives; see `objectivesShown`.
+   */
   objectives?: { side: number; objectives: ScenarioObjectives }[];
+  /** Each side's objectives as generated (`ScenarioObjectives.source`): rebuilt from these on load. */
+  objectivesShown?: { side: number; cfg: WmlConfigJson }[];
   /** Phase 18d: the raw `[objectives]` per side (0: every side), for `[show_objectives]` (upstream's persistent `[objectives]` tags). */
   objectiveConfigs?: { side: number; cfg: WmlConfigJson }[];
   /** Phase 18b: upstream's `random_mode`; absent means `per_action`. */
@@ -1211,6 +1217,11 @@ export interface SaveGameData {
  * (`executeMove`/`executeAttack`) -- this class never hand-rolls movement or
  * combat math itself.
  */
+/** One step of `GameSession.lastTurnTimeline`: a side's turn-start healing, or an AI side's moves. */
+export type TurnTimelineEntry =
+  | { readonly kind: 'heals'; readonly outcomes: readonly HealOutcome[] }
+  | { readonly kind: 'ai'; readonly events: readonly AiAnimationEvent[] };
+
 export class GameSession {
   /** `game_config::base_income` upstream (wesnoth/src/game_config.cpp) -- a hardcoded constant added to every side's `income=` WML attribute, NOT itself WML-configurable. */
   private static readonly BASE_INCOME = 2;
@@ -1371,6 +1382,14 @@ export class GameSession {
    * "no incremental sync() between events" simplification.
    */
   lastHealAnimations: readonly HealOutcome[] | null = null;
+
+  /**
+   * What one `endTurn()` call showed, in the order it happened: each side's turn-start healing and poison
+   * (`calculate_healing` at the start of that side's turn), then that side's AI moves. The player's own
+   * healers heal at the start of the player's turn, after the other sides have played -- not with theirs.
+   * Read once and cleared, as the `lastXAnimations`; null when nothing is to be shown.
+   */
+  lastTurnTimeline: readonly TurnTimelineEntry[] | null = null;
 
   /**
    * The real terrain defense `selectedUnit` would have at `(x, y)` (the
@@ -1735,6 +1754,8 @@ export class GameSession {
           else if (level === 'warn') console.warn(`[lua] ${message}`);
         },
       });
+      // `[lua]` conditions run in the same kernel, with its whole API (upstream's `wml_conditionals.lua`).
+      this.eventPump.ctx.evalLuaCondition = (cfg) => this.luaRuntime!.evaluateCondition(cfg);
     } else if (scenarioHasLua) {
       options.onLog?.('error', 'this scenario has Lua, but the data directory\'s Lua is not loaded');
     }
@@ -1895,9 +1916,11 @@ export class GameSession {
    * ended through `[endlevel]`; null otherwise (e.g. a leader kill), which
    * means upstream's defaults.
    */
-  get endLevelPresentation(): { endText?: string; endTextDuration?: number; endCredits?: boolean } | null {
+  get endLevelPresentation(): { endText?: string; endTextDuration?: number; endCredits?: boolean; lingerMode?: boolean; carryoverReport?: boolean } | null {
     const endLevel = this.eventPump.ctx.endLevel;
-    return endLevel ? { endText: endLevel.endText, endTextDuration: endLevel.endTextDuration, endCredits: endLevel.endCredits } : null;
+    return endLevel
+      ? { endText: endLevel.endText, endTextDuration: endLevel.endTextDuration, endCredits: endLevel.endCredits, lingerMode: endLevel.lingerMode, carryoverReport: endLevel.carryoverReport }
+      : null;
   }
 
   /**
@@ -2569,8 +2592,11 @@ export class GameSession {
 
   /** The side after `side` in turn order, and whether reaching it starts a new turn. */
   private sideAfter(side: number): { next: number; wrapped: boolean } | null {
+    // `skip_empty_sides`: a side with `controller=null` takes no turns. The ending side stays in the list, so
+    // the search starts after it even if it has just been emptied.
     const sides = this.board
       .teams()
+      .filter((t) => t.controller !== 'null' || t.side === side)
       .map((t) => t.side)
       .sort((a, b) => a - b);
     const idx = sides.indexOf(side);
@@ -3666,7 +3692,35 @@ export class GameSession {
   }
 
   private *endTurnLoop(maxAiSideTurns: number, aiAnimations: AiAnimationEvent[], healOutcomes: HealOutcome[]): Flow<string> {
+    const timeline: TurnTimelineEntry[] = [];
+    // Whatever was added to `list` since `from`, as one timeline entry.
+    const record = <T>(list: readonly T[], from: number, entry: (items: readonly T[]) => TurnTimelineEntry) => {
+      if (list.length > from) timeline.push(entry(list.slice(from)));
+    };
+    try {
+      // Each step (a side-turn change, an AI side's turn) records what it added.
+      return yield* this.endTurnSides(maxAiSideTurns, aiAnimations, healOutcomes, () => {
+        const heals = healOutcomes.length;
+        const ai = aiAnimations.length;
+        return () => {
+          record(healOutcomes, heals, (outcomes) => ({ kind: 'heals', outcomes }));
+          record(aiAnimations, ai, (events) => ({ kind: 'ai', events }));
+        };
+      });
+    } finally {
+      this.lastTurnTimeline = timeline.length > 0 ? timeline : null;
+    }
+  }
+
+  private *endTurnSides(
+    maxAiSideTurns: number,
+    aiAnimations: AiAnimationEvent[],
+    healOutcomes: HealOutcome[],
+    step: () => () => void,
+  ): Flow<string> {
+    let done = step();
     let message = yield* this.advanceOneTurn();
+    done();
     if (!message) return '';
     // Auto-play consecutive AI-controlled sides. Bounded by `sides.length`
     // guard-multiples rather than true unbounded recursion, so a
@@ -3684,10 +3738,14 @@ export class GameSession {
         // `play_side`: a human's turn is skipped when its own turn events ran `[end_turn]`.
         if (!this.eventPump.ctx.endTurnForced) break;
       } else {
+        done = step();
         this.playAiSide(this.activeSide, aiAnimations);
+        done();
       }
       if (this.scenarioResult) break;
+      done = step();
       const next = yield* this.advanceOneTurn();
+      done();
       if (!next) break;
       message = next;
     }
@@ -4615,7 +4673,7 @@ export class GameSession {
       mapData: this.board.terrainVersion > 0 ? this.board.map.write() : undefined,
       events: this.eventPump.manager.activeConfigs().map((c) => c.toJSON()),
       menuItems: [...this.eventPump.ctx.menuItems.values()].map((m) => ({ id: m.id, description: m.description, command: m.command.toJSON() })),
-      objectives: [...this.eventPump.ctx.objectivesBySide].map(([side, objectives]) => ({ side, objectives })),
+      objectivesShown: [...this.eventPump.ctx.objectivesBySide].map(([side, objectives]) => ({ side, cfg: objectives.source.toJSON() })),
       objectiveConfigs: [...this.eventPump.ctx.objectivesConfigBySide].map(([side, cfg]) => ({ side, cfg: cfg.toJSON() })),
       randomMode: this.rng.mode,
       doHealing: this.doHealing,
@@ -4710,11 +4768,21 @@ export class GameSession {
         data.menuItems.map((m) => [m.id, { id: m.id, description: m.description, command: WmlConfig.fromJSON(m.command) }]),
       );
     }
-    if (data.objectives) {
-      this.eventPump.ctx.objectivesBySide = new Map(data.objectives.map((o) => [o.side, o.objectives]));
-    }
     if (data.objectiveConfigs) {
       this.eventPump.ctx.objectivesConfigBySide = new Map(data.objectiveConfigs.map((o) => [o.side, WmlConfig.fromJSON(o.cfg)]));
+    }
+    if (data.objectivesShown) {
+      this.eventPump.ctx.objectivesBySide = new Map(data.objectivesShown.map((o) => [o.side, parseScenarioObjectives(WmlConfig.fromJSON(o.cfg))]));
+    } else if (data.objectives) {
+      // An older save kept only the generated texts, as plain data: regenerate them from the stored
+      // [objectives] config (the side's own, else the one for every side), every entry shown.
+      const configs = this.eventPump.ctx.objectivesConfigBySide;
+      const rebuilt = new Map<number, ScenarioObjectives>();
+      for (const { side } of data.objectives) {
+        const cfg = configs.get(side) ?? configs.get(0);
+        if (cfg) rebuilt.set(side, parseScenarioObjectives(cfg));
+      }
+      this.eventPump.ctx.objectivesBySide = rebuilt;
     }
     this.doHealing = data.doHealing ?? data.startupEventsRun;
     this.replayStartData = data.replay?.start ?? null;

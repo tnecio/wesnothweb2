@@ -118,6 +118,8 @@ export interface EndLevelState {
   endCredits?: boolean;
   /** `carryover_report=` (default yes): whether the victory summary is shown -- and the victory stinger played. */
   carryoverReport?: boolean;
+  /** `linger_mode=` (default yes): whether the player stays on the map before the scenario is left. */
+  lingerMode?: boolean;
   /** `music=`: the tracks to choose the stinger from, in place of the scenario's `victory_music=`/`defeat_music=`. */
   music?: string[];
 }
@@ -345,6 +347,11 @@ export interface EventContext {
   selectHex?: (loc: Location | null, highlight: boolean) => void;
   /** `game_display::displayed_unit_hex`'s unit: the one the side panel shows. Installed by the session. */
   displayedUnit?: () => Unit | undefined;
+  /**
+   * `[lua]` as a condition (`wml_conditionals.lua`), run in the game's own Lua kernel. Installed by the session
+   * when it has one; otherwise the global evaluator (`setLuaConditionalEvaluator`) is used.
+   */
+  evalLuaCondition?: (cfg: WmlConfig) => boolean;
   /** `wesnoth.scenario.name`: the scenario's `name=` (`[story]`'s default title). Installed by the session. */
   scenarioName?: () => TString;
   /** Phase 28c: `[set_global_variable]` and friends' storage, kept across games. Absent: they log and do nothing. */

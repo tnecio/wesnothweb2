@@ -538,6 +538,16 @@
       .then((json) => (creditsData = json))
       .catch((err) => console.error('[outro] could not load credits.json:', err));
   });
+  /**
+   * `[endlevel] linger_mode=no carryover_report=no` (a cutscene scenario such as Dusk of Dawn's prologue):
+   * upstream neither stays on the map nor shows the victory summary, and goes straight on to the next scenario.
+   */
+  $effect(() => {
+    const presentation = session.endLevelPresentation;
+    if (!continuing && phase === 'ended' && session.scenarioResult === 'victory' && session.nextScenarioId !== null && presentation?.lingerMode === false && presentation.carryoverReport === false) {
+      void continueToNextScenario();
+    }
+  });
   /** Upstream shows the outro only for a victory with no next scenario, and only when `end_credits` is not turned off. */
   const showOutro = $derived(
     phase === 'ended' &&
@@ -1496,7 +1506,7 @@
       /** Phase 22: the hexes "Show Enemy Moves" is showing, or null when it isn't. */
       enemyReach: () => enemyReach?.hexes ?? null,
       /** Phase 28b: what the pointer's order preview is showing. */
-      movementPreview: () => ({ route, attackIndicator, hoverReach: hoverReach?.length ?? null, pointerHex, canAct: canAct(), phase }),
+      movementPreview: () => ({ route, attackIndicator, hoverReach: hoverReach?.length ?? null, pointerHex, canAct: canAct(), phase, eventsRunning, turnStarting, message: currentMessage !== null, guiDialog: currentGuiDialog !== null }),
       /** The audio engine, so a check can watch what is played when. */
       audio,
       /** Whether another side's turn is being computed or shown ('thinking'/'animating'), else null. */
@@ -2278,16 +2288,16 @@
         });
         const result = await session.endTurn();
         otherSidesTurn = 'animating';
-        const healOutcomes = session.lastHealAnimations;
+        // In the order it happened (`lastTurnTimeline`): each side's turn-start healing and poison, then
+        // that side's moves -- the player's own healers last, as their turn begins.
+        const timeline = session.lastTurnTimeline ?? [];
+        session.lastTurnTimeline = null;
         session.lastHealAnimations = null;
-        // Heals/poison happen at the START of each side's turn, before that
-        // side's own actions -- played first, ahead of aiAnimations below (see
-        // `lastHealAnimations`'s own doc comment on why this isn't fully
-        // interleaved turn-by-turn across multiple AI sides).
-        if (healOutcomes) await playHealAnimations(healOutcomes);
-        const aiAnimations = session.lastAiAnimations;
         session.lastAiAnimations = null;
-        if (aiAnimations) await playAiAnimations(aiAnimations);
+        for (const entry of timeline) {
+          if (entry.kind === 'heals') await playHealAnimations(entry.outcomes);
+          else await playAiAnimations(entry.events);
+        }
         return result;
       } finally {
         otherSidesTurn = null;
