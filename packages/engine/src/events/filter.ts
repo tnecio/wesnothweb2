@@ -578,14 +578,15 @@ function locationSelfMatches(board: GameBoard, loc: Location, cfg: WmlConfig, re
   const todType = cfg.getString('time_of_day', '');
   const todId = cfg.getString('time_of_day_id', '');
   if (todType !== '' || todId !== '') {
+    // Without the game state installed, the board's own lawful bonus still answers time_of_day=.
     const tod = env?.timeOfDayAt(loc);
-    if (!tod) return false;
     if (todType !== '') {
+      const bonus = tod?.lawfulBonus ?? board.lawfulBonusAt?.(loc) ?? 0;
       const vals = todType.split(',').map((s) => s.trim());
-      const ok = tod.lawfulBonus < 0 ? vals.includes('chaotic') : tod.lawfulBonus > 0 ? vals.includes('lawful') : vals.includes('neutral') || vals.includes('liminal');
+      const ok = bonus < 0 ? vals.includes('chaotic') : bonus > 0 ? vals.includes('lawful') : vals.includes('neutral') || vals.includes('liminal');
       if (!ok) return false;
     }
-    if (todId !== '' && !todId.split(',').map((s) => s.trim()).includes(tod.id)) return false;
+    if (todId !== '' && !(tod && todId.split(',').map((s) => s.trim()).includes(tod.id))) return false;
   }
   const ownerFilter = cfg.child('filter_owner');
   if (ownerFilter) {
