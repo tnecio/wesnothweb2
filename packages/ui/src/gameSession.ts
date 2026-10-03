@@ -110,6 +110,7 @@ import {
   EventPump,
   VariableStore,
   WmlConfig,
+  mergeUnitTypeConfig,
   resolveStory,
   type ResolvedStoryPart,
   clearShroud,
@@ -619,6 +620,9 @@ export interface LastAttackAnimation {
    */
   readonly attackerTypeId: string;
   readonly defenderTypeId: string;
+  /** Their variations at combat time (`unit.variation`), with the type ids above. */
+  readonly attackerVariation: string;
+  readonly defenderVariation: string;
   /**
    * `attacker`/`defender`'s real hitpoints BEFORE this exchange resolved --
    * same rationale as `attackerTypeId`/`defenderTypeId` above, but for HP:
@@ -2416,6 +2420,8 @@ export class GameSession {
     const attackerHitpointsBefore = attacker.hitpoints;
     const defenderHitpointsBefore = defender.hitpoints;
     const attackerTypeId = attacker.type.id;
+    const attackerVariation = attacker.variation;
+    const defenderVariation = defender.variation;
     const defenderTypeId = defender.type.id;
     const result = performAttack(this.board, this.rng, attackerLoc, cmd.weapon, defenderLoc, cmd.defenderWeapon, {
       ...this.attackOptions(attackerLoc, defenderLoc),
@@ -2449,6 +2455,8 @@ export class GameSession {
       defenderHitpointsBefore,
       attackerTypeId,
       defenderTypeId,
+      attackerVariation,
+      defenderVariation,
       attackerLocation: attackerLoc,
       defenderLocation: defenderLoc,
     };
@@ -3063,7 +3071,7 @@ export class GameSession {
       id: unit.id || null,
       name: unit.name || null,
       typeId: unit.type.id,
-      image: this.snapshot.unitTypes[unit.type.id]?.image ?? null,
+      image: this.unitImage(unit),
       flagRgb: this.snapshot.unitTypes[unit.type.id]?.flagRgb,
       facing: unit.facing,
       side: unit.side,
@@ -3100,8 +3108,21 @@ export class GameSession {
    * `WmlConfig` via `WmlConfig.fromJSON` and feed it to that package's
    * `parseUnitAnimations` themselves (see `GameShell.svelte`).
    */
-  rawUnitTypeConfig(typeId: string): WmlConfigJson | undefined {
-    return this.snapshot.unitTypeConfigs?.[typeId];
+  rawUnitTypeConfig(typeId: string, variation = ''): WmlConfigJson | undefined {
+    const base = this.snapshot.unitTypeConfigs?.[typeId];
+    if (!base || variation === '') return base;
+    const key = `${typeId}\u0000${variation}`;
+    if (!this.variationConfigs.has(key)) this.variationConfigs.set(key, variationTypeConfig(base, variation));
+    return this.variationConfigs.get(key);
+  }
+
+  /** `rawUnitTypeConfig`'s variation sub-types, built once each. */
+  private readonly variationConfigs = new Map<string, WmlConfigJson | undefined>();
+
+  /** The map sprite for `unit`: its variation's `image=` when it has one (a dwarf-shaped corpse), else its type's. */
+  private unitImage(unit: Unit): string | null {
+    if (unit.variation !== '' && unit.type.image !== '') return unit.type.image;
+    return this.snapshot.unitTypes[unit.type.id]?.image ?? null;
   }
 
   unitDisplayName(u: Unit): string {
@@ -3111,7 +3132,7 @@ export class GameSession {
   /** Builds a `SelectedUnitInfo` view-model for any live unit currently on the board -- see `buildUnitInfo`. */
   unitInfo(u: Unit): SelectedUnitInfo {
     const todBonus = combatModifier(this.timeOfDayAt(u.location).lawfulBonus, u.alignment, u.fearless, this.schedule.maxLiminalBonus);
-    return buildUnitInfo(this.board, u, this.unitDisplayName(u), this.snapshot.unitTypes[u.type.id]?.image ?? null, todBonus);
+    return buildUnitInfo(this.board, u, this.unitDisplayName(u), this.unitImage(u), todBonus);
   }
 
   private computeAttackCandidates(unit: Unit, from: Location = unit.location): Unit[] {
@@ -5211,4 +5232,18 @@ export class GameSession {
     );
     this.playScenarioEndMusic();
   }
+}
+
+/**
+ * `unit_type::create_sub_type`, on the raw config the animations are read from: the `[variation]` merged over
+ * the base type (`inherit=yes`) or on its own, with no `[variation]`s of its own.
+ */
+function variationTypeConfig(base: WmlConfigJson, variation: string): WmlConfigJson | undefined {
+  const cfg = WmlConfig.fromJSON(base);
+  const varCfg = cfg.children('variation').find((v) => v.getString('variation_id', '') === variation);
+  if (!varCfg) return base;
+  const stripped = cfg.clone();
+  stripped.removeChildren('variation');
+  const merged = varCfg.getBoolean('inherit', false) ? mergeUnitTypeConfig(stripped, varCfg) : varCfg.clone();
+  return merged.toJSON();
 }

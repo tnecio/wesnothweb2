@@ -426,6 +426,8 @@ export class AiContext {
     const attacker = board.unitAt(attackerLoc);
     const defender = board.unitAt(defenderLoc);
     const attackerHitpointsBefore = attacker?.hitpoints ?? 0;
+    const attackerVariation = attacker?.variation ?? '';
+    const defenderVariation = defender?.variation ?? '';
     const defenderHitpointsBefore = defender?.hitpoints ?? 0;
     const attackerLocation = attackerLoc;
     const defenderLocation = defenderLoc;
@@ -458,6 +460,8 @@ export class AiContext {
           result,
           attackerTypeId: attacker.type.id,
           defenderTypeId: defender.type.id,
+          attackerVariation,
+          defenderVariation,
           attackerHitpointsBefore,
           defenderHitpointsBefore,
           attackerLocation,
