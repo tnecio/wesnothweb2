@@ -455,3 +455,47 @@ describe('[variable] equals= compares WML strings (attribute_value::str)', () =>
     expect([pump.ctx.variables.getNumber('took'), pump.ctx.variables.getNumber('not_no')]).toEqual([1, 1]);
   });
 });
+
+describe('event priority (event_handlers::cmp over the reversed range)', () => {
+  it('runs higher priority= handlers first, ties in registration order', () => {
+    const pump = fire(`
+      [event]
+        name=go
+        [event]
+          name=order
+          priority=-50
+          [set_variable]
+            name=order
+            value=$order|low
+          [/set_variable]
+        [/event]
+        [event]
+          name=order
+          [set_variable]
+            name=order
+            value=$order|a
+          [/set_variable]
+        [/event]
+        [event]
+          name=order
+          priority=10
+          [set_variable]
+            name=order
+            value=$order|high
+          [/set_variable]
+        [/event]
+        [event]
+          name=order
+          [set_variable]
+            name=order
+            value=$order|b
+          [/set_variable]
+        [/event]
+        [fire_event]
+          name=order
+        [/fire_event]
+      [/event]
+    `);
+    expect(pump.ctx.variables.getString('order')).toBe('highablow');
+  });
+});
