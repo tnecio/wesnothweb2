@@ -146,6 +146,8 @@ function gui.show_prompt(title, message, button, markup)
   local result = gui.show_dialog { T.grid(rows) }
   if style == "ok_cancel" or style == "yes_no" then return result == -1 end
 end
+-- core/gui.lua made its deprecated alias from the placeholder this replaces.
+wesnoth.show_message_box = wesnoth.deprecate_api('wesnoth.show_message_box', 'gui.show_prompt', 1, nil, gui.show_prompt)
 `;
 
 function* openHelpFlow(topic: string): Flow {

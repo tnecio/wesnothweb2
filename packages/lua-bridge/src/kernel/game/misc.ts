@@ -301,7 +301,7 @@ export function installMisc(k: LuaKernel, host: GameKernelHost, units: LuaUnits)
   for (const name of ['set', 'has', 'get', 'progress', 'has_sub_achievement', 'set_sub_achievement']) k.unported(['wesnoth', 'achievements', name]);
   for (const name of [
     'show_inspector', 'show_recruit_dialog', 'show_recall_dialog', 'show_dialog', 'show_menu', 'show_narration', 'show_popup',
-    'show_story', 'show_lua_console', 'add_widget_definition', 'show_help',
+    'show_story', 'show_prompt', 'show_lua_console', 'add_widget_definition', 'show_help',
   ]) {
     k.unported(['gui', name]);
   }
