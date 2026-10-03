@@ -214,6 +214,10 @@ export interface SnapshotTeam {
    * to `false` for older snapshots, same pattern as the fields above.
    */
   noLeader?: boolean;
+  /** `[side] save_id=` (defaulting to the side's or its `[leader]`'s id): `side.save_id`, global-variable carryover. */
+  saveId?: string;
+  /** `[side] persistent=` (default: a human side): `side.persistent`. Absent in older snapshots: a human side. */
+  persistent?: boolean;
 }
 
 /** One `[story][part]` -- see `apps/web/scripts/build-scenario-snapshot.mjs`'s `extractStory`. */
@@ -632,6 +636,8 @@ export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBo
         supportPerVillage: t.supportPerVillage ?? 1,
         shareVision: t.shareVision ?? 'all',
         noLeader: t.noLeader ?? false,
+        saveId: t.saveId ?? '',
+        persistent: t.persistent ?? parseController(t.controller) === 'human',
       }),
     );
     const team = board.getTeam(t.side)!;

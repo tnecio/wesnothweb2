@@ -3741,6 +3741,8 @@ export class GameSession {
         done = step();
         this.playAiSide(this.activeSide, aiAnimations);
         done();
+        // `ai.fallback_human()`: the side is now human, and its turn goes on in the player's hands.
+        if (this.aiManager.fellBackToHuman(team.side)) break;
       }
       if (this.scenarioResult) break;
       done = step();
@@ -3777,6 +3779,11 @@ export class GameSession {
     // the AI's own random draws share): this session's unsynced stream, so a headless game repeats from its seed.
     setPredictionRandom(this.predictionRng);
     const actions: AiAction[] = this.aiManager.playTurn(side);
+    // `play_ai_turn` catching `fallback_ai_to_human_exception`: `team::make_human`.
+    if (this.aiManager.fellBackToHuman(side)) {
+      const team = this.board.getTeam(side);
+      if (team) team.controller = 'human';
+    }
     for (const action of actions) {
       if (action.message) this.log.unshift(action.message);
       if (action.animation) outAnimations.push(action.animation);

@@ -625,6 +625,8 @@ const teams = board.teams().map((t) => ({
   // ending the scenario in an instant false "Victory!" -- see
   // GameBoardSnapshot.SnapshotTeam's own doc comment.
   noLeader: t.noLeader,
+  saveId: t.saveId,
+  persistent: t.persistent,
 }));
 
 /** Serializes a real `AttackType` instance to `AttackTypeSnapshot` shape. */

@@ -124,8 +124,8 @@ async function libertyHard(browser) {
   await press(page, 'c', 700);
   check('C opens the campaign dialog', (await dialogs(page)).includes('Play a Campaign'));
   // The real campaigns by rank (`campaigns.json`), then the debug ones.
-  const REAL = 'the_south_guard,of_pearls_and_pirates,liberty,two_brothers,dusk_of_dawn,the_hammer_of_thursagan,descent_into_darkness,dead_water,winds_of_fate,under_the_burning_suns,northern_rebirth';
-  check('the dialog lists the real campaigns first, by rank, then the debug ones', (await visibleCampaigns(page)).slice(0, 11).join() === REAL, (await visibleCampaigns(page)).join());
+  const REAL = 'the_south_guard,of_pearls_and_pirates,liberty,two_brothers,dusk_of_dawn,the_hammer_of_thursagan,descent_into_darkness,dead_water,the_rise_of_wesnoth,winds_of_fate,sceptre_of_fire,legend_of_wesmere,son_of_the_black_eye,under_the_burning_suns,northern_rebirth';
+  check('the dialog lists the real campaigns first, by rank, then the debug ones', (await visibleCampaigns(page)).slice(0, 15).join() === REAL, (await visibleCampaigns(page)).join());
   check('with nothing chosen there is a landing text and Play is off', (await page.isDisabled('[data-testid="campaign-play"]')) && (await page.textContent('[data-testid="campaign-details"]')).includes('Select a campaign'));
   // The filter searches descriptions too, as upstream's does: "lib" would also match Two Brothers' mention of Liberty.
   await filterFor(page, 'marchlanders');

@@ -11,15 +11,11 @@ what the port lacks; what it already supports is left out. Re-run after a subsys
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Eastern_Invasion | 24 (24) | 0 | 2 | 2 / 337 | 0 | 0 | coward, zone_guardian, hang_out, goto, forest_animals | 35 | 2 | 2 | 0 | 0 / 0 |
 | Heir_To_The_Throne | 35 (35) | 0 | 6 | 3 / 668 | 3 | 0 | zone_guardian, messenger_escort, simple_attack, goto, coward, wolves | 62 | 4 | 1 | 0 | 8 / 3 |
-| Heir_To_The_Throne_Classic | 31 (31) | 0 | 3 | 2 / 82 | 1 | 0 | assassin | 0 | 1 | 1 | 0 | 0 / 0 |
-| Legend_of_Wesmere | 24 (24) | 0 | 3 | 1 / 163 | 0 | 0 | patrol | 2 | 0 | 0 | 0 | 0 / 0 |
-| Sceptre_of_Fire | 14 (14) | 0 | 1 | 1 / 11 | 0 | 0 | — | 0 | 0 | 0 | 0 | 3 / 2 |
+| Heir_To_The_Throne_Classic | 31 (31) | 0 | 3 | 2 / 82 | 0 | 0 | assassin | 0 | 1 | 1 | 0 | 0 / 0 |
 | Secrets_of_the_Ancients | 22 (22) | 0 | 0 | 1 / 104 | 1 | 0 | zone_guardian, coward, messenger_escort | 0 | 1 | 0 | 0 | 33 / 33 |
-| Son_Of_The_Black_Eye | 19 (19) | 0 | 0 | 1 / 173 | 1 | 0 | simple_attack, healer_support | 1 | 0 | 0 | 0 | 0 / 0 |
-| The_Deceivers_Gambit | 20 (20) | 0 | 3 | 3 / 661 | 5 | 0 | zone_guardian, goto, simple_attack, healer_support, patrol, coward | 26 | 2 | 2 | 0 | 0 / 0 |
-| The_Rise_Of_Wesnoth | 27 (27) | 0 | 0 | 1 / 60 | 0 | 0 | — | 5 | 0 | 0 | 0 | 0 / 0 |
+| The_Deceivers_Gambit | 20 (20) | 0 | 3 | 3 / 661 | 4 | 0 | zone_guardian, goto, simple_attack, healer_support, patrol, coward | 26 | 2 | 2 | 0 | 0 / 0 |
 | WL_Test | 2 (2) | 0 | 0 | 0 / 0 | 0 | 0 | — | 0 | 0 | 0 | 0 | 0 / 0 |
-| World_Conquest | 1 (0) | 0 | 0 | 111 / 18017 | 17 | 0 | — | 0 | 5 | 0 | 0 | 0 / 0 |
+| World_Conquest | 1 (0) | 0 | 0 | 111 / 18017 | 16 | 0 | — | 0 | 5 | 0 | 0 | 0 / 0 |
 
 ## WML action tags the port does not have
 
@@ -30,7 +26,7 @@ what the port lacks; what it already supports is left out. Re-run after a subsys
 
 | Tag | Campaigns | Uses | Which |
 |---|---|---|---|
-| `[redraw]` | 9 | 122 | Eastern_Invasion, Heir_To_The_Throne, Heir_To_The_Throne_Classic, Legend_of_Wesmere, Sceptre_of_Fire, Secrets_of_the_Ancients, +3 |
+| `[redraw]` | 5 | 89 | Eastern_Invasion, Heir_To_The_Throne, Heir_To_The_Throne_Classic, Secrets_of_the_Ancients, The_Deceivers_Gambit |
 
 ## Conditions not evaluated
 
@@ -53,10 +49,6 @@ These run through the Lua runtime (Phase 28c); what they need is in the Lua API 
 | `[select_character]` | Heir_To_The_Throne_Classic | 1 |
 | `[hint_message]` | Heir_To_The_Throne_Classic | 2 |
 | `[show_countdown]` | Heir_To_The_Throne_Classic | 1 |
-| `[replace_map_section]` | Legend_of_Wesmere | 1 |
-| `[shift_labels]` | Legend_of_Wesmere | 1 |
-| `[persistent_carryover_store]` | Legend_of_Wesmere | 1 |
-| `[rune_choice]` | Sceptre_of_Fire | 8 |
 | `[select_delfador_skills]` | The_Deceivers_Gambit | 20 |
 | `[display_skills_dialog]` | The_Deceivers_Gambit | 20 |
 | `[listen_for_mousemove]` | The_Deceivers_Gambit | 14 |
@@ -67,7 +59,6 @@ Names as the campaigns call them (`wesnoth.x.y`; a field read on a function's re
 
 | Lua API | Campaigns | Places | Which |
 |---|---|---|---|
-| `wesnoth.add_known_unit` | 4 | 5 | Heir_To_The_Throne_Classic, Son_Of_The_Black_Eye, The_Deceivers_Gambit, World_Conquest |
 | `wesnoth.audio.play` | 2 | 3 | The_Deceivers_Gambit, World_Conquest |
 | `wesnoth.units.create_animator` | 1 | 35 | Heir_To_The_Throne |
 | `filesystem.have_asset` | 1 | 28 | Heir_To_The_Throne |
@@ -105,14 +96,14 @@ Names as the campaigns call them (`wesnoth.x.y`; a field read on a function's re
 |---|---|---|---|
 | `zone_guardian` | 4 | 55 | Eastern_Invasion, Heir_To_The_Throne, Secrets_of_the_Ancients, The_Deceivers_Gambit |
 | `coward` | 4 | 6 | Eastern_Invasion, Heir_To_The_Throne, Secrets_of_the_Ancients, The_Deceivers_Gambit |
-| `simple_attack` | 3 | 25 | Heir_To_The_Throne, Son_Of_The_Black_Eye, The_Deceivers_Gambit |
 | `goto` | 3 | 8 | Eastern_Invasion, Heir_To_The_Throne, The_Deceivers_Gambit |
+| `simple_attack` | 2 | 23 | Heir_To_The_Throne, The_Deceivers_Gambit |
 | `messenger_escort` | 2 | 4 | Heir_To_The_Throne, Secrets_of_the_Ancients |
-| `healer_support` | 2 | 2 | Son_Of_The_Black_Eye, The_Deceivers_Gambit |
-| `patrol` | 2 | 2 | Legend_of_Wesmere, The_Deceivers_Gambit |
 | `assassin` | 1 | 1 | Heir_To_The_Throne_Classic |
 | `forest_animals` | 1 | 1 | Eastern_Invasion |
 | `hang_out` | 1 | 1 | Eastern_Invasion |
+| `healer_support` | 1 | 1 | The_Deceivers_Gambit |
+| `patrol` | 1 | 1 | The_Deceivers_Gambit |
 | `wolves` | 1 | 1 | Heir_To_The_Throne |
 
 All run as upstream's own Lua (`lua/wml/micro_ai.lua`, Phase 29); listed so each can be checked when its campaign is ported.
@@ -123,10 +114,7 @@ All run as upstream's own Lua (`lua/wml/micro_ai.lua`, Phase 29); listed so each
 
 - **Eastern_Invasion** (35): 01_Eastern_Invasion: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua, 01_Eastern_Invasion: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua, 03_An_Unexpected_Appearance: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua, 03_An_Unexpected_Appearance: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua, 04a_An_Elven_Interlude: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua, 04a_An_Elven_Interlude: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua, +29
 - **Heir_To_The_Throne** (62): 01_The_Elves_Besieged: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua, 01_The_Elves_Besieged: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua, 02_Flight_of_the_Elves: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua, 02_Flight_of_the_Elves: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua, 03_Blackwater_Port: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua, 03_Blackwater_Port: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua, +56
-- **Legend_of_Wesmere** (2): 03_Kalian_under_Attack: [engine] name=lua, 03_Kalian_under_Attack: [stage] name=leader_retreat
-- **Son_Of_The_Black_Eye** (1): 06_Black_Flag: [candidate_action] name=transport location=campaigns/Son_Of_The_Black_Eye/ai/ca_transport_S6.lua
 - **The_Deceivers_Gambit** (26): 01_Stirrings_of_War: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua, 01_Stirrings_of_War: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua, 02_Fort_Garard: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua, 02_Fort_Garard: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua, 03_The_Ambassador: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua, 03_The_Ambassador: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua, +20
-- **The_Rise_Of_Wesnoth** (5): 08_Clearwater_Port: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua, 08_Clearwater_Port: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua, 12_A_Final_Spring: [candidate_action] name=ai_default_rca::spread_poison location=ai/lua/ca_spread_poison.lua, 12_A_Final_Spring: [candidate_action] name=ai_default_rca::high_xp_attack location=ai/lua/ca_high_xp_attack.lua, 15_A_New_Land: [candidate_action] name=aggressive_attack_no_suicide location=campaigns/The_Rise_Of_Wesnoth/ai/ca_aggressive_attack_no_suicide.lua
 
 ## Custom dialogs (`gui.show_dialog`)
 
@@ -162,7 +150,6 @@ Supported since Phase 28c C1: a campaign's own `[terrain_type]`s and `[terrain_g
 | Campaign | `[terrain_graphics]` | `[terrain_type]` |
 |---|---|---|
 | Heir_To_The_Throne | 8 | 3 |
-| Sceptre_of_Fire | 3 | 2 |
 | Secrets_of_the_Ancients | 33 | 33 |
 
 ## Preprocessor gaps the survey found (fixed)

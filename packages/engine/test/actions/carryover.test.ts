@@ -250,6 +250,15 @@ describe('computeCarryoverRecruits', () => {
     expect(survivors.some((u) => u.id === 'Kai Krellis')).toBe(false);
   });
 
+  it('also excludes a unit the next [side] declares as a [leader] child (Winds of Fate\'s Gorlack)', () => {
+    const nextScenario = new WmlConfig();
+    const side = nextScenario.addChild('side');
+    side.setAttribute('side', 1);
+    side.addChild('leader').setAttribute('id', 'Kai Krellis');
+    const survivors = computeCarryoverRecruits(makeBoard(), 1, nextScenario.toJSON());
+    expect(survivors.map((u) => u.id).sort()).toEqual(['', 'Cylanna']);
+  });
+
   it('matches real 01_Invasion.cfg -> 02_Flight.cfg: Kai Krellis excluded, everyone else carried', () => {
     const defines = loadDefines();
     const scenario2Cfg = parseWmlFile(path.join(campaignDir, 'scenarios/02_Flight.cfg'), { dataRoot, defines: new Map(defines) });

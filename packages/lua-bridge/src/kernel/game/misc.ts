@@ -283,7 +283,20 @@ export function installMisc(k: LuaKernel, host: GameKernelHost, units: LuaUnits)
     lua.lua_pop(L, 1);
   }
   k.define(['wesnoth', 'redraw'], () => 0);
-  for (const name of ['add_known_unit', 'get_era', 'get_resource', 'modify_ai', 'cancel_action', 'log_replay']) k.unported(['wesnoth', name]);
+  // `intf_add_known_unit`: marks the type encountered for the help. Every type already counts as encountered
+  // in the port's help (`helpWorld.ts`), so only the argument check is left.
+  k.define(['wesnoth', 'add_known_unit'], (T) => {
+    const type = checkString(T, 1);
+    let known = false;
+    try {
+      known = ctx().resolveType(type) !== undefined;
+    } catch {
+      known = false;
+    }
+    if (!known) return argError(T, 1, `unknown unit type: '${type}'`);
+    return 0;
+  });
+  for (const name of ['get_era', 'get_resource', 'modify_ai', 'cancel_action', 'log_replay']) k.unported(['wesnoth', name]);
   k.unported(['wesnoth', 'audio', 'play']);
   for (const name of ['set', 'has', 'get', 'progress', 'has_sub_achievement', 'set_sub_achievement']) k.unported(['wesnoth', 'achievements', name]);
   for (const name of [

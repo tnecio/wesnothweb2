@@ -73,6 +73,16 @@ describe('game kernel', () => {
     const { kernel } = makeGame();
     expect(() => kernel.run('local x = undefined_global_name', '=t')).toThrow(/undefined_global_name/);
   });
+
+  it('add_known_unit accepts a unit type and rejects an unknown one (intf_add_known_unit)', () => {
+    const { kernel, pump } = makeGame();
+    pump.ctx.resolveType = (id: string) => {
+      if (id !== 'Orcish Grunt') throw new Error(`unknown type ${id}`);
+      return { id } as never;
+    };
+    kernel.run('wesnoth.add_known_unit("Orcish Grunt")', '=t');
+    expect(() => kernel.run('wesnoth.add_known_unit("No Such Unit")', '=t')).toThrow(/unknown unit type: 'No Such Unit'/);
+  });
 });
 
 describe('floating labels (wesnoth.interface.float_label, add_overlay_text)', () => {

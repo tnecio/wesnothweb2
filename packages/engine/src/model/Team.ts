@@ -153,14 +153,16 @@ export class Team {
       userTeamName: cfg.getString('user_team_name', ''),
       sideName: cfg.getString('side_name', ''),
       faction: cfg.getString('faction', ''),
-      saveId: cfg.getString('save_id', ''),
+      // `saved_game::expand_scenario`/`team_info::read`: the side's `id=`, else its `[leader]`'s.
+      saveId: cfg.getString('save_id', '') || cfg.getString('id', '') || (cfg.child('leader')?.getString('id', '') ?? ''),
       controller: parseController(cfg.getString('controller', '')),
       color: cfg.getString('color', String(side)),
       flag: cfg.getString('flag', ''),
       noLeader: cfg.getBoolean('no_leader', false),
       hidden: cfg.getBoolean('hidden', false),
       scrollToLeader: cfg.getBoolean('scroll_to_leader', true),
-      persistent: cfg.getBoolean('persistent', true),
+      // `team_info::read`: a human side is persistent unless it says otherwise.
+      persistent: cfg.getBoolean('persistent', parseController(cfg.getString('controller', '')) === 'human'),
       objectives: cfg.getString('objectives', ''),
       carryoverPercentage: cfg.getNumber('carryover_percentage', 100),
       carryoverAdd: cfg.getBoolean('carryover_add', false),

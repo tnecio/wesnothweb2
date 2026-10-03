@@ -19,7 +19,9 @@ import { findLocations, unitMatchesFilter } from '@wesnothweb2/engine/src/events
 import { reachableHexes } from '@wesnothweb2/engine/src/pathfind/pathfind.js';
 import { CandidateAction, BAD_SCORE } from '@wesnothweb2/engine/src/ai/composite/rca.js';
 import type { AiEngine } from '@wesnothweb2/engine/src/ai/composite/aiComposite.js';
+import { FallbackAiToHumanError } from '@wesnothweb2/engine/src/ai/manager.js';
 import type { AiContext } from '@wesnothweb2/engine/src/ai/context.js';
+import type { Stage } from '@wesnothweb2/engine/src/ai/composite/stage.js';
 import type { MoveMap } from '@wesnothweb2/engine/src/ai/moveMaps.js';
 import type { AttackAnalysis } from '@wesnothweb2/engine/src/ai/default/attackAnalysis.js';
 import { findTargets } from '@wesnothweb2/engine/src/ai/default/findTargets.js';
@@ -85,6 +87,8 @@ export class LuaAiEngine implements AiEngine {
   private readonly k: LuaKernel;
   private readonly units: LuaUnits;
   private loadDepth = 0;
+  /** Set by `ai.fallback_human()` until `handle` turns it into `FallbackAiToHumanError`. */
+  private fallbackRequested = false;
 
   constructor(
     private readonly runtime: LuaRuntime,
@@ -183,6 +187,13 @@ export class LuaAiEngine implements AiEngine {
     return new LuaCandidateAction(ctx, cfg, this, side, evalRef, execRef);
   }
 
+  /** `engine_lua::do_parse_stage_from_config`: a `lua_stage_wrapper` running the stage's `code`. */
+  stage(ctx: AiContext, cfg: WmlConfig, sideConfigs: readonly WmlConfig[]): Stage | undefined {
+    const side = this.contextFor(ctx, sideConfigs);
+    if (!side) return undefined;
+    return new LuaStage(ctx, cfg, this, side, this.compile(cfg.getString('code', '')));
+  }
+
   /** `lua_ai_action_handler::create`: a compiled chunk kept in the registry, or undefined on a syntax error. */
   private compile(code: string): number | undefined {
     const L = this.k.L;
@@ -260,9 +271,13 @@ export class LuaAiEngine implements AiEngine {
           this.k.pcall(n, wantResult ? 1 : 0);
           if (wantResult) result = lua.lua_tonumber(L, -1) || 0;
         } catch (e) {
-          this.k.log('error', `Lua AI: ${(e as Error).message}`);
+          if (!this.fallbackRequested) this.k.log('error', `Lua AI: ${(e as Error).message}`);
         }
         lua.lua_settop(L, top);
+        if (this.fallbackRequested) {
+          this.fallbackRequested = false;
+          throw new FallbackAiToHumanError();
+        }
         return result;
       }),
     );
@@ -372,7 +387,12 @@ export class LuaAiEngine implements AiEngine {
       stopunit_all: stopunit(true, true, true),
       stopunit_attacks: stopunit(true, false, true),
       stopunit_moves: stopunit(true, true, false),
-      fallback_human: (T) => lauxlib.luaL_error(T, to_luastring('ai.fallback_human is not available in this port')),
+      // `cfun_ai_fallback_human` throws past Lua to `play_ai_turn`: here a Lua error, turned into the
+      // exception once the call is back out of Lua (`handle`).
+      fallback_human: (T) => {
+        this.fallbackRequested = true;
+        return lauxlib.luaL_error(T, to_luastring('ai.fallback_human'));
+      },
     };
 
     const side = () => this.contexts.get(ctx);
@@ -723,5 +743,30 @@ export class LuaCandidateAction extends CandidateAction {
   execute(): void {
     if (this.execRef !== undefined) this.luaEngine.handle(this.side, this.execRef, this.args, this.filterOwnCfg, false, false);
     if (this.boundUnit !== undefined) this.disable();
+  }
+}
+
+/** `lua_stage_wrapper`: the stage's code run once per turn with the mutating functions, `[args]` as its params. */
+export class LuaStage implements Stage {
+  readonly id: string;
+  readonly name: string;
+  private readonly args: WmlConfig;
+
+  constructor(
+    private readonly ctx: AiContext,
+    cfg: WmlConfig,
+    private readonly luaEngine: LuaAiEngine,
+    private readonly side: SideContext,
+    private readonly ref: number | undefined,
+  ) {
+    this.id = cfg.getString('id', '');
+    this.name = cfg.getString('name', '');
+    this.args = cfg.child('args') ?? new WmlConfig();
+  }
+
+  playStage(): boolean {
+    const before = this.ctx.gamestateSnapshot();
+    if (this.ref !== undefined) this.luaEngine.handle(this.side, this.ref, this.args, undefined, false, false);
+    return this.ctx.gamestateSnapshot() !== before;
   }
 }
