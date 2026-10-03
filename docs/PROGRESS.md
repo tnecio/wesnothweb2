@@ -6134,3 +6134,17 @@ browser found general bugs instead.
   - `main-menu-playthrough.mjs` now expects the eleven real campaigns by rank.
 - **Size after B1:** about 2,100 data files for the Workers upload (atlases 66 MB, snapshots 50 MB), far
   inside its limits (20,000 files, 25 MiB per file); atlases stay where they are.
+
+## 2026-10-03: Playtest fixes (Dead Water 1-2)
+
+- **Healing shown at the wrong time.** One end of turn played every side's turn-start healing and poison as a
+  batch before the AI's moves, so the player's healers (a Mermaid Priestess) seemed to heal as the AI's turn
+  began. The session now records a timeline (`lastTurnTimeline`): each side's healing at the start of its own
+  turn, then that side's moves; the player's own healing comes last.
+- **Objectives crashed after loading a save** (Dead Water 2, from the menu). A save kept the generated
+  objectives as plain data, losing their translatable texts. Objectives now keep the config they were
+  generated from, `[show_if]` already applied, and a load rebuilds them from it (older saves regenerate from
+  their stored `[objectives]`).
+- **Recall list missing after loading a scenario-2 save:** not reproduced. A save made in Dead Water 2 after
+  carrying over from 1 keeps all six recall-list units when loaded from the page URL, as the scenario-start
+  save, or through the in-game Load dialog. Waiting for the player's save file.
