@@ -112,8 +112,11 @@ function gui.show_dialog(wml, preshow, postshow)
       end,
       __newindex = function(self, key, value)
         if CALLBACK_KEYS[key] then
-          -- Upstream calls a widget's callback with the widget itself.
-          callbacks[handle .. "|" .. id .. "|" .. key] = value and function(...) return value(self, ...) end
+          -- Upstream calls a widget's callback with the widget itself; on_link_click with the link's destination
+          -- and then the widget (link_callback).
+          local cb = value and function(...) return value(self, ...) end
+          if value and key == "on_link_click" then cb = function(dest) return value(dest, self) end end
+          callbacks[handle .. "|" .. id .. "|" .. key] = cb
           wesnoth.__gui_set(handle, id, key, value ~= nil)
         else
           wesnoth.__gui_set(handle, id, key, value)
@@ -411,7 +414,7 @@ export class LuaRuntime {
   }
 
   /** Calls a function stored in `wesnoth.__gui_callbacks[key]`, if any. */
-  private *runCallback(key: string): Flow {
+  private *runCallback(key: string, ...args: string[]): Flow {
     const T = this.newThread();
     try {
       lua.lua_getglobal(T.state, to_luastring('wesnoth'));
@@ -420,7 +423,8 @@ export class LuaRuntime {
       lua.lua_replace(T.state, 1);
       lua.lua_settop(T.state, 1);
       if (lua.lua_type(T.state, 1) !== lua.LUA_TFUNCTION) return;
-      yield* this.drive(T.state, 0);
+      for (const arg of args) lua.lua_pushstring(T.state, to_luastring(arg));
+      yield* this.drive(T.state, args.length);
     } finally {
       this.release(T.ref);
     }
@@ -514,6 +518,8 @@ export class LuaRuntime {
         widget.label = ts ? (ts.translatable ? ts.toJSON() : ts.str()) : luaString(T, 4);
       } else if (key === 'label' && widget.type === 'image') widget.label = luaString(T, 4);
       else if (key === 'use_markup' && (widget.type === 'label' || widget.type === 'button')) widget.markup = lua.lua_toboolean(T, 4);
+      // `on_link_click` is a rich_label's (`register_link_callback`); its function is kept in `__gui_callbacks`.
+      else if (key === 'on_link_click' && widget.type === 'label' && widget.rich) widget.linkHandler = lua.lua_toboolean(T, 4);
       else if (!['on_modified', 'on_button_click', 'on_left_click', 'on_link_click', 'callback', 'tooltip', 'enabled'].includes(key)) {
         this.ctx().log('warn', `gui: widget property '${key}' is not supported (ignored)`);
       }
@@ -568,6 +574,12 @@ export class LuaRuntime {
           const widget = findGuiWidget(dialog.root, selection[1]!);
           if (widget?.type === 'listbox' || widget?.type === 'menu_button') widget.selectedIndex = Number(selection[2]);
           yield* this.runCallback(`${handle}|${selection[1]}|on_modified`);
+          continue;
+        }
+        // A link in a rich label: its on_link_click runs with the destination, the dialog staying open.
+        const link = /^link:([^|]*)\|(.*)$/s.exec(answer.text ?? '');
+        if (link) {
+          yield* this.runCallback(`${handle}|${link[1]}|on_link_click`, link[2]!);
           continue;
         }
         // A button: its on_button_click runs first (it may close the dialog itself, as gui.widget.close does);

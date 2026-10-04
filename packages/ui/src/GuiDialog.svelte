@@ -10,7 +10,7 @@
   import Modal from './Modal.svelte';
   import Markup from './markup/Markup.svelte';
   import IpfImage from './images/IpfImage.svelte';
-  import { TString, guiSelectionAnswer, type GuiDialogSpec, type GuiNode, type GuiCell, type GuiText, type InteractionResult } from '@wesnothweb2/engine';
+  import { TString, guiLinkAnswer, guiSelectionAnswer, type GuiDialogSpec, type GuiNode, type GuiCell, type GuiText, type InteractionResult } from '@wesnothweb2/engine';
   import { ts } from './i18n/locale.js';
   import { stripPango } from './markup/pango.js';
 
@@ -63,7 +63,11 @@
       </div>
     {:else if node.type === 'label'}
       <div class="label" class:title={node.title} style="text-align: {node.textAlignment}; {visibility(node)}" data-gui-id={node.id || undefined}>
-        {#if node.markup}<Markup text={text(node.label)} help={node.rich} />{:else}{text(node.label)}{/if}
+        {#if node.markup}<Markup
+            text={text(node.label)}
+            help={node.rich}
+            onLink={node.linkHandler ? (dst) => onAnswer(guiLinkAnswer(node.id, dst)) : undefined}
+          />{:else}{text(node.label)}{/if}
       </div>
     {:else if node.type === 'image'}
       {#if node.label}<span style={visibility(node)}><IpfImage src={node.label} /></span>{/if}
@@ -123,7 +127,7 @@
     // with the focus on a menu button.
     if (e.key !== 'Enter' || e.defaultPrevented) return;
     const target = e.target as HTMLElement | null;
-    if (target && target.getAttribute('role') !== 'option' && ['BUTTON', 'INPUT', 'TEXTAREA'].includes(target.tagName)) return;
+    if (target && target.getAttribute('role') !== 'option' && ['A', 'BUTTON', 'INPUT', 'TEXTAREA'].includes(target.tagName)) return;
     e.preventDefault();
     onAnswer({ value: -1 });
   }}
