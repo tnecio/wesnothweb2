@@ -314,6 +314,62 @@ describe('listbox:add_item()', () => {
   });
 });
 
+describe('mouse callbacks (select_hex_callback, mouse_over_hex_callback)', () => {
+  it('runs content that set on_mouse_action, and reports whether any is set', () => {
+    const { runtime, run, vars } = setup();
+    expect(runtime.hasCallback('on_mouse_action')).toBe(false);
+    run(`[lua]
+      code=<< local old = wesnoth.game_events.on_mouse_action
+        wesnoth.game_events.on_mouse_action = function(x, y) wml.variables.hex = x .. "," .. y ; return old(x, y) end >>
+    [/lua]`);
+    expect(runtime.hasCallback('on_mouse_action')).toBe(true);
+    expect(runtime.hasCallback('on_mouse_move')).toBe(false);
+    runFlow(runtime.mouseCallbackFlow('on_mouse_action', 4, 7));
+    expect(vars.getString('hex')).toBe('4,7');
+  });
+});
+
+describe("buttons, menu buttons and gui.widget.close (The Deceiver's Gambit's spell dialog)", () => {
+  it('a button with no return value runs its callback and stays open; the callback may close the window', () => {
+    const { run, vars, logs } = setup();
+    const answers = [
+      { value: 0, text: 'click:info' }, // no return value, no close: the dialog stays
+      { text: 'select:spells:2' }, // the menu button's on_modified gets the widget
+      { value: 0, text: 'click:cast' }, // its callback closes the window
+    ];
+    const shown: string[] = [];
+    run(`[lua]
+      code=<<
+        local T = wml.tag
+        local layout = { T.grid {
+          T.row { T.column { T.menu_button { id = "spells", T.option { label = "Fireball" }, T.option { label = "Lightbeam" } } } },
+          T.row { T.column { T.button { id = "info", label = "Info" } } },
+          T.row { T.column { T.button { id = "cast", label = "Cast" } } },
+        } }
+        local r = gui.show_dialog(layout, function(window)
+          assert(window:find("spells").type == "menu_button")
+          window.info.on_button_click = function() wml.variables.info = (wml.variables.info or 0) + 1 end
+          window.spells.on_modified = function(button) wml.variables.picked = button.selected_index end
+          window.cast.on_button_click = function() wml.variables.cast = window.spells.selected_index ; gui.widget.close(window) end
+          wml.variables.cast_type = window.cast.type
+          window.info.enabled = false
+          wml.variables.info_enabled = window.info.enabled
+        end)
+        wml.variables.retval = r
+      >>
+    [/lua]`, (i) => {
+      if (i.kind !== 'guiDialog') return {};
+      shown.push(JSON.stringify(i.dialog.root));
+      return answers.shift() ?? { value: -2 };
+    });
+    expect(logs.filter((l) => l.startsWith('warn') || l.startsWith('error'))).toEqual([]);
+    expect(shown).toHaveLength(3);
+    expect(shown[0]).toContain('"type":"menu_button"');
+    expect([vars.getNumber('info'), vars.getNumber('picked'), vars.getNumber('cast'), vars.getNumber('retval')]).toEqual([1, 2, 2, 0]);
+    expect([vars.getString('cast_type'), vars.get('info_enabled')]).toEqual(['button', false]);
+  });
+});
+
 describe('gui.show_dialog', () => {
   const DIALOG = `[resolution]
     [grid]

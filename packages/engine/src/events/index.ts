@@ -6,7 +6,7 @@
 export { VariableStore, newVarNode, varNodeFromConfig, varNodeToConfig } from './variables.js';
 export type { VarNode } from './variables.js';
 
-export { unitMatchesFilter, findUnits, locationMatchesFilter, locationMatchesFilterOnBoard, findLocations, unitFormulaContext } from './filter.js';
+export { unitMatchesFilter, findUnits, locationMatchesFilter, locationMatchesFilterOnBoard, findLocations, unitFormulaContext, setFilterEnvironment, type FilterEnvironment } from './filter.js';
 
 export { conditionalPassed, builtinConditions, setLuaConditionalEvaluator, type LuaConditionalEvaluator } from './conditionalWml.js';
 

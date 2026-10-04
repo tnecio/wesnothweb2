@@ -1874,7 +1874,9 @@ below exist yet.
 `PROGRESS.md`: the shared tags, scenario end events, floating labels, unit overlays, campaign terrain and
 generated caves; the generated caves are made at build time, one per scenario, by the user's call); **B1 delivered 2026-10-03**
 (six campaigns, 68 scenarios; see `PROGRESS.md`); **B2 delivered 2026-10-03** (four campaigns, 84 scenarios); **B3 delivered 2026-10-03** (Under the Burning Suns
-complete, Secrets of the Ancients, Eastern Invasion: 56 more scenarios). Plan:
+complete, Secrets of the Ancients, Eastern Invasion: 56 more scenarios); **B4 delivered 2026-10-03** (Heir to the
+Throne, HttT Classic, The Deceiver's Gambit I and II: 86 scenarios -- every mainline single-player campaign but
+World Conquest now ships). Plan:
 - **C1, shared gaps**, before any campaign:
   - the missing tags (`[set_extra_recruit]`, `[do_command]`, `[find_path]`, `[end_turn]`,
     `[petrify]`/`[unpetrify]`, `[story]`, `[print]`, `[proceed_to_next_scenario]`);

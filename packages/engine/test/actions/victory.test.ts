@@ -83,30 +83,35 @@ describe('checkVictory (hand-built, leader-death / no_leader_left default)', () 
     expect(result.notDefeated).toEqual([]);
   });
 
-  it('real, reported bug: a no_leader=yes side with zero units yet placed used to read as defeated, ending the scenario before its antagonist ever appeared', () => {
-    // Under the Burning Suns scenario 1: sides 2-4 declare no_leader=yes
-    // and get their real leaders from a LATER scripted event, not inline
-    // in [side] -- at scenario start they have no canRecruit unit (in
-    // fact no units at all), which used to make checkVictory silently
-    // drop them from notDefeated and declare an instant false "Victory!".
+  it("a side stands by its defeat_condition: never, no_units_left, always (game_board::check_victory)", () => {
+    // Under the Burning Suns 1's antagonists have no unit at the start; the scenario survives that through
+    // victory_when_enemies_defeated=no (the session), not by exempting the side, as upstream.
     const board = twoSideBoard();
-    board.getTeam(2)!.noLeader = true;
+    board.getTeam(2)!.controller = 'ai';
     board.addUnit(Unit.create(leaderType, 1, Location.fromWml(1, 1), { canRecruit: true }));
-    // Side 2 has no units at all yet.
+    expect(checkVictory(board)).toMatchObject({ continueLevel: false, notDefeated: [1], foundPlayer: true });
 
-    const result = checkVictory(board);
-    expect(result.continueLevel).toBe(true);
-    expect([...result.notDefeated].sort()).toEqual([1, 2]);
+    board.getTeam(2)!.defeatCondition = 'never';
+    expect(checkVictory(board).continueLevel).toBe(true);
+
+    board.getTeam(2)!.defeatCondition = 'no_units_left';
+    board.addUnit(Unit.create(grunt, 2, Location.fromWml(3, 3)));
+    expect(checkVictory(board).continueLevel).toBe(true);
+
+    board.getTeam(1)!.defeatCondition = 'always';
+    expect(checkVictory(board)).toMatchObject({ continueLevel: false, notDefeated: [2], foundPlayer: false });
   });
 
-  it('a side marked lost (team.lost) is defeated even while it still has a canRecruit unit', () => {
+  it('a fallen side gives up its villages', () => {
     const board = twoSideBoard();
     board.addUnit(Unit.create(leaderType, 1, Location.fromWml(1, 1), { canRecruit: true }));
-    board.addUnit(Unit.create(leaderType, 2, Location.fromWml(3, 3), { canRecruit: true }));
-    board.getTeam(2)!.lost = true;
-
-    const result = checkVictory(board);
-    expect(result.continueLevel).toBe(false);
-    expect(result.notDefeated).toEqual([1]);
+    const village = [...Array(board.map.w()).keys()]
+      .flatMap((x) => [...Array(board.map.h()).keys()].map((y) => new Location(x, y)))
+      .find((l) => board.map.isVillage(l));
+    if (village) {
+      board.captureVillage(village, 2);
+      checkVictory(board);
+      expect(board.villageOwner(village)).toBeUndefined();
+    }
   });
 });

@@ -12,7 +12,8 @@
  */
 import { WmlConfig } from '@wesnothweb2/engine/src/wml/config.js';
 import { TString } from '@wesnothweb2/engine/src/i18n/tstring.js';
-import { Location, parseDirection, writeDirection } from '@wesnothweb2/engine/src/model/Location.js';
+import { Location, getAdjacentTiles, parseDirection, writeDirection } from '@wesnothweb2/engine/src/model/Location.js';
+import type { AnimatorEntry } from '@wesnothweb2/engine/src/events/interaction.js';
 import { Unit } from '@wesnothweb2/engine/src/model/Unit.js';
 import type { AttackType, Alignment } from '@wesnothweb2/engine/src/model/UnitType.js';
 import { findUnits, unitMatchesFilter } from '@wesnothweb2/engine/src/events/filter.js';
@@ -38,6 +39,8 @@ import {
 import type { GameKernelHost } from './host.js';
 
 export const UNIT_KEY = 'unit';
+const WESNOTH = to_luastring('wesnoth');
+const UNITS = to_luastring('units');
 const STATUS_KEY = 'unit status';
 const VARIABLES_KEY = 'unit variables';
 const ATTACKS_KEY = 'unit attacks table';
@@ -84,6 +87,9 @@ interface AttackRef {
 }
 
 export class LuaUnits {
+  /** Registry reference of the `wesnoth.units` table, where the unit metatable finds methods. */
+  private unitsTableRef: number | undefined;
+
   constructor(
     private readonly k: LuaKernel,
     private readonly host: GameKernelHost,
@@ -428,9 +434,17 @@ export class LuaUnits {
           }
           return argError(T, 1, 'unit not found');
         }
-        lua.lua_getglobal(T, to_luastring('wesnoth'));
-        lua.lua_getfield(T, -1, to_luastring('units'));
-        lua.lua_getfield(T, -1, to_luastring(key));
+        // Methods (`u:movement_on(...)`, ...) are `wesnoth.units`' functions, looked up with the key already on
+        // the stack, in the table as it was first used -- a Lua AI's path cost function runs this for every hex it explores.
+        if (this.unitsTableRef === undefined) {
+          lua.lua_getglobal(T, WESNOTH);
+          lua.lua_getfield(T, -1, UNITS);
+          this.unitsTableRef = lauxlib.luaL_ref(T, lua.LUA_REGISTRYINDEX);
+          lua.lua_pop(T, 1);
+        }
+        lua.lua_rawgeti(T, lua.LUA_REGISTRYINDEX, this.unitsTableRef);
+        lua.lua_pushvalue(T, 2);
+        lua.lua_gettable(T, -2);
         if (!lua.lua_isnil(T, -1)) return 1;
         return argError(T, 2, `invalid property of unit: ${key}`);
       },
@@ -852,9 +866,110 @@ export class LuaUnits {
         return 0;
       },
     });
-    for (const name of ['advance', 'transform', 'teleport', 'to_recall', 'jamming_on', 'add_modification', 'get_hovered', 'create_animator', 'create_weapon']) {
+    this.installAnimator();
+    for (const name of ['advance', 'transform', 'teleport', 'to_recall', 'jamming_on', 'add_modification', 'get_hovered', 'create_weapon']) {
       k.unported(['wesnoth', 'units', name]);
     }
+  }
+
+  /**
+   * `intf_create_animator`: an animator collecting `add(unit, flag, hits, params)` calls; `run()` plays them
+   * together and waits for the display (one `animateUnits` beat), then empties it, as `impl_run_animation`;
+   * `clear()` empties it.
+   */
+  private installAnimator(): void {
+    const k = this.k;
+    const L = k.L;
+    const ANIMATOR_KEY = 'unit animator';
+    const entriesOf = (T: LuaState): AnimatorEntry[] => {
+      const entries = k.userdata<AnimatorEntry[]>(T, 1, ANIMATOR_KEY);
+      if (!entries) typeError(T, 1, 'unit animator');
+      return entries!;
+    };
+    const methods: Record<string, LuaCFunction> = {
+      add: (T) => {
+        const entries = entriesOf(T);
+        const unit = this.check(T, 2);
+        const flag = checkString(T, 3);
+        const hitsText = checkString(T, 4);
+        const hits = (['hit', 'miss', 'kill'].includes(hitsText) ? hitsText : 'invalid') as AnimatorEntry['hits'];
+        let target: Location | undefined;
+        let value = 0;
+        let value2 = 0;
+        let withBars = false;
+        let text = '';
+        let color = { r: 255, g: 255, b: 255 };
+        if (lua.lua_istable(T, 5)) {
+          lua.lua_getfield(T, 5, to_luastring('target'));
+          const dest = lua.lua_isnil(T, -1) ? undefined : k.toLocation(T, -1);
+          lua.lua_pop(T, 1);
+          if (dest) {
+            if (dest.equals(unit.location)) return argError(T, 5, "target location must be different from animated unit's location");
+            if (!getAdjacentTiles(unit.location).some((l) => l.equals(dest))) return argError(T, 5, 'target location must be adjacent to the animated unit');
+            target = dest;
+          }
+          lua.lua_getfield(T, 5, to_luastring('value'));
+          if (lua.lua_isnumber(T, -1)) value = Number(lua.lua_tointeger(T, -1));
+          else if (lua.lua_istable(T, -1)) {
+            lua.lua_rawgeti(T, -1, 1);
+            value = Number(lua.lua_tointeger(T, -1));
+            lua.lua_pop(T, 1);
+            lua.lua_rawgeti(T, -1, 2);
+            value2 = Number(lua.lua_tointeger(T, -1));
+            lua.lua_pop(T, 1);
+          }
+          lua.lua_pop(T, 1);
+          lua.lua_getfield(T, 5, to_luastring('with_bars'));
+          withBars = lua.lua_toboolean(T, -1);
+          lua.lua_pop(T, 1);
+          lua.lua_getfield(T, 5, to_luastring('text'));
+          if (!lua.lua_isnil(T, -1)) text = k.tstringAt(T, -1)?.str() ?? lua.lua_tojsstring(T, -1);
+          lua.lua_pop(T, 1);
+          lua.lua_getfield(T, 5, to_luastring('color'));
+          if (lua.lua_istable(T, -1) && lua.lua_rawlen(T, -1) === 3) {
+            const c: number[] = [];
+            for (let i = 1; i <= 3; i++) {
+              lua.lua_rawgeti(T, -1, i);
+              c.push(Number(lua.lua_tointeger(T, -1)));
+              lua.lua_pop(T, 1);
+            }
+            color = { r: c[0]!, g: c[1]!, b: c[2]! };
+          }
+          lua.lua_pop(T, 1);
+        }
+        entries.push({ unit, flag, hits, target, value, value2, withBars, text, color });
+        return 0;
+      },
+      run: (T) => {
+        const entries = entriesOf(T);
+        if (entries.length === 0) return 0;
+        const beat = [...entries];
+        entries.length = 0;
+        return this.host.yieldFlow(T, (function* () {
+          yield { kind: 'beat' as const, beat: { kind: 'animateUnits' as const, entries: beat } };
+        })());
+      },
+      clear: (T) => {
+        entriesOf(T).length = 0;
+        return 0;
+      },
+    };
+    lauxlib.luaL_newmetatable(L, to_luastring(ANIMATOR_KEY));
+    setFuncs(L, {
+      __index: (T) => {
+        const fn = methods[checkString(T, 2)];
+        if (!fn) return 0;
+        lua.lua_pushcfunction(T, fn);
+        return 1;
+      },
+    });
+    pushString(L, ANIMATOR_KEY);
+    lua.lua_setfield(L, -2, to_luastring('__metatable'));
+    lua.lua_pop(L, 1);
+    k.define(['wesnoth', 'units', 'create_animator'], (T) => {
+      k.pushUserdata(T, ANIMATOR_KEY, [] as AnimatorEntry[]);
+      return 1;
+    });
   }
 
   /** `intf_put_unit`: `units.to_map(unit, [loc], [fire_event])`, or a WML table (creating the unit). */

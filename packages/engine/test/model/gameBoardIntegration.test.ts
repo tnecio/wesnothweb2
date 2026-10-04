@@ -244,4 +244,20 @@ Gg, Gg, Gg, Gg, Gg, Gg"
     expect(second.canRecruit).toBe(false);
     expect(distanceBetween(second.location, byId('Gorlack')!.location)).toBe(1);
   });
+
+  it('puts a leader with no hex for it (no x,y, no starting position) on the recall list', () => {
+    const noStart = parseWml(`
+[scenario]
+    map_data="Gg, Gg, Gg\nGg, Gg, Gg\nGg, Gg, Gg"
+    [side]
+        side=1
+        type=Fighter
+        id=Konrad
+        canrecruit=yes
+    [/side]
+[/scenario]`).child('scenario')!;
+    const b = GameBoard.fromConfig(noStart, terrainData, resolveType);
+    expect(b.allUnits()).toHaveLength(0);
+    expect(b.recallList(1).map((u) => u.id)).toEqual(['Konrad']);
+  });
 });

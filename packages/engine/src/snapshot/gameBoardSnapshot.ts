@@ -67,7 +67,7 @@ import {
 } from '../events/index.js';
 import { Location, type Direction } from '../model/Location.js';
 import { GameMap } from '../model/Map.js';
-import { Team, parseController } from '../model/Team.js';
+import { Team, parseController, type DefeatCondition } from '../model/Team.js';
 import { Unit } from '../model/Unit.js';
 import { AttackType, UnitType, type Alignment, type RegistryEntry } from '../model/UnitType.js';
 import { MoveType } from '../model/MoveType.js';
@@ -214,6 +214,10 @@ export interface SnapshotTeam {
    * to `false` for older snapshots, same pattern as the fields above.
    */
   noLeader?: boolean;
+  /** `[side] defeat_condition=` (default `no_leader_left`). */
+  defeatCondition?: DefeatCondition;
+  /** Phase 28c B4: the units the `[side]` put on its recall list, as unit configs (`Unit.toConfig`). */
+  recall?: WmlConfigJson[];
   /** `[side] save_id=` (defaulting to the side's or its `[leader]`'s id): `side.save_id`, global-variable carryover. */
   saveId?: string;
   /** `[side] persistent=` (default: a human side): `side.persistent`. Absent in older snapshots: a human side. */
@@ -299,6 +303,10 @@ export interface GameBoardSnapshot {
    * `wml.load`, preprocessed. Absent for a campaign without Lua.
    */
   luaSources?: { modules: Record<string, string>; wml: Record<string, WmlConfigJson> };
+  /** Phase 28c B4: map files Lua may load by a name it builds at run time (file name -> contents). */
+  mapFiles?: Record<string, string>;
+  /** Phase 28c B4: `filesystem.image_size` answers for images measured at build time (base path -> [w, h]). */
+  imageSizes?: Record<string, [number, number]>;
   /** Phase 28c: the campaign's own `[color_range]`s by id (`team-colors.json`'s `ranges` shape), added to the colour table. */
   colorRanges?: Record<string, { mid: number[]; max: number[]; min: number[]; rep: number[] }>;
   /** The scenario's `[story][part]` blocks (real narrative text + background art, if any), meant to be shown as a click-through sequence before interactive play begins. Empty if the scenario has no `[story]`. */
@@ -636,6 +644,7 @@ export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBo
         supportPerVillage: t.supportPerVillage ?? 1,
         shareVision: t.shareVision ?? 'all',
         noLeader: t.noLeader ?? false,
+        defeatCondition: t.defeatCondition ?? 'no_leader_left',
         saveId: t.saveId ?? '',
         persistent: t.persistent ?? parseController(t.controller) === 'human',
       }),
@@ -678,6 +687,23 @@ export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBo
     // the same result without needing a new snapshot field.
     board.captureVillage(unit.location, unit.side);
     unitsByKey.set(unitKeyFor(u), unit);
+  }
+
+  // The sides' recall lists (a leader with no hex for it, `[unit] x,y=recall`), rebuilt in full.
+  const recallTeams = snapshot.teams.filter((t) => t.recall && t.recall.length > 0);
+  if (recallTeams.length > 0) {
+    const resolveType = (id: string): UnitType => {
+      const type = typeCache.get(id);
+      if (!type) throw new Error(`gameBoardFromSnapshot: recall-list unit references unknown typeId "${id}"`);
+      return type;
+    };
+    for (const t of recallTeams) {
+      for (const cfg of t.recall!) {
+        const unit = Unit.fromConfig(WmlConfig.fromJSON(cfg), resolveType);
+        board.assignUnitId(unit);
+        board.addToRecallList(t.side, unit);
+      }
+    }
   }
 
   return { board, unitsByKey };

@@ -40,9 +40,16 @@ interface GuiBase {
 
 export type GuiNode =
   | (GuiBase & { readonly type: 'grid'; readonly rows: GuiCell[][] })
-  | (GuiBase & { readonly type: 'label'; label: GuiText; markup: boolean; readonly title: boolean; readonly textAlignment: string })
+  | (GuiBase & { readonly type: 'label'; label: GuiText; markup: boolean; readonly rich: boolean; readonly title: boolean; readonly textAlignment: string })
   | (GuiBase & { readonly type: 'image'; label: string })
-  | (GuiBase & { readonly type: 'button'; label: GuiText; readonly returnValue: number; markup: boolean })
+  /**
+   * `returnValue`: what clicking it closes the dialog with -- `return_value=`, else `ok`/`cancel` named by
+   * `return_value_id=` or the button's own id (`get_retval`), else 0, which leaves the dialog open (only its
+   * `on_button_click` runs). `enabled`: Lua's `widget.enabled` (a disabled button cannot be clicked).
+   */
+  | (GuiBase & { readonly type: 'button'; label: GuiText; readonly returnValue: number; markup: boolean; enabled: boolean })
+  /** `[menu_button]`: a drop-down of its `[option]` labels; `selectedIndex` is 1-based, as Lua's `selected_index`. */
+  | (GuiBase & { readonly type: 'menu_button'; readonly options: GuiText[]; selectedIndex: number; markup: boolean; enabled: boolean })
   | (GuiBase & { readonly type: 'spacer'; readonly width: number; readonly height: number })
   | (GuiBase & {
       readonly type: 'listbox';
@@ -72,7 +79,7 @@ export const GUI_RETVAL = { NONE: 0, OK: -1, CANCEL: -2 } as const;
 /** `return_value_id=` names (`gui/core/window_builder.cpp`'s `get_retval`). */
 const RETVAL_IDS: Record<string, number> = { ok: GUI_RETVAL.OK, cancel: GUI_RETVAL.CANCEL, quit: GUI_RETVAL.CANCEL };
 
-const WIDGET_TAGS = new Set(['grid', 'label', 'image', 'button', 'spacer', 'listbox', 'horizontal_listbox', 'toggle_panel', 'panel', 'scroll_label', 'toggle_button']);
+const WIDGET_TAGS = new Set(['grid', 'label', 'image', 'button', 'spacer', 'listbox', 'horizontal_listbox', 'toggle_panel', 'panel', 'scroll_label', 'toggle_button', 'menu_button', 'rich_label']);
 
 function text(cfg: WmlConfig, key: string): GuiText {
   const raw = cfg.getRaw(key);
@@ -128,25 +135,33 @@ function nodeOf(tag: string, source: WmlConfig, overrides?: Map<string, WmlConfi
       return gridOf(cfg, overrides);
     case 'label':
     case 'scroll_label':
+    case 'rich_label':
       return {
         ...base,
         type: 'label',
         label: text(cfg, 'label'),
-        markup: cfg.getBoolean('use_markup', false),
+        // A rich label always reads markup (`rich_label` parses its text as help markup).
+        markup: tag === 'rich_label' || cfg.getBoolean('use_markup', false),
+        rich: tag === 'rich_label',
         title: cfg.getString('definition', '') === 'title',
         textAlignment: cfg.getString('text_alignment', 'left'),
       };
     case 'image':
       return { ...base, type: 'image', label: cfg.getString('label', '') };
     case 'button': {
-      const byId = RETVAL_IDS[cfg.getString('return_value_id', '')];
+      const byId = RETVAL_IDS[cfg.getString('return_value_id', '')] ?? RETVAL_IDS[id];
       return {
         ...base,
         type: 'button',
         label: text(cfg, 'label'),
-        returnValue: cfg.hasAttribute('return_value') ? cfg.getNumber('return_value') : (byId ?? GUI_RETVAL.OK),
+        returnValue: cfg.hasAttribute('return_value') ? cfg.getNumber('return_value') : (byId ?? GUI_RETVAL.NONE),
         markup: cfg.getBoolean('use_markup', false),
+        enabled: true,
       };
+    }
+    case 'menu_button': {
+      const options = cfg.children('option').map((o) => text(o, 'label'));
+      return { ...base, type: 'menu_button', options, selectedIndex: options.length > 0 ? 1 : 0, markup: cfg.getBoolean('use_markup', false), enabled: true };
     }
     case 'spacer':
       return { ...base, type: 'spacer', width: cfg.getNumber('width', 0), height: cfg.getNumber('height', 0) };

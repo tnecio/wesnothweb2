@@ -354,6 +354,10 @@ export interface EventContext {
   evalLuaCondition?: (cfg: WmlConfig) => boolean;
   /** `wesnoth.scenario.name`: the scenario's `name=` (`[story]`'s default title). Installed by the session. */
   scenarioName?: () => TString;
+  /** Phase 28c B4: a map file the snapshot carries for run-time loading (`GameBoardSnapshot.mapFiles`). */
+  mapFile?: (name: string) => string | undefined;
+  /** Phase 28c B4: an image's [width, height] if measured at build time (`GameBoardSnapshot.imageSizes`). */
+  imageSize?: (path: string) => [number, number] | undefined;
   /** Phase 28c: `[set_global_variable]` and friends' storage, kept across games. Absent: they log and do nothing. */
   persistent?: PersistentVariables;
   /** Phase 28c: `[set_achievement]` and friends. Absent: they do nothing. */

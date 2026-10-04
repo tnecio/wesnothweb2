@@ -111,6 +111,7 @@ import {
   VariableStore,
   WmlConfig,
   mergeUnitTypeConfig,
+  setFilterEnvironment,
   resolveStory,
   type ResolvedStoryPart,
   clearShroud,
@@ -1492,6 +1493,19 @@ export class GameSession {
    * a `[clear_menu_item]` ran). Returns a log message for the caller's
    * `sync()`, matching every other mutating method here.
    */
+  /** Whether content listens to the pointer moving over hexes (`wesnoth.game_events.on_mouse_move`). */
+  get hasMouseMoveCallback(): boolean {
+    return this.luaRuntime?.hasCallback('on_mouse_move') ?? false;
+  }
+
+  /** `mouse_over_hex_callback`: the pointer entered hex `x,y` (0-based); runs the content's `on_mouse_move`. */
+  async mouseOverHex(x: number, y: number): Promise<void> {
+    if (this.scenarioResult || !this.luaRuntime || !this.hasMouseMoveCallback) return;
+    const loc = new Location(x, y);
+    const runtime = this.luaRuntime;
+    await this.drive(runtime.mouseCallbackFlow('on_mouse_move', loc.wmlX, loc.wmlY));
+  }
+
   async runMenuItem(id: string, x: number, y: number): Promise<string | null> {
     const def = this.eventPump.ctx.menuItems.get(id);
     if (!def) return null;
@@ -1703,6 +1717,9 @@ export class GameSession {
     if (!options.deferMusic) startScenarioMusic(this.music, WmlConfig.fromJSON(snapshot.scenarioConfigJson));
     this.board.lawfulBonusAt = (loc) => this.timeOfDayAt(loc).lawfulBonus;
     this.eventPump.ctx.turnLimit = parseScenarioTurnsLimit(plainJsonValue(snapshot.scenarioConfigJson.attrs['turns'])) ?? -1;
+    // `game_state::victory_when_enemies_defeated_`: `[scenario] victory_when_enemies_defeated=` (default yes).
+    const victoryWhen = plainJsonValue(snapshot.scenarioConfigJson.attrs['victory_when_enemies_defeated']);
+    this.victoryWhenEnemiesDefeated = !(victoryWhen === false || victoryWhen === 'no' || victoryWhen === 'false');
     this.eventPump.ctx.turnNumber = () => this.turnNumber;
     // The scenario's own `[item]`s and `[label]`s, read as upstream does at scenario start.
     for (const { tag, config } of WmlConfig.fromJSON(snapshot.scenarioConfigJson).allChildren()) {
@@ -1725,6 +1742,23 @@ export class GameSession {
     };
     // Phase 28c: global variables and achievements, kept in the browser; unit:advance() for [harm_unit].
     this.eventPump.ctx.persistent = options.persistent ?? browserPersistentVariables();
+    // `filter_context`: what location filters read beyond the board -- `find_in=`, `area=`, `time_of_day=`.
+    setFilterEnvironment({
+      locationsIn: (variable) =>
+        this.eventPump.ctx.variables.getArray(variable).map((node) => ({ x: Number(node.attrs.get('x') ?? 0), y: Number(node.attrs.get('y') ?? 0) })),
+      areaHexes: (id) => this.schedule.areaHexes(id),
+      timeOfDayAt: (loc) => this.timeOfDayAt(loc),
+      idsIn: (variable) => this.eventPump.ctx.variables.getArray(variable).map((node) => String(node.attrs.get('id') ?? '')),
+      unitType: (id) => {
+        try {
+          return this.resolveType(id);
+        } catch {
+          return undefined;
+        }
+      },
+    });
+    this.eventPump.ctx.mapFile = (name) => snapshot.mapFiles?.[name.split('/').pop() ?? name];
+    this.eventPump.ctx.imageSize = (path) => snapshot.imageSizes?.[path.split('~')[0] ?? path];
     this.eventPump.ctx.achievements = browserAchievements((contentFor, id) => this.log.unshift(`Achievement: ${contentFor}/${id}`));
     this.eventPump.ctx.advanceUnit = (unit) => {
       this.queueAdvancement(unit);
@@ -4354,6 +4388,12 @@ export class GameSession {
   private *handleHexClickFlow(x: number, y: number, options: HexClickOptions): Flow<string | null> {
     if (this.scenarioResult) return null;
     const loc = new Location(x, y);
+    // `select_hex_callback`: the content's `on_mouse_action` hears every hex the player clicks (The Deceiver's
+    // Gambit opens its spell dialog on a double-click on Delfador).
+    if (this.luaRuntime?.hasCallback('on_mouse_action')) {
+      yield* this.luaRuntime.mouseCallbackFlow('on_mouse_action', loc.wmlX, loc.wmlY);
+      if (this.scenarioResult) return null;
+    }
     // Real, reported bug: this used to read `board.unitAt(loc)` directly,
     // which ignores fog/shroud entirely -- a player could click any hex
     // (e.g. one under shroud they've never seen) and get full info on
@@ -5213,6 +5253,9 @@ export class GameSession {
    * the scenario is actually over -- see `checkVictory`'s own doc comment
    * for exactly what this does and doesn't model.
    */
+  /** `[scenario] victory_when_enemies_defeated=`: whether defeating every enemy ends the scenario. */
+  private victoryWhenEnemiesDefeated = true;
+
   private checkForGameEnd(): void {
     if (this.scenarioResult) return;
     const endLevel = this.eventPump.ctx.endLevel;
@@ -5223,9 +5266,19 @@ export class GameSession {
       this.playScenarioEndMusic();
       return;
     }
-    const { continueLevel, notDefeated } = checkVictory(this.board);
+    const { continueLevel, foundPlayer } = checkVictory(this.board);
     if (continueLevel) return;
-    this.scenarioResult = notDefeated.includes(this.playerSide) ? 'victory' : 'defeat';
+    // `play_controller::check_victory`: with a human side left, `enemies_defeated` fires first (its handlers may
+    // end the level themselves); a scenario with `victory_when_enemies_defeated=no` then goes on.
+    if (foundPlayer) {
+      this.eventPump.fire('enemies_defeated', undefined, undefined, undefined, this.collectResponder);
+      if (this.eventPump.ctx.endLevel) {
+        this.checkForGameEnd();
+        return;
+      }
+      if (!this.victoryWhenEnemiesDefeated) return;
+    }
+    this.scenarioResult = foundPlayer ? 'victory' : 'defeat';
     this.clearSelection();
     this.log.unshift(
       this.scenarioResult === 'victory' ? tx('Victory! The enemy has been defeated.') : tx('Defeat... your side has fallen.'),

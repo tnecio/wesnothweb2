@@ -32,7 +32,7 @@
  */
 
 import type { GameBoard } from '../model/GameBoard.js';
-import { Direction, Location, distanceBetween, getAdjacentTiles, parseDirection, writeDirection } from '../model/Location.js';
+import { ALL_DIRECTIONS, Direction, Location, distanceBetween, getAdjacentTiles, parseDirection, writeDirection } from '../model/Location.js';
 import type { AttackType } from '../model/UnitType.js';
 import { getActiveAbilities } from '../actions/abilityEffects.js';
 import { findSides } from './sideFilter.js';
@@ -289,8 +289,7 @@ const splitList = (s: string): string[] => s.split(',').map((x) => x.trim()).fil
 /**
  * `unit_filter_compound::matches` (`src/units/filter.cpp`): every attribute and filter child the unit must
  * satisfy, then `[and]`/`[or]`/`[not]` applied in document order. Attributes are already `$`-substituted by
- * callers. Not ported: `lua_function=`, `find_in=`, `upkeep=`, `has_variation=`, `type_adv_tree=`,
- * `[filter_ability]`.
+ * callers. Not ported: `lua_function=`, `[filter_ability]`.
  */
 export function unitMatchesFilter(unit: Unit, filterCfg: WmlConfig, board?: GameBoard, options: UnitFilterOptions = {}): boolean {
   const loc = options.loc ?? unit.location;
@@ -303,6 +302,31 @@ export function unitMatchesFilter(unit: Unit, filterCfg: WmlConfig, board?: Game
   return res;
 }
 
+/** `unit_type::advancement_tree` of each type, with the types themselves (`type_adv_tree=`). */
+function advancementTree(types: readonly string[]): Set<string> {
+  const out = new Set<string>(types);
+  const pending = [...types];
+  while (pending.length > 0) {
+    const id = pending.pop()!;
+    const type = filterEnvironment?.unitType?.(id);
+    for (const next of type?.advancesTo ?? []) {
+      if (!out.has(next)) {
+        out.add(next);
+        pending.push(next);
+      }
+    }
+  }
+  return out;
+}
+
+/** `upkeep=` as `unit::upkeep_value_visitor` reads it: `full` (the unit's level), `loyal` (0), or a number. */
+function upkeepValue(text: string, u: Unit): number {
+  if (text === 'loyal') return 0;
+  if (text === 'full') return u.canRecruit ? 0 : u.level;
+  const n = Number.parseInt(text, 10);
+  return Number.isNaN(n) ? u.level : n;
+}
+
 function unitFilterImpl(u: Unit, cfg: WmlConfig, board: GameBoard | undefined, loc: Location, other: Unit | undefined): boolean {
   const has = (key: string): boolean => cfg.hasAttribute(key) && cfg.getString(key) !== '';
   const list = (key: string): string[] => splitList(cfg.getString(key));
@@ -310,6 +334,13 @@ function unitFilterImpl(u: Unit, cfg: WmlConfig, board: GameBoard | undefined, l
   if (has('id') && !list('id').includes(u.id)) return false;
   if (has('type') && !list('type').includes(u.type.id)) return false;
   if (has('variation') && !list('variation').includes(u.variation)) return false;
+  // `type_adv_tree=`: the listed types and every type they advance into. Without the unit types installed
+  // (`FilterEnvironment.unitType`), only the listed types themselves.
+  if (has('type_adv_tree') && !advancementTree(list('type_adv_tree')).has(u.type.id)) return false;
+  // `has_variation=`: the unit's type (its base, for a variation) has one of these variations.
+  if (has('has_variation') && !list('has_variation').some((v) => u.baseType.hasVariation(v))) return false;
+  if (has('upkeep') && u.upkeepCost !== upkeepValue(cfg.getString('upkeep'), u)) return false;
+  if (has('find_in') && !(filterEnvironment?.idsIn(cfg.getString('find_in')).includes(u.id) ?? false)) return false;
   if (has('ability')) {
     const ids = new Set(u.abilities.map((a) => a.config.getString('id', '')));
     if (!list('ability').some((id) => ids.has(id))) return false;
@@ -506,23 +537,99 @@ export function locationMatchesFilterOnBoard(board: GameBoard, loc: Location, cf
 }
 
 /**
- * The per-hex part of a standard location filter (`terrain_filter::
- * match_internal`): `x,y=`, `gives_income=` (is a village), `terrain=`,
- * `[filter]` on the unit standing there, `owner_side=`, and `formula=`
- * (with `teleport_unit` bound to `refUnit`, as tunnels need).
+ * What a location filter reads beyond the board (upstream's `filter_context`, the game's global state): the
+ * WML variables (`find_in=`), the time areas (`area=`) and the time of day at a hex (`time_of_day=`). The game
+ * session installs it; without one those keys match nothing.
+ */
+export interface FilterEnvironment {
+  /** The `{x, y}` (1-based) entries of a WML array variable. */
+  locationsIn(variable: string): readonly { x: number; y: number }[];
+  /** `tod_manager::get_area_by_id`: the location keys of a time area, if there is one. */
+  areaHexes(id: string): ReadonlySet<string> | undefined;
+  /** The time of day at a hex, with illumination (`get_illuminated_time_of_day`). */
+  timeOfDayAt(loc: Location): { readonly id: string; readonly lawfulBonus: number };
+  /** The `id=` of each entry of a WML array variable (a unit filter's `find_in=`). */
+  idsIn(variable: string): readonly string[];
+  /** A unit type by id (`unit_types.find`), for `type_adv_tree=`. */
+  unitType?(id: string): { readonly advancesTo: readonly string[] } | undefined;
+}
+
+let filterEnvironment: FilterEnvironment | undefined;
+
+/** Installs the game state location filters read (see `FilterEnvironment`). */
+export function setFilterEnvironment(env: FilterEnvironment | undefined): void {
+  filterEnvironment = env;
+}
+
+/** `utils::parse_ranges_unsigned` + `in_ranges`: `count=` such as `1-6` or `0,2-3`. */
+function inCountRanges(n: number, text: string): boolean {
+  return text.split(',').some((part) => {
+    const [lo, hi] = part.trim().split('-');
+    const min = Number(lo);
+    const max = hi === undefined ? min : hi.trim() === '' ? Infinity : Number(hi);
+    return n >= min && n <= max;
+  });
+}
+
+/**
+ * The per-hex part of a standard location filter (`terrain_filter::match_internal`): `area=`,
+ * `gives_income=`, `terrain=`, `x,y=`, `find_in=`, `location_id=`, `[filter]` on the unit standing there,
+ * `[filter_adjacent_location]` (`adjacent=`, `count=`), `time_of_day=`/`time_of_day_id=`, `[filter_owner]` or
+ * `owner_side=`, and `formula=` (with `teleport_unit` bound to `refUnit`, as tunnels need).
  */
 function locationSelfMatches(board: GameBoard, loc: Location, cfg: WmlConfig, refUnit?: Unit): boolean {
-  if (!locationMatchesFilter(loc, cfg)) return false;
+  const env = filterEnvironment;
+  if (cfg.hasAttribute('area') && !env?.areaHexes(cfg.getString('area'))?.has(loc.key())) return false;
   if (cfg.hasAttribute('gives_income') && cfg.getBoolean('gives_income') !== board.map.isVillage(loc)) return false;
   if (cfg.hasAttribute('terrain') && !terrainMatches(board.map.getTerrain(loc), parseTerrainList(cfg.getString('terrain')))) {
     return false;
+  }
+  if (!locationMatchesFilter(loc, cfg)) return false;
+  if (cfg.hasAttribute('find_in')) {
+    const found = env?.locationsIn(cfg.getString('find_in')).some((p) => p.x === loc.wmlX && p.y === loc.wmlY) ?? false;
+    if (!found) return false;
+  }
+  if (cfg.hasAttribute('location_id')) {
+    const ids = cfg.getString('location_id').split(',').map((s) => s.trim()).filter(Boolean);
+    if (!ids.some((id) => board.map.specialLocation(id).equals(loc))) return false;
   }
   const unitFilter = cfg.child('filter');
   if (unitFilter) {
     const u = board.unitAt(loc);
     if (!u || !unitMatchesFilter(u, unitFilter, board)) return false;
   }
-  if (cfg.hasAttribute('owner_side') && (board.villageOwner(loc) ?? 0) !== cfg.getNumber('owner_side', 0)) return false;
+  for (const adjCfg of cfg.children('filter_adjacent_location')) {
+    const adjacent = getAdjacentTiles(loc);
+    const dirs = adjCfg.hasAttribute('adjacent')
+      ? adjCfg.getString('adjacent').split(',').map((d) => parseDirection(d.trim())).filter((d) => d !== Direction.Indeterminate)
+      : ALL_DIRECTIONS;
+    let count = 0;
+    for (const dir of dirs) {
+      const adj = adjacent[dir];
+      if (adj && board.map.onBoard(adj) && locationMatchesFilterOnBoard(board, adj, adjCfg, refUnit)) count++;
+    }
+    if (!inCountRanges(count, adjCfg.getString('count', '1-6'))) return false;
+  }
+  const todType = cfg.getString('time_of_day', '');
+  const todId = cfg.getString('time_of_day_id', '');
+  if (todType !== '' || todId !== '') {
+    // Without the game state installed, the board's own lawful bonus still answers time_of_day=.
+    const tod = env?.timeOfDayAt(loc);
+    if (todType !== '') {
+      const bonus = tod?.lawfulBonus ?? board.lawfulBonusAt?.(loc) ?? 0;
+      const vals = todType.split(',').map((s) => s.trim());
+      const ok = bonus < 0 ? vals.includes('chaotic') : bonus > 0 ? vals.includes('lawful') : vals.includes('neutral') || vals.includes('liminal');
+      if (!ok) return false;
+    }
+    if (todId !== '' && !(tod && todId.split(',').map((s) => s.trim()).includes(tod.id))) return false;
+  }
+  const ownerFilter = cfg.child('filter_owner');
+  if (ownerFilter) {
+    if (!board.map.isVillage(loc)) return false;
+    const sides = findSides(board, ownerFilter);
+    const owner = board.villageOwner(loc) ?? 0;
+    if (!(sides.length === 0 ? owner === 0 : sides.includes(owner))) return false;
+  } else if (cfg.hasAttribute('owner_side') && (board.villageOwner(loc) ?? 0) !== cfg.getNumber('owner_side', 0)) return false;
   if (cfg.hasAttribute('formula') && !locationFormulaMatches(board, loc, cfg.getString('formula'), refUnit)) return false;
   return true;
 }
@@ -533,8 +640,8 @@ function locationSelfMatches(board: GameBoard, loc: Location, cfg: WmlConfig, re
  * `terrain=` and `[filter]`, then `[and]`/`[or]`/`[not]` applied in
  * document order, then expanded by `radius=` (through hexes matching
  * `[filter_radius]`, if given). `refUnit` is `get_locations`' reference unit,
- * bound as `teleport_unit` in `formula=`. Not covered: `find_in=`,
- * `[filter_adjacent_location]`, `[filter_owner]`, `time_of_day=`, `area=`.
+ * bound as `teleport_unit` in `formula=`. Not covered: `lua_function=`, `[filter_vision]`,
+ * `include_borders=`.
  */
 export function findLocations(board: GameBoard, cfg: WmlConfig, refUnit?: Unit): Location[] {
   const map = board.map;

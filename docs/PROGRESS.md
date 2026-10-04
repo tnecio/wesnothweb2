@@ -6235,3 +6235,91 @@ shipped without its campaigns' translations into the other languages); they come
   - `campaign-playthrough.mjs` (new `--scenario` for mid-campaign starts) on Secrets of the Ancients, Eastern
     Invasion and Under the Burning Suns 05 and 08 (10, a long cutscene of about 58 lines and moves, outlasts
     15 minutes at this VM's frame rate; it runs through headless).
+
+## 2026-10-03: Phase 28c, batch B4 -- Heir to the Throne, HttT Classic, The Deceiver's Gambit
+
+Heir to the Throne (35 scenarios), Heir to the Throne Classic (31) and The Deceiver's Gambit (20) are
+registered, the last as two campaigns as upstream has them (part II starts at scenario 7). With them, every
+mainline single-player campaign except World Conquest ships. Several of the fixes below change campaigns
+already shipped.
+
+**Engine:**
+- **Event priority ran backwards.** Upstream stable-sorts handlers over their reversed range, so the highest
+  `priority=` runs first; the port ran the lowest first. HttT's `priority=-50` prestarts (storing the units
+  the others create) ran before them. Campaigns already shipped with `priority=`: EI, OPP, SoF, TSG, UtBS.
+- **Location filters** gained the rest of `terrain_filter::match_internal`. `[filter_adjacent_location]` was
+  ignored, so it matched anything: HttT Classic 7's ambush placement found no hex. Also new: `[filter_owner]`,
+  `find_in=`, `area=`, `time_of_day=`/`time_of_day_id=` and `location_id=`, reading the game state through a
+  filter environment the session installs (upstream's `filter_context`).
+- **Clearing an array element.** `[clear_variable] name=locs[3]` did nothing. TDG's blizzard empties an
+  array that way in a `[while]`, so TDG 7's opening ran for most of an hour headless.
+- **Leaders and recall lists.** A side's leader with no hex for it goes to the recall list (HttT 1's
+  Konrad), as `unit_creator` does. Snapshots now carry recall lists at all: a `[side]`'s
+  `[unit] x,y=recall` was lost before.
+- **`rand=`** skips empty entries (`utils::split`); HttT 26 spawned units of no type.
+- **Victory as upstream (`check_victory`).** A side now loses by its `defeat_condition=` (default
+  `no_leader_left`; also `no_units_left`, `never`, `always`), where the port had its own leader rule. The
+  scenario ends only when no two undefeated sides are enemies and a human side is still in play
+  (`found_player`). `enemies_defeated` fires first, and `victory_when_enemies_defeated=no` keeps the
+  scenario running. The villages of a fallen side are cleared. HttT 1 used to end in victory at turn 1
+  (Konrad starts on the recall list). Dead Water 2, which sets `victory_when_enemies_defeated=no`, no
+  longer ends when its enemies die.
+- **Unit filters:** `type_adv_tree=`, `has_variation=`, `find_in=` and `upkeep=`. TDG 7 `[kill]`s
+  summons by `type_adv_tree=`; ignoring the key killed all of side 1, a false defeat.
+- **`[variable]` condition:** an empty `name=` reads nothing; only a missing one is an error.
+- **`[sound] name=""`** plays nothing; only a missing name is an error.
+
+**Lua and dialogs:**
+- **`wesnoth.units.create_animator`:** add/run/clear, played as one `animateUnits` beat, each text floating
+  over its unit.
+- **`filesystem.have_asset`/`image_size`:** answered from the map files and image sizes the snapshot carries
+  (HttT's seasonal map variants, whose names its Lua builds; `[multihex_image]`). `[replace_map]` reads a
+  `map_file=` that could not be inlined.
+- **`wesnoth.audio.play`.**
+- **Mouse callbacks:** the `game_events` callbacks default to doing nothing, as upstream. `on_mouse_action`
+  runs on a hex click and `on_mouse_move` when the pointer enters a hex, only when content set one. TDG casts
+  spells on a double-click on Delfador.
+- **Gui:**
+  - buttons close as upstream (`return_value`, else ok/cancel by id, else 0, which keeps the dialog open);
+    `on_button_click` runs first and may close the window (`gui.widget.close`);
+  - callbacks get their widget;
+  - `[menu_button]`, `[rich_label]`, `enabled`/`type`, and `widget:find()`.
+  - SotA's help buttons used to close its recruit dialog.
+  - Enter closes a dialog with OK (`window::signal_handler_sdl_key_down`), also when a listbox row or a
+    menu button has the focus, since upstream's handle only the arrow keys. HttT Classic's character
+    dialog has no OK button of its own, and TDG's spell dialog opens with the focus on a menu button.
+  - `rich_label` reads help markup. `<ref dst=...>` links are drawn in the link colour, and
+    `<bold>`/`<italic>`/`<header>` format the text. TDG's spell dialog showed its `<ref>` tags as text.
+    The links don't open the help yet.
+
+**Performance:**
+- **fengari is patched** (`patches/fengari+0.1.5.patch`, applied by `patch-package` on install). It ran
+  `delete L.stack[i]` on every pop and call return, which makes the stack array sparse, and V8 then
+  switches it to slow elements. It now assigns `undefined`.
+- **Unit methods** look up `wesnoth.units` once, by the key already on the stack.
+- TDG 7's goto micro AI makes about 700k Lua path-cost calls in side 2's first turn. That turn took
+  109 s headless and now takes about 70 s, with the same moves. The rest is fengari interpreting Lua.
+
+**Tooling:**
+- Scenario ids are read from the `[scenario]` itself (multi-key assignments, `#define`s) and, when a macro
+  sets one (HttT's `{MAP_DYNAMIC <id>}`), by preprocessing the file.
+- `build-campaigns` picks the `[campaign]` block by `first_scenario` and loads the theme macros.
+- `rebuild-snapshots` records the inputs as the build read them.
+
+**Checks:**
+- **Tests:** all suites pass. `campaigns.test.ts` opens every B4 scenario.
+  - The AI-against-AI run now stops after 10 turns (1 for TDG 7, which still has to reach turn 2). A whole scenario took most of an hour
+    headless.
+  - The run keeps the player's side human, so the victory check still sees a player.
+  - It fails a scenario that ends in its first turn.
+- **Expected problems when started alone:** most HttT scenarios read state the overworld (00) leaves
+  (`bm_tod`, stored heroes); `carryoverPatterns` lists those. Four TDG openings miss a stored Delfador or Deoran.
+- **New unit tests:** location filters, priority order, indexed clears, the animator, mouse callbacks, the
+  gui changes, `[unit]` recall placement, `rand=`.
+- **Browser:** `campaign-playthrough.mjs` ran on all four campaigns.
+  - The script now answers a campaign's own gui dialogs, and retries End Turn past a late message.
+  - HttT 1 and the HttT Classic tutorial hold the first turn with `[disallow_end_turn]`, as upstream
+    does. The script checks for that instead of ending the turn.
+- **Known gap (predates B4):** images that exist only in upstream's top-level `images/` (about 1,750
+  files) are looked up under `data/core/images/` and are not found. Campaigns use a few of them:
+  `misc/tod-bright.png` in 10 files, and the tutorial's `misc/unit-marker.png`.

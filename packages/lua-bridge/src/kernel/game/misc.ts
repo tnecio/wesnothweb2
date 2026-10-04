@@ -277,12 +277,53 @@ export function installMisc(k: LuaKernel, host: GameKernelHost, units: LuaUnits)
   for (const name of ['add', 'add_repeating', 'add_menu', 'add_wml', 'remove', 'fire_by_id', 'add_undo_actions', 'set_undoable']) {
     k.unported(['wesnoth', 'game_events', name]);
   }
+  // `callbacksReg` (game_lua_kernel.cpp): reading a callback nobody set gives a function that does nothing
+  // (returning false for on_mouse_button, an empty config for on_save), so content can wrap the old one, as
+  // The Deceiver's Gambit wraps on_mouse_action.
+  k.pushTablePath(['wesnoth', 'game_events']);
+  lua.lua_createtable(L, 0, 1);
+  lua.lua_pushcfunction(L, (T: LuaState) => {
+    const key = lua.lua_tojsstring(T, 2);
+    if (!['on_event', 'on_load', 'on_save', 'on_mouse_action', 'on_mouse_button', 'on_mouse_move'].includes(key)) return 0;
+    lua.lua_pushcfunction(T, (U: LuaState) => {
+      if (key === 'on_mouse_button') {
+        lua.lua_pushboolean(U, false);
+        return 1;
+      }
+      if (key === 'on_save') {
+        lua.lua_createtable(U, 0, 0);
+        return 1;
+      }
+      return 0;
+    });
+    return 1;
+  });
+  lua.lua_setfield(L, -2, to_luastring('__index'));
+  lua.lua_setmetatable(L, -2);
+  lua.lua_pop(L, 1);
 
   for (const table of ['wml_actions', 'wml_conditionals', 'effects', 'custom_synced_commands', 'persistent_tags']) {
     k.pushTablePath(['wesnoth', table]);
     lua.lua_pop(L, 1);
   }
   k.define(['wesnoth', 'redraw'], () => 0);
+  // `intf_have_asset`: maps are the ones the snapshot carries (`GameBoardSnapshot.mapFiles`); the browser has
+  // no data directory to search for the other asset types, so they are reported absent.
+  k.define(['filesystem', 'have_asset'], (T) => {
+    const type = checkString(T, 1);
+    const name = checkString(T, 2);
+    lua.lua_pushboolean(T, type === 'maps' && ctx().mapFile?.(name) !== undefined);
+    return 1;
+  });
+  // `intf_get_image_size` for the images measured at build time (`GameBoardSnapshot.imageSizes`).
+  k.define(['filesystem', 'image_size'], (T) => {
+    const name = checkString(T, 1);
+    const size = ctx().imageSize?.(name);
+    if (!size) return lauxlib.luaL_error(T, to_luastring(`filesystem.image_size: the size of '${name}' was not recorded when this scenario was built`));
+    lua.lua_pushinteger(T, size[0]);
+    lua.lua_pushinteger(T, size[1]);
+    return 2;
+  });
   // `intf_add_known_unit`: marks the type encountered for the help. Every type already counts as encountered
   // in the port's help (`helpWorld.ts`), so only the argument check is left.
   k.define(['wesnoth', 'add_known_unit'], (T) => {
@@ -297,7 +338,13 @@ export function installMisc(k: LuaKernel, host: GameKernelHost, units: LuaUnits)
     return 0;
   });
   for (const name of ['get_era', 'get_resource', 'modify_ai', 'cancel_action', 'log_replay']) k.unported(['wesnoth', name]);
-  k.unported(['wesnoth', 'audio', 'play']);
+  // `intf_play_sound`: `audio.play(sound, [repeats])`, a sound effect.
+  k.define(['wesnoth', 'audio', 'play'], (T) => {
+    const files = checkString(T, 1);
+    const repeats = lua.lua_isnoneornil(T, 2) ? 0 : Number(lauxlib.luaL_checkinteger(T, 2));
+    ctx().playSound({ files, repeats, group: 'sound' });
+    return 0;
+  });
   for (const name of ['set', 'has', 'get', 'progress', 'has_sub_achievement', 'set_sub_achievement']) k.unported(['wesnoth', 'achievements', name]);
   for (const name of [
     'show_inspector', 'show_recruit_dialog', 'show_recall_dialog', 'show_dialog', 'show_menu', 'show_narration', 'show_popup',

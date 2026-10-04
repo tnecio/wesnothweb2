@@ -103,6 +103,11 @@ type PathSeg = { kind: 'key'; name: string } | { kind: 'index'; index: number };
  * {index:2}, {key:"bar"}]`, mirroring `variable_info::calculate_value`'s
  * treatment of both `.` and `[` as key terminators.
  */
+/** A parsed path back as text (`a[1].b`). */
+function pathOf(segs: readonly PathSeg[]): string {
+  return segs.map((seg, i) => (seg.kind === 'index' ? `[${seg.index}]` : i === 0 ? seg.name : `.${seg.name}`)).join('');
+}
+
 function parsePath(path: string): PathSeg[] {
   const segs: PathSeg[] = [];
   const re = /([^.[\]]+)|\[(-?\d+)\]/g;
@@ -259,6 +264,22 @@ export class VariableStore {
 
   /** Mirrors `[clear_variable]`: drops both the scalar attribute and any same-named array at this path. */
   clear(path: string): void {
+    // `variable_info::clear` on an indexed name (`locs[3]`) removes that one element, the later ones moving
+    // up (`config::remove_child`); The Deceiver's Gambit empties an array that way in a [while] loop.
+    const segs = parsePath(path);
+    const last = segs[segs.length - 1];
+    if (last?.kind === 'index' && segs.length >= 2) {
+      const keySeg = segs[segs.length - 2]!;
+      if (keySeg.kind !== 'key') return;
+      const prefix = segs.slice(0, -2);
+      const parent = prefix.length === 0 ? this.root : this.getContainerNode(pathOf(prefix));
+      const arr = parent?.arrays.get(keySeg.name);
+      if (!parent || !arr) return;
+      const index = this.resolveIndex(parent, keySeg.name, last.index);
+      if (index >= 0 && index < arr.length) arr.splice(index, 1);
+      if (arr.length === 0) parent.arrays.delete(keySeg.name);
+      return;
+    }
     const loc = this.locate(path, false);
     if (!loc) return;
     loc.node.attrs.delete(loc.key);

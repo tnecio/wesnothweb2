@@ -101,6 +101,22 @@ export interface FakeUnitWalk {
   readonly unit: Unit;
 }
 
+/** One `animator:add(unit, flag, hits, params)` (`unit_animator::add_animation`). */
+export interface AnimatorEntry {
+  readonly unit: Unit;
+  readonly flag: string;
+  /** `hit`, `miss`, `kill` or `invalid`: which of the flag's animations apply. */
+  readonly hits: 'hit' | 'miss' | 'kill' | 'invalid';
+  /** `target=`: the adjacent hex the animation faces, if any. */
+  readonly target?: Location;
+  readonly value: number;
+  readonly value2: number;
+  readonly withBars: boolean;
+  /** Floating text over the unit, in `color`; `''` for none. */
+  readonly text: string;
+  readonly color: { readonly r: number; readonly g: number; readonly b: number };
+}
+
 /**
  * Something for the display to play out before the event continues --
  * upstream's cutscene and camera tags, each of which blocks its event on
@@ -151,6 +167,8 @@ export type CutsceneBeat =
       readonly text: string;
       readonly withBars: boolean;
     }
+  /** Lua's `unit_animator` run (`wesnoth.units.create_animator`): its units' animations, played together. */
+  | { readonly kind: 'animateUnits'; readonly entries: readonly AnimatorEntry[] }
   /** `[kill] animate=yes`: a unit's death animation, played before it leaves the board. */
   | { readonly kind: 'unitDeath'; readonly unit: Unit; readonly scroll: boolean }
   /**

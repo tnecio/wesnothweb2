@@ -126,3 +126,13 @@ describe('[set_variable] rand= (Phase 17 E6)', () => {
     expect(logged.some((m) => m.includes('rand='))).toBe(true);
   });
 });
+
+describe('[set_variable] rand= with empty entries', () => {
+  it('never picks an empty entry (utils::split drops them)', () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const { manager, pump } = makePump(seed);
+      fire(manager, pump, '[set_variable]\nname=random\nrand=Goblin Spearman,Wolf Rider,\n[/set_variable]');
+      expect(['Goblin Spearman', 'Wolf Rider']).toContain(pump.ctx.variables.getString('random'));
+    }
+  });
+});

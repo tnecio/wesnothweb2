@@ -13,8 +13,9 @@
  *   `event_handlers::standardize_name`), `first_time_only=` (default
  *   `yes`, i.e. NOT repeatable by default -- matches
  *   `!handler["first_time_only"].to_bool(true)`), `priority=` ordering
- *   (ascending, stable for ties -- matches `event_handlers::cmp` +
- *   `std::stable_sort`), duplicate-`id=` rejection.
+ *   (highest first, stable for ties -- `event_handlers::cmp` is ascending,
+ *   but upstream `std::stable_sort`s the handlers' *reversed* range),
+ *   duplicate-`id=` rejection.
  * - Firing/raising events by name or id, with `$x1`/`$y1`/`$x2`/`$y2` set
  *   from the event's locations before dispatch (matches `operator()()`).
  * - Filter matching before a handler's body runs: `[filter_condition]`
@@ -109,7 +110,9 @@ export class EventManager {
       disabled: false,
     };
     this.handlers.push(handler);
-    this.handlers.sort((a, b) => a.priority - b.priority); // Array#sort is stable (ES2019+): ties keep registration order.
+    // Highest priority first (`std::stable_sort(active_.rbegin(), active_.rend(), cmp)`); Array#sort is stable
+    // (ES2019+), so ties keep registration order. Heir to the Throne 1's `priority=-50` prestart must run last.
+    this.handlers.sort((a, b) => b.priority - a.priority);
     return handler;
   }
 

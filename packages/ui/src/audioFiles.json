@@ -51,6 +51,16 @@
   "Eastern_Invasion": [
    "heavens-remix.ogg",
    "journeys_end_faststart.ogg"
+  ],
+  "Heir_To_The_Throne": [
+   "juggernaut-louder.ogg",
+   "kvothe.ogg",
+   "primal-carnage.ogg"
+  ],
+  "The_Deceivers_Gambit": [
+   "decoherence.ogg",
+   "helios.ogg",
+   "phase_shift.ogg"
   ]
  },
  "sounds": {
@@ -379,6 +389,42 @@
    "magic-twilight.ogg",
    "warhammer.ogg",
    "wind.ogg"
+  ],
+  "Heir_To_The_Throne": [
+   "gate-fall.ogg",
+   "golem-crush.wav",
+   "skill-blizzard.wav",
+   "skill-cataclysm.wav",
+   "skill-illusion-quiet.wav",
+   "skill-polymorph.wav",
+   "skill-time-dilation-end.wav",
+   "skill-time-dilation.wav",
+   "warhorn.wav",
+   "water.wav",
+   "wind.ogg"
+  ],
+  "The_Deceivers_Gambit": [
+   "bell.ogg",
+   "door-close.wav",
+   "gate-fall.ogg",
+   "skill-blizzard.wav",
+   "skill-cataclysm-end.wav",
+   "skill-cataclysm.wav",
+   "skill-contingency.wav",
+   "skill-counterspell.wav",
+   "skill-illusion-quiet.wav",
+   "skill-illusion.wav",
+   "skill-levitate.wav",
+   "skill-panacea-quiet.wav",
+   "skill-panacea.wav",
+   "skill-polymorph-quiet.wav",
+   "skill-polymorph.wav",
+   "skill-shield.wav",
+   "skill-time-dilation-end.wav",
+   "skill-time-dilation.wav",
+   "sylph-orb-water.wav",
+   "wind.ogg",
+   "wose-create.wav"
   ]
  }
 }

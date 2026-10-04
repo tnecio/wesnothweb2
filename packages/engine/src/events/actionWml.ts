@@ -578,6 +578,8 @@ function randomChoice(spec: string, rng: Rng): string {
   let total = 0;
   for (const raw of spec.split(',')) {
     const token = raw.trim();
+    // `utils::split` drops empty entries: "Goblin Spearman,Wolf Rider," (Heir to the Throne 26) has two.
+    if (token === '') continue;
     const range = /^(-?\d+)\.\.(-?\d+)$/.exec(token);
     if (range) {
       const from = Number(range[1]);
@@ -1754,11 +1756,13 @@ function actionEndlevel(cfg: WmlConfig, ctx: EventContext): void {
  * effect, `repeat=` extra times. `name=` is required.
  */
 function actionSound(cfg: WmlConfig, ctx: EventContext): void {
-  const name = cfg.getString('name', '');
-  if (name === '') {
+  // `cfg.name or wml.error(...)`: only a missing name= is an error; `name=""` (core's {QUAKE ""}) plays nothing.
+  if (!cfg.hasAttribute('name')) {
     ctx.log('error', '[sound] missing required name= attribute');
     return;
   }
+  const name = cfg.getString('name', '');
+  if (name === '') return;
   ctx.playSound({ files: name, repeats: Math.trunc(cfg.getNumber('repeat', 0)), group: 'sound', dropIfLate: false });
 }
 

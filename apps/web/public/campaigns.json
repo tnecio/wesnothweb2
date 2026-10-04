@@ -1712,6 +1712,462 @@
       ]
     },
     {
+      "id": "heir_to_the_throne",
+      "firstScenario": "01_The_Elves_Besieged",
+      "wesnothId": "Heir_To_The_Throne",
+      "abbrev": "HttT",
+      "define": "CAMPAIGN_HEIR_2_THE_THRONE",
+      "assetDir": "Heir_To_The_Throne",
+      "name": {
+        "t": [
+          [
+            "wesnoth-h2tt",
+            "Heir to the Throne"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-h2tt",
+            "Seventeen years ago, the traitor queen Asheviere violently usurped the throne of Wesnoth. Now she rules tyrannically over her domain."
+          ],
+          "\n\n",
+          [
+            "wesnoth-h2tt",
+            "You, the old king’s last legitimate living heir, must embark on a long and perilous journey to dismantle the dark queen’s armies and finally end her reign of terror."
+          ],
+          "\n\n",
+          [
+            "wesnoth-h2tt",
+            "(Intermediate level, 14 scenarios.)"
+          ]
+        ]
+      },
+      "icon": "data/campaigns/Heir_To_The_Throne/images/units/konrad/konrad-lord-leading.png",
+      "image": "data/campaigns/Heir_To_The_Throne/images/campaign_image.png",
+      "rank": 55,
+      "startYear": "517 YW",
+      "endYear": "520 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-h2tt",
+                "Easy"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-h2tt",
+                "1x enemies, 15 scenarios"
+              ]
+            ]
+          },
+          "image": "data/campaigns/Heir_To_The_Throne/images/units/konrad/konrad-fighter.png~RC(magenta>red)"
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-h2tt",
+                "Normal"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-h2tt",
+                "2x enemies, 14 scenarios"
+              ]
+            ]
+          },
+          "image": "data/campaigns/Heir_To_The_Throne/images/units/konrad/konrad-captain.png~RC(magenta>red)",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-h2tt",
+                "Hard"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-h2tt",
+                "3x enemies, 13 scenarios"
+              ]
+            ]
+          },
+          "image": "data/campaigns/Heir_To_The_Throne/images/units/konrad/konrad-commander.png~RC(magenta>red)"
+        },
+        {
+          "define": "NIGHTMARE",
+          "label": {
+            "t": [
+              [
+                "wesnoth-h2tt",
+                "Deadly"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-h2tt",
+                "4x enemies, 12 scenarios"
+              ]
+            ]
+          },
+          "image": "data/campaigns/Heir_To_The_Throne/images/units/konrad/konrad-lord.png~RC(magenta>red)"
+        }
+      ]
+    },
+    {
+      "id": "heir_to_the_throne_classic",
+      "firstScenario": "tutorial",
+      "wesnothId": "Heir_To_The_Throne_Classic",
+      "abbrev": "HttTC",
+      "define": "CAMPAIGN_HEIR_TO_THE_THRONE",
+      "assetDir": "Heir_To_The_Throne_Classic",
+      "name": {
+        "t": [
+          [
+            "wesnoth-httt",
+            "Heir to the Throne, Classic"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-httt",
+            "Fight to regain the throne of Wesnoth, of which you are the legitimate heir."
+          ],
+          "\n\n",
+          [
+            "wesnoth-httt",
+            "This is the original version of this classic campaign, preserved for historical reasons. Also optionally includes the old <i>Battle Training</i> tutorial."
+          ],
+          "\n\n",
+          [
+            "wesnoth-httt",
+            "(Novice level, 23 scenarios.)"
+          ]
+        ]
+      },
+      "icon": "data/campaigns/Heir_To_The_Throne_Classic/images/units/konrad-lord-leading.png",
+      "image": "data/campaigns/Heir_To_The_Throne_Classic/images/campaign_image.png",
+      "rank": 60,
+      "startYear": "520 YW",
+      "endYear": "521 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-httt",
+                "Fighter"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-httt",
+                "Easy"
+              ]
+            ]
+          },
+          "image": "data/campaigns/Heir_To_The_Throne_Classic/images/units/konrad-fighter.png~RC(magenta>red)"
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-httt",
+                "Commander"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-httt",
+                "Normal"
+              ]
+            ]
+          },
+          "image": "data/campaigns/Heir_To_The_Throne_Classic/images/units/konrad-commander.png~RC(magenta>red)",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-httt",
+                "Lord"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-httt",
+                "Challenging"
+              ]
+            ]
+          },
+          "image": "data/campaigns/Heir_To_The_Throne_Classic/images/units/konrad-lord.png~RC(magenta>red)"
+        }
+      ]
+    },
+    {
+      "id": "the_deceivers_gambit",
+      "firstScenario": "00_Graduation",
+      "wesnothId": "The_Deceivers_Gambit",
+      "abbrev": "TDG",
+      "define": "CAMPAIGN_THE_DECEIVERS_GAMBIT",
+      "assetDir": "The_Deceivers_Gambit",
+      "name": {
+        "t": [
+          [
+            "wesnoth-tdg",
+            "The Deceiver’s Gambit"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-tdg",
+            "Yearning for adventure, a newly-trained apprentice from the magic academy at Alduin fights alongside Wesnoth’s king during a major war against the orcs of the north.\n\nPlay a pivotal role during this time of turmoil, as despite a string of battlefield victories Wesnoth seems to be slipping inexorably into chaos...\n\n"
+          ],
+          [
+            "wesnoth-tdg",
+            "(Intermediate level, 7 scenarios.)"
+          ]
+        ]
+      },
+      "icon": "data/campaigns/The_Deceivers_Gambit/images/units/garard/garard-icon.png~RC(magenta>purple)",
+      "image": "data/campaigns/The_Deceivers_Gambit/images/portraits/younger_delfador.webp~FL()~SCALE(400,320)",
+      "rank": 20,
+      "startYear": "476 YW",
+      "endYear": "478 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-tdg",
+                "Easy"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-tdg",
+                "1x enemies, 70% XP"
+              ]
+            ]
+          },
+          "image": "data/core/images/units/human-magi/mage.png~RC(magenta>red)"
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-tdg",
+                "Normal"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-tdg",
+                "2x enemies, 90% XP"
+              ]
+            ]
+          },
+          "image": "data/core/images/units/human-magi/red-mage.png~RC(magenta>red)",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-tdg",
+                "Hard"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-tdg",
+                "3x enemies, 100% XP"
+              ]
+            ]
+          },
+          "image": "data/core/images/units/human-magi/arch-mage.png~RC(magenta>red)"
+        },
+        {
+          "define": "NIGHTMARE",
+          "label": {
+            "t": [
+              [
+                "wesnoth-tdg",
+                "Deadly"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-tdg",
+                "4x enemies, 100% XP"
+              ]
+            ]
+          },
+          "image": "data/core/images/units/human-magi/great-mage.png~RC(magenta>red)"
+        }
+      ]
+    },
+    {
+      "id": "the_deceivers_gambit_2",
+      "firstScenario": "07_The_Great_River",
+      "wesnothId": "The_Deceivers_Gambit",
+      "abbrev": "TDG",
+      "define": "CAMPAIGN_THE_DECEIVERS_GAMBIT",
+      "assetDir": "The_Deceivers_Gambit",
+      "name": {
+        "t": [
+          [
+            "wesnoth-tdg",
+            "The Deceiver’s Gambit II"
+          ]
+        ]
+      },
+      "description": {
+        "t": [
+          [
+            "wesnoth-tdg",
+            "As losses continue to mount, Delfador embarks on a dangerous mission behind enemy lines. The journey will be perilous, but what awaits at its end will be worse still. What does it truly mean to be a hero?\n    \n"
+          ],
+          [
+            "wesnoth-tdg",
+            "(Intermediate level, 8 scenarios.)"
+          ]
+        ]
+      },
+      "icon": "data/campaigns/The_Deceivers_Gambit/images/units/delfador/L3/delfador-campaign-icon.png~RC(magenta>purple)",
+      "image": "data/campaigns/The_Deceivers_Gambit/images/portraits/young_delfador.webp~SCALE(350,350)",
+      "rank": 30,
+      "startYear": "497 YW",
+      "endYear": "501 YW",
+      "difficulties": [
+        {
+          "define": "EASY",
+          "label": {
+            "t": [
+              [
+                "wesnoth-tdg",
+                "Easy"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-tdg",
+                "1x enemies, 70% XP"
+              ]
+            ]
+          },
+          "image": "data/core/images/units/human-magi/mage.png~RC(magenta>red)"
+        },
+        {
+          "define": "NORMAL",
+          "label": {
+            "t": [
+              [
+                "wesnoth-tdg",
+                "Normal"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-tdg",
+                "2x enemies, 90% XP"
+              ]
+            ]
+          },
+          "image": "data/core/images/units/human-magi/red-mage.png~RC(magenta>red)",
+          "default": true
+        },
+        {
+          "define": "HARD",
+          "label": {
+            "t": [
+              [
+                "wesnoth-tdg",
+                "Hard"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-tdg",
+                "3x enemies, 100% XP"
+              ]
+            ]
+          },
+          "image": "data/core/images/units/human-magi/arch-mage.png~RC(magenta>red)"
+        },
+        {
+          "define": "NIGHTMARE",
+          "label": {
+            "t": [
+              [
+                "wesnoth-tdg",
+                "Deadly"
+              ]
+            ]
+          },
+          "description": {
+            "t": [
+              [
+                "wesnoth-tdg",
+                "4x enemies, 100% XP"
+              ]
+            ]
+          },
+          "image": "data/core/images/units/human-magi/great-mage.png~RC(magenta>red)"
+        }
+      ]
+    },
+    {
       "id": "synthetic_combat",
       "name": "[Debug] Combat",
       "description": "Two adjacent leaders on a tiny grassland map -- for fast combat-math debugging, no setup turns needed.",

@@ -35,6 +35,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseWmlFile, preloadDefinesFromDir } from '../../../packages/engine/src/wml/index.ts';
+import { scenarioIdOf } from './lib/scenarioId.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const dataRoot = path.join(repoRoot, 'wesnoth/data');
@@ -48,6 +49,9 @@ function newDefines(...flags) {
   const defines = new Map();
   for (const f of flags) flag(defines, f);
   preloadDefinesFromDir(path.join(dataRoot, 'core'), defines, { dataRoot });
+  // The theme macros too (`{themes/}` in `data/_main.cfg`): Heir to the Throne's `_main.cfg` uses
+  // `CUTSCENE_THEME_BACKGROUND`.
+  preloadDefinesFromDir(path.join(dataRoot, 'themes'), defines, { dataRoot });
   return defines;
 }
 
@@ -58,10 +62,9 @@ function textOf(cfg, key) {
   return t.translatable ? t.toJSON() : t.baseStr();
 }
 
-/** The first `id=` in a WML file's text -- the same convention `rebuild-snapshots.mjs` indexes scenarios by. */
+/** A scenario file's own id -- the same rule `rebuild-snapshots.mjs` indexes scenarios by. */
 function firstId(cfgFile) {
-  const m = /^\s*id\s*=\s*"?([\w-]+)"?\s*$/m.exec(fs.readFileSync(cfgFile, 'utf8'));
-  return m ? m[1] : null;
+  return scenarioIdOf(fs.readFileSync(cfgFile, 'utf8'));
 }
 
 /**
@@ -120,7 +123,9 @@ for (const campaign of manifest.campaigns) {
     // The [campaign] block does not depend on the difficulty; any one define lets the core macros load.
     defines: newDefines(campaign.define, 'NORMAL'),
   });
-  const block = main.child('campaign');
+  // A directory may hold more than one campaign (The Deceiver's Gambit and its part II): the one starting here.
+  const blocks = main.children('campaign');
+  const block = blocks.find((b) => b.getString('first_scenario', '') === campaign.firstScenario) ?? blocks[0];
   if (!block) throw new Error(`no [campaign] in ${campaign.wesnothId}`);
   for (const key of ['name', 'description']) {
     const t = block.getTString(key);

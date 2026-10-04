@@ -340,6 +340,15 @@ describe('[replace_map]', () => {
     expect(board.unitAt(new Location(1, 2))).toBeUndefined();
     expect(board.recallList(1)).toContain(unit);
   });
+  it('reads a map_file= the snapshot carries when no map_data= was inlined (a name built by Lua)', () => {
+    const { board, ctx, run } = setup(3);
+    ctx.mapFile = (name) => (name === '02_Flight_of_the_Elves-winter.map' ? 'Gg, Gg, Gg\nGg, Gg, Gg\nGg, Gg, Gg\nGg, Gg, Gg\nGg, Gg, Gg' : undefined);
+    run(`[replace_map]
+      map_file=02_Flight_of_the_Elves-winter.map
+      expand=yes
+    [/replace_map]`);
+    expect(board.map.h()).toBe(3);
+  });
 });
 
 describe('[harm_unit]', () => {

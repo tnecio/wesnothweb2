@@ -71,6 +71,23 @@ describe('VariableStore', () => {
     expect(store.toConfig().getNumber('number_of_captured_villages')).toBe(3);
   });
 
+  it('clearing an indexed element removes it and moves the later ones up (variable_info::clear)', () => {
+    const v = new VariableStore();
+    v.set('locs[0].x', 1);
+    v.set('locs[1].x', 2);
+    v.set('locs[2].x', 3);
+    v.set('a.b[0].c', 'x');
+    v.clear('locs[1]');
+    expect([v.getNumber('locs.length'), v.getNumber('locs[0].x'), v.getNumber('locs[1].x')]).toEqual([2, 1, 3]);
+    v.clear('locs[-1]');
+    expect([v.getNumber('locs.length'), v.getNumber('locs[0].x')]).toEqual([1, 1]);
+    v.clear('locs[0]');
+    expect(v.getNumber('locs.length')).toBe(0);
+    v.clear('a.b[0]');
+    expect(v.getNumber('a.b.length')).toBe(0);
+    v.clear('locs[5]'); // out of range: nothing
+  });
+
   describe('substitute()', () => {
     it('replaces plain $var references', () => {
       const vars = new VariableStore();
