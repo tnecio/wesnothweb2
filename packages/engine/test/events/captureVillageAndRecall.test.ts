@@ -182,7 +182,9 @@ y=${villageLoc.wmlY}
 });
 
 describe('[recall] action (mirrors WML_HANDLER_FUNCTION(recall, ...))', () => {
-  it('recalls the first recall-list unit matching id= onto a vacant castle tile connected to the leader\'s keep when no x=/y= is given', () => {
+  // The test unit types have no movement costs (every hex is unreachable to them), so these tags skip the
+  // passability check, as `check_passability=no` does upstream.
+  it("recalls the first recall-list unit matching id= next to its side's leader when no x=/y= is given: free, with full moves", () => {
     const { board, keepLoc } = makeBoard();
     const leader = Unit.create(makeUnitType('Leader'), 1, keepLoc, { canRecruit: true });
     board.addUnit(leader);
@@ -197,6 +199,7 @@ describe('[recall] action (mirrors WML_HANDLER_FUNCTION(recall, ...))', () => {
 name=go
 [recall]
 id=Hero
+check_passability=no
 [/recall]
 [/event]
 `).child('event')!);
@@ -205,10 +208,12 @@ id=Hero
     expect(board.recallList(1)).toHaveLength(0);
     const placed = board.allUnits().find((u) => u.id === 'Hero');
     expect(placed).toBeDefined();
-    expect(board.map.isCastle(placed!.location) || board.map.isKeep(placed!.location)).toBe(true);
-    expect(placed!.hitpoints).toBe(placed!.maxHitpoints); // recall keeps saved hp -- fresh unit is already full, but exercises the "isRecall" no-heal path for real
-    // Unit-instance recallCost (12) overrides the team default (20) -- mirrors recallUnit's own real-content-verified rule.
-    expect(team.gold).toBe(goldBefore - 12);
+    // find_vacant_tile from the leader's (occupied) hex: the lowest x, then y, of the first ring (0-based 0,1).
+    expect(placed!.location.toString()).toBe('1,2');
+    expect(placed!.hitpoints).toBe(placed!.maxHitpoints);
+    // `place_recruit(..., cost 0, ..., full_movement=true)`, unlike a player's recall.
+    expect(team.gold).toBe(goldBefore);
+    expect(placed!.movesLeft).toBe(placed!.maxMoves);
   });
 
   it('recalls to an explicit x=/y= castle tile when given and legal', () => {
@@ -226,6 +231,7 @@ name=go
 id=Hero
 x=${castleLoc.wmlX}
 y=${castleLoc.wmlY}
+check_passability=no
 [/recall]
 [/event]
 `).child('event')!);
@@ -254,7 +260,7 @@ id=Nobody
     expect(logs.some((l) => l.includes('[recall]'))).toBe(true);
   });
 
-  it('is a no-op (logged, unit stays on the recall list) when the matching side has no leader on a keep', () => {
+  it('is a no-op (logged, unit stays on the recall list) when the matching side has no leader and no x=/y= is given', () => {
     const { board } = makeBoard();
     // No leader placed at all for side 1 this time.
     const hero = Unit.create(makeUnitType('Hero'), 1, Location.NULL, { id: 'Hero' });
@@ -275,6 +281,30 @@ id=Hero
     expect(board.recallList(1)).toHaveLength(1);
     expect(board.allUnits()).toHaveLength(0);
     expect(logs.some((l) => l.includes('[recall]'))).toBe(true);
+  });
+
+  it("recalls to x=/y= with no leader on the side (TDG 00's {RECALL_XY Delfador 1 6})", () => {
+    const { board } = makeBoard();
+    const hero = Unit.create(makeUnitType('Delfador'), 1, Location.NULL, { id: 'Delfador' });
+    board.addToRecallList(1, hero);
+    board.addUnit(Unit.create(makeUnitType('Blocker'), 2, new Location(0, 2)));
+    const { manager, pump } = makePump(board);
+
+    manager.addFromWml(parseWml(`
+[event]
+name=go
+[recall]
+id=Delfador
+x,y=1,3
+check_passability=no
+[/recall]
+[/event]
+`).child('event')!);
+    pump.fire('go');
+
+    expect(board.recallList(1)).toHaveLength(0);
+    // 1,3 is taken: the nearest vacant tile instead, 1,2.
+    expect(board.allUnits().find((u) => u.id === 'Delfador')?.location.toString()).toBe('1,2');
   });
 });
 
