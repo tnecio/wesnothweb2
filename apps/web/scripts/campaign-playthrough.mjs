@@ -93,7 +93,10 @@ try {
     for (let attempt = 0; ; attempt++) {
       const clicked = await page.getByRole('button', { name: 'End Turn' }).click({ timeout: 10000 }).then(() => true, () => false);
       if (clicked) break;
-      if (attempt >= 30) throw new Error(`${id}: End Turn stayed covered`);
+      if (attempt >= 30) {
+        if (shots) await page.screenshot({ path: `${shots}/${id.replace('/', '-')}-covered.png` });
+        throw new Error(`${id}: End Turn stayed covered`);
+      }
       await untilPlayable(page, 900000);
     }
     await confirmEndTurnIfAsked(page);
@@ -112,6 +115,7 @@ try {
         })));
       }
     }
+    if (!turn2 && shots) await page.screenshot({ path: `${shots}/${id.replace('/', '-')}-no-turn-2.png` });
     check(`${id}: End Turn plays the other sides and comes back to the player`, turn2);
     check(`${id}: no page errors`, errors.length === 0, errors.slice(0, 3).join(' | '));
     check(`${id}: no failed requests`, missing.length === 0, missing.slice(0, 5).join(' | '));

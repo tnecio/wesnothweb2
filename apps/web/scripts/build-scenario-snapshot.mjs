@@ -307,16 +307,24 @@ function loadDefines() {
  */
 function rootImagePath(raw) {
   if (!raw) return raw;
-  if (raw.startsWith('core/') || raw.startsWith('campaigns/')) return raw;
+  if (/^(core|campaigns|internal|engine)\//.test(raw)) return raw;
   // Synthetic campaigns have no custom art (deliberately -- they only use
   // real core unit types) and live outside wesnoth/data entirely, so
-  // there's no campaign-relative image root to even check.
-  if (isRealCampaign) {
-    const campaignRelative = path.join(`campaigns/${campaignName}/images`, raw);
-    if (fs.existsSync(path.join(dataRoot, campaignRelative))) return campaignRelative;
+  // there's no campaign-relative image root to even check. A real one
+  // searches each of its binary paths (its own, then included resources
+  // such as internal/Rogue_Mage), then core.
+  for (const dir of campaignBinaryDirs) {
+    const rooted = path.posix.join(`${dir}/images`, raw);
+    if (fs.existsSync(path.join(dataRoot, rooted.split('~')[0]))) return rooted;
   }
-  return `core/images/${raw}`;
+  if (fs.existsSync(path.join(dataRoot, 'core/images', raw.split('~')[0]))) return `core/images/${raw}`;
+  // Found in none: left for the browser's search (rootedImagePath), which also knows the engine's own images
+  // and tries a missing .png as .webp.
+  return raw;
 }
+
+/** The campaign's binary paths, `data/`-relative, in search order (`lib/binaryPaths.mjs`). */
+const campaignBinaryDirs = isRealCampaign ? campaignBinaryPaths(dataRoot, campaignName) : [];
 
 /**
  * Derives id -> top-level image path (rooted, see rootImagePath) into
@@ -695,7 +703,7 @@ const terrainTypeConfigsJson = terrainTypeCfgs.map((cfg) => cfg.toJSON());
 // scenario's (local: `parse_config(level)`), parsed as the core rules file is; the board joins them to it
 // (`mergeBuildingRules`). An image counts as existing in any of the campaign's binary paths (its own, and
 // resources it includes such as `internal/Weather`), or in core.
-const campaignImagesDirs = isRealCampaign ? campaignBinaryPaths(dataRoot, path.basename(campaignDir)).map((d) => path.join(dataRoot, d, 'images')) : [];
+const campaignImagesDirs = campaignBinaryDirs.map((d) => path.join(dataRoot, d, 'images'));
 const terrainImageExists = (rel) => campaignImagesDirs.some((dir) => fs.existsSync(path.join(dir, rel))) || fs.existsSync(path.join(dataRoot, 'core/images', rel));
 const rulesOf = (from) => {
   const holder = new WmlConfig();
@@ -760,7 +768,7 @@ const imageSizes = {};
   for (const { tag, config } of cfg.allChildren()) {
     if (tag === 'multihex_image') {
       const base = config.getString('image', '').split('~')[0];
-      const file = [path.join(campaignDir, 'images', base), path.join(dataRoot, 'core/images', base)].find((p) => base && fs.existsSync(p));
+      const file = [...campaignBinaryDirs.map((d) => path.join(dataRoot, d, 'images', base)), path.join(dataRoot, 'core/images', base)].find((p) => base && fs.existsSync(p));
       const size = file ? pngSize(file) : undefined;
       if (size) imageSizes[base] = size;
     }
