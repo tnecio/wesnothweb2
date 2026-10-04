@@ -117,11 +117,12 @@
 
 <svelte:window
   onkeydown={(e) => {
-    // `window::signal_handler_sdl_key_down`: Enter closes the window with OK (a button or list row with focus
-    // handles its own Enter). HttT Classic's character choice has no button: Enter takes the selected one.
+    // `window::signal_handler_sdl_key_down`: Enter closes the window with OK (a button with focus handles its
+    // own Enter; a listbox row does not, as upstream's listbox handles only the arrow keys). HttT Classic's
+    // character choice has no button, and its first row has the focus: Enter takes the selected one.
     if (e.key !== 'Enter' || e.defaultPrevented) return;
     const target = e.target as HTMLElement | null;
-    if (target && ['BUTTON', 'SELECT', 'INPUT', 'TEXTAREA'].includes(target.tagName)) return;
+    if (target && target.getAttribute('role') !== 'option' && ['BUTTON', 'SELECT', 'INPUT', 'TEXTAREA'].includes(target.tagName)) return;
     e.preventDefault();
     onAnswer({ value: -1 });
   }}
