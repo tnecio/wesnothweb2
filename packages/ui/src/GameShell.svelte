@@ -62,6 +62,7 @@
     sideColorRgb,
     ImageCache,
     setEngineImageBaseUrl,
+    setEngineImages,
     setOrbColorIds,
     resolveSideColorId,
     type ColorData,
@@ -157,8 +158,10 @@
   // image roots -- until the board mounted, they defaulted to a non-existent `/data/data` (Phase 16 N0 finding).
   setImageBaseUrl(GAME_IMAGES);
   setEngineImageBaseUrl(ENGINE_IMAGES);
+  setEngineImages(engineImages);
 
   import campaignImages from './campaignImages.json';
+  import engineImages from './engineImages.json';
 
   let {
     snapshot,

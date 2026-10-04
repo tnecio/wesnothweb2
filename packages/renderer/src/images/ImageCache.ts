@@ -26,7 +26,7 @@ import type { ColorData } from './teamColor'
 import { Compositor, type CompositedImage } from './compositor'
 import { CompositorPool, defaultPoolSize, type RenderPriority } from './compositorPool'
 
-export { hexedRef, todRef, imageUrl, setImageBaseUrl, setEngineImageBaseUrl, setCampaignImages } from './compositor'
+export { hexedRef, todRef, imageUrl, setImageBaseUrl, setEngineImageBaseUrl, setCampaignImages, setEngineImages } from './compositor'
 
 function workersWanted(): boolean {
   if (typeof window === 'undefined' || typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') return false

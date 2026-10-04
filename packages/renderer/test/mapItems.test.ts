@@ -2,7 +2,7 @@
  * Phase 18: map items' image lookup and halo frames.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { rootedImagePath, setCampaignImages } from '../src/images/compositor.js';
+import { rootedImagePath, setCampaignImages, setEngineImages } from '../src/images/compositor.js';
 import { parseHaloFrames } from '../src/mapItems.js';
 
 describe("campaign images searched before core (the campaign's [binary_path])", () => {
@@ -15,6 +15,22 @@ describe("campaign images searched before core (the campaign's [binary_path])", 
     expect(rootedImagePath('items/chest.png')).toBe('core/images/items/chest.png');
     setCampaignImages(null);
     expect(rootedImagePath('items/storm-trident-buried.png')).toBe('core/images/items/storm-trident-buried.png');
+  });
+});
+
+describe("engine-only images searched last (the game root's images/)", () => {
+  afterEach(() => {
+    setCampaignImages(null);
+    setEngineImages([]);
+  });
+
+  it('a path only the engine has resolves to engine/, after the campaign; others stay core', () => {
+    setEngineImages(['misc/tod-bright.png', 'misc/unit-marker.png']);
+    expect(rootedImagePath('misc/tod-bright.png')).toBe('engine/misc/tod-bright.png');
+    expect(rootedImagePath('misc/unit-marker.png~O(0.5)')).toBe('engine/misc/unit-marker.png~O(0.5)');
+    expect(rootedImagePath('items/chest.png')).toBe('core/images/items/chest.png');
+    setCampaignImages('campaigns/X/images', ['misc/unit-marker.png']);
+    expect(rootedImagePath('misc/unit-marker.png')).toBe('campaigns/X/images/misc/unit-marker.png');
   });
 });
 

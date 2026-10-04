@@ -42,7 +42,11 @@ try {
     const missing = [];
     page.on('pageerror', (e) => errors.push(String(e)));
     page.on('response', (r) => {
-      if (r.status() >= 400 && r.url().startsWith(base)) missing.push(`${r.status()} ${r.url().slice(base.length)}`);
+      if (!r.url().startsWith(base)) return;
+      if (r.status() >= 400) missing.push(`${r.status()} ${r.url().slice(base.length)}`);
+      // The dev server answers a missing file with its index page (200, text/html): an image or data file that comes back as HTML is missing too.
+      else if (/\.(png|webp|jpg|json|ogg|cfg)(\?|$)/.test(new URL(r.url()).pathname) && (r.headers()['content-type'] ?? '').includes('text/html'))
+        missing.push(`html ${r.url().slice(base.length)}`);
     });
     if (scenario) {
       await page.goto(`${base}/play/${campaignId}?scenario=${encodeURIComponent(scenario)}`);

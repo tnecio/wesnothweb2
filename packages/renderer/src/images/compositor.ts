@@ -140,9 +140,27 @@ export function imageUrl(path: string): string {
 export function rootedImagePath(path: string): string {
   const clean = path.replace(/^\/+/, '')
   if (clean.startsWith('engine/') || clean.startsWith('core/') || clean.startsWith('campaigns/')) return clean
-  // The engine's image search: the campaign's own images/ first, then core.
-  if (campaignImages && campaignImages.files.has(clean.split('~')[0]!)) return `${campaignImages.root}/${clean}`
+  // The engine's image search: the campaign's own images/ first, then core, then the game root's images/.
+  const file = clean.split('~')[0]!
+  if (campaignImages && campaignImages.files.has(file)) return `${campaignImages.root}/${clean}`
+  if (engineImages.has(file)) return `engine/${clean}`
   return `core/images/${clean}`
+}
+
+let engineImages: ReadonlySet<string> = new Set()
+
+/**
+ * The images only the engine's own `images/` has (relative to it): upstream's
+ * last binary path is the game root, so `misc/tod-bright.png` is found there.
+ * `rootedImagePath` spells them `engine/...`.
+ */
+export function setEngineImages(files: Iterable<string>): void {
+  engineImages = new Set(files)
+}
+
+/** What `setEngineImages` set (the compositor workers get the same, see `compositorPool`). */
+export function getEngineImages(): ReadonlySet<string> {
+  return engineImages
 }
 
 let campaignImages: { root: string; files: ReadonlySet<string> } | null = null

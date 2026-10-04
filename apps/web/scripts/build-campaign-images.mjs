@@ -35,3 +35,21 @@ for (const c of campaigns) {
 const target = path.join(repoRoot, 'packages/ui/src/campaignImages.json');
 fs.writeFileSync(target, JSON.stringify(out, null, 1) + '\n');
 console.log(`wrote ${path.relative(repoRoot, target)}: ${Object.entries(out).map(([k, v]) => `${k} ${v.length}`).join(', ')}`);
+
+// The engine's own images/ (the game root's binary path), where core has no file of the same name.
+const engineRoot = path.join(repoRoot, 'wesnoth/images');
+const coreImages = path.join(repoRoot, 'wesnoth/data/core/images');
+const engineImages = [];
+(function walk(dir) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) walk(p);
+    else if (/\.(png|webp|jpg)$/.test(e.name) && !e.name.includes('@2x')) {
+      const rel = path.relative(engineRoot, p).split(path.sep).join('/');
+      if (!fs.existsSync(path.join(coreImages, rel))) engineImages.push(rel);
+    }
+  }
+})(engineRoot);
+const engineTarget = path.join(repoRoot, 'packages/ui/src/engineImages.json');
+fs.writeFileSync(engineTarget, JSON.stringify(engineImages.sort(), null, 1) + '\n');
+console.log(`wrote ${path.relative(repoRoot, engineTarget)}: ${engineImages.length}`);

@@ -5,7 +5,8 @@
  * `Compositor` (same ops, same team-colour tables) on the main thread and hands back an object URL. Results
  * are cached by reference, and a plain path with no functions is just its file URL.
  */
-import { Compositor, imageUrl, setEngineImageBaseUrl, setImageBaseUrl } from '@wesnothweb2/renderer';
+import { Compositor, imageUrl, setEngineImageBaseUrl, setEngineImages, setImageBaseUrl } from '@wesnothweb2/renderer';
+import engineImages from '../engineImages.json';
 import { rootMenuImage } from './rootMenuImage.js';
 import { fetchTeamColors } from '../teamColorsCache.js';
 import { ENGINE_IMAGES, GAME_IMAGES } from '../gameData.js';
@@ -20,6 +21,7 @@ function setBaseUrls(): void {
   baseUrlsSet = true;
   setImageBaseUrl(GAME_IMAGES);
   setEngineImageBaseUrl(ENGINE_IMAGES);
+  setEngineImages(engineImages);
 }
 
 async function getCompositor(): Promise<Compositor> {

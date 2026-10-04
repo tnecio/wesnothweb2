@@ -55,7 +55,7 @@ import { PNG } from 'pngjs';
 import { layoutTerrain } from '../../../packages/renderer/src/terrain/terrainLayout.ts';
 import { mergeBuildingRules, ownTerrainGraphicsRules, reviveBuildingRules } from '../../../packages/renderer/src/terrain/terrainGraphicsRules.ts';
 import { parseIpf, splitRef } from '../../../packages/renderer/src/images/ipf.ts';
-import { HEX_MASK, rootedImagePath, setCampaignImages, unitBundleStem } from '../../../packages/renderer/src/images/compositor.ts';
+import { HEX_MASK, rootedImagePath, setCampaignImages, setEngineImages, unitBundleStem } from '../../../packages/renderer/src/images/compositor.ts';
 import { parseStepSequence } from '../../../packages/renderer/src/animation/frame.ts';
 import { MINIMAP_FOG_IMAGE, MINIMAP_HIGHLIGHT_IMAGE, VOID_TERRAIN } from '../../../packages/renderer/src/minimap.ts';
 import { readScenarioSnapshot } from '../../../packages/engine/src/snapshot/snapshotFiles.node.ts';
@@ -69,6 +69,8 @@ const outRoot = path.join(publicDir, 'atlases');
 const unitsDir = path.join(outRoot, 'units');
 const dataRoot = path.join(repoRoot, 'wesnoth/data');
 const engineImagesRoot = path.join(repoRoot, 'wesnoth/images');
+// The engine-only images resolve to `engine/...`, as in the browser (`GameShell`'s `setEngineImages`).
+setEngineImages(JSON.parse(fs.readFileSync(path.join(repoRoot, 'packages/ui/src/engineImages.json'), 'utf8')));
 
 /** Largest bundle image edge; sources bigger than this stay per-file. */
 const MAX_ATLAS_SIZE = 4096;
