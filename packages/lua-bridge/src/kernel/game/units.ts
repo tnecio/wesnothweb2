@@ -39,6 +39,8 @@ import {
 import type { GameKernelHost } from './host.js';
 
 export const UNIT_KEY = 'unit';
+const WESNOTH = to_luastring('wesnoth');
+const UNITS = to_luastring('units');
 const STATUS_KEY = 'unit status';
 const VARIABLES_KEY = 'unit variables';
 const ATTACKS_KEY = 'unit attacks table';
@@ -85,6 +87,9 @@ interface AttackRef {
 }
 
 export class LuaUnits {
+  /** Registry reference of the `wesnoth.units` table, where the unit metatable finds methods. */
+  private unitsTableRef: number | undefined;
+
   constructor(
     private readonly k: LuaKernel,
     private readonly host: GameKernelHost,
@@ -429,9 +434,17 @@ export class LuaUnits {
           }
           return argError(T, 1, 'unit not found');
         }
-        lua.lua_getglobal(T, to_luastring('wesnoth'));
-        lua.lua_getfield(T, -1, to_luastring('units'));
-        lua.lua_getfield(T, -1, to_luastring(key));
+        // Methods (`u:movement_on(...)`, ...) are `wesnoth.units`' functions, looked up with the key already on
+        // the stack, in the table as it was first used -- a Lua AI's path cost function runs this for every hex it explores.
+        if (this.unitsTableRef === undefined) {
+          lua.lua_getglobal(T, WESNOTH);
+          lua.lua_getfield(T, -1, UNITS);
+          this.unitsTableRef = lauxlib.luaL_ref(T, lua.LUA_REGISTRYINDEX);
+          lua.lua_pop(T, 1);
+        }
+        lua.lua_rawgeti(T, lua.LUA_REGISTRYINDEX, this.unitsTableRef);
+        lua.lua_pushvalue(T, 2);
+        lua.lua_gettable(T, -2);
         if (!lua.lua_isnil(T, -1)) return 1;
         return argError(T, 2, `invalid property of unit: ${key}`);
       },
