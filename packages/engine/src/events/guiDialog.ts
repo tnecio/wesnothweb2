@@ -40,7 +40,7 @@ interface GuiBase {
 
 export type GuiNode =
   | (GuiBase & { readonly type: 'grid'; readonly rows: GuiCell[][] })
-  | (GuiBase & { readonly type: 'label'; label: GuiText; markup: boolean; readonly title: boolean; readonly textAlignment: string })
+  | (GuiBase & { readonly type: 'label'; label: GuiText; markup: boolean; readonly rich: boolean; readonly title: boolean; readonly textAlignment: string })
   | (GuiBase & { readonly type: 'image'; label: string })
   /**
    * `returnValue`: what clicking it closes the dialog with -- `return_value=`, else `ok`/`cancel` named by
@@ -142,6 +142,7 @@ function nodeOf(tag: string, source: WmlConfig, overrides?: Map<string, WmlConfi
         label: text(cfg, 'label'),
         // A rich label always reads markup (`rich_label` parses its text as help markup).
         markup: tag === 'rich_label' || cfg.getBoolean('use_markup', false),
+        rich: tag === 'rich_label',
         title: cfg.getString('definition', '') === 'title',
         textAlignment: cfg.getString('text_alignment', 'left'),
       };

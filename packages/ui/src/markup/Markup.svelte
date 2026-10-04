@@ -5,9 +5,9 @@
    */
   import { parsePango, type PangoNode } from './pango.js';
 
-  let { text }: { text: string } = $props();
+  let { text, help = false }: { text: string; help?: boolean } = $props();
 
-  const nodes = $derived(parsePango(text));
+  const nodes = $derived(parsePango(text, help));
 
   function css(style: Readonly<Record<string, string>>): string {
     return Object.entries(style)

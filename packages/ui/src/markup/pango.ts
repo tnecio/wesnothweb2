@@ -97,14 +97,30 @@ const TAGS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   span: {},
 };
 
+/**
+ * A `rich_label`'s help markup (`rich_label::get_parsed_text`) on top of Pango's: `<ref dst=...>` is a link,
+ * drawn in the label's link colour (`font::YELLOW_COLOR` by default) and showing `dst` when it has no text;
+ * `<bold>`/`<italic>` and `<header>` (`<h>`) format as upstream does.
+ */
+const HELP_TAGS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  ref: { color: '#ffff00' },
+  bold: { 'font-weight': 'bold' },
+  italic: { 'font-style': 'italic' },
+  header: { 'font-weight': '900', color: 'white', 'font-size': '1.2em' },
+  h: { 'font-weight': '900', color: 'white', 'font-size': '1.2em' },
+};
+
 interface OpenElement {
   name: string;
   raw: string;
   node: PangoElement;
+  /** A `<ref>`'s destination. */
+  dst?: string;
 }
 
-/** Parses `text`. Never throws. */
-export function parsePango(text: string): PangoNode[] {
+/** Parses `text`; `help` adds a rich label's help markup (`HELP_TAGS`). Never throws. */
+export function parsePango(text: string, help = false): PangoNode[] {
+  const tags = help ? { ...TAGS, ...HELP_TAGS } : TAGS;
   const root: PangoNode[] = [];
   const stack: OpenElement[] = [];
   const out = (): PangoNode[] => (stack.length > 0 ? stack[stack.length - 1]!.node.children : root);
@@ -127,7 +143,7 @@ export function parsePango(text: string): PangoNode[] {
     tagRe.lastIndex = i;
     const m = tagRe.exec(text);
     const name = m?.[2]!.toLowerCase();
-    if (!m || !name || !(name in TAGS)) {
+    if (!m || !name || !(name in tags)) {
       i++; // a stray `<` or an unknown tag is literal text
       continue;
     }
@@ -136,11 +152,14 @@ export function parsePango(text: string): PangoNode[] {
       const at = stack.map((e) => e.name).lastIndexOf(name);
       if (at < 0) pushText(m[0]); // a close with no open
       else {
+        // A link with no text shows its destination.
+        const closing = stack[at]!;
+        if (closing.name === 'ref' && closing.node.children.length === 0) closing.node.children.push({ text: closing.dst ?? '' });
         // Close it, and anything left open inside it, as Pango's recovery does.
         stack.length = at;
       }
     } else {
-      const style: Record<string, string> = { ...TAGS[name] };
+      const style: Record<string, string> = { ...tags[name] };
       if (name === 'span') {
         for (const a of m[3]!.matchAll(/([a-zA-Z_]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
           const css = spanStyle(a[1]!.toLowerCase(), decodeEntities(a[2] ?? a[3] ?? ''));
@@ -149,7 +168,8 @@ export function parsePango(text: string): PangoNode[] {
       }
       const node: PangoElement = { tag: name, style, children: [] };
       out().push(node);
-      stack.push({ name, raw: m[0], node });
+      const dst = name === 'ref' ? /\bdst\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(m[3]!) : null;
+      stack.push({ name, raw: m[0], node, ...(dst ? { dst: decodeEntities(dst[1] ?? dst[2] ?? '') } : {}) });
     }
     i = literalStart = m.index + m[0].length;
   }

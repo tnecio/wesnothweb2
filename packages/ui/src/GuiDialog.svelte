@@ -63,7 +63,7 @@
       </div>
     {:else if node.type === 'label'}
       <div class="label" class:title={node.title} style="text-align: {node.textAlignment}; {visibility(node)}" data-gui-id={node.id || undefined}>
-        {#if node.markup}<Markup text={text(node.label)} />{:else}{text(node.label)}{/if}
+        {#if node.markup}<Markup text={text(node.label)} help={node.rich} />{:else}{text(node.label)}{/if}
       </div>
     {:else if node.type === 'image'}
       {#if node.label}<span style={visibility(node)}><IpfImage src={node.label} /></span>{/if}
@@ -117,12 +117,13 @@
 
 <svelte:window
   onkeydown={(e) => {
-    // `window::signal_handler_sdl_key_down`: Enter closes the window with OK (a button with focus handles its
-    // own Enter; a listbox row does not, as upstream's listbox handles only the arrow keys). HttT Classic's
-    // character choice has no button, and its first row has the focus: Enter takes the selected one.
+    // `window::signal_handler_sdl_key_down`: Enter closes the window with OK. A button with focus handles its
+    // own Enter; a listbox row and a menu button do not, as upstream's handle only the arrow keys. HttT
+    // Classic's character choice has no button and its first row has the focus; TDG's spell dialog opens
+    // with the focus on a menu button.
     if (e.key !== 'Enter' || e.defaultPrevented) return;
     const target = e.target as HTMLElement | null;
-    if (target && target.getAttribute('role') !== 'option' && ['BUTTON', 'SELECT', 'INPUT', 'TEXTAREA'].includes(target.tagName)) return;
+    if (target && target.getAttribute('role') !== 'option' && ['BUTTON', 'INPUT', 'TEXTAREA'].includes(target.tagName)) return;
     e.preventDefault();
     onAnswer({ value: -1 });
   }}

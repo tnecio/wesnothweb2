@@ -74,3 +74,18 @@ describe('the markup the shipped content actually uses', () => {
     for (const tip of tips) expect(stripPango(tip)).not.toMatch(/<\/?[ib]>/);
   });
 });
+
+describe('parsePango, help markup (rich_label)', () => {
+  it('draws a <ref> link in the link colour, its destination when it has no text', () => {
+    expect(shape(parsePango("Ranged, <ref dst='weaponspecial_magical'>magical</ref>.", true))).toEqual([
+      'Ranged, ',
+      { ref: ['magical'], style: { color: '#ffff00' } },
+      '.',
+    ]);
+    expect(shape(parsePango('<ref dst="unit_Mage"></ref>', true))).toEqual([{ ref: ['unit_Mage'], style: { color: '#ffff00' } }]);
+  });
+
+  it('keeps help tags literal in plain Pango markup', () => {
+    expect(stripPango("<ref dst='x'>y</ref>")).toBe("<ref dst='x'>y</ref>");
+  });
+});
