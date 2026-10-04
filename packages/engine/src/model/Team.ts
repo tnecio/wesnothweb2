@@ -68,6 +68,8 @@ export class Team {
   color: string;
   flag: string;
   noLeader: boolean;
+  /** `defeat_condition=`: when `check_victory` counts this side as defeated (default `no_leader_left`). */
+  defeatCondition: DefeatCondition;
   hidden: boolean;
   scrollToLeader: boolean;
   persistent: boolean;
@@ -107,6 +109,7 @@ export class Team {
     this.color = options.color ?? String(side);
     this.flag = options.flag ?? '';
     this.noLeader = options.noLeader ?? false;
+    this.defeatCondition = options.defeatCondition ?? 'no_leader_left';
     this.hidden = options.hidden ?? false;
     this.scrollToLeader = options.scrollToLeader ?? true;
     this.persistent = options.persistent ?? true;
@@ -159,6 +162,7 @@ export class Team {
       color: cfg.getString('color', String(side)),
       flag: cfg.getString('flag', ''),
       noLeader: cfg.getBoolean('no_leader', false),
+      defeatCondition: parseDefeatCondition(cfg.getString('defeat_condition', '')),
       hidden: cfg.getBoolean('hidden', false),
       scrollToLeader: cfg.getBoolean('scroll_to_leader', true),
       // `team_info::read`: a human side is persistent unless it says otherwise.
@@ -272,4 +276,12 @@ function teamNames(teamName: string): string[] {
     .split(',')
     .map((n) => n.trim())
     .filter((n) => n !== '');
+}
+
+/** `defeat_condition`: `always`, `no_leader_left`, `no_units_left` or `never`. */
+export type DefeatCondition = 'always' | 'no_leader_left' | 'no_units_left' | 'never';
+
+/** `defeat_condition::get_enum(...).value_or(no_leader_left)`. */
+export function parseDefeatCondition(text: string): DefeatCondition {
+  return text === 'always' || text === 'no_units_left' || text === 'never' ? text : 'no_leader_left';
 }

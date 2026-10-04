@@ -808,15 +808,11 @@ describe('GameSession.startNextScenario (real 01_Invasion -> 02_Flight gold + re
 
     // Force scenario 2's own victory WITHOUT ever recalling anyone -- the
     // whole point of this test is what happens to a recall-list survivor
-    // that sits untouched through an entire scenario. Real scenario 2 has
-    // THREE enemy sides (2/3/4, all "bad guys"), not just one -- every
-    // leader must fall for checkVictory to actually end the scenario.
-    for (const side of scenario2.board.teams().map((t) => t.side)) {
-      if (side === 1) continue;
-      for (const leader of scenario2.board.unitsForSide(side).filter((u) => u.canRecruit)) {
-        scenario2.board.removeUnitAt(leader.location);
-      }
-    }
+    // that sits untouched through an entire scenario. Scenario 2 is won by
+    // reaching its exit, not by defeating the enemy
+    // (victory_when_enemies_defeated=no): its [endlevel] ends it.
+    scenario2['eventPump'].manager.addFromWml(parseConfig('[event]\nname=test_win\n[endlevel]\nresult=victory\n[/endlevel]\n[/event]').child('event')!);
+    scenario2['eventPump'].fire('test_win');
     // @ts-expect-error -- see above.
     scenario2.checkForGameEnd();
     expect(scenario2.scenarioResult).toBe('victory');

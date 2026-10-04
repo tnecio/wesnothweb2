@@ -1717,6 +1717,9 @@ export class GameSession {
     if (!options.deferMusic) startScenarioMusic(this.music, WmlConfig.fromJSON(snapshot.scenarioConfigJson));
     this.board.lawfulBonusAt = (loc) => this.timeOfDayAt(loc).lawfulBonus;
     this.eventPump.ctx.turnLimit = parseScenarioTurnsLimit(plainJsonValue(snapshot.scenarioConfigJson.attrs['turns'])) ?? -1;
+    // `game_state::victory_when_enemies_defeated_`: `[scenario] victory_when_enemies_defeated=` (default yes).
+    const victoryWhen = plainJsonValue(snapshot.scenarioConfigJson.attrs['victory_when_enemies_defeated']);
+    this.victoryWhenEnemiesDefeated = !(victoryWhen === false || victoryWhen === 'no' || victoryWhen === 'false');
     this.eventPump.ctx.turnNumber = () => this.turnNumber;
     // The scenario's own `[item]`s and `[label]`s, read as upstream does at scenario start.
     for (const { tag, config } of WmlConfig.fromJSON(snapshot.scenarioConfigJson).allChildren()) {
@@ -5242,6 +5245,9 @@ export class GameSession {
    * the scenario is actually over -- see `checkVictory`'s own doc comment
    * for exactly what this does and doesn't model.
    */
+  /** `[scenario] victory_when_enemies_defeated=`: whether defeating every enemy ends the scenario. */
+  private victoryWhenEnemiesDefeated = true;
+
   private checkForGameEnd(): void {
     if (this.scenarioResult) return;
     const endLevel = this.eventPump.ctx.endLevel;
@@ -5252,9 +5258,19 @@ export class GameSession {
       this.playScenarioEndMusic();
       return;
     }
-    const { continueLevel, notDefeated } = checkVictory(this.board);
+    const { continueLevel, foundPlayer } = checkVictory(this.board);
     if (continueLevel) return;
-    this.scenarioResult = notDefeated.includes(this.playerSide) ? 'victory' : 'defeat';
+    // `play_controller::check_victory`: with a human side left, `enemies_defeated` fires first (its handlers may
+    // end the level themselves); a scenario with `victory_when_enemies_defeated=no` then goes on.
+    if (foundPlayer) {
+      this.eventPump.fire('enemies_defeated', undefined, undefined, undefined, this.collectResponder);
+      if (this.eventPump.ctx.endLevel) {
+        this.checkForGameEnd();
+        return;
+      }
+      if (!this.victoryWhenEnemiesDefeated) return;
+    }
+    this.scenarioResult = foundPlayer ? 'victory' : 'defeat';
     this.clearSelection();
     this.log.unshift(
       this.scenarioResult === 'victory' ? tx('Victory! The enemy has been defeated.') : tx('Defeat... your side has fallen.'),

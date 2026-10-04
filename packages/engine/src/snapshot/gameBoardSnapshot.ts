@@ -67,7 +67,7 @@ import {
 } from '../events/index.js';
 import { Location, type Direction } from '../model/Location.js';
 import { GameMap } from '../model/Map.js';
-import { Team, parseController } from '../model/Team.js';
+import { Team, parseController, type DefeatCondition } from '../model/Team.js';
 import { Unit } from '../model/Unit.js';
 import { AttackType, UnitType, type Alignment, type RegistryEntry } from '../model/UnitType.js';
 import { MoveType } from '../model/MoveType.js';
@@ -214,6 +214,8 @@ export interface SnapshotTeam {
    * to `false` for older snapshots, same pattern as the fields above.
    */
   noLeader?: boolean;
+  /** `[side] defeat_condition=` (default `no_leader_left`). */
+  defeatCondition?: DefeatCondition;
   /** Phase 28c B4: the units the `[side]` put on its recall list, as unit configs (`Unit.toConfig`). */
   recall?: WmlConfigJson[];
   /** `[side] save_id=` (defaulting to the side's or its `[leader]`'s id): `side.save_id`, global-variable carryover. */
@@ -642,6 +644,7 @@ export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBo
         supportPerVillage: t.supportPerVillage ?? 1,
         shareVision: t.shareVision ?? 'all',
         noLeader: t.noLeader ?? false,
+        defeatCondition: t.defeatCondition ?? 'no_leader_left',
         saveId: t.saveId ?? '',
         persistent: t.persistent ?? parseController(t.controller) === 'human',
       }),

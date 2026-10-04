@@ -86,12 +86,23 @@ export class GameBoard {
   }
 
   /** Mirrors `game_board::team_is_defeated`: no leader unit left, or explicitly marked lost. */
+  /**
+   * `game_board::check_victory`'s test for one side, by its `defeat_condition`: `never` stands, `always`
+   * falls, `no_units_left` stands while it has a unit on the map, `no_leader_left` while it has a leader there.
+   */
   teamIsDefeated(side: number): boolean {
     const team = this.teamsBySide.get(side);
     if (!team) return true;
-    if (team.lost) return true;
-    if (team.noLeader) return false;
-    return !this.unitsForSide(side).some((u) => u.canRecruit);
+    switch (team.defeatCondition) {
+      case 'never':
+        return false;
+      case 'always':
+        return true;
+      case 'no_units_left':
+        return this.unitsForSide(side).length === 0;
+      default:
+        return !this.unitsForSide(side).some((u) => u.canRecruit);
+    }
   }
 
   // --- units on the board ---
@@ -246,6 +257,11 @@ export class GameBoard {
     } else {
       this.villageOwners.set(loc.key(), side);
     }
+  }
+
+  /** `team::clear_villages`: `side` gives up every village it owns. */
+  clearVillages(side: number): void {
+    for (const [key, owner] of [...this.villageOwners]) if (owner === side) this.villageOwners.delete(key);
   }
 
   /** Mirrors `team::villages().size()`: how many villages `side` currently owns. */

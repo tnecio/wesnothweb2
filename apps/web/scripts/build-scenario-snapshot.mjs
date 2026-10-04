@@ -627,6 +627,7 @@ const teams = board.teams().map((t) => ({
   noLeader: t.noLeader,
   saveId: t.saveId,
   persistent: t.persistent,
+  ...(t.defeatCondition !== 'no_leader_left' ? { defeatCondition: t.defeatCondition } : {}),
   // Units the [side] put on its recall list (a leader with no hex for it, `[unit] x,y=recall`), in full.
   ...(board.recallList(t.side).length > 0 ? { recall: board.recallList(t.side).map((u) => u.toConfig().toJSON()) } : {}),
 }));
