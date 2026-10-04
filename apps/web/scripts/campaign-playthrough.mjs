@@ -91,8 +91,10 @@ try {
     }
     // A message can still open after the quiet spell (TDG 7's opening): answer it and try again.
     for (let attempt = 0; ; attempt++) {
-      const clicked = await page.getByRole('button', { name: 'End Turn' }).click({ timeout: 10000 }).then(() => true, () => false);
+      const clicked = await page.getByRole('button', { name: 'End Turn' }).click({ timeout: 60000 }).then(() => true, () => false);
       if (clicked) break;
+      // The click may have landed and opened the end-turn question, which then covers the button.
+      if (await confirmEndTurnIfAsked(page, 0)) break;
       if (attempt >= 30) {
         if (shots) await page.screenshot({ path: `${shots}/${id.replace('/', '-')}-covered.png` });
         throw new Error(`${id}: End Turn stayed covered`);
@@ -103,6 +105,7 @@ try {
     let turn2 = false;
     for (const deadline = Date.now() + 900000; !turn2 && Date.now() < deadline; ) {
       if (await page.$(DIALOGUE)) await page.keyboard.press('Enter');
+      await confirmEndTurnIfAsked(page, 0);
       await page.waitForTimeout(2000);
       turn2 = await page.evaluate(() => {
         const s = window.__wesnoth.session;

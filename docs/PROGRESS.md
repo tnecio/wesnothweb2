@@ -6340,6 +6340,41 @@ B4's two follow-ups.
   `.webp` when a `.png` or `.jpg` is missing; `rootedImagePath` does the same against the campaign's and the
   engine's file lists. No core reference needs it: none of the 3,514 `.png`/`.jpg` names in core, campaign or
   Lua data is a core image that exists only as `.webp`.
+- **Every binary path of a campaign.** The stricter check then caught TDG part 2 asking for the Rogue Mage
+  sprite under `core/images`. Mainline campaigns include shared resources from `data/internal/`, each
+  with its own `[binary_path]`:
+  - HttT, Liberty, EI and TDG include `{internal/Rogue_Mage}`;
+  - TSG, TDG and others include `{internal/Weather}` and `{internal/Urban_Jungle}`.
+
+  Only the campaign's own `images/` was searched. As a result:
+  - Rogue Mage art was missing;
+  - the Weather and Urban Jungle `[terrain_graphics]` were dropped (the snapshot builder found no images
+    for them) in 8 campaigns;
+  - the rain sound never played.
+
+  `apps/web/scripts/lib/binaryPaths.mjs` now lists a campaign's paths in order. The places that use it:
+  - `campaignImages.json` (one file list per path);
+  - `audioFiles.json`;
+  - the snapshot builder's image rooting and terrain-rule image checks.
+
+  Rogue_Mage, Weather and Urban_Jungle share no file with core, so searching them before core matches
+  upstream's sorted search. `a//b` reads as `a/b` (TDG's Delfador L3 sprites). The deploy now uploads
+  `data/internal` too, under the same media prefix: a versioned completion marker means only the new
+  files are sent.
+- **`[recall]` without a leader.** With that fixed, TDG 00 showed the player with no unit at all. Its
+  start event recalls Delfador with `{RECALL_XY Delfador 1 6}`, and his side has no leader. Upstream
+  (`action_wml.cpp`) tries each of the side's leaders, then the tag's `x,y` with no leader, at the nearest
+  vacant tile. It places the unit free and with full movement. The port required a leader on a keep, and
+  charged the recall cost. All three now match upstream. This changes every scripted recall in the
+  shipped campaigns: no gold is spent, and the unit can move.
+- **Browser checks.** Seven campaigns pass with no page errors and no missing files: both TDG parts, HttT,
+  HttT Classic, TSG, Liberty and EI. In TDG 7, right-clicking Delfador opens the spell dialog. Clicking
+  "magical" there opens the help at that topic, and closing the help returns to the dialog.
+  - Now that recalled units keep their moves, ending the first turn asks "You have not started your turn
+    yet". The playthrough script waits up to 5 s for that question and answers it, also in the End Turn
+    retry loop.
+  - The End Turn click waits 60 s: the VM's software WebGL draws about one frame a second (Dead Water too),
+    and Playwright's click waits for a frame.
 - **The check that missed it.** The dev server answers a missing file with its index page (200,
   `text/html`), so `campaign-playthrough.mjs` saw no failed request. It now also counts an image, data or
   audio URL answered with HTML.
