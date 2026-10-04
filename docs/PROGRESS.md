@@ -6285,8 +6285,12 @@ already shipped.
   - callbacks get their widget;
   - `[menu_button]`, `[rich_label]`, `enabled`/`type`, and `widget:find()`.
   - SotA's help buttons used to close its recruit dialog.
-  - Enter closes a dialog with OK (`window::signal_handler_sdl_key_down`). HttT Classic's character
-    dialog has no OK button of its own.
+  - Enter closes a dialog with OK (`window::signal_handler_sdl_key_down`), also when a listbox row or a
+    menu button has the focus, since upstream's handle only the arrow keys. HttT Classic's character
+    dialog has no OK button of its own, and TDG's spell dialog opens with the focus on a menu button.
+  - `rich_label` reads help markup. `<ref dst=...>` links are drawn in the link colour, and
+    `<bold>`/`<italic>`/`<header>` format the text. TDG's spell dialog showed its `<ref>` tags as text.
+    The links don't open the help yet.
 
 **Performance:**
 - **fengari is patched** (`patches/fengari+0.1.5.patch`, applied by `patch-package` on install). It ran
@@ -6312,3 +6316,10 @@ already shipped.
   (`bm_tod`, stored heroes); `carryoverPatterns` lists those. Four TDG openings miss a stored Delfador or Deoran.
 - **New unit tests:** location filters, priority order, indexed clears, the animator, mouse callbacks, the
   gui changes, `[unit]` recall placement, `rand=`.
+- **Browser:** `campaign-playthrough.mjs` ran on all four campaigns.
+  - The script now answers a campaign's own gui dialogs, and retries End Turn past a late message.
+  - HttT 1 and the HttT Classic tutorial hold the first turn with `[disallow_end_turn]`, as upstream
+    does. The script checks for that instead of ending the turn.
+- **Known gap (predates B4):** images that exist only in upstream's top-level `images/` (about 1,750
+  files) are looked up under `data/core/images/` and are not found. Campaigns use a few of them:
+  `misc/tod-bright.png` in 10 files, and the tutorial's `misc/unit-marker.png`.
