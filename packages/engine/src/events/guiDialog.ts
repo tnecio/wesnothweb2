@@ -40,7 +40,16 @@ interface GuiBase {
 
 export type GuiNode =
   | (GuiBase & { readonly type: 'grid'; readonly rows: GuiCell[][] })
-  | (GuiBase & { readonly type: 'label'; label: GuiText; markup: boolean; readonly rich: boolean; readonly title: boolean; readonly textAlignment: string })
+  /** `linkHandler`: a rich label whose Lua `on_link_click` is set, so its `<ref>` links can be clicked. */
+  | (GuiBase & {
+      readonly type: 'label';
+      label: GuiText;
+      markup: boolean;
+      readonly rich: boolean;
+      readonly title: boolean;
+      readonly textAlignment: string;
+      linkHandler: boolean;
+    })
   | (GuiBase & { readonly type: 'image'; label: string })
   /**
    * `returnValue`: what clicking it closes the dialog with -- `return_value=`, else `ok`/`cancel` named by
@@ -145,6 +154,7 @@ function nodeOf(tag: string, source: WmlConfig, overrides?: Map<string, WmlConfi
         rich: tag === 'rich_label',
         title: cfg.getString('definition', '') === 'title',
         textAlignment: cfg.getString('text_alignment', 'left'),
+        linkHandler: false,
       };
     case 'image':
       return { ...base, type: 'image', label: cfg.getString('label', '') };

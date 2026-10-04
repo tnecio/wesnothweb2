@@ -20,6 +20,7 @@ export {
   setImageBaseUrl,
   setEngineImageBaseUrl,
   setCampaignImages,
+  setEngineImages,
 } from './images/ImageCache'
 export { unitBundleManifestUrl, Compositor, type CompositedImage } from './images/compositor'
 

@@ -232,6 +232,14 @@ export function guiSelectionAnswer(widgetId: string, row: number): InteractionRe
 }
 
 /**
+ * A `<ref dst=...>` clicked in a rich label that has an `on_link_click` (`rich_label::signal_handler_left_button_click`):
+ * `text` is `link:<widget id>|<dst>`, and the dialog stays open while the callback runs.
+ */
+export function guiLinkAnswer(widgetId: string, dst: string): InteractionResult {
+  return { text: `link:${widgetId}|${dst}` };
+}
+
+/**
  * A suspendable action: `yield`s each `Interaction` and is resumed with
  * its `InteractionResult`. Handlers that never block just return `void`.
  */

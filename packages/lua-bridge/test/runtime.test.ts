@@ -370,6 +370,37 @@ describe("buttons, menu buttons and gui.widget.close (The Deceiver's Gambit's sp
   });
 });
 
+describe("rich label links (The Deceiver's Gambit's spell descriptions)", () => {
+  it('on_link_click makes the links clickable and runs with the destination; the dialog stays open', () => {
+    const { run, vars, logs } = setup();
+    const answers = [{ text: 'link:desc|weaponspecial_magical' }, { value: -1 }];
+    const linkable: boolean[] = [];
+    let help = '';
+    run(`[lua]
+      code=<<
+        local T = wml.tag
+        local layout = { T.grid { T.row { T.column { T.rich_label { id = "desc" } } } } }
+        gui.show_dialog(layout, function(window)
+          window.desc.label = "<ref dst='weaponspecial_magical'>magical</ref>"
+          window.desc.on_link_click = function(dest) wml.variables.dest = dest ; gui.show_help(dest) end
+        end)
+      >>
+    [/lua]`, (i) => {
+      if (i.kind === 'beat' && i.beat.kind === 'openHelp') {
+        help = i.beat.topic;
+        return {};
+      }
+      if (i.kind !== 'guiDialog') return {};
+      linkable.push(JSON.stringify(i.dialog.root).includes('"linkHandler":true'));
+      return answers.shift() ?? { value: -2 };
+    });
+    expect(logs.filter((l) => l.startsWith('warn') || l.startsWith('error'))).toEqual([]);
+    expect(linkable).toEqual([true, true]);
+    expect(vars.getString('dest')).toBe('weaponspecial_magical');
+    expect(help).toBe('weaponspecial_magical');
+  });
+});
+
 describe('gui.show_dialog', () => {
   const DIALOG = `[resolution]
     [grid]

@@ -138,27 +138,58 @@ export function imageUrl(path: string): string {
  * `apps/web/scripts/build-image-atlases.mjs`).
  */
 export function rootedImagePath(path: string): string {
-  const clean = path.replace(/^\/+/, '')
-  if (clean.startsWith('engine/') || clean.startsWith('core/') || clean.startsWith('campaigns/')) return clean
-  // The engine's image search: the campaign's own images/ first, then core.
-  if (campaignImages && campaignImages.files.has(clean.split('~')[0]!)) return `${campaignImages.root}/${clean}`
-  return `core/images/${clean}`
+  const trimmed = path.replace(/^\/+/, '')
+  if (/^(engine|core|campaigns|internal)\//.test(trimmed)) return trimmed
+  // The engine's image search: the campaign's binary paths first, then core, then the game root's images/.
+  const tilde = trimmed.indexOf('~')
+  // The file system reads `L3//delfador.png` (TDG's Delfador, a macro's path ending in `/`) as `L3/delfador.png`.
+  const file = (tilde < 0 ? trimmed : trimmed.slice(0, tilde)).replace(/\/{2,}/g, '/')
+  const mods = tilde < 0 ? '' : trimmed.slice(tilde)
+  const found = (name: string): string | null => {
+    const own = campaignImages.find((p) => p.files.has(name))
+    if (own) return `${own.root}/${name}${mods}`
+    return engineImages.has(name) ? `engine/${name}${mods}` : null
+  }
+  // `load_image_file`: a `.png` or `.jpg` found nowhere is looked for as `.webp` (many were converted). Core
+  // has no file list here, so only the campaign's and the engine's images are checked.
+  return found(file) ?? (/\.(png|jpg)$/.test(file) ? found(file.slice(0, -4) + '.webp') : null) ?? `core/images/${file}${mods}`
 }
 
-let campaignImages: { root: string; files: ReadonlySet<string> } | null = null
+let engineImages: ReadonlySet<string> = new Set()
 
 /**
- * Phase 18: the current campaign's own images (`root`, e.g.
- * `campaigns/Dead_Water/images`, and the files under it, relative to it),
- * searched before core by `rootedImagePath` -- the campaign's
- * `[binary_path]`. `null` for none (a synthetic campaign).
+ * The images only the engine's own `images/` has (relative to it): upstream's
+ * last binary path is the game root, so `misc/tod-bright.png` is found there.
+ * `rootedImagePath` spells them `engine/...`.
  */
-export function setCampaignImages(root: string | null, files: Iterable<string> = []): void {
-  campaignImages = root ? { root, files: new Set(files) } : null
+export function setEngineImages(files: Iterable<string>): void {
+  engineImages = new Set(files)
+}
+
+/** What `setEngineImages` set (the compositor workers get the same, see `compositorPool`). */
+export function getEngineImages(): ReadonlySet<string> {
+  return engineImages
+}
+
+/** A binary path's `images/` (`root`, e.g. `campaigns/Dead_Water/images`) and the files under it, relative to it. */
+export interface ImagePath {
+  readonly root: string
+  readonly files: ReadonlySet<string>
+}
+
+let campaignImages: readonly ImagePath[] = []
+
+/**
+ * Phase 18: the current campaign's `[binary_path]`s, searched in this order before core by
+ * `rootedImagePath`: its own `images/`, then any it includes (`{internal/Rogue_Mage}`). Empty for none (a
+ * synthetic campaign).
+ */
+export function setCampaignImages(paths: readonly { readonly root: string; readonly files: Iterable<string> }[]): void {
+  campaignImages = paths.map((p) => ({ root: p.root, files: new Set(p.files) }))
 }
 
 /** What `setCampaignImages` set (the compositor workers get the same, see `compositorPool`). */
-export function getCampaignImages(): { root: string; files: ReadonlySet<string> } | null {
+export function getCampaignImages(): readonly ImagePath[] {
   return campaignImages
 }
 

@@ -14,6 +14,8 @@ export interface PangoElement {
   tag: string;
   style: Readonly<Record<string, string>>;
   children: PangoNode[];
+  /** A `<ref>`'s destination (help markup). */
+  dst?: string;
 }
 export type PangoNode = PangoText | PangoElement;
 
@@ -166,10 +168,11 @@ export function parsePango(text: string, help = false): PangoNode[] {
           if (css) style[css[0]] = css[1];
         }
       }
-      const node: PangoElement = { tag: name, style, children: [] };
+      const ref = name === 'ref' ? /\bdst\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(m[3]!) : null;
+      const dst = ref ? decodeEntities(ref[1] ?? ref[2] ?? '') : undefined;
+      const node: PangoElement = { tag: name, style, children: [], ...(dst !== undefined ? { dst } : {}) };
       out().push(node);
-      const dst = name === 'ref' ? /\bdst\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(m[3]!) : null;
-      stack.push({ name, raw: m[0], node, ...(dst ? { dst: decodeEntities(dst[1] ?? dst[2] ?? '') } : {}) });
+      stack.push({ name, raw: m[0], node, ...(dst !== undefined ? { dst } : {}) });
     }
     i = literalStart = m.index + m[0].length;
   }

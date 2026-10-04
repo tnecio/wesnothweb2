@@ -80,7 +80,7 @@ import type { EndLevelState } from './context.js';
 import { Direction, Location, parseDirection } from '../model/Location.js';
 import { Unit } from '../model/Unit.js';
 import { WmlConfig, plainValue, type WmlStoredValue } from '../wml/config.js';
-import { checkRecruitLocation, recallUnit, rollNewUnit } from '../actions/recruit.js';
+import { placeWmlRecall, rollNewUnit } from '../actions/recruit.js';
 import { findPath, findVacantTile } from '../pathfind/pathfind.js';
 import type { Rng } from '../rng/Rng.js';
 import type { EffectEnv } from '../model/effects.js';
@@ -1344,69 +1344,62 @@ function actionCaptureVillage(cfg: WmlConfig, ctx: EventContext): void {
 }
 
 /**
- * Mirrors `WML_HANDLER_FUNCTION(recall, ...)` (`src/game_events/
- * action_wml.cpp`): finds the first recall-list unit (searched across
- * every side's list, in side order -- matching upstream's `for (team& t :
- * resources::gameboard->teams())` outer loop) matching `cfg` as a SUF
- * (including the already-ported `x,y=recall,recall` convention -- see
- * `filter.ts`'s `unitMatchesFilter`), then places it via the same
- * leader/vacancy search `checkRecruitLocation` already does for the
- * player-facing recall UI, falling back to any vacant castle tile
- * connected to any able leader's keep when `cfg` doesn't specify (or its
- * requested) x=/y=.
+ * Mirrors `WML_HANDLER_FUNCTION(recall, ...)` (`src/game_events/action_wml.cpp`): the first recall-list unit,
+ * across every side's list in side order, that the tag matches as a SUF (without `x=`/`y=`/`location_id=`:
+ * those are the destination, not a criterion -- upstream's `x,y=recall`). For each of that side's leaders (that `[secondary_unit]` matches),
+ * the unit goes to the tag's hex, else the leader's, moved to the nearest vacant tile when occupied or
+ * `check_passability` (default yes) asks; failing every leader, a hex on the board given by `x,y=` or
+ * `location_id=` is used without one (TDG 00 recalls Delfador with no leader on his side). Placed free and
+ * with full movement (`placeWmlRecall`).
  *
- * Deliberately NOT ported (matching `recruit.ts`'s own documented
- * simplifications for the same reasons): `[secondary_unit]` (restricting
- * *which* leader may recall the match), per-leader `recall_filter=`,
- * `location_id=`, `check_passability=` (`canUse` is always permissive,
- * `checkRecruitLocation` always passability-checks via
- * `findVacantCastleTile`), and `show=`/`fire_event=` (headless; no
- * display, and the `recall` WML event isn't fired by this port's event
- * pump for any recall path yet, player-driven or scripted).
+ * Not ported: the leader's own `recall_filter=` (no unit carries one here), and `show=`/`fire_event=` (the
+ * `recall` event is not fired by this port for any recall yet).
  */
 function actionRecall(cfg: WmlConfig, ctx: EventContext): void {
   const board = ctx.board;
-  // `x=`/`y=` on [recall] are the DESTINATION, not a unit-filter criterion
-  // -- mirrors upstream's own `temp_config["x"] = "recall"` trick (its
-  // comment: "Prevent the recall unit filter from using the location as a
-  // criterion"). Recall-list units have no board location, so leaving
-  // x=/y= in the filter would make `unitMatchesFilter`'s ordinary
-  // (non-"recall") x=/y= range check spuriously reject every candidate.
   const unitFilterCfg = new WmlConfig();
   for (const name of cfg.attributeNames()) {
-    if (name === 'x' || name === 'y') continue;
+    if (name === 'x' || name === 'y' || name === 'location_id') continue;
     unitFilterCfg.setAttribute(name, cfg.getString(name));
   }
   for (const { tag, config } of cfg.allChildren()) unitFilterCfg.addChild(tag, config);
+  const leaderFilter = cfg.child('secondary_unit');
+
+  let cfgLoc = Location.fromConfig(cfg);
+  if (cfg.hasAttribute('location_id')) cfgLoc = board.map.specialLocation(cfg.getString('location_id')) ?? cfgLoc;
+  const checkPassability = cfg.getBoolean('check_passability', true);
+  const facing = cfg.hasAttribute('facing') ? parseDirection(cfg.getString('facing')) : undefined;
 
   for (const team of board.teams()) {
     const list = board.recallList(team.side);
-    const index = list.findIndex((u) => unitMatchesFilter(u, unitFilterCfg, board));
-    if (index === -1) continue;
-    const unit = list[index]!;
-
-    const preferredLoc = Location.fromConfig(cfg);
-    const { result, location, leader } = checkRecruitLocation(board, team.side, preferredLoc, preferredLoc, () => true);
-    if (result === 'no_leader' || result === 'no_able_leader' || result === 'no_keep_leader' || result === 'no_vacancy') {
-      ctx.log('warn', `[recall] found ${unit.id || unit.type.id} on side ${team.side}'s recall list but no legal leader/location (${result})`);
-      return;
+    const leaders = board.unitsForSide(team.side).filter((u) => u.canRecruit);
+    for (let index = 0; index < list.length; index++) {
+      const unit = list[index]!;
+      if (!unitMatchesFilter(unit, unitFilterCfg, board)) continue;
+      const vacantNear = (loc: Location): Location | undefined =>
+        checkPassability || board.unitAt(loc) ? findVacantTile(board, loc, checkPassability ? { passCheck: unit } : {}) : loc;
+      // Splices `list` (the board's own live recall-list array) by the index found: several entries may share an
+      // `underlyingId` (see `GameSession.tryRecallAt`), so `removeFromRecallList` could take the wrong one.
+      for (const leader of leaders) {
+        if (leaderFilter && !unitMatchesFilter(leader, leaderFilter, board)) continue;
+        const loc = vacantNear(board.map.onBoard(cfgLoc) ? cfgLoc : leader.location);
+        if (loc && board.map.onBoard(loc)) {
+          list.splice(index, 1);
+          placeWmlRecall(board, team, unit, loc, leader.location, facing);
+          return;
+        }
+      }
+      if (board.map.onBoard(cfgLoc)) {
+        const loc = vacantNear(cfgLoc);
+        if (loc && board.map.onBoard(loc)) {
+          list.splice(index, 1);
+          placeWmlRecall(board, team, unit, loc, Location.fromConfig(new WmlConfig()), facing);
+          return;
+        }
+      }
     }
-
-    // Splices `list` (the board's own live recall-list array) directly by
-    // the index just found, NOT `GameBoard.removeFromRecallList`'s
-    // `underlyingId`-keyed lookup -- this project doesn't auto-assign
-    // unique `underlying_id`s (see `Unit.ts`), so several recall-list
-    // entries commonly share `underlyingId=0`, and removing "whichever
-    // entry has underlyingId=0" would silently splice out the WRONG unit
-    // whenever one comes before the one this filter actually matched.
-    // Mirrors `GameSession.tryRecallAt`'s own doc comment on the same
-    // trap, in the player-facing recall UI.
-    list.splice(index, 1);
-    const facing = cfg.hasAttribute('facing') ? parseDirection(cfg.getString('facing')) : undefined;
-    recallUnit(board, team, unit, location, leader?.location ?? location, facing);
-    return;
   }
-  ctx.log('warn', '[recall]: no recall-list unit on any side matched the filter');
+  ctx.log('warn', '[recall]: no recall-list unit matched the filter, or none could be placed');
 }
 
 // --- [role] ---

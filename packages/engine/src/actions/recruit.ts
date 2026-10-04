@@ -452,6 +452,15 @@ export function recallUnit(board: GameBoard, team: Team, unit: Unit, loc: Locati
   return placeRecruit(board, team, unit, loc, from, cost, true, false, facing, raise);
 }
 
+/**
+ * A WML `[recall]`'s placement (`action_wml.cpp`'s `place_recruit(..., 0, true, facing, show, fire_event, true,
+ * true)`): free, and with full movement, unlike a player's recall. `from` is the recalling leader's hex, or an
+ * invalid location when none recalls it.
+ */
+export function placeWmlRecall(board: GameBoard, team: Team, unit: Unit, loc: Location, from: Location, facing?: Direction): PlaceRecruitResult {
+  return placeRecruit(board, team, unit, loc, from, 0, true, true, facing);
+}
+
 /** Permanently removes `unit` (by `underlyingId`) from `side`'s recall list, mirroring the GUI's dismiss action. Returns the removed unit, if found. */
 export function dismissUnit(board: GameBoard, side: number, underlyingId: number): Unit | undefined {
   return board.removeFromRecallList(side, underlyingId);

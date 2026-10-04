@@ -18,7 +18,7 @@
  *   change (checked before dispatching), since each worker has its own copy
  *   of the compositor module.
  */
-import { atlasFileUrl, getCampaignImages, getImageBaseUrls } from './compositor'
+import { atlasFileUrl, getCampaignImages, getEngineImages, getImageBaseUrls } from './compositor'
 import type { FromCompositorWorker, ToCompositorWorker } from './compositor.worker'
 import { splitRef } from './ipf'
 import type { ColorData } from './teamColor'
@@ -73,6 +73,7 @@ export class CompositorPool {
     colors: ColorData | null
     atlasManifests: readonly string[]
     campaignImages: ReturnType<typeof getCampaignImages>
+    engineImages: ReturnType<typeof getEngineImages>
   } | null = null
 
   private constructor(size: number, colors: ColorData | null) {
@@ -191,18 +192,21 @@ export class CompositorPool {
       sent.engine === urls.engine &&
       sent.colors === this.colors &&
       sent.atlasManifests === this.atlasManifests &&
-      sent.campaignImages === getCampaignImages()
+      sent.campaignImages === getCampaignImages() &&
+      sent.engineImages === getEngineImages()
     )
       return
     const campaignImages = getCampaignImages()
-    this.sent = { ...urls, colors: this.colors, atlasManifests: this.atlasManifests, campaignImages }
+    const engineImages = getEngineImages()
+    this.sent = { ...urls, colors: this.colors, atlasManifests: this.atlasManifests, campaignImages, engineImages }
     const message: ToCompositorWorker = {
       type: 'config',
       imageBaseUrl: urls.image,
       engineImageBaseUrl: urls.engine,
       colors: this.colors,
       atlasManifests: [...this.atlasManifests],
-      campaignImages: campaignImages ? { root: campaignImages.root, files: [...campaignImages.files] } : null,
+      campaignImages: campaignImages.map((p) => ({ root: p.root, files: [...p.files] })),
+      engineImages: [...engineImages],
     }
     for (const slot of this.slots) slot.worker.postMessage(message)
   }

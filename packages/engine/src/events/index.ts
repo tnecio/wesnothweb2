@@ -18,7 +18,7 @@ export type { ScenarioObjectives, ScenarioObjectiveEntry, GoldCarryoverEntry, Ob
 
 export { createDefaultActionRegistry, runActionSequence, runActionFlow, applySetVariable, effectEnvFor } from './actionWml.js';
 
-export { runFlow, autoRespond, isFlow, guiSelectionAnswer } from './interaction.js';
+export { runFlow, autoRespond, isFlow, guiSelectionAnswer, guiLinkAnswer } from './interaction.js';
 export { buildGuiDialog, findGuiWidget, GUI_RETVAL } from './guiDialog.js';
 export type { GuiDialogSpec, GuiDialogInteraction, GuiNode, GuiCell, GuiText } from './guiDialog.js';
 export type { Interaction, MessageInteraction, BeatInteraction, CutsceneBeat, FakeUnitSpec, FakeUnitWalk, InteractionResult, MessageOption, TextInputSpec, Flow, Responder } from './interaction.js';

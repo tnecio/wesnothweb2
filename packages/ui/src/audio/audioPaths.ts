@@ -1,7 +1,8 @@
 /**
  * Where a music or sound file is served from -- the binary-path search
- * (`filesystem::get_binary_file_location`): the running campaign's own
- * directory first, then core. `audioFiles.json` (generated) says what exists.
+ * (`filesystem::get_binary_file_location`): the running campaign's binary
+ * paths first (its own directory, then resources it includes such as
+ * `internal/Weather`), then core. `audioFiles.json` (generated) says what exists.
  */
 import audioFiles from '../audioFiles.json';
 import { ENGINE_SOUNDS, GAME_IMAGES, servedAudioPath } from '../gameData.js';
@@ -19,8 +20,12 @@ export function audioUrl(kind: AudioKind, file: string, campaign?: string): stri
   return url && servedAudioPath(url);
 }
 
+const binaryPaths = audioFiles.binaryPaths as Record<string, string[]>;
+
 function sourceUrl(kind: AudioKind, file: string, campaign?: string): string | null {
-  if (campaign && index[kind][campaign]?.has(file)) return `${GAME_IMAGES}/campaigns/${campaign}/${kind}/${file}`;
+  for (const dir of campaign ? (binaryPaths[campaign] ?? []) : []) {
+    if (index[kind][dir]?.has(file)) return `${GAME_IMAGES}/${dir}/${kind}/${file}`;
+  }
   if (index[kind]['core']?.has(file)) return `${GAME_IMAGES}/core/${kind}/${file}`;
   if (kind === 'sounds' && index[kind]['engine']?.has(file)) return `${ENGINE_SOUNDS}/${file}`;
   return null;

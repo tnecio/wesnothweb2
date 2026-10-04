@@ -85,6 +85,11 @@ describe('parsePango, help markup (rich_label)', () => {
     expect(shape(parsePango('<ref dst="unit_Mage"></ref>', true))).toEqual([{ ref: ['unit_Mage'], style: { color: '#ffff00' } }]);
   });
 
+  it("keeps a <ref>'s destination on its element, for the link handler", () => {
+    const [, link] = parsePango("See <ref dst='weaponspecial_magical'>magical</ref>", true);
+    expect(link).toMatchObject({ tag: 'ref', dst: 'weaponspecial_magical' });
+  });
+
   it('keeps help tags literal in plain Pango markup', () => {
     expect(stripPango("<ref dst='x'>y</ref>")).toBe("<ref dst='x'>y</ref>");
   });

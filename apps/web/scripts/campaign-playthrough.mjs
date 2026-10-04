@@ -42,7 +42,11 @@ try {
     const missing = [];
     page.on('pageerror', (e) => errors.push(String(e)));
     page.on('response', (r) => {
-      if (r.status() >= 400 && r.url().startsWith(base)) missing.push(`${r.status()} ${r.url().slice(base.length)}`);
+      if (!r.url().startsWith(base)) return;
+      if (r.status() >= 400) missing.push(`${r.status()} ${r.url().slice(base.length)}`);
+      // The dev server answers a missing file with its index page (200, text/html): an image or data file that comes back as HTML is missing too.
+      else if (/\.(png|webp|jpg|json|ogg|cfg)(\?|$)/.test(new URL(r.url()).pathname) && (r.headers()['content-type'] ?? '').includes('text/html'))
+        missing.push(`html ${r.url().slice(base.length)}`);
     });
     if (scenario) {
       await page.goto(`${base}/play/${campaignId}?scenario=${encodeURIComponent(scenario)}`);
@@ -87,15 +91,21 @@ try {
     }
     // A message can still open after the quiet spell (TDG 7's opening): answer it and try again.
     for (let attempt = 0; ; attempt++) {
-      const clicked = await page.getByRole('button', { name: 'End Turn' }).click({ timeout: 10000 }).then(() => true, () => false);
+      const clicked = await page.getByRole('button', { name: 'End Turn' }).click({ timeout: 60000 }).then(() => true, () => false);
       if (clicked) break;
-      if (attempt >= 30) throw new Error(`${id}: End Turn stayed covered`);
+      // The click may have landed and opened the end-turn question, which then covers the button.
+      if (await confirmEndTurnIfAsked(page, 0)) break;
+      if (attempt >= 30) {
+        if (shots) await page.screenshot({ path: `${shots}/${id.replace('/', '-')}-covered.png` });
+        throw new Error(`${id}: End Turn stayed covered`);
+      }
       await untilPlayable(page, 900000);
     }
     await confirmEndTurnIfAsked(page);
     let turn2 = false;
     for (const deadline = Date.now() + 900000; !turn2 && Date.now() < deadline; ) {
       if (await page.$(DIALOGUE)) await page.keyboard.press('Enter');
+      await confirmEndTurnIfAsked(page, 0);
       await page.waitForTimeout(2000);
       turn2 = await page.evaluate(() => {
         const s = window.__wesnoth.session;
@@ -108,6 +118,7 @@ try {
         })));
       }
     }
+    if (!turn2 && shots) await page.screenshot({ path: `${shots}/${id.replace('/', '-')}-no-turn-2.png` });
     check(`${id}: End Turn plays the other sides and comes back to the player`, turn2);
     check(`${id}: no page errors`, errors.length === 0, errors.slice(0, 3).join(' | '));
     check(`${id}: no failed requests`, missing.length === 0, missing.slice(0, 5).join(' | '));
