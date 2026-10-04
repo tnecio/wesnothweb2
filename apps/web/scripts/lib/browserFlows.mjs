@@ -17,6 +17,9 @@ export async function waitBoardReady(page, timeout = 180000) {
   await page.waitForSelector('.board-view[data-board-ready="true"]', { timeout });
 }
 
+/** A message window, or a campaign's own dialog (Enter closes it with OK). */
+export const DIALOGUE = '.window[role="dialog"], [data-testid="gui-dialog"]';
+
 /** Clicks through story, objectives and startup dialogue until none is showing. */
 // Generous: in Dead Water each startup message re-syncs the board's units, and while
 // ImageCache work runs on the main thread a single advance can take several seconds.
@@ -29,7 +32,7 @@ export async function skipToPlay(page, timeout = 360000) {
       await page.keyboard.press('Escape');
       actions.story++;
       quietRounds = 0;
-    } else if (await page.$('.window[role="dialog"]')) {
+    } else if (await page.$(DIALOGUE)) {
       await page.keyboard.press('Enter');
       actions.message++;
       quietRounds = 0;
@@ -59,7 +62,7 @@ export async function untilPlayable(page, timeout = 300000) {
   let quietSince = Date.now();
   while (Date.now() - started < timeout) {
     // Dialogue, a story, or the objectives (whose OK can come after a long opening dialogue).
-    if ((await page.$('.window[role="dialog"]')) || (await page.$('.story')) || (await page.getByRole('button', { name: 'OK', exact: true }).count()) > 0) {
+    if ((await page.$(DIALOGUE)) || (await page.$('.story')) || (await page.getByRole('button', { name: 'OK', exact: true }).count()) > 0) {
       await skipToPlay(page, 120000);
       quietSince = Date.now();
     } else if (!(await page.evaluate(() => window.__wesnoth?.movementPreview().canAct ?? false))) {

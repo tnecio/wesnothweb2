@@ -11,7 +11,7 @@
  * Exits non-zero if any check fails.
  */
 import { chromium } from 'playwright';
-import { confirmEndTurnIfAsked, skipToPlay, untilPlayable, waitBoardReady } from './lib/browserFlows.mjs';
+import { DIALOGUE, confirmEndTurnIfAsked, skipToPlay, untilPlayable, waitBoardReady } from './lib/browserFlows.mjs';
 
 const args = process.argv.slice(2);
 const arg = (name, fallback) => {
@@ -75,11 +75,17 @@ try {
     check(`${id}: its first scenario reaches the player's turn`, first.turn === 1 && (!scenario || first.scenario === scenario), JSON.stringify(first));
     if (shots) await page.screenshot({ path: `${shots}/${id.replace('/', '-')}.png` });
 
-    await page.getByRole('button', { name: 'End Turn' }).click();
+    // A message can still open after the quiet spell (TDG 7's opening): answer it and try again.
+    for (let attempt = 0; ; attempt++) {
+      const clicked = await page.getByRole('button', { name: 'End Turn' }).click({ timeout: 10000 }).then(() => true, () => false);
+      if (clicked) break;
+      if (attempt >= 30) throw new Error(`${id}: End Turn stayed covered`);
+      await untilPlayable(page, 900000);
+    }
     await confirmEndTurnIfAsked(page);
     let turn2 = false;
     for (const deadline = Date.now() + 900000; !turn2 && Date.now() < deadline; ) {
-      if (await page.$('.window[role="dialog"]')) await page.keyboard.press('Enter');
+      if (await page.$(DIALOGUE)) await page.keyboard.press('Enter');
       await page.waitForTimeout(2000);
       turn2 = await page.evaluate(() => {
         const s = window.__wesnoth.session;
