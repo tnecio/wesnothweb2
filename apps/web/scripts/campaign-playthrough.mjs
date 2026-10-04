@@ -75,6 +75,16 @@ try {
     check(`${id}: its first scenario reaches the player's turn`, first.turn === 1 && (!scenario || first.scenario === scenario), JSON.stringify(first));
     if (shots) await page.screenshot({ path: `${shots}/${id.replace('/', '-')}.png` });
 
+    // A tutorial (HttT Classic's) keeps the turn going with [disallow_end_turn] until the player has done
+    // what it teaches: that it is in force is the check there.
+    const blocked = await page.evaluate(() => window.__wesnoth.session.endTurnBlocked);
+    if (blocked !== null) {
+      check(`${id}: the scenario disallows ending the first turn`, true, blocked);
+      check(`${id}: no page errors`, errors.length === 0, errors.slice(0, 3).join(' | '));
+      check(`${id}: no failed requests`, missing.length === 0, missing.slice(0, 5).join(' | '));
+      await page.close();
+      continue;
+    }
     // A message can still open after the quiet spell (TDG 7's opening): answer it and try again.
     for (let attempt = 0; ; attempt++) {
       const clicked = await page.getByRole('button', { name: 'End Turn' }).click({ timeout: 10000 }).then(() => true, () => false);
