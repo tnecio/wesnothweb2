@@ -6257,6 +6257,16 @@ already shipped.
   Konrad), as `unit_creator` does. Snapshots now carry recall lists at all: a `[side]`'s
   `[unit] x,y=recall` was lost before.
 - **`rand=`** skips empty entries (`utils::split`); HttT 26 spawned units of no type.
+- **Victory as upstream (`check_victory`).** A side now loses by its `defeat_condition=` (default
+  `no_leader_left`; also `no_units_left`, `never`, `always`), where the port had its own leader rule. The
+  scenario ends only when no two undefeated sides are enemies and a human side is still in play
+  (`found_player`). `enemies_defeated` fires first, and `victory_when_enemies_defeated=no` keeps the
+  scenario running. The villages of a fallen side are cleared. HttT 1 used to end in victory at turn 1
+  (Konrad starts on the recall list). Dead Water 2, which sets `victory_when_enemies_defeated=no`, no
+  longer ends when its enemies die.
+- **Unit filters:** `type_adv_tree=`, `has_variation=`, `find_in=` and `upkeep=`. TDG 7 `[kill]`s
+  summons by `type_adv_tree=`; ignoring the key killed all of side 1, a false defeat.
+- **`[variable]` condition:** an empty `name=` reads nothing; only a missing one is an error.
 - **`[sound] name=""`** plays nothing; only a missing name is an error.
 
 **Lua and dialogs:**
@@ -6275,6 +6285,16 @@ already shipped.
   - callbacks get their widget;
   - `[menu_button]`, `[rich_label]`, `enabled`/`type`, and `widget:find()`.
   - SotA's help buttons used to close its recruit dialog.
+  - Enter closes a dialog with OK (`window::signal_handler_sdl_key_down`). HttT Classic's character
+    dialog has no OK button of its own.
+
+**Performance:**
+- **fengari is patched** (`patches/fengari+0.1.5.patch`, applied by `patch-package` on install). It ran
+  `delete L.stack[i]` on every pop and call return, which makes the stack array sparse, and V8 then
+  switches it to slow elements. It now assigns `undefined`.
+- **Unit methods** look up `wesnoth.units` once, by the key already on the stack.
+- TDG 7's goto micro AI makes about 700k Lua path-cost calls in side 2's first turn. That turn took
+  109 s headless and now takes about 70 s, with the same moves. The rest is fengari interpreting Lua.
 
 **Tooling:**
 - Scenario ids are read from the `[scenario]` itself (multi-key assignments, `#define`s) and, when a macro
@@ -6283,8 +6303,11 @@ already shipped.
 - `rebuild-snapshots` records the inputs as the build read them.
 
 **Checks:**
-- **Tests:** all suites pass. `campaigns.test.ts` opens every B4 scenario; HttT 1 and TDG 0 play to their end
-  AI against AI.
+- **Tests:** all suites pass. `campaigns.test.ts` opens every B4 scenario.
+  - The AI-against-AI run now stops after 10 turns (1 for TDG 7, which still has to reach turn 2). A whole scenario took most of an hour
+    headless.
+  - The run keeps the player's side human, so the victory check still sees a player.
+  - It fails a scenario that ends in its first turn.
 - **Expected problems when started alone:** most HttT scenarios read state the overworld (00) leaves
   (`bm_tod`, stored heroes); `carryoverPatterns` lists those. Four TDG openings miss a stored Delfador or Deoran.
 - **New unit tests:** location filters, priority order, indexed clears, the animator, mouse callbacks, the

@@ -21,6 +21,8 @@ const scenarioList = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/sc
 interface CampaignCase {
   /** The scenario played to its end, AI against AI. */
   playThrough: string;
+  /** Turns the AI-against-AI run plays at most, when fewer than `PLAY_TURNS` (a scenario whose Lua AI is slow headless). */
+  playTurns?: number;
   /**
    * Scenarios that, started on their own, miss something an earlier one carried over (a stored unit, a
    * variable): the problems that alone causes, as upstream would report them.
@@ -91,7 +93,9 @@ const CAMPAIGNS: Record<string, CampaignCase> = {
   },
   Heir_To_The_Throne_Classic: { playThrough: '01_The_Elves_Besieged' },
   The_Deceivers_Gambit: {
-    playThrough: '00_Graduation',
+    playThrough: '07_The_Great_River',
+    // Its goto micro AI costs side 2 about a minute a turn here (some 700k Lua path-cost calls).
+    playTurns: 1,
     // Delfador and Deoran, stored in an earlier scenario, come back.
     expectedProblems: {
       '07x_Weldyn_Court': ["error: [unstore_unit]: variable 'stored_deoran2' doesn't exist"],
@@ -115,6 +119,9 @@ const CAMPAIGNS: Record<string, CampaignCase> = {
   },
 };
 
+/** How far the AI-against-AI run goes: a whole scenario can take most of an hour headless (TDG 7, OPP 1). */
+const PLAY_TURNS = 10;
+
 function start(campaign: string, id: string, options: GameSessionOptions = {}): { session: GameSession; problems: string[] } {
   const problems: string[] = [];
   const session = new GameSession(readScenarioSnapshot(path.join(repoRoot, 'apps/web/public/scenarios', campaign, `${id}.json`)), {
@@ -137,11 +144,13 @@ for (const [campaign, spec] of Object.entries(CAMPAIGNS)) {
       }, 120_000);
     }
 
-    it(`${spec.playThrough} plays to its end, AI against AI`, async () => {
+    const turns = spec.playTurns ?? PLAY_TURNS;
+    it(`${spec.playThrough} plays AI against AI to its end, or ${turns} turns`, async () => {
       const { session, problems } = start(campaign, spec.playThrough);
       await session.runStartupEvents();
-      for (const team of session.board.teams()) if (team.controller === 'human') team.controller = 'ai';
-      const limit = (session.turnLimit ?? 0) > 0 ? session.turnLimit! : 40;
+      // The player's side stays human -- the loop below plays every side with the AI anyway -- so the victory
+      // check still sees a player (`found_player`), as in a real game.
+      const limit = Math.min((session.turnLimit ?? 0) > 0 ? session.turnLimit! : turns, turns);
       // One side's turn at a time: the active side plays, then endTurn(0) passes the turn on (it plays no AI side
       // itself), with a yield in between -- vitest's worker gives up on a synchronous stretch of over a minute.
       for (let guard = 0; guard < 2000 && !session.scenarioResult && session.turnNumber <= limit + 1; guard++) {
@@ -150,7 +159,10 @@ for (const [campaign, spec] of Object.entries(CAMPAIGNS)) {
         await session.endTurn(0);
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
-      expect(session.scenarioResult).not.toBeNull();
+      expect(session.scenarioResult !== null || session.turnNumber > limit).toBe(true);
+      // Not an instant end: a scenario ending in its first turn (a side counted as defeated before it could
+      // play, a victory condition misread) is the failure this guards against.
+      expect(session.turnNumber).toBeGreaterThan(1);
       expect(problems).toEqual([]);
     }, 900_000);
   });
