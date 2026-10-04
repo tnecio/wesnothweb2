@@ -356,7 +356,7 @@ if (!fs.existsSync(rulesFile)) {
   const campaignImageLists = JSON.parse(fs.readFileSync(path.join(repoRoot, 'packages/ui/src/campaignImages.json'), 'utf8'));
   const perScenario = snapshotFiles.map(({ campaignDirName, id, file }) => {
     const files = campaignImageLists[campaignDirName];
-    setCampaignImages(files ? `campaigns/${campaignDirName}/images` : null, files ?? []);
+    setCampaignImages(Object.entries(files ?? {}).map(([root, list]) => ({ root, files: list })));
     const snapshot = readScenarioSnapshot(file);
     // C1: with the campaign's and scenario's own rules, as the board lays it out.
     const own = reviveBuildingRules(ownTerrainGraphicsRules(snapshot));

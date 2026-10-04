@@ -21,7 +21,7 @@ export type ToCompositorWorker =
       engineImageBaseUrl: string
       colors: ColorData | null
       atlasManifests: string[]
-      campaignImages: { root: string; files: string[] } | null
+      campaignImages: { root: string; files: string[] }[]
       engineImages: string[]
     }
   | { type: 'render'; id: number; ref: string }
@@ -73,7 +73,7 @@ scope.onmessage = (event) => {
     case 'config':
       setImageBaseUrl(message.imageBaseUrl)
       setEngineImageBaseUrl(message.engineImageBaseUrl)
-      setCampaignImages(message.campaignImages?.root ?? null, message.campaignImages?.files ?? [])
+      setCampaignImages(message.campaignImages)
       setEngineImages(message.engineImages)
       compositor.setColorData(message.colors)
       compositor.setAtlasManifests(message.atlasManifests)

@@ -393,8 +393,8 @@
   // Phase 18: the campaign's own images are searched before core (its [binary_path]).
   $effect.pre(() => {
     const id = campaign?.wesnothId;
-    const files = id ? (campaignImages as Record<string, string[]>)[id] : undefined;
-    setCampaignImages(id && files ? `campaigns/${id}/images` : null, files ?? []);
+    const paths = id ? (campaignImages as Record<string, Record<string, string[]>>)[id] : undefined;
+    setCampaignImages(Object.entries(paths ?? {}).map(([root, files]) => ({ root, files })));
   });
 
   // Phase 19: the campaign's own music is searched before core's, and the audio starts on the

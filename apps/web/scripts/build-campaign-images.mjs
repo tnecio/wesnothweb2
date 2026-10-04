@@ -1,6 +1,8 @@
 /**
- * Phase 18: lists every file under each shipped campaign's `images/` dir,
- * relative to it, into `packages/ui/src/campaignImages.json` -- so an image
+ * Phase 18: lists every file under each shipped campaign's binary paths'
+ * `images/` dirs (its own, then included resources such as
+ * `internal/Rogue_Mage`: `lib/binaryPaths.mjs`), relative to each, into
+ * `packages/ui/src/campaignImages.json` -- so an image
  * path WML hands over at run time (`[item] image=`, a halo, ...) can be
  * looked up the way the engine's image search does: the campaign's own
  * `images/` first (its `[binary_path]`), then core.
@@ -10,15 +12,15 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { campaignBinaryPaths } from './lib/binaryPaths.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const campaignsDir = path.join(repoRoot, 'wesnoth/data/campaigns');
 const campaigns = JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/public/campaigns.json'), 'utf8')).campaigns;
 
-const out = {};
-for (const c of campaigns) {
-  if (!c.wesnothId) continue;
-  const root = path.join(campaignsDir, c.wesnothId, 'images');
+const dataRoot = path.join(repoRoot, 'wesnoth/data');
+
+/** Every file under `root`, relative to it. */
+function listFiles(root) {
   const files = [];
   const walk = (dir) => {
     if (!fs.existsSync(dir)) return;
@@ -30,11 +32,28 @@ for (const c of campaigns) {
     }
   };
   walk(root);
-  out[c.wesnothId] = files.sort();
+  return files.sort();
+}
+
+// Per campaign, its binary paths' images/ in search order (`campaignBinaryPaths`).
+const out = {};
+for (const c of campaigns) {
+  if (!c.wesnothId) continue;
+  const dirs = campaignBinaryPaths(dataRoot, c.wesnothId);
+  const paths = {};
+  for (const dir of dirs) {
+    const files = listFiles(path.join(dataRoot, dir, 'images'));
+    if (files.length > 0) paths[`${dir}/images`] = files;
+  }
+  out[c.wesnothId] = paths;
 }
 const target = path.join(repoRoot, 'packages/ui/src/campaignImages.json');
 fs.writeFileSync(target, JSON.stringify(out, null, 1) + '\n');
-console.log(`wrote ${path.relative(repoRoot, target)}: ${Object.entries(out).map(([k, v]) => `${k} ${v.length}`).join(', ')}`);
+console.log(
+  `wrote ${path.relative(repoRoot, target)}: ${Object.entries(out)
+    .map(([k, v]) => `${k} ${Object.values(v).map((f) => f.length).join('+')}`)
+    .join(', ')}`,
+);
 
 // The engine's own images/ (the game root's binary path), where core has no file of the same name.
 const engineRoot = path.join(repoRoot, 'wesnoth/images');

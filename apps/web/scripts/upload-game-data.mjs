@@ -3,7 +3,7 @@
  * Phase 28: uploads the upstream game media (images, music, sounds) to the R2 bucket the production build
  * reads it from (`VITE_GAME_DATA_URL`, `packages/ui/src/gameData.ts`):
  *
- *   <prefix>/game-images/...          wesnoth/data/{core,campaigns}/**   (as public/game-images)
+ *   <prefix>/game-images/...          wesnoth/data/{core,campaigns,internal}/**   (as public/game-images)
  *   <prefix>/game-images-engine/...   wesnoth/images/**                  (as public/game-images-engine)
  *   <prefix>/game-sounds-engine/...   wesnoth/sounds/**                  (as public/game-sounds-engine)
  *
@@ -12,8 +12,9 @@
  * into the build. WAVs are converted to Ogg Vorbis (quality 5, ~6x smaller) and stored as `<name>.wav.ogg`,
  * which is what the production build asks for (`packages/ui/src/gameData.ts` `servedAudioPath`); this needs
  * `ffmpeg`. A prefix never changes once written, so every object is sent with
- * `Cache-Control: public, max-age=31536000, immutable`. When `<prefix>/.complete` exists the prefix is done
- * and nothing is sent; otherwise objects already present (an interrupted earlier run) are skipped.
+ * `Cache-Control: public, max-age=31536000, immutable`. When `<prefix>/.complete-s<SOURCES_VERSION>` exists the
+ * prefix is done and nothing is sent; otherwise objects already present (an interrupted earlier run, or one
+ * from before a source directory was added) are skipped.
  *
  * Uses R2's S3-compatible API: the Cloudflare REST API's rate limit would stretch ~19k uploads past an hour.
  * Environment: CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY; optional R2_BUCKET
@@ -35,6 +36,11 @@ const bucket = process.env.R2_BUCKET || 'wesnothweb2-data';
 
 /** Bump when the processing below changes (2: WAV -> Ogg Vorbis), so a new prefix is uploaded. */
 const MEDIA_VERSION = 2;
+/**
+ * Bump when a source directory is added (2: `data/internal`, the resources campaigns include as binary paths):
+ * the prefix stays, and only the new files are sent.
+ */
+const SOURCES_VERSION = 2;
 const CONTENT_TYPES = { png: 'image/png', webp: 'image/webp', jpg: 'image/jpeg', ogg: 'audio/ogg' };
 const CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
@@ -63,6 +69,7 @@ const prefix = `${submoduleCommit()}-m${MEDIA_VERSION}`;
 const files = [];
 mediaFiles(path.join(wesnoth, 'data/core'), `${prefix}/game-images/core`, files);
 mediaFiles(path.join(wesnoth, 'data/campaigns'), `${prefix}/game-images/campaigns`, files);
+mediaFiles(path.join(wesnoth, 'data/internal'), `${prefix}/game-images/internal`, files);
 mediaFiles(path.join(wesnoth, 'images'), `${prefix}/game-images-engine`, files);
 mediaFiles(path.join(wesnoth, 'sounds'), `${prefix}/game-sounds-engine`, files);
 const totalBytes = files.reduce((n, f) => n + fs.statSync(f.file).size, 0);
@@ -108,7 +115,7 @@ async function withRetries(what, fn) {
   }
 }
 
-const marker = `${prefix}/.complete`;
+const marker = `${prefix}/.complete-s${SOURCES_VERSION}`;
 const head = await withRetries('HEAD marker', () => client.fetch(objectUrl(marker), { method: 'HEAD' }));
 if (head.status === 200) {
   console.log(`${marker} exists: nothing to upload`);

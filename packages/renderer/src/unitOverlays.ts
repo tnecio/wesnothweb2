@@ -208,5 +208,5 @@ export function ellipseImageBase(unit: { readonly ellipse?: string; readonly can
   if (unit.canRecruit) path += '-leader';
   if (unit.emitsZoc === false) path += '-nozoc';
   if (selected) path += '-selected';
-  return rootedImagePath(`${path}-top.png`).startsWith('campaigns/') ? path : `engine/${path}`;
+  return /^(core|engine)\//.test(rootedImagePath(`${path}-top.png`)) ? `engine/${path}` : path;
 }

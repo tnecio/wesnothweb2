@@ -205,7 +205,7 @@ export class CompositorPool {
       engineImageBaseUrl: urls.engine,
       colors: this.colors,
       atlasManifests: [...this.atlasManifests],
-      campaignImages: campaignImages ? { root: campaignImages.root, files: [...campaignImages.files] } : null,
+      campaignImages: campaignImages.map((p) => ({ root: p.root, files: [...p.files] })),
       engineImages: [...engineImages],
     }
     for (const slot of this.slots) slot.worker.postMessage(message)
