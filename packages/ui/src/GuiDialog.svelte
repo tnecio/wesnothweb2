@@ -115,6 +115,18 @@
   {/if}
 {/snippet}
 
+<svelte:window
+  onkeydown={(e) => {
+    // `window::signal_handler_sdl_key_down`: Enter closes the window with OK (a button or list row with focus
+    // handles its own Enter). HttT Classic's character choice has no button: Enter takes the selected one.
+    if (e.key !== 'Enter' || e.defaultPrevented) return;
+    const target = e.target as HTMLElement | null;
+    if (target && ['BUTTON', 'SELECT', 'INPUT', 'TEXTAREA'].includes(target.tagName)) return;
+    e.preventDefault();
+    onAnswer({ value: -1 });
+  }}
+/>
+
 <Modal onClose={() => onAnswer({ value: -2 })} width={boxWidth}>
   {#snippet children()}
     <div class="gui-dialog" data-testid="gui-dialog" bind:this={content}>{@render widget(dialog.root)}</div>
