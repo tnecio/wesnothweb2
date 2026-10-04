@@ -75,11 +75,13 @@ function wmlString(value: unknown): string {
 }
 
 function variableMatches(cfg: WmlConfig, ctx: EventContext): boolean {
-  const name = cfg.getString('name', '');
-  if (name === '') {
+  // Only a missing name= is an error (`cfg.name or wml.error(...)`); an empty one (`name=$found_unit.race`
+  // with nothing found, The Deceiver's Gambit 7) names no variable, which holds nothing.
+  if (!cfg.hasAttribute('name')) {
     ctx.log('error', '[variable] with missing name=');
     return true;
   }
+  const name = cfg.getString('name', '');
   const value = ctx.variables.get(name);
   const strValue = value === undefined ? '' : wmlString(value);
   const numValue = value === undefined ? 0 : Number(value);
