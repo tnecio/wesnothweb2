@@ -141,9 +141,18 @@ export function rootedImagePath(path: string): string {
   const clean = path.replace(/^\/+/, '')
   if (clean.startsWith('engine/') || clean.startsWith('core/') || clean.startsWith('campaigns/')) return clean
   // The engine's image search: the campaign's own images/ first, then core, then the game root's images/.
-  const file = clean.split('~')[0]!
+  const tilde = clean.indexOf('~')
+  const file = tilde < 0 ? clean : clean.slice(0, tilde)
+  const mods = tilde < 0 ? '' : clean.slice(tilde)
   if (campaignImages && campaignImages.files.has(file)) return `${campaignImages.root}/${clean}`
   if (engineImages.has(file)) return `engine/${clean}`
+  // `load_image_file`: a `.png` or `.jpg` found nowhere is looked for as `.webp` (many were converted). Core
+  // has no file list here, so only the campaign's and the engine's images are checked.
+  if (/\.(png|jpg)$/.test(file)) {
+    const webp = file.slice(0, -4) + '.webp'
+    if (campaignImages && campaignImages.files.has(webp)) return `${campaignImages.root}/${webp}${mods}`
+    if (engineImages.has(webp)) return `engine/${webp}${mods}`
+  }
   return `core/images/${clean}`
 }
 

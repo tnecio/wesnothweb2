@@ -32,6 +32,13 @@ describe("engine-only images searched last (the game root's images/)", () => {
     setCampaignImages('campaigns/X/images', ['misc/unit-marker.png']);
     expect(rootedImagePath('misc/unit-marker.png')).toBe('campaigns/X/images/misc/unit-marker.png');
   });
+
+  it('a missing .png or .jpg is found as .webp, as load_image_file does (HttT 1 asks for a converted portrait)', () => {
+    setCampaignImages('campaigns/Heir_To_The_Throne/images', ['portraits/delfador-elvish-unknown.webp']);
+    expect(rootedImagePath('portraits/delfador-elvish-unknown.png')).toBe('campaigns/Heir_To_The_Throne/images/portraits/delfador-elvish-unknown.webp');
+    expect(rootedImagePath('portraits/delfador-elvish-unknown.jpg~FL()')).toBe('campaigns/Heir_To_The_Throne/images/portraits/delfador-elvish-unknown.webp~FL()');
+    expect(rootedImagePath('portraits/other.png')).toBe('core/images/portraits/other.png');
+  });
 });
 
 describe('parseHaloFrames (halo.cpp)', () => {
