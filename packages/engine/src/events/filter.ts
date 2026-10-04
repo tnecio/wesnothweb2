@@ -289,8 +289,7 @@ const splitList = (s: string): string[] => s.split(',').map((x) => x.trim()).fil
 /**
  * `unit_filter_compound::matches` (`src/units/filter.cpp`): every attribute and filter child the unit must
  * satisfy, then `[and]`/`[or]`/`[not]` applied in document order. Attributes are already `$`-substituted by
- * callers. Not ported: `lua_function=`, `find_in=`, `upkeep=`, `has_variation=`, `type_adv_tree=`,
- * `[filter_ability]`.
+ * callers. Not ported: `lua_function=`, `[filter_ability]`.
  */
 export function unitMatchesFilter(unit: Unit, filterCfg: WmlConfig, board?: GameBoard, options: UnitFilterOptions = {}): boolean {
   const loc = options.loc ?? unit.location;
@@ -303,6 +302,31 @@ export function unitMatchesFilter(unit: Unit, filterCfg: WmlConfig, board?: Game
   return res;
 }
 
+/** `unit_type::advancement_tree` of each type, with the types themselves (`type_adv_tree=`). */
+function advancementTree(types: readonly string[]): Set<string> {
+  const out = new Set<string>(types);
+  const pending = [...types];
+  while (pending.length > 0) {
+    const id = pending.pop()!;
+    const type = filterEnvironment?.unitType?.(id);
+    for (const next of type?.advancesTo ?? []) {
+      if (!out.has(next)) {
+        out.add(next);
+        pending.push(next);
+      }
+    }
+  }
+  return out;
+}
+
+/** `upkeep=` as `unit::upkeep_value_visitor` reads it: `full` (the unit's level), `loyal` (0), or a number. */
+function upkeepValue(text: string, u: Unit): number {
+  if (text === 'loyal') return 0;
+  if (text === 'full') return u.canRecruit ? 0 : u.level;
+  const n = Number.parseInt(text, 10);
+  return Number.isNaN(n) ? u.level : n;
+}
+
 function unitFilterImpl(u: Unit, cfg: WmlConfig, board: GameBoard | undefined, loc: Location, other: Unit | undefined): boolean {
   const has = (key: string): boolean => cfg.hasAttribute(key) && cfg.getString(key) !== '';
   const list = (key: string): string[] => splitList(cfg.getString(key));
@@ -310,6 +334,13 @@ function unitFilterImpl(u: Unit, cfg: WmlConfig, board: GameBoard | undefined, l
   if (has('id') && !list('id').includes(u.id)) return false;
   if (has('type') && !list('type').includes(u.type.id)) return false;
   if (has('variation') && !list('variation').includes(u.variation)) return false;
+  // `type_adv_tree=`: the listed types and every type they advance into. Without the unit types installed
+  // (`FilterEnvironment.unitType`), only the listed types themselves.
+  if (has('type_adv_tree') && !advancementTree(list('type_adv_tree')).has(u.type.id)) return false;
+  // `has_variation=`: the unit's type (its base, for a variation) has one of these variations.
+  if (has('has_variation') && !list('has_variation').some((v) => u.baseType.hasVariation(v))) return false;
+  if (has('upkeep') && u.upkeepCost !== upkeepValue(cfg.getString('upkeep'), u)) return false;
+  if (has('find_in') && !(filterEnvironment?.idsIn(cfg.getString('find_in')).includes(u.id) ?? false)) return false;
   if (has('ability')) {
     const ids = new Set(u.abilities.map((a) => a.config.getString('id', '')));
     if (!list('ability').some((id) => ids.has(id))) return false;
@@ -517,6 +548,10 @@ export interface FilterEnvironment {
   areaHexes(id: string): ReadonlySet<string> | undefined;
   /** The time of day at a hex, with illumination (`get_illuminated_time_of_day`). */
   timeOfDayAt(loc: Location): { readonly id: string; readonly lawfulBonus: number };
+  /** The `id=` of each entry of a WML array variable (a unit filter's `find_in=`). */
+  idsIn(variable: string): readonly string[];
+  /** A unit type by id (`unit_types.find`), for `type_adv_tree=`. */
+  unitType?(id: string): { readonly advancesTo: readonly string[] } | undefined;
 }
 
 let filterEnvironment: FilterEnvironment | undefined;

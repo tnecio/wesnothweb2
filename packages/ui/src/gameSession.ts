@@ -1748,6 +1748,14 @@ export class GameSession {
         this.eventPump.ctx.variables.getArray(variable).map((node) => ({ x: Number(node.attrs.get('x') ?? 0), y: Number(node.attrs.get('y') ?? 0) })),
       areaHexes: (id) => this.schedule.areaHexes(id),
       timeOfDayAt: (loc) => this.timeOfDayAt(loc),
+      idsIn: (variable) => this.eventPump.ctx.variables.getArray(variable).map((node) => String(node.attrs.get('id') ?? '')),
+      unitType: (id) => {
+        try {
+          return this.resolveType(id);
+        } catch {
+          return undefined;
+        }
+      },
     });
     this.eventPump.ctx.mapFile = (name) => snapshot.mapFiles?.[name.split('/').pop() ?? name];
     this.eventPump.ctx.imageSize = (path) => snapshot.imageSizes?.[path.split('~')[0] ?? path];

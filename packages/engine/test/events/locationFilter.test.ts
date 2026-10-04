@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { GameBoard } from '../../src/model/GameBoard.js';
 import { Location } from '../../src/model/Location.js';
 import { Team } from '../../src/model/Team.js';
-import { findLocations, setFilterEnvironment } from '../../src/events/filter.js';
+import { findLocations, setFilterEnvironment, unitMatchesFilter } from '../../src/events/filter.js';
+import { Unit } from '../../src/model/Unit.js';
 import { parseWml } from '../../src/wml/index.js';
 import { loadRealContent } from '../helpers/realContent.js';
 
@@ -68,10 +69,34 @@ describe('location filter: the rest of terrain_filter::match_internal', () => {
       locationsIn: (v) => (v === 'spots' ? [{ x: 1, y: 1 }, { x: 2, y: 3 }] : []),
       areaHexes: (id) => (id === 'camp' ? new Set([Location.fromWml(4, 4).key()]) : undefined),
       timeOfDayAt: (loc) => (loc.wmlX === 1 ? { id: 'dusk', lawfulBonus: 0 } : { id: 'second_watch', lawfulBonus: -25 }),
+      idsIn: () => [],
     });
     expect(keys(findLocations(board, parseWml('find_in=spots')))).toEqual(['1,1', '2,3']);
     expect(keys(findLocations(board, parseWml('area=camp')))).toEqual(['4,4']);
     expect(keys(findLocations(board, parseWml('x=1-2\ny=1\ntime_of_day=chaotic')))).toEqual(['2,1']);
     expect(keys(findLocations(board, parseWml('x=1-2\ny=1\ntime_of_day_id=dusk,dawn')))).toEqual(['1,1']);
+  });
+
+  it("unit filter: type_adv_tree=, has_variation=, find_in= (The Deceiver's Gambit kills only its summons by type_adv_tree)", () => {
+    const content = loadRealContent();
+    const board = makeBoard();
+    const mud = Unit.create(content.unitType('Mudcrawler'), 1, Location.fromWml(1, 1));
+    const giant = Unit.create(content.unitType('Giant Mudcrawler'), 1, Location.fromWml(2, 1));
+    const mage = Unit.create(content.unitType('Mage'), 1, Location.fromWml(3, 1));
+    mage.id = 'Delfador';
+    for (const u of [mud, giant, mage]) board.addUnit(u);
+    const tree = parseWml('side=1\ntype_adv_tree=Mudcrawler');
+    // Without the unit types installed: the listed type only.
+    expect([mud, giant, mage].map((u) => unitMatchesFilter(u, tree, board))).toEqual([true, false, false]);
+    setFilterEnvironment({
+      locationsIn: () => [],
+      areaHexes: () => undefined,
+      timeOfDayAt: () => ({ id: 'dawn', lawfulBonus: 0 }),
+      idsIn: (v) => (v === 'heroes' ? ['Delfador'] : []),
+      unitType: (id) => content.unitType(id),
+    });
+    expect([mud, giant, mage].map((u) => unitMatchesFilter(u, tree, board))).toEqual([true, true, false]);
+    expect(unitMatchesFilter(mage, parseWml('find_in=heroes'), board)).toBe(true);
+    expect(unitMatchesFilter(mud, parseWml('find_in=heroes'), board)).toBe(false);
   });
 });
