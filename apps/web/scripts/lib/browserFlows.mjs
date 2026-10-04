@@ -63,7 +63,8 @@ export async function untilPlayable(page, timeout = 300000) {
   while (Date.now() - started < timeout) {
     // Dialogue, a story, or the objectives (whose OK can come after a long opening dialogue).
     if ((await page.$(DIALOGUE)) || (await page.$('.story')) || (await page.getByRole('button', { name: 'OK', exact: true }).count()) > 0) {
-      await skipToPlay(page, 120000);
+      // A long exchange of messages takes minutes at this VM's frame rate (TDG 7): the rest of the time.
+      await skipToPlay(page, Math.max(120000, timeout - (Date.now() - started)));
       quietSince = Date.now();
     } else if (!(await page.evaluate(() => window.__wesnoth?.movementPreview().canAct ?? false))) {
       quietSince = Date.now();
