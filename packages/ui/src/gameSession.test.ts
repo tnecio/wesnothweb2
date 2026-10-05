@@ -2032,6 +2032,12 @@ describe('GameSession unit advancement (real, reported bug: advances_to= was nev
         expect(s.pendingAdvancement.unit).toBe(citizen);
         const optionIds = s.pendingAdvancement.options.map((t) => t.id).sort();
         expect(optionIds).toEqual(['Merman Brawler', 'Merman Fighter', 'Merman Hunter'].sort());
+        // Phase 24: each option previews the unit it makes, on a copy -- the citizen itself is untouched.
+        const pending = s.pendingAdvancement;
+        expect(pending.previews.map((p) => p.typeId)).toEqual(pending.optionInfos.map((o) => o.typeId));
+        for (const preview of pending.previews) expect(preview.hp).toBe(preview.maxHp);
+        expect(pending.previews[0]!.maxHp).not.toBe(citizen.maxHitpoints);
+        expect(citizen.type.id).toBe('Merman Citizen');
 
         s.chooseAdvancement('Merman Hunter');
         expect(s.pendingAdvancement).toBeNull();

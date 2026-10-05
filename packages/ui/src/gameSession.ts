@@ -119,6 +119,7 @@ import {
   getVisibleUnit,
   isUnitVisibleToTeam,
   unitInvisible,
+  type EffectEnv,
   type RaiseEvent,
   connectedCastleTiles,
   recruitUnitFlow,
@@ -722,6 +723,12 @@ export interface PendingAdvancement {
   readonly unitInfo: SelectedUnitInfo;
   /** `options`, resolved for display. */
   readonly optionInfos: readonly AdvancementOption[];
+  /**
+   * Phase 24: what the unit becomes with each of `optionInfos`, in the same order (`get_advanced_unit`,
+   * `get_amla_unit` on a copy): the dialog's detail pane shows the selected one, as upstream's
+   * `unit_preview_pane` does.
+   */
+  readonly previews: readonly SelectedUnitInfo[];
 }
 
 /** One of the attacker's usable weapons against the current target -- see `GameSession.attackerWeaponOptions`. */
@@ -4688,6 +4695,10 @@ export class GameSession {
             options,
             amlaOptions: amlas,
             unitInfo: this.unitInfo(unit),
+            previews: [
+              ...options.map((type) => this.advancementPreview(unit, (copy, env) => advanceUnitTo(copy, type, 100, env))),
+              ...amlas.map((amla) => this.advancementPreview(unit, (copy, env) => advanceUnitAmla(copy, amla, env))),
+            ],
             optionInfos: [
               ...options.map((type) => ({
                 typeId: type.id,
@@ -4743,6 +4754,18 @@ export class GameSession {
   }
 
   /** `animate_unit_advancement`'s choice: index < types is a type, the rest are AMLAs. Re-queues the unit if it can go again. */
+  /** Phase 24: `unit` as an advancement would leave it, worked out on a copy (`get_advanced_unit` / `get_amla_unit`). */
+  private advancementPreview(unit: Unit, advance: (copy: Unit, env: EffectEnv) => void): SelectedUnitInfo {
+    try {
+      const copy = Unit.fromConfig(unit.toConfig(), (id) => this.resolveType(id), unit.experienceModifier);
+      advance(copy, effectEnvFor(this.eventPump.ctx, copy));
+      return this.unitInfo(copy);
+    } catch (err) {
+      console.error('[advancement] preview failed:', err);
+      return this.unitInfo(unit);
+    }
+  }
+
   private applyAdvancementOption(unit: Unit, index: number, typeIds: readonly string[], amlas: readonly WmlConfig[]): void {
     const before = unit.type.name;
     const env = effectEnvFor(this.eventPump.ctx, unit);
