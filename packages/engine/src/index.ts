@@ -27,6 +27,7 @@ export * from './pathfind/pathfind.js';
 export * from './pathfind/visibility.js';
 export * from './actions/index.js';
 export * from './statistics/statistics.js';
+export * from './achievements/achievements.js';
 export * from './ai/index.js';
 export * from './rng/index.js';
 export * from './events/index.js';

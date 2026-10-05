@@ -10,6 +10,7 @@ import { runActionSequence } from '@wesnothweb2/engine/src/events/actionWml.js';
 import { autoRespond, guiSelectionAnswer, runFlow, type Interaction, type InteractionResult } from '@wesnothweb2/engine/src/events/interaction.js';
 import type { GuiNode } from '@wesnothweb2/engine/src/events/guiDialog.js';
 import { LuaRuntime, type LuaSources } from '../src/runtime.js';
+import { Achievements, memoryAchievementStore } from '@wesnothweb2/engine/src/achievements/achievements.js';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadLuaDataDir } from '../src/dataLua.js';
@@ -80,6 +81,46 @@ describe('gui.show_help', () => {
     });
     expect(seen).toEqual([{ kind: 'beat', beat: { kind: 'openHelp', topic: 'unit_Fencer' } }]);
     expect(vars.getString('after')).toBe('yes');
+  });
+});
+
+describe('wesnoth.achievements and gui.show_popup (Phase 25)', () => {
+  it('set shows the popup once; progress returns progress and max; has and get read them back', () => {
+    const { run, vars, pump } = setup();
+    pump.ctx.achievements = new Achievements(
+      [
+        {
+          contentFor: 'tsg',
+          displayName: 'TSG',
+          achievements: [
+            { id: 'one', name: 'One', description: 'Do it.', icon: 'attacks/club.png', nameCompleted: 'One!' },
+            { id: 'count', name: 'Count', description: 'Thrice.', icon: 'attacks/bow.png', maxProgress: 3 },
+          ],
+        },
+      ],
+      memoryAchievementStore(),
+    );
+    const seen: string[] = [];
+    run(
+      `[lua]
+      code=<<
+        wesnoth.achievements.set("tsg", "one")
+        wesnoth.achievements.set("tsg", "one")
+        local p, m = wesnoth.achievements.progress("tsg", "count", 2)
+        wml.variables.p = p
+        wml.variables.m = m
+        wml.variables.has = wesnoth.achievements.has("tsg", "one")
+        wml.variables.got = wesnoth.achievements.get("tsg", "count").current_progress
+        gui.show_popup("Title", "Text", "misc/icon.png")
+      >>
+    [/lua]`,
+      (i) => {
+        if (i.kind === 'message') seen.push(`${i.message.title}|${i.message.message}`);
+        return autoRespond(i);
+      },
+    );
+    expect(seen).toEqual(['One!|Do it.', 'Title|Text']);
+    expect([vars.getNumber('p'), vars.getNumber('m'), vars.getBoolean('has'), vars.getNumber('got')]).toEqual([2, 3, true, 2]);
   });
 });
 

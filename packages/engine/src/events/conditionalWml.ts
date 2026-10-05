@@ -115,6 +115,9 @@ export const builtinConditions: Record<string, (cfg: WmlConfig, ctx: EventContex
   found_item: (cfg, ctx) => ctx.usedItems.has(cfg.getString('id', '')),
   // wml-conditionals.lua: the scenario is over and the campaign goes on (end_level_data.proceed_to_next_level).
   proceed_to_next_scenario: (_cfg, ctx) => ctx.endLevelData?.proceedToNextLevel ?? false,
+  // Phase 25: wml-conditionals.lua over `wesnoth.achievements.has` / `has_sub_achievement`.
+  has_achievement: (cfg, ctx) => ctx.achievements?.has(cfg.getString('content_for'), cfg.getString('id')) ?? false,
+  has_sub_achievement: (cfg, ctx) => ctx.achievements?.hasSub(cfg.getString('content_for'), cfg.getString('id'), cfg.getString('sub_id')) ?? false,
 };
 
 /**

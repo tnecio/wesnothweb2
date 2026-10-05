@@ -5,7 +5,17 @@
  * browser like our other preferences. Every access is guarded: storage can be unavailable (a private
  * window, blocked site data), and then values last only as long as the page, as in memory.
  */
-import { WmlConfig, memoryPersistentVariables, type AchievementSink, type PersistentVariables } from '@wesnothweb2/engine';
+import {
+  Achievements,
+  WmlConfig,
+  memoryPersistentVariables,
+  type AchievementGroupDef,
+  type AchievementRecords,
+  type AchievementStore,
+  type AchievementsOptions,
+  type PersistentVariables,
+} from '@wesnothweb2/engine';
+import achievementsJson from './achievements.json';
 
 const VARIABLES_KEY = 'wesnothweb2.persist.';
 const ACHIEVEMENTS_KEY = 'wesnothweb2.achievements';
@@ -52,39 +62,35 @@ export function browserPersistentVariables(): PersistentVariables {
   };
 }
 
-/** Achievements earned, by `content_for` then id: `true`, sub-achievement ids, or progress. */
-type AchievementRecord = Record<string, Record<string, { done?: boolean; subs?: string[]; progress?: number }>>;
-
-/** Records achievements in `localStorage`. There is no achievements screen yet (Phase 25). */
-export function browserAchievements(onEarned?: (contentFor: string, id: string) => void): AchievementSink {
+/**
+ * Phase 25: where earned achievements are kept (upstream: the `[achievements]` of the player's preferences),
+ * in `localStorage`. Nothing is kept when storage is unavailable; the game still remembers this page's.
+ */
+export function browserAchievementStore(): AchievementStore {
   const store = storage();
-  const read = (): AchievementRecord => {
-    try {
-      return JSON.parse(store?.getItem(ACHIEVEMENTS_KEY) ?? '{}') as AchievementRecord;
-    } catch {
-      return {};
-    }
-  };
-  const update = (contentFor: string, id: string, change: (entry: { done?: boolean; subs?: string[]; progress?: number }) => void): void => {
-    const all = read();
-    const entry = ((all[contentFor] ??= {})[id] ??= {});
-    change(entry);
-    try {
-      store?.setItem(ACHIEVEMENTS_KEY, JSON.stringify(all));
-    } catch {
-      /* not kept */
-    }
-  };
   return {
-    set(contentFor, id) {
-      update(contentFor, id, (e) => (e.done = true));
-      onEarned?.(contentFor, id);
+    read() {
+      try {
+        const parsed: unknown = JSON.parse(store?.getItem(ACHIEVEMENTS_KEY) ?? '{}');
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as AchievementRecords) : {};
+      } catch {
+        return {};
+      }
     },
-    setSub(contentFor, id, subId) {
-      update(contentFor, id, (e) => (e.subs = [...new Set([...(e.subs ?? []), subId])]));
-    },
-    progress(contentFor, id, amount, limit) {
-      update(contentFor, id, (e) => (e.progress = Math.min(limit, (e.progress ?? 0) + amount)));
+    write(records) {
+      try {
+        store?.setItem(ACHIEVEMENTS_KEY, JSON.stringify(records));
+      } catch {
+        /* not kept */
+      }
     },
   };
+}
+
+/** The shipped achievement groups (`data/achievements.cfg`, built into `achievements.json`). */
+export const ACHIEVEMENT_GROUPS = (achievementsJson as unknown as { groups: AchievementGroupDef[] }).groups;
+
+/** The player's achievements, as the game and the achievements dialog read and record them. */
+export function browserAchievements(options: AchievementsOptions = {}): Achievements {
+  return new Achievements(ACHIEVEMENT_GROUPS, browserAchievementStore(), options);
 }

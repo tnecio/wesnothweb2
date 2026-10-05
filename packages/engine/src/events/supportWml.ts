@@ -28,7 +28,8 @@ import type { EventContext } from './context.js';
 import { WmlConfig } from '../wml/config.js';
 import { TString } from '../i18n/tstring.js';
 import type { Flow } from './interaction.js';
-import { effectEnvFor, runActionFlow } from './actionWml.js';
+import { effectEnvFor, popupFlow, runActionFlow } from './actionWml.js';
+import type { AchievementUnlock } from '../achievements/achievements.js';
 import { findUnits } from './filter.js';
 import { UnitStatus } from '../model/Unit.js';
 import { varNodeFromConfig } from './variables.js';
@@ -55,12 +56,6 @@ export function memoryPersistentVariables(): PersistentVariables {
   };
 }
 
-/** Where `[set_achievement]` and friends report (upstream: `wesnoth.achievements`, saved per player). */
-export interface AchievementSink {
-  set(contentFor: string, id: string): void;
-  setSub(contentFor: string, id: string, subId: string): void;
-  progress(contentFor: string, id: string, amount: number, limit: number): void;
-}
 
 function requireAttrs(cfg: WmlConfig, ctx: EventContext, tag: string, names: readonly string[]): boolean {
   const missing = names.filter((n) => !cfg.hasAttribute(n));
@@ -246,22 +241,52 @@ function actionDisallowExtraRecruit(cfg: WmlConfig, ctx: EventContext): void {
   }
 }
 
-function actionSetAchievement(cfg: WmlConfig, ctx: EventContext): void {
-  ctx.achievements?.set(cfg.getString('content_for'), cfg.getString('id'));
+/**
+ * Phase 25: a newly completed achievement, as `intf_set_achievement` announces it: its sound, then
+ * `gui.show_popup(name_completed, description_completed, icon_completed)`.
+ */
+export function* announceAchievement(ctx: EventContext, unlock: AchievementUnlock | null): Flow {
+  if (!unlock) return;
+  if (unlock.sound !== '') ctx.playSound({ files: unlock.sound, repeats: 0, group: 'sound' });
+  yield* popupFlow(ctx, unlock.name, unlock.description, unlock.icon);
 }
 
-function actionSetSubAchievement(cfg: WmlConfig, ctx: EventContext): void {
-  ctx.achievements?.setSub(cfg.getString('content_for'), cfg.getString('id'), cfg.getString('sub_id'));
+/** Runs one of the achievement calls, which raise Lua errors upstream: here they are logged instead. */
+function achievementCall<T>(ctx: EventContext, tag: string, call: () => T): T | undefined {
+  try {
+    return call();
+  } catch (err) {
+    ctx.log('error', `[${tag}] ${err instanceof Error ? err.message : String(err)}`);
+    return undefined;
+  }
 }
 
-function actionProgressAchievement(cfg: WmlConfig, ctx: EventContext): void {
+function* actionSetAchievement(cfg: WmlConfig, ctx: EventContext): Flow {
+  if (!ctx.achievements) return;
+  yield* announceAchievement(ctx, ctx.achievements.set(cfg.getString('content_for'), cfg.getString('id')));
+}
+
+function* actionSetSubAchievement(cfg: WmlConfig, ctx: EventContext): Flow {
+  const achievements = ctx.achievements;
+  if (!achievements) return;
+  const unlock = achievementCall(ctx, 'set_sub_achievement', () => achievements.setSub(cfg.getString('content_for'), cfg.getString('id'), cfg.getString('sub_id')));
+  yield* announceAchievement(ctx, unlock ?? null);
+}
+
+function* actionProgressAchievement(cfg: WmlConfig, ctx: EventContext): Flow {
   const amount = Number(cfg.getString('amount'));
   if (!Number.isFinite(amount)) {
     ctx.log('error', `[progress_achievement] amount attribute not a number for content '${cfg.getString('content_for')}' and achievement '${cfg.getString('id')}'`);
     return;
   }
+  const achievements = ctx.achievements;
+  if (!achievements) return;
+  // `tonumber(cfg.limit) or 999999999`.
   const limit = Number(cfg.getString('limit'));
-  ctx.achievements?.progress(cfg.getString('content_for'), cfg.getString('id'), amount, Number.isFinite(limit) && cfg.hasAttribute('limit') ? limit : 999999999);
+  const result = achievementCall(ctx, 'progress_achievement', () =>
+    achievements.progress(cfg.getString('content_for'), cfg.getString('id'), Math.trunc(amount), cfg.hasAttribute('limit') && Number.isFinite(limit) ? Math.trunc(limit) : 999999999),
+  );
+  yield* announceAchievement(ctx, result?.unlock ?? null);
 }
 
 /**

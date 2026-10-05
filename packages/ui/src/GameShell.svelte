@@ -42,7 +42,7 @@
     CutsceneBeat,
     FakeUnitWalk,
   } from '@wesnothweb2/engine';
-  import { setMonteCarloAllowed, WmlConfig, parseConfig, type WmlConfigJson, playStoryMusic, extraHitSounds, GAME_SOUNDS, directionBetween, relativeDirection, tilesAdjacent, Direction, Location, unitCanAct, parseTerrainCode } from '@wesnothweb2/engine';
+  import { type AchievementGroupView, setMonteCarloAllowed, WmlConfig, parseConfig, type WmlConfigJson, playStoryMusic, extraHitSounds, GAME_SOUNDS, directionBetween, relativeDirection, tilesAdjacent, Direction, Location, unitCanAct, parseTerrainCode } from '@wesnothweb2/engine';
   import {
     type HexPoint,
     type UnitAnimationCue,
@@ -122,6 +122,7 @@
   import SaveGameDialog from './SaveGameDialog.svelte';
   import UnitListDialog from './UnitListDialog.svelte';
   import StatisticsDialog from './StatisticsDialog.svelte';
+  import AchievementsDialog from './AchievementsDialog.svelte';
   import LoadGameDialog from './LoadGameDialog.svelte';
   import { fetchStoryAssets, type StoryAssets } from './story/storyImages.js';
   import { formatHotkey, matchesHotkey, type Command } from './commands.js';
@@ -446,6 +447,8 @@
   /** Phase 24: the Unit List (`unitlist`, Alt+U). */
   let unitListOpen = $state(false);
   let unitListEntries = $state.raw<UnitListEntry[]>([]);
+  /** Phase 25: the achievements dialog (`achievements`, Ctrl+Shift+A); its view is taken when it opens. */
+  let achievementsView = $state.raw<AchievementGroupView[] | null>(null);
   /** Phase 25: the statistics dialog (`statistics`, S), for the viewing side. */
   let statisticsOpen = $state(false);
   let languageDialogOpen = $state(false);
@@ -2883,7 +2886,13 @@
   // Phase 24: the bindings come from the hotkey registry (`hotkeys.ts`: upstream's `hotkeys.cfg` defaults,
   // or the player's own), added by `bound`.
   let menuCommands = $derived<Command[]>(bound([
-    // Phase 25: upstream's game menu has the statistics just before the unit list (`default.cfg`).
+    // Phase 25: upstream's game menu starts objectives, achievements, statustable, statistics, unitlist (`default.cfg`).
+    {
+      id: 'achievements',
+      label: t('Achievements'),
+      enabled: true,
+      handler: () => (achievementsView = session.achievementsView()),
+    },
     {
       id: 'statistics',
       label: t('Statistics'),
@@ -3232,6 +3241,7 @@
       preferencesOpen ||
       unitListOpen ||
       statisticsOpen ||
+      achievementsView !== null ||
       languageDialogOpen ||
       turnPrompt !== null ||
       helpBrowser.isOpen ||
@@ -3537,6 +3547,10 @@
   {#if languageDialogOpen}
     <LanguageDialog onClose={() => (languageDialogOpen = false)} />
   {/if}
+  {#if achievementsView}
+    <AchievementsDialog groups={achievementsView} onClose={() => (achievementsView = null)} />
+  {/if}
+
   {#if statisticsOpen}
     {@const viewing = session.board.getTeam(session.viewingSide)}
     <StatisticsDialog

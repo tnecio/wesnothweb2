@@ -31,6 +31,7 @@ const ctrl = (key: string, more: Partial<Hotkey> = {}): Hotkey => ({ key, ctrl: 
 /** In the order `hotkeys.cfg` lists them, then the port's own keyboard-cursor commands. */
 export const HOTKEY_COMMANDS: readonly HotkeyCommand[] = [
   { id: 'accelerated', upstream: 'accelerated', label: () => t('Toggle Accelerated Speed'), defaults: [ctrl('a')] },
+  { id: 'achievements', upstream: 'achievements', label: () => t('Achievements'), defaults: [ctrl('a', { shift: true })] },
   { id: 'best-enemy-moves', upstream: 'bestenemymoves', label: () => t('Best Possible Enemy Moves'), defaults: [ctrl('b')] },
   { id: 'clear-labels', upstream: 'clearlabels', label: () => t('Clear Labels'), defaults: [ctrl('c')] },
   { id: 'continue', upstream: 'continue', label: () => t('Continue Interrupted Move'), defaults: [{ key: 't' }] },

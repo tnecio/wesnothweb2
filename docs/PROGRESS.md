@@ -6438,3 +6438,55 @@ round trips, and the advancement previews. New browser check `apps/web/scripts/p
 binding Z to Undo survives a reload; binding R asks and takes it from Redo; Defaults restores both; Ctrl+A
 toggles and announces Accelerated speed; Alt+U lists the units and Scroll To shows one; with Turn prompt
 on, the next turn starts with the prompt over a hidden board.
+
+## 2026-10-05: Phase 25 -- statistics and achievements (v0.12.0)
+
+Branch `phase-25`, on top of `phase-24` (it uses the hotkey registry). Each part is its own commit.
+
+- **Statistics recorded** (`packages/engine/src/statistics/statistics.ts`): a port of `statistics_record.cpp`
+  and `statistics.cpp`. A campaign keeps one record per scenario, one `StatsT` per side, keyed by its
+  `save_id` (or number). `GameBoard.statistics` is where the game's own actions record, whoever makes them
+  (player, AI, replay):
+  - every blow of `executeAttack`: hits and misses by chance to hit, damage done (`min(hp, damage)`) and
+    expected, drain, kills and losses, and the whole exchange's hit/miss sequence on each side
+    (`statistics_attack_context`);
+  - recruits and recalls, also through the event-aware `recruitUnitFlow`/`recallUnitFlow`, and their undo;
+  - advancements, the player's choice and the AI's (`advanceUnitFully`);
+  - the "this turn" figures reset as each side's turn begins (`do_init_side`).
+
+  A simulation board records nothing (`statistics` is null). The record is saved with the game, read and
+  written as a real save's `[statistics]` (in upstream's format, so imported saves keep theirs), and carried
+  into the next scenario with a new entry (`new_scenario`).
+- **Statistics dialog** (`StatisticsDialog.svelte`, S, and the game menu): upstream's layout and figures --
+  "All Scenarios" or one scenario (the current one first); recruits, recalls, advancements, losses and kills
+  with their counts and gold, the selected row's unit types beside them; damage and hits inflicted and taken
+  against expected (`+12% (25 + 3)`), with "This Turn" for the current scenario; and `tally`'s a-priori
+  probability of the hits, worked out as upstream does by fighting one long simulated attack per chance to
+  hit through the real combat matrix (`plainBattleStats`, the stats-only `battle_context_unit_stats`),
+  coloured on `red_to_green`. `statisticsView.ts` holds the figures and is unit-tested (two strikes at 50%
+  with one hit is exactly the median; seven sure-ish hits match the binomial).
+- **Achievements.** `packages/engine/src/achievements/achievements.ts` ports `achievements.cpp`, the
+  achievement half of the preferences and `game_lua_kernel`'s `wesnoth.achievements` functions:
+  - `has`, `get` (as WML), `set`, sub-achievements (the last completes the whole) and `progress` (clamped
+    to `limit=` and the maximum, never lowered by a `limit` already passed; reaching the maximum completes
+    it);
+  - a newly completed one plays its `sound=` and shows upstream's popup (`gui.show_popup` with the completed
+    name, description and icon) before the event goes on;
+  - nothing is saved while a replay is shown (`is_replay`).
+
+  `[set_achievement]`, `[set_sub_achievement]` and `[progress_achievement]` go through it; the
+  `[has_achievement]` and `[has_sub_achievement]` conditions are new; Lua gets `wesnoth.achievements.*` and
+  `gui.show_popup` (both were unported stubs). `build-campaigns.mjs` now writes
+  `packages/ui/src/achievements.json` from `data/achievements.cfg`: ten groups (all but the tutorial's and
+  multiplayer Survivals', content the port does not ship), icons rooted as the binary-path search would find
+  them. Earned achievements stay in the browser, in the same storage as before.
+- **Achievements dialog** (`AchievementsDialog.svelte`): from the title screen's new Achievements button
+  (upstream's place, between Load and Preferences), the game menu and Ctrl+Shift+A. A menu of groups (the
+  last one remembered, as upstream's `selected_achievement_group`), each achievement's icon greyed until
+  earned, the name gold once earned and `(count/total)` with a bar while in progress, sub-achievement icons,
+  hidden ones only once earned, and "Completed $count/$total".
+- **Milestone**, adjusted: Under the Burning Suns ships no achievements in this data version, so The South
+  Guard stands in. A unit test fires TSG 1's own `play_battle` and Urza Mathin's `last breath`: "Scenario 1:
+  Thug Beater" is announced, recorded, and still earned in a new game. The statistics milestone is unit-tested
+  (one attack's strikes, damage and expected damage on both sides; a real save's `[statistics]` summed over
+  two scenarios) and checked in the browser by `apps/web/scripts/phase25-playthrough.mjs`.

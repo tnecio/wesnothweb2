@@ -119,6 +119,9 @@ import {
   getVisibleUnit,
   isUnitVisibleToTeam,
   unitInvisible,
+  Achievements,
+  type AchievementStore,
+  type AchievementGroupView,
   CampaignStats,
   Statistics,
   type EffectEnv,
@@ -185,7 +188,7 @@ import { createLuaConditionalEvaluator } from '@wesnothweb2/lua-bridge/src/condi
 import { LuaRuntime } from '@wesnothweb2/lua-bridge/src/runtime.js';
 import { LuaAiEngine } from '@wesnothweb2/lua-bridge/src/kernel/ai/luaAiEngine.js';
 import { luaDataFiles, type LuaDataFiles } from './luaData.js';
-import { browserAchievements, browserPersistentVariables } from './persistentVariables.js';
+import { ACHIEVEMENT_GROUPS, browserAchievementStore, browserPersistentVariables } from './persistentVariables.js';
 import { raceName, statusName } from './i18n/gameText.js';
 import type { HelpGameContext } from './help/helpData.js';
 import { fmt, t, tw, tx } from './i18n/locale.js';
@@ -828,6 +831,8 @@ export interface GameSessionOptions {
   playerSide?: number;
   /** Phase 28c: where `[set_global_variable]` keeps values (default: the browser's `localStorage`). */
   persistent?: PersistentVariables;
+  /** Phase 25: where earned achievements are kept; the browser's storage by default. */
+  achievementStore?: AchievementStore;
   /** Seed for the session's `RngDeterministic` -- see `RngDeterministic`'s own doc comment; no need for cryptographic randomness here. */
   seed?: number;
   /**
@@ -1627,6 +1632,8 @@ export class GameSession {
   private action: ActionState | null = null;
   /** The state the scenario started from, before its `start` command -- a replay's starting point. */
   private replayStartData: SaveGameData | null = null;
+  /** Phase 25: this session shows a replay (`forReplay`): achievements earned in it are not saved. */
+  private replayShown = false;
   /** Upstream's `do_healing`: healing starts with the second side turn of the scenario. */
   private doHealing = false;
   /** Set while `redo` re-runs a command, which must not clear the rest of the redo stack. */
@@ -1790,7 +1797,11 @@ export class GameSession {
     });
     this.eventPump.ctx.mapFile = (name) => snapshot.mapFiles?.[name.split('/').pop() ?? name];
     this.eventPump.ctx.imageSize = (path) => snapshot.imageSizes?.[path.split('~')[0] ?? path];
-    this.eventPump.ctx.achievements = browserAchievements((contentFor, id) => this.log.unshift(`Achievement: ${contentFor}/${id}`));
+    // Phase 25: the player's achievements; nothing is saved while a replay is shown (`is_replay`).
+    this.eventPump.ctx.achievements = new Achievements(ACHIEVEMENT_GROUPS, options.achievementStore ?? browserAchievementStore(), {
+      isReplay: () => this.replayShown,
+      log: (message) => this.eventPump.ctx.log('error', message),
+    });
     this.eventPump.ctx.advanceUnit = (unit) => {
       this.queueAdvancement(unit);
       this.processAdvancementQueue(this.action?.rec ?? null, this.action?.source ? this.action : null);
@@ -2973,6 +2984,11 @@ export class GameSession {
     record.newScenario(this.scenarioName);
     this.campaignStats = record;
     this.board.statistics = new Statistics(record);
+  }
+
+  /** Phase 25: the achievements dialog's view, with what this game (or replay) has earned so far. */
+  achievementsView(): AchievementGroupView[] {
+    return this.eventPump.ctx.achievements?.view() ?? [];
   }
 
   /** Phase 25: a unit type as the statistics dialog lists it (`unit_types.find`); undefined when the scenario has no such type. */
@@ -5228,6 +5244,7 @@ export class GameSession {
     if (replay.start) {
       const session = GameSession.fromSaveData(snapshot, replay.start, mode);
       session.replayStartData = replay.start;
+      session.replayShown = true;
       return session;
     }
     if (!replay.wesnothStart) return null;
@@ -5240,6 +5257,7 @@ export class GameSession {
     }
     for (const u of replay.wesnothStart.recall) session.board.addToRecallList(u.side, session.unitFromSave(u, Location.NULL));
     session.replayStartData = session.toSaveData();
+    session.replayShown = true;
     return session;
   }
 

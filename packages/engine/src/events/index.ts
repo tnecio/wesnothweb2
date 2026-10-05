@@ -29,5 +29,5 @@ export { findSides, sideMatchesFilter } from './sideFilter.js';
 export { ItemStore, addItem, itemToConfig, readPersistentItem, type MapItem } from './itemsWml.js';
 export { LabelStore, labelFromConfig, labelToConfig, LABEL_COLOR, type MapLabel } from './labelsWml.js';
 export { memoryPersistentVariables } from './supportWml.js';
-export type { PersistentVariables, AchievementSink } from './supportWml.js';
+export type { PersistentVariables } from './supportWml.js';
 export { FLOATING_LABEL_COLOR, OVERLAY_TEXT_SIZE, parseRgbString, parseHexColor, nextOverlayLabelId, type FloatingLabelRequest, type HexFloatingLabel, type OverlayFloatingLabel, type RgbColor } from './floatingLabels.js';
