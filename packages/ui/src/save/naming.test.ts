@@ -10,6 +10,8 @@ import {
   manualSaveName,
   scenarioLabel,
   scenarioStartSaveName,
+  replaySaveName,
+  scenarioAutosaves,
   uniqueName,
 } from './naming.js';
 
@@ -84,5 +86,17 @@ describe('autosave rotation (save_index.cpp delete_old_auto_saves)', () => {
 
   it('deletes nothing when autosaving is off -- there is nothing being written to rotate', () => {
     expect(autosavesToDelete(saves, 0)).toEqual([]);
+  });
+});
+
+describe('Phase 24: end-of-scenario saves', () => {
+  it('names a replay save as replay_savegame::create_initial_filename', () => {
+    expect(replaySaveName('DW-Invasion', new Date(2026, 9, 5, 9, 3, 7))).toBe('DW-Invasion replay 20261005-090307');
+  });
+
+  it('clean_saves(label): every save named <label>-Auto-Save..., nothing else', () => {
+    const at = (name: string): SaveMeta => ({ name, scenarioId: 's', savedAt: 0 });
+    const saves = [at('DW-Invasion-Auto-Save1'), at('DW-Invasion-Auto-Save12'), at('DW-Invasion Turn 3'), at('DW-Flight-Auto-Save2')];
+    expect(scenarioAutosaves(saves, 'DW-Invasion')).toEqual(['DW-Invasion-Auto-Save1', 'DW-Invasion-Auto-Save12']);
   });
 });

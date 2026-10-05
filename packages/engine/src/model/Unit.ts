@@ -69,6 +69,8 @@ export interface UnitOptions {
   canRecruit?: boolean;
   role?: string;
   hidden?: boolean;
+  /** `unrenamable=`: the player cannot rename the unit (heroes the story names). */
+  unrenamable?: boolean;
   underlyingId?: number;
   modifications?: readonly UnitModification[];
   variables?: WmlConfig;
@@ -115,6 +117,8 @@ export class Unit {
   canRecruit: boolean;
   resting: boolean;
   hidden: boolean;
+  /** `unit::unrenamable()`: the unit list and recall list offer no Rename for it. */
+  unrenamable: boolean;
   id: string;
   role: string;
   underlyingId: number;
@@ -256,6 +260,7 @@ export class Unit {
     this.canRecruit = options.canRecruit ?? false;
     this.resting = false;
     this.hidden = options.hidden ?? false;
+    this.unrenamable = options.unrenamable ?? false;
     this.id = options.id ?? '';
     const givenName = options.name ?? '';
     if (typeof givenName === 'string') this.nameText = givenName;
@@ -475,6 +480,7 @@ export class Unit {
       role: cfg.getString('role', ''),
       canRecruit: cfg.getBoolean('canrecruit', false),
       hidden: cfg.getBoolean('hidden', false),
+      unrenamable: cfg.getBoolean('unrenamable', false),
       underlyingId: cfg.getNumber('underlying_id', 0),
       modifications,
       variables: cfg.child('variables'),
@@ -568,6 +574,7 @@ export class Unit {
     cfg.setAttribute('canrecruit', this.canRecruit);
     cfg.setAttribute('resting', this.resting);
     cfg.setAttribute('hidden', this.hidden);
+    if (this.unrenamable) cfg.setAttribute('unrenamable', true);
     cfg.setAttribute('underlying_id', this.underlyingId);
     if (this.profile !== '') cfg.setAttribute('profile', this.profile);
     if (this.ellipse !== '') cfg.setAttribute('ellipse', this.ellipse);

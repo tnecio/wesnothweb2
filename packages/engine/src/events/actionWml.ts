@@ -926,6 +926,7 @@ const MODIFY_UNIT_FIELDS: Record<string, (u: Unit, cfg: WmlConfig, key: string) 
   canrecruit: (u, cfg) => (u.canRecruit = cfg.getBoolean('canrecruit', u.canRecruit)),
   name: (u, cfg) => (u.name = cfg.getString('name', u.name)),
   role: (u, cfg) => (u.role = cfg.getString('role', u.role)),
+  unrenamable: (u, cfg) => (u.unrenamable = cfg.getBoolean('unrenamable', u.unrenamable)),
 };
 
 function actionModifyUnit(cfg: WmlConfig, ctx: EventContext): void {
@@ -1738,6 +1739,7 @@ function actionEndlevel(cfg: WmlConfig, ctx: EventContext): void {
     ...(cfg.hasAttribute('end_credits') ? { endCredits: cfg.getBoolean('end_credits', true) } : {}),
     carryoverReport: cfg.getBoolean('carryover_report', true),
     lingerMode: cfg.getBoolean('linger_mode', true),
+    replaySave: cfg.getBoolean('replay_save', true),
     ...(cfg.getString('music', '') !== '' ? { music: cfg.getString('music').split(',').map((t) => t.trim()).filter((t) => t !== '') } : {}),
   };
 }

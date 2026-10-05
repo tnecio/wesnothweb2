@@ -163,7 +163,7 @@ try {
     await page.getByRole('button', { name: 'Menu', exact: true }).click();
     await page.getByRole('button', { name: /Preferences\.\.\./ }).click();
     await page.getByRole('tab', { name: 'Advanced' }).click();
-    await page.locator('[data-testid="prefs-mouse-scrolling"]').uncheck();
+    await page.locator('[data-testid="prefs-mouseScrolling"]').uncheck();
     const underDialog = await rest(3, 400);
     check('not while a dialog is open', underDialog.dx === 0, JSON.stringify(underDialog));
     await page.keyboard.press('Escape');
@@ -173,7 +173,7 @@ try {
     await page.getByRole('button', { name: 'Menu', exact: true }).click();
     await page.getByRole('button', { name: /Preferences\.\.\./ }).click();
     await page.getByRole('tab', { name: 'Advanced' }).click();
-    await page.locator('[data-testid="prefs-mouse-scrolling"]').check();
+    await page.locator('[data-testid="prefs-mouseScrolling"]').check();
     await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
     await page.evaluate(() => window.__wesnothDebug.setRenderingPaused(false));

@@ -68,7 +68,7 @@
     type View,
     type ScrollType,
   } from '@wesnothweb2/renderer';
-  import { displayPrefs, prefersReducedMotion } from './displayPrefs.js';
+  import { displayPrefs, prefersReducedMotion, turboSpeed } from './displayPrefs.js';
   import type { TimeOfDayEntry } from '@wesnothweb2/engine';
   import { fetchTeamColors } from './teamColorsCache.js';
 
@@ -724,6 +724,13 @@
     void board?.setGridVisible(grid);
   });
 
+  // Phase 24: "Team color indicators", "Animate map" and "Animate water" take effect at once.
+  $effect(() => {
+    const prefs = displayPrefs.value;
+    board?.setShowSideColors(prefs.showSideColors);
+    board?.setTerrainAnimation({ map: prefs.animateMap, water: prefs.animateWater });
+  });
+
   $effect(() => {
     board?.updateFogShroud(hexVisibility);
   });
@@ -781,7 +788,8 @@
   ): Promise<void> {
     if (!board) return;
     for (let i = 0; i < beats.length; i++) {
-      await board.playAnimations(beats[i]!, undefined, speedMultiplier);
+      // Phase 24: Accelerated speed (`unit_animation::update_last_draw_time`'s `turbo_speed`).
+      await board.playAnimations(beats[i]!, undefined, speedMultiplier * turboSpeed());
       onBeatComplete?.(i);
     }
   }
@@ -798,12 +806,15 @@
 
   /** Real, reported bug: no floating damage/heal numerals ever appeared. See `SnapshotBoard.spawnFloatingNumber`'s own doc comment. */
   export function spawnFloatingNumber(key: string, amount: number, kind: 'damage' | 'heal'): void {
-    board?.spawnFloatingNumber(key, amount, kind);
+    // Phase 24: `game_display::float_label` -- off with "Combat damage indicators", faster with turbo.
+    if (!displayPrefs.peek().floatingLabels) return;
+    board?.spawnFloatingNumber(key, amount, kind, 1000 / turboSpeed());
   }
 
   /** C1: `[floating_text]`: a label rising from hex (`x`, `y`). See `SnapshotBoard.spawnHexLabel`. */
   export function spawnHexLabel(x: number, y: number, text: string, color: number): void {
-    board?.spawnHexLabel(x, y, text, color);
+    if (!displayPrefs.peek().floatingLabels) return;
+    board?.spawnHexLabel(x, y, text, color, turboSpeed());
   }
 
   /** Real, reported bug (bugs4.md #3): a unit that died mid-AI-turn kept a stale sprite on screen until the turn's deferred sync(). See `SnapshotBoard.removeUnitVisual`'s own doc comment. */
@@ -988,11 +999,12 @@
     if (!from) return Promise.resolve();
     const { scrollSpeed } = displayPrefs.peek();
     const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
-    if (hidden || scrollWarps(type, scrollSpeed, 1, prefersReducedMotion())) {
+    const turbo = turboSpeed();
+    if (hidden || scrollWarps(type, scrollSpeed, turbo, prefersReducedMotion())) {
       applyView(target);
       return Promise.resolve();
     }
-    const anim = new ScrollAnimation(target.x - from.x, target.y - from.y, scrollSpeed);
+    const anim = new ScrollAnimation(target.x - from.x, target.y - from.y, scrollSpeed, turbo);
     return new Promise((resolve) => {
       let raf = 0;
       let last = performance.now();

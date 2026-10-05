@@ -161,6 +161,7 @@ function unitFromWml(unitCfg: WmlConfig, side: number): SavedUnit {
     facing: optString(unitCfg, 'facing'),
     resting: optBoolean(unitCfg, 'resting'),
     hidden: optBoolean(unitCfg, 'hidden'),
+    unrenamable: optBoolean(unitCfg, 'unrenamable'),
     role: optString(unitCfg, 'role'),
     underlyingId: optNumber(unitCfg, 'underlying_id'),
     profile: optString(unitCfg, 'profile'),
@@ -339,6 +340,7 @@ function unitToWml(u: SavedUnit, onBoard: boolean): WmlConfig {
   if (u.facing) cfg.setAttribute('facing', u.facing);
   if (u.resting !== undefined) cfg.setAttribute('resting', u.resting);
   if (u.hidden !== undefined) cfg.setAttribute('hidden', u.hidden);
+  if (u.unrenamable) cfg.setAttribute('unrenamable', true);
   if (u.role) cfg.setAttribute('role', u.role);
   if (u.profile) cfg.setAttribute('profile', u.profile);
   if (u.gender) cfg.setAttribute('gender', u.gender);

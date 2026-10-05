@@ -14,6 +14,21 @@
  *    orders by themselves when a turn begins.
  *  - Phase 23, ours (upstream has no phone layout): `topBarCollapsed` and `infoboxCollapsed`, whether
  *    the compact layout shows the top bar's full status and the infobox's body. Both open by default.
+ *  - Phase 24, the rest of upstream's preferences the port has something to apply to:
+ *    - `turbo` (off) and `turboSpeed` (`turbo_speed`, 2, one of `TURBO_SPEEDS`): Accelerated speed;
+ *      `turboSpeed()` below is `display::turbo_speed`;
+ *    - `skipAiMoves` (`skip_ai_moves`, off): AI sides' turns are not animated;
+ *    - `turnDialog` (`turn_dialog`, off): "It is now X's turn" before each human turn;
+ *    - `saveReplays` (`save_replays`, on) and `deleteSaves` (`delete_saves`, off): what happens to
+ *      saves when a scenario is won;
+ *    - `floatingLabels` (`floating_labels`, on): the damage and healing numbers;
+ *    - `showSideColors` (`show_side_colors`, on): the team colour ellipses under units;
+ *    - `animateMap` (`animate_map`, on) and `animateWater` (`animate_water`, on);
+ *    - `showCombat` (`show_combat`, on): attack and death animations;
+ *    - `askDelete` (`ask_delete`, on): deleting a save asks first;
+ *    - `showAttackMissIndicator` (`show_attack_miss_indicator`, off): "miss" floats over a missed unit;
+ *    - `monteCarlo` (`damage_prediction_allow_monte_carlo_simulation`, on).
+ *    The auto-save limit (`auto_save_max`) stays where Phase 26 keeps it, with the saves.
  *
  * `parseDisplayPrefs` is pure (tested in node); `displayPrefs` is the live, reactive store.
  */
@@ -37,7 +52,24 @@ export interface DisplayPrefs {
   topBarCollapsed: boolean;
   infoboxCollapsed: boolean;
   disableAutoMoves: boolean;
+  turbo: boolean;
+  turboSpeed: number;
+  skipAiMoves: boolean;
+  turnDialog: boolean;
+  saveReplays: boolean;
+  deleteSaves: boolean;
+  floatingLabels: boolean;
+  showSideColors: boolean;
+  animateMap: boolean;
+  animateWater: boolean;
+  showCombat: boolean;
+  askDelete: boolean;
+  showAttackMissIndicator: boolean;
+  monteCarlo: boolean;
 }
+
+/** The Accelerated speed slider's steps (`preferences_dialog`'s `accl_speeds_`). */
+export const TURBO_SPEEDS: readonly number[] = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 4, 8, 16];
 
 export const DEFAULT_DISPLAY_PREFS: Readonly<DisplayPrefs> = {
   scrollSpeed: 50,
@@ -49,6 +81,20 @@ export const DEFAULT_DISPLAY_PREFS: Readonly<DisplayPrefs> = {
   topBarCollapsed: false,
   infoboxCollapsed: false,
   disableAutoMoves: false,
+  turbo: false,
+  turboSpeed: 2,
+  skipAiMoves: false,
+  turnDialog: false,
+  saveReplays: true,
+  deleteSaves: false,
+  floatingLabels: true,
+  showSideColors: true,
+  animateMap: true,
+  animateWater: true,
+  showCombat: true,
+  askDelete: true,
+  showAttackMissIndicator: false,
+  monteCarlo: true,
 };
 
 export const DISPLAY_PREFS_KEY = 'wesnothweb2.display';
@@ -84,6 +130,20 @@ export function parseDisplayPrefs(raw: string | null | undefined): DisplayPrefs 
     topBarCollapsed: bool(data['topBarCollapsed'], d.topBarCollapsed),
     disableAutoMoves: bool(data['disableAutoMoves'], d.disableAutoMoves),
     infoboxCollapsed: bool(data['infoboxCollapsed'], d.infoboxCollapsed),
+    turbo: bool(data['turbo'], d.turbo),
+    turboSpeed: typeof data['turboSpeed'] === 'number' && TURBO_SPEEDS.includes(data['turboSpeed']) ? data['turboSpeed'] : d.turboSpeed,
+    skipAiMoves: bool(data['skipAiMoves'], d.skipAiMoves),
+    turnDialog: bool(data['turnDialog'], d.turnDialog),
+    saveReplays: bool(data['saveReplays'], d.saveReplays),
+    deleteSaves: bool(data['deleteSaves'], d.deleteSaves),
+    floatingLabels: bool(data['floatingLabels'], d.floatingLabels),
+    showSideColors: bool(data['showSideColors'], d.showSideColors),
+    animateMap: bool(data['animateMap'], d.animateMap),
+    animateWater: bool(data['animateWater'], d.animateWater),
+    showCombat: bool(data['showCombat'], d.showCombat),
+    askDelete: bool(data['askDelete'], d.askDelete),
+    showAttackMissIndicator: bool(data['showAttackMissIndicator'], d.showAttackMissIndicator),
+    monteCarlo: bool(data['monteCarlo'], d.monteCarlo),
   };
 }
 
@@ -133,4 +193,23 @@ export const displayPrefs = new DisplayPrefsStore();
 /** `prefers-reduced-motion`: camera moves jump instead of gliding (Phase 20's motion policy). */
 export function prefersReducedMotion(): boolean {
   return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+let shiftHeld = false;
+if (typeof window !== 'undefined') {
+  const track = (e: KeyboardEvent): void => {
+    shiftHeld = e.shiftKey;
+  };
+  window.addEventListener('keydown', track, true);
+  window.addEventListener('keyup', track, true);
+  window.addEventListener('blur', () => (shiftHeld = false));
+}
+
+/**
+ * `display::turbo_speed`: the Accelerated speed when it is on, else 1 -- and holding Shift flips it, as
+ * upstream's does. Unit animations, camera glides, floating labels and an `accelerate=yes` `[delay]` run
+ * this many times faster.
+ */
+export function turboSpeed(prefs: Readonly<DisplayPrefs> = displayPrefs.peek()): number {
+  return prefs.turbo !== shiftHeld ? prefs.turboSpeed : 1;
 }

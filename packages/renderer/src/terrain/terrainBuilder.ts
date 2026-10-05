@@ -307,7 +307,7 @@ export function getTerrainFramesAt(tiles: TerrainTiles, x: number, y: number, to
         offsetX: 0,
         offsetY: 0,
       }))
-      const layer: TerrainLayer = { frames }
+      const layer: TerrainLayer = image.isWater ? { frames, water: true } : { frames }
       ;(isBackgroundImage(image) ? background : foreground).push(layer)
       break // first matching variant wins
     }

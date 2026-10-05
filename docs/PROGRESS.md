@@ -6383,3 +6383,58 @@ B4's two follow-ups.
   `link:<id>|<dst>`; the callback runs as upstream's `link_callback`, `(dest, widget)`, and the dialog
   stays open. TDG's spell descriptions call `gui.show_help(dest)`, which opens the help at that topic and
   returns to the dialog when it closes.
+
+## 2026-10-05: Phase 24 -- preferences, hotkeys, unit list, advancement preview (v0.11.0)
+
+You asked for the plan to be tidied, then Phase 24, then Phase 25. The plan now records 28c as delivered,
+puts Phases 24 and 25 next (achievements move into 25), and adds World Conquest as Phase 31, not yet
+scheduled. Phase 24's five stages, each its own commit:
+
+- **Hotkey registry** (`packages/ui/src/hotkeys.ts`). Every command a key reaches, with upstream's
+  `hotkeys.cfg` defaults, several per command (`zoomin` is `=` and `+`), and the macOS variant where the
+  file has one (End Turn is Alt+Space there). The player's bindings, saved per browser, replace a
+  command's defaults as upstream's saved `[hotkey]` entries do. The menus, context menu and key handler all
+  read from it. New defaults the port had no binding for: Mute (Ctrl+Alt+M), Accelerated speed (Ctrl+A),
+  Toggle Ellipses (Ctrl+E), Unit List (Alt+U). Upstream's `quit` (Ctrl+W) has none: the browser keeps it.
+- **Hotkeys tab** (`HotkeysPanel.svelte`). Filter, sortable Action and Hotkey columns, Add Hotkey ("Press
+  desired hotkey (Esc cancels)"), Clear Hotkey and Defaults. A key bound elsewhere asks upstream's
+  "Reassign Hotkey" question and moves. Upstream's game/editor/main-menu scope columns are left out: the
+  port has only the game's hotkeys. A dialog opened over another now handles Escape alone (`Modal` ignores a
+  key a nested dialog already took).
+- **The rest of the preferences**, each upstream's own with its default (`displayPrefs.ts` lists them):
+  - General: Skip AI moves (AI turns, and AI sides' turn-start healing, are not animated); Accelerated
+    speed with its factor slider (upstream's twelve steps, 0.25 to 16): unit animations, camera glides,
+    damage labels and `[delay] accelerate=yes` run that much faster, and holding Shift flips it, as
+    `display::turbo_speed` does; Turn prompt ("It is now X's turn" over a blacked-out board at each human
+    turn); Save replays and Delete auto-saves at the end of scenarios; Maximum auto-saves (0 to infinity).
+  - A won scenario now writes `<label> replay <timestamp>` (`replay_savegame`) unless `[endlevel]
+    replay_save=no` -- which the engine now reads -- and the load dialog opens such a save in its replay,
+    the toggle checked and inactive, as upstream's. Delete auto-saves removes `<label>-Auto-Save*`
+    (`clean_saves`).
+  - Display: Combat damage indicators (every `float_label`: damage, healing, `[floating_text]`), Team
+    color indicators (the selected unit keeps its ellipse, as upstream's), Animate map (terrain and
+    village flags hold their first frame) and Animate water (only `[image] is_water=yes` terrain stops; the
+    terrain builder now carries that flag to the layers). All apply at once to what is drawn.
+  - Advanced, in `advanced_preferences.cfg`'s order: Confirm deleting saves, Mouse scrolling, Show combat
+    (no attack or death animation, no labels), Follow unit actions, Monte Carlo (off: always the exact
+    calculation, for the AI too, as upstream), Show missed attack indicator ("miss" in red over the unit
+    missed).
+  - Left out: window, pixel scale, VSync and themes (the browser's); standing and idle animations (units
+    are drawn still between actions); planning mode; the multiplayer, add-on, editor, cache and logging
+    settings.
+- **Unit List** (`UnitListDialog.svelte`, Alt+U and the game menu). The viewing side's units on the map in
+  upstream's columns, sortable but for status, the search box matching name, type, level, alignment, race
+  and traits, the unit's details beside the list. Scroll To warps there and shows the unit in the side
+  panel; Rename renames it outside the recorded actions, as upstream's does. The engine now has
+  `unrenamable=` (unit WML, `[modify_unit]`, saves and the Wesnoth save converter); the recall list's Rename
+  honours it too. Upstream 1.19's favourite star is not ported.
+- **Advancement preview.** The advancement dialog's detail pane shows the unit each choice makes,
+  advanced on a copy with the engine's own `advanceUnitTo`/`advanceUnitAmla` (`get_advanced_unit`,
+  `get_amla_unit`), as upstream's `unit_preview_pane` does.
+
+Checks: unit tests for the registry, its parsing and conflicts, the new preferences' defaults and
+`turbo_speed`, the replay save name and `clean_saves`, the unit list rows, Rename and `unrenamable`
+round trips, and the advancement previews. New browser check `apps/web/scripts/phase24-playthrough.mjs`:
+binding Z to Undo survives a reload; binding R asks and takes it from Redo; Defaults restores both; Ctrl+A
+toggles and announces Accelerated speed; Alt+U lists the units and Scroll To shows one; with Turn prompt
+on, the next turn starts with the prompt over a hidden board.

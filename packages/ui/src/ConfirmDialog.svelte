@@ -31,6 +31,7 @@
 <style>
   p {
     margin: 0 0 0.9rem;
+    white-space: pre-line;
   }
   .footer {
     display: flex;

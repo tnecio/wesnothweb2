@@ -48,6 +48,25 @@ export function scenarioStartSaveName(label: string): string {
 }
 
 /**
+ * Phase 24: `replay_savegame::create_initial_filename` (`savegame.cpp:486`): `<label> replay
+ * <YYYYMMDD-HHMMSS>`, local time.
+ */
+export function replaySaveName(label: string, at: Date): string {
+  const p = (n: number): string => String(n).padStart(2, '0');
+  const stamp = `${at.getFullYear()}${p(at.getMonth() + 1)}${p(at.getDate())}-${p(at.getHours())}${p(at.getMinutes())}${p(at.getSeconds())}`;
+  return `${label} replay ${stamp}`;
+}
+
+/**
+ * Phase 24: `savegame::clean_saves(label)` (`savegame.cpp:64`), for "Delete auto-saves at the end of
+ * scenarios": every save whose name starts with `<label>-Auto-Save`.
+ */
+export function scenarioAutosaves(saves: readonly SaveMeta[], label: string): string[] {
+  const prefix = `${label}-${AUTOSAVE_MARKER}`;
+  return saves.filter((s) => s.name.startsWith(prefix)).map((s) => s.name);
+}
+
+/**
  * The substring upstream matches autosaves by -- `get_saves_list(&filter)`
  * does a plain `name.find(filter)`, not a prefix test, which is why an
  * autosave of any campaign is caught by the same rotation.

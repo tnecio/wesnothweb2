@@ -18,6 +18,10 @@
    * the first version showed only the options, so a player had no way to
    * see what they were advancing *from*, and any click was final.
    *
+   * Phase 24: the detail column shows the unit as the selected advancement leaves it -- upstream's
+   * `unit_preview_pane` over `get_advanced_unit`/`get_amla_unit` -- so the choice can be compared, not
+   * the unit as it stands.
+   *
    * The detail column deliberately mirrors `RecallDialog`'s, which shows
    * the same view-model (`SelectedUnitInfo`) in the same shape -- the two
    * dialogs are the same idea (pick a unit, see its details) and should
@@ -44,6 +48,8 @@
   let selectedTypeId = $state<string | null>(pending?.optionInfos[0]?.typeId ?? null);
 
   let selected = $derived(pending?.optionInfos.find((o) => o.typeId === selectedTypeId) ?? pending?.optionInfos[0] ?? null);
+  /** Phase 24: the detail pane shows the unit the selected advancement makes (`unit_advance::list_item_clicked`). */
+  let shown = $derived(pending && selected ? (pending.previews[pending.optionInfos.indexOf(selected)] ?? pending.unitInfo) : null);
 
   function rangeType(w: { range: string; type: string }): string {
     return `${rangeName(w.range)}, ${damageTypeName(w.type)}`;
@@ -72,39 +78,41 @@
     {#snippet children()}
       <div class="title">{t('Advance Unit')}</div>
       <div class="layout">
-        <div class="detail">
-          {#if pending.unitInfo.image}
-            <IpfImage class="portrait" src={unitImageRef(pending.unitInfo.image, pending.unitInfo.side)} />
-          {/if}
-          <div class="name">{pending.unitInfo.name}</div>
-          <div class="type-name">{pending.unitInfo.typeName}</div>
-          <div class="subline">
-            <span class="level">{t('Lvl')} {pending.unitInfo.level}</span>
-            <span class="alignment">{alignmentName(pending.unitInfo.alignment ?? 'neutral')}</span>
-            <span class="race">{raceName(pending.unitInfo.raceId)}</span>
-          </div>
-          <div class="stats">
-            <span class="hp">{t('HP:')} {pending.unitInfo.hp}/{pending.unitInfo.maxHp}</span>
-            <span class="sep">|</span>
-            <span class="xp">{t('XP:')} {pending.unitInfo.xp}/{pending.unitInfo.maxXp}</span>
-          </div>
-          {#if pending.unitInfo.traits.length > 0}
-            <div class="traits">{t('Traits')}: {pending.unitInfo.traits.join(', ')}</div>
-          {/if}
-          {#if pending.unitInfo.attacks.length > 0}
-            <div class="attacks">
-              <div class="attacks-label">{t('Attacks')}</div>
-              <ul>
-                <!-- Keyed by index, not atk.name -- see SidePanel.svelte's own comment (bugs4.md #9):
-                     real units can have two same-named attacks (e.g. Peasant's melee + thrown "pitchfork"). -->
-                {#each pending.unitInfo.attacks as atk, i (i)}
-                  <li>
-                    <span class="atk-name">{atk.name}</span>
-                    <span class="atk-stats">{atk.damage}&times;{atk.numAttacks} {rangeType(atk)}</span>
-                  </li>
-                {/each}
-              </ul>
+        <div class="detail" data-testid="advancement-preview">
+          {#if shown}
+            {#if shown.image}
+              <IpfImage class="portrait" src={unitImageRef(shown.image, shown.side)} />
+            {/if}
+            <div class="name">{shown.name}</div>
+            <div class="type-name">{shown.typeName}</div>
+            <div class="subline">
+              <span class="level">{t('Lvl')} {shown.level}</span>
+              <span class="alignment">{alignmentName(shown.alignment ?? 'neutral')}</span>
+              <span class="race">{raceName(shown.raceId)}</span>
             </div>
+            <div class="stats">
+              <span class="hp">{t('HP:')} {shown.hp}/{shown.maxHp}</span>
+              <span class="sep">|</span>
+              <span class="xp">{t('XP:')} {shown.xp}/{shown.maxXp}</span>
+            </div>
+            {#if shown.traits.length > 0}
+              <div class="traits">{t('Traits')}: {shown.traits.join(', ')}</div>
+            {/if}
+            {#if shown.attacks.length > 0}
+              <div class="attacks">
+                <div class="attacks-label">{t('Attacks')}</div>
+                <ul>
+                  <!-- Keyed by index, not atk.name -- see SidePanel.svelte's own comment (bugs4.md #9):
+                       real units can have two same-named attacks (e.g. Peasant's melee + thrown "pitchfork"). -->
+                  {#each shown.attacks as atk, i (i)}
+                    <li>
+                      <span class="atk-name">{atk.name}</span>
+                      <span class="atk-stats">{atk.damage}&times;{atk.numAttacks} {rangeType(atk)}</span>
+                    </li>
+                  {/each}
+                </ul>
+              </div>
+            {/if}
           {/if}
         </div>
 
