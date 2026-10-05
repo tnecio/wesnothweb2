@@ -76,6 +76,7 @@
     type SelectedUnitInfo,
     type RecruitOption,
     type RecallOption,
+    type UnitListEntry,
     type AttackerWeaponOption,
     type SaveGameData,
     type EconomyInfo,
@@ -119,6 +120,7 @@
   } from './save/naming.js';
   import Modal from './Modal.svelte';
   import SaveGameDialog from './SaveGameDialog.svelte';
+  import UnitListDialog from './UnitListDialog.svelte';
   import LoadGameDialog from './LoadGameDialog.svelte';
   import { fetchStoryAssets, type StoryAssets } from './story/storyImages.js';
   import { formatHotkey, matchesHotkey, type Command } from './commands.js';
@@ -440,6 +442,9 @@
   });
   let audioSettings = $state<Readonly<AudioSettings>>(audio.settings);
   let preferencesOpen = $state(false);
+  /** Phase 24: the Unit List (`unitlist`, Alt+U). */
+  let unitListOpen = $state(false);
+  let unitListEntries = $state.raw<UnitListEntry[]>([]);
   let languageDialogOpen = $state(false);
   function changeAudio(patch: Partial<AudioSettings>): void {
     audio.updateSettings(patch);
@@ -2871,6 +2876,16 @@
   // Phase 24: the bindings come from the hotkey registry (`hotkeys.ts`: upstream's `hotkeys.cfg` defaults,
   // or the player's own), added by `bound`.
   let menuCommands = $derived<Command[]>(bound([
+    // Phase 24: upstream's game menu lists the unit list before loading and saving (`default.cfg`).
+    {
+      id: 'unit-list',
+      label: t('Unit List'),
+      enabled: phase === 'playing' || phase === 'replay',
+      handler: () => {
+        unitListEntries = session.unitListEntries;
+        unitListOpen = true;
+      },
+    },
     {
       id: 'save',
       label: `${t('Save Game')}...`,
@@ -3201,6 +3216,7 @@
       quitConfirmOpen ||
       labelSettingsOpen ||
       preferencesOpen ||
+      unitListOpen ||
       languageDialogOpen ||
       turnPrompt !== null ||
       helpBrowser.isOpen ||
@@ -3506,6 +3522,25 @@
   {#if languageDialogOpen}
     <LanguageDialog onClose={() => (languageDialogOpen = false)} />
   {/if}
+  {#if unitListOpen}
+    <UnitListDialog
+      units={unitListEntries}
+      onScrollTo={(x, y) => {
+        // `menu_handler::unit_list`: scroll there at once (WARP), then select the hex.
+        unitListOpen = false;
+        void boardView?.scrollToHex(x, y, 'warp');
+        session.showUnitAt(x, y);
+        sync();
+      }}
+      onRename={(x, y, name) => {
+        session.renameUnitAt(x, y, name);
+        unitListEntries = session.unitListEntries;
+        sync();
+      }}
+      onClose={() => (unitListOpen = false)}
+    />
+  {/if}
+
   {#if preferencesOpen}
     <PreferencesDialog audioSettings={audioSettings} onAudioChange={changeAudio} onClose={() => (preferencesOpen = false)} />
   {/if}

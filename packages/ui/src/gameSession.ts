@@ -118,6 +118,7 @@ import {
   recalculateFog,
   getVisibleUnit,
   isUnitVisibleToTeam,
+  unitInvisible,
   type RaiseEvent,
   connectedCastleTiles,
   recruitUnitFlow,
@@ -694,6 +695,17 @@ export interface AdvancementOption {
   readonly attacks: readonly WeaponInfo[];
 }
 
+/** Phase 24: one row of the Unit List (`units_dialog::build_unit_list_dialog`). */
+export interface UnitListEntry {
+  /** The unit as the detail pane and the columns show it. */
+  readonly info: SelectedUnitInfo;
+  /** `unit::can_advance`: the XP column shows `xp/max`, else a dash. */
+  readonly canAdvance: boolean;
+  readonly unrenamable: boolean;
+  /** The status column's icon: petrified, else poisoned, else slowed, else invisible; null for none. */
+  readonly statusImage: string | null;
+}
+
 /** `AdvancementOption.typeId` of an AMLA row: this prefix plus its index among `amlaOptions`. */
 export const AMLA_OPTION_PREFIX = 'amla:';
 
@@ -958,6 +970,7 @@ function savedUnitFields(u: Unit): SavedUnit {
     facing: u.facing === Direction.Indeterminate ? undefined : writeDirection(u.facing),
     resting: u.resting,
     hidden: u.hidden,
+    unrenamable: u.unrenamable || undefined,
     role: u.role,
     underlyingId: u.underlyingId,
     profile: u.profile,
@@ -1018,6 +1031,8 @@ export interface SavedUnit {
   facing?: string;
   resting?: boolean;
   hidden?: boolean;
+  /** Phase 24: `unrenamable=`. */
+  unrenamable?: boolean;
   role?: string;
   underlyingId?: number;
   profile?: string;
@@ -3308,6 +3323,14 @@ export class GameSession {
     if (!highlight) this.reachable = [];
   }
 
+  /**
+   * Phase 24: the Unit List's Scroll To ends with `display::select_hex`: the unit's hex is the selected
+   * one and the side panel shows the unit, with no reach drawn.
+   */
+  showUnitAt(x: number, y: number): void {
+    this.selectHexFromScript(new Location(x, y), false);
+  }
+
   /** `unit`'s reach as the board shows it for a unit the player isn't moving: another side's with its moves back (`unit_movement_resetter`). */
   private shownReachOf(unit: Unit): ReachableHexPoint[] {
     if (unit.side === this.activeSide || unit.incapacitated) return this.reachOf(unit);
@@ -3615,6 +3638,37 @@ export class GameSession {
     return f();
   }
 
+  /**
+   * Phase 24: the Unit List's rows (`menu_handler::unit_list`): the viewing side's units on the map, in
+   * the board's order.
+   */
+  get unitListEntries(): UnitListEntry[] {
+    return this.board
+      .allUnits()
+      .filter((u) => u.side === this.viewingSide)
+      .map((u) => ({
+        info: this.unitInfo(u),
+        canAdvance: u.advancesTo.length > 0 || u.modificationAdvances().length > 0,
+        unrenamable: u.unrenamable,
+        statusImage: u.incapacitated
+          ? 'misc/petrified.png'
+          : u.poisoned
+            ? 'misc/poisoned.png'
+            : u.slowed
+              ? 'misc/slowed.png'
+              : unitInvisible(this.board, u, u.location, false)
+                ? 'misc/invisible.png'
+                : null,
+      }));
+  }
+
+  /** Phase 24: the Unit List's Rename (`units_dialog::rename_unit`): not a recorded action, as upstream's is not. */
+  renameUnitAt(x: number, y: number, name: string): void {
+    const unit = this.board.unitAt(new Location(x, y));
+    if (!unit || unit.unrenamable) return;
+    unit.name = name.trim();
+  }
+
   /** Real Wesnoth's recall-dialog "Rename" action: sets a recall-list unit's display name directly (`Unit.name` is plain mutable data -- no engine action needed). No-op if `name` is empty (a blank name isn't a real rename, just noise). */
   renameRecallUnit(index: number, name: string): void {
     const leader = this.recruitingLeader;
@@ -3622,7 +3676,7 @@ export class GameSession {
     const trimmed = name.trim();
     if (!trimmed) return;
     const unit = this.board.recallList(leader.side)[index];
-    if (unit) unit.name = trimmed;
+    if (unit && !unit.unrenamable) unit.name = trimmed;
   }
 
   /**
@@ -5140,6 +5194,7 @@ export class GameSession {
       canRecruit: u.canRecruit,
       role: u.role,
       hidden: u.hidden,
+      unrenamable: u.unrenamable,
       underlyingId: u.underlyingId,
       facing: u.facing !== undefined ? parseDirection(u.facing) : undefined,
       profile: u.profile,

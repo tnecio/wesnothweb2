@@ -56,6 +56,7 @@ export const HOTKEY_COMMANDS: readonly HotkeyCommand[] = [
   { id: 'toggle-ellipses', upstream: 'toggleellipses', label: () => t('Toggle Ellipses'), defaults: [ctrl('e')] },
   { id: 'toggle-grid', upstream: 'togglegrid', label: () => t('Toggle Grid'), defaults: [ctrl('g')] },
   { id: 'undo', upstream: 'undo', label: () => t('Undo'), defaults: [{ key: 'u' }] },
+  { id: 'unit-list', upstream: 'unitlist', label: () => t('Unit List'), defaults: [{ key: 'u', alt: true }] },
   { id: 'zoom-default', upstream: 'zoomdefault', label: () => t('Default Zoom'), defaults: [{ key: '0' }] },
   // `zoomin` is bound twice: `=` and `+`, the shifted key on most layouts.
   { id: 'zoom-in', upstream: 'zoomin', label: () => t('Zoom In'), defaults: [{ key: '=' }, { key: '+', shift: true }] },
