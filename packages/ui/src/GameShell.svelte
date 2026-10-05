@@ -121,6 +121,7 @@
   import Modal from './Modal.svelte';
   import SaveGameDialog from './SaveGameDialog.svelte';
   import UnitListDialog from './UnitListDialog.svelte';
+  import StatisticsDialog from './StatisticsDialog.svelte';
   import LoadGameDialog from './LoadGameDialog.svelte';
   import { fetchStoryAssets, type StoryAssets } from './story/storyImages.js';
   import { formatHotkey, matchesHotkey, type Command } from './commands.js';
@@ -445,6 +446,8 @@
   /** Phase 24: the Unit List (`unitlist`, Alt+U). */
   let unitListOpen = $state(false);
   let unitListEntries = $state.raw<UnitListEntry[]>([]);
+  /** Phase 25: the statistics dialog (`statistics`, S), for the viewing side. */
+  let statisticsOpen = $state(false);
   let languageDialogOpen = $state(false);
   function changeAudio(patch: Partial<AudioSettings>): void {
     audio.updateSettings(patch);
@@ -2880,6 +2883,13 @@
   // Phase 24: the bindings come from the hotkey registry (`hotkeys.ts`: upstream's `hotkeys.cfg` defaults,
   // or the player's own), added by `bound`.
   let menuCommands = $derived<Command[]>(bound([
+    // Phase 25: upstream's game menu has the statistics just before the unit list (`default.cfg`).
+    {
+      id: 'statistics',
+      label: t('Statistics'),
+      enabled: phase === 'playing' || phase === 'ended' || phase === 'replay',
+      handler: () => (statisticsOpen = true),
+    },
     // Phase 24: upstream's game menu lists the unit list before loading and saving (`default.cfg`).
     {
       id: 'unit-list',
@@ -3221,6 +3231,7 @@
       labelSettingsOpen ||
       preferencesOpen ||
       unitListOpen ||
+      statisticsOpen ||
       languageDialogOpen ||
       turnPrompt !== null ||
       helpBrowser.isOpen ||
@@ -3526,6 +3537,18 @@
   {#if languageDialogOpen}
     <LanguageDialog onClose={() => (languageDialogOpen = false)} />
   {/if}
+  {#if statisticsOpen}
+    {@const viewing = session.board.getTeam(session.viewingSide)}
+    <StatisticsDialog
+      statistics={session.statistics}
+      saveId={viewing?.saveId || String(session.viewingSide)}
+      side={session.viewingSide}
+      sideName={viewing?.sideName ?? ''}
+      typeInfo={(id) => session.statsTypeInfo(id)}
+      onClose={() => (statisticsOpen = false)}
+    />
+  {/if}
+
   {#if unitListOpen}
     <UnitListDialog
       units={unitListEntries}

@@ -2975,6 +2975,12 @@ export class GameSession {
     this.board.statistics = new Statistics(record);
   }
 
+  /** Phase 25: a unit type as the statistics dialog lists it (`unit_types.find`); undefined when the scenario has no such type. */
+  statsTypeInfo(typeId: string): { name: string; image: string | null; cost: number } | undefined {
+    const t = this.snapshot.unitTypes[typeId];
+    return t ? { name: t.name, image: t.image ?? null, cost: t.cost } : undefined;
+  }
+
   /** Phase 25: the statistics dialog's view of a side (`statistics_t` over the campaign record). */
   get statistics(): Statistics {
     return this.board.statistics ?? new Statistics(this.campaignStats);

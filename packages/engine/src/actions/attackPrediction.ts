@@ -74,6 +74,40 @@ export interface BattleContextUnitStats {
   readonly swarmMax: number;
 }
 
+/**
+ * The plain `battle_context_unit_stats(dmg, blows, hitpoints, maximum_hp, hit_chance, ...)` constructor
+ * (`attack.hpp`): no specials, abilities or advancement. Upstream keeps it for its prediction tests, and the
+ * statistics dialog (Phase 25) uses it to work out how likely a number of hits was.
+ */
+export function plainBattleStats(damage: number, blows: number, hitpoints: number, maximumHp: number, hitChance: number): BattleContextUnitStats {
+  const maxHp = Math.max(1, maximumHp);
+  return {
+    isAttacker: true,
+    isPoisoned: false,
+    isSlowed: false,
+    slows: false,
+    drains: false,
+    petrifies: false,
+    poisons: false,
+    firststrike: false,
+    canAdvance: false,
+    experience: 0,
+    maxExperience: 1000000,
+    level: 1,
+    rounds: 1,
+    hp: Math.min(Math.max(0, hitpoints), maxHp),
+    maxHp,
+    chanceToHit: hitChance,
+    damage: Math.max(0, damage),
+    slowDamage: Math.max(0, damage),
+    drainPercent: 0,
+    drainConstant: 0,
+    numBlows: blows,
+    swarmMin: blows,
+    swarmMax: blows,
+  };
+}
+
 /** Mirrors the free function `swarm_blows()` from `actions/attack.hpp`. */
 export function swarmBlows(minBlows: number, maxBlows: number, hp: number, maxHp: number): number {
   if (hp >= maxHp) return maxBlows;
