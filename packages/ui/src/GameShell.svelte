@@ -1290,8 +1290,12 @@
    */
   async function showTurnDialog(): Promise<void> {
     if (!displayPrefs.peek().turnDialog || phase !== 'playing' || session.scenarioResult) return;
-    const team = session.board.getTeam(session.activeSide);
-    const name = team?.sideName || team?.userTeamName || '';
+    // `team::side_name`: the side's name, else its `current_player` -- the player's login, which the port
+    // has none of, so the side's leader stands in for it.
+    const side = session.activeSide;
+    const team = session.board.getTeam(side);
+    const leader = session.board.unitsForSide(side).find((u) => u.canRecruit);
+    const name = team?.sideName || (leader ? session.unitDisplayName(leader) : '') || fmt(tx('Side $side'), { side });
     await new Promise<void>((resolve) => {
       turnPrompt = { message: fmt(tw('It is now $name|’s turn'), { name }), done: resolve };
     });

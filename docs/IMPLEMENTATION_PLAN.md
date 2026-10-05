@@ -1690,7 +1690,8 @@ game's help is shown in `docs/reference/help/`). The milestone's first part is m
 unit's stat and ability page, from F1, the menus, the context menu, the unit dialogs, the side panel and
 `[open_help]`/`gui.show_help`. Every unit and terrain is listed, with no encountered-only filter (the
 user's call). **The rest resumed 2026-10-05** (user's call: Phase 24, then Phase 25), on branch
-`phase-24`, one PR, tag `v0.11.0`. The statistics dialog moves to Phase 25, which records what it
+`phase-24`, one PR, tag `v0.11.0` -- **delivered 2026-10-05** (all five stages below; see `PROGRESS.md`
+and `apps/web/scripts/phase24-playthrough.mjs`). The statistics dialog moves to Phase 25, which records what it
 shows. Language keeps its own dialog, as upstream's does.
 
 Stages (one commit each at least, suites green, `PROGRESS.md` entry):
@@ -2213,7 +2214,7 @@ pulled forward and delivered 2026-09-22.
    delivered 2026-10-03 (`v0.10.0`, fixes in `v0.10.1`). Every mainline
    single-player campaign but World Conquest ships.
 13. **Phase 24** (the rest of the advanced UI: preferences, hotkeys, unit
-   list, advancement preview), then **Phase 25** (statistics, the
+   list, advancement preview; delivered 2026-10-05), then **Phase 25** (statistics, the
    statistics dialog, achievements) -- the user's call, 2026-10-05, which
    moves achievements into Phase 25 rather than ahead of Phase 24.
 14. **Phase 27** (feature completeness assessment), then **Phase 28d**
