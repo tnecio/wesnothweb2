@@ -28,7 +28,7 @@ import * as zlib from 'node:zlib';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { openScenario, waitBoardReady, skipToPlay } from './lib/browserFlows.mjs';
+import { openScenario, waitBoardReady, skipToPlay, confirmEndTurnIfAsked } from './lib/browserFlows.mjs';
 
 const baseIndex = process.argv.indexOf('--base');
 const BASE = baseIndex === -1 ? 'http://localhost:5173' : process.argv[baseIndex + 1];
@@ -107,6 +107,8 @@ async function endTurn(page) {
   const status = async () => (await page.locator('.top-bar .status').innerText().catch(() => '')).replace(/\s+/g, ' ');
   const before = await status();
   await page.keyboard.press('Control+Space');
+  // Dead Water 1's recalled units keep their moves (v0.10.1), so the first End Turn asks first.
+  await confirmEndTurnIfAsked(page);
   for (let i = 0; i < 90; i++) {
     if (await page.$('.dismiss, .window[role="dialog"]')) await page.keyboard.press('Enter');
     const now = await status();
@@ -162,10 +164,15 @@ try {
   }
 
   // --- 4. upload it back ----------------------------------------------
+  const countBefore = names.length;
   await dialog.locator('input[type=file]').setInputFiles(file);
-  await page.waitForTimeout(4000);
-  names = (await dialog.locator('tbody tr td:first-child').allInnerTexts()).map((n) => n.replace(/\s+/g, ' ').trim());
-  check('uploading a Wesnoth save imports it', names.filter((n) => n.includes('DW-Invasion!')).length >= 2, names.join(' | ').slice(0, 200));
+  // Polled: on a slow machine the import and the list's refresh take longer than a fixed wait.
+  for (let i = 0; i < 60; i++) {
+    await page.waitForTimeout(1000);
+    names = (await dialog.locator('tbody tr td:first-child').allInnerTexts()).map((n) => n.replace(/\s+/g, ' ').trim());
+    if (names.length > countBefore) break;
+  }
+  check('uploading a Wesnoth save imports it', names.length > countBefore && names.filter((n) => n.includes('DW-Invasion!')).length >= 2, names.join(' | ').slice(0, 200));
   await page.keyboard.press('Escape');
 
   // --- 5. survive a full page reload ----------------------------------

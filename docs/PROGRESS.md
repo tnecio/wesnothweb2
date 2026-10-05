@@ -6490,3 +6490,14 @@ Branch `phase-25`, on top of `phase-24` (it uses the hotkey registry). Each part
   Thug Beater" is announced, recorded, and still earned in a new game. The statistics milestone is unit-tested
   (one attack's strikes, damage and expected damage on both sides; a real save's `[statistics]` summed over
   two scenarios) and checked in the browser by `apps/web/scripts/phase25-playthrough.mjs`.
+- **Browser checks.** `phase25-playthrough.mjs` passes: S shows the statistics before and after an attack
+  (one hit in three strikes at 60% reads 20.8%, the binomial percentile), the scenario menu lists "All
+  Scenarios" and the scenario, and the title screen's Achievements dialog shows The South Guard at 0/9, then
+  1/9 after an earned one is recorded and the page reloaded. Two older checks were stale and are fixed:
+  - `main-menu-playthrough.mjs` lists the new Achievements button, and its campaign order is now all 21
+    shipped campaigns (it still listed the 15 from before batches B3 and B4);
+  - `save-load-playthrough.mjs` answers "You have not started your turn yet" when ending Dead Water 1's
+    first turn (recalled units keep their moves since v0.10.1, so the turn never ended and no autosave was
+    written), and waits for an uploaded save to appear rather than a fixed 4 s, requiring the list to grow.
+
+  Both pass, as do the unit tests of every package, typecheck and lint.
