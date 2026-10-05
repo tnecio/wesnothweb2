@@ -296,6 +296,8 @@ export function fromWesnothSave(cfg: WmlConfig): ImportedWesnothSave {
         calls: snapshot.getNumber('random_calls', 0),
       },
       wesnothExtras: extras.toJSON(),
+      // Phase 25: the campaign's statistics, read as the game reads them.
+      ...(cfg.child('statistics') ? { statistics: cfg.child('statistics')!.toJSON() } : {}),
     },
     label: cfg.getString('label', ''),
     version: cfg.getString('version', ''),
@@ -534,10 +536,12 @@ export function toWesnothSave(
     mp.setAttribute('era_id', 'era_default');
     mp.setAttribute('experience_modifier', 100);
     mp.setAttribute('mp_use_map_settings', true);
-    out.addChild('statistics');
   } else if (options.version) {
     out.setAttribute('version', options.version);
   }
+  // Phase 25: `saved_game::write_general_info`'s `[statistics]`: ours, in place of the imported one.
+  out.removeChildren('statistics');
+  out.addChild('statistics', save.statistics ? WmlConfig.fromJSON(save.statistics) : new WmlConfig());
 
   // The `[side]` blocks the scenario declares are the templates for the
   // live ones: they carry recruit lists, controllers, team names and [ai]

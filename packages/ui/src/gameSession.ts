@@ -119,6 +119,8 @@ import {
   getVisibleUnit,
   isUnitVisibleToTeam,
   unitInvisible,
+  CampaignStats,
+  Statistics,
   type EffectEnv,
   type RaiseEvent,
   connectedCastleTiles,
@@ -1168,6 +1170,11 @@ export interface SaveGameData {
   wesnothExtras?: WmlConfigJson;
   /** Phase 18c: `[object] id=`s already taken (upstream's `[used_items]`). */
   usedItems?: string[];
+  /**
+   * Phase 25: the campaign's statistics so far, this scenario's last (`[statistics]`, as upstream's
+   * `campaign_stats_t::to_config`). Absent in older saves: those start a fresh record at load.
+   */
+  statistics?: WmlConfigJson;
   /** Phase 28c: `[disallow_end_turn]` in force (upstream's `can_end_turn`/`cannot_end_turn_reason`); absent when the turn may end. */
   endTurnForbidden?: { reason?: TStringJson };
   /** C1: `[end_turn]` ran and the side's turn has not ended yet (`game_data::end_turn_forced_`). */
@@ -1697,6 +1704,8 @@ export class GameSession {
     this.viewingSideValue = this.playerSide;
     this.board = gameBoardFromSnapshot(snapshot).board;
     this.resolveType = createTypeResolver(snapshot);
+    // Phase 25: `saved_game::expand_scenario`'s `statistics().new_scenario(name)`.
+    this.adoptCampaignStats(new CampaignStats());
     const seed = (options.seed ?? 0xc0ffee) >>> 0;
     this.mtRng = new MtRng(seed);
     if (options.actionSeeds === 'entropy') {
@@ -2951,7 +2960,24 @@ export class GameSession {
     // this turn earns the rest-heal at the start of its next one.
     for (const unit of this.board.unitsForSide(side)) unit.resting = true;
     yield* this.fireTurnRefreshEvents(side);
+    // Phase 25: `do_init_side`'s `statistics().reset_turn_stats(save_id_or_number)`.
+    this.board.statistics?.resetTurnStats(this.board.getTeam(side)?.saveId || String(side));
     this.playTurnSounds(side);
+  }
+
+  /** Phase 25: the campaign's statistics (`saved_game::statistics()`), recorded into through `board.statistics`. */
+  campaignStats!: CampaignStats;
+
+  /** `record` becomes this game's statistics, with a new entry for this scenario. */
+  private adoptCampaignStats(record: CampaignStats): void {
+    record.newScenario(this.scenarioName);
+    this.campaignStats = record;
+    this.board.statistics = new Statistics(record);
+  }
+
+  /** Phase 25: the statistics dialog's view of a side (`statistics_t` over the campaign record). */
+  get statistics(): Statistics {
+    return this.board.statistics ?? new Statistics(this.campaignStats);
   }
 
   /** The turn the time of day's ambient sound last played on (`did_tod_sound_this_turn_`). */
@@ -4771,12 +4797,14 @@ export class GameSession {
     const env = effectEnvFor(this.eventPump.ctx, unit);
     if (index < typeIds.length) {
       const result = advanceUnitTo(unit, this.resolveType(typeIds[index]!), 100, env);
+      this.board.statistics?.advanceUnit(this.board.statsUnit(unit));
       this.log.unshift(fmt(tx('$unit advances to $type!'), { unit: before, type: result.unit.type.name }));
       if (result.canAdvanceAgain) this.advancementQueue.unshift(unit);
     } else {
       const amla = amlas[index - typeIds.length];
       if (!amla) return;
       const result = advanceUnitAmla(unit, amla, env);
+      this.board.statistics?.advanceUnit(this.board.statsUnit(unit));
       this.log.unshift(fmt(tx('$unit gains $advancement!'), { unit: before, advancement: amla.getString('description', '') || tx('an advancement') }));
       if (result.canAdvanceAgain) this.advancementQueue.unshift(unit);
     }
@@ -4791,6 +4819,7 @@ export class GameSession {
     const variables = this.eventPump.ctx.variables.toConfig().toJSON();
     return {
       version: 2,
+      statistics: this.campaignStats.toConfig().toJSON(),
       turnNumber: this.turnNumber,
       activeSide: this.activeSide,
       scenarioResult: this.scenarioResult,
@@ -4854,6 +4883,10 @@ export class GameSession {
       this.log.unshift(tx("This save's map does not fit the scenario's; the scenario map is kept."));
     }
     if (data.variables) this.eventPump.ctx.variables.replaceAll(WmlConfig.fromJSON(data.variables));
+    if (data.statistics) {
+      this.campaignStats = CampaignStats.fromConfig(WmlConfig.fromJSON(data.statistics));
+      this.board.statistics = new Statistics(this.campaignStats);
+    }
     this.eventPump.ctx.choices.splice(0, this.eventPump.ctx.choices.length, ...(data.choices ?? []).map((c) => ({ ...c })));
     for (const unit of [...this.board.allUnits()]) {
       this.board.removeUnitAt(unit.location);
@@ -5322,6 +5355,8 @@ export class GameSession {
     // simply vanished in between (so the puzzle could only ever take its
     // "wrong password" branch).
     session.eventPump.ctx.variables.replaceAll(finished.eventPump.ctx.variables.toConfig());
+    // Phase 25: the campaign's statistics go on, with a new entry for this scenario.
+    session.adoptCampaignStats(finished.campaignStats.clone());
     return session;
   }
 

@@ -17,6 +17,7 @@ import { Unit } from './Unit.js';
 import { UnitType } from './UnitType.js';
 import { NONE_TERRAIN, TerrainTypeData, type MergeMode, type TerrainCode } from './Terrain.js';
 import type { WmlConfig } from '../wml/config.js';
+import type { Statistics, StatsUnit } from '../statistics/statistics.js';
 
 export class GameBoard {
   map: GameMap;
@@ -54,6 +55,18 @@ export class GameBoard {
    * Lets board-level rules like `[filter_location] time_of_day=` avoid depending on the session.
    */
   lawfulBonusAt: ((loc: Location) => number) | null = null;
+
+  /**
+   * Phase 25: where the game's actions record their statistics (`resources::controller->statistics()`):
+   * attacks, recruits, recalls and advancements. Null records nothing (a board used for a simulation).
+   */
+  statistics: Statistics | null = null;
+
+  /** What the statistics record of `unit`: its type, base type, cost and its side's `save_id_or_number`. */
+  statsUnit(unit: Unit): StatsUnit {
+    const saveId = this.getTeam(unit.side)?.saveId || String(unit.side);
+    return { typeId: unit.type.id, baseTypeId: unit.baseType.id, saveId, cost: unit.type.cost };
+  }
 
   constructor(map: GameMap) {
     this.map = map;

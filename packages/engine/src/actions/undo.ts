@@ -116,12 +116,14 @@ function undoStep(board: GameBoard, step: UndoStep, runEvent: UndoEventRunner): 
       return true;
     case 'recruit': {
       if (board.unitAt(step.loc) !== step.unit) return false;
+      board.statistics?.unRecruitUnit(board.statsUnit(step.unit));
       board.removeUnitAt(step.loc);
       board.getTeam(step.side)?.spendGold(-step.cost);
       return true;
     }
     case 'recall': {
       if (board.unitAt(step.loc) !== step.unit) return false;
+      board.statistics?.unRecallUnit(board.statsUnit(step.unit));
       board.removeUnitAt(step.loc);
       board.getTeam(step.side)?.spendGold(-step.cost);
       board.insertIntoRecallList(step.side, step.unit, step.index);
