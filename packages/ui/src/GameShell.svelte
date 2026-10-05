@@ -42,7 +42,7 @@
     CutsceneBeat,
     FakeUnitWalk,
   } from '@wesnothweb2/engine';
-  import { WmlConfig, parseConfig, type WmlConfigJson, playStoryMusic, extraHitSounds, GAME_SOUNDS, directionBetween, relativeDirection, tilesAdjacent, Direction, Location, unitCanAct, parseTerrainCode } from '@wesnothweb2/engine';
+  import { setMonteCarloAllowed, WmlConfig, parseConfig, type WmlConfigJson, playStoryMusic, extraHitSounds, GAME_SOUNDS, directionBetween, relativeDirection, tilesAdjacent, Direction, Location, unitCanAct, parseTerrainCode } from '@wesnothweb2/engine';
   import {
     type HexPoint,
     type UnitAnimationCue,
@@ -112,13 +112,16 @@
     autosaveName,
     manualSaveName,
     scenarioStartSaveName,
+    replaySaveName,
+    scenarioAutosaves,
     autosavesToDelete,
     DEFAULT_AUTO_SAVE_MAX,
   } from './save/naming.js';
+  import Modal from './Modal.svelte';
   import SaveGameDialog from './SaveGameDialog.svelte';
   import LoadGameDialog from './LoadGameDialog.svelte';
   import { fetchStoryAssets, type StoryAssets } from './story/storyImages.js';
-  import { matchesHotkey, type Command } from './commands.js';
+  import { formatHotkey, matchesHotkey, type Command } from './commands.js';
   import { hotkeyPrefs } from './hotkeys.js';
   import TopBar from './TopBar.svelte';
   import ContextMenu from './ContextMenu.svelte';
@@ -129,7 +132,7 @@
   import SidePanel from './SidePanel.svelte';
   import Minimap from './Minimap.svelte';
   import { createMinimapStyle } from './minimapStyle.js';
-  import { displayPrefs } from './displayPrefs.js';
+  import { displayPrefs, turboSpeed } from './displayPrefs.js';
   import { fetchTeamColors } from './teamColorsCache.js';
   import StoryViewer from './StoryViewer.svelte';
   import PreferencesDialog from './PreferencesDialog.svelte';
@@ -333,6 +336,37 @@
     overlayLabels = overlayLabels.filter((l) => l.id !== id);
   }
 
+  /**
+   * `display::announce`: a message in the middle of the map area, a third of the way down, for 1.6 s in
+   * `font::NORMAL_COLOR` at `SIZE_FLOAT_LABEL`. A new one replaces the last (`discard_previous`).
+   */
+  function announce(message: string): void {
+    const area = boardView?.viewportRect();
+    showFloatingLabel({
+      kind: 'overlay',
+      id: ANNOUNCE_LABEL_ID,
+      text: message,
+      size: 24,
+      color: { r: 221, g: 221, b: 221 },
+      duration: 1600,
+      fadeTime: 0,
+      halign: 'center',
+      valign: 'top',
+      x: 0,
+      y: area ? area.height / 3 : 0,
+    });
+  }
+  /** Out of the range the game's own labels number theirs from (1 up). */
+  const ANNOUNCE_LABEL_ID = -1;
+
+  /** `hotkey_handler::toggle_accelerated_speed`. */
+  function toggleAcceleratedSpeed(): void {
+    const on = !displayPrefs.peek().turbo;
+    displayPrefs.update({ turbo: on });
+    const keys = hotkeyPrefs.bindings('accelerated').map(formatHotkey).join(', ');
+    announce(on ? `${tw('Accelerated speed enabled!')}\n${fmt(tw('(press $hk to disable)'), { hk: keys })}` : tw('Accelerated speed disabled!'));
+  }
+
   /** Draws a floating label the game asked for: a hex's on the board, an overlay one over the map. */
   function showFloatingLabel(request: FloatingLabelRequest): void {
     if (request.kind === 'hex') {
@@ -519,12 +553,16 @@
    * Phase 21: a campaign is completed by winning its last scenario (`playcampaign.cpp`: victory with no next
    * scenario), recorded per difficulty for the campaign dialog's laurels -- whether or not the credits roll.
    */
+  // Phase 24: "Allow damage calculation with Monte Carlo simulation", for the combat prediction (and the AI's).
+  $effect(() => setMonteCarloAllowed(displayPrefs.value.monteCarlo));
+
   let completionRecorded = false;
   let creditsRequested = false;
   $effect(() => {
     if (phase !== 'ended' || completionRecorded || !campaign) return;
     if (session.scenarioResult !== 'victory' || session.nextScenarioId !== null) return;
     completionRecorded = true;
+    void endOfScenarioSaves();
     void markCampaignCompleted(campaign.id, activeSnapshot.difficulty ?? '').catch((err) => console.error('[menu] could not record completion:', err));
   });
   /**
@@ -997,7 +1035,8 @@
         await boardView?.whenReady();
         break;
       case 'delay':
-        await new Promise((r) => setTimeout(r, Math.min(beat.ms, MAX_BEAT_MS)));
+        // `[delay] accelerate=yes` (`game_display::delay`): Accelerated speed shortens it.
+        await new Promise((r) => setTimeout(r, Math.min(beat.accelerate ? beat.ms / turboSpeed() : beat.ms, MAX_BEAT_MS)));
         break;
       case 'scrollTo':
         // wesnoth.interface.scroll_to_hex: only_if_needed picks ONSCREEN, immediate the WARP variant; the
@@ -1233,6 +1272,25 @@
     // is what lets a campaign be restarted from any scenario it reached
     // rather than only from the turn you last played.
     await autosave('scenario-start');
+    await showTurnDialog();
+  }
+
+  /** Phase 24: "It is now X's turn" over a hidden board (`show_turn_dialog`); null when not shown. */
+  let turnPrompt = $state<{ message: string; done: () => void } | null>(null);
+
+  /**
+   * `playsingle_controller::show_turn_dialog`, at the start of each human turn when the "Turn prompt"
+   * preference (`turn_dialog`) is on: the board is blindfolded until the player dismisses it, so a hotseat
+   * player does not see the next one's side.
+   */
+  async function showTurnDialog(): Promise<void> {
+    if (!displayPrefs.peek().turnDialog || phase !== 'playing' || session.scenarioResult) return;
+    const team = session.board.getTeam(session.activeSide);
+    const name = team?.sideName || team?.userTeamName || '';
+    await new Promise<void>((resolve) => {
+      turnPrompt = { message: fmt(tw('It is now $name|’s turn'), { name }), done: resolve };
+    });
+    turnPrompt = null;
   }
 
   /**
@@ -1711,6 +1769,16 @@
    * already applied every blow before this ever plays), and previewing/
    * spawning for whichever combatant that blow actually landed on.
    */
+  /**
+   * One attack's blows on the board, the camera brought to it first. Phase 24: with Show combat off
+   * (`unit_display::unit_attack`'s `show_combat` guard) nothing is shown: no animation, no labels.
+   */
+  async function playAttack(info: LastAttackAnimation, attackerAt: Location, defenderAt: Location): Promise<void> {
+    if (!boardView || !displayPrefs.peek().showCombat) return;
+    await followAttack(attackerAt, defenderAt);
+    await boardView.playAnimationSequence(buildBlowAnimationCues(info), 1, makeBlowPreview(info));
+  }
+
   function makeBlowPreview(info: LastAttackAnimation): (beatIndex: number) => void {
     const attackerKey = spriteKey({
       underlyingId: session.renderKeyFor(info.attacker),
@@ -1730,6 +1798,11 @@
     return (beatIndex: number) => {
       const blow = info.result.blows[beatIndex];
       if (!blow || !boardView) return;
+      if (!blow.hit && displayPrefs.peek().showAttackMissIndicator) {
+        // Phase 24: `attack::perform_hit`'s "miss", in `unit_attack`'s red over the unit missed.
+        const at = blow.attackerTurn ? info.defenderLocation : info.attackerLocation;
+        boardView.spawnHexLabel(at.x, at.y, tw('attack^miss'), 0xff0000);
+      }
       if (blow.hit) {
         if (blow.attackerTurn) {
           defenderHp = Math.max(0, defenderHp - blow.damage);
@@ -2048,6 +2121,8 @@
     if (!boardView) return;
     for (const outcome of outcomes) {
       if (skipOtherSidesAnimations) return;
+      // Skip AI moves covers an AI side's turn start too, where its own units heal.
+      if (displayPrefs.peek().skipAiMoves && session.board.getTeam(outcome.unit.side)?.controller === 'ai' && phase !== 'replay') continue;
       const key = spriteKey({
         underlyingId: session.renderKeyFor(outcome.unit),
         typeId: outcome.unit.type.id,
@@ -2086,10 +2161,7 @@
       const result = await session.confirmAttack();
       const anim = session.lastAttackAnimation;
       session.lastAttackAnimation = null;
-      if (anim && boardView) {
-        await followAttack(anim.attacker.location, anim.defender.location);
-        await boardView.playAnimationSequence(buildBlowAnimationCues(anim), 1, makeBlowPreview(anim));
-      }
+      if (anim) await playAttack(anim, anim.attacker.location, anim.defender.location);
       return result;
     });
     sync(message);
@@ -2218,13 +2290,13 @@
    * snapshots, not just the final one.
    */
   async function playAiAnimations(events: readonly AiAnimationEvent[]): Promise<void> {
-    if (!boardView) return;
+    // Phase 24: Skip AI moves (`play_controller::is_skipping_actions`): the final sync() shows the result.
+    if (!boardView || displayPrefs.peek().skipAiMoves) return;
     for (const event of events) {
       // Skip Animation: the final sync() shows where everything ended up.
       if (skipOtherSidesAnimations) return;
       if (event.kind === 'attack') {
-        await followAttack(event.attackerLocation, event.defenderLocation);
-        await boardView.playAnimationSequence(buildBlowAnimationCues(event), 1, makeBlowPreview(event));
+        await playAttack(event, event.attackerLocation, event.defenderLocation);
         // Real, reported bug (bugs4.md #3): without this, a unit that died
         // on an early event of this same AI turn kept its stale sprite on
         // screen through every later event's animation too (only actually
@@ -2341,6 +2413,8 @@
       // `endTurn` has cycled through every AI side and come back round, is
       // here.
       await autosave();
+      // `play_human_turn`: the turn prompt, then `execute_gotos`.
+      await showTurnDialog();
       await continueStandingOrders();
     } finally {
       turnStarting = false;
@@ -2377,6 +2451,28 @@
     } catch (err) {
       console.error('[autosave] failed:', err);
       sync(`Autosave failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * Phase 24: `campaign_controller::play_game` once a scenario is won: "Delete auto-saves at the end of
+   * scenarios" (`delete_saves`, `clean_saves(label)`) and "Save replays at the end of scenarios"
+   * (`save_replays`, unless `[endlevel] replay_save=no`). Never throws: a failed save must not stop the
+   * campaign going on.
+   */
+  async function endOfScenarioSaves(): Promise<void> {
+    const prefs = displayPrefs.peek();
+    try {
+      const details = saveDetails('replay');
+      const label = details.label ?? '';
+      if (prefs.deleteSaves) {
+        for (const name of scenarioAutosaves(await listSaves(), label)) await deleteSave(name);
+      }
+      if (prefs.saveReplays && session.endLevelPresentation?.replaySave !== false) {
+        await saveGame(replaySaveName(label, new Date()), details, session.toSaveData());
+      }
+    } catch (err) {
+      console.error('[saves] end of scenario:', err);
     }
   }
 
@@ -2547,10 +2643,7 @@
         if (heals) await playHealAnimations(heals);
         const anim = session.lastAttackAnimation;
         session.lastAttackAnimation = null;
-        if (anim && boardView) {
-          await followAttack(anim.attacker.location, anim.defender.location);
-          await boardView.playAnimationSequence(buildBlowAnimationCues(anim), 1, makeBlowPreview(anim));
-        }
+        if (anim) await playAttack(anim, anim.attacker.location, anim.defender.location);
       } finally {
         eventsRunning = false;
       }
@@ -2727,6 +2820,7 @@
     continuing = true;
     continueError = null;
     try {
+      await endOfScenarioSaves();
       // The campaign carries its difficulty into every following scenario, as the real game does.
       const [nextSnapshot, nextStoryAssets] = await Promise.all([snapshotFor(nextId), storyAssetsFor(nextId)]);
       const nextSession = GameSession.startNextScenario(session, nextSnapshot, SESSION_OPTIONS);
@@ -3054,6 +3148,9 @@
     { id: 'zoom-in', label: t('Zoom In'), enabled: true, handler: () => boardView?.zoomStep(true) },
     { id: 'zoom-out', label: t('Zoom Out'), enabled: true, handler: () => boardView?.zoomStep(false) },
     { id: 'zoom-default', label: t('Default Zoom'), enabled: true, handler: () => boardView?.zoomDefault() },
+    // Phase 24: `toggle_accelerated_speed`, announced over the map as upstream does.
+    { id: 'accelerated', label: t('Toggle Accelerated Speed'), enabled: true, handler: toggleAcceleratedSpeed },
+    { id: 'toggle-ellipses', label: t('Toggle Ellipses'), enabled: true, handler: () => displayPrefs.update({ showSideColors: !displayPrefs.peek().showSideColors }) },
     // The game theme has no menu entry for the grid either; upstream's is a hotkey (and a preference).
     { id: 'toggle-grid', label: t('Toggle Grid'), enabled: true, handler: () => displayPrefs.update({ grid: !displayPrefs.peek().grid }) },
     { id: 'cursor-left', label: tx('Cursor Left'), enabled: phase === 'playing', handler: () => moveCursor(-1, 0) },
@@ -3105,6 +3202,7 @@
       labelSettingsOpen ||
       preferencesOpen ||
       languageDialogOpen ||
+      turnPrompt !== null ||
       helpBrowser.isOpen ||
       pendingAdvancement !== null ||
       pendingPreview !== null ||
@@ -3286,6 +3384,18 @@
 
   {#if currentGuiDialog}
     <GuiDialog dialog={currentGuiDialog.dialog} onAnswer={(result) => answerGuiDialog?.(result)} />
+  {/if}
+
+  {#if turnPrompt}
+    {@const prompt = turnPrompt}
+    <!-- The blindfold: the board stays hidden behind the turn prompt. -->
+    <div class="blindfold"></div>
+    <Modal onClose={prompt.done} width="24rem" labelledBy={prompt.message}>
+      {#snippet children()}
+        <p class="turn-prompt" data-testid="turn-prompt">{prompt.message}</p>
+        <div class="turn-prompt-ok"><button data-autofocus onclick={prompt.done}>{t('OK')}</button></div>
+      {/snippet}
+    </Modal>
   {/if}
 
   {#if screenTint}
@@ -3470,6 +3580,31 @@
 </div>
 
 <style>
+  /* Phase 24: the turn prompt's blindfold, under the prompt itself (Modal is z-index 200). */
+  .blindfold {
+    position: fixed;
+    inset: 0;
+    z-index: 199;
+    background: #000;
+  }
+  .turn-prompt {
+    margin: 0.4rem 0 0.8rem;
+    text-align: center;
+  }
+  .turn-prompt-ok {
+    display: flex;
+    justify-content: center;
+  }
+  .turn-prompt-ok button {
+    font: inherit;
+    padding: 0.4rem 1.4rem;
+    border-radius: 4px;
+    border: 1px solid #4a8ab8;
+    background: #2a5a86;
+    color: #d7e8f5;
+    cursor: pointer;
+  }
+
   /* Phase 17: [color_adjust]/[screen_fade] over the whole shell. */
   .screen-tint {
     position: fixed;

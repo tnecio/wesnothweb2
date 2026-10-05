@@ -34,6 +34,19 @@ export interface TerrainFrame {
 /** One terrain image layer: a single image, or an animation cycle of frames. */
 export interface TerrainLayer {
   frames: TerrainFrame[]
+  /** The rule's `[image] is_water=yes`: "Animate water" can hold it still (`terrain_builder::tile::rebuild_cache`). */
+  water?: boolean
+}
+
+/** Phase 24: `animate_map` and `animate_water`. Either off holds the cycles it covers on their first frame. */
+export interface TerrainAnimation {
+  map: boolean
+  water: boolean
+}
+
+/** Whether an animated layer runs under `animation` (`display::draw_hex`, `rebuild_cache`). */
+export function layerAnimates(layer: Pick<TerrainLayer, 'water'>, animation: TerrainAnimation): boolean {
+  return animation.map && (!layer.water || animation.water)
 }
 
 /**
@@ -81,6 +94,7 @@ export function makeLayerSprite(
   layer: TerrainLayer,
   px: number,
   py: number,
+  animation: TerrainAnimation = { map: true, water: true },
 ): PIXI.Sprite | PIXI.AnimatedSprite | null {
   const frames = layer.frames
   if (!frames || frames.length === 0) return null
@@ -100,7 +114,7 @@ export function makeLayerSprite(
       usable.map(({ f, tex }) => ({ texture: tex, time: Math.max(1, f.durationMs) })),
     )
     anim.animationSpeed = 1
-    anim.play()
+    if (layerAnimates(layer, animation)) anim.play()
     sprite = anim
   }
 

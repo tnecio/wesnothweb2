@@ -86,7 +86,7 @@ import { squareParentheticalSplit } from './animation/frame.js';
 import { sampleAnimation, animationTimeline, animationSoundCues, sampleParticles, sampleUnitHalo, type OverlaySample, type SoundCue } from './animation/playback.js';
 import { HEX_STEP_MS, type UnitAnimationDef } from './animation/unitAnimation.js';
 import { LABEL_FONT_SIZE, parseHaloFrames, type MapItemPoint, type MapLabelPoint } from './mapItems.js';
-import { makeLayerSprite } from './terrainPositioning.js';
+import { layerAnimates, makeLayerSprite, type TerrainAnimation } from './terrainPositioning.js';
 import { ownTerrainGraphicsRules, type BuildingRule } from './terrain/terrainGraphicsRules.js';
 import { layoutTerrain, type TerrainLayout } from './terrain/terrainLayout.js';
 import { computeTerrainLayout } from './terrain/terrainLayoutClient.js';
@@ -676,6 +676,12 @@ export class SnapshotBoard {
    * is_shrouded, terrain is not drawn at all") without rebuilding it.
    */
   private readonly terrainHexContainers = new Map<string, { bg?: PIXI.Container; fg?: PIXI.Container }>();
+  /** Phase 24: `show_side_colors`, the ellipses under units (`setShowSideColors`). */
+  private showSideColors = true;
+  /** Phase 24: "Animate map" and "Animate water" (`setTerrainAnimation`). */
+  private terrainAnimation: TerrainAnimation = { map: true, water: true };
+  /** The terrain's animation cycles, so a change to `terrainAnimation` reaches the ones already drawn. */
+  private animatedTerrain: { sprite: PIXI.AnimatedSprite; water: boolean }[] = [];
   /**
    * Floating damage/heal numerals (`unit_display`'s `float_text`) -- rising,
    * fading red (damage) / green (heal) numbers drawn above a unit's hex.
@@ -948,6 +954,7 @@ export class SnapshotBoard {
         for (const child of layer.removeChildren()) child.destroy({ children: true });
       }
       this.terrainHexContainers.clear();
+      this.animatedTerrain = [];
       await this.drawTerrain();
       this.lastFogShroudKey = null; // the terrain was rebuilt: the overlay must be too
       this.updateFogShroud(this.lastFogShroud);
@@ -1022,7 +1029,8 @@ export class SnapshotBoard {
       if (hex.bg.length > 0) {
         const c = hexContainer();
         for (const layer of hex.bg) {
-          const sprite = makeLayerSprite(layer, hex.cx, hex.cy);
+          const sprite = makeLayerSprite(layer, hex.cx, hex.cy, this.terrainAnimation);
+          if (sprite instanceof PIXI.AnimatedSprite) this.animatedTerrain.push({ sprite, water: !!layer.water });
           if (sprite) c.addChild(sprite);
         }
         this.terrainLayer.addChild(c);
@@ -1031,7 +1039,8 @@ export class SnapshotBoard {
       if (hex.fg.length > 0) {
         const c = hexContainer();
         for (const layer of hex.fg) {
-          const sprite = makeLayerSprite(layer, hex.cx, hex.cy);
+          const sprite = makeLayerSprite(layer, hex.cx, hex.cy, this.terrainAnimation);
+          if (sprite instanceof PIXI.AnimatedSprite) this.animatedTerrain.push({ sprite, water: !!layer.water });
           if (sprite) c.addChild(sprite);
         }
         this.terrainForegroundLayer.addChild(c);
@@ -1157,7 +1166,9 @@ export class SnapshotBoard {
    */
   private async updateEllipse(visual: UnitVisual, unit: SnapshotUnit): Promise<void> {
     if (!visual.sprite) return;
-    const base = ellipseImageBase(unit, this.selectedHexKey === `${unit.x},${unit.y}`);
+    const selected = this.selectedHexKey === `${unit.x},${unit.y}`;
+    // Phase 24: "Team color indicators" off leaves only the selected unit's (`unit_drawer::redraw_unit`).
+    const base = this.showSideColors || selected ? ellipseImageBase(unit, selected) : null;
     const colorId = this.sideColorId(unit.side);
     const key = base === null ? null : `${base}|${colorId}`;
     if (key === visual.lastEllipseKey) return;
@@ -2094,9 +2105,10 @@ export class SnapshotBoard {
    * C1: `game_display::float_label` (`[floating_text]`, `wesnoth.interface.float_label`): `text` rising from
    * the middle of the top edge of hex (`x`, `y`) at 100 px a second, for a second, then gone (no fade:
    * `set_lifetime(lifetime, 0)`). `SIZE_FLOAT_LABEL` (24), outlined, in `color`. Board coordinates, so size
-   * and speed follow the zoom as upstream's do.
+   * and speed follow the zoom as upstream's do. `speed` is `display::turbo_speed`: the label lives
+   * `1 / speed` seconds and rises `speed` times faster.
    */
-  spawnHexLabel(x: number, y: number, text: string, color: number): void {
+  spawnHexLabel(x: number, y: number, text: string, color: number, speed = 1): void {
     if (text === '') return;
     const { x: cx, y: cy } = hexToPixel(toHexCoord(x, y));
     const label = new PIXI.Text({
@@ -2107,7 +2119,7 @@ export class SnapshotBoard {
     const startY = cy - HEX_ROW_HEIGHT / 2;
     label.position.set(cx, startY);
     this.floatingLayer.addChild(label);
-    const lifetimeMs = 1000;
+    const lifetimeMs = 1000 / speed;
     const start = performance.now();
     const tick = (): void => {
       if (label.destroyed) return;
@@ -2117,7 +2129,7 @@ export class SnapshotBoard {
         label.destroy();
         return;
       }
-      label.position.y = startY - 0.1 * elapsed;
+      label.position.y = startY - 0.1 * speed * elapsed;
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -2254,6 +2266,32 @@ export class SnapshotBoard {
     return this.itemsUpdate;
   }
 
+  /** Phase 24: "Team color indicators" (`show_side_colors`, toggled by `toggleellipses`), redrawn at once. */
+  setShowSideColors(on: boolean): void {
+    if (on === this.showSideColors) return;
+    this.showSideColors = on;
+    for (const visual of this.unitVisuals.values()) void this.updateEllipse(visual, visual.lastUnit);
+  }
+
+  /**
+   * Phase 24: "Animate map" (`animate_map`: terrain and village flags hold their first frame) and "Animate
+   * water" (`animate_water`: the `is_water` terrain images hold still), applied to what is already drawn.
+   */
+  setTerrainAnimation(animation: TerrainAnimation): void {
+    if (animation.map === this.terrainAnimation.map && animation.water === this.terrainAnimation.water) return;
+    this.terrainAnimation = { ...animation };
+    for (const { sprite, water } of this.animatedTerrain) {
+      if (sprite.destroyed) continue;
+      if (layerAnimates({ water }, animation)) sprite.play();
+      else sprite.gotoAndStop(0);
+    }
+    for (const child of this.villageLayer.children) {
+      if (!(child instanceof PIXI.AnimatedSprite) || child.totalFrames < 2) continue;
+      if (animation.map) child.play();
+      else child.gotoAndStop(0);
+    }
+  }
+
   /**
    * Phase 18: draws (replacing any previous) the map labels the viewing
    * side sees. As `terrain_label::recalculate`: centred on the hex, its
@@ -2301,7 +2339,8 @@ export class SnapshotBoard {
         flag.height = TILE_SIZE;
         // One phase per side, as upstream animates one flag per side.
         flag.gotoAndPlay(this.flagStartFrame(v.side, frames.length));
-        if (frames.length === 1) flag.stop();
+        // "Animate map" off: `display::draw_hex` shows each flag's first frame.
+        if (frames.length === 1 || !this.terrainAnimation.map) flag.gotoAndStop(0);
         this.villageLayer.addChild(flag);
       }
     })();

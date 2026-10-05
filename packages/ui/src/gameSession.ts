@@ -1954,10 +1954,10 @@ export class GameSession {
    * ended through `[endlevel]`; null otherwise (e.g. a leader kill), which
    * means upstream's defaults.
    */
-  get endLevelPresentation(): { endText?: string; endTextDuration?: number; endCredits?: boolean; lingerMode?: boolean; carryoverReport?: boolean } | null {
+  get endLevelPresentation(): { endText?: string; endTextDuration?: number; endCredits?: boolean; lingerMode?: boolean; carryoverReport?: boolean; replaySave?: boolean } | null {
     const endLevel = this.eventPump.ctx.endLevel;
     return endLevel
-      ? { endText: endLevel.endText, endTextDuration: endLevel.endTextDuration, endCredits: endLevel.endCredits, lingerMode: endLevel.lingerMode, carryoverReport: endLevel.carryoverReport }
+      ? { endText: endLevel.endText, endTextDuration: endLevel.endTextDuration, endCredits: endLevel.endCredits, lingerMode: endLevel.lingerMode, carryoverReport: endLevel.carryoverReport, replaySave: endLevel.replaySave }
       : null;
   }
 

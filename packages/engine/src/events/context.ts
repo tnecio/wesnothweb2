@@ -120,6 +120,8 @@ export interface EndLevelState {
   carryoverReport?: boolean;
   /** `linger_mode=` (default yes): whether the player stays on the map before the scenario is left. */
   lingerMode?: boolean;
+  /** `replay_save=` (default yes): whether a replay is saved when the scenario is won ("Save replays"). */
+  replaySave?: boolean;
   /** `music=`: the tracks to choose the stinger from, in place of the scenario's `victory_music=`/`defeat_music=`. */
   music?: string[];
 }

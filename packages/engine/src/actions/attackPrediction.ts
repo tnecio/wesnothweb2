@@ -563,6 +563,16 @@ export function setPredictionRandom(rng: PredictionRandom | null): void {
   predictionRandom = rng;
 }
 
+let monteCarloAllowed = true;
+
+/**
+ * The player's "Allow damage calculation with Monte Carlo simulation" preference
+ * (`damage_prediction_allow_monte_carlo_simulation`, on): off, even a very complex fight is calculated exactly.
+ */
+export function setMonteCarloAllowed(on: boolean): void {
+  monteCarloAllowed = on;
+}
+
 function predictionRng(): PredictionRandom {
   predictionRandom ??= new RngDeterministic(new MtRng(0));
   return predictionRandom;
@@ -1088,7 +1098,7 @@ export class Combatant {
     const split = splitSummary(this.stats, this.summary);
     const oppSplit = splitSummary(opponent.stats, opponent.summary);
 
-    if (fightComplexity(split.length, oppSplit.length, this.stats, opponent.stats) > MONTE_CARLO_SIMULATION_THRESHOLD) {
+    if (fightComplexity(split.length, oppSplit.length, this.stats, opponent.stats) > MONTE_CARLO_SIMULATION_THRESHOLD && monteCarloAllowed) {
       // A very complex fight: a Monte Carlo simulation instead of exact probabilities.
       complexFight(true, this.stats, opponent.stats, this.stats.numBlows, opponent.stats.numBlows, this.summary, opponent.summary, notHit, levelupConsidered, split, oppSplit, this.slowed, opponent.slowed);
     } else if (split.length === 1 && oppSplit.length === 1) {

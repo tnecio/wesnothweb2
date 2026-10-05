@@ -12,6 +12,7 @@
   import Modal from './Modal.svelte';
   import { fmt, formatDateTime, t, tw, tx } from './i18n/locale.js';
   import type { SaveMeta } from './persistence.js';
+  import { displayPrefs } from './displayPrefs.js';
 
   let {
     saves,
@@ -53,6 +54,8 @@
     campaignFilter === '' ? saves : saves.filter((s) => (s.campaignId ?? '') === campaignFilter),
   );
   let selected = $derived(filtered.find((s) => s.name === selectedName) ?? null);
+  /** Phase 24: a replay save always opens its replay (`game_load`: the toggle checked and inactive). */
+  let replaySave = $derived(selected?.kind === 'replay');
   /** Campaign ids actually present in the list, so the filter never offers an empty option. */
   let campaignsPresent = $derived([...new Set(saves.map((s) => s.campaignId).filter((id): id is string => !!id))]);
 
@@ -64,6 +67,7 @@
   function kindLabel(kind: SaveMeta['kind']): string {
     if (kind === 'autosave') return tx('Auto');
     if (kind === 'scenario-start') return tx('Start');
+    if (kind === 'replay') return t('Replay');
     return '';
   }
 
@@ -79,7 +83,8 @@
 
   function handleDelete(): void {
     if (!selected) return;
-    if (confirmingDelete !== selected.name) {
+    // Phase 24: "Confirm deleting saves" (`ask_delete`) off deletes on the first press.
+    if (displayPrefs.peek().askDelete && confirmingDelete !== selected.name) {
       confirmingDelete = selected.name;
       return;
     }
@@ -156,7 +161,7 @@
               <tr
                 class:selected={save.name === selectedName}
                 onclick={() => select(save.name)}
-                ondblclick={() => onLoad(save.name, showReplay)}
+                ondblclick={() => onLoad(save.name, showReplay || save.kind === 'replay')}
               >
                 <td>
                   <button type="button" class="row-button" data-list-option onclick={() => select(save.name)}>
@@ -213,11 +218,17 @@
       <div class="spacer"></div>
       {#if allowReplay}
         <label class="filter replay-toggle">
-          <input type="checkbox" bind:checked={showReplay} data-testid="show-replay" />
+          <input
+            type="checkbox"
+            checked={showReplay || replaySave}
+            disabled={replaySave}
+            onchange={(e) => (showReplay = e.currentTarget.checked)}
+            data-testid="show-replay"
+          />
           {t('Show replay')}
         </label>
       {/if}
-      <button class="primary" data-autofocus disabled={!selected || busy} onclick={() => selected && onLoad(selected.name, showReplay)}>
+      <button class="primary" data-autofocus disabled={!selected || busy} onclick={() => selected && onLoad(selected.name, showReplay || replaySave)}>
         {t('Load')}
       </button>
       <button onclick={onCancel}>{t('Cancel')}</button>

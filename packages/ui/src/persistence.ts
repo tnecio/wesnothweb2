@@ -25,8 +25,12 @@ const DB_VERSION = 2;
 const STORE_NAME = 'saves';
 const SETTINGS_STORE = 'settings';
 
-/** Why a save exists, mirroring upstream's three save flavours (`savegame.hpp`). */
-export type SaveKind = 'manual' | 'autosave' | 'scenario-start';
+/**
+ * Why a save exists, mirroring upstream's save flavours (`savegame.hpp`). Phase 24: `replay` is
+ * `replay_savegame`, written when a scenario is won with "Save replays at the end of scenarios" on; it
+ * always loads into its replay, as upstream's does.
+ */
+export type SaveKind = 'manual' | 'autosave' | 'scenario-start' | 'replay';
 
 export interface SaveMeta {
   name: string;

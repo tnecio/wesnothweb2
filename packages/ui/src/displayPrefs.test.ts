@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_DISPLAY_PREFS, parseDisplayPrefs } from './displayPrefs.js';
+import { DEFAULT_DISPLAY_PREFS, parseDisplayPrefs, turboSpeed } from './displayPrefs.js';
 
 describe('parseDisplayPrefs', () => {
   it('gives upstream\'s defaults for nothing, garbage, or the wrong shape', () => {
@@ -30,5 +30,31 @@ describe('parseDisplayPrefs', () => {
   it("Phase 28b: automatic moves are on unless disabled (upstream's disable_auto_moves, off)", () => {
     expect(parseDisplayPrefs(null).disableAutoMoves).toBe(false);
     expect(parseDisplayPrefs('{"disableAutoMoves": true}').disableAutoMoves).toBe(true);
+  });
+
+  it("Phase 24: upstream's defaults, and Accelerated speed only at one of the slider's steps", () => {
+    expect(parseDisplayPrefs(null)).toMatchObject({
+      turbo: false,
+      turboSpeed: 2,
+      skipAiMoves: false,
+      turnDialog: false,
+      saveReplays: true,
+      deleteSaves: false,
+      floatingLabels: true,
+      showSideColors: true,
+      animateMap: true,
+      animateWater: true,
+      showCombat: true,
+      askDelete: true,
+      showAttackMissIndicator: false,
+      monteCarlo: true,
+    });
+    expect(parseDisplayPrefs('{"turboSpeed": 8}').turboSpeed).toBe(8);
+    expect(parseDisplayPrefs('{"turboSpeed": 7}').turboSpeed).toBe(2);
+  });
+
+  it('display::turbo_speed: the chosen speed while Accelerated speed is on, else 1', () => {
+    expect(turboSpeed({ ...DEFAULT_DISPLAY_PREFS, turboSpeed: 4 })).toBe(1);
+    expect(turboSpeed({ ...DEFAULT_DISPLAY_PREFS, turbo: true, turboSpeed: 4 })).toBe(4);
   });
 });
