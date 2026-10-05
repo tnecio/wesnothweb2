@@ -1689,26 +1689,57 @@ Phase 23 on a phone and on desktop:
 game's help is shown in `docs/reference/help/`). The milestone's first part is met: the help opens a real
 unit's stat and ability page, from F1, the menus, the context menu, the unit dialogs, the side panel and
 `[open_help]`/`gui.show_help`. Every unit and terrain is listed, with no encountered-only filter (the
-user's call). Still to do: the preferences dialog, the unit list, the statistics dialog (after Phase 25)
-and the advancement preview. The rest of the old Phase 17.
+user's call). **The rest resumed 2026-10-05** (user's call: Phase 24, then Phase 25), on branch
+`phase-24`, one PR, tag `v0.11.0`. The statistics dialog moves to Phase 25, which records what it
+shows. Language keeps its own dialog, as upstream's does.
 
-- Preferences dialog (`preferences_dialog.cpp`): display (animation speed,
-  turbo/acceleration, grid, show-floating-numbers), sound volumes, hotkey
-  rebinding (on Phase 15's registry), language (hosting Phase 20's
-  selector), advanced — persisted.
-- Unit list dialog (sortable, click-to-centre), in-game help/encyclopedia
-  (`[topic]`/`[section]`/`[toplevel]`/`[open_help]`; unit/terrain/ability
-  pages, including the terrain-help data moved here from Phase 22), statistics dialog (feeds off Phase 25's statistics), advancement-choice
-  dialog polish (preview the resulting unit).
-- **Milestone**: the help browser opens a real unit's stat/ability page,
-  animation speed changes take effect immediately, and a rebound hotkey
-  persists across reload.
+Stages (one commit each at least, suites green, `PROGRESS.md` entry):
+
+1. **Hotkey registry** (`hotkey/hotkey_command.cpp`, `hotkey_item.cpp`, `data/core/hotkeys.cfg`): every
+   command's default bindings, several per command as upstream allows, taken from `hotkeys.cfg`; the
+   player's changes saved per browser on top of them. The menus, the context menu and the global key
+   handler all read their bindings from it instead of hard-coding them.
+2. **Hotkeys tab** (`preferences_dialog.cpp` hotkey page, `hotkey_bind.cpp`): the commands with their
+   bindings, Add Hotkey (press the key, Esc cancels; a key already bound elsewhere asks before it moves),
+   Clear Hotkey and Reset Defaults.
+3. **The rest of the preferences**, each upstream's own preference with its default, and only those the
+   port has something to apply them to:
+   - General: Accelerated speed and its speed slider (`turbo`, `turbo_speed`: animations, camera
+     glides, `[delay]` and floating labels run faster; also the `accelerated` hotkey); Skip AI moves
+     (`skip_ai_moves`: AI sides' moves and attacks are not animated); Turn prompt (`turn_dialog`: "It is
+     now X's turn" with the board hidden, at the start of each human turn); Save replays, Delete
+     auto-saves at the end of scenarios and the auto-save limit (`save_replays`, `delete_saves`,
+     `auto_save_max`).
+   - Display: Combat damage indicators (`floating_labels`), Team color indicators (`show_side_colors`,
+     the ellipses), Animate map and Animate water (`animate_map`, `animate_water`).
+   - Advanced: Show combat (`show_combat`), Confirm deleting saves (`ask_delete`), Show missed attack
+     indicator (`show_attack_miss_indicator`), Allow damage calculation with Monte Carlo simulation.
+   - Left out, with the reason recorded: window size, pixel scale, VSync and themes (the browser owns
+     these); standing and idle unit animations (the board draws units still between actions, so there
+     is nothing to switch); planning mode (no whiteboard); multiplayer, lobby, add-ons, editor, logging,
+     cache and SIMD.
+4. **Unit list** (`units_dialog::build_unit_list_dialog`, the `unitlist` command, Alt+U): the side's
+   units in upstream's columns (name, type, level, moves, HP, XP, status, traits), sortable, with the
+   unit's details beside the list, Scroll To and Rename.
+5. **Advancement preview** (`unit_advance.cpp`): selecting an advancement shows the unit it becomes, as
+   upstream does, built by the engine's own advance on a copy (AMLAs included).
+
+- **Milestone**: animation speed changes take effect immediately; a rebound hotkey persists across
+  reload; the unit list scrolls to the chosen unit; selecting an advancement previews the advanced unit.
 
 ## Phase 25 — Statistics & Achievements (was Phase 15)
 
-**Status: not started.** Split 2026-09-23 (user's call): replay, undo and
-redo moved forward to Phase 18b; this phase keeps the rest of the old
-Phase 15.
+**Status: next after Phase 24** (user's call, 2026-10-05), on its own branch, PR and tag (`v0.12.0`).
+Split 2026-09-23 (user's call): replay, undo and redo moved forward to Phase 18b; this phase keeps the
+rest of the old Phase 15. Already in place: `[set_global_variable]`/`[get_global_variable]` (Phase 28c,
+kept per browser) and `[set_achievement]`/`[set_sub_achievement]`/`[progress_achievement]`, recorded per
+browser with nothing showing them yet.
+
+Stages: statistics recorded by the engine (`statistics.cpp`) and saved with the game and the campaign;
+the statistics dialog (`statistics_dialog.cpp`, also on the `statistics` hotkey); the achievements data
+(`data/achievements.cfg` and each campaign's), the achievements dialog (`achievements_dialog.cpp`, from
+the title screen and the `achievements` hotkey) and the "achievement unlocked" notice; `[has_achievement]`
+and `wesnoth.achievements`. Planned in detail when Phase 24 is done.
 
 - Statistics (`[statistics]`/`[team]`/`[attacks]`/`[defends]`/`[killed]`/
   `[deaths]`): damage dealt/taken (expected vs. actual), kills/losses,
@@ -2127,9 +2158,22 @@ after CI/CD (28) and the AI (29) — makes sure it is not forgotten.
   result under Predictable and may differ under Default; Reduced RNG's
   hit distribution matches upstream's on a fixed seed.
 
+## Phase 31 — World Conquest (added 2026-10-05)
+
+**Status: not started, not scheduled.** Split out of Phase 28c (user's call, 2026-10-01). World Conquest
+is a randomly generated campaign written almost entirely in Lua: 111 files, about 18,000 lines
+(`docs/CAMPAIGN_INVENTORY.md`). What the 2026-10-04 survey lists for it:
+
+- 15 Lua API names the bridge does not provide yet, and 5 custom dialogs;
+- its maps are generated in Lua when each scenario starts, not at build time as the other campaigns'
+  generated caves are (Phase 28c C1), so the map generator has to run in the browser;
+- its own achievements (`World_Conquest/achievements.cfg`), after Phase 25.
+
+A plan is written when the phase is scheduled.
+
 ---
 
-## Priority as of 2026-09-27
+## Priority as of 2026-10-05
 
 Explicit user direction (2026-09-23), superseding the 2026-09-12 list.
 Phases 0–5, 7, 9–17 are delivered (see each phase's status); Phase 6
@@ -2165,15 +2209,17 @@ pulled forward and delivered 2026-09-22.
    `[open_help]` -- delivered 2026-09-30 (`v0.5.0`).
 12. **Phase 28c resumed** (user's call, 2026-10-01: before achievements):
    first the gaps several campaigns share (C1), then the remaining
-   campaigns in four batches, easiest first (B1-B4); see Phase 28c.
-   World Conquest becomes its own later phase.
-13. **Achievements** (from Phase 25): the screen, and the statistics some
-   achievements count; the engine already records `[set_achievement]`.
-14. **Phase 24** (the rest of the advanced UI), **Phase 25** (the rest of
-   statistics), **Phase 27** (feature completeness assessment), then
-   **Phase 28d** (performance budgets, cross-browser, offline; split from
-   Phase 28).
-15. **Phase 30** (combat RNG modes, split from Phase 21) — last, after
+   campaigns in four batches, easiest first (B1-B4); see Phase 28c --
+   delivered 2026-10-03 (`v0.10.0`, fixes in `v0.10.1`). Every mainline
+   single-player campaign but World Conquest ships.
+13. **Phase 24** (the rest of the advanced UI: preferences, hotkeys, unit
+   list, advancement preview), then **Phase 25** (statistics, the
+   statistics dialog, achievements) -- the user's call, 2026-10-05, which
+   moves achievements into Phase 25 rather than ahead of Phase 24.
+14. **Phase 27** (feature completeness assessment), then **Phase 28d**
+   (performance budgets, cross-browser, offline; split from Phase 28).
+15. **Phase 31** (World Conquest), not yet scheduled.
+16. **Phase 30** (combat RNG modes, split from Phase 21) — last, after
    everything above.
 
 ### Old → new phase numbers
