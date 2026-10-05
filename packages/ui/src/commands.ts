@@ -17,8 +17,10 @@ export interface Command {
   readonly label: string;
   readonly enabled: boolean;
   readonly handler: () => void;
-  /** Phase 15: this command's keyboard binding -- shown in menus, dispatched by `GameShell`'s global handler. */
+  /** Phase 15: this command's keyboard binding as the menus show it -- the first of `hotkeys`. */
   readonly hotkey?: Hotkey;
+  /** Phase 24: every binding `GameShell`'s global handler dispatches to it (`hotkeys.ts`). */
+  readonly hotkeys?: readonly Hotkey[];
 }
 
 /**

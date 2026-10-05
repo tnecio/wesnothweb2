@@ -119,6 +119,7 @@
   import LoadGameDialog from './LoadGameDialog.svelte';
   import { fetchStoryAssets, type StoryAssets } from './story/storyImages.js';
   import { matchesHotkey, type Command } from './commands.js';
+  import { hotkeyPrefs } from './hotkeys.js';
   import TopBar from './TopBar.svelte';
   import ContextMenu from './ContextMenu.svelte';
   import LabelDialog from './LabelDialog.svelte';
@@ -2765,22 +2766,28 @@
    * right-click `ContextMenu`, reusing the very same handlers so both
    * surfaces can never drift apart.
    */
-  // Phase 15: bindings are upstream's own (`wesnoth/data/core/hotkeys.cfg`); `ctrl` is Command on macOS,
-  // matching that file's {IF_APPLE_CMD_ELSE_CTRL} macro.
-  let menuCommands = $derived<Command[]>([
+  /** Phase 24: each command's bindings from the hotkey registry; the first is the one the menus show. */
+  function bound(commands: Command[]): Command[] {
+    return commands.map((c) => {
+      const hotkeys = hotkeyPrefs.bindings(c.id);
+      return hotkeys.length > 0 ? { ...c, hotkey: hotkeys[0], hotkeys } : c;
+    });
+  }
+
+  // Phase 24: the bindings come from the hotkey registry (`hotkeys.ts`: upstream's `hotkeys.cfg` defaults,
+  // or the player's own), added by `bound`.
+  let menuCommands = $derived<Command[]>(bound([
     {
       id: 'save',
       label: `${t('Save Game')}...`,
       enabled: phase === 'playing',
       handler: () => void openSaveManager('save'),
-      hotkey: { key: 's', ctrl: true },
     },
     {
       id: 'load',
       label: `${t('Load Game')}...`,
       enabled: phase === 'playing' || phase === 'ended' || phase === 'replay',
       handler: () => void openSaveManager('load'),
-      hotkey: { key: 'o', ctrl: true },
     },
     ...(onQuitToMenu
       ? [
@@ -2803,7 +2810,6 @@
       label: `${t('Preferences')}...`,
       enabled: true,
       handler: () => (preferencesOpen = true),
-      hotkey: { key: 'p', ctrl: true },
     },
     // Phase 24: upstream's `help` (F1), the entry after Preferences in the game menu.
     {
@@ -2811,7 +2817,6 @@
       label: t('Help'),
       enabled: true,
       handler: () => helpBrowser.open(),
-      hotkey: { key: 'F1' },
     },
     {
       id: 'language',
@@ -2819,21 +2824,19 @@
       enabled: true,
       handler: () => (languageDialogOpen = true),
     },
-  ]);
-  let actionCommands = $derived<Command[]>([
+  ]));
+  let actionCommands = $derived<Command[]>(bound([
     // Upstream's Actions menu starts with it (`data/themes/default.cfg`); `t` in `hotkeys.cfg`.
     {
       id: 'continue',
       label: t('Continue Interrupted Move'),
       enabled: phase === 'playing' && canContinueMove,
-      hotkey: { key: 't' },
       handler: () => void handleContinueMove(pointerHex ?? cursorHex),
     },
     {
       id: 'recruit',
       label: `${t('Recruit')}...`,
       enabled: recruitOptions.length > 0,
-      hotkey: { key: 'r', ctrl: true },
       handler: () => {
         recruitOriginHex = null; // no specific hex -- lands on `session.autoRecruitTile` (see `handleConfirmRecruit`)
         recruitDialogOpen = true;
@@ -2843,34 +2846,30 @@
       id: 'recall',
       label: `${t('Recall')}...`,
       enabled: recallOptions.length > 0,
-      hotkey: { key: 'r', alt: true },
       handler: () => {
         recruitOriginHex = null;
         recallDialogOpen = true;
       },
     },
     // Upstream's Actions menu lists these right after recruit/recall (`data/themes/default.cfg`).
-    { id: 'show-enemy-moves', label: t('Show Enemy Moves'), enabled: phase === 'playing', hotkey: { key: 'v', ctrl: true }, handler: () => showEnemyMoves(false) },
-    { id: 'best-enemy-moves', label: t('Best Possible Enemy Moves'), enabled: phase === 'playing', hotkey: { key: 'b', ctrl: true }, handler: () => showEnemyMoves(true) },
+    { id: 'show-enemy-moves', label: t('Show Enemy Moves'), enabled: phase === 'playing', handler: () => showEnemyMoves(false) },
+    { id: 'best-enemy-moves', label: t('Best Possible Enemy Moves'), enabled: phase === 'playing', handler: () => showEnemyMoves(true) },
     {
       id: 'label-team',
       label: `${tx('Place Label (Team)')}...`,
       enabled: phase === 'playing',
-      hotkey: { key: 'l', ctrl: true },
       handler: () => openLabelDialog(lastHoveredHex ?? cursorHex, true),
     },
     {
       id: 'label',
       label: `${t('Place Label')}...`,
       enabled: phase === 'playing',
-      hotkey: { key: 'l', alt: true },
       handler: () => openLabelDialog(lastHoveredHex ?? cursorHex, false),
     },
     {
       id: 'clear-labels',
       label: t('Clear Labels'),
       enabled: phase === 'playing',
-      hotkey: { key: 'c', ctrl: true },
       handler: () => (clearLabelsConfirmOpen = true),
     },
     {
@@ -2883,14 +2882,13 @@
       id: 'objectives',
       label: t('Objectives'),
       enabled: session.scenarioObjectives !== null,
-      hotkey: { key: 'j', ctrl: true },
       handler: () => (objectivesDialogOpen = true),
     },
     // Upstream's own bindings (hotkeys.cfg: undo=u, redo=r).
-    { id: 'undo', label: t('Undo'), enabled: phase === 'playing' && canUndo, handler: () => void handleUndo(), hotkey: { key: 'u' } },
-    { id: 'redo', label: t('Redo'), enabled: phase === 'playing' && canRedo, handler: () => void handleRedo(), hotkey: { key: 'r' } },
-    { id: 'end-turn', label: t('End Turn'), enabled: phase === 'playing' && otherSidesTurn === null, handler: requestEndTurn, hotkey: { key: ' ', ctrl: true } },
-  ]);
+    { id: 'undo', label: t('Undo'), enabled: phase === 'playing' && canUndo, handler: () => void handleUndo() },
+    { id: 'redo', label: t('Redo'), enabled: phase === 'playing' && canRedo, handler: () => void handleRedo() },
+    { id: 'end-turn', label: t('End Turn'), enabled: phase === 'playing' && otherSidesTurn === null, handler: requestEndTurn },
+  ]));
 
   /**
    * Real Wesnoth's right-click menu is per-hex context-sensitive (a
@@ -3049,26 +3047,23 @@
    * for these either (`data/themes/default.cfg` lists none of them),
    * they exist purely as hotkeys.
    */
-  let hotkeyOnlyCommands = $derived<Command[]>([
-    { id: 'next-unit', label: t('Next Unit'), enabled: phase === 'playing', hotkey: { key: 'n' }, handler: () => cycleUnit(1) },
-    { id: 'previous-unit', label: t('Previous Unit'), enabled: phase === 'playing', hotkey: { key: 'n', shift: true }, handler: () => cycleUnit(-1) },
-    { id: 'leader', label: t('Scroll to Leader'), enabled: phase === 'playing', hotkey: { key: 'l' }, handler: scrollToLeader },
-    { id: 'zoom-in', label: t('Zoom In'), enabled: true, hotkey: { key: '=' }, handler: () => boardView?.zoomStep(true) },
-    // Upstream binds zoomin twice, to both `=` and `+` (the shifted key on most layouts).
-    { id: 'zoom-in-shifted', label: t('Zoom In'), enabled: true, hotkey: { key: '+', shift: true }, handler: () => boardView?.zoomStep(true) },
-    { id: 'zoom-out', label: t('Zoom Out'), enabled: true, hotkey: { key: '-' }, handler: () => boardView?.zoomStep(false) },
-    { id: 'zoom-default', label: t('Default Zoom'), enabled: true, hotkey: { key: '0' }, handler: () => boardView?.zoomDefault() },
+  let hotkeyOnlyCommands = $derived<Command[]>(bound([
+    { id: 'next-unit', label: t('Next Unit'), enabled: phase === 'playing', handler: () => cycleUnit(1) },
+    { id: 'previous-unit', label: t('Previous Unit'), enabled: phase === 'playing', handler: () => cycleUnit(-1) },
+    { id: 'leader', label: t('Scroll to Leader'), enabled: phase === 'playing', handler: scrollToLeader },
+    { id: 'zoom-in', label: t('Zoom In'), enabled: true, handler: () => boardView?.zoomStep(true) },
+    { id: 'zoom-out', label: t('Zoom Out'), enabled: true, handler: () => boardView?.zoomStep(false) },
+    { id: 'zoom-default', label: t('Default Zoom'), enabled: true, handler: () => boardView?.zoomDefault() },
     // The game theme has no menu entry for the grid either; upstream's is a hotkey (and a preference).
-    { id: 'toggle-grid', label: t('Toggle Grid'), enabled: true, hotkey: { key: 'g', ctrl: true }, handler: () => displayPrefs.update({ grid: !displayPrefs.peek().grid }) },
-    { id: 'cursor-left', label: tx('Cursor Left'), enabled: phase === 'playing', hotkey: { key: 'ArrowLeft' }, handler: () => moveCursor(-1, 0) },
-    { id: 'cursor-right', label: tx('Cursor Right'), enabled: phase === 'playing', hotkey: { key: 'ArrowRight' }, handler: () => moveCursor(1, 0) },
-    { id: 'cursor-up', label: tx('Cursor Up'), enabled: phase === 'playing', hotkey: { key: 'ArrowUp' }, handler: () => moveCursor(0, -1) },
-    { id: 'cursor-down', label: tx('Cursor Down'), enabled: phase === 'playing', hotkey: { key: 'ArrowDown' }, handler: () => moveCursor(0, 1) },
+    { id: 'toggle-grid', label: t('Toggle Grid'), enabled: true, handler: () => displayPrefs.update({ grid: !displayPrefs.peek().grid }) },
+    { id: 'cursor-left', label: tx('Cursor Left'), enabled: phase === 'playing', handler: () => moveCursor(-1, 0) },
+    { id: 'cursor-right', label: tx('Cursor Right'), enabled: phase === 'playing', handler: () => moveCursor(1, 0) },
+    { id: 'cursor-up', label: tx('Cursor Up'), enabled: phase === 'playing', handler: () => moveCursor(0, -1) },
+    { id: 'cursor-down', label: tx('Cursor Down'), enabled: phase === 'playing', handler: () => moveCursor(0, 1) },
     {
       id: 'cursor-act',
       label: tx('Select / Move / Attack'),
       enabled: phase === 'playing' && cursorHex !== null,
-      hotkey: { key: 'Enter' },
       // The same path a left click takes, so keyboard and mouse can never diverge.
       handler: () => {
         if (cursorHex) void handleHexClick(cursorHex.x, cursorHex.y, { attackFrom: session.attackFrom(cursorHex, previousHex, previousFreeHex) });
@@ -3078,7 +3073,6 @@
       id: 'deselect',
       label: tx('Deselect'),
       enabled: phase === 'playing',
-      hotkey: { key: 'Escape' },
       handler: () => {
         session.clearSelection();
         cursorHex = null;
@@ -3087,7 +3081,7 @@
         sync();
       },
     },
-  ]);
+  ]));
 
   /**
    * Phase 15: the commands a keypress can reach right now. The context
@@ -3149,7 +3143,7 @@
     // Menu or End Turn), not the cursor's "select / move / attack".
     const target = e.target as HTMLElement | null;
     if ((e.key === 'Enter' || e.key === ' ') && !e.ctrlKey && !e.metaKey && !e.altKey && target?.closest?.('button, a[href], [role="button"]')) return;
-    const command = hotkeyCommands.find((c) => c.hotkey && matchesHotkey(e, c.hotkey));
+    const command = hotkeyCommands.find((c) => c.hotkeys?.some((h) => matchesHotkey(e, h)));
     if (!command) return;
     e.preventDefault();
     if (command.enabled) command.handler();
