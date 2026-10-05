@@ -43,6 +43,8 @@
   }
 
   function handleKeydown(e: KeyboardEvent): void {
+    // A dialog opened over this one (inside it in the page) has already handled the key.
+    if (e.defaultPrevented) return;
     if (e.key === 'Escape' && onClose) {
       e.preventDefault();
       onClose();

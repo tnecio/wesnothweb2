@@ -5,18 +5,19 @@
    * settings (font size, orb colours), the grid overlay (Phase 22) and, on the title screen, whether the tip
    * of the day shows; Sound the audio settings; Advanced the two map-view entries upstream keeps in its
    * advanced list, "Mouse scrolling" and "Follow unit actions" (Phase 22). Phase 24 adds the
-   * remaining tabs (general, hotkeys, advanced, ...) to this same dialog. Language keeps its own dialog, as
+   * Hotkeys tab (`HotkeysPanel`) and the rest of upstream's preferences the port can apply. Language keeps its own dialog, as
    * upstream's does (a button on the title screen, a menu entry in a game).
    */
   import Modal from './Modal.svelte';
   import AccessibilityPanel from './AccessibilityPanel.svelte';
   import AudioPanel from './AudioPanel.svelte';
+  import HotkeysPanel from './HotkeysPanel.svelte';
   import { menuPrefs } from './menu/menuPrefs.js';
   import { displayPrefs } from './displayPrefs.js';
   import { t, tw, tx } from './i18n/locale.js';
   import type { AudioSettings } from './audio/settings.js';
 
-  type PreferencesTab = 'general' | 'display' | 'sound' | 'advanced';
+  type PreferencesTab = 'general' | 'hotkeys' | 'display' | 'sound' | 'advanced';
 
   let {
     audioSettings,
@@ -35,6 +36,7 @@
 
   const tabs: ReadonlyArray<{ id: PreferencesTab; label: () => string }> = [
     { id: 'general', label: () => t('General') },
+    { id: 'hotkeys', label: () => t('Hotkeys') },
     { id: 'display', label: () => t('Display') },
     { id: 'sound', label: () => t('Sound') },
     { id: 'advanced', label: () => t('Advanced') },
@@ -94,6 +96,8 @@
           />
           <span>{t('Disable automatic moves')}</span>
         </label>
+      {:else if tab === 'hotkeys'}
+        <HotkeysPanel />
       {:else if tab === 'display'}
         <AccessibilityPanel />
         <label class="check" title={t('Overlay a grid over the map')}>
