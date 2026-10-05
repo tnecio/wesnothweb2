@@ -102,7 +102,6 @@ export function advanceUnitFully(
   resolveType: (id: string) => UnitType,
   experienceModifierPercent = 100,
 ): AdvancementResult[] {
-  void board; // Kept for API symmetry with the other actions/ functions and for future callers that need board-relative effects (e.g. fog updates); not needed by plain leveling itself.
   const steps: AdvancementResult[] = [];
   let guard = 0;
   while (unit.advances() && guard < 20) {
@@ -113,6 +112,8 @@ export function advanceUnitFully(
       const newType = chooseAdvancementRandomly(unit, rng, resolveType);
       steps.push(advanceUnitTo(unit, newType, experienceModifierPercent));
     }
+    // Phase 25: `::advance_unit` counts each advancement under the type the unit became.
+    board.statistics?.advanceUnit(board.statsUnit(unit));
     guard++;
   }
   return steps;

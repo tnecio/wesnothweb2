@@ -5,8 +5,8 @@
    * Layout as upstream's: the stretched `maps/background.webp` with `maps/titlescreen.webp` fitted and centred
    * over it, the logo 30 px from the top, the tip-of-the-day panel bottom-left and the button column
    * bottom-right (both translucent panels), and a bar along the bottom with the version and the Language
-   * button. Help is in the tip panel, as upstream's. Multiplayer, the map editor, Add-ons, Achievements and
-   * Community have no counterpart here.
+   * button. Help is in the tip panel, as upstream's. Multiplayer, the map editor, Add-ons and Community have
+   * no counterpart here; Achievements is Phase 25's.
    *
    * Presentational: it reports what was asked for; `MainMenu.svelte` owns the dialogs and the navigation.
    * Keys are upstream's (`hotkeys.cfg`): C campaigns, Ctrl+O load, Ctrl+P preferences, L language, Space
@@ -51,6 +51,7 @@
     onCredits,
     onLanguage,
     onHelp,
+    onAchievements,
   }: {
     /** Shown as "Version $version". */
     version: string;
@@ -66,6 +67,8 @@
     onLanguage: () => void;
     /** Phase 24: the help browser. */
     onHelp: () => void;
+    /** Phase 25: the achievements dialog. */
+    onAchievements: () => void;
   } = $props();
 
   let tipIndex = $state(0);
@@ -88,6 +91,7 @@
       [{ key: 'l' }, onLanguage],
       [{ key: ' ' }, onCredits],
       [{ key: 'F1' }, onHelp],
+      [{ key: 'a', ctrl: true, shift: true }, onAchievements],
       [{ key: 'ArrowRight' }, () => (tipIndex = stepTip(tipIndex, tips.length, false))],
       [{ key: 'ArrowLeft' }, () => (tipIndex = stepTip(tipIndex, tips.length, true))],
     ];
@@ -141,6 +145,7 @@
     <nav class="panel menu" aria-label={tx('Main menu')} data-testid="title-menu">
       <button class="large" title={t('Start a new single player campaign')} onclick={onCampaigns} data-testid="title-campaigns" data-autofocus>{t('Campaigns')}</button>
       <button class="large" title={t('Load a saved game')} onclick={onLoad} data-testid="title-load">{t('Load')}</button>
+      <button class="large" title={t('View achievements')} onclick={onAchievements} data-testid="title-achievements">{t('Achievements')}</button>
       <button class="large" title={t('Configure the game’s settings')} onclick={onPreferences} data-testid="title-preferences">{t('Preferences')}</button>
       <button class="large" title={t('Show Credits')} onclick={onCredits} data-testid="title-credits">{t('Credits')}</button>
     </nav>

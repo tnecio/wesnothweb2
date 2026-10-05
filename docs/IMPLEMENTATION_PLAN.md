@@ -1730,7 +1730,9 @@ Stages (one commit each at least, suites green, `PROGRESS.md` entry):
 
 ## Phase 25 — Statistics & Achievements (was Phase 15)
 
-**Status: next after Phase 24** (user's call, 2026-10-05), on its own branch, PR and tag (`v0.12.0`).
+**Status: delivered 2026-10-05** (user's call: right after Phase 24), branch `phase-25`, tag `v0.12.0`; see
+`PROGRESS.md`. The milestone's achievement is The South Guard's "Thug Beater": Under the Burning Suns ships
+no achievements in this data version.
 Split 2026-09-23 (user's call): replay, undo and redo moved forward to Phase 18b; this phase keeps the
 rest of the old Phase 15. Already in place: `[set_global_variable]`/`[get_global_variable]` (Phase 28c,
 kept per browser) and `[set_achievement]`/`[set_sub_achievement]`/`[progress_achievement]`, recorded per
@@ -2215,7 +2217,7 @@ pulled forward and delivered 2026-09-22.
    single-player campaign but World Conquest ships.
 13. **Phase 24** (the rest of the advanced UI: preferences, hotkeys, unit
    list, advancement preview; delivered 2026-10-05), then **Phase 25** (statistics, the
-   statistics dialog, achievements) -- the user's call, 2026-10-05, which
+   statistics dialog, achievements; delivered 2026-10-05) -- the user's call, 2026-10-05, which
    moves achievements into Phase 25 rather than ahead of Phase 24.
 14. **Phase 27** (feature completeness assessment), then **Phase 28d**
    (performance budgets, cross-browser, offline; split from Phase 28).

@@ -93,7 +93,7 @@ async function titleScreen(browser) {
     await page.waitForSelector('[data-testid="tip-text"]', { timeout: 15000 });
     await page.waitForTimeout(1200);
     const names = await page.$$eval('[data-testid="title-menu"] button', (els) => els.map((e) => e.textContent?.trim()));
-    check(`[${label}] the title screen offers Campaigns, Load, Preferences, Credits`, names.join() === 'Campaigns,Load,Preferences,Credits', names.join());
+    check(`[${label}] the title screen offers Campaigns, Load, Achievements, Preferences, Credits`, names.join() === 'Campaigns,Load,Achievements,Preferences,Credits', names.join());
     check(`[${label}] the version and the language button show`, /Version 1\.\d+\.\d+/.test(await page.textContent('[data-testid="title-version"]')) && /English/.test(await page.textContent('[data-testid="title-language"]')));
     check(`[${label}] a tip shows`, (await page.textContent('[data-testid="tip-text"]')).trim().length > 20);
     const box = await page.evaluate(() => {
@@ -124,8 +124,8 @@ async function libertyHard(browser) {
   await press(page, 'c', 700);
   check('C opens the campaign dialog', (await dialogs(page)).includes('Play a Campaign'));
   // The real campaigns by rank (`campaigns.json`), then the debug ones.
-  const REAL = 'the_south_guard,of_pearls_and_pirates,liberty,two_brothers,dusk_of_dawn,the_hammer_of_thursagan,descent_into_darkness,dead_water,the_rise_of_wesnoth,winds_of_fate,sceptre_of_fire,legend_of_wesmere,son_of_the_black_eye,under_the_burning_suns,northern_rebirth';
-  check('the dialog lists the real campaigns first, by rank, then the debug ones', (await visibleCampaigns(page)).slice(0, 15).join() === REAL, (await visibleCampaigns(page)).join());
+  const REAL = 'the_south_guard,of_pearls_and_pirates,the_deceivers_gambit,the_deceivers_gambit_2,liberty,heir_to_the_throne,heir_to_the_throne_classic,two_brothers,dusk_of_dawn,the_hammer_of_thursagan,descent_into_darkness,eastern_invasion,dead_water,the_rise_of_wesnoth,winds_of_fate,sceptre_of_fire,legend_of_wesmere,secrets_of_the_ancients,son_of_the_black_eye,under_the_burning_suns,northern_rebirth';
+  check('the dialog lists the real campaigns first, by rank, then the debug ones', (await visibleCampaigns(page)).slice(0, 21).join() === REAL, (await visibleCampaigns(page)).join());
   check('with nothing chosen there is a landing text and Play is off', (await page.isDisabled('[data-testid="campaign-play"]')) && (await page.textContent('[data-testid="campaign-details"]')).includes('Select a campaign'));
   // The filter searches descriptions too, as upstream's does: "lib" would also match Two Brothers' mention of Liberty.
   await filterFor(page, 'marchlanders');

@@ -26,6 +26,8 @@
   import type { CompletedCampaigns } from './completion.js';
   import { menuPrefs } from './menuPrefs.js';
   import TitleScreen from './TitleScreen.svelte';
+  import AchievementsDialog from '../AchievementsDialog.svelte';
+  import { browserAchievements } from '../persistentVariables.js';
   import HelpBrowser from '../help/HelpBrowser.svelte';
   import { helpBrowser } from '../help/helpBrowser.svelte.js';
   import { fetchTips, shuffled, type Tip } from './tips.js';
@@ -40,7 +42,7 @@
     onResume: (campaignId: string, saveName: string, replay: boolean) => void;
   } = $props();
 
-  type Dialog = 'campaigns' | 'load' | 'preferences' | 'credits' | 'language' | null;
+  type Dialog = 'campaigns' | 'load' | 'preferences' | 'credits' | 'language' | 'achievements' | null;
 
   const audio = getAudioEngine();
 
@@ -156,6 +158,7 @@
   onCampaigns={() => (dialog = 'campaigns')}
   onLoad={() => (dialog = 'load')}
   onPreferences={() => (dialog = 'preferences')}
+  onAchievements={() => (dialog = 'achievements')}
   onCredits={() => (dialog = 'credits')}
   onLanguage={() => (dialog = 'language')}
   onHelp={() => helpBrowser.open()}
@@ -181,6 +184,8 @@
   />
 {:else if dialog === 'preferences'}
   <PreferencesDialog {audioSettings} onAudioChange={changeAudio} showTipsToggle onClose={() => (dialog = null)} />
+{:else if dialog === 'achievements'}
+  <AchievementsDialog groups={browserAchievements().view()} onClose={() => (dialog = null)} />
 {:else if dialog === 'credits'}
   <CreditsScreen onClose={() => (dialog = null)} />
 {:else if dialog === 'language'}

@@ -407,7 +407,10 @@ export function* recruitUnitFlow(
   const { gender, traits } = rollNewUnit(type, rng, { randomGender: true, randomTraits: true, canRecruit: false, named: false });
   const unit = Unit.create(type, team.side, loc, { canRecruit: false, gender, modifications: traits });
   board.assignUnitId(unit);
-  return yield* placeRecruitFlow(board, team, unit, loc, from, type.cost, false, hooks);
+  const result = yield* placeRecruitFlow(board, team, unit, loc, from, type.cost, false, hooks);
+  // Phase 25: `recruit_unit` counts it once placed, whatever its events did.
+  board.statistics?.recruitUnit(board.statsUnit(unit));
+  return result;
 }
 
 /** `recall_unit` as a flow: `unit` (already off the recall list) placed by `placeRecruitFlow`. */
@@ -420,7 +423,9 @@ export function* recallUnitFlow(
   hooks: PlaceRecruitHooks,
 ): Flow<PlaceRecruitResult | null> {
   const cost = unit.recallCost >= 0 ? unit.recallCost : team.recallCost;
-  return yield* placeRecruitFlow(board, team, unit, loc, from, cost, true, hooks);
+  const result = yield* placeRecruitFlow(board, team, unit, loc, from, cost, true, hooks);
+  board.statistics?.recallUnit(board.statsUnit(unit));
+  return result;
 }
 
 /**
@@ -438,7 +443,9 @@ export function recruitUnit(board: GameBoard, team: Team, type: UnitType, loc: L
   const { gender, traits } = rollNewUnit(type, rng, { randomGender: true, randomTraits: true, canRecruit: false, named: false });
   const unit = Unit.create(type, team.side, loc, { canRecruit: false, gender, modifications: traits });
   board.assignUnitId(unit);
-  return placeRecruit(board, team, unit, loc, from, type.cost, false, false, undefined, raise);
+  const result = placeRecruit(board, team, unit, loc, from, type.cost, false, false, undefined, raise);
+  board.statistics?.recruitUnit(board.statsUnit(unit));
+  return result;
 }
 
 /**
@@ -449,7 +456,9 @@ export function recruitUnit(board: GameBoard, team: Team, type: UnitType, loc: L
  */
 export function recallUnit(board: GameBoard, team: Team, unit: Unit, loc: Location, from: Location, facing?: Direction, raise?: RaiseEvent): PlaceRecruitResult {
   const cost = unit.recallCost >= 0 ? unit.recallCost : team.recallCost;
-  return placeRecruit(board, team, unit, loc, from, cost, true, false, facing, raise);
+  const result = placeRecruit(board, team, unit, loc, from, cost, true, false, facing, raise);
+  board.statistics?.recallUnit(board.statsUnit(unit));
+  return result;
 }
 
 /**

@@ -15,6 +15,8 @@ import { autoRespond, runFlow, type Interaction } from '../../src/events/interac
 import { TString } from '../../src/i18n/tstring.js';
 import type { FloatingLabelRequest } from '../../src/events/floatingLabels.js';
 import { memoryPersistentVariables } from '../../src/events/supportWml.js';
+import { Achievements, memoryAchievementStore } from '../../src/achievements/achievements.js';
+import { builtinConditions } from '../../src/events/conditionalWml.js';
 
 /** Phase 28c: the mainline tags The South Guard needed (`supportWml.ts`, `harmUnitWml.ts`). */
 
@@ -205,15 +207,43 @@ describe('small tags', () => {
     expect(ctx.endTurnForced).toBe(true);
   });
 
-  it('[set_achievement] reports to the achievement sink', () => {
-    const { ctx, run } = setup();
-    const got: string[] = [];
-    ctx.achievements = { set: (c, id) => got.push(`${c}:${id}`), setSub: () => {}, progress: () => {} };
-    run(`[set_achievement]
-      content_for=tsg
-      id=tsg_s1
-    [/set_achievement]`);
-    expect(got).toEqual(['tsg:tsg_s1']);
+  it('[set_achievement] completes it once, with its popup; [has_achievement] sees it', () => {
+    const { ctx } = setup();
+    const store = memoryAchievementStore();
+    ctx.achievements = new Achievements(
+      [
+        {
+          contentFor: 'tsg',
+          displayName: 'The South Guard',
+          achievements: [
+            { id: 'tsg_s1', name: 'Thug Beater', description: 'Defeat Urza Mathin.', icon: 'attacks/club.png' },
+            { id: 'count', name: 'Counter', description: 'Count to 3.', icon: 'attacks/bow.png', maxProgress: 3 },
+            { id: 'subs', name: 'Two parts', description: 'Both.', icon: 'attacks/sword.png', subAchievements: [{ id: 'a', description: 'A', icon: 'a.png' }, { id: 'b', description: 'B', icon: 'b.png' }] },
+          ],
+        },
+      ],
+      store,
+    );
+    const shown = (wml: string): string[] => {
+      const seen: Interaction[] = [];
+      runFlow(runActionFlow(parseWml(wml), ctx), (i) => (seen.push(i), autoRespond(i)));
+      return seen.flatMap((i) => (i.kind === 'message' ? [`${i.message.title}|${i.message.message}|${i.message.image ?? ''}`] : []));
+    };
+    expect(shown('[set_achievement]\ncontent_for=tsg\nid=tsg_s1\n[/set_achievement]')).toEqual(['Thug Beater|Defeat Urza Mathin.|attacks/club.png']);
+    expect(shown('[set_achievement]\ncontent_for=tsg\nid=tsg_s1\n[/set_achievement]')).toEqual([]);
+    expect(store.read()['tsg']?.['tsg_s1']?.done).toBe(true);
+    expect(builtinConditions['has_achievement']!(parseWml('content_for=tsg\nid=tsg_s1'), ctx)).toBe(true);
+
+    // [progress_achievement]: completes when it reaches max_progress; limit= caps one call's reach.
+    expect(shown('[progress_achievement]\ncontent_for=tsg\nid=count\namount=5\nlimit=2\n[/progress_achievement]')).toEqual([]);
+    expect(ctx.achievements.get('tsg', 'count').getNumber('current_progress')).toBe(2);
+    expect(shown('[progress_achievement]\ncontent_for=tsg\nid=count\namount=1\n[/progress_achievement]')).toHaveLength(1);
+
+    // [set_sub_achievement]: the last one completes the whole.
+    expect(shown('[set_sub_achievement]\ncontent_for=tsg\nid=subs\nsub_id=a\n[/set_sub_achievement]')).toEqual([]);
+    expect(builtinConditions['has_sub_achievement']!(parseWml('content_for=tsg\nid=subs\nsub_id=a'), ctx)).toBe(true);
+    expect(shown('[set_sub_achievement]\ncontent_for=tsg\nid=subs\nsub_id=b\n[/set_sub_achievement]')).toHaveLength(1);
+    expect(ctx.achievements.view()[0]!.completed).toBe(3);
   });
 });
 

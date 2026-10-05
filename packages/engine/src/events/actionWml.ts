@@ -1016,7 +1016,7 @@ function modificationBody(cfg: WmlConfig, ctx: EventContext): WmlConfig {
 }
 
 /** `gui.show_popup(name, text, image)`, as the message dialogue this port has. */
-function* popupFlow(ctx: EventContext, title: string, text: string, image: string): Flow {
+export function* popupFlow(ctx: EventContext, title: string, text: string, image: string): Flow {
   const message: RecordedMessage = {
     speaker: 'narrator',
     message: text,

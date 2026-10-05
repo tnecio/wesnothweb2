@@ -39,7 +39,9 @@ import { createGameKernel, type LuaKernel, type LuaUnits, type VirtualDataDir } 
 import { checkString } from './kernel/kernel.js';
 import type { GameKernelHost } from './kernel/game/host.js';
 import { VCONFIG_KEY } from './kernel/game/misc.js';
-import { wantsRawConfig } from '@wesnothweb2/engine/src/events/actionWml.js';
+import { popupFlow, wantsRawConfig } from '@wesnothweb2/engine/src/events/actionWml.js';
+import { announceAchievement } from '@wesnothweb2/engine/src/events/supportWml.js';
+import type { Achievements, AchievementUnlock } from '@wesnothweb2/engine/src/achievements/achievements.js';
 
 /** What a scenario's Lua may load at run time: the browser has no data directory to read. */
 export interface LuaSources {
@@ -178,6 +180,27 @@ function gui.show_prompt(title, message, button, markup)
 end
 -- core/gui.lua made its deprecated alias from the placeholder this replaces.
 wesnoth.show_message_box = wesnoth.deprecate_api('wesnoth.show_message_box', 'gui.show_prompt', 1, nil, gui.show_prompt)
+
+-- Phase 25: wesnoth.achievements (game_lua_kernel's intf_*_achievement). Each call that completes one shows
+-- its popup before returning, as intf_set_achievement does; the natives keep what to show until then.
+wesnoth.achievements = wesnoth.achievements or {}
+local announce = wesnoth.__achievement_announce
+wesnoth.achievements.has = wesnoth.__achievement_has
+wesnoth.achievements.has_sub_achievement = wesnoth.__achievement_has_sub
+wesnoth.achievements.get = wesnoth.__achievement_get
+function wesnoth.achievements.set(content_for, id)
+  wesnoth.__achievement_set(content_for, id)
+  announce()
+end
+function wesnoth.achievements.set_sub_achievement(content_for, id, sub_id)
+  wesnoth.__achievement_set_sub(content_for, id, sub_id)
+  announce()
+end
+function wesnoth.achievements.progress(content_for, id, amount, limit)
+  local progress, max = wesnoth.__achievement_progress(content_for, id, amount, limit)
+  announce()
+  return progress, max
+end
 `;
 
 function* openHelpFlow(topic: string): Flow {
@@ -379,6 +402,8 @@ export class LuaRuntime {
   }
 
   private pendingRequest: LuaRequest | null = null;
+  /** Phase 25: an achievement a `wesnoth.achievements` call completed, for `__achievement_announce` to show. */
+  private pendingUnlock: AchievementUnlock | null = null;
 
   /** Suspends the running coroutine on `flow` (call as a JS function's `return`), or runs it now when inline. */
   private yieldFlow(T: LuaState, flow: Flow<unknown>): number {
@@ -545,6 +570,65 @@ export class LuaRuntime {
       return 0;
     });
     k.define(['wesnoth', '__gui_run'], (T) => this.yieldFlow(T, this.dialogFlow(Number(lua.lua_tointeger(T, 1)))));
+    // Phase 25: `gui.show_popup(title, message, image)` (`intf_show_popup_dialog`): shown until dismissed.
+    k.define(['gui', 'show_popup'], (T) => {
+      const title = this.kernel.checkTString(T, 1).str();
+      const message = this.kernel.checkTString(T, 2).str();
+      const image = lua.lua_isnoneornil(T, 3) ? '' : checkString(T, 3);
+      return this.yieldFlow(T, popupFlow(this.ctx(), title, message, image));
+    });
+    // Phase 25: `wesnoth.achievements` over the session's `Achievements` (see the Lua wrappers above).
+    const achievements = (T: LuaState): Achievements | null => {
+      const a = this.ctx().achievements ?? null;
+      if (!a) lauxlib.luaL_error(T, to_luastring('achievements are not available here'));
+      return a;
+    };
+    const guarded = (T: LuaState, call: () => number): number => {
+      try {
+        return call();
+      } catch (err) {
+        return lauxlib.luaL_error(T, to_luastring(err instanceof Error ? err.message : String(err)));
+      }
+    };
+    k.define(['wesnoth', '__achievement_has'], (T) => {
+      lua.lua_pushboolean(T, this.ctx().achievements?.has(checkString(T, 1), checkString(T, 2)) ?? false);
+      return 1;
+    });
+    k.define(['wesnoth', '__achievement_has_sub'], (T) => {
+      lua.lua_pushboolean(T, this.ctx().achievements?.hasSub(checkString(T, 1), checkString(T, 2), checkString(T, 3)) ?? false);
+      return 1;
+    });
+    k.define(['wesnoth', '__achievement_get'], (T) => {
+      this.kernel.pushConfig(T, this.ctx().achievements?.get(checkString(T, 1), checkString(T, 2)) ?? new WmlConfig());
+      return 1;
+    });
+    k.define(['wesnoth', '__achievement_set'], (T) => {
+      const unlock = achievements(T)?.set(checkString(T, 1), checkString(T, 2));
+      if (unlock) this.pendingUnlock = unlock;
+      return 0;
+    });
+    k.define(['wesnoth', '__achievement_set_sub'], (T) =>
+      guarded(T, () => {
+        const unlock = achievements(T)?.setSub(checkString(T, 1), checkString(T, 2), checkString(T, 3));
+        if (unlock) this.pendingUnlock = unlock;
+        return 0;
+      }),
+    );
+    k.define(['wesnoth', '__achievement_progress'], (T) =>
+      guarded(T, () => {
+        const limit = lua.lua_isnoneornil(T, 4) ? 999999999 : Number(lauxlib.luaL_checkinteger(T, 4));
+        const result = achievements(T)?.progress(checkString(T, 1), checkString(T, 2), Number(lauxlib.luaL_checkinteger(T, 3)), limit);
+        if (result?.unlock) this.pendingUnlock = result.unlock;
+        lua.lua_pushinteger(T, result?.progress ?? -1);
+        lua.lua_pushinteger(T, result?.max ?? -1);
+        return 2;
+      }),
+    );
+    k.define(['wesnoth', '__achievement_announce'], (T) => {
+      const unlock = this.pendingUnlock;
+      this.pendingUnlock = null;
+      return unlock ? this.yieldFlow(T, announceAchievement(this.ctx(), unlock)) : 0;
+    });
     // Phase 24: `gui.show_help(topic)` (`lua_gui2.cpp`): the help browser, until the player closes it.
     k.define(['gui', 'show_help'], (T) => {
       const topic = lua.lua_isnoneornil(T, 1) ? '' : checkString(T, 1);

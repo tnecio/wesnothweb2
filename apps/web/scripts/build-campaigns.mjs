@@ -25,6 +25,10 @@
  * (`core/about.cfg`, `core/about_i18n.cfg`) and each shipped campaign's `[about]` sections,
  * with their translatable titles. Sections without entries are dropped, as upstream does.
  *
+ * Phase 25: `packages/ui/src/achievements.json` is `data/achievements.cfg`'s groups (all but the tutorial's and
+ * multiplayer's, which the port does not ship)
+ * (bundled: events need them as soon as a game starts).
+ *
  * `tips.json` is the title screen's tip-of-the-day source (`data/tips.cfg`, translatable text and
  * source line per tip). This data version has no `encountered_units=` filters, so none is carried.
  *
@@ -165,6 +169,63 @@ const tipsCfg = parseWmlFile(path.join(dataRoot, 'tips.cfg'), { dataRoot, define
 const tips = tipsCfg.children('tip').map((tip) => ({ text: textOf(tip, 'text') ?? '', source: textOf(tip, 'source') ?? '' }));
 fs.writeFileSync(path.join(repoRoot, 'apps/web/public/tips.json'), JSON.stringify({ tips }));
 
+// Phase 25: the achievements (`data/achievements.cfg`, as `achievements::reload` reads it), for the shipped
+// campaigns. Icon paths are rooted here as the game's binary-path search would find them (`data/...` paths
+// name their file directly), since the achievements dialog also opens from the title screen, outside any
+// campaign.
+// `content_for=` is the content's own name, not always its campaign id (HttT's is `heir_2_the_throne`); every
+// group is kept but the tutorial's and multiplayer Survivals', content the port does not ship.
+const UNSHIPPED_ACHIEVEMENT_CONTENT = new Set(['tutorial', 'wesnoth_MP_survivals']);
+const shippedDirs = manifest.campaigns.filter((c) => c.wesnothId).map((c) => c.wesnothId);
+/** An icon as a rooted image path: `data/...` names its file; else core's, else the first shipped campaign's that has it. */
+function rootIcon(icon) {
+  if (!icon) return icon;
+  const [file, ...mods] = icon.split('~');
+  const suffix = mods.length > 0 ? `~${mods.join('~')}` : '';
+  if (file.startsWith('data/')) return file.slice('data/'.length) + suffix;
+  if (fs.existsSync(path.join(dataRoot, 'core/images', file))) return `core/images/${file}${suffix}`;
+  const dir = shippedDirs.find((d) => fs.existsSync(path.join(dataRoot, 'campaigns', d, 'images', file)));
+  return dir ? `campaigns/${dir}/images/${file}${suffix}` : icon;
+}
+const achievementsCfg = parseWmlFile(path.join(dataRoot, 'achievements.cfg'), { dataRoot, defines: newDefines('NORMAL') });
+const achievementGroups = achievementsCfg
+  .children('achievement_group')
+  .filter((g) => !UNSHIPPED_ACHIEVEMENT_CONTENT.has(g.getString('content_for')))
+  .map((g) => {
+    return {
+      contentFor: g.getString('content_for'),
+      displayName: textOf(g, 'display_name') ?? '',
+      achievements: g.children('achievement').map((a) => {
+        const optional = (key, value) => (value === undefined || value === '' ? {} : { [key]: value });
+        return {
+          id: a.getString('id'),
+          name: textOf(a, 'name') ?? '',
+          ...optional('nameCompleted', textOf(a, 'name_completed')),
+          description: textOf(a, 'description') ?? '',
+          ...optional('descriptionCompleted', textOf(a, 'description_completed')),
+          icon: rootIcon(a.getString('icon')),
+          ...optional('iconCompleted', rootIcon(a.getString('icon_completed', ''))),
+          ...(a.getBoolean('hidden', false) ? { hidden: true } : {}),
+          ...(a.getNumber('max_progress', 0) > 0 ? { maxProgress: a.getNumber('max_progress', 0) } : {}),
+          ...optional('sound', a.getString('sound', '')),
+          ...(a.hasChild('sub_achievement')
+            ? {
+                subAchievements: a.children('sub_achievement').map((sub) => ({
+                  id: sub.getString('id'),
+                  description: textOf(sub, 'description') ?? '',
+                  icon: rootIcon(sub.getString('icon')),
+                })),
+              }
+            : {}),
+        };
+      }),
+    };
+  })
+  .filter((g) => g.achievements.length > 0);
+fs.writeFileSync(path.join(repoRoot, 'packages/ui/src/achievements.json'), JSON.stringify({ groups: achievementGroups }) + '\n');
+
 fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
 fs.writeFileSync(path.join(repoRoot, 'apps/web/public/credits.json'), JSON.stringify(credits));
-console.log(`updated campaigns.json (${manifest.campaigns.length} campaigns), credits.json (${credits.groups.length} groups) and tips.json (${tips.length} tips)`);
+console.log(
+  `updated campaigns.json (${manifest.campaigns.length} campaigns), credits.json (${credits.groups.length} groups), tips.json (${tips.length} tips) and achievements.json (${achievementGroups.length} groups)`,
+);

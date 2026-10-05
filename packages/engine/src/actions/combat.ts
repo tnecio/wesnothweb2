@@ -229,6 +229,9 @@ export function executeAttack(
     },
   });
 
+  // Phase 25: `statistics_attack_context`, with both units as they enter the fight.
+  const statsContext = board.statistics?.attackContext(board.statsUnit(attacker), board.statsUnit(defender), attackerStats.chanceToHit, defenderStats.chanceToHit);
+
   // Consume exactly one of the attacker's per-turn attacks (see this function's doc comment).
   attacker.attacksLeft = Math.max(0, attacker.attacksLeft - 1);
   attacker.setStatus(UnitStatus.NotMoved, false);
@@ -314,6 +317,10 @@ export function executeAttack(
     const damage = hit ? strikerDamage : 0;
 
     const damageDone = Math.min(target.hitpoints, strikerDamage);
+    // `perform_hit`: expected damage = damage potential * chance to hit.
+    const expectedDamage = damageDone * strikerStats.chanceToHit * 0.01;
+    if (attackerTurn) statsContext?.attackExpectedDamage(expectedDamage, 0);
+    else statsContext?.attackExpectedDamage(0, expectedDamage);
     let drainAmount = 0;
     if (hit && strikerStats.drains) {
       drainAmount = Math.trunc((damageDone * strikerStats.drainPercent) / 100) + strikerStats.drainConstant;
@@ -322,6 +329,9 @@ export function executeAttack(
     }
 
     const targetDied = target.takeHit(damage);
+    const hitResult = hit ? (targetDied ? 'kills' : 'hits') : 'misses';
+    if (attackerTurn) statsContext?.attackResult(hitResult, strikerStats.chanceToHit, damageDone, drainAmount);
+    else statsContext?.defendResult(hitResult, strikerStats.chanceToHit, damageDone, drainAmount);
 
     let strikerDiedFromDrain = false;
     if (drainAmount > 0) {
@@ -415,6 +425,8 @@ export function executeAttack(
     }
     if (aBlowsLeft <= 0 && dBlowsLeft <= 0) break;
   }
+
+  statsContext?.finish();
 
   if (!defenderDied) defender.experience += defenderXp;
   if (!attackerDied) attacker.experience += attackerXp;
