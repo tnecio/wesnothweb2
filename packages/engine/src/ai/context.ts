@@ -415,7 +415,8 @@ export class AiContext {
       }
       this.bumpGamestateChange();
       this.host.pump();
-      this.logAction({ kind: 'move', message: '', animation: { kind: 'move', unit, path } });
+      // The hexes it actually walked: a move cut short (a hex taken, an ambush, a sighting) is animated only that far.
+      this.logAction({ kind: 'move', message: '', animation: { kind: 'move', unit, path: outcome.result.path } });
     }
     return outcome;
   }
