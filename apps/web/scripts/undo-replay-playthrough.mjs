@@ -16,7 +16,7 @@
  * Exits non-zero if any step fails.
  */
 import { chromium } from 'playwright';
-import { openScenario, skipToPlay, waitBoardReady } from './lib/browserFlows.mjs';
+import { confirmEndTurnIfAsked, openScenario, skipToPlay, waitBoardReady } from './lib/browserFlows.mjs';
 
 const args = process.argv.slice(2);
 const arg = (name, fallback) => {
@@ -128,8 +128,12 @@ try {
     check('u does not take a recruit back (its traits were rolled)', (await recruits()) === 1);
 
     // ---- 3. a turn each way, save, and watch the replay ---------------------
-    await press(page, 'Control+Space', 3000);
-    await press(page, 'Control+Space', 3000);
+    // Side 2 (hotseat) has not acted, so ending its turn asks first (`confirm_end_turn=no_moves`).
+    for (const side of [2, 1]) {
+      await press(page, 'Control+Space', 1000);
+      await confirmEndTurnIfAsked(page);
+      await page.waitForFunction((s) => window.__wesnoth.session.activeSide === s && window.__wesnoth.otherSidesTurn === null, side, { timeout: 120000 });
+    }
     const saved = await state(page);
     const logLength = await page.evaluate(() => window.__wesnoth.session.replayLog.length);
     await saveAs(page, 'replay-probe');
