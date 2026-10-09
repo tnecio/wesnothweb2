@@ -102,3 +102,39 @@ describe('AiManager', () => {
     expect(manager.modifyAi(1, 'delete', 'goal[my_goal]')).toBe(true);
   });
 });
+
+describe('AiManager.playTurnSteps (Phase 29a)', () => {
+  it('adds up, step by step, to what playTurn does, with the board at each step as the step left it', () => {
+    const setUp = () => {
+      const board = makeBoard(terrainData);
+      const leaderType = makeUnitType('leader', 30, flatMoveType(terrainData, 50), makeWeapon(3, 1), 0);
+      const gruntType = makeUnitType('grunt', 20, flatMoveType(terrainData, 50), makeWeapon(3, 1));
+      board.addUnit(Unit.create(leaderType, 1, Location.fromWml(2, 1), { canRecruit: true }));
+      board.addUnit(Unit.create(gruntType, 1, Location.fromWml(4, 4)));
+      // In reach of the grunt: the leader goes to its keep, then the grunt attacks -- two steps.
+      board.addUnit(Unit.create(gruntType, 2, Location.fromWml(5, 4)));
+      return { board, manager: new AiManager(makeAiHost(board), () => []) };
+    };
+
+    const whole = setUp();
+    const all = whole.manager.playTurn(1);
+
+    const stepped = setUp();
+    const steps: string[][] = [];
+    for (const step of stepped.manager.playTurnSteps(1)) {
+      expect(step.length).toBeGreaterThan(0);
+      // The last move of the step has already happened on the board.
+      const move = [...step].reverse().find((a) => a.animation?.kind === 'move');
+      if (move?.animation?.kind === 'move') {
+        const to = move.animation.path[move.animation.path.length - 1]!;
+        expect(stepped.board.allUnits().some((u) => u.location.equals(to))).toBe(true);
+      }
+      steps.push(step.map((a) => a.message ?? a.kind));
+    }
+
+    expect(steps.length).toBeGreaterThan(1);
+    expect(steps.flat()).toEqual(all.map((a) => a.message ?? a.kind));
+    const at = (b: typeof whole.board) => b.allUnits().map((u) => `${u.side}@${u.location.x},${u.location.y}`).sort();
+    expect(at(stepped.board)).toEqual(at(whole.board));
+  });
+});

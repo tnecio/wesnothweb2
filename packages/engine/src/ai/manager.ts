@@ -176,17 +176,35 @@ export class AiManager {
 
   /** Plays `side`'s entire AI turn (`ai_composite::new_turn`+`play_turn`) and returns everything it did, ready for a host with a renderer to replay -- mirrors `simpleAi.ts`'s own `playAiTurn` return contract exactly, so `GameShell.playAiAnimations` needs no changes. */
   playTurn(side: number): AiAction[] {
+    const actions: AiAction[] = [];
+    for (const step of this.playTurnSteps(side)) actions.push(...step);
+    return actions;
+  }
+
+  /**
+   * Phase 29a: the same turn, one step at a time -- each yield is what one candidate action's `execute()`
+   * did that there is something to show for, so a display can show it before the AI goes on, as upstream's does (`stage_rca.cpp`'s loop calls
+   * `execute()`, which animates the action before it returns). Whatever is left when the turn ends (a
+   * stage that took no steps) comes as a last step.
+   */
+  *playTurnSteps(side: number): Generator<AiAction[], void, void> {
     const { ctx, composite } = this.getOrCreate(side);
     composite.newTurn();
     this.fellBack.delete(side);
+    const steps = composite.playTurnSteps();
     try {
-      composite.playTurn();
+      for (let step = steps.next(); !step.done; step = steps.next()) {
+        // A step with nothing to show (a unit's moves stopped) is not passed on.
+        const actions = ctx.drainActionLog();
+        if (actions.length > 0) yield actions;
+      }
     } catch (e) {
       // `playsingle_controller::play_ai_turn`: the turn stops and the caller hands the side to a human.
       if (!(e instanceof FallbackAiToHumanError)) throw e;
       this.fellBack.add(side);
     }
-    return ctx.drainActionLog();
+    const rest = ctx.drainActionLog();
+    if (rest.length > 0) yield rest;
   }
 
   /** Whether `side`'s last turn ended in `ai.fallback_human()` (the session then makes the side human). */

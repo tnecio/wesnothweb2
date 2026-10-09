@@ -21,7 +21,7 @@ import { CandidateAction, BAD_SCORE } from '@wesnothweb2/engine/src/ai/composite
 import type { AiEngine } from '@wesnothweb2/engine/src/ai/composite/aiComposite.js';
 import { FallbackAiToHumanError } from '@wesnothweb2/engine/src/ai/manager.js';
 import type { AiContext } from '@wesnothweb2/engine/src/ai/context.js';
-import type { Stage } from '@wesnothweb2/engine/src/ai/composite/stage.js';
+import type { AiSteps, Stage } from '@wesnothweb2/engine/src/ai/composite/stage.js';
 import type { MoveMap } from '@wesnothweb2/engine/src/ai/moveMaps.js';
 import type { AttackAnalysis } from '@wesnothweb2/engine/src/ai/default/attackAnalysis.js';
 import { findTargets } from '@wesnothweb2/engine/src/ai/default/findTargets.js';
@@ -768,5 +768,12 @@ export class LuaStage implements Stage {
     const before = this.ctx.gamestateSnapshot();
     if (this.ref !== undefined) this.luaEngine.handle(this.side, this.ref, this.args, undefined, false, false);
     return this.ctx.gamestateSnapshot() !== before;
+  }
+
+  /** Phase 29a: the stage's code is one Lua call, so it is one step. */
+  *playStageSteps(): AiSteps<boolean> {
+    const changed = this.playStage();
+    if (changed) yield;
+    return changed;
   }
 }

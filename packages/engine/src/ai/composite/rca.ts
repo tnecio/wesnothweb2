@@ -36,7 +36,7 @@ import { WmlConfig } from '../../wml/config.js';
 import type { Unit } from '../../model/Unit.js';
 import { unitMatchesFilter } from '../../events/filter.js';
 import type { AiContext } from '../context.js';
-import type { Stage } from './stage.js';
+import { runAiSteps, type AiSteps, type Stage } from './stage.js';
 import { FallbackAiToHumanError } from '../fallback.js';
 
 export const BAD_SCORE = 0;
@@ -135,6 +135,11 @@ export class RcaStage implements Stage {
   }
 
   playStage(): boolean {
+    return runAiSteps(this.playStageSteps());
+  }
+
+  /** The loop itself, pausing after each `execute()` (Phase 29a). */
+  *playStageSteps(): AiSteps<boolean> {
     for (const ca of this.candidateActions) ca.enable();
 
     let gamestateChanged = false;
@@ -178,20 +183,23 @@ export class RcaStage implements Stage {
           // left to do" and stop early (a real, previously-caught-by-this-test bug: `continue` alone left `executed`
           // false, silently ending the whole stage after just one broken CA instead of trying the next-best one).
           executed = true;
+          // A Lua action may have acted before it threw.
+          if (this.ctx.gamestateSnapshot() !== before) yield;
           continue;
         }
         executed = true;
         executions++;
-        if (executions > EXECUTION_CAP) {
-          this.ctx.host.log('warn', `RCA stage ${this.id}: execution cap (${EXECUTION_CAP}) reached, stopping this turn's evaluation loop`);
-          break;
-        }
         const after = this.ctx.gamestateSnapshot();
         if (after === before) {
           // The CA claimed a positive score but didn't actually change anything -- blacklisted for the rest of this stage invocation.
           best.disable();
         } else {
           gamestateChanged = true;
+          yield;
+        }
+        if (executions > EXECUTION_CAP) {
+          this.ctx.host.log('warn', `RCA stage ${this.id}: execution cap (${EXECUTION_CAP}) reached, stopping this turn's evaluation loop`);
+          break;
         }
       }
     }

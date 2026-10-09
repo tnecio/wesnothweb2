@@ -14,7 +14,7 @@
 import type { WmlConfig } from '../../wml/config.js';
 import type { AiContext } from '../context.js';
 import { CandidateAction, RcaStage } from './rca.js';
-import { IdleStage, type Stage } from './stage.js';
+import { IdleStage, runAiSteps, type AiSteps, type Stage } from './stage.js';
 
 export type CandidateActionFactory = (ctx: AiContext, cfg: WmlConfig) => CandidateAction;
 
@@ -118,9 +118,14 @@ export class AiComposite {
 
   /** Runs every stage in order, stopping immediately if a scenario-ending event fired mid-turn. */
   playTurn(): void {
+    runAiSteps(this.playTurnSteps());
+  }
+
+  /** The same, pausing after each action a stage takes (Phase 29a). */
+  *playTurnSteps(): AiSteps<void> {
     for (const stage of this.stages) {
       if (this.ctx.host.scenarioEnded()) break;
-      stage.playStage();
+      yield* stage.playStageSteps();
     }
   }
 
