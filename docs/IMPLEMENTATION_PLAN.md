@@ -2136,6 +2136,83 @@ needs revisiting once S7 eventually lands.
 recruitment budgeting (`[recruitment_instructions]`/`[recruit]`/
 `[limit]`) become real here.
 
+## Phase 29a — AI turns shown action by action (added 2026-10-09)
+
+**Status: planned (user's call, 2026-10-09), branch `ai-step-by-step`.**
+
+**Today:**
+- `GameSession.endTurn` runs every AI side's whole turn (`AiManager.playTurn`) before anything is shown.
+- The shell then replays the recorded `AiAnimationEvent`s. Each event records the positions of its own
+  moment, because by then the board is at the end of the turn.
+
+**What that costs:**
+- The page freezes while all the thinking happens, and only then do the animations start.
+- Hit-point bars and positions do not update between animations.
+- Units killed earlier in the turn have to be removed by hand.
+- A `[message]` raised by an AI-triggered event is shown only after every animation.
+- Several bugs came from the replay and the board disagreeing (bugs4.md #2/#3, bugs5.md #3).
+
+**Upstream:** thinking and display alternate on one thread.
+- The RCA loop (`stage_rca.cpp`) calls `best_ptr->execute()`, which animates the action
+  (`unit_display::move_unit`) before it returns. Only then is the next candidate action evaluated.
+- Input and redraws are handled while the AI thinks (`ai::manager::raise_user_interact`, at most every 30 ms).
+- Events fire in place, so their dialogue appears mid-turn.
+
+**The port, after this phase:** the AI pauses after each candidate action's `execute()`, and the display
+catches up before the AI goes on.
+- **Granularity is one candidate-action execution.** The AI cannot pause inside a Lua call, so a
+  candidate action that both moves and attacks (`ca_messenger_move`) shows as one step. Upstream draws
+  even within that.
+- **A `[message]` with options raised on an AI side's turn is still answered at once,** as today. It is
+  shown in its place now, not after the turn.
+
+### Stages (one commit each, suites green)
+
+1. **The engine AI pauses after each action.**
+   - `Stage.playStage` becomes a generator that yields after each executed action:
+     - `RcaStage` yields after every `execute()`;
+     - `LuaStage` yields once at its end;
+     - `IdleStage` never yields.
+   - `AiComposite.playTurnSteps` and `AiManager.playTurnSteps(side)` yield each step's actions
+     (`drainActionLog`).
+   - `playTurn` runs the steps to the end, so every existing caller (tests, the oracle tools, the
+     benchmark) is unchanged.
+   - Test: with the same seed, the steps add up to exactly what `playTurn` returns, one step per
+     executed candidate action.
+2. **The session hands each step to the display.**
+   - `endTurnFlow` plays AI sides step by step. After each step it yields a session-level `aiStep`
+     carrying what has happened since the last one: turn-start healing and the step's animation events.
+     It also carries the dialogue that events deferred.
+   - `drive` awaits the new `InteractionHost.aiStep` with it.
+   - With no host (headless), the steps are passed over. The game, its RNG and its replay are identical.
+   - `playAiSide` stays synchronous for the scripts and tests that call it.
+   - Tests:
+     - a headless `endTurn` gives the same board, replay and log as before;
+     - a recording host gets the steps in order, and the board is at each step's end state when that
+       step reaches the host;
+     - an AI-triggered `[message]` arrives with its step.
+3. **The shell plays each step as it arrives.**
+   - `GameShell` implements `aiStep`. It plays that step's healing and animations, then `sync()`s the
+     board, then shows that step's dialogue, and only then lets the AI go on.
+   - The end screen still waits until the turn is over.
+   - `otherSidesTurn` alternates between `thinking` and `animating`.
+   - Skip Animation and the Skip AI moves preference stop animating but still update the board each step.
+   - What is left in `lastTurnTimeline` after `endTurn` (the player's own turn-start healing) plays as now.
+   - The "known simplification" comment and the hand removal of dead units' sprites go.
+4. **Browser check.** A new script, `ai-turn-playthrough.mjs`, plays an AI turn of Dead Water 1 and of
+   Liberty 1, checking:
+   - steps arrive one by one, the board view matching the session after each;
+   - the page stays responsive between steps;
+   - no page errors.
+
+   Plus the scripts the change touches: `turn-end-playthrough`, `dialogue-playthrough`,
+   `undo-replay-playthrough`, and `campaign-playthrough --campaign liberty`.
+
+**Then:**
+- `docs/PROGRESS.md` entry;
+- this section marked delivered;
+- a PR, merged and tagged only when you say so.
+
 ## Phase 30 — Combat RNG modes (added 2026-09-27, deliberately last)
 
 **Status: not started.** Split out of Phase 21 (user's call, 2026-09-27):
@@ -2219,10 +2296,11 @@ pulled forward and delivered 2026-09-22.
    list, advancement preview; delivered 2026-10-05), then **Phase 25** (statistics, the
    statistics dialog, achievements; delivered 2026-10-05) -- the user's call, 2026-10-05, which
    moves achievements into Phase 25 rather than ahead of Phase 24.
-14. **Phase 27** (feature completeness assessment), then **Phase 28d**
+14. **Phase 29a** (AI turns shown action by action, as upstream does) -- the user's call, 2026-10-09.
+15. **Phase 27** (feature completeness assessment), then **Phase 28d**
    (performance budgets, cross-browser, offline; split from Phase 28).
-15. **Phase 31** (World Conquest), not yet scheduled.
-16. **Phase 30** (combat RNG modes, split from Phase 21) — last, after
+16. **Phase 31** (World Conquest), not yet scheduled.
+17. **Phase 30** (combat RNG modes, split from Phase 21) — last, after
    everything above.
 
 ### Old → new phase numbers
