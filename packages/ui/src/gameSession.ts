@@ -59,7 +59,6 @@ import {
   type AiWmlHooks,
   type PersistentVariables,
   type AiHost,
-  type AiAction,
   type AiAnimationEvent,
   type ScenarioObjectives,
   parseScenarioObjectives,
@@ -208,7 +207,24 @@ setLuaConditionalEvaluator(createLuaConditionalEvaluator());
  */
 export interface InteractionHost {
   handle(interaction: Interaction): Promise<InteractionResult>;
+  /**
+   * Phase 29a: an AI side has just taken an action -- upstream's `stage_rca.cpp` loop, where `execute()`
+   * returns with the action drawn. `timeline` is what happened since the last call, in order (turn-start
+   * healing, the action's animations); the board is already as the action left it, and anything its events
+   * had to say is waiting in `takeDeferredInteractions`. The AI goes on when the promise settles. Without
+   * this the turn plays straight through, and all of it is in `lastTurnTimeline` afterwards.
+   */
+  aiStep?(timeline: readonly TurnTimelineEntry[]): Promise<void>;
 }
+
+/** Phase 29a: the pause after one AI action, which `drive` hands to `InteractionHost.aiStep`. */
+interface AiStepPause {
+  readonly kind: 'aiStep';
+}
+const AI_STEP: AiStepPause = { kind: 'aiStep' };
+
+/** An end-of-turn flow: a `Flow` that also pauses after each AI action. */
+type TurnFlow<T> = Generator<Interaction | AiStepPause, T, InteractionResult>;
 
 /**
  * The scenario's real `turns=` attribute (from `scenarioConfigJson`), if it
@@ -2114,10 +2130,16 @@ export class GameSession {
    * log already holds (a replay, a redo) is answered from the log without
    * asking anyone; any other choice made inside an action is recorded.
    */
-  private async drive<T>(flow: Flow<T>): Promise<T> {
+  private async drive<T>(flow: TurnFlow<T>): Promise<T> {
     let step = flow.next({});
     while (!step.done) {
       const interaction = step.value;
+      if (interaction.kind === 'aiStep') {
+        const host = this.interactionHost;
+        if (host?.aiStep && this.turnTimeline) await host.aiStep(this.turnTimeline.splice(0));
+        step = flow.next({});
+        continue;
+      }
       let answer = this.replayedAnswer(interaction);
       if (!answer) {
         const host = this.interactionHost;
@@ -3844,7 +3866,7 @@ export class GameSession {
     return this.drive(this.endTurnFlow(maxAiSideTurns));
   }
 
-  private *endTurnFlow(maxAiSideTurns: number): Flow<string> {
+  private *endTurnFlow(maxAiSideTurns: number): TurnFlow<string> {
     const aiAnimations: AiAnimationEvent[] = [];
     const healOutcomes: HealOutcome[] = [];
     this.healOutcomeSink = healOutcomes;
@@ -3855,8 +3877,10 @@ export class GameSession {
     }
   }
 
-  private *endTurnLoop(maxAiSideTurns: number, aiAnimations: AiAnimationEvent[], healOutcomes: HealOutcome[]): Flow<string> {
+  private *endTurnLoop(maxAiSideTurns: number, aiAnimations: AiAnimationEvent[], healOutcomes: HealOutcome[]): TurnFlow<string> {
+    // What has not been shown yet: `InteractionHost.aiStep` takes it as the turn goes, the rest is `lastTurnTimeline`.
     const timeline: TurnTimelineEntry[] = [];
+    this.turnTimeline = timeline;
     // Whatever was added to `list` since `from`, as one timeline entry.
     const record = <T>(list: readonly T[], from: number, entry: (items: readonly T[]) => TurnTimelineEntry) => {
       if (list.length > from) timeline.push(entry(list.slice(from)));
@@ -3872,16 +3896,20 @@ export class GameSession {
         };
       });
     } finally {
+      this.turnTimeline = null;
       this.lastTurnTimeline = timeline.length > 0 ? timeline : null;
     }
   }
+
+  /** The running `endTurn`'s timeline not yet handed to `InteractionHost.aiStep`. */
+  private turnTimeline: TurnTimelineEntry[] | null = null;
 
   private *endTurnSides(
     maxAiSideTurns: number,
     aiAnimations: AiAnimationEvent[],
     healOutcomes: HealOutcome[],
     step: () => () => void,
-  ): Flow<string> {
+  ): TurnFlow<string> {
     let done = step();
     let message = yield* this.advanceOneTurn();
     done();
@@ -3902,8 +3930,13 @@ export class GameSession {
         // `play_side`: a human's turn is skipped when its own turn events ran `[end_turn]`.
         if (!this.eventPump.ctx.endTurnForced) break;
       } else {
+        // Each action is shown before the next is chosen (`stage_rca.cpp`): the display catches up at each pause.
         done = step();
-        this.playAiSide(this.activeSide, aiAnimations);
+        for (const _ of this.playAiSideSteps(this.activeSide, aiAnimations)) {
+          done();
+          yield AI_STEP;
+          done = step();
+        }
         done();
         // `ai.fallback_human()`: the side is now human, and its turn goes on in the player's hands.
         if (this.aiManager.fellBackToHuman(team.side)) break;
@@ -3933,27 +3966,33 @@ export class GameSession {
    * too is AI-controlled.
    */
   playAiSide(side: number, outAnimations: AiAnimationEvent[]): void {
-    // An AI side resolves its whole turn before any of it is animated
-    // (see `AiAnimationEvent`), so its events cannot block on the player
-    // the way a human's can: anything they raise is answered inline and
-    // collected for the caller to show afterwards. See
-    // `takeDeferredInteractions`.
+    for (const _ of this.playAiSideSteps(side, outAnimations));
+  }
+
+  /** `playAiSide`, pausing after each action once its log lines and animations are added (Phase 29a). */
+  private *playAiSideSteps(side: number, outAnimations: AiAnimationEvent[]): Generator<void, void, void> {
+    // An AI side's events cannot block on the player the way a human's
+    // can: anything they raise is answered inline and collected, to be
+    // shown at the next pause. See `takeDeferredInteractions`.
     runFlow(this.fireFlow('ai turn'), this.collectResponder); // mirrors manager::play_turn's own pre-turn event, real content hooks WML on it.
     // Combat prediction's Monte Carlo draws from the unsynced generator (`rng::default_instance()` upstream, which
     // the AI's own random draws share): this session's unsynced stream, so a headless game repeats from its seed.
     setPredictionRandom(this.predictionRng);
-    const actions: AiAction[] = this.aiManager.playTurn(side);
+    for (const actions of this.aiManager.playTurnSteps(side)) {
+      for (const action of actions) {
+        if (action.message) this.log.unshift(action.message);
+        if (action.animation) outAnimations.push(action.animation);
+      }
+      yield;
+    }
     // `play_ai_turn` catching `fallback_ai_to_human_exception`: `team::make_human`.
     if (this.aiManager.fellBackToHuman(side)) {
       const team = this.board.getTeam(side);
       if (team) team.controller = 'human';
     }
-    for (const action of actions) {
-      if (action.message) this.log.unshift(action.message);
-      if (action.animation) outAnimations.push(action.animation);
-    }
     this.pumpEvents();
   }
+
 
   /**
    * Ends the active side's turn and starts the next side's, as the two
