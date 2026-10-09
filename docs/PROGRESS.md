@@ -6501,3 +6501,39 @@ Branch `phase-25`, on top of `phase-24` (it uses the hotkey registry). Each part
     written), and waits for an uploaded save to appear rather than a fixed 4 s, requiring the list to grow.
 
   Both pass, as do the unit tests of every package, typecheck and lint.
+
+## 2026-10-09: Phase 29a -- AI turns shown action by action
+
+The user asked why the port computes an AI side's whole turn and only then animates it, where upstream
+shows each action as it happens. Upstream's RCA loop (`stage_rca.cpp`) calls `execute()`, which draws the
+action (`unit_display`) before it returns, and only then evaluates the next candidate action. The port
+now does the same, one candidate-action execution at a time.
+
+- **Engine.** `Stage.playStageSteps` is a generator that yields after each `execute()` that changed the
+  game (`RcaStage`), once for a Lua stage, never for the idle one. `AiComposite.playTurnSteps` and
+  `AiManager.playTurnSteps(side)` pass each step's actions on; a step with nothing to show (a unit's moves
+  stopped) is not passed on. `playTurn` runs the steps to the end, so the tests, oracle tools and the
+  benchmark are unchanged.
+- **Session.** `endTurn` plays an AI side step by step. After each step `drive` hands
+  `InteractionHost.aiStep` what has happened since the last one (turn-start healing, the action's
+  animations); the board is already as the action left it, and the action's dialogue waits in
+  `takeDeferredInteractions`. The AI goes on when the host is done. Headless (no host), the turn plays
+  straight through: a unit test checks the board, log and replay are the same as before, and another that an
+  AI unit's `moveto` [message] arrives with its step.
+- **Shell.** `showAiStep` plays the step's animations, `sync()`s the board, shows its dialogue, paints, and
+  lets the AI go on. The End Turn button alternates between Wait (thinking) and Skip (animating). Skip
+  Animation and Skip AI moves still work, and the board is updated after every step either way. Save and
+  Load are disabled until the other sides' turns are over, since the board is now visible mid-turn.
+- **Granularity is upstream's grouping:** one recruitment execution recruits all its units, one
+  move-to-targets execution moves several units, and a Lua candidate action that moves and then attacks
+  (`ca_messenger_move`) is one step. Upstream draws within those too; the port cannot pause inside a Lua call.
+- **A bug the step tests found:** an AI move cut short (its last hex taken by the side's own unit, an
+  ambush, a sighting) was animated along the whole planned route, and the unit then jumped back to where it
+  really stopped. The animation now follows `MoveResult.path`, the hexes actually walked. This may be what
+  the user saw in Liberty 1 (2026-10-09), where Fal Khag seemed not to move.
+- **Browser checks.** New `apps/web/scripts/ai-turn-playthrough.mjs` passes on Dead Water 1 (2 steps) and
+  Liberty 1 (5 steps): the board view changes after each step while the AI's turn is on, matches the game at
+  the end, and an AI recruit's `[message]` is shown mid-turn with the AI going on after it. The longest
+  frame gap during an AI turn is 1.3-1.9 s on this VM's software WebGL. `turn-end-playthrough`, `dialogue-playthrough` and
+  `campaign-playthrough --campaign liberty` pass. `undo-replay-playthrough` was stale (hotseat side 2's
+  "You have not started your turn yet" question was never answered, so Save Game could not open) and is fixed.

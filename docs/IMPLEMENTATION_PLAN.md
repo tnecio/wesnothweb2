@@ -2138,7 +2138,7 @@ recruitment budgeting (`[recruitment_instructions]`/`[recruit]`/
 
 ## Phase 29a — AI turns shown action by action (added 2026-10-09)
 
-**Status: planned (user's call, 2026-10-09), branch `ai-step-by-step`.**
+**Status: delivered 2026-10-09 (branch `ai-step-by-step`), see `docs/PROGRESS.md`.** Planned as below; the one change in the doing is that a step with nothing to show (a unit's moves stopped) is not passed on, and Save/Load wait for the other sides' turns to end.
 
 **Today:**
 - `GameSession.endTurn` runs every AI side's whole turn (`AiManager.playTurn`) before anything is shown.
@@ -2296,7 +2296,7 @@ pulled forward and delivered 2026-09-22.
    list, advancement preview; delivered 2026-10-05), then **Phase 25** (statistics, the
    statistics dialog, achievements; delivered 2026-10-05) -- the user's call, 2026-10-05, which
    moves achievements into Phase 25 rather than ahead of Phase 24.
-14. **Phase 29a** (AI turns shown action by action, as upstream does) -- the user's call, 2026-10-09.
+14. **Phase 29a** (AI turns shown action by action, as upstream does) -- the user's call, 2026-10-09; delivered 2026-10-09.
 15. **Phase 27** (feature completeness assessment), then **Phase 28d**
    (performance budgets, cross-browser, offline; split from Phase 28).
 16. **Phase 31** (World Conquest), not yet scheduled.
