@@ -89,6 +89,7 @@
     type PendingAdvancement,
     type HoveredHexInfo,
     type InteractionHost,
+    type TurnTimelineEntry,
     type GameSessionOptions,
     type HexClickOptions,
   } from './gameSession.js';
@@ -909,6 +910,7 @@
           }),
       );
     },
+    aiStep: showAiStep,
   };
   session.interactionHost = interactionHost;
 
@@ -1607,6 +1609,9 @@
       /** The audio engine, so a check can watch what is played when. */
       audio,
       /** Whether another side's turn is being computed or shown ('thinking'/'animating'), else null. */
+      /** Phase 29a: how many AI actions have been shown one by one, and the units as the board view has them. */
+      aiSteps: () => aiStepsShown,
+      shownUnits: () => units.map((u) => `${u.side}:${u.typeId}@${u.x},${u.y}:${u.hitpoints}`).sort(),
       get otherSidesTurn() {
         return otherSidesTurn;
       },
@@ -2282,27 +2287,13 @@
   }
 
   /**
-   * Real, reported bug: an AI-controlled side's whole turn used to resolve
-   * with zero animation (a deliberate simplification at the time -- see
-   * `LastAttackAnimation`'s own doc comment -- since reversed:
-   * `GameSession.lastAiAnimations`). `session.endTurn()` has already fully
-   * resolved every AI action by the time it returns (board is at its final
-   * state), so each event here is played back against `boardView` using
-   * the exact same cue builders a human's own actions use -- `
-   * AiAnimationEvent`'s attack/move/recruit variants are structurally
-   * identical to `LastAttackAnimation`/`LastMoveAnimation`/
-   * `LastRecruitAnimation`, so the same builders apply directly.
-   *
-   * Known simplification: there's no incremental `sync()` between events
-   * (other than the explicit `removeUnitVisual` death cleanup below, and
-   * `buildBlowAnimationCues`/`buildRecruitAnimationCues` now reading each
-   * event's own FROZEN location fields rather than live `.location` --
-   * see bugs4.md #2/#3 and `AiAnimationEvent`'s own doc comment) -- a
-   * unit's HP bar/position otherwise only reconciles with `board`'s live
-   * state at the single `sync()` after the whole turn finishes. An
-   * acceptable rough edge for a first cut given real per-action board
-   * reconciliation would need `GameSession` to expose intermediate board
-   * snapshots, not just the final one.
+   * Plays an AI side's animation events against `boardView`, with the same cue builders a human's own
+   * actions use (`AiAnimationEvent`'s attack/move/recruit variants are structurally identical to
+   * `LastAttackAnimation`/`LastMoveAnimation`/`LastRecruitAnimation`). Since Phase 29a these are one
+   * action's events (`showAiStep`): the board view is as the previous action left it, and catches up
+   * when this one has played. One action can still hold several events (a candidate action that moves
+   * and then attacks, or recruits several units), hence each event's own frozen locations and the dead
+   * units' sprites removed as they die (bugs4.md #2/#3).
    */
   async function playAiAnimations(events: readonly AiAnimationEvent[]): Promise<void> {
     // Phase 24: Skip AI moves (`play_controller::is_skipping_actions`): the final sync() shows the result.
@@ -2384,6 +2375,49 @@
     boardView?.skipAnimations();
   }
 
+  /**
+   * Phase 29a: one AI action, as it happens (`InteractionHost.aiStep`). Upstream's RCA loop draws each action
+   * before it chooses the next (`stage_rca.cpp`, `unit_display`), so here: the action's animations (with
+   * any turn-start healing before it), then the board catches up, then whatever the action's events had to
+   * say -- and only then does the AI go on.
+   */
+  async function showAiStep(timeline: readonly TurnTimelineEntry[]): Promise<void> {
+    aiStepsShown++;
+    otherSidesTurn = 'animating';
+    await playTimeline(timeline);
+    sync();
+    for (const interaction of session.takeDeferredInteractions()) {
+      if (interaction.kind !== 'message') continue;
+      await scrollToSpeaker(interaction);
+      await new Promise<void>((resolve) => {
+        currentMessage = interaction;
+        answerInteraction = () => resolve();
+      });
+    }
+    otherSidesTurn = 'thinking';
+    // The board as it now stands is painted before the AI thinks again.
+    await nextPaint();
+  }
+
+  /** How many AI actions `showAiStep` has shown (the dev debug hook's `aiSteps`). */
+  let aiStepsShown = 0;
+
+  /** In the order it happened (`TurnTimelineEntry`): a side's turn-start healing and poison, then its moves. */
+  async function playTimeline(timeline: readonly TurnTimelineEntry[]): Promise<void> {
+    for (const entry of timeline) {
+      if (entry.kind === 'heals') await playHealAnimations(entry.outcomes);
+      else await playAiAnimations(entry.events);
+    }
+  }
+
+  /** Resolves once the page has painted -- or after 100 ms, as a hidden tab gets no animation frames. */
+  function nextPaint(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, 100);
+      requestAnimationFrame(() => requestAnimationFrame(() => (clearTimeout(timer), resolve())));
+    });
+  }
+
   async function handleEndTurn(options: { forced?: boolean } = {}): Promise<void> {
     if (!canAct() || (!options.forced && session.endTurnBlocked !== null)) return;
     const message = await runPlayerAction(async () => {
@@ -2391,24 +2425,17 @@
       skipOtherSidesAnimations = false;
       heldTurnSounds = [];
       try {
-        // The AI computes synchronously inside endTurn: let the greyed-out button paint first.
-        // (A hidden tab gets no animation frames, hence the timeout.)
-        await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, 100);
-          requestAnimationFrame(() => requestAnimationFrame(() => (clearTimeout(timer), resolve())));
-        });
+        // The AI computes synchronously between its actions: let the greyed-out button paint first.
+        await nextPaint();
+        // Each AI action is shown as it happens (`showAiStep`); what is left is what came after the last
+        // one -- the player's own healers, as their turn begins, or a side that took no action.
         const result = await session.endTurn();
         otherSidesTurn = 'animating';
-        // In the order it happened (`lastTurnTimeline`): each side's turn-start healing and poison, then
-        // that side's moves -- the player's own healers last, as their turn begins.
         const timeline = session.lastTurnTimeline ?? [];
         session.lastTurnTimeline = null;
         session.lastHealAnimations = null;
         session.lastAiAnimations = null;
-        for (const entry of timeline) {
-          if (entry.kind === 'heals') await playHealAnimations(entry.outcomes);
-          else await playAiAnimations(entry.events);
-        }
+        await playTimeline(timeline);
         return result;
       } finally {
         otherSidesTurn = null;
@@ -2912,13 +2939,14 @@
     {
       id: 'save',
       label: `${t('Save Game')}...`,
-      enabled: phase === 'playing',
+      // Not half way through the other sides' turns (Phase 29a: the board is shown between AI actions).
+      enabled: phase === 'playing' && otherSidesTurn === null,
       handler: () => void openSaveManager('save'),
     },
     {
       id: 'load',
       label: `${t('Load Game')}...`,
-      enabled: phase === 'playing' || phase === 'ended' || phase === 'replay',
+      enabled: (phase === 'playing' && otherSidesTurn === null) || phase === 'ended' || phase === 'replay',
       handler: () => void openSaveManager('load'),
     },
     ...(onQuitToMenu
