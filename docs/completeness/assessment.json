@@ -1,1 +1,340 @@
-{}
+{
+ "1.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/parser.test.ts",
+   "packages/engine/test/wml/writer.test.ts"
+  ]
+ },
+ "1.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/parser.test.ts"
+  ],
+  "note": "Values are typed (number/boolean/string) when parsed, read back as strings where upstream does."
+ },
+ "1.3": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/parser.test.ts"
+  ]
+ },
+ "1.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/tokenizer.test.ts"
+  ]
+ },
+ "1.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/tokenizer.test.ts",
+   "packages/engine/test/wml/writer.test.ts"
+  ]
+ },
+ "1.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/writer.test.ts",
+   "packages/engine/test/wml/macroQuotedArgs.test.ts"
+  ]
+ },
+ "1.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/parser.test.ts"
+  ]
+ },
+ "1.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/tokenizer.test.ts",
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
+ },
+ "1.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts",
+   "packages/engine/test/events/variables.test.ts"
+  ]
+ },
+ "1.10": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
+ },
+ "1.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
+ },
+ "1.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
+ },
+ "1.13": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
+ },
+ "1.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts",
+   "packages/engine/test/wml/macroQuotedArgs.test.ts"
+  ],
+  "note": "Paren nesting is counted, more permissive than upstream's token-stack rule; real content builds."
+ },
+ "1.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts",
+   "packages/engine/src/wml/preprocessor.ts"
+  ],
+  "note": "Depth limits (100 macro, 40 include) raise an error; the limit itself has no test."
+ },
+ "1.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
+ },
+ "1.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ],
+  "note": "A directory prefers its _main.cfg, else its .cfg files in order; no subdirectory recursion or _first/_final ordering, which no shipped content needs."
+ },
+ "1.18": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/wml/preprocessor.ts"
+  ],
+  "note": "Relative and data-root paths only. ~ (user data, add-ons) and @ are not resolved; add-ons are out of scope."
+ },
+ "1.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
+ },
+ "1.20": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/wml/preprocessor.ts"
+  ],
+  "note": "#ifhave/#ifnhave/#ifver/#ifnver are implemented but have no test."
+ },
+ "1.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
+ },
+ "1.22": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs",
+   "apps/web/scripts/build-scenario-snapshot.mjs"
+  ],
+  "note": "Each scenario is built once per difficulty with its define; the menu opens the chosen build."
+ },
+ "1.23": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ],
+  "note": "Errors name the line but not always the file; problems surface when the data is built, not in the game."
+ },
+ "1.24": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/variables.test.ts"
+  ]
+ },
+ "1.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/variables.test.ts"
+  ]
+ },
+ "1.26": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/variables.test.ts"
+  ]
+ },
+ "1.27": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/variables.test.ts"
+  ]
+ },
+ "1.28": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/variables.test.ts"
+  ],
+  "note": "Inner references resolve first (right-to-left scan)."
+ },
+ "1.29": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/variables.ts",
+   "packages/engine/test/formula/formula.test.ts"
+  ],
+  "note": "$(...) is evaluated by the WFL interpreter but has no test (and the module comment still says it is missing); [set_variable] formula= is skipped."
+ },
+ "1.30": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/parser.test.ts"
+  ]
+ },
+ "1.31": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "1.32": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/parser.test.ts",
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "1.33": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts",
+   "packages/engine/test/events/shroudWml.test.ts",
+   "packages/engine/test/ai/aspect.test.ts"
+  ]
+ },
+ "1.34": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/frame.test.ts",
+   "packages/renderer/test/mapItems.test.ts"
+  ]
+ },
+ "1.35": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "1.36": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/variables.test.ts",
+   "packages/engine/src/model/Unit.ts"
+  ],
+  "note": "Scenario [variables] are tested; a unit's [variables] is kept and saved but has no test of its own."
+ },
+ "1.37": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "1.38": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/story/storyParser.ts",
+   "packages/lua-bridge/src/kernel/base.ts"
+  ],
+  "note": "[deprecated_message] and Lua deprecated_message log a warning; the #deprecated directive is skipped silently. No test."
+ },
+ "1.39": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Schema validation is a content-author tool (wesnoth --validate); the port ships only mainline data, which upstream validates."
+ },
+ "1.40": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/lib/binaryPaths.mjs",
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ],
+  "note": "Resolved when the data is built: a campaign's [binary_path]s first, then core. The campaign check fails on any missing file."
+ },
+ "1.41": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Add-ons are out of scope. [resource]/[load_resource]/[modification] are used only by World Conquest, which is Phase 31."
+ },
+ "1.42": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "1.43": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/gameConfig.ts",
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ],
+  "note": "The constants are upstream's defaults, pinned by tests, but hardcoded: a [game_config] in the data does not change them."
+ },
+ "1.44": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/build-team-colors.mjs",
+   "packages/renderer/src"
+  ],
+  "note": "[color_range]s are read from the data for team colours; [color_palette] (the ~PAL image function) is not used."
+ },
+ "1.45": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/build-fonts.mjs",
+   "packages/ui/src/fonts.css"
+  ],
+  "note": "Upstream's fonts ship, with their fallback order hand-written in CSS rather than read from [fonts]."
+ },
+ "1.46": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/PreferencesDialog.svelte"
+  ],
+  "note": "The Advanced tab lists the advanced_preferences.cfg entries the port can apply, written by hand rather than read from the data."
+ },
+ "1.47": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/error-screen-playthrough.mjs"
+  ],
+  "note": "Content is parsed when the data is built, so a malformed file stops the build with its error. In the game, an error shows the error screen with a report and the latest autosave."
+ },
+ "1.48": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/deadWaterIntegration.test.ts",
+   "apps/web/scripts/build-scenario-snapshot.mjs"
+  ],
+  "note": "Every shipped campaign is preprocessed and parsed when the data is built."
+ },
+ "1.49": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/writer.test.ts",
+   "packages/engine/test/wml/configJson.test.ts"
+  ]
+ },
+ "1.50": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/deadWaterIntegration.test.ts"
+  ]
+ }
+}
