@@ -8,7 +8,7 @@
  * does upstream) and `lua_function=` (ignored, as without a Lua kernel).
  * The caller substitutes variables first.
  */
-import type { WmlConfig } from '../wml/config.js';
+import { WmlConfig } from '../wml/config.js';
 import type { GameBoard } from '../model/GameBoard.js';
 import type { Team } from '../model/Team.js';
 import { parseRanges, unitMatchesFilter } from './filter.js';
@@ -63,6 +63,23 @@ export function sideMatchesFilter(board: GameBoard, cfg: WmlConfig, t: Team, log
     else if (tag === 'not') matches = matches && !sideMatchesFilter(board, config, t, log);
   }
   return matches;
+}
+
+/**
+ * `utils.get_sides` (`wml-utils.lua`): the sides an action names -- its `[filter_side]` if it has one (an inline
+ * `side=` beside it is ignored, with a warning), else a filter of `side=` alone, which matches every side when
+ * absent. Unlike `findSides(board, cfg)` it never reads the action's other keys as filter keys, which matters for
+ * a tag such as `[modify_side]` whose `team_name=` is the new value, not a condition.
+ */
+export function getSides(board: GameBoard, cfg: WmlConfig, log?: (level: 'warn' | 'error', msg: string) => void): number[] {
+  const filter = cfg.child('filter_side');
+  if (filter) {
+    if (cfg.hasAttribute('side')) log?.('warn', 'ignoring duplicate side filter information (inline side=)');
+    return findSides(board, filter, (m) => log?.('error', m));
+  }
+  const bySide = new WmlConfig();
+  if (cfg.hasAttribute('side')) bySide.setAttribute('side', cfg.getRaw('side')!);
+  return findSides(board, bySide, (m) => log?.('error', m));
 }
 
 /** `side_filter::get_teams`: the matching sides, in side order. */

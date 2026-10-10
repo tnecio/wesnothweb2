@@ -640,7 +640,7 @@ function actionSetVariable(cfg: WmlConfig, ctx: EventContext): void {
  * `merge` merges element i of the data into element i (`config::merge_with`); `insert` inserts the data at the
  * index (the front, with none).
  */
-function actionSetVariables(cfg: WmlConfig, ctx: EventContext): void {
+export function actionSetVariables(cfg: WmlConfig, ctx: EventContext): void {
   const name = cfg.getString('name', '');
   if (name === '') {
     ctx.log('error', 'trying to set a variable with an empty name');
@@ -739,7 +739,7 @@ function isTruthy(v: WmlStoredValue | undefined): boolean {
 
 // --- [clear_variable] ---
 
-function actionClearVariable(cfg: WmlConfig, ctx: EventContext): void {
+export function actionClearVariable(cfg: WmlConfig, ctx: EventContext): void {
   const names = cfg.getString('name', '');
   if (names === '') {
     ctx.log('error', '[clear_variable] missing required name= attribute.');

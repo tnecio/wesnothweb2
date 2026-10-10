@@ -1164,6 +1164,12 @@ export interface SaveGameData {
      * during play reverted to unowned and the side's income with it.
      */
     villages?: readonly { x: number; y: number }[];
+    /**
+     * Phase 27a: the whole side as `team::write` saves it (`Team.toConfig`): recruit list, team, controller,
+     * income, fog and shroud flags... -- everything WML can change during play. Absent in older saves, which
+     * kept only the fields above.
+     */
+    config?: WmlConfigJson;
   }[];
   units: readonly SavedUnit[];
   /**
@@ -5026,6 +5032,7 @@ export class GameSession {
         shroudData: t.shroud.write(),
         fogData: t.fog.write(),
         villages: this.board.villagesOwnedBy(t.side).map((loc) => ({ x: loc.x, y: loc.y })),
+        config: t.toConfig().toJSON(),
       })),
       units: this.board.allUnits().map((u) => ({
         ...savedUnitFields(u),
@@ -5067,6 +5074,7 @@ export class GameSession {
     for (const t of data.teams) {
       const team = this.board.getTeam(t.side);
       if (!team) continue;
+      if (t.config) team.applyConfig(WmlConfig.fromJSON(t.config));
       team.gold = t.gold;
       if (t.shroudData !== undefined) team.shroud.read(t.shroudData);
       if (t.fogData !== undefined) team.fog.read(t.fogData);

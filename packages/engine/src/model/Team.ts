@@ -12,7 +12,7 @@
  * (`GameBoard.isShrouded`/`isFogged` do that).
  */
 
-import type { WmlConfig } from '../wml/config.js';
+import { WmlConfig } from '../wml/config.js';
 import type { Location } from './Location.js';
 import { ShroudMap } from './ShroudMap.js';
 
@@ -67,6 +67,10 @@ export class Team {
   controller: SideController;
   color: string;
   flag: string;
+  /** `flag_icon=`: the side's flag in the status table and the UI. */
+  flagIcon: string;
+  /** `suppress_end_turn_confirmation=`: ending the turn never asks first. */
+  suppressEndTurnConfirmation: boolean;
   noLeader: boolean;
   /** `defeat_condition=`: when `check_victory` counts this side as defeated (default `no_leader_left`). */
   defeatCondition: DefeatCondition;
@@ -108,6 +112,8 @@ export class Team {
     this.controller = options.controller ?? 'human';
     this.color = options.color ?? String(side);
     this.flag = options.flag ?? '';
+    this.flagIcon = options.flagIcon ?? '';
+    this.suppressEndTurnConfirmation = options.suppressEndTurnConfirmation ?? false;
     this.noLeader = options.noLeader ?? false;
     this.defeatCondition = options.defeatCondition ?? 'no_leader_left';
     this.hidden = options.hidden ?? false;
@@ -161,6 +167,8 @@ export class Team {
       controller: parseController(cfg.getString('controller', '')),
       color: cfg.getString('color', String(side)),
       flag: cfg.getString('flag', ''),
+      flagIcon: cfg.getString('flag_icon', ''),
+      suppressEndTurnConfirmation: cfg.getBoolean('suppress_end_turn_confirmation', false),
       noLeader: cfg.getBoolean('no_leader', false),
       defeatCondition: parseDefeatCondition(cfg.getString('defeat_condition', '')),
       hidden: cfg.getBoolean('hidden', false),
@@ -182,6 +190,66 @@ export class Team {
     team.shroud.enabled = cfg.getBoolean('shroud', false);
     team.shroud.read(cfg.getString('shroud_data', ''));
     return team;
+  }
+
+  /**
+   * `team::write`: the side as a save writes it -- every field `fromConfig` reads, with the current values
+   * (`[modify_side]`, `[allow_recruit]`, `[gold]`... change them during play).
+   */
+  toConfig(): WmlConfig {
+    const cfg = new WmlConfig();
+    cfg.setAttribute('side', this.side);
+    cfg.setAttribute('gold', this.gold);
+    cfg.setAttribute('start_gold', this.startGold);
+    cfg.setAttribute('income', this.income);
+    cfg.setAttribute('village_gold', this.incomePerVillage);
+    cfg.setAttribute('village_support', this.supportPerVillage);
+    cfg.setAttribute('recall_cost', this.recallCost);
+    cfg.setAttribute('recruit', [...this.canRecruit].join(','));
+    cfg.setAttribute('team_name', this.teamName);
+    cfg.setAttribute('user_team_name', this.userTeamName);
+    cfg.setAttribute('side_name', this.sideName);
+    cfg.setAttribute('faction', this.faction);
+    cfg.setAttribute('save_id', this.saveId);
+    cfg.setAttribute('controller', this.controller);
+    cfg.setAttribute('color', this.color);
+    cfg.setAttribute('flag', this.flag);
+    cfg.setAttribute('flag_icon', this.flagIcon);
+    cfg.setAttribute('suppress_end_turn_confirmation', this.suppressEndTurnConfirmation);
+    cfg.setAttribute('no_leader', this.noLeader);
+    cfg.setAttribute('defeat_condition', this.defeatCondition);
+    cfg.setAttribute('hidden', this.hidden);
+    cfg.setAttribute('scroll_to_leader', this.scrollToLeader);
+    cfg.setAttribute('persistent', this.persistent);
+    cfg.setAttribute('lost', this.lost);
+    cfg.setAttribute('objectives', this.objectives);
+    cfg.setAttribute('carryover_percentage', this.carryoverPercentage);
+    cfg.setAttribute('carryover_add', this.carryoverAdd);
+    cfg.setAttribute('carryover_bonus', this.carryoverBonus);
+    cfg.setAttribute('carryover_gold', this.carryoverGold);
+    cfg.setAttribute('share_vision', this.shareVision);
+    cfg.setAttribute('auto_shroud', this.autoShroudUpdates);
+    cfg.setAttribute('fog', this.fog.enabled);
+    cfg.setAttribute('fog_data', this.fog.write());
+    cfg.setAttribute('shroud', this.shroud.enabled);
+    cfg.setAttribute('shroud_data', this.shroud.write());
+    if (this.variables) cfg.addChild('variables', this.variables.clone());
+    return cfg;
+  }
+
+  /** Takes on every field of a `toConfig()` (a loaded save), keeping this object -- the board and the AI hold it. */
+  applyConfig(cfg: WmlConfig): void {
+    const read = Team.fromConfig(cfg);
+    for (const key of Object.keys(read) as (keyof Team)[]) {
+      if (key === 'shroud' || key === 'fog' || key === 'fogClearer') continue;
+      (this as Record<string, unknown>)[key] = read[key];
+    }
+    this.startGold = cfg.getNumber('start_gold', this.startGold);
+    this.lost = cfg.getBoolean('lost', false);
+    this.fog.enabled = read.fog.enabled;
+    this.fog.read(cfg.getString('fog_data', ''));
+    this.shroud.enabled = read.shroud.enabled;
+    this.shroud.read(cfg.getString('shroud_data', ''));
   }
 
   usesShroud(): boolean {
