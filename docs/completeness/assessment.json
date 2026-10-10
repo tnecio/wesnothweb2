@@ -1803,11 +1803,11 @@
   "note": "name=, female_name= and description= are shown; name_inactive=/description_inactive= are not (6.27)."
  },
  "6.3": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/heal.ts"
+   "packages/ui/src/gameSession.test.ts"
   ],
-  "note": "Implemented for the mainline [heals], read unconditionally (no filters on the ability evaluated); no test."
+  "note": "Read unconditionally (no filters on the ability evaluated), which is right for the mainline [heals]."
  },
  "6.4": {
   "status": "partial",
@@ -2791,5 +2791,371 @@
    "packages/engine/src/actions/heal.ts"
   ],
   "note": "Implemented; untested."
+ },
+ "9.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/gameBoardIntegration.test.ts",
+   "packages/engine/test/snapshot/gameBoardSnapshot.test.ts"
+  ]
+ },
+ "9.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/teamController.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.3": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/gameBoardIntegration.test.ts"
+  ]
+ },
+ "9.4": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "Each canrecruit unit recruits from its own keep; untested."
+ },
+ "9.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/teamEnemy.test.ts",
+   "packages/engine/test/actions/victory.test.ts"
+  ]
+ },
+ "9.6": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/ai/wmlActions.ts"
+  ],
+  "note": "team_name= is applied, but only for one numeric side=. Bug: [modify_side] reads side= as one number, so a list (side=2,3; about 1,000 uses in shipped scenarios) or a missing side= with [filter_side] falls back to side 1, the player: HttT 42 gives the player the orcs' income and goblin recruit list, and the [ai] changes meant for enemy sides go to the player's side."
+ },
+ "9.7": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "apps/web/scripts/build-scenario-snapshot.mjs"
+  ]
+ },
+ "9.8": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/snapshot/gameBoardSnapshot.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.10": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.11": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "Gold may go below zero, as upstream; untested, and the status bar shows it without a separate warning."
+ },
+ "9.12": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "Implemented; no test of its own."
+ },
+ "9.13": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "Implemented; no test of its own."
+ },
+ "9.14": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/ai/wmlActions.ts"
+  ],
+  "note": "gold= and income= are applied; village_gold= and village_support= are not. Bug: [modify_side] reads side= as one number, so a list (side=2,3; about 1,000 uses in shipped scenarios) or a missing side= with [filter_side] falls back to side 1, the player: HttT 42 gives the player the orcs' income and goblin recruit list, and the [ai] changes meant for enemy sides go to the player's side."
+ },
+ "9.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "9.16": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "packages/engine/test/model/teamController.test.ts"
+  ]
+ },
+ "9.17": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.18": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.20": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "9.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/deadWaterPrestartEvent.test.ts"
+  ]
+ },
+ "9.22": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/deadWaterPrestartEvent.test.ts",
+   "packages/engine/test/snapshot/runScenarioStartupEvents.test.ts"
+  ]
+ },
+ "9.23": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "Fired in upstream's order; no test checks it."
+ },
+ "9.24": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/turn-end-playthrough.mjs",
+   "packages/ui/src/sharedTags.test.ts"
+  ]
+ },
+ "9.25": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "new turn and turn end are fired; no test checks them."
+ },
+ "9.26": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/turn-end-playthrough.mjs"
+  ],
+  "note": "side N turn M names are tested; turn= on an event is matched by the pump."
+ },
+ "9.27": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/sharedTags.test.ts"
+  ]
+ },
+ "9.28": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "9.29": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "packages/ui/src/movementOrders.test.ts"
+  ],
+  "note": "Rest and healer healing are tested and shown at each side's turn start; village healing, poison and their order are not tested."
+ },
+ "9.30": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.31": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/Unit.ts"
+  ],
+  "note": "Cleared at the turn start; untested."
+ },
+ "9.32": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/save/naming.test.ts",
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "9.33": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/victory.test.ts"
+  ]
+ },
+ "9.34": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/victory.test.ts"
+  ]
+ },
+ "9.35": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/endlevel.test.ts"
+  ]
+ },
+ "9.36": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/GameShell.svelte",
+   "packages/ui/src/ScenarioEndOverlay.svelte"
+  ],
+  "note": "linger_mode=no is honoured (a cutscene goes straight on), but lingering itself is missing: the end screen covers the board and cannot be dismissed to look around."
+ },
+ "9.37": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/carryover.test.ts"
+  ]
+ },
+ "9.38": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectives.test.ts"
+  ]
+ },
+ "9.39": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.40": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "9.41": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported (upstream defines it in wml-conditionals.lua); no shipped campaign uses it."
+ },
+ "9.42": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "9.43": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "9.44": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/engine/src/events/sideFilter.ts"
+  ],
+  "note": "[enemy_of] is tested; [allied_with] and [has_ally] are implemented but untested."
+ },
+ "9.45": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/board-screenshots.mjs",
+   "apps/web/scripts/image-golden.mjs"
+  ]
+ },
+ "9.46": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/statusTable.test.ts",
+   "packages/ui/src/ScenarioEndOverlay.svelte"
+  ]
+ },
+ "9.47": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/TopBar.svelte",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
+ },
+ "9.48": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "9.49": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/ai/wmlActions.ts"
+  ],
+  "note": "[modify_side] ignores fog=, shroud=, share_vision=, hidden=, color=, flag= and side_name= (about 140 uses in shipped scenarios)."
+ },
+ "9.50": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "Hidden sides are left out of the status table and side lists, but [modify_side] hidden= (44 uses) is ignored."
+ },
+ "9.51": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/statistics/statistics.test.ts",
+   "packages/ui/src/statistics.test.ts"
+  ]
+ },
+ "9.52": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "9.53": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "packages/ui/src/aiSteps.test.ts",
+   "apps/web/scripts/ai-turn-playthrough.mjs"
+  ]
+ },
+ "9.54": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/ai/manager.test.ts",
+   "packages/lua-bridge/test/ai/microAi.test.ts"
+  ]
+ },
+ "9.55": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/achievements.test.ts",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
  }
 }
