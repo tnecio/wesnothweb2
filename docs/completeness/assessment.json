@@ -5600,5 +5600,175 @@
    "apps/web/scripts/turn-end-playthrough.mjs"
   ],
   "note": "Skip Animation finishes the one on screen at once."
+ },
+ "19.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/musicList.test.ts",
+   "apps/web/scripts/audio-playthrough.mjs"
+  ]
+ },
+ "19.2": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/audio/musicPlayer.test.ts",
+   "packages/engine/test/audio/musicList.test.ts"
+  ]
+ },
+ "19.3": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/audio/musicPlayer.test.ts"
+  ]
+ },
+ "19.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/musicList.test.ts"
+  ]
+ },
+ "19.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/musicList.test.ts",
+   "packages/ui/src/music.test.ts"
+  ]
+ },
+ "19.6": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/menu/MainMenu.svelte",
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "19.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/audio/musicList.ts",
+   "packages/ui/src/music.test.ts"
+  ]
+ },
+ "19.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/soundWml.test.ts",
+   "apps/web/scripts/sound-playthrough.mjs"
+  ]
+ },
+ "19.9": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/sounds.test.ts",
+   "apps/web/scripts/sound-playthrough.mjs"
+  ]
+ },
+ "19.10": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/sounds.test.ts"
+  ]
+ },
+ "19.11": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/sounds.test.ts"
+  ],
+  "note": "Frame sounds of movement animations play like any other."
+ },
+ "19.12": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Upstream plays no sound of its own on capture; a campaign's capture event can play one with [sound]."
+ },
+ "19.13": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/sounds.test.ts",
+   "packages/ui/src/sounds.test.ts"
+  ]
+ },
+ "19.14": {
+  "status": "missing",
+  "evidence": [],
+  "note": "No level-up animation, so no level-up sound (18.11)."
+ },
+ "19.15": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/sound-playthrough.mjs"
+  ]
+ },
+ "19.16": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/sounds.test.ts",
+   "apps/web/scripts/sound-playthrough.mjs"
+  ]
+ },
+ "19.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/soundSources.test.ts",
+   "packages/ui/src/audio/soundSources.test.ts"
+  ]
+ },
+ "19.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/soundSources.test.ts"
+  ]
+ },
+ "19.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/soundSources.test.ts",
+   "packages/ui/src/audio/soundSources.test.ts"
+  ]
+ },
+ "19.20": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/soundWml.test.ts",
+   "apps/web/scripts/sound-playthrough.mjs"
+  ]
+ },
+ "19.21": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/audio/settings.test.ts"
+  ]
+ },
+ "19.22": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/audio/settings.test.ts",
+   "apps/web/scripts/audio-playthrough.mjs"
+  ]
+ },
+ "19.23": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/audio/musicPlayer.test.ts",
+   "apps/web/scripts/audio-playthrough.mjs"
+  ]
+ },
+ "19.24": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/audio/audioPaths.test.ts",
+   "apps/web/scripts/sound-playthrough.mjs"
+  ]
+ },
+ "19.25": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/audio/soundEffects.test.ts"
+  ]
+ },
+ "19.26": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/audio/audioPaths.test.ts"
+  ]
  }
 }
