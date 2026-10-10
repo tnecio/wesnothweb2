@@ -1396,5 +1396,394 @@
   "evidence": [
    "packages/engine/test/events/miscWml.test.ts"
   ]
+ },
+ "5.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/ui/src/movementOrders.test.ts",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
+ },
+ "5.2": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/AttackDialog.svelte",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
+ },
+ "5.3": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "The best-weapon choice is implemented but untested."
+ },
+ "5.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts"
+  ]
+ },
+ "5.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts"
+  ]
+ },
+ "5.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts",
+   "packages/engine/test/actions/combat.test.ts"
+  ]
+ },
+ "5.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/engine/test/actions/attackPrediction.test.ts"
+  ],
+  "note": "Defense-based chance to hit is tested; accuracy/parry (3.21) and the CTH specials (7.x) are not."
+ },
+ "5.8": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Clamped to 0-100 as upstream; untested."
+ },
+ "5.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts"
+  ]
+ },
+ "5.10": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ]
+ },
+ "5.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/engine/test/actions/illumination.test.ts"
+  ]
+ },
+ "5.12": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/gameConfig.ts"
+  ],
+  "note": "round_damage is ported, but no test pins it against upstream's rounding cases."
+ },
+ "5.13": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/gameConfig.ts"
+  ],
+  "note": "Part of round_damage; untested."
+ },
+ "5.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/ui/src/replay.test.ts"
+  ]
+ },
+ "5.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/engine/test/actions/attackSequence.test.ts"
+  ]
+ },
+ "5.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts",
+   "packages/engine/test/actions/combat.test.ts"
+  ]
+ },
+ "5.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "5.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "5.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "5.20": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combat.ts"
+  ],
+  "note": "One attack per attack action; attacks_used= is not applied (3.22). apply_to=max_attacks is covered in category 8."
+ },
+ "5.21": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts"
+  ],
+  "note": "See 4.37 for movement_used=."
+ },
+ "5.22": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts",
+   "packages/engine/src/events/pump.ts"
+  ],
+  "note": "Bug: the attack event fires, but [filter_attack]/[filter_second_attack] on an event are not evaluated, so such handlers run for any weapon (245 handlers in 73 shipped scenarios use them), and $weapon/$second_weapon are not set."
+ },
+ "5.23": {
+  "status": "missing",
+  "evidence": [],
+  "note": "attacker hits / defender hits (and unit hits) are never fired; HttT 4, 7 and 24, Legend of Wesmere and Sceptre of Fire 9 use them."
+ },
+ "5.24": {
+  "status": "missing",
+  "evidence": [],
+  "note": "attacker misses / defender misses are never fired."
+ },
+ "5.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/attackSequence.test.ts"
+  ]
+ },
+ "5.26": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/attackSequence.test.ts",
+   "packages/engine/test/events/suspendablePump.test.ts"
+  ]
+ },
+ "5.27": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/attackSequence.test.ts"
+  ]
+ },
+ "5.28": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/victory.test.ts"
+  ]
+ },
+ "5.29": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "5.30": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts",
+   "packages/engine/test/events/suspendablePump.test.ts"
+  ]
+ },
+ "5.31": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "5.32": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts",
+   "packages/engine/src/actions/combat.ts"
+  ],
+  "note": "Predicted and applied, but only the prediction is tested."
+ },
+ "5.33": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "Implemented (never below 1 HP), but untested."
+ },
+ "5.34": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combat.ts",
+   "packages/ui/src/save/wesnothSave.test.ts"
+  ],
+  "note": "unpoisonable is honoured and saved; no combat test."
+ },
+ "5.35": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "5.36": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts",
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Halved damage and doubled movement cost (4.34) are implemented; expiry and the damage halving are untested."
+ },
+ "5.37": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts",
+   "packages/engine/test/actions/unitCanAct.test.ts"
+  ],
+  "note": "[petrify] tags and what a petrified unit cannot do are tested; the petrifies special in combat is not."
+ },
+ "5.38": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts",
+   "packages/engine/src/actions/combat.ts"
+  ],
+  "note": "Implemented for the mainline special; only the prediction touches it in tests, and its [filter_opponent] is not evaluated (category 7)."
+ },
+ "5.39": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Implemented; no test."
+ },
+ "5.40": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts"
+  ],
+  "note": "Implemented; only the prediction touches it."
+ },
+ "5.41": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Implemented (offense only, both sides doubled); no test."
+ },
+ "5.42": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Implemented (offense only); no test."
+ },
+ "5.43": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Implemented; no test."
+ },
+ "5.44": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts"
+  ],
+  "note": "A geometric check of the mainline backstab condition, not its WFL [filter_opponent]."
+ },
+ "5.45": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts"
+  ]
+ },
+ "5.46": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/ui/src/plague.test.ts"
+  ]
+ },
+ "5.47": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts",
+   "packages/ui/src/CombatSimulationDialog.svelte"
+  ]
+ },
+ "5.48": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/attackPrediction.ts"
+  ],
+  "note": "The calculator handles drain, poison, slow, berserk, swarm and firststrike; only swarm has its own test."
+ },
+ "5.49": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/GameShell.svelte",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ],
+  "note": "Shown on every attack; the browser check attacks."
+ },
+ "5.50": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/playback.test.ts",
+   "packages/renderer/test/animation/unitAnimation.real.test.ts"
+  ]
+ },
+ "5.51": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/animationContext.test.ts"
+  ]
+ },
+ "5.52": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "An upstream test-suite tag, not used by campaigns."
+ },
+ "5.53": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Honoured in combat; untested."
+ },
+ "5.54": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Bug: the [disable] special is not implemented. The Deceiver's Gambit gives Eldred's baneblade [disable] active_on=offense, so he can attack with it; HttT uses it too."
+ },
+ "5.55": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/abilityEffects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "5.56": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/UnitType.ts",
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "set_alignment= changes the weapon's alignment, which combat uses; untested."
+ },
+ "5.57": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/statistics/statistics.test.ts",
+   "packages/ui/src/statistics.test.ts"
+  ]
  }
 }
