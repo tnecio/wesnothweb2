@@ -5017,5 +5017,359 @@
   "evidence": [
    "packages/renderer/test/fogShroud.test.ts"
   ]
+ },
+ "17.1": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "17.2": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "17.3": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "17.4": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "17.5": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "17.6": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs",
+   "apps/web/scripts/build-campaigns.mjs"
+  ]
+ },
+ "17.7": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/board-screenshots.mjs",
+   "apps/web/scripts/mobile-playthrough.mjs"
+  ]
+ },
+ "17.8": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "The port's game screen is its own responsive HTML layout, built to upstream's default theme; WML [theme]s are not interpreted."
+ },
+ "17.9": {
+  "status": "out-of-scope",
+  "evidence": [
+   "packages/engine/src/events/supportWml.ts"
+  ],
+  "note": "No themes (17.8); the tag is logged and skipped."
+ },
+ "17.10": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/TopBar.svelte",
+   "apps/web/scripts/keyboard-playthrough.mjs"
+  ]
+ },
+ "17.11": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "packages/ui/src/SidePanel.svelte"
+  ]
+ },
+ "17.12": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "17.13": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "packages/ui/src/SidePanel.svelte"
+  ]
+ },
+ "17.14": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "17.15": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "17.16": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "apps/web/scripts/help-playthrough.mjs"
+  ]
+ },
+ "17.17": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "17.18": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/TopBar.svelte",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
+ },
+ "17.19": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/keyboard-playthrough.mjs",
+   "apps/web/scripts/movement-orders-playthrough.mjs"
+  ]
+ },
+ "17.20": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/sharedTags.test.ts"
+  ]
+ },
+ "17.21": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/ContextMenu.svelte",
+   "apps/web/scripts/keyboard-playthrough.mjs"
+  ]
+ },
+ "17.22": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "17.23": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "17.24": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/commands.test.ts",
+   "apps/web/scripts/keyboard-playthrough.mjs"
+  ]
+ },
+ "17.25": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/hotkeys.test.ts",
+   "apps/web/scripts/phase24-playthrough.mjs"
+  ]
+ },
+ "17.26": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "17.27": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/turn-end-playthrough.mjs",
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "17.28": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/save-load-playthrough.mjs",
+   "apps/web/scripts/undo-replay-playthrough.mjs"
+  ],
+  "note": "Upstream's confirm_end_turn=no_moves question."
+ },
+ "17.29": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/sharedTags.test.ts",
+   "packages/ui/src/ObjectivesDialog.svelte"
+  ]
+ },
+ "17.30": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/statisticsView.test.ts",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
+ },
+ "17.31": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/unitList.test.ts",
+   "apps/web/scripts/phase24-playthrough.mjs"
+  ]
+ },
+ "17.32": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/RecruitDialog.svelte",
+   "packages/ui/src/RecallDialog.svelte",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "17.33": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/phase24-playthrough.mjs"
+  ]
+ },
+ "17.34": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/CombatSimulationDialog.svelte",
+   "packages/engine/test/actions/attackPrediction.test.ts"
+  ]
+ },
+ "17.35": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/CombatSimulationDialog.svelte"
+  ]
+ },
+ "17.36": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "17.37": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/help-playthrough.mjs"
+  ]
+ },
+ "17.38": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/phase24-playthrough.mjs"
+  ]
+ },
+ "17.39": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/SidePanel.svelte"
+  ]
+ },
+ "17.40": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs",
+   "apps/web/scripts/replay-from-menu-playthrough.mjs"
+  ]
+ },
+ "17.41": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/mobile-playthrough.mjs"
+  ]
+ },
+ "17.42": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/mobile-playthrough.mjs"
+  ]
+ },
+ "17.43": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/mobile-playthrough.mjs"
+  ],
+  "note": "The layout switches between desktop and phone by viewport, in place of theme resolutions."
+ },
+ "17.44": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/board-screenshots.mjs",
+   "apps/web/scripts/story-screenshots.mjs"
+  ],
+  "note": "Compared with upstream screenshots by eye; no automated check."
+ },
+ "17.45": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/i18n/audit.test.ts",
+   "apps/web/scripts/i18n-playthrough.mjs"
+  ]
+ },
+ "17.46": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/i18n/locale.test.ts",
+   "apps/web/scripts/i18n-playthrough.mjs"
+  ]
+ },
+ "17.47": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/i18n-playthrough.mjs"
+  ]
+ },
+ "17.48": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/i18n/tstring.test.ts",
+   "packages/engine/test/i18n/pluralHeaders.test.ts"
+  ]
+ },
+ "17.49": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/build-fonts.mjs"
+  ],
+  "note": "The shipped languages are Latin-script; the fallback fonts cover RTL scripts, but no right-to-left layout or CJK font ships."
+ },
+ "17.50": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/i18n/tstring.test.ts",
+   "apps/web/scripts/i18n-coverage.mjs"
+  ]
+ },
+ "17.51": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/LoadGameDialog.svelte"
+  ]
+ },
+ "17.52": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/accessibility.test.ts",
+   "packages/renderer/test/unitOverlays.test.ts"
+  ]
+ },
+ "17.53": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/keyboard-playthrough.mjs"
+  ]
+ },
+ "17.54": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/accessibility.test.ts"
+  ]
  }
 }
