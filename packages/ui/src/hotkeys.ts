@@ -54,6 +54,7 @@ export const HOTKEY_COMMANDS: readonly HotkeyCommand[] = [
   { id: 'redo', upstream: 'redo', label: () => t('Redo'), defaults: [{ key: 'r' }] },
   { id: 'save', upstream: 'save', label: () => t('Save Game'), defaults: [ctrl('s')] },
   { id: 'show-enemy-moves', upstream: 'showenemymoves', label: () => t('Show Enemy Moves'), defaults: [ctrl('v')] },
+  { id: 'status-table', upstream: 'statustable', label: () => t('Status Table'), defaults: [{ key: 's', alt: true }] },
   { id: 'statistics', upstream: 'statistics', label: () => t('Statistics'), defaults: [{ key: 's' }] },
   { id: 'toggle-ellipses', upstream: 'toggleellipses', label: () => t('Toggle Ellipses'), defaults: [ctrl('e')] },
   { id: 'toggle-grid', upstream: 'togglegrid', label: () => t('Toggle Grid'), defaults: [ctrl('g')] },

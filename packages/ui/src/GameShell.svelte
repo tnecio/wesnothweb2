@@ -77,6 +77,7 @@
     type RecruitOption,
     type RecallOption,
     type UnitListEntry,
+    type GameStatsRow,
     type AttackerWeaponOption,
     type SaveGameData,
     type EconomyInfo,
@@ -123,6 +124,7 @@
   import UnitListDialog from './UnitListDialog.svelte';
   import StatisticsDialog from './StatisticsDialog.svelte';
   import AchievementsDialog from './AchievementsDialog.svelte';
+  import GameStatsDialog from './GameStatsDialog.svelte';
   import LoadGameDialog from './LoadGameDialog.svelte';
   import { fetchStoryAssets, type StoryAssets } from './story/storyImages.js';
   import { formatHotkey, matchesHotkey, type Command } from './commands.js';
@@ -449,6 +451,8 @@
   let unitListEntries = $state.raw<UnitListEntry[]>([]);
   /** Phase 25: the achievements dialog (`achievements`, Ctrl+Shift+A); its view is taken when it opens. */
   let achievementsView = $state.raw<AchievementGroupView[] | null>(null);
+  /** The status table (`statustable`, Alt+S): its rows, taken when it opens; null while closed. */
+  let gameStatsRows = $state.raw<GameStatsRow[] | null>(null);
   /** Phase 25: the statistics dialog (`statistics`, S), for the viewing side. */
   let statisticsOpen = $state(false);
   let languageDialogOpen = $state(false);
@@ -2894,6 +2898,12 @@
       handler: () => (achievementsView = session.achievementsView()),
     },
     {
+      id: 'status-table',
+      label: t('Status Table'),
+      enabled: phase === 'playing' || phase === 'ended' || phase === 'replay',
+      handler: () => (gameStatsRows = session.gameStats),
+    },
+    {
       id: 'statistics',
       label: t('Statistics'),
       enabled: phase === 'playing' || phase === 'ended' || phase === 'replay',
@@ -3242,6 +3252,7 @@
       unitListOpen ||
       statisticsOpen ||
       achievementsView !== null ||
+      gameStatsRows !== null ||
       languageDialogOpen ||
       turnPrompt !== null ||
       helpBrowser.isOpen ||
@@ -3547,6 +3558,20 @@
   {#if languageDialogOpen}
     <LanguageDialog onClose={() => (languageDialogOpen = false)} />
   {/if}
+  {#if gameStatsRows}
+    <GameStatsDialog
+      rows={gameStatsRows}
+      sideColor={(side) => `rgb(${sideColorRgb(ImageCache.getColorData(), session.board.getTeam(side)?.color ?? '', side) ?? '255,255,255'})`}
+      onScrollTo={(side) => {
+        // `menu_handler::status_table`: `scroll_to_leader(selected_side)`.
+        gameStatsRows = null;
+        const at = session.leaderHexOf(side);
+        if (at) void boardView?.scrollToHex(at.x, at.y, 'onscreen');
+      }}
+      onClose={() => (gameStatsRows = null)}
+    />
+  {/if}
+
   {#if achievementsView}
     <AchievementsDialog groups={achievementsView} onClose={() => (achievementsView = null)} />
   {/if}

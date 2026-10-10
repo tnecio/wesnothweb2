@@ -1691,7 +1691,8 @@ unit's stat and ability page, from F1, the menus, the context menu, the unit dia
 `[open_help]`/`gui.show_help`. Every unit and terrain is listed, with no encountered-only filter (the
 user's call). **The rest resumed 2026-10-05** (user's call: Phase 24, then Phase 25), on branch
 `phase-24`, one PR, tag `v0.11.0` -- **delivered 2026-10-05** (all five stages below; see `PROGRESS.md`
-and `apps/web/scripts/phase24-playthrough.mjs`). The statistics dialog moves to Phase 25, which records what it
+and `apps/web/scripts/phase24-playthrough.mjs`). The status table (`game_stats`, Alt+S), missed in the list
+below, followed on 2026-10-05 (`v0.12.1`). The statistics dialog moves to Phase 25, which records what it
 shows. Language keeps its own dialog, as upstream's does.
 
 Stages (one commit each at least, suites green, `PROGRESS.md` entry):
