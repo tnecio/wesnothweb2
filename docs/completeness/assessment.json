@@ -698,5 +698,337 @@
    "packages/engine/test/events/todWml.test.ts",
    "packages/engine/test/model/Schedule.test.ts"
   ]
+ },
+ "3.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "3.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "3.3": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/build-campaign-images.mjs",
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ],
+  "note": "Resolved through the binary paths when the data is built; the campaign check fails on any missing image."
+ },
+ "3.4": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts",
+   "packages/ui/src/help/generators/units.ts"
+  ],
+  "note": "usage= is tested; die_sound=, zoc=, hide_help= and do_not_list= are implemented but untested."
+ },
+ "3.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "3.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts",
+   "packages/engine/test/events/objectWml.test.ts",
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "3.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "3.8": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/Unit.ts"
+  ],
+  "note": "gender= and random_gender= are implemented but untested."
+ },
+ "3.9": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts",
+   "packages/engine/src/model/UnitTypeDatabase.ts"
+  ],
+  "note": "Trait pools and num_traits= come from the race and are tested; its name generators are not used (3.10)."
+ },
+ "3.10": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/model/UnitTypeDatabase.ts"
+  ],
+  "note": "Units get no random names. The random draws naming takes upstream are made, so replays stay in step, but no name is generated."
+ },
+ "3.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "3.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts",
+   "packages/engine/test/actions/move.test.ts"
+  ]
+ },
+ "3.13": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts"
+  ]
+ },
+ "3.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts",
+   "packages/engine/test/actions/combat.test.ts"
+  ]
+ },
+ "3.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "3.16": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/vision.ts"
+  ],
+  "note": "Jamming is implemented but no test covers it."
+ },
+ "3.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/engine/test/actions/illumination.test.ts"
+  ]
+ },
+ "3.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "3.19": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/AttackDialog.svelte",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
+ },
+ "3.20": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/ai/default/attackAnalysis.ts"
+  ],
+  "note": "The AI weighs attacks by attack_weight=; defense_weight= and the best-weapon display are not tested."
+ },
+ "3.21": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "accuracy= and parry= enter the chance to hit, but no test covers them."
+ },
+ "3.22": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/UnitType.ts",
+   "packages/engine/src/actions/combat.ts"
+  ],
+  "note": "movement_used= and attacks_used= are read and filterable but not applied: an attack always costs one attack and ends movement."
+ },
+ "3.23": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/unitCanAct.test.ts"
+  ]
+ },
+ "3.24": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "3.25": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "For add-ons; removed upstream (Dead Water 6 only mentions it in a comment)."
+ },
+ "3.26": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "3.27": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/help/generators/units.ts"
+  ],
+  "note": "Shown in the help unit pages; untested."
+ },
+ "3.28": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/help-playthrough.mjs"
+  ]
+ },
+ "3.29": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "3.30": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ],
+  "note": "The formulas are upstream's and tested, but the constants are fixed, not read from [game_config] (see 1.43)."
+ },
+ "3.31": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/captureVillageAndRecall.test.ts",
+   "packages/engine/test/model/gameBoardIntegration.test.ts"
+  ]
+ },
+ "3.32": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "Units are found by id throughout; what happens to a duplicate id is untested."
+ },
+ "3.33": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/model/Unit.test.ts",
+   "packages/engine/test/actions/combat.test.ts"
+  ],
+  "note": "poisoned, slowed, petrified and guardian are tested; unhealable and invulnerable are implemented but untested."
+ },
+ "3.34": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "placement= is implemented but no test covers its rules."
+ },
+ "3.35": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts",
+   "packages/engine/test/model/Unit.test.ts"
+  ]
+ },
+ "3.36": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "3.37": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/unitOverlays.test.ts",
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "3.38": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "3.39": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts",
+   "apps/web/scripts/shared-tags-playthrough.mjs"
+  ]
+ },
+ "3.40": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/unitOverlays.test.ts"
+  ]
+ },
+ "3.41": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/playback.test.ts",
+   "packages/renderer/test/animation/frame.test.ts"
+  ]
+ },
+ "3.42": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/teamColor.test.ts",
+   "apps/web/scripts/build-team-colors.mjs"
+  ]
+ },
+ "3.43": {
+  "status": "missing",
+  "evidence": [
+   "apps/web/scripts/build-scenario-snapshot.mjs"
+  ],
+  "note": "Bug: copied into each scenario but never applied. Dead Water's Cuttle Fish cannot advance to Kraken; OPP 2-4's changed recruit costs (Peasant 16, not 8), and the HttT, DiD, EI and SotBE changes, do not happen."
+ },
+ "3.44": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "3.45": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported (upstream defines it in wml-tags.lua); no shipped campaign uses it."
+ },
+ "3.46": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/events/miscWml.ts",
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "3.47": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts",
+   "packages/engine/test/events/captureVillageAndRecall.test.ts"
+  ]
+ },
+ "3.48": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported (upstream defines them in wml-tags.lua); no shipped campaign uses them."
+ },
+ "3.49": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "3.50": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/help-playthrough.mjs",
+   "packages/ui/src/help/generators/units.ts"
+  ]
  }
 }
