@@ -1812,6 +1812,198 @@ A deliberate audit pass, not new feature work.
 - **Milestone**: a completeness report committed under `docs/` with no
   catalogue item left unclassified.
 
+## Phases 27a–27c — Executing the assessment's follow-ups (proposed 2026-10-10)
+
+**Status: proposed, awaiting the user's go-ahead.** Each phase is its own branch, PR and tag. It is merged and tagged only when the user says so.
+
+**What the three phases cover:**
+- They execute follow-ups 1–3 of `docs/COMPLETENESS.md`.
+- Follow-up 4 (test debt) is folded in: each phase writes the missing tests for every item it touches.
+- Follow-up 5 (unused WML) is 27a's optional last stage.
+- Platform work stays in Phase 28d.
+
+Every change is a port of upstream's code, never a rewrite of upstream's WML or Lua.
+
+**Order: 27a → 27b → 27c.**
+- 27a fixes play-changing bugs, and builds the conformance runner the other two are measured by.
+- 27b is the largest piece of engine work.
+- 27c is presentation only, and independent of the other two.
+
+### Phase 27a — Correctness fixes (branch `correctness-fixes`, tag `v0.14.0`)
+
+**S0. Upstream's WML tests as a conformance suite.**
+
+Upstream ships 855 test `.cfg` files under `data/test/` and lists the expected result of each of its 1,225 tests in `wml_test_schedule`: 1,055 should pass, the rest fail, win or lose on purpose. The port can build and run them:
+
+- **Build:**
+  - `build-scenario-snapshot.mjs` already reads `[test]` (the AI test scenarios use it).
+  - A new `build-wml-tests.mjs` builds `data/test/scenarios` with upstream's test macros (`data/test/macros`) into a test-only folder, not `public/`, so nothing extra deploys.
+- **Run:** a headless runner, `packages/ui/scripts/wml-tests.ts`:
+  - plays each test (start events, then `[end_turn]`s) until `[endlevel]` sets `test_result=`, or a turn cap;
+  - compares the result with the schedule;
+  - writes a pass/fail table.
+- **Engine support it needs**, small and test-only:
+  - `[endlevel] test_result=`;
+  - `[test_condition]` (logs its condition);
+  - `[test_do_attack_by_id]` as a synced attack;
+  - `is_unit_test=`;
+  - upstream's `data/test/macros/test.lua` helpers, which run on fengari like any Lua.
+- **Baseline:**
+  - The first run's results are committed as `docs/completeness/wml-tests-baseline.json`.
+  - A CI check fails on any test that regresses from pass.
+  - Each later stage records the tests it fixes.
+
+**S1. `[modify_side]` as `modify_side.lua`.**
+- **Sides:** chosen through the standard side filter (`findSides`: `side=` lists, `[filter_side]`), never falling back to side 1.
+- **Keys:**
+  - identity: `team_name`, `user_team_name`, `side_name`, `controller`;
+  - economy: `recruit`, `income`, `gold`, `village_gold`, `village_support`;
+  - visibility: `fog`, `shroud`, `shroud_data`, `hidden`, `share_vision`/`share_maps`/`share_view`, `reset_maps`, `reset_view`;
+  - display: `color`, `flag`, `flag_icon`;
+  - other: `defeat_condition`, `suppress_end_turn_confirmation`, `[ai]`/`switch_ai`.
+- **After a change:** fog, shroud and the board are recomputed.
+- **Tests:**
+  - HttT 42's `side=3,4,5,6` leaves the player's income and recruit list alone;
+  - `fog=`/`shroud=`/`hidden=` take effect at once;
+  - the `[ai]` lands on the named sides.
+
+**S2. Event weapon filters.**
+- **Event data:** events carry the weapons upstream's carry (`attack`, `attack end`, the strike events, `last breath`, `die`), as `$weapon`/`$second_weapon`.
+- **Filters:** `[filter_attack]`/`[filter_second_attack]` are matched against them; an event's `[filter_side]` is evaluated too.
+- **`[fire_event]`:** gets `[primary_attack]`/`[secondary_attack]`.
+- **Test:** a handler filtered on one weapon fires only for that weapon. A scan of the shipped scenarios finds no handler whose filter now fails to parse.
+
+**S3. The strike events.**
+- **Events:** `attacker hits`, `attacker misses`, `defender hits`, `defender misses` (and `unit hits`/`unit misses`), with `$damage_inflicted`.
+- **Timing:** fired after each blow, as `attack::perform` does. The fight stops when an event removes or moves a combatant.
+- **Restructuring:** combat resolution becomes a per-blow loop the session's attack flow drives. The animation's blow list and the replay stay as they are.
+- **Tests:**
+  - a hits handler runs once per hit;
+  - an event that kills the defender ends the fight;
+  - replays still match;
+  - HttT 4 and Sceptre of Fire 9 open and play AI against AI.
+
+**S4. `advance` and `post advance`.**
+- **Where:** in every advancement path: the player's choice, the AI, `[unstore_unit] advance=`, and Lua's `unit:advance`.
+- **Rule:** upstream's `advance_unit_at`. A unit removed or changed by `advance` does not advance.
+- **Tests:** both events fire, in order, with `$unit`.
+
+**S5. `[modify_unit_type]`** (`unit_types::apply_scenario_fix`, at scenario start; undone at the next as `remove_scenario_fixes`).
+- **Keys:** `add_advancement`, `remove_advancement`, `set_experience`, `set_cost`, `set_hitpoints`…
+- **Tests:**
+  - Dead Water's Cuttle Fish can advance to Kraken at 80 XP;
+  - OPP 3's Peasant costs 16;
+  - a later scenario is back to normal.
+
+**S6. `attacks_used=` and `movement_used=`.**
+- **Applied in:** the attack, the can-attack checks, the AI's attack options and the attack dialog.
+- **Test:** HttT's Jeniver can use a two-attack weapon only with two attacks left.
+
+**S7. A side's `[filter_recall]`**, in the recall list and the `[recall]` tag.
+
+**S8 (optional). The unused WML batch.**
+- **Tags:** `[store_unit_type_ids]`, `[store_unit_defense]`/`[store_unit_defense_on]`, `[store_relative_direction]`, `[have_side]`.
+- **Also:** `[set_variable] formula=` and a test for `$( )`.
+- **Each tag:** one handler and one test.
+
+**Milestones:**
+- The bugs table in `docs/COMPLETENESS.md` is empty, apart from the special pipeline.
+- The conformance runner's ScenarioWML and event tests improve on the baseline.
+- `campaign-playthrough` passes for HttT, OPP and Dead Water.
+- The assessment is updated for every item the phase touches.
+
+### Phase 27b — The ability and special pipeline (branch `abilities-pipeline`, tag `v0.15.0`)
+
+A port of upstream's `units/abilities.cpp` (2,234 lines) and the special half of `attack_type.cpp` (943), replacing today's hand-written readings of mainline specials by `id=`. It has been flagged as Phase 2's largest gap since 2026-09-10.
+
+**S1. Abilities.**
+- **Ported:**
+  - `ability_active`/`ability_affects_adjacent`/`affects_side`;
+  - `[filter]`, `[filter_adjacent]`, `[filter_adjacent_location]` with `adjacent=`/`count=`/`is_enemy=`;
+  - `[affect_adjacent]` with `adjacent=` and `radius=`;
+  - `[filter_student]`, `affect_self`/`allies`/`enemies`, `cumulative=`, `priority=`, `[filter_base_value]`.
+- **Combination:** `unit_abilities::effect`, which exists in part.
+- **Replaces:** the leadership/resistance special cases in `abilityEffects.ts`; illumination's own path is folded in.
+
+**S2. Specials.**
+- **Ported:**
+  - `specials_context_t` (attacker/defender, the weapon pair, offense or defense);
+  - `special_active` with `[filter_self]`, `[filter_opponent]`, `[filter_attacker]`/`[filter_defender]`, `[filter_weapon]`/`[filter_second_weapon]`, `[filter_adjacent]`, `active_on=`, `apply_to=`;
+  - abilities that act as specials (weapon abilities).
+- **Filters:** `[experimental_filter_ability]`/`[experimental_filter_specials]` in unit and weapon filters.
+
+**S3. Combat through the pipeline.**
+- **Port:** `battle_context_unit_stats`.
+- **Values:** damage, strikes, chance to hit (with `[chance_to_hit]`, `cumulative=`, clamping), berserk rounds, drain, `heal_on_hit`, poison, slow, petrify, firststrike, plague, swarm, `[damage_type]`, `[disable]`.
+- **Removed:** the `id=`-keyed code and the geometric backstab check. Backstab becomes its real WFL `[filter_opponent]`.
+- **Shared:** the prediction and the AI use the same stats.
+
+**S4. Healing through the pipeline** (`heal.cpp`'s `heal_amount`/`poison_progress`, with the abilities' filters): heals, cures, regenerates, and the `unhealable` status.
+
+**S5. Display.**
+- inactive abilities and specials in their `name_inactive=`/`description_inactive=`;
+- the attack dialog marks active specials;
+- the help lists them as upstream.
+
+**Tests:**
+- unit tests per S;
+- every mainline special and the healing cases the assessment listed as untested;
+- the conformance runner's `AbilitiesWML` and `Attacks` folders (about 600 tests), with the expected-pass ones passing or each failure listed with its reason.
+
+**Campaign checks:**
+- Descent into Darkness's spells;
+- TDG's Eldred (`[disable]`);
+- HttT's Jeniver;
+- one scenario each of DiD, TDG and HttT played AI against AI;
+- replays of saved games stay in sync.
+
+**Risk: speed.** The prediction runs on every hover. Stats are cached per (unit, weapon, opponent, hex) and the time per hover is measured before and after.
+
+### Phase 27c — Presentation gaps (branch `presentation-gaps`, tag `v0.16.0`)
+
+**S1. Image path functions.**
+- **Port:** the 23 missing functions of `image_modifications.cpp` into the worker compositor, led by `CS` (192 uses), `ROTATE` (39) and `NO_TOD_SHIFT` (26), then `XBRZ`, `G`/`R`/`B`, `CHAN`, `BLEND`, `BL`, `PAL`, `SWAP`, `BG` and the rest.
+- **Check:** each against the image oracle (`packages/oracle-tools`, upstream's own code), then added to the image goldens.
+
+**S2. Unit effects on the board.**
+- `apply_to=image_mod` and a unit's `halo=` are drawn.
+- `apply_to=new_animation`: the unit's own animations join its type's.
+
+**S3. Standing and idle animations** (`unit_animation_component`).
+- **Behaviour:**
+  - standing loops;
+  - idle animations on upstream's timer;
+  - upstream's two preferences, on by default;
+  - none under reduced motion.
+- **Check:** the frame time with a full Dead Water board.
+
+**S4. The other missing animations:**
+- `levelout`/`levelin`, with the level-up sound;
+- `victory_anim` at a won scenario;
+- `draw_weapon`/`sheath_weapon`;
+- `leading_anim` during an assisted attack.
+
+**S5. Lighting.**
+- Time areas and illuminated hexes are lit by their own time of day.
+- The board's tint becomes per hex, as upstream's `get_time_of_day(loc)` drawing.
+
+**S6. The end of a scenario.**
+- **Linger mode:** the end screen can be dismissed to look at the map, with an End Scenario button.
+- **Defeat:** offers loading a save or restarting the scenario.
+- **Victory:** shows upstream's carryover report.
+
+**S7. Random unit names.**
+- **Port:** `markov_generator` and `context_free_grammar_generator`, fed from the random numbers already drawn.
+- **Result:** names appear, and replays and saves stay as they are.
+
+**S8. Village flags under fog as upstream** (`display::get_flag`).
+
+**Checks:**
+- image goldens and oracle comparisons;
+- board screenshots before and after;
+- a new `presentation-playthrough.mjs`, covering: a standing animation runs, a level-up plays, a time area is lit, linger mode, and the defeat options;
+- the existing mobile and dialogue checks.
+
 ## Phase 28 — CI/CD, Performance & Platform (was Phase 18)
 
 **Status: delivered 2026-09-29** (S0–S6 and S9; released as `v0.1.0`, see
@@ -2305,7 +2497,7 @@ pulled forward and delivered 2026-09-22.
    statistics dialog, achievements; delivered 2026-10-05) -- the user's call, 2026-10-05, which
    moves achievements into Phase 25 rather than ahead of Phase 24.
 14. **Phase 29a** (AI turns shown action by action, as upstream does) -- the user's call, 2026-10-09; delivered 2026-10-09.
-15. **Phase 27** (feature completeness assessment; delivered 2026-10-10, follow-ups proposed), then **Phase 28d**
+15. **Phase 27** (feature completeness assessment; delivered 2026-10-10), then -- proposed, awaiting the user's go-ahead -- **Phases 27a** (correctness fixes and upstream's WML tests as a conformance suite), **27b** (the ability and special pipeline) and **27c** (presentation gaps); then **Phase 28d**
    (performance budgets, cross-browser, offline; split from Phase 28).
 16. **Phase 31** (World Conquest), not yet scheduled.
 17. **Phase 30** (combat RNG modes, split from Phase 21) — last, after
