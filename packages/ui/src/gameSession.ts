@@ -1873,6 +1873,7 @@ export class GameSession {
           return this.runSynced(cmd, (action) => this.execCustomCommand(cmd, action), { present: true });
         },
         sideAiConfigs: (side) => (this.aiManager ? [this.aiManager.toConfig(side)] : []),
+        unitTest: ['yes', 'true', true].includes(snapshot.scenarioConfigJson.attrs?.is_unit_test as string | boolean),
         log: (level, message) => {
           options.onLog?.(level, message);
           if (level === 'error') console.error(`[lua] ${message}`);
@@ -2041,6 +2042,11 @@ export class GameSession {
    * ended through `[endlevel]`; null otherwise (e.g. a leader kill), which
    * means upstream's defaults.
    */
+  /** `[endlevel] test_result=`, once a unit test has ended (the WML test runner reads it). */
+  get testResult(): string | null {
+    return this.eventPump.ctx.endLevel?.testResult ?? null;
+  }
+
   get endLevelPresentation(): { endText?: string; endTextDuration?: number; endCredits?: boolean; lingerMode?: boolean; carryoverReport?: boolean; replaySave?: boolean } | null {
     const endLevel = this.eventPump.ctx.endLevel;
     return endLevel
@@ -2376,6 +2382,7 @@ export class GameSession {
       this.eventPump.ctx.log('error', `Error via [do_command]: cannot read [${tag}]`);
       return;
     }
+    this.eventPump.ctx.log('debug', `[do_command] ${JSON.stringify(command)}`);
     let rejected: string | null = null;
     yield* this.runSynced(command, function* (this: GameSession, action: ActionState) {
       // A refused command is reported, as its spectator does; the action it ran in goes on.

@@ -34,6 +34,16 @@ jobs:
       - uses: ./.github/actions/setup
       - run: npm run typecheck --workspaces --if-present
 
+  # Phase 27a: upstream's own WML unit tests (data/test), run headlessly. Fails when a test that gave its
+  # expected result (docs/completeness/wml-tests-baseline.json) no longer does.
+  wml-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: npx tsx packages/ui/scripts/wml-tests.ts --check
+
   # Scenario snapshots are generated (not in git) and several suites read them: build them once per run,
   # cached by a hash of their inputs, and hand them to the test jobs.
   scenarios:

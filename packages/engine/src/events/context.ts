@@ -125,6 +125,8 @@ export interface EndLevelState {
   replaySave?: boolean;
   /** `music=`: the tracks to choose the stinger from, in place of the scenario's `victory_music=`/`defeat_music=`. */
   music?: string[];
+  /** `test_result=` (a unit test's outcome: `pass`, `fail`...), read by the WML test runner. */
+  testResult?: string;
 }
 
 /**
