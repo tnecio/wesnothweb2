@@ -12,7 +12,8 @@
  * done, partial, missing or out-of-scope -- the evidence and a note) into `docs/COMPLETENESS.md`. Each
  * piece of evidence is a repo path (a test, a browser script, a source file), optionally `path#name`;
  * every path must exist. Exits non-zero when an assessed id is not in the index, a status is unknown, or
- * an evidence path is missing. Unassessed items are listed as such, and counted.
+ * an evidence path is missing. Unassessed items are listed as such, and counted. The hand-written findings
+ * (`docs/completeness/summary.md`) go under the summary table.
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -110,6 +111,9 @@ function report() {
     out.push(`| ${c.id} | [${c.name}](#${c.id}-${c.name.toLowerCase().replace(/[^a-z0-9 -]/g, '').replace(/ /g, '-')}) | ${t.done + t.partial + t.missing + t['out-of-scope'] + t.unassessed} | ${t.done} | ${t.partial} | ${t.missing} | ${t['out-of-scope']} | ${t.unassessed} |`);
   }
   out.push(`| | **All** | **${items.length}** | **${all.done}** | **${all.partial}** | **${all.missing}** | **${all['out-of-scope']}** | **${all.unassessed}** |`);
+  // The findings and follow-ups, written by hand.
+  const summaryFile = path.join(dir, 'summary.md');
+  if (existsSync(summaryFile)) out.push('', readFileSync(summaryFile, 'utf8').trimEnd());
   for (const c of categories) {
     out.push('');
     out.push(`## ${c.id}. ${c.name}`);
