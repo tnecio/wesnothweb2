@@ -7,7 +7,7 @@ export { nearestKeep, suitableKeep, allKeeps } from './keeps.js';
 export { isAspectActive, facetFromConfig, CompositeAspect, type AspectFacet } from './composite/aspect.js';
 export { expandSimplifiedAspects, buildAspects, parseSideAiConfig, type ParsedSideAiConfig } from './config/upgrade.js';
 export { CandidateAction, RcaStage, BAD_SCORE, DEFAULT_MAX_SCORE, EXECUTION_CAP } from './composite/rca.js';
-export { IdleStage, type Stage } from './composite/stage.js';
+export { IdleStage, runAiSteps, type AiSteps, type Stage } from './composite/stage.js';
 export { AiComposite, buildStagesFromConfigs, buildCandidateAction, createAiComposite, type AiEngine, type CandidateActionFactory } from './composite/aiComposite.js';
 export { GotoCandidateAction } from './default/caGoto.js';
 export { MoveLeaderToKeepCandidateAction } from './default/caMoveLeaderToKeep.js';

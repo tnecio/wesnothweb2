@@ -294,3 +294,37 @@ describe('CandidateAction base: [filter_own]', () => {
     expect(noFilterCa.probe(other)).toBe(true);
   });
 });
+
+describe('RcaStage: one step per action (Phase 29a)', () => {
+  it('pauses after each execute() that changed the gamestate, and not after one that did not', () => {
+    const ctx = makeCtx();
+    const unit = placeholderUnit(ctx);
+    const order: string[] = [];
+    const acting = (id: string, score: number) => {
+      let fired = false;
+      return new SpyCandidateAction(
+        ctx,
+        makeCfg(id, score, score),
+        () => (fired ? BAD_SCORE : score),
+        () => {
+          fired = true;
+          order.push(id);
+          unit.movesLeft = 5;
+          ctx.stopUnit(unit, true, false);
+        },
+      );
+    };
+    // Claims a score but does nothing: executed once, disabled, and no step.
+    const liar = new SpyCandidateAction(ctx, makeCfg('liar', 300, 300), () => 300, () => order.push('liar'));
+
+    const steps = new RcaStage(ctx, 'main', [acting('low', 100), liar, acting('high', 200)]).playStageSteps();
+    let step = steps.next();
+    while (!step.done) {
+      order.push('|');
+      step = steps.next();
+    }
+
+    expect(order).toEqual(['liar', 'high', '|', 'low', '|']);
+    expect(step.value).toBe(true);
+  });
+});
