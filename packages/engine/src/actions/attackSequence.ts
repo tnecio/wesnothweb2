@@ -53,6 +53,13 @@ export interface PerformAttackOptions extends AttackOptions {
   raise?: RaiseEvent;
   /** Fires `last breath` then `die`, immediately, for a unit that died in this exchange -- called once per death, while the dead unit is still on the board (matches `AttackOptions.onUnitDying`'s contract). */
   fire?: (name: string, loc1: Location, loc2: Location, data?: WmlConfig) => void;
+  /**
+   * Phase 27a: sets the `damage_inflicted` WML variable before a strike's events, and clears it (`undefined`)
+   * when the fight is over, as `perform_hit` and `attack::perform` do.
+   */
+  setDamageInflicted?: (damage: number | undefined) => void;
+  /** Whether an event has ended the scenario, which also ends the fight. */
+  scenarioEnded?: () => boolean;
 }
 
 export function performAttack(
@@ -64,13 +71,20 @@ export function performAttack(
   defenderWeaponIndex: number | undefined,
   options: PerformAttackOptions = {},
 ): AttackResult {
-  const { raise, fire, ...attackOptions } = options;
+  const { raise, fire, setDamageInflicted, scenarioEnded, ...attackOptions } = options;
   // The weapons, as they are when the fight starts, for the events' data.
   const attacker = board.unitAt(attackerLoc);
   const defender = board.unitAt(defenderLoc);
   const defWeapon = defenderWeaponIndex ?? resolveDefenderWeaponIndex(board, attackerLoc, attackerWeaponIndex, defenderLoc, attackOptions);
   const attackerWeapon = attacker?.attacks[attackerWeaponIndex];
   const defenderWeapon = defWeapon >= 0 ? defender?.attacks[defWeapon] : undefined;
+  // `fire_event_impl` after an event: both units still where they fought, still enemies, the scenario not over.
+  const fightGoesOn = (): boolean => {
+    if (!attacker || !defender || board.unitAt(attackerLoc) !== attacker || board.unitAt(defenderLoc) !== defender) return false;
+    const a = board.getTeam(attacker.side);
+    const d = board.getTeam(defender.side);
+    return !!a && !!d && a.isEnemy(d) && !scenarioEnded?.();
+  };
   const result = executeAttack(board, rng, attackerLoc, attackerWeaponIndex, defenderLoc, defWeapon, {
     ...attackOptions,
     raise,
@@ -80,7 +94,27 @@ export function performAttack(
       fire?.('last breath', dead.location, killer.location, data);
       fire?.('die', dead.location, killer.location, data);
     },
+    // `perform_hit`: `attacker hits`/`defender hits` (or `misses`) with the attacker as the first unit, then
+    // `unit hits`/`unit misses` with the striker first; `damage_inflicted` set for the hits.
+    onStrike: fire
+      ? (attackerTurn, hit, damage) => {
+          if (hit) setDamageInflicted?.(damage);
+          const what = hit ? 'hits' : 'misses';
+          const forward = attackEventData(attackerWeapon, defenderWeapon);
+          const reversed = attackEventData(defenderWeapon, attackerWeapon);
+          if (hit) {
+            forward.setAttribute('damage_inflicted', damage);
+            reversed.setAttribute('damage_inflicted', damage);
+          }
+          fire(`${attackerTurn ? 'attacker' : 'defender'} ${what}`, attackerLoc, defenderLoc, forward);
+          if (!fightGoesOn()) return false;
+          if (attackerTurn) fire(`unit ${what}`, attackerLoc, defenderLoc, forward);
+          else fire(`unit ${what}`, defenderLoc, attackerLoc, reversed);
+          return fightGoesOn();
+        }
+      : undefined,
   });
+  setDamageInflicted?.(undefined);
   raise?.('attack end', attackerLoc, defenderLoc, attackEventData(attackerWeapon, defenderWeapon));
   return result;
 }

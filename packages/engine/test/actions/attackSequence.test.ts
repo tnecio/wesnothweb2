@@ -72,7 +72,8 @@ describe('performAttack event ordering', () => {
     });
 
     expect(result.defenderDied).toBe(false);
-    expect(fired).toHaveLength(0);
+    // Only the strike's own events (Phase 27a): no last breath, no die.
+    expect(fired.map((f) => f.name).every((n) => /^(attacker|unit) (hits|misses)$/.test(n))).toBe(true);
     expect(raised.map((r) => r.name)).toEqual(['attack end']);
     expect(raised[0]!.loc1.equals(new Location(0, 0))).toBe(true);
     expect(raised[0]!.loc2.equals(new Location(0, 1))).toBe(true);
@@ -101,7 +102,8 @@ describe('performAttack event ordering', () => {
     });
 
     expect(result.defenderDied).toBe(true);
-    expect(events).toEqual(['fire:last breath', 'fire:die', 'raise:attack end']);
+    // `perform_hit`: the strike's events, then the death's, then the queued attack end.
+    expect(events).toEqual(['fire:attacker hits', 'fire:unit hits', 'fire:last breath', 'fire:die', 'raise:attack end']);
     expect(defenderStillOnBoardAtLastBreath).toBe(true);
   });
 

@@ -83,3 +83,47 @@ describe('[filter_side] on an event', () => {
     expect(s.getVariable('side2_turns')).toBe(2);
   });
 });
+
+describe('the strike events (perform_hit)', () => {
+  const count = (name: string, event: string) =>
+    `[event]\nname=${event}\nfirst_time_only=no\n[set_variable]\nname=${name}\nadd=1\n[/set_variable]\n[/event]`;
+
+  const n = (s: GameSession, v: string): number => {
+    const value = Number(s.getVariable(v) ?? 0);
+    return Number.isFinite(value) ? value : 0;
+  };
+
+  it('one attacker/defender hits-or-misses event per blow, and unit hits/misses for each too', async () => {
+    const s = await fight([
+      count('a_hits', 'attacker hits'),
+      count('a_misses', 'attacker misses'),
+      count('d_hits', 'defender hits'),
+      count('d_misses', 'defender_misses'),
+      count('u_hits', 'unit hits'),
+      count('u_misses', 'unit misses'),
+    ]);
+    // Kai's scepter strikes three times, the Skeleton Archer's fist twice, and neither can kill the other.
+    expect(n(s, 'a_hits') + n(s, 'a_misses')).toBe(3);
+    expect(n(s, 'd_hits') + n(s, 'd_misses')).toBe(2);
+    expect(n(s, 'u_hits')).toBe(n(s, 'a_hits') + n(s, 'd_hits'));
+    expect(n(s, 'u_misses')).toBe(n(s, 'a_misses') + n(s, 'd_misses'));
+  });
+
+  it('a hit carries $damage_inflicted, which is gone after the fight', async () => {
+    const s = await fight([
+      '[event]\nname=unit hits\nfirst_time_only=no\n[set_variable]\nname=damage_seen\nvalue=$damage_inflicted\n[/set_variable]\n[/event]',
+      count('hits', 'unit hits'),
+    ]);
+    if (n(s, 'hits') > 0) expect(n(s, 'damage_seen')).toBeGreaterThan(0);
+    expect(s.getVariable('damage_inflicted')).toBeUndefined();
+  });
+
+  it('an event that removes the defender ends the fight there', async () => {
+    const s = await fight([
+      '[event]\nname=attacker misses,attacker hits\n[kill]\nid=target\n[/kill]\n[/event]',
+      count('later', 'unit hits,unit misses,defender hits,defender misses'),
+    ]);
+    expect(s.board.allUnits().some((u) => u.id === 'target')).toBe(false);
+    expect(n(s, 'later')).toBe(0);
+  });
+});

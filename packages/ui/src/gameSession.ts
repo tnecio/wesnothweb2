@@ -2576,6 +2576,11 @@ export class GameSession {
       // messages are collected and shown after the attack animation
       // (`takeDeferredInteractions`).
       fire: (name, loc1, loc2, data) => this.eventPump.fire(name, loc1, loc2, data, this.collectResponder),
+      setDamageInflicted: (damage) => {
+        if (damage === undefined) this.eventPump.ctx.variables.clear('damage_inflicted');
+        else this.eventPump.ctx.variables.set('damage_inflicted', damage);
+      },
+      scenarioEnded: () => !!this.eventPump.ctx.endLevel || this.scenarioResult !== null,
     });
     yield* this.eventPump.pumpFlow();
 

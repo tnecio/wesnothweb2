@@ -177,6 +177,12 @@ export function executeAttack(
      * If WML removes, replaces or heals the unit, it is not removed and no plague spawns.
      */
     onUnitDying?: (dead: Unit, killer: Unit) => void;
+    /**
+     * Phase 27a: after each blow lands or misses, with its damage applied and before a death is handled
+     * (`perform_hit` firing `attacker hits`, `defender misses`...). Returns false to end the fight there, as
+     * upstream's `attack_end_exception` does when an event removed a combatant or made them allies.
+     */
+    onStrike?: (attackerTurn: boolean, hit: boolean, damage: number) => boolean;
   } = {},
 ): AttackResult {
   const attacker = board.unitAt(attackerLoc);
@@ -332,6 +338,18 @@ export function executeAttack(
     const hitResult = hit ? (targetDied ? 'kills' : 'hits') : 'misses';
     if (attackerTurn) statsContext?.attackResult(hitResult, strikerStats.chanceToHit, damageDone, drainAmount);
     else statsContext?.defendResult(hitResult, strikerStats.chanceToHit, damageDone, drainAmount);
+
+    // The strike's events (`perform_hit`), before drain and death. An event that ends the fight ends it here;
+    // a unit it left at no hitpoints still dies (upstream would leave it standing until something else hits it).
+    if (options.onStrike && !options.onStrike(attackerTurn, hit, damage)) {
+      blows.push({ attackerTurn, chanceToHit: strikerStats.chanceToHit, hit, damage, drainAmount: 0, strikerDiedFromDrain: false, targetDied, poisoned: false, slowed: false, petrified: false });
+      if (targetDied && board.unitAt(target.location) === target && target.hitpoints <= 0) {
+        if (attackerTurn) defenderDied = true;
+        else attackerDied = true;
+        handleDeath(attackerTurn, striker, target);
+      }
+      return false;
+    }
 
     let strikerDiedFromDrain = false;
     if (drainAmount > 0) {
