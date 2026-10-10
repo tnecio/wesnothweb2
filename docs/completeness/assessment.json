@@ -1030,5 +1030,371 @@
    "apps/web/scripts/help-playthrough.mjs",
    "packages/ui/src/help/generators/units.ts"
   ]
+ },
+ "4.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts",
+   "packages/engine/test/pathfind/pathfindRealMap.test.ts"
+  ]
+ },
+ "4.2": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts",
+   "packages/engine/test/actions/move.test.ts"
+  ]
+ },
+ "4.3": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts"
+  ]
+ },
+ "4.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts"
+  ],
+  "note": "As upstream: a hex is entered only with enough movement left (upstream has no \"always one hex\" rule)."
+ },
+ "4.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts",
+   "packages/engine/test/pathfind/astar.test.ts"
+  ]
+ },
+ "4.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts",
+   "packages/engine/test/pathfind/reachableHexesSynthetic.test.ts"
+  ]
+ },
+ "4.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts",
+   "packages/engine/test/pathfind/reachableHexesSynthetic.test.ts",
+   "packages/engine/test/pathfind/markRoute.test.ts"
+  ]
+ },
+ "4.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts",
+   "packages/renderer/test/unitOverlays.test.ts"
+  ]
+ },
+ "4.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts",
+   "packages/engine/test/pathfind/reachableHexesSynthetic.test.ts"
+  ]
+ },
+ "4.10": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/astar.test.ts",
+   "packages/engine/test/pathfind/pathfindRealMap.test.ts"
+  ]
+ },
+ "4.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/reachableHexesSynthetic.test.ts",
+   "packages/engine/test/pathfind/pathfindRealMap.test.ts"
+  ]
+ },
+ "4.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/markRoute.test.ts",
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "4.13": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts",
+   "apps/web/scripts/movement-orders-playthrough.mjs"
+  ]
+ },
+ "4.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveFog.test.ts",
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "4.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveSequence.test.ts",
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "4.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveFog.test.ts",
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "4.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts",
+   "packages/engine/test/events/captureVillageAndRecall.test.ts"
+  ]
+ },
+ "4.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/teleportWml.test.ts"
+  ]
+ },
+ "4.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/teleport.test.ts"
+  ]
+ },
+ "4.20": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/teleport.test.ts"
+  ]
+ },
+ "4.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/teleportWml.test.ts",
+   "packages/engine/test/pathfind/teleport.test.ts"
+  ]
+ },
+ "4.22": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/teleport.test.ts"
+  ]
+ },
+ "4.23": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts",
+   "packages/engine/test/actions/moveSequence.test.ts"
+  ]
+ },
+ "4.24": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts"
+  ]
+ },
+ "4.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/captureVillageAndRecall.test.ts"
+  ],
+  "note": "Upstream has no unit-level capture restriction beyond [capture_village]'s own filter."
+ },
+ "4.26": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts",
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "4.27": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/cutsceneWml.ts"
+  ],
+  "note": "Implemented and used by shipped cutscenes, but no test of its own."
+ },
+ "4.28": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/ai/caMoveToTargets.test.ts",
+   "packages/engine/test/model/Unit.test.ts"
+  ]
+ },
+ "4.29": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "4.30": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "4.31": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "4.32": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "4.33": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "4.34": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/MoveType.ts"
+  ],
+  "note": "As upstream now, a slowed unit pays double movement cost (the catalogue's halved MP is the older rule); implemented, but no test."
+ },
+ "4.35": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts",
+   "packages/engine/test/actions/unitCanAct.test.ts"
+  ]
+ },
+ "4.36": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts"
+  ],
+  "note": "An attack ends the attacker's movement; see 4.37 for weapons that should not."
+ },
+ "4.37": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/model/UnitType.ts"
+  ],
+  "note": "movement_used= is read but not applied (see 3.22)."
+ },
+ "4.38": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/teleport.test.ts",
+   "packages/engine/test/actions/undo.test.ts"
+  ]
+ },
+ "4.39": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/sharedTags.test.ts"
+  ],
+  "note": "Checked against upstream's own find_path.lua run in the game's Lua."
+ },
+ "4.40": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/flowWml.ts"
+  ],
+  "note": "Implemented; no test."
+ },
+ "4.41": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported; no shipped campaign uses it. The direction function it needs exists (relativeDirection)."
+ },
+ "4.42": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/hexGeometry.test.ts",
+   "packages/engine/test/pathfind/teleport.test.ts"
+  ]
+ },
+ "4.43": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "4.44": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/markRoute.test.ts"
+  ],
+  "note": "As upstream, the route shows the turn each step is reached in, not a movement cost."
+ },
+ "4.45": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts",
+   "apps/web/scripts/movement-orders-playthrough.mjs"
+  ]
+ },
+ "4.46": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/undo.test.ts",
+   "apps/web/scripts/undo-replay-playthrough.mjs"
+  ]
+ },
+ "4.47": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveFog.test.ts",
+   "packages/ui/src/sharedTags.test.ts"
+  ]
+ },
+ "4.48": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Upstream has no side-level movement restriction; nothing to port."
+ },
+ "4.49": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/pathfindRealMap.test.ts"
+  ],
+  "note": "Flying is movetype data (the real movetypes are loaded and tested)."
+ },
+ "4.50": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts"
+  ]
+ },
+ "4.51": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/playback.test.ts"
+  ]
+ },
+ "4.52": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "4.53": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "4.54": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/pathfind/reachableHexesSynthetic.test.ts"
+  ],
+  "note": "An occupied hex falls back to the nearest free one (tested); placement= modes are untested (3.34)."
+ },
+ "4.55": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
  }
 }
