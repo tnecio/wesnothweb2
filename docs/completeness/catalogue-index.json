@@ -1,0 +1,5618 @@
+{
+ "categories": [
+  {
+   "id": 1,
+   "name": "WML Parsing & Data Model"
+  },
+  {
+   "id": 2,
+   "name": "Map & Terrain"
+  },
+  {
+   "id": 3,
+   "name": "Units & Unit Types"
+  },
+  {
+   "id": 4,
+   "name": "Movement & Pathfinding"
+  },
+  {
+   "id": 5,
+   "name": "Combat"
+  },
+  {
+   "id": 6,
+   "name": "Abilities"
+  },
+  {
+   "id": 7,
+   "name": "Weapon Specials"
+  },
+  {
+   "id": 8,
+   "name": "Unit Modifications & Progression"
+  },
+  {
+   "id": 9,
+   "name": "Sides, Economy & Turn Flow"
+  },
+  {
+   "id": 10,
+   "name": "Recruitment & Recall"
+  },
+  {
+   "id": 11,
+   "name": "Scenario & Campaign Flow"
+  },
+  {
+   "id": 12,
+   "name": "Events & WML Scripting"
+  },
+  {
+   "id": 13,
+   "name": "Fog, Shroud & Vision"
+  },
+  {
+   "id": 14,
+   "name": "Time of Day & Schedules"
+  },
+  {
+   "id": 15,
+   "name": "Story, Dialogue & Narrative"
+  },
+  {
+   "id": 16,
+   "name": "Game View & Map Rendering"
+  },
+  {
+   "id": 17,
+   "name": "UI, Menus, Input & Localization"
+  },
+  {
+   "id": 18,
+   "name": "Animation & Visual Effects"
+  },
+  {
+   "id": 19,
+   "name": "Audio & Music"
+  },
+  {
+   "id": 20,
+   "name": "Persistence, Undo, Replay & Platform"
+  }
+ ],
+ "items": [
+  {
+   "id": "1.1",
+   "category": 1,
+   "title": "Basic tag parsing",
+   "wml": "any tag; `[scenario]`, `[side]`, `[unit]`"
+  },
+  {
+   "id": "1.2",
+   "category": 1,
+   "title": "Attribute parsing",
+   "wml": "any `key=`"
+  },
+  {
+   "id": "1.3",
+   "category": 1,
+   "title": "Multi-key assignment",
+   "wml": "`x,y=`, `r,g,b=`"
+  },
+  {
+   "id": "1.4",
+   "category": 1,
+   "title": "Quoted string values",
+   "wml": "`message=`, `name=`"
+  },
+  {
+   "id": "1.5",
+   "category": 1,
+   "title": "Doubled-quote escaping",
+   "wml": "`message=`"
+  },
+  {
+   "id": "1.6",
+   "category": 1,
+   "title": "Multi-line values",
+   "wml": "`map_data=`, `message=`"
+  },
+  {
+   "id": "1.7",
+   "category": 1,
+   "title": "Value concatenation with `+`",
+   "wml": "`message= _\"a\" + _\"b\"`"
+  },
+  {
+   "id": "1.8",
+   "category": 1,
+   "title": "Comment handling",
+   "wml": "`#`, `#comment`"
+  },
+  {
+   "id": "1.9",
+   "category": 1,
+   "title": "Translatable string marker",
+   "wml": "`_ \"…\"`, `[textdomain]`"
+  },
+  {
+   "id": "1.10",
+   "category": 1,
+   "title": "Textdomain switching",
+   "wml": "`#textdomain`, `[textdomain]`"
+  },
+  {
+   "id": "1.11",
+   "category": 1,
+   "title": "`#define` macro definition",
+   "wml": "`#define`, `#enddef`"
+  },
+  {
+   "id": "1.12",
+   "category": 1,
+   "title": "Macro invocation & substitution",
+   "wml": "`{MACRO_NAME}`"
+  },
+  {
+   "id": "1.13",
+   "category": 1,
+   "title": "Macro arguments",
+   "wml": "`{MACRO 5 7}`"
+  },
+  {
+   "id": "1.14",
+   "category": 1,
+   "title": "Parenthesised macro arguments",
+   "wml": "`{MACRO (multi word) (…)}`"
+  },
+  {
+   "id": "1.15",
+   "category": 1,
+   "title": "Nested macro expansion",
+   "wml": "`#define`, `{…}`"
+  },
+  {
+   "id": "1.16",
+   "category": 1,
+   "title": "Optional/`#arg` macro parameters",
+   "wml": "`#arg`, `#endarg`"
+  },
+  {
+   "id": "1.17",
+   "category": 1,
+   "title": "File inclusion",
+   "wml": "`{campaigns/…}`, `{~add-ons/…}`"
+  },
+  {
+   "id": "1.18",
+   "category": 1,
+   "title": "Path prefixes",
+   "wml": "`{~add-ons/}`, `{@core/}`"
+  },
+  {
+   "id": "1.19",
+   "category": 1,
+   "title": "`#ifdef` / `#ifndef` conditional compilation",
+   "wml": "`#ifdef EASY`, `#ifndef`, `#else`, `#endif`"
+  },
+  {
+   "id": "1.20",
+   "category": 1,
+   "title": "`#ifhave` / `#ifver` conditionals",
+   "wml": "`#ifhave`, `#ifver`, `#ifnver`"
+  },
+  {
+   "id": "1.21",
+   "category": 1,
+   "title": "`#undef`",
+   "wml": "`#undef`"
+  },
+  {
+   "id": "1.22",
+   "category": 1,
+   "title": "Difficulty symbols",
+   "wml": "`[campaign]difficulties=`, `[difficulty]define=`, `#ifdef HARD`"
+  },
+  {
+   "id": "1.23",
+   "category": 1,
+   "title": "Preprocessor error reporting",
+   "wml": "`#define`, `{MISSING}`"
+  },
+  {
+   "id": "1.24",
+   "category": 1,
+   "title": "Variable substitution in values",
+   "wml": "`$unit.x`, `$side_number`"
+  },
+  {
+   "id": "1.25",
+   "category": 1,
+   "title": "Dotted variable paths",
+   "wml": "`$unit.type`, `$second_unit.id`"
+  },
+  {
+   "id": "1.26",
+   "category": 1,
+   "title": "Array index access",
+   "wml": "`$units[0].x`, `[store_unit]`"
+  },
+  {
+   "id": "1.27",
+   "category": 1,
+   "title": "`$|` explicit variable terminator",
+   "wml": "`$name|'s sword`"
+  },
+  {
+   "id": "1.28",
+   "category": 1,
+   "title": "Nested variable substitution",
+   "wml": "`$($index)`"
+  },
+  {
+   "id": "1.29",
+   "category": 1,
+   "title": "Formula/WFL expressions",
+   "wml": "`$(unit.hitpoints/2)`, `[set_variable]formula=`"
+  },
+  {
+   "id": "1.30",
+   "category": 1,
+   "title": "Boolean value coercion",
+   "wml": "`first_time_only=`, `random_start_time=`"
+  },
+  {
+   "id": "1.31",
+   "category": 1,
+   "title": "Numeric coercion & percentages",
+   "wml": "`increase=`, `increase_damage=`"
+  },
+  {
+   "id": "1.32",
+   "category": 1,
+   "title": "Comma-list parsing",
+   "wml": "`recruit=`, `types=`, `terrain=`"
+  },
+  {
+   "id": "1.33",
+   "category": 1,
+   "title": "Range list parsing",
+   "wml": "`turn=`, `x=`, `y=`"
+  },
+  {
+   "id": "1.34",
+   "category": 1,
+   "title": "Image path list syntax",
+   "wml": "`image=`, `[frame]`"
+  },
+  {
+   "id": "1.35",
+   "category": 1,
+   "title": "`[insert_tag]`",
+   "wml": "`[insert_tag]`, `name=`, `variable=`"
+  },
+  {
+   "id": "1.36",
+   "category": 1,
+   "title": "`[variables]` container",
+   "wml": "`[variables]`, `[unit][variables]`"
+  },
+  {
+   "id": "1.37",
+   "category": 1,
+   "title": "`[literal]` blocks",
+   "wml": "`[set_variables][literal]`"
+  },
+  {
+   "id": "1.38",
+   "category": 1,
+   "title": "Deprecation warnings",
+   "wml": "`[deprecated_message]`"
+  },
+  {
+   "id": "1.39",
+   "category": 1,
+   "title": "Schema validation",
+   "wml": "`[wml_schema]`, `[tag]`, `[key]`"
+  },
+  {
+   "id": "1.40",
+   "category": 1,
+   "title": "Binary path resolution",
+   "wml": "`[binary_path]path=`"
+  },
+  {
+   "id": "1.41",
+   "category": 1,
+   "title": "Core / add-on data merge",
+   "wml": "`[core]`, `[modification]`, `[resource]`, `[load_resource]`"
+  },
+  {
+   "id": "1.42",
+   "category": 1,
+   "title": "`[units]` registry assembly",
+   "wml": "`[units]`, `[unit_type]`, `[movetype]`, `[race]`"
+  },
+  {
+   "id": "1.43",
+   "category": 1,
+   "title": "`[game_config]` globals",
+   "wml": "`[game_config]poison_amount=`, `village_income=`, `rest_heal_amount=`"
+  },
+  {
+   "id": "1.44",
+   "category": 1,
+   "title": "`[color_range]` / `[color_palette]`",
+   "wml": "`[color_range]`, `[color_palette]`"
+  },
+  {
+   "id": "1.45",
+   "category": 1,
+   "title": "`[fonts]` config",
+   "wml": "`[fonts]`, `[font]`"
+  },
+  {
+   "id": "1.46",
+   "category": 1,
+   "title": "`[advanced_preference]` declaration",
+   "wml": "`[advanced_preference]`"
+  },
+  {
+   "id": "1.47",
+   "category": 1,
+   "title": "Parse error resilience",
+   "wml": "any malformed input"
+  },
+  {
+   "id": "1.48",
+   "category": 1,
+   "title": "Large-file parsing",
+   "wml": "`[scenario]`, large `[event]` sets"
+  },
+  {
+   "id": "1.49",
+   "category": 1,
+   "title": "Round-trip serialisation",
+   "wml": "whole document"
+  },
+  {
+   "id": "1.50",
+   "category": 1,
+   "title": "Cross-file macro visibility",
+   "wml": "`#define`, `{…}`"
+  },
+  {
+   "id": "2.1",
+   "category": 2,
+   "title": "Map data parsing",
+   "wml": "`map_data=`, `[scenario]`"
+  },
+  {
+   "id": "2.2",
+   "category": 2,
+   "title": "External map file reference",
+   "wml": "`map_file=`"
+  },
+  {
+   "id": "2.3",
+   "category": 2,
+   "title": "Hex coordinate system",
+   "wml": "`x=`, `y=`, `[filter_location]`"
+  },
+  {
+   "id": "2.4",
+   "category": 2,
+   "title": "Border hexes",
+   "wml": "`border_size=`, `usage=map`"
+  },
+  {
+   "id": "2.5",
+   "category": 2,
+   "title": "Terrain code parsing",
+   "wml": "`terrain=`, `Gg^Fds`"
+  },
+  {
+   "id": "2.6",
+   "category": 2,
+   "title": "Terrain aliasing",
+   "wml": "`[terrain_type]aliasof=`"
+  },
+  {
+   "id": "2.7",
+   "category": 2,
+   "title": "Terrain `def_alias` / `mvt_alias`",
+   "wml": "`def_alias=`, `mvt_alias=`"
+  },
+  {
+   "id": "2.8",
+   "category": 2,
+   "title": "Best-of alias resolution",
+   "wml": "`aliasof=Gg,Ww`"
+  },
+  {
+   "id": "2.9",
+   "category": 2,
+   "title": "Terrain string matching wildcards",
+   "wml": "`terrain=G*`, `terrain=*^F*`"
+  },
+  {
+   "id": "2.10",
+   "category": 2,
+   "title": "Village terrain flag",
+   "wml": "`[terrain_type]gives_income=`, `heals=`"
+  },
+  {
+   "id": "2.11",
+   "category": 2,
+   "title": "Castle terrain flag",
+   "wml": "`[terrain_type]recruit_onto=`, `Ce`, `Ch`"
+  },
+  {
+   "id": "2.12",
+   "category": 2,
+   "title": "Keep terrain flag",
+   "wml": "`recruit_from=`, `Kh`, `Ke`"
+  },
+  {
+   "id": "2.13",
+   "category": 2,
+   "title": "Castle connectivity",
+   "wml": "`Ch`, `Kh`, `[side]`"
+  },
+  {
+   "id": "2.14",
+   "category": 2,
+   "title": "Impassable terrain",
+   "wml": "`Xu`, `movement_costs=99`"
+  },
+  {
+   "id": "2.15",
+   "category": 2,
+   "title": "Deep water / chasm special cases",
+   "wml": "`Wo`, `Qxu`, `[movetype]`"
+  },
+  {
+   "id": "2.16",
+   "category": 2,
+   "title": "`[terrain]` action — change terrain",
+   "wml": "`[terrain]`, `terrain=`, `[filter_location]`"
+  },
+  {
+   "id": "2.17",
+   "category": 2,
+   "title": "Terrain change layer control",
+   "wml": "`[terrain]layer=`"
+  },
+  {
+   "id": "2.18",
+   "category": 2,
+   "title": "Terrain change with `replace_if_failed`",
+   "wml": "`replace_if_failed=`"
+  },
+  {
+   "id": "2.19",
+   "category": 2,
+   "title": "`[replace_map]`",
+   "wml": "`[replace_map]`, `map=`, `expand=`, `shrink=`"
+  },
+  {
+   "id": "2.20",
+   "category": 2,
+   "title": "`[terrain_mask]`",
+   "wml": "`[terrain_mask]`, `mask=`, `border=`, `[rule]`"
+  },
+  {
+   "id": "2.21",
+   "category": 2,
+   "title": "Map shrink/expand semantics",
+   "wml": "`[replace_map]shrink=`, `expand=`"
+  },
+  {
+   "id": "2.22",
+   "category": 2,
+   "title": "Starting locations",
+   "wml": "`map_data` digits, `[side]x=,y=`"
+  },
+  {
+   "id": "2.23",
+   "category": 2,
+   "title": "`[store_starting_location]`",
+   "wml": "`[store_starting_location]`, `side=`, `variable=`"
+  },
+  {
+   "id": "2.24",
+   "category": 2,
+   "title": "`[store_map_dimensions]`",
+   "wml": "`[store_map_dimensions]`, `variable=`"
+  },
+  {
+   "id": "2.25",
+   "category": 2,
+   "title": "`[store_locations]`",
+   "wml": "`[store_locations]`, `[filter_location]`, `variable=`"
+  },
+  {
+   "id": "2.26",
+   "category": 2,
+   "title": "`[store_villages]`",
+   "wml": "`[store_villages]`, `owner_side=`, `terrain=`"
+  },
+  {
+   "id": "2.27",
+   "category": 2,
+   "title": "SLF: `x`/`y` matching",
+   "wml": "`x=1-5`, `y=3,7`"
+  },
+  {
+   "id": "2.28",
+   "category": 2,
+   "title": "SLF: `terrain=`",
+   "wml": "`[filter_location]terrain=`"
+  },
+  {
+   "id": "2.29",
+   "category": 2,
+   "title": "SLF: `[filter]` (unit on hex)",
+   "wml": "`[filter_location][filter]`"
+  },
+  {
+   "id": "2.30",
+   "category": 2,
+   "title": "SLF: `[filter_adjacent_location]`",
+   "wml": "`[filter_adjacent_location]adjacent=`, `count=`"
+  },
+  {
+   "id": "2.31",
+   "category": 2,
+   "title": "SLF: `radius=` and `[filter_radius]`",
+   "wml": "`radius=`, `[filter_radius]`"
+  },
+  {
+   "id": "2.32",
+   "category": 2,
+   "title": "SLF: `[filter_owner]`",
+   "wml": "`[filter_owner]`"
+  },
+  {
+   "id": "2.33",
+   "category": 2,
+   "title": "SLF: `find_in=`",
+   "wml": "`find_in=`"
+  },
+  {
+   "id": "2.34",
+   "category": 2,
+   "title": "SLF: `area=`",
+   "wml": "`area=`, `[time_area]id=`"
+  },
+  {
+   "id": "2.35",
+   "category": 2,
+   "title": "Village ownership state",
+   "wml": "`[side][village]`, `[capture_village]`"
+  },
+  {
+   "id": "2.36",
+   "category": 2,
+   "title": "`[capture_village]` action",
+   "wml": "`[capture_village]`, `side=`, `fire_event=`"
+  },
+  {
+   "id": "2.37",
+   "category": 2,
+   "title": "Village neutralisation",
+   "wml": "`[capture_village]side=0`"
+  },
+  {
+   "id": "2.38",
+   "category": 2,
+   "title": "Terrain graphics rules — base tiles",
+   "wml": "`[terrain_graphics]`, `[tile]`, `[image]`"
+  },
+  {
+   "id": "2.39",
+   "category": 2,
+   "title": "Terrain graphics — transitions",
+   "wml": "`[terrain_graphics]`, `map=`, `rotations=`"
+  },
+  {
+   "id": "2.40",
+   "category": 2,
+   "title": "Terrain graphics — variants & randomisation",
+   "wml": "`[variant]`, `probability=`"
+  },
+  {
+   "id": "2.41",
+   "category": 2,
+   "title": "Terrain graphics — layers",
+   "wml": "`[image]layer=`, `base=`, `center=`"
+  },
+  {
+   "id": "2.42",
+   "category": 2,
+   "title": "Terrain graphics — probability",
+   "wml": "`probability=`"
+  },
+  {
+   "id": "2.43",
+   "category": 2,
+   "title": "Terrain graphics — no-flag / set-flag",
+   "wml": "`set_flag=`, `no_flag=`, `has_flag=`"
+  },
+  {
+   "id": "2.44",
+   "category": 2,
+   "title": "Hex borders (keep, bridge, wall)",
+   "wml": "`[terrain_graphics]`, `Ch`, `Bw`, `Xu`"
+  },
+  {
+   "id": "2.45",
+   "category": 2,
+   "title": "Map edge rendering",
+   "wml": "`border_size=`, `[game_config]`"
+  },
+  {
+   "id": "2.46",
+   "category": 2,
+   "title": "Minimap generation",
+   "wml": "`[terrain_type]color=`, `[theme]minimap`"
+  },
+  {
+   "id": "2.47",
+   "category": 2,
+   "title": "Terrain help data",
+   "wml": "`[terrain_type]name=`, `description=`, `[topic]`"
+  },
+  {
+   "id": "2.48",
+   "category": 2,
+   "title": "Hidden terrain",
+   "wml": "`hidden=yes`, `editor_name=`"
+  },
+  {
+   "id": "2.49",
+   "category": 2,
+   "title": "Items placed on the map",
+   "wml": "`[item]`, `[remove_item]`, `image=`, `halo=`"
+  },
+  {
+   "id": "2.50",
+   "category": 2,
+   "title": "`[store_items]`",
+   "wml": "`[store_items]`, `variable=`"
+  },
+  {
+   "id": "2.51",
+   "category": 2,
+   "title": "Map labels",
+   "wml": "`[label]`, `text=`, `team_name=`, `visible_in_fog=`, `color=`"
+  },
+  {
+   "id": "2.52",
+   "category": 2,
+   "title": "Label removal",
+   "wml": "`[label]text=`"
+  },
+  {
+   "id": "2.53",
+   "category": 2,
+   "title": "Overlay images on hexes",
+   "wml": "`[item]`, `^Vhh`, `[terrain_graphics]`"
+  },
+  {
+   "id": "2.54",
+   "category": 2,
+   "title": "Time areas as map regions",
+   "wml": "`[time_area]`, `[remove_time_area]`, `id=`"
+  },
+  {
+   "id": "3.1",
+   "category": 3,
+   "title": "`[unit_type]` definition",
+   "wml": "`[unit_type]`, `id=`, `name=`"
+  },
+  {
+   "id": "3.2",
+   "category": 3,
+   "title": "Unit type core stats",
+   "wml": "`hitpoints=`, `experience=`, `movement=`, `level=`, `cost=`, `alignment=`"
+  },
+  {
+   "id": "3.3",
+   "category": 3,
+   "title": "Unit type images",
+   "wml": "`image=`, `profile=`, `small_profile=`"
+  },
+  {
+   "id": "3.4",
+   "category": 3,
+   "title": "Unit type flags",
+   "wml": "`usage=`, `die_sound=`, `zoc=`, `[hide_help]`"
+  },
+  {
+   "id": "3.5",
+   "category": 3,
+   "title": "`base_unit=` inheritance",
+   "wml": "`[base_unit]id=`"
+  },
+  {
+   "id": "3.6",
+   "category": 3,
+   "title": "`[variation]` definition",
+   "wml": "`[variation]`, `variation_id=`, `variation_name=`"
+  },
+  {
+   "id": "3.7",
+   "category": 3,
+   "title": "Male/female variants",
+   "wml": "`[male]`, `[female]`, `gender=`"
+  },
+  {
+   "id": "3.8",
+   "category": 3,
+   "title": "Gender selection at creation",
+   "wml": "`[unit]gender=`, `random_gender=`"
+  },
+  {
+   "id": "3.9",
+   "category": 3,
+   "title": "`[race]` definition",
+   "wml": "`[race]`, `num_traits=`, `[trait]`, `male_name_generator=`"
+  },
+  {
+   "id": "3.10",
+   "category": 3,
+   "title": "Race-based random naming",
+   "wml": "`male_name_generator=`, `female_name_generator=`"
+  },
+  {
+   "id": "3.11",
+   "category": 3,
+   "title": "`[movetype]` definition",
+   "wml": "`[movetype]`, `name=`"
+  },
+  {
+   "id": "3.12",
+   "category": 3,
+   "title": "Movement costs table",
+   "wml": "`[movement_costs]`, `[terrain_defaults]`"
+  },
+  {
+   "id": "3.13",
+   "category": 3,
+   "title": "Defense table",
+   "wml": "`[defense]`, `[terrain_defaults]`"
+  },
+  {
+   "id": "3.14",
+   "category": 3,
+   "title": "Resistance table",
+   "wml": "`[resistance]`, `[resistance_defaults]`"
+  },
+  {
+   "id": "3.15",
+   "category": 3,
+   "title": "Vision costs table",
+   "wml": "`[vision_costs]`"
+  },
+  {
+   "id": "3.16",
+   "category": 3,
+   "title": "Jamming costs table",
+   "wml": "`[jamming_costs]`"
+  },
+  {
+   "id": "3.17",
+   "category": 3,
+   "title": "Unit alignment",
+   "wml": "`alignment=`"
+  },
+  {
+   "id": "3.18",
+   "category": 3,
+   "title": "`[attack]` definition",
+   "wml": "`[attack]`, `damage=`, `number=`, `range=`, `type=`"
+  },
+  {
+   "id": "3.19",
+   "category": 3,
+   "title": "Attack icon & description",
+   "wml": "`icon=`, `description=`"
+  },
+  {
+   "id": "3.20",
+   "category": 3,
+   "title": "Attack weights",
+   "wml": "`attack_weight=`, `defense_weight=`"
+  },
+  {
+   "id": "3.21",
+   "category": 3,
+   "title": "Attack accuracy & parry",
+   "wml": "`accuracy=`, `parry=`"
+  },
+  {
+   "id": "3.22",
+   "category": 3,
+   "title": "Attack movement/attack costs",
+   "wml": "`movement_used=`, `attacks_used=`"
+  },
+  {
+   "id": "3.23",
+   "category": 3,
+   "title": "Min/max range",
+   "wml": "`min_range=`, `max_range=`"
+  },
+  {
+   "id": "3.24",
+   "category": 3,
+   "title": "Advancement targets",
+   "wml": "`advances_to=`"
+  },
+  {
+   "id": "3.25",
+   "category": 3,
+   "title": "`[advancefrom]` / reverse advancement",
+   "wml": "`[advancefrom]unit=`"
+  },
+  {
+   "id": "3.26",
+   "category": 3,
+   "title": "AMLA definition",
+   "wml": "`[advancement]`, `max_times=`, `always_display=`, `[effect]`"
+  },
+  {
+   "id": "3.27",
+   "category": 3,
+   "title": "Special notes",
+   "wml": "`[special_note]note=`"
+  },
+  {
+   "id": "3.28",
+   "category": 3,
+   "title": "Unit description text",
+   "wml": "`description=`, `[unit_type]`"
+  },
+  {
+   "id": "3.29",
+   "category": 3,
+   "title": "Unit level 0 semantics",
+   "wml": "`level=0`"
+  },
+  {
+   "id": "3.30",
+   "category": 3,
+   "title": "XP awarded per kill/hit",
+   "wml": "`[game_config]kill_experience=`, `combat_experience=`"
+  },
+  {
+   "id": "3.31",
+   "category": 3,
+   "title": "Placing a unit with `[unit]`",
+   "wml": "`[unit]`, `type=`, `side=`, `x=`, `y=`"
+  },
+  {
+   "id": "3.32",
+   "category": 3,
+   "title": "Unit `id=` uniqueness",
+   "wml": "`[unit]id=`"
+  },
+  {
+   "id": "3.33",
+   "category": 3,
+   "title": "Unit `[status]` flags",
+   "wml": "`[status]poisoned=`, `slowed=`, `petrified=`, `guardian=`, `unhealable=`"
+  },
+  {
+   "id": "3.34",
+   "category": 3,
+   "title": "`placement=` semantics",
+   "wml": "`[unit]placement=`"
+  },
+  {
+   "id": "3.35",
+   "category": 3,
+   "title": "Unit facing",
+   "wml": "`facing=`, `[facing]`"
+  },
+  {
+   "id": "3.36",
+   "category": 3,
+   "title": "Unit `role=`",
+   "wml": "`[role]`, `role=`, `[filter]`"
+  },
+  {
+   "id": "3.37",
+   "category": 3,
+   "title": "`canrecruit=`",
+   "wml": "`canrecruit=`"
+  },
+  {
+   "id": "3.38",
+   "category": 3,
+   "title": "Unit upkeep & loyalty",
+   "wml": "`upkeep=`, `apply_to=loyal`, `[trait]id=loyal`"
+  },
+  {
+   "id": "3.39",
+   "category": 3,
+   "title": "Unit `overlays=`",
+   "wml": "`overlays=`, `[unit_overlay]`, `[remove_unit_overlay]`"
+  },
+  {
+   "id": "3.40",
+   "category": 3,
+   "title": "Unit ellipse",
+   "wml": "`ellipse=`, `apply_to=ellipse`"
+  },
+  {
+   "id": "3.41",
+   "category": 3,
+   "title": "Unit halo",
+   "wml": "`halo=`, `apply_to=halo`"
+  },
+  {
+   "id": "3.42",
+   "category": 3,
+   "title": "Team colouring",
+   "wml": "`[side]color=`, `[color_range]`, `flag_rgb=`"
+  },
+  {
+   "id": "3.43",
+   "category": 3,
+   "title": "`[modify_unit_type]`",
+   "wml": "`[modify_unit_type]`, `[set_advancement]`"
+  },
+  {
+   "id": "3.44",
+   "category": 3,
+   "title": "`[store_unit_type]`",
+   "wml": "`[store_unit_type]type=`, `variable=`"
+  },
+  {
+   "id": "3.45",
+   "category": 3,
+   "title": "`[store_unit_type_ids]`",
+   "wml": "`[store_unit_type_ids]variable=`"
+  },
+  {
+   "id": "3.46",
+   "category": 3,
+   "title": "`[unit_worth]`",
+   "wml": "`[unit_worth]`"
+  },
+  {
+   "id": "3.47",
+   "category": 3,
+   "title": "Unit cost defaults",
+   "wml": "`recall_cost=`, `[game_config]recall_cost=`"
+  },
+  {
+   "id": "3.48",
+   "category": 3,
+   "title": "`[store_unit_defense]` / `_on`",
+   "wml": "`[store_unit_defense]`, `[store_unit_defense_on]`"
+  },
+  {
+   "id": "3.49",
+   "category": 3,
+   "title": "Undead/mechanical trait exclusion",
+   "wml": "`num_traits=0`, `[trait]availability=musthave`"
+  },
+  {
+   "id": "3.50",
+   "category": 3,
+   "title": "Unit help entries",
+   "wml": "`[unit_type]`, `[topic]`, `hide_help=`"
+  },
+  {
+   "id": "4.1",
+   "category": 4,
+   "title": "Basic unit movement",
+   "wml": "`[move_unit]`, `moves=`, `[movement_costs]`"
+  },
+  {
+   "id": "4.2",
+   "category": 4,
+   "title": "Movement point pool",
+   "wml": "`moves=`, `max_moves=`, `[unit]`"
+  },
+  {
+   "id": "4.3",
+   "category": 4,
+   "title": "Terrain movement cost lookup",
+   "wml": "`[movement_costs]`, `aliasof=`"
+  },
+  {
+   "id": "4.4",
+   "category": 4,
+   "title": "Insufficient MP rule",
+   "wml": "`moves=`, `[game_config]`"
+  },
+  {
+   "id": "4.5",
+   "category": 4,
+   "title": "Movement into impassable terrain",
+   "wml": "`movement_costs=99`"
+  },
+  {
+   "id": "4.6",
+   "category": 4,
+   "title": "Movement blocked by units",
+   "wml": "`[side]team_name=`, `share_vision=`"
+  },
+  {
+   "id": "4.7",
+   "category": 4,
+   "title": "Zone of control",
+   "wml": "`zoc=`, `apply_to=zoc`"
+  },
+  {
+   "id": "4.8",
+   "category": 4,
+   "title": "ZoC exemptions",
+   "wml": "`level=0`, `zoc=no`, `[skirmisher]`"
+  },
+  {
+   "id": "4.9",
+   "category": 4,
+   "title": "Skirmisher ability",
+   "wml": "`[abilities][skirmisher]`"
+  },
+  {
+   "id": "4.10",
+   "category": 4,
+   "title": "Pathfinding shortest path",
+   "wml": "`[find_path]`"
+  },
+  {
+   "id": "4.11",
+   "category": 4,
+   "title": "Reachable hex calculation",
+   "wml": "`[store_reachable_locations]`, `moves=`"
+  },
+  {
+   "id": "4.12",
+   "category": 4,
+   "title": "Multi-turn move estimate",
+   "wml": "`[find_path]`, `max_cost=`"
+  },
+  {
+   "id": "4.13",
+   "category": 4,
+   "title": "Goto / queued movement",
+   "wml": "`goto_x=`, `goto_y=`"
+  },
+  {
+   "id": "4.14",
+   "category": 4,
+   "title": "Move interruption on sighting",
+   "wml": "`sighted` event, `[filter_vision]`"
+  },
+  {
+   "id": "4.15",
+   "category": 4,
+   "title": "Move interruption on event",
+   "wml": "`[event]name=moveto`, `[allow_undo]`"
+  },
+  {
+   "id": "4.16",
+   "category": 4,
+   "title": "Ambush interruption",
+   "wml": "`[hides]`, `[abilities]`"
+  },
+  {
+   "id": "4.17",
+   "category": 4,
+   "title": "`[move_unit]` action",
+   "wml": "`[move_unit]`, `to_x=`, `to_y=`, `fire_event=`, `check_passability=`"
+  },
+  {
+   "id": "4.18",
+   "category": 4,
+   "title": "`[teleport]` action",
+   "wml": "`[teleport]`, `[filter]`, `x=`, `y=`, `clear_shroud=`, `animate=`"
+  },
+  {
+   "id": "4.19",
+   "category": 4,
+   "title": "Teleport ability",
+   "wml": "`[abilities][teleport]`, `[source]`, `[target]`, `[filter_vision]`"
+  },
+  {
+   "id": "4.20",
+   "category": 4,
+   "title": "Teleport ability restrictions",
+   "wml": "`[teleport]`, `[filter_vision]`"
+  },
+  {
+   "id": "4.21",
+   "category": 4,
+   "title": "`[tunnel]` definition",
+   "wml": "`[tunnel]`, `[source]`, `[target]`, `[filter]`, `id=`, `remove=`"
+  },
+  {
+   "id": "4.22",
+   "category": 4,
+   "title": "Tunnel bidirectionality",
+   "wml": "`[tunnel]bidirectional=`"
+  },
+  {
+   "id": "4.23",
+   "category": 4,
+   "title": "Village capture on move",
+   "wml": "`capture` event, `[capture_village]`"
+  },
+  {
+   "id": "4.24",
+   "category": 4,
+   "title": "Village capture ends movement",
+   "wml": "`moves=0`"
+  },
+  {
+   "id": "4.25",
+   "category": 4,
+   "title": "Leader-only village capture rules",
+   "wml": "`[capture_village]`, `[filter]`"
+  },
+  {
+   "id": "4.26",
+   "category": 4,
+   "title": "`[fake_unit]` / `[move_unit_fake]`",
+   "wml": "`[move_unit_fake]`, `type=`, `x=`, `y=`, `side=`"
+  },
+  {
+   "id": "4.27",
+   "category": 4,
+   "title": "`[move_units_fake]`",
+   "wml": "`[move_units_fake]`, `[fake_unit]`"
+  },
+  {
+   "id": "4.28",
+   "category": 4,
+   "title": "Guardian status",
+   "wml": "`[status]guardian=`"
+  },
+  {
+   "id": "4.29",
+   "category": 4,
+   "title": "Movement restoration on new turn",
+   "wml": "`[modify_unit]moves=`, turn refresh"
+  },
+  {
+   "id": "4.30",
+   "category": 4,
+   "title": "`[modify_unit]` movement",
+   "wml": "`[modify_unit]moves=`, `apply_to=movement`"
+  },
+  {
+   "id": "4.31",
+   "category": 4,
+   "title": "Movement effect: increase",
+   "wml": "`apply_to=movement`, `increase=`, `apply_to_vision=`"
+  },
+  {
+   "id": "4.32",
+   "category": 4,
+   "title": "Movement effect: set",
+   "wml": "`apply_to=movement`, `set=`"
+  },
+  {
+   "id": "4.33",
+   "category": 4,
+   "title": "Movement cost effect",
+   "wml": "`apply_to=movement_costs`, `replace=`, `[movement_costs]`"
+  },
+  {
+   "id": "4.34",
+   "category": 4,
+   "title": "Slow effect on movement",
+   "wml": "`[status]slowed=`, `[slow]`"
+  },
+  {
+   "id": "4.35",
+   "category": 4,
+   "title": "Petrify blocks movement",
+   "wml": "`[petrify]`, `[unpetrify]`, `[status]petrified=`"
+  },
+  {
+   "id": "4.36",
+   "category": 4,
+   "title": "Loss of MP on attack",
+   "wml": "`movement_used=`, `[attack]`"
+  },
+  {
+   "id": "4.37",
+   "category": 4,
+   "title": "Partial MP use by weapon",
+   "wml": "`movement_used=`, `increase_movement_used=`"
+  },
+  {
+   "id": "4.38",
+   "category": 4,
+   "title": "Facing update on movement",
+   "wml": "`facing=`, `[animate_unit][facing]`"
+  },
+  {
+   "id": "4.39",
+   "category": 4,
+   "title": "`[find_path]` action",
+   "wml": "`[find_path]`, `[traveler]`, `[destination]`, `allow_multiple_turns=`, `variable=`"
+  },
+  {
+   "id": "4.40",
+   "category": 4,
+   "title": "`[store_reachable_locations]`",
+   "wml": "`[store_reachable_locations]`, `moves=`, `range=`"
+  },
+  {
+   "id": "4.41",
+   "category": 4,
+   "title": "`[store_relative_direction]`",
+   "wml": "`[store_relative_direction]`, `[source]`, `[destination]`"
+  },
+  {
+   "id": "4.42",
+   "category": 4,
+   "title": "Adjacency queries",
+   "wml": "`adjacent=`, `[filter_adjacent]`"
+  },
+  {
+   "id": "4.43",
+   "category": 4,
+   "title": "Defense on destination hex",
+   "wml": "`[defense]`, UI hex hover"
+  },
+  {
+   "id": "4.44",
+   "category": 4,
+   "title": "Move cost display",
+   "wml": "`[movement_costs]`"
+  },
+  {
+   "id": "4.45",
+   "category": 4,
+   "title": "Path preview",
+   "wml": "UI, `[find_path]`"
+  },
+  {
+   "id": "4.46",
+   "category": 4,
+   "title": "Undoing a move",
+   "wml": "`[allow_undo]`, `[on_undo]`"
+  },
+  {
+   "id": "4.47",
+   "category": 4,
+   "title": "Undo blocked by information gain",
+   "wml": "`[allow_undo]`, `clear_shroud=`"
+  },
+  {
+   "id": "4.48",
+   "category": 4,
+   "title": "Movement with `[modify_side]` restrictions",
+   "wml": "`[modify_side]`"
+  },
+  {
+   "id": "4.49",
+   "category": 4,
+   "title": "Flying movement",
+   "wml": "`[movetype]flies=`, `[movement_costs]`"
+  },
+  {
+   "id": "4.50",
+   "category": 4,
+   "title": "Movement over allied units",
+   "wml": "`team_name=`, `[side]`"
+  },
+  {
+   "id": "4.51",
+   "category": 4,
+   "title": "Movement animation timing",
+   "wml": "`[movement_anim]`, `[game_config]`"
+  },
+  {
+   "id": "4.52",
+   "category": 4,
+   "title": "Fake movement (`[fake_unit]`) cleanup",
+   "wml": "`[move_unit_fake]`"
+  },
+  {
+   "id": "4.53",
+   "category": 4,
+   "title": "Hide/unhide unit",
+   "wml": "`[hide_unit]`, `[unhide_unit]`"
+  },
+  {
+   "id": "4.54",
+   "category": 4,
+   "title": "Unit collision at placement",
+   "wml": "`[unit]placement=`"
+  },
+  {
+   "id": "4.55",
+   "category": 4,
+   "title": "`[put_to_recall_list]`",
+   "wml": "`[put_to_recall_list]`, `[filter]`"
+  },
+  {
+   "id": "5.1",
+   "category": 5,
+   "title": "Attack initiation",
+   "wml": "`[attack]`, `attack` event"
+  },
+  {
+   "id": "5.2",
+   "category": 5,
+   "title": "Weapon selection dialog",
+   "wml": "`[attack]`, `attack_weight=`"
+  },
+  {
+   "id": "5.3",
+   "category": 5,
+   "title": "Best weapon default",
+   "wml": "`attack_weight=`, `defense_weight=`"
+  },
+  {
+   "id": "5.4",
+   "category": 5,
+   "title": "Retaliation weapon choice",
+   "wml": "`range=`, `defense_weight=`"
+  },
+  {
+   "id": "5.5",
+   "category": 5,
+   "title": "No retaliation at wrong range",
+   "wml": "`range=melee`, `range=ranged`"
+  },
+  {
+   "id": "5.6",
+   "category": 5,
+   "title": "Strike sequencing",
+   "wml": "`number=`, `[berserk]`, `[firststrike]`"
+  },
+  {
+   "id": "5.7",
+   "category": 5,
+   "title": "Chance-to-hit calculation",
+   "wml": "`[defense]`, `accuracy=`, `parry=`, `[chance_to_hit]`"
+  },
+  {
+   "id": "5.8",
+   "category": 5,
+   "title": "Minimum/maximum CTH clamping",
+   "wml": "`[game_config]`, `[chance_to_hit]`"
+  },
+  {
+   "id": "5.9",
+   "category": 5,
+   "title": "Damage calculation base",
+   "wml": "`damage=`, `[resistance]`, `alignment=`"
+  },
+  {
+   "id": "5.10",
+   "category": 5,
+   "title": "Resistance application",
+   "wml": "`[resistance]blade=`, `apply_to=resistance`"
+  },
+  {
+   "id": "5.11",
+   "category": 5,
+   "title": "Time of day damage modifier",
+   "wml": "`alignment=`, `[time]lawful_bonus=`"
+  },
+  {
+   "id": "5.12",
+   "category": 5,
+   "title": "Rounding rules",
+   "wml": "`damage=`, `[resistance]`"
+  },
+  {
+   "id": "5.13",
+   "category": 5,
+   "title": "Minimum damage floor",
+   "wml": "`damage=`"
+  },
+  {
+   "id": "5.14",
+   "category": 5,
+   "title": "RNG for hit rolls",
+   "wml": "`[set_variable]rand=`, replay seed"
+  },
+  {
+   "id": "5.15",
+   "category": 5,
+   "title": "Kill on zero HP",
+   "wml": "`die` event, `last breath` event, `[kill]`"
+  },
+  {
+   "id": "5.16",
+   "category": 5,
+   "title": "Death interrupts remaining strikes",
+   "wml": "`[berserk]`"
+  },
+  {
+   "id": "5.17",
+   "category": 5,
+   "title": "XP award on kill",
+   "wml": "`[game_config]kill_experience=`, `level=`"
+  },
+  {
+   "id": "5.18",
+   "category": 5,
+   "title": "XP award on non-kill combat",
+   "wml": "`[game_config]combat_experience=`"
+  },
+  {
+   "id": "5.19",
+   "category": 5,
+   "title": "Advancement trigger",
+   "wml": "`advances_to=`, `advance` event, `post advance` event"
+  },
+  {
+   "id": "5.20",
+   "category": 5,
+   "title": "Attack count per turn",
+   "wml": "`attacks_left=`, `apply_to=max_attacks`, `attacks_used=`"
+  },
+  {
+   "id": "5.21",
+   "category": 5,
+   "title": "Attacker MP consumed",
+   "wml": "`movement_used=`"
+  },
+  {
+   "id": "5.22",
+   "category": 5,
+   "title": "`attack` event (pre-combat)",
+   "wml": "`[event]name=attack`, `[filter_attack]`, `[filter_second_attack]`"
+  },
+  {
+   "id": "5.23",
+   "category": 5,
+   "title": "`attacker hits` / `defender hits` events",
+   "wml": "`name=attacker hits`, `defender hits`, `$damage_inflicted`"
+  },
+  {
+   "id": "5.24",
+   "category": 5,
+   "title": "`attacker misses` / `defender misses` events",
+   "wml": "`name=attacker misses`, `defender misses`"
+  },
+  {
+   "id": "5.25",
+   "category": 5,
+   "title": "`attack end` event",
+   "wml": "`name=attack end`"
+  },
+  {
+   "id": "5.26",
+   "category": 5,
+   "title": "`last breath` before death animation",
+   "wml": "`name=last breath`, `[heal_unit]`"
+  },
+  {
+   "id": "5.27",
+   "category": 5,
+   "title": "`die` event",
+   "wml": "`name=die`, `[filter]`, `[filter_second]`"
+  },
+  {
+   "id": "5.28",
+   "category": 5,
+   "title": "Leader death → scenario loss",
+   "wml": "`canrecruit=`, `[endlevel]result=defeat`, `defeat_condition=`"
+  },
+  {
+   "id": "5.29",
+   "category": 5,
+   "title": "`[harm_unit]`",
+   "wml": "`[harm_unit]`, `amount=`, `damage_type=`, `kill=`, `fire_event=`, `animate=`"
+  },
+  {
+   "id": "5.30",
+   "category": 5,
+   "title": "`[kill]` action",
+   "wml": "`[kill]`, `animate=`, `fire_event=`, `[filter]`"
+  },
+  {
+   "id": "5.31",
+   "category": 5,
+   "title": "`[heal_unit]`",
+   "wml": "`[heal_unit]`, `amount=`, `animate=`, `restore_statuses=`"
+  },
+  {
+   "id": "5.32",
+   "category": 5,
+   "title": "Poison application",
+   "wml": "`[poison]`, `[status]poisoned=`"
+  },
+  {
+   "id": "5.33",
+   "category": 5,
+   "title": "Poison damage at turn start",
+   "wml": "`[game_config]poison_amount=`"
+  },
+  {
+   "id": "5.34",
+   "category": 5,
+   "title": "Poison immunity",
+   "wml": "`[filter]`, `[poison]`, `[status]unpoisonable=`"
+  },
+  {
+   "id": "5.35",
+   "category": 5,
+   "title": "Poison cure",
+   "wml": "`[heals]poison=cured`, village heal"
+  },
+  {
+   "id": "5.36",
+   "category": 5,
+   "title": "Slow application & expiry",
+   "wml": "`[slow]`, `[status]slowed=`"
+  },
+  {
+   "id": "5.37",
+   "category": 5,
+   "title": "Petrify in combat",
+   "wml": "`[petrifies]`, `[petrify]`, `[unpetrify]`"
+  },
+  {
+   "id": "5.38",
+   "category": 5,
+   "title": "Drain",
+   "wml": "`[drains]value=`, `[filter_opponent]`"
+  },
+  {
+   "id": "5.39",
+   "category": 5,
+   "title": "Berserk",
+   "wml": "`[berserk]value=`"
+  },
+  {
+   "id": "5.40",
+   "category": 5,
+   "title": "First strike",
+   "wml": "`[firststrike]`"
+  },
+  {
+   "id": "5.41",
+   "category": 5,
+   "title": "Charge",
+   "wml": "`[damage]multiply=2`, `apply_to=both`"
+  },
+  {
+   "id": "5.42",
+   "category": 5,
+   "title": "Marksman",
+   "wml": "`[chance_to_hit]value=`, `cumulative=`"
+  },
+  {
+   "id": "5.43",
+   "category": 5,
+   "title": "Magical",
+   "wml": "`[chance_to_hit]value=70`, `apply_to=both`"
+  },
+  {
+   "id": "5.44",
+   "category": 5,
+   "title": "Backstab",
+   "wml": "`[damage]`, `[filter_adjacent]adjacent=`, `is_backstab=`"
+  },
+  {
+   "id": "5.45",
+   "category": 5,
+   "title": "Swarm",
+   "wml": "`[swarm]swarm_attacks_max=`, `swarm_attacks_min=`"
+  },
+  {
+   "id": "5.46",
+   "category": 5,
+   "title": "Plague",
+   "wml": "`[plague]type=`, `[filter_opponent]`, `[status]unplagueable=`"
+  },
+  {
+   "id": "5.47",
+   "category": 5,
+   "title": "Combat simulation",
+   "wml": "attack dialog, `[attack]`"
+  },
+  {
+   "id": "5.48",
+   "category": 5,
+   "title": "Combat simulation with specials",
+   "wml": "`[specials]`"
+  },
+  {
+   "id": "5.49",
+   "category": 5,
+   "title": "Damage floating text",
+   "wml": "`[floating_text]`, combat display"
+  },
+  {
+   "id": "5.50",
+   "category": 5,
+   "title": "Attack animations sequencing",
+   "wml": "`[attack_anim]`, `[defend]`, `[missile_frame]`, `hits=`"
+  },
+  {
+   "id": "5.51",
+   "category": 5,
+   "title": "Unit facing during combat",
+   "wml": "`[frame]`, `facing=`"
+  },
+  {
+   "id": "5.52",
+   "category": 5,
+   "title": "`[test_do_attack_by_id]`",
+   "wml": "`[test_do_attack_by_id]`"
+  },
+  {
+   "id": "5.53",
+   "category": 5,
+   "title": "Invulnerable status",
+   "wml": "`[status]invulnerable=`"
+  },
+  {
+   "id": "5.54",
+   "category": 5,
+   "title": "`[disable]` special",
+   "wml": "`[disable]`, `[filter_self]`"
+  },
+  {
+   "id": "5.55",
+   "category": 5,
+   "title": "Damage type override",
+   "wml": "`[damage_type]replacement_type=`, `alternative_type=`"
+  },
+  {
+   "id": "5.56",
+   "category": 5,
+   "title": "Attack alignment override",
+   "wml": "`apply_to=attack`, `set_alignment=`"
+  },
+  {
+   "id": "5.57",
+   "category": 5,
+   "title": "Statistics recording",
+   "wml": "`[statistics]`, `[team]`, `[attacks]`, `[defends]`, `[killed]`, `[deaths]`"
+  },
+  {
+   "id": "6.1",
+   "category": 6,
+   "title": "`[abilities]` container",
+   "wml": "`[abilities]`, `apply_to=new_ability`, `apply_to=remove_ability`"
+  },
+  {
+   "id": "6.2",
+   "category": 6,
+   "title": "Ability id & display",
+   "wml": "`id=`, `name=`, `description=`, `name_inactive=`"
+  },
+  {
+   "id": "6.3",
+   "category": 6,
+   "title": "`[heals]` — basic healing",
+   "wml": "`[heals]value=`, `affect_allies=`"
+  },
+  {
+   "id": "6.4",
+   "category": 6,
+   "title": "`[heals]` — poison cure",
+   "wml": "`[heals]poison=`"
+  },
+  {
+   "id": "6.5",
+   "category": 6,
+   "title": "Healing cap per turn",
+   "wml": "`[heals]value=`, `cumulative=`"
+  },
+  {
+   "id": "6.6",
+   "category": 6,
+   "title": "Healer must not have moved/attacked?",
+   "wml": "`[heals]`"
+  },
+  {
+   "id": "6.7",
+   "category": 6,
+   "title": "`[regenerate]`",
+   "wml": "`[regenerate]value=`, `poison=`"
+  },
+  {
+   "id": "6.8",
+   "category": 6,
+   "title": "`[leadership]`",
+   "wml": "`[leadership]value=`, `[affect_adjacent]`, `[filter_student]`"
+  },
+  {
+   "id": "6.9",
+   "category": 6,
+   "title": "Leadership stacking rule",
+   "wml": "`cumulative=`"
+  },
+  {
+   "id": "6.10",
+   "category": 6,
+   "title": "`[illuminates]`",
+   "wml": "`[illuminates]value=`, `max_value=`"
+  },
+  {
+   "id": "6.11",
+   "category": 6,
+   "title": "`[hides]` — ambush/nightstalk/submerge/concealment",
+   "wml": "`[hides]`, `[filter_self]`, `[filter_location]`"
+  },
+  {
+   "id": "6.12",
+   "category": 6,
+   "title": "Hide reveal on adjacency",
+   "wml": "`[hides]`, `[status]uncovered=`"
+  },
+  {
+   "id": "6.13",
+   "category": 6,
+   "title": "Hide and attacking",
+   "wml": "`[hides]`, `uncovered`"
+  },
+  {
+   "id": "6.14",
+   "category": 6,
+   "title": "`[skirmisher]`",
+   "wml": "`[abilities][skirmisher]`"
+  },
+  {
+   "id": "6.15",
+   "category": 6,
+   "title": "`[teleport]` ability",
+   "wml": "`[teleport]`, `[source]`, `[target]`"
+  },
+  {
+   "id": "6.16",
+   "category": 6,
+   "title": "`[resistance]` ability",
+   "wml": "`[resistance]value=`, `add=`, `max_value=`, `apply_to=`"
+  },
+  {
+   "id": "6.17",
+   "category": 6,
+   "title": "Ability `[filter_self]`",
+   "wml": "`[filter_self]`"
+  },
+  {
+   "id": "6.18",
+   "category": 6,
+   "title": "Ability `[filter_adjacent]`",
+   "wml": "`[filter_adjacent]`, `adjacent=`, `count=`"
+  },
+  {
+   "id": "6.19",
+   "category": 6,
+   "title": "Ability `[filter_location]`",
+   "wml": "`[filter_location]`, `terrain=`"
+  },
+  {
+   "id": "6.20",
+   "category": 6,
+   "title": "`[affect_adjacent]`",
+   "wml": "`[affect_adjacent]adjacent=`, `radius=`"
+  },
+  {
+   "id": "6.21",
+   "category": 6,
+   "title": "`affect_self` / `affect_allies` / `affect_enemies`",
+   "wml": "`affect_self=`, `affect_allies=`, `affect_enemies=`"
+  },
+  {
+   "id": "6.22",
+   "category": 6,
+   "title": "`affect_movement` / `affect_vision`",
+   "wml": "`affect_movement=`, `affect_vision=`"
+  },
+  {
+   "id": "6.23",
+   "category": 6,
+   "title": "`cumulative=`",
+   "wml": "`cumulative=`"
+  },
+  {
+   "id": "6.24",
+   "category": 6,
+   "title": "`value` / `add` / `sub` / `multiply` / `divide`",
+   "wml": "`value=`, `add=`, `sub=`, `multiply=`, `divide=`"
+  },
+  {
+   "id": "6.25",
+   "category": 6,
+   "title": "`max_value` / `min_value`",
+   "wml": "`max_value=`, `min_value=`"
+  },
+  {
+   "id": "6.26",
+   "category": 6,
+   "title": "Ability `[filter_student]`",
+   "wml": "`[filter_student]`"
+  },
+  {
+   "id": "6.27",
+   "category": 6,
+   "title": "Ability active state display",
+   "wml": "`name_inactive=`, `description_inactive=`"
+  },
+  {
+   "id": "6.28",
+   "category": 6,
+   "title": "`[experimental_filter_ability]`",
+   "wml": "`[experimental_filter_ability]`, `[experimental_filter_ability_active]`"
+  },
+  {
+   "id": "6.29",
+   "category": 6,
+   "title": "Ability removal by effect",
+   "wml": "`apply_to=remove_ability`, `[experimental_filter_ability]`"
+  },
+  {
+   "id": "6.30",
+   "category": 6,
+   "title": "Ability addition by object",
+   "wml": "`[object][effect]apply_to=new_ability`"
+  },
+  {
+   "id": "6.31",
+   "category": 6,
+   "title": "`abilities_list=` shorthand",
+   "wml": "`abilities_list=`, `[units][abilities]`"
+  },
+  {
+   "id": "6.32",
+   "category": 6,
+   "title": "Custom ability definition",
+   "wml": "`[dummy]`, `[abilities]`"
+  },
+  {
+   "id": "6.33",
+   "category": 6,
+   "title": "Ability-driven events",
+   "wml": "`[event]`, `[filter][experimental_filter_ability]`"
+  },
+  {
+   "id": "6.34",
+   "category": 6,
+   "title": "Aura radius abilities",
+   "wml": "`[affect_adjacent]radius=`"
+  },
+  {
+   "id": "6.35",
+   "category": 6,
+   "title": "Healing animation triggering",
+   "wml": "`[healing_anim]`, `[healed_anim]`"
+  },
+  {
+   "id": "6.36",
+   "category": 6,
+   "title": "Leading animation triggering",
+   "wml": "`[leading_anim]`"
+  },
+  {
+   "id": "6.37",
+   "category": 6,
+   "title": "Ability interaction with petrify",
+   "wml": "`[status]petrified=`"
+  },
+  {
+   "id": "6.38",
+   "category": 6,
+   "title": "Ability interaction with fog",
+   "wml": "`[hides]`, fog"
+  },
+  {
+   "id": "6.39",
+   "category": 6,
+   "title": "Ability precedence with weapon specials",
+   "wml": "`[abilities]`, `[specials]`"
+  },
+  {
+   "id": "6.40",
+   "category": 6,
+   "title": "Unit help ability listing",
+   "wml": "`[topic]`, `[abilities]`"
+  },
+  {
+   "id": "6.41",
+   "category": 6,
+   "title": "`[special_note]` from abilities",
+   "wml": "`[special_note]`, `{NOTE_HEALS}`"
+  },
+  {
+   "id": "7.1",
+   "category": 7,
+   "title": "`[specials]` container",
+   "wml": "`[attack][specials]`"
+  },
+  {
+   "id": "7.2",
+   "category": 7,
+   "title": "`[damage]` special",
+   "wml": "`[damage]value=`, `add=`, `multiply=`, `apply_to=`"
+  },
+  {
+   "id": "7.3",
+   "category": 7,
+   "title": "`[damage]` with `[filter_opponent]`",
+   "wml": "`[filter_opponent]`"
+  },
+  {
+   "id": "7.4",
+   "category": 7,
+   "title": "`[attacks]` special (swarm-like)",
+   "wml": "`[attacks]value=`, `add=`, `multiply=`"
+  },
+  {
+   "id": "7.5",
+   "category": 7,
+   "title": "`[swarm]`",
+   "wml": "`[swarm]swarm_attacks_min=`, `swarm_attacks_max=`"
+  },
+  {
+   "id": "7.6",
+   "category": 7,
+   "title": "`[chance_to_hit]`",
+   "wml": "`[chance_to_hit]value=`, `add=`, `cumulative=`, `apply_to=`"
+  },
+  {
+   "id": "7.7",
+   "category": 7,
+   "title": "`[berserk]`",
+   "wml": "`[berserk]value=`"
+  },
+  {
+   "id": "7.8",
+   "category": 7,
+   "title": "`[drains]`",
+   "wml": "`[drains]value=`, `[filter_opponent]`"
+  },
+  {
+   "id": "7.9",
+   "category": 7,
+   "title": "`[heal_on_hit]`",
+   "wml": "`[heal_on_hit]heal_amount=`"
+  },
+  {
+   "id": "7.10",
+   "category": 7,
+   "title": "`[firststrike]`",
+   "wml": "`[firststrike]`"
+  },
+  {
+   "id": "7.11",
+   "category": 7,
+   "title": "`[poison]`",
+   "wml": "`[poison]`, `[filter_opponent]`"
+  },
+  {
+   "id": "7.12",
+   "category": 7,
+   "title": "`[slow]`",
+   "wml": "`[slow]`"
+  },
+  {
+   "id": "7.13",
+   "category": 7,
+   "title": "`[petrifies]`",
+   "wml": "`[petrifies]`"
+  },
+  {
+   "id": "7.14",
+   "category": 7,
+   "title": "`[plague]`",
+   "wml": "`[plague]type=`, `[filter_opponent]`"
+  },
+  {
+   "id": "7.15",
+   "category": 7,
+   "title": "`[damage_type]`",
+   "wml": "`[damage_type]replacement_type=`, `alternative_type=`"
+  },
+  {
+   "id": "7.16",
+   "category": 7,
+   "title": "`[disable]`",
+   "wml": "`[disable]`, `[filter_self]`"
+  },
+  {
+   "id": "7.17",
+   "category": 7,
+   "title": "Special `[filter_self]`",
+   "wml": "`[filter_self]`"
+  },
+  {
+   "id": "7.18",
+   "category": 7,
+   "title": "Special `[filter_opponent]`",
+   "wml": "`[filter_opponent]`"
+  },
+  {
+   "id": "7.19",
+   "category": 7,
+   "title": "Special `[filter_attacker]` / `[filter_defender]`",
+   "wml": "`[filter_attacker]`, `[filter_defender]`"
+  },
+  {
+   "id": "7.20",
+   "category": 7,
+   "title": "Special `[filter_weapon]` / `[filter_second_weapon]`",
+   "wml": "`[filter_weapon]`, `[filter_second_weapon]`"
+  },
+  {
+   "id": "7.21",
+   "category": 7,
+   "title": "Special `[filter_adjacent]`",
+   "wml": "`[filter_adjacent]adjacent=`, `is_enemy=`"
+  },
+  {
+   "id": "7.22",
+   "category": 7,
+   "title": "`apply_to=self|opponent|attacker|defender|both`",
+   "wml": "`apply_to=`"
+  },
+  {
+   "id": "7.23",
+   "category": 7,
+   "title": "`active_on=offense|defense`",
+   "wml": "`active_on=`"
+  },
+  {
+   "id": "7.24",
+   "category": 7,
+   "title": "Special cumulative rules",
+   "wml": "`cumulative=`"
+  },
+  {
+   "id": "7.25",
+   "category": 7,
+   "title": "`[filter_base_value]`",
+   "wml": "`[filter_base_value]`, `equals=`, `greater_than=`"
+  },
+  {
+   "id": "7.26",
+   "category": 7,
+   "title": "`[experimental_filter_specials]`",
+   "wml": "`[experimental_filter_specials]`, `[filter_weapon]`"
+  },
+  {
+   "id": "7.27",
+   "category": 7,
+   "title": "`[set_specials]` effect",
+   "wml": "`apply_to=attack`, `[set_specials]mode=append|replace`"
+  },
+  {
+   "id": "7.28",
+   "category": 7,
+   "title": "`remove_specials=` / `[remove_specials]`",
+   "wml": "`remove_specials=`, `[remove_specials]`"
+  },
+  {
+   "id": "7.29",
+   "category": 7,
+   "title": "`specials_list=` shorthand",
+   "wml": "`specials_list=`"
+  },
+  {
+   "id": "7.30",
+   "category": 7,
+   "title": "Special display in attack dialog",
+   "wml": "`name=`, `description=`, `name_inactive=`"
+  },
+  {
+   "id": "7.31",
+   "category": 7,
+   "title": "Special notes from specials",
+   "wml": "`[special_note]`, `{NOTE_DRAINS}`"
+  },
+  {
+   "id": "7.32",
+   "category": 7,
+   "title": "Special interaction: drain + poison",
+   "wml": "`[drains]`, `[poison]`"
+  },
+  {
+   "id": "7.33",
+   "category": 7,
+   "title": "Special interaction: slow + swarm",
+   "wml": "`[slow]`, `[swarm]`"
+  },
+  {
+   "id": "7.34",
+   "category": 7,
+   "title": "Special interaction: berserk + firststrike",
+   "wml": "`[berserk]`, `[firststrike]`"
+  },
+  {
+   "id": "7.35",
+   "category": 7,
+   "title": "Special interaction: charge + backstab",
+   "wml": "`[damage]multiply=`"
+  },
+  {
+   "id": "7.36",
+   "category": 7,
+   "title": "Specials in combat simulation",
+   "wml": "`[specials]`, attack dialog"
+  },
+  {
+   "id": "7.37",
+   "category": 7,
+   "title": "Custom special definition",
+   "wml": "`[specials][dummy]`"
+  },
+  {
+   "id": "7.38",
+   "category": 7,
+   "title": "Special `unique_id`",
+   "wml": "`unique_id=`"
+  },
+  {
+   "id": "7.39",
+   "category": 7,
+   "title": "Weapon special on the defender",
+   "wml": "`apply_to=defender`, `active_on=defense`"
+  },
+  {
+   "id": "8.1",
+   "category": 8,
+   "title": "`[trait]` definition",
+   "wml": "`[trait]`, `id=`, `male_name=`, `female_name=`, `description=`"
+  },
+  {
+   "id": "8.2",
+   "category": 8,
+   "title": "Random trait assignment",
+   "wml": "`num_traits=`, `[race][trait]`, `random_traits=`"
+  },
+  {
+   "id": "8.3",
+   "category": 8,
+   "title": "`availability=musthave`",
+   "wml": "`[trait]availability=`"
+  },
+  {
+   "id": "8.4",
+   "category": 8,
+   "title": "Trait exclusion",
+   "wml": "`[trait][filter]`"
+  },
+  {
+   "id": "8.5",
+   "category": 8,
+   "title": "Standard traits: strong",
+   "wml": "`apply_to=attack increase_damage=`, `apply_to=hitpoints`"
+  },
+  {
+   "id": "8.6",
+   "category": 8,
+   "title": "Standard traits: quick",
+   "wml": "`apply_to=movement`, `apply_to=hitpoints increase_total=`"
+  },
+  {
+   "id": "8.7",
+   "category": 8,
+   "title": "Standard traits: resilient",
+   "wml": "`apply_to=hitpoints`, `times=per level`"
+  },
+  {
+   "id": "8.8",
+   "category": 8,
+   "title": "Standard traits: intelligent",
+   "wml": "`apply_to=max_experience increase=-20%`"
+  },
+  {
+   "id": "8.9",
+   "category": 8,
+   "title": "Standard traits: dextrous",
+   "wml": "`apply_to=attack range=ranged`"
+  },
+  {
+   "id": "8.10",
+   "category": 8,
+   "title": "Standard traits: loyal",
+   "wml": "`apply_to=loyal`"
+  },
+  {
+   "id": "8.11",
+   "category": 8,
+   "title": "Standard traits: healthy",
+   "wml": "`apply_to=healthy`, `set=`"
+  },
+  {
+   "id": "8.12",
+   "category": 8,
+   "title": "Standard traits: fearless",
+   "wml": "`apply_to=fearless`, `set=`"
+  },
+  {
+   "id": "8.13",
+   "category": 8,
+   "title": "Standard traits: undead / mechanical / elemental",
+   "wml": "`[status]unpoisonable=`, `[filter_opponent]`"
+  },
+  {
+   "id": "8.14",
+   "category": 8,
+   "title": "`[remove_trait]`",
+   "wml": "`[remove_trait]`, `trait_id=`, `[filter]`"
+  },
+  {
+   "id": "8.15",
+   "category": 8,
+   "title": "`[object]` application",
+   "wml": "`[object]`, `[filter]`, `[effect]`, `name=`, `description=`, `image=`"
+  },
+  {
+   "id": "8.16",
+   "category": 8,
+   "title": "Object `id=` and single-pickup",
+   "wml": "`[object]id=`"
+  },
+  {
+   "id": "8.17",
+   "category": 8,
+   "title": "Object `duration=`",
+   "wml": "`[object]duration=`"
+  },
+  {
+   "id": "8.18",
+   "category": 8,
+   "title": "Object rejection message",
+   "wml": "`cannot_use_message=`"
+  },
+  {
+   "id": "8.19",
+   "category": 8,
+   "title": "`[remove_object]`",
+   "wml": "`[remove_object]`, `object_id=`, `[filter]`"
+  },
+  {
+   "id": "8.20",
+   "category": 8,
+   "title": "`[modifications]` on a unit",
+   "wml": "`[modifications]`, `[trait]`, `[object]`, `[advancement]`"
+  },
+  {
+   "id": "8.21",
+   "category": 8,
+   "title": "Modification re-application on rebuild",
+   "wml": "`[modifications]`"
+  },
+  {
+   "id": "8.22",
+   "category": 8,
+   "title": "Effect `[filter]`",
+   "wml": "`[effect][filter]`"
+  },
+  {
+   "id": "8.23",
+   "category": 8,
+   "title": "Effect `times=`",
+   "wml": "`times=`"
+  },
+  {
+   "id": "8.24",
+   "category": 8,
+   "title": "`apply_to=hitpoints`",
+   "wml": "`apply_to=hitpoints`, `increase=`, `increase_total=`, `heal_full=`, `violate_maximum=`"
+  },
+  {
+   "id": "8.25",
+   "category": 8,
+   "title": "`apply_to=movement`",
+   "wml": "`apply_to=movement`, `increase=`, `set=`, `apply_to_vision=`"
+  },
+  {
+   "id": "8.26",
+   "category": 8,
+   "title": "`apply_to=vision`",
+   "wml": "`apply_to=vision`"
+  },
+  {
+   "id": "8.27",
+   "category": 8,
+   "title": "`apply_to=jamming`",
+   "wml": "`apply_to=jamming`"
+  },
+  {
+   "id": "8.28",
+   "category": 8,
+   "title": "`apply_to=experience`",
+   "wml": "`apply_to=experience`"
+  },
+  {
+   "id": "8.29",
+   "category": 8,
+   "title": "`apply_to=max_experience`",
+   "wml": "`apply_to=max_experience`"
+  },
+  {
+   "id": "8.30",
+   "category": 8,
+   "title": "`apply_to=max_attacks`",
+   "wml": "`apply_to=max_attacks`"
+  },
+  {
+   "id": "8.31",
+   "category": 8,
+   "title": "`apply_to=new_attack`",
+   "wml": "`apply_to=new_attack`, `name=`, `damage=`, `[specials]`"
+  },
+  {
+   "id": "8.32",
+   "category": 8,
+   "title": "`apply_to=remove_attacks`",
+   "wml": "`apply_to=remove_attacks`, `range=`, `name=`"
+  },
+  {
+   "id": "8.33",
+   "category": 8,
+   "title": "`apply_to=attack` — damage & strikes",
+   "wml": "`increase_damage=`, `set_damage=`, `increase_attacks=`, `set_attacks=`, `increase_accuracy=`, `increase_parry=`"
+  },
+  {
+   "id": "8.34",
+   "category": 8,
+   "title": "`apply_to=attack` — identity changes",
+   "wml": "`set_name=`, `set_type=`, `set_range=`, `set_icon=`"
+  },
+  {
+   "id": "8.35",
+   "category": 8,
+   "title": "`apply_to=attack` — cost changes",
+   "wml": "`increase_movement_used=`, `set_attacks_used=`"
+  },
+  {
+   "id": "8.36",
+   "category": 8,
+   "title": "`apply_to=attack` — range limits",
+   "wml": "`set_min_range=`, `increase_max_range=`"
+  },
+  {
+   "id": "8.37",
+   "category": 8,
+   "title": "`apply_to=attack` — weights",
+   "wml": "`attack_weight=`, `defense_weight=`"
+  },
+  {
+   "id": "8.38",
+   "category": 8,
+   "title": "`apply_to=loyal`",
+   "wml": "`apply_to=loyal`"
+  },
+  {
+   "id": "8.39",
+   "category": 8,
+   "title": "`apply_to=fearless` / `healthy`",
+   "wml": "`apply_to=fearless`, `set=`"
+  },
+  {
+   "id": "8.40",
+   "category": 8,
+   "title": "`apply_to=movement_costs` / `vision_costs` / `jamming_costs`",
+   "wml": "`replace=`, `[movement_costs]`"
+  },
+  {
+   "id": "8.41",
+   "category": 8,
+   "title": "`apply_to=defense`",
+   "wml": "`apply_to=defense`, `replace=`, `[defense]`"
+  },
+  {
+   "id": "8.42",
+   "category": 8,
+   "title": "`apply_to=resistance`",
+   "wml": "`apply_to=resistance`, `[resistance]`, `replace=`"
+  },
+  {
+   "id": "8.43",
+   "category": 8,
+   "title": "`apply_to=variation`",
+   "wml": "`apply_to=variation`, `name=`"
+  },
+  {
+   "id": "8.44",
+   "category": 8,
+   "title": "`apply_to=type`",
+   "wml": "`apply_to=type`, `name=`"
+  },
+  {
+   "id": "8.45",
+   "category": 8,
+   "title": "`apply_to=status`",
+   "wml": "`apply_to=status`, `add=`, `remove=`"
+  },
+  {
+   "id": "8.46",
+   "category": 8,
+   "title": "`apply_to=zoc`",
+   "wml": "`apply_to=zoc`, `value=`"
+  },
+  {
+   "id": "8.47",
+   "category": 8,
+   "title": "`apply_to=profile`",
+   "wml": "`apply_to=profile`, `portrait=`, `small_portrait=`, `[special_note]`"
+  },
+  {
+   "id": "8.48",
+   "category": 8,
+   "title": "`apply_to=new_ability` / `remove_ability`",
+   "wml": "`apply_to=new_ability`, `[abilities]`, `abilities_list=`"
+  },
+  {
+   "id": "8.49",
+   "category": 8,
+   "title": "`apply_to=new_animation`",
+   "wml": "`apply_to=new_animation`, `[idle_anim]`, `id=`"
+  },
+  {
+   "id": "8.50",
+   "category": 8,
+   "title": "`apply_to=image_mod`",
+   "wml": "`apply_to=image_mod`, `replace=`, `add=`, `RC()`, `GS()`"
+  },
+  {
+   "id": "8.51",
+   "category": 8,
+   "title": "`apply_to=ellipse`",
+   "wml": "`apply_to=ellipse`, `ellipse=none`"
+  },
+  {
+   "id": "8.52",
+   "category": 8,
+   "title": "`apply_to=halo`",
+   "wml": "`apply_to=halo`, `halo=`"
+  },
+  {
+   "id": "8.53",
+   "category": 8,
+   "title": "`apply_to=overlay`",
+   "wml": "`apply_to=overlay`, `add=`, `replace=`, `remove=`"
+  },
+  {
+   "id": "8.54",
+   "category": 8,
+   "title": "`apply_to=recall_cost`",
+   "wml": "`apply_to=recall_cost`, `set=`, `increase=`"
+  },
+  {
+   "id": "8.55",
+   "category": 8,
+   "title": "`apply_to=alignment`",
+   "wml": "`apply_to=alignment`, `set=`"
+  },
+  {
+   "id": "8.56",
+   "category": 8,
+   "title": "`apply_to=level`",
+   "wml": "`apply_to=level`, `set=`, `increase=`"
+  },
+  {
+   "id": "8.57",
+   "category": 8,
+   "title": "`apply_to=new_advancement`",
+   "wml": "`apply_to=new_advancement`, `types=`, `[advancement]`, `replace=`"
+  },
+  {
+   "id": "8.58",
+   "category": 8,
+   "title": "`apply_to=remove_advancement`",
+   "wml": "`apply_to=remove_advancement`, `types=`, `amlas=`"
+  },
+  {
+   "id": "8.59",
+   "category": 8,
+   "title": "Advancement choice dialog",
+   "wml": "`advances_to=`, `[advancement]`, `[choose]`"
+  },
+  {
+   "id": "8.60",
+   "category": 8,
+   "title": "Advancement application",
+   "wml": "`advances_to=`, `advance` event, `post advance` event"
+  },
+  {
+   "id": "8.61",
+   "category": 8,
+   "title": "AMLA application",
+   "wml": "`[advancement]max_times=`, `id=`, `[effect]`"
+  },
+  {
+   "id": "8.62",
+   "category": 8,
+   "title": "AMLA default (+3 HP, full heal)",
+   "wml": "`{AMLA_DEFAULT}`, `[advancement]`"
+  },
+  {
+   "id": "8.63",
+   "category": 8,
+   "title": "`advance` event",
+   "wml": "`[event]name=advance`"
+  },
+  {
+   "id": "8.64",
+   "category": 8,
+   "title": "`post advance` event",
+   "wml": "`[event]name=post advance`"
+  },
+  {
+   "id": "8.65",
+   "category": 8,
+   "title": "`[transform_unit]`",
+   "wml": "`[transform_unit]transform_to=`, `[filter]`"
+  },
+  {
+   "id": "8.66",
+   "category": 8,
+   "title": "`[modify_unit]`",
+   "wml": "`[modify_unit]`, `[filter]`, `[effect]`, `[object]`"
+  },
+  {
+   "id": "8.67",
+   "category": 8,
+   "title": "`[store_unit]` / `[unstore_unit]`",
+   "wml": "`[store_unit]kill=`, `[unstore_unit]find_vacant=`, `advance=`, `fire_event=`"
+  },
+  {
+   "id": "8.68",
+   "category": 8,
+   "title": "Unstore triggering advancement",
+   "wml": "`[unstore_unit]advance=`, `animate=`"
+  },
+  {
+   "id": "8.69",
+   "category": 8,
+   "title": "Level-up healing rule",
+   "wml": "`advances_to=`"
+  },
+  {
+   "id": "8.70",
+   "category": 8,
+   "title": "Rest healing",
+   "wml": "`[game_config]rest_heal_amount=`, `apply_to=healthy`"
+  },
+  {
+   "id": "8.71",
+   "category": 8,
+   "title": "Village healing",
+   "wml": "`[terrain_type]heals=`, `[game_config]village_heal=`"
+  },
+  {
+   "id": "8.72",
+   "category": 8,
+   "title": "Healing exclusivity",
+   "wml": "`[heals]`, `[regenerate]`, village heal"
+  },
+  {
+   "id": "8.73",
+   "category": 8,
+   "title": "`[status]unhealable`",
+   "wml": "`[status]unhealable=`"
+  },
+  {
+   "id": "9.1",
+   "category": 9,
+   "title": "`[side]` definition",
+   "wml": "`[side]side=`, `controller=`, `color=`, `team_name=`"
+  },
+  {
+   "id": "9.2",
+   "category": 9,
+   "title": "Side controller types",
+   "wml": "`controller=`"
+  },
+  {
+   "id": "9.3",
+   "category": 9,
+   "title": "Side leader definition",
+   "wml": "`[side]type=`, `[leader]`, `canrecruit=`"
+  },
+  {
+   "id": "9.4",
+   "category": 9,
+   "title": "Multiple leaders",
+   "wml": "`canrecruit=`, `[unit]`"
+  },
+  {
+   "id": "9.5",
+   "category": 9,
+   "title": "Team names & alliances",
+   "wml": "`team_name=`"
+  },
+  {
+   "id": "9.6",
+   "category": 9,
+   "title": "`[modify_side]` team change",
+   "wml": "`[modify_side]team_name=`"
+  },
+  {
+   "id": "9.7",
+   "category": 9,
+   "title": "Starting gold",
+   "wml": "`[side]gold=`, `#ifdef HARD`"
+  },
+  {
+   "id": "9.8",
+   "category": 9,
+   "title": "Income",
+   "wml": "`income=`, `[game_config]village_income=`"
+  },
+  {
+   "id": "9.9",
+   "category": 9,
+   "title": "Village gold per side",
+   "wml": "`[side]village_gold=`"
+  },
+  {
+   "id": "9.10",
+   "category": 9,
+   "title": "Upkeep calculation",
+   "wml": "`village_support=`, `upkeep=`, `apply_to=loyal`"
+  },
+  {
+   "id": "9.11",
+   "category": 9,
+   "title": "Negative income",
+   "wml": "`income=`, `gold=`"
+  },
+  {
+   "id": "9.12",
+   "category": 9,
+   "title": "`[gold]` action",
+   "wml": "`[gold]amount=`, `side=`"
+  },
+  {
+   "id": "9.13",
+   "category": 9,
+   "title": "`[store_gold]`",
+   "wml": "`[store_gold]side=`, `variable=`"
+  },
+  {
+   "id": "9.14",
+   "category": 9,
+   "title": "`[modify_side]` economy keys",
+   "wml": "`[modify_side]gold=`, `income=`, `village_gold=`"
+  },
+  {
+   "id": "9.15",
+   "category": 9,
+   "title": "`[store_side]`",
+   "wml": "`[store_side]`, `side=`, `variable=`"
+  },
+  {
+   "id": "9.16",
+   "category": 9,
+   "title": "Turn order",
+   "wml": "`[side]`, `turn` event"
+  },
+  {
+   "id": "9.17",
+   "category": 9,
+   "title": "Turn counter",
+   "wml": "`turn_at=`, `$turn_number`, `[store_turns]`"
+  },
+  {
+   "id": "9.18",
+   "category": 9,
+   "title": "Turn limit",
+   "wml": "`[scenario]turns=`, `[endlevel]`"
+  },
+  {
+   "id": "9.19",
+   "category": 9,
+   "title": "`[modify_turns]`",
+   "wml": "`[modify_turns]value=`, `add=`, `current=`"
+  },
+  {
+   "id": "9.20",
+   "category": 9,
+   "title": "`[store_turns]`",
+   "wml": "`[store_turns]variable=`"
+  },
+  {
+   "id": "9.21",
+   "category": 9,
+   "title": "`prestart` event",
+   "wml": "`[event]name=prestart`"
+  },
+  {
+   "id": "9.22",
+   "category": 9,
+   "title": "`start` event",
+   "wml": "`[event]name=start`"
+  },
+  {
+   "id": "9.23",
+   "category": 9,
+   "title": "`turn refresh` event",
+   "wml": "`[event]name=turn refresh`"
+  },
+  {
+   "id": "9.24",
+   "category": 9,
+   "title": "`side turn` event",
+   "wml": "`[event]name=side turn`, `side turn end`"
+  },
+  {
+   "id": "9.25",
+   "category": 9,
+   "title": "`new turn` event",
+   "wml": "`[event]name=new turn`, `turn end`"
+  },
+  {
+   "id": "9.26",
+   "category": 9,
+   "title": "Turn-numbered events",
+   "wml": "`[event]turn=`, `first_time_only=`"
+  },
+  {
+   "id": "9.27",
+   "category": 9,
+   "title": "`[end_turn]` action",
+   "wml": "`[end_turn]`"
+  },
+  {
+   "id": "9.28",
+   "category": 9,
+   "title": "`[allow_end_turn]` / `[disallow_end_turn]`",
+   "wml": "`[disallow_end_turn]reason=`, `[allow_end_turn]`"
+  },
+  {
+   "id": "9.29",
+   "category": 9,
+   "title": "Turn start healing & poison",
+   "wml": "`[game_config]`, `[heals]`, `poison`"
+  },
+  {
+   "id": "9.30",
+   "category": 9,
+   "title": "Turn start MP/attack reset",
+   "wml": "`moves=`, `attacks_left=`"
+  },
+  {
+   "id": "9.31",
+   "category": 9,
+   "title": "Slow expiry at turn start",
+   "wml": "`[status]slowed=`"
+  },
+  {
+   "id": "9.32",
+   "category": 9,
+   "title": "Autosave at turn start",
+   "wml": "save system"
+  },
+  {
+   "id": "9.33",
+   "category": 9,
+   "title": "Victory condition: defeat all enemies",
+   "wml": "`victory_when_enemies_defeated=`, `[endlevel]`"
+  },
+  {
+   "id": "9.34",
+   "category": 9,
+   "title": "`defeat_condition=`",
+   "wml": "`[side]defeat_condition=`"
+  },
+  {
+   "id": "9.35",
+   "category": 9,
+   "title": "`[endlevel]`",
+   "wml": "`[endlevel]result=`, `next_scenario=`, `bonus=`, `carryover_percentage=`, `carryover_add=`"
+  },
+  {
+   "id": "9.36",
+   "category": 9,
+   "title": "`[endlevel]` linger mode",
+   "wml": "`linger_mode=`, `[endlevel]`"
+  },
+  {
+   "id": "9.37",
+   "category": 9,
+   "title": "Gold carryover calculation",
+   "wml": "`carryover_percentage=`, `carryover_add=`, `bonus=`"
+  },
+  {
+   "id": "9.38",
+   "category": 9,
+   "title": "`[gold_carryover]` in objectives",
+   "wml": "`[objectives][gold_carryover]bonus=`, `carryover_percentage=`"
+  },
+  {
+   "id": "9.39",
+   "category": 9,
+   "title": "Side persistence across scenarios",
+   "wml": "`[side]persistent=`, `save_id=`, `share_view=`"
+  },
+  {
+   "id": "9.40",
+   "category": 9,
+   "title": "Side vision sharing",
+   "wml": "`share_vision=`, `share_maps=`"
+  },
+  {
+   "id": "9.41",
+   "category": 9,
+   "title": "`[have_side]` condition",
+   "wml": "`[have_side]`, `count=`"
+  },
+  {
+   "id": "9.42",
+   "category": 9,
+   "title": "SSF: `side=`, `team_name=`, `controller=`",
+   "wml": "`[filter_side]`, `side=`, `team_name=`"
+  },
+  {
+   "id": "9.43",
+   "category": 9,
+   "title": "SSF: `[has_unit]`",
+   "wml": "`[has_unit]`"
+  },
+  {
+   "id": "9.44",
+   "category": 9,
+   "title": "SSF: `[allied_with]` / `[enemy_of]` / `[has_ally]`",
+   "wml": "`[allied_with]`, `[enemy_of]`, `[has_ally]`"
+  },
+  {
+   "id": "9.45",
+   "category": 9,
+   "title": "Side flag rendering",
+   "wml": "`[side]flag=`, `flag_icon=`, `color=`"
+  },
+  {
+   "id": "9.46",
+   "category": 9,
+   "title": "Side name display",
+   "wml": "`user_team_name=`, `side_name=`"
+  },
+  {
+   "id": "9.47",
+   "category": 9,
+   "title": "`[side]` gold display",
+   "wml": "`[theme][status]`, `gold=`"
+  },
+  {
+   "id": "9.48",
+   "category": 9,
+   "title": "Fog/shroud per side",
+   "wml": "`fog=`, `shroud=`"
+  },
+  {
+   "id": "9.49",
+   "category": 9,
+   "title": "`[modify_side]` fog/shroud toggling",
+   "wml": "`[modify_side]fog=`, `shroud=`"
+  },
+  {
+   "id": "9.50",
+   "category": 9,
+   "title": "Hidden sides",
+   "wml": "`[side]hidden=`"
+  },
+  {
+   "id": "9.51",
+   "category": 9,
+   "title": "Scenario statistics per side",
+   "wml": "`[statistics][team]`, `[recruits]`, `[recalls]`, `[advances]`"
+  },
+  {
+   "id": "9.52",
+   "category": 9,
+   "title": "`[unit]` side ownership change",
+   "wml": "`[modify_unit]side=`"
+  },
+  {
+   "id": "9.53",
+   "category": 9,
+   "title": "AI turn execution",
+   "wml": "`[ai]`, `[side]controller=ai`"
+  },
+  {
+   "id": "9.54",
+   "category": 9,
+   "title": "`[modify_ai]` / `[ai]` aspects",
+   "wml": "`[modify_ai]`, `[aspect]`, `[facet]`, `[goal]`, `[stage]`"
+  },
+  {
+   "id": "9.55",
+   "category": 9,
+   "title": "Achievements",
+   "wml": "`[achievement]`, `[achievement_group]`, `[sub_achievement]`, `[set_achievement]`, `[progress_achievement]`, `[has_achievement]`"
+  },
+  {
+   "id": "10.1",
+   "category": 10,
+   "title": "Recruit list per side",
+   "wml": "`[side]recruit=`"
+  },
+  {
+   "id": "10.2",
+   "category": 10,
+   "title": "Recruit dialog",
+   "wml": "`recruit=`, `cost=`"
+  },
+  {
+   "id": "10.3",
+   "category": 10,
+   "title": "Recruiting requires leader on keep",
+   "wml": "`canrecruit=`, `recruit_from=`"
+  },
+  {
+   "id": "10.4",
+   "category": 10,
+   "title": "Recruiting onto castle hexes",
+   "wml": "`recruit_onto=`, castle connectivity"
+  },
+  {
+   "id": "10.5",
+   "category": 10,
+   "title": "No free castle hex",
+   "wml": "`Ch`, recruit dialog"
+  },
+  {
+   "id": "10.6",
+   "category": 10,
+   "title": "Gold deduction on recruit",
+   "wml": "`cost=`, `[side]gold=`"
+  },
+  {
+   "id": "10.7",
+   "category": 10,
+   "title": "Recruited unit state",
+   "wml": "`moves=0`, `random_traits=`"
+  },
+  {
+   "id": "10.8",
+   "category": 10,
+   "title": "`recruit` event",
+   "wml": "`[event]name=recruit`, `prerecruit`"
+  },
+  {
+   "id": "10.9",
+   "category": 10,
+   "title": "`prerecruit` event",
+   "wml": "`[event]name=prerecruit`"
+  },
+  {
+   "id": "10.10",
+   "category": 10,
+   "title": "`[allow_recruit]` / `[disallow_recruit]`",
+   "wml": "`[allow_recruit]type=`, `[disallow_recruit]type=`, `side=`"
+  },
+  {
+   "id": "10.11",
+   "category": 10,
+   "title": "`[set_recruit]`",
+   "wml": "`[set_recruit]recruit=`, `side=`"
+  },
+  {
+   "id": "10.12",
+   "category": 10,
+   "title": "Extra recruit per leader",
+   "wml": "`extra_recruit=`, `[set_extra_recruit]`, `[allow_extra_recruit]`, `[disallow_extra_recruit]`"
+  },
+  {
+   "id": "10.13",
+   "category": 10,
+   "title": "Recall list",
+   "wml": "`[side]persistent=`, `save_id=`, `[recall]`"
+  },
+  {
+   "id": "10.14",
+   "category": 10,
+   "title": "Recall dialog",
+   "wml": "`[recall]`, recall dialog"
+  },
+  {
+   "id": "10.15",
+   "category": 10,
+   "title": "Recall cost",
+   "wml": "`recall_cost=`, `[side]recall_cost=`, `[game_config]`"
+  },
+  {
+   "id": "10.16",
+   "category": 10,
+   "title": "Loyal unit recall",
+   "wml": "`apply_to=loyal`"
+  },
+  {
+   "id": "10.17",
+   "category": 10,
+   "title": "`[recall]` action",
+   "wml": "`[recall]`, `[filter]`, `x=`, `y=`, `show=`, `fire_event=`"
+  },
+  {
+   "id": "10.18",
+   "category": 10,
+   "title": "`recall` event",
+   "wml": "`[event]name=recall`, `prerecall`"
+  },
+  {
+   "id": "10.19",
+   "category": 10,
+   "title": "`[filter_recall]` on a side",
+   "wml": "`[side][filter_recall]`"
+  },
+  {
+   "id": "10.20",
+   "category": 10,
+   "title": "Recall list carryover rules",
+   "wml": "`[endlevel]`, `save_id=`"
+  },
+  {
+   "id": "10.21",
+   "category": 10,
+   "title": "`[put_to_recall_list]`",
+   "wml": "`[put_to_recall_list]`, `[filter]`"
+  },
+  {
+   "id": "10.22",
+   "category": 10,
+   "title": "Recall list storage & querying",
+   "wml": "`[store_unit]search_recall_list=`, `[have_unit]search_recall_list=`"
+  },
+  {
+   "id": "10.23",
+   "category": 10,
+   "title": "Recall list size limits",
+   "wml": "recall dialog"
+  },
+  {
+   "id": "10.24",
+   "category": 10,
+   "title": "Recruitment animation",
+   "wml": "`[recruiting_anim]`, `[recruit_anim]`"
+  },
+  {
+   "id": "10.25",
+   "category": 10,
+   "title": "Recruit/recall undo",
+   "wml": "undo stack, `[allow_undo]`"
+  },
+  {
+   "id": "10.26",
+   "category": 10,
+   "title": "Recruit with `[modify_side]` gold change mid-turn",
+   "wml": "`[modify_side]gold=`, `[gold]`"
+  },
+  {
+   "id": "10.27",
+   "category": 10,
+   "title": "Cost display with income impact",
+   "wml": "`upkeep=`, `village_support=`"
+  },
+  {
+   "id": "10.28",
+   "category": 10,
+   "title": "Random traits on recruit are synced",
+   "wml": "`random_traits=`, RNG"
+  },
+  {
+   "id": "10.29",
+   "category": 10,
+   "title": "Leader-specific recruit restrictions by filter",
+   "wml": "`[event]name=prerecruit`, `[filter_second]`"
+  },
+  {
+   "id": "10.30",
+   "category": 10,
+   "title": "AI recruitment",
+   "wml": "`[ai]`, `[recruitment_instructions]`, `[recruit]`, `[limit]`"
+  },
+  {
+   "id": "11.1",
+   "category": 11,
+   "title": "`[campaign]` definition",
+   "wml": "`[campaign]`, `id=`, `first_scenario=`, `define=`"
+  },
+  {
+   "id": "11.2",
+   "category": 11,
+   "title": "Campaign list screen",
+   "wml": "`[campaign]image=`, `description=`, `rank=`"
+  },
+  {
+   "id": "11.3",
+   "category": 11,
+   "title": "Difficulty selection",
+   "wml": "`[difficulty]define=`, `label=`, `description=`, `image=`, `default=`"
+  },
+  {
+   "id": "11.4",
+   "category": 11,
+   "title": "Legacy `difficulties=` / `difficulty_descriptions=`",
+   "wml": "`difficulties=`, `difficulty_descriptions=`"
+  },
+  {
+   "id": "11.5",
+   "category": 11,
+   "title": "`[scenario]` definition",
+   "wml": "`[scenario]id=`, `name=`, `map_data=`, `turns=`"
+  },
+  {
+   "id": "11.6",
+   "category": 11,
+   "title": "`next_scenario=`",
+   "wml": "`next_scenario=`, `[endlevel]next_scenario=`"
+  },
+  {
+   "id": "11.7",
+   "category": 11,
+   "title": "Scenario branching",
+   "wml": "`[endlevel]next_scenario=`, `[if]`"
+  },
+  {
+   "id": "11.8",
+   "category": 11,
+   "title": "Campaign end screen",
+   "wml": "`[endlevel]result=victory`, `end_credits=`, `end_text=`"
+  },
+  {
+   "id": "11.9",
+   "category": 11,
+   "title": "Scenario end screen",
+   "wml": "`[endlevel]`, `[statistics]`"
+  },
+  {
+   "id": "11.10",
+   "category": 11,
+   "title": "`[objectives]`",
+   "wml": "`[objectives]`, `[objective]`, `[note]`, `[gold_carryover]`, `summary=`, `victory_string=`, `defeat_string=`"
+  },
+  {
+   "id": "11.11",
+   "category": 11,
+   "title": "`[objective]` condition types",
+   "wml": "`[objective]condition=`, `description=`"
+  },
+  {
+   "id": "11.12",
+   "category": 11,
+   "title": "Conditional objectives",
+   "wml": "`[objective][show_if]`"
+  },
+  {
+   "id": "11.13",
+   "category": 11,
+   "title": "`[show_objectives]`",
+   "wml": "`[show_objectives]`"
+  },
+  {
+   "id": "11.14",
+   "category": 11,
+   "title": "Objectives auto-display",
+   "wml": "`[objectives]`, `show_if`"
+  },
+  {
+   "id": "11.15",
+   "category": 11,
+   "title": "`[story]` at scenario start",
+   "wml": "`[story]`, `[part]`"
+  },
+  {
+   "id": "11.16",
+   "category": 11,
+   "title": "Scenario `victory_when_enemies_defeated=`",
+   "wml": "`victory_when_enemies_defeated=`"
+  },
+  {
+   "id": "11.17",
+   "category": 11,
+   "title": "`[scenario]` random start time",
+   "wml": "`random_start_time=`"
+  },
+  {
+   "id": "11.18",
+   "category": 11,
+   "title": "Scenario music list",
+   "wml": "`[music]name=`, `play_once=`, `append=`"
+  },
+  {
+   "id": "11.19",
+   "category": 11,
+   "title": "Scenario-level `[time]` schedule",
+   "wml": "`[time]`, `[scenario]`"
+  },
+  {
+   "id": "11.20",
+   "category": 11,
+   "title": "`[side]` initialisation order",
+   "wml": "`[side]`, `prestart`"
+  },
+  {
+   "id": "11.21",
+   "category": 11,
+   "title": "Carryover gold applied at scenario start",
+   "wml": "`[side]gold=`, `carryover_add=`"
+  },
+  {
+   "id": "11.22",
+   "category": 11,
+   "title": "Recall list carried into next scenario",
+   "wml": "`save_id=`, `persistent=`"
+  },
+  {
+   "id": "11.23",
+   "category": 11,
+   "title": "Campaign-level `[event]`",
+   "wml": "`[campaign][event]`, `[modification]`"
+  },
+  {
+   "id": "11.24",
+   "category": 11,
+   "title": "`[test]` scenarios",
+   "wml": "`[test]`, `[scenario]`"
+  },
+  {
+   "id": "11.25",
+   "category": 11,
+   "title": "`[multiplayer]` scenario tag",
+   "wml": "`[multiplayer]`, `[era]`, `[multiplayer_side]`"
+  },
+  {
+   "id": "11.26",
+   "category": 11,
+   "title": "`[modification]` / add-on modifications",
+   "wml": "`[modification]`, `[resource]`, `[load_resource]`"
+  },
+  {
+   "id": "11.27",
+   "category": 11,
+   "title": "`[options]` / campaign options",
+   "wml": "`[options]`, `[checkbox]`, `[slider]`, `[choice]`, `[entry]`"
+  },
+  {
+   "id": "11.28",
+   "category": 11,
+   "title": "Campaign progress persistence",
+   "wml": "preferences, `[campaign]`"
+  },
+  {
+   "id": "11.29",
+   "category": 11,
+   "title": "Campaign abbreviation & save naming",
+   "wml": "`[campaign]abbrev=`"
+  },
+  {
+   "id": "11.30",
+   "category": 11,
+   "title": "Scenario loading progress",
+   "wml": "loading screen"
+  },
+  {
+   "id": "11.31",
+   "category": 11,
+   "title": "Scenario id addressing",
+   "wml": "`[scenario]id=`, `next_scenario=`"
+  },
+  {
+   "id": "11.32",
+   "category": 11,
+   "title": "`[credits_group]` / `[about]`",
+   "wml": "`[about]`, `[entry]`, `[credits_group]`"
+  },
+  {
+   "id": "11.33",
+   "category": 11,
+   "title": "`end_credits=`",
+   "wml": "`[endlevel]end_credits=`, `end_text=`, `end_text_duration=`"
+  },
+  {
+   "id": "11.34",
+   "category": 11,
+   "title": "Difficulty-dependent content",
+   "wml": "`#ifdef EASY`, `[side]gold=`"
+  },
+  {
+   "id": "11.35",
+   "category": 11,
+   "title": "Scenario reload determinism",
+   "wml": "save/load, RNG state"
+  },
+  {
+   "id": "11.36",
+   "category": 11,
+   "title": "`[replace_schedule]` at scenario level",
+   "wml": "`[replace_schedule]`, `[time]`"
+  },
+  {
+   "id": "11.37",
+   "category": 11,
+   "title": "Defeat handling",
+   "wml": "`[endlevel]result=defeat`"
+  },
+  {
+   "id": "11.38",
+   "category": 11,
+   "title": "Quit-to-menu mid-scenario",
+   "wml": "UI, save system"
+  },
+  {
+   "id": "12.1",
+   "category": 12,
+   "title": "`[event]` registration",
+   "wml": "`[event]name=`, `id=`"
+  },
+  {
+   "id": "12.2",
+   "category": 12,
+   "title": "`first_time_only=`",
+   "wml": "`first_time_only=`"
+  },
+  {
+   "id": "12.3",
+   "category": 12,
+   "title": "Multiple event names",
+   "wml": "`[event]name=`"
+  },
+  {
+   "id": "12.4",
+   "category": 12,
+   "title": "Event priority / ordering",
+   "wml": "`[event]priority=`"
+  },
+  {
+   "id": "12.5",
+   "category": 12,
+   "title": "`[filter]` on events",
+   "wml": "`[event][filter]`"
+  },
+  {
+   "id": "12.6",
+   "category": 12,
+   "title": "`[filter_second]`",
+   "wml": "`[filter_second]`"
+  },
+  {
+   "id": "12.7",
+   "category": 12,
+   "title": "`[filter_attack]` / `[filter_second_attack]`",
+   "wml": "`[filter_attack]name=`, `range=`, `special_id=`"
+  },
+  {
+   "id": "12.8",
+   "category": 12,
+   "title": "`[filter_condition]`",
+   "wml": "`[filter_condition]`, `[variable]`"
+  },
+  {
+   "id": "12.9",
+   "category": 12,
+   "title": "`[filter_side]` on events",
+   "wml": "`[event][filter_side]`"
+  },
+  {
+   "id": "12.10",
+   "category": 12,
+   "title": "Event `turn=` / `turn_at=`",
+   "wml": "`turn=`, `turn_at=`"
+  },
+  {
+   "id": "12.11",
+   "category": 12,
+   "title": "`[fire_event]`",
+   "wml": "`[fire_event]name=`, `[primary_unit]`, `[secondary_unit]`, `[primary_attack]`, `[secondary_attack]`"
+  },
+  {
+   "id": "12.12",
+   "category": 12,
+   "title": "`[remove_event]`",
+   "wml": "`[remove_event]id=`"
+  },
+  {
+   "id": "12.13",
+   "category": 12,
+   "title": "Dynamic event creation",
+   "wml": "`[event][event]`"
+  },
+  {
+   "id": "12.14",
+   "category": 12,
+   "title": "Standard event: `moveto`",
+   "wml": "`name=moveto`, `[filter]x=,y=`"
+  },
+  {
+   "id": "12.15",
+   "category": 12,
+   "title": "Standard event: `sighted`",
+   "wml": "`name=sighted`, `[filter]`, `[filter_second]`"
+  },
+  {
+   "id": "12.16",
+   "category": 12,
+   "title": "Standard event: `enter_hex` / `exit_hex`",
+   "wml": "`name=enter_hex`, `exit_hex`"
+  },
+  {
+   "id": "12.17",
+   "category": 12,
+   "title": "Standard event: `capture` / `village capture`",
+   "wml": "`name=capture`"
+  },
+  {
+   "id": "12.18",
+   "category": 12,
+   "title": "Standard event: `victory` / `defeat`",
+   "wml": "`name=victory`, `defeat`"
+  },
+  {
+   "id": "12.19",
+   "category": 12,
+   "title": "Standard event: `select`",
+   "wml": "`name=select`, `[filter]`"
+  },
+  {
+   "id": "12.20",
+   "category": 12,
+   "title": "Standard event: `menu item <id>`",
+   "wml": "`[set_menu_item]`, `[command]`"
+  },
+  {
+   "id": "12.21",
+   "category": 12,
+   "title": "Standard event: `time over`",
+   "wml": "`name=time over`"
+  },
+  {
+   "id": "12.22",
+   "category": 12,
+   "title": "Standard event: `enemies defeated`",
+   "wml": "`name=enemies defeated`"
+  },
+  {
+   "id": "12.23",
+   "category": 12,
+   "title": "Event context variables",
+   "wml": "`$unit.x`, `$x1`, `$damage_inflicted`"
+  },
+  {
+   "id": "12.24",
+   "category": 12,
+   "title": "`[if]` / `[then]` / `[else]` / `[elseif]`",
+   "wml": "`[if]`, `[then]`, `[else]`, `[elseif]`"
+  },
+  {
+   "id": "12.25",
+   "category": 12,
+   "title": "`[switch]` / `[case]`",
+   "wml": "`[switch]variable=`, `[case]value=`, `[else]`"
+  },
+  {
+   "id": "12.26",
+   "category": 12,
+   "title": "`[while]`",
+   "wml": "`[while]`, `[do]`"
+  },
+  {
+   "id": "12.27",
+   "category": 12,
+   "title": "`[for]` / `[repeat]` / `[foreach]`",
+   "wml": "`[for]start=,end=,step=`, `[repeat]times=`, `[foreach]array=`"
+  },
+  {
+   "id": "12.28",
+   "category": 12,
+   "title": "`[break]` / `[continue]` / `[return]`",
+   "wml": "`[break]`, `[continue]`, `[return]`"
+  },
+  {
+   "id": "12.29",
+   "category": 12,
+   "title": "Meta-conditions `[and]` / `[or]` / `[not]`",
+   "wml": "`[and]`, `[or]`, `[not]`"
+  },
+  {
+   "id": "12.30",
+   "category": 12,
+   "title": "`[have_unit]`",
+   "wml": "`[have_unit]`, `count=`, `search_recall_list=`"
+  },
+  {
+   "id": "12.31",
+   "category": 12,
+   "title": "`[have_location]`",
+   "wml": "`[have_location]`, `count=`"
+  },
+  {
+   "id": "12.32",
+   "category": 12,
+   "title": "`[variable]` condition",
+   "wml": "`[variable]name=`, `equals=`, `greater_than=`, `contains=`"
+  },
+  {
+   "id": "12.33",
+   "category": 12,
+   "title": "`[true]` / `[false]`",
+   "wml": "`[true]`, `[false]`"
+  },
+  {
+   "id": "12.34",
+   "category": 12,
+   "title": "`[found_item]`",
+   "wml": "`[found_item]`"
+  },
+  {
+   "id": "12.35",
+   "category": 12,
+   "title": "`[test_condition]`",
+   "wml": "`[test_condition]`"
+  },
+  {
+   "id": "12.36",
+   "category": 12,
+   "title": "`[set_variable]` — value",
+   "wml": "`[set_variable]name=`, `value=`"
+  },
+  {
+   "id": "12.37",
+   "category": 12,
+   "title": "`[set_variable]` — arithmetic",
+   "wml": "`add=`, `sub=`, `multiply=`, `divide=`, `modulo=`"
+  },
+  {
+   "id": "12.38",
+   "category": 12,
+   "title": "`[set_variable]` — rand",
+   "wml": "`rand=1..6`, `rand=a,b,c`"
+  },
+  {
+   "id": "12.39",
+   "category": 12,
+   "title": "`[set_variable]` — string ops",
+   "wml": "`join=`, `string_length=`, `to_upper=`, `round=`"
+  },
+  {
+   "id": "12.40",
+   "category": 12,
+   "title": "`[set_variable]` — formula",
+   "wml": "`formula=`"
+  },
+  {
+   "id": "12.41",
+   "category": 12,
+   "title": "`[set_variables]`",
+   "wml": "`[set_variables]mode=`, `[value]`, `[literal]`, `[split]`, `to_variable=`"
+  },
+  {
+   "id": "12.42",
+   "category": 12,
+   "title": "`[clear_variable]`",
+   "wml": "`[clear_variable]name=`"
+  },
+  {
+   "id": "12.43",
+   "category": 12,
+   "title": "Array semantics",
+   "wml": "`$arr.length`, `[set_variables]mode=append`"
+  },
+  {
+   "id": "12.44",
+   "category": 12,
+   "title": "Variable scoping in loops/macros",
+   "wml": "`[foreach]variable=`, `[while]`"
+  },
+  {
+   "id": "12.45",
+   "category": 12,
+   "title": "Variable persistence in saves",
+   "wml": "`[variables]`, save file"
+  },
+  {
+   "id": "12.46",
+   "category": 12,
+   "title": "`[store_unit]`",
+   "wml": "`[store_unit]`, `[filter]`, `variable=`, `kill=`, `mode=`"
+  },
+  {
+   "id": "12.47",
+   "category": 12,
+   "title": "`[unstore_unit]`",
+   "wml": "`[unstore_unit]variable=`, `find_vacant=`, `text=`, `red=`, `advance=`"
+  },
+  {
+   "id": "12.48",
+   "category": 12,
+   "title": "`[store_side]` / `[store_gold]` / `[store_turns]`",
+   "wml": "`[store_side]`, `[store_gold]`, `[store_turns]`"
+  },
+  {
+   "id": "12.49",
+   "category": 12,
+   "title": "`[store_locations]` / `[store_villages]` / `[store_items]`",
+   "wml": "`[store_locations]`, `[store_villages]`, `[store_items]`"
+  },
+  {
+   "id": "12.50",
+   "category": 12,
+   "title": "`[store_time_of_day]`",
+   "wml": "`[store_time_of_day]turn=`, `x=`, `y=`, `variable=`"
+  },
+  {
+   "id": "12.51",
+   "category": 12,
+   "title": "`[store_map_dimensions]` / `[store_starting_location]`",
+   "wml": "`[store_map_dimensions]`, `[store_starting_location]`"
+  },
+  {
+   "id": "12.52",
+   "category": 12,
+   "title": "`[store_unit_defense]` / `[store_unit_defense_on]`",
+   "wml": "`[store_unit_defense]`, `[store_unit_defense_on]`"
+  },
+  {
+   "id": "12.53",
+   "category": 12,
+   "title": "`[store_relative_direction]` / `[store_reachable_locations]`",
+   "wml": "`[store_relative_direction]`, `[store_reachable_locations]`"
+  },
+  {
+   "id": "12.54",
+   "category": 12,
+   "title": "Global (persistent) variables",
+   "wml": "`[set_global_variable]`, `[get_global_variable]`, `[clear_global_variable]`, `namespace=`"
+  },
+  {
+   "id": "12.55",
+   "category": 12,
+   "title": "`[sync_variable]`",
+   "wml": "`[sync_variable]name=`"
+  },
+  {
+   "id": "12.56",
+   "category": 12,
+   "title": "`[unsynced]`",
+   "wml": "`[unsynced]`"
+  },
+  {
+   "id": "12.57",
+   "category": 12,
+   "title": "`[do_command]`",
+   "wml": "`[do_command]`, `[move]`, `[attack]`, `[recruit]`"
+  },
+  {
+   "id": "12.58",
+   "category": 12,
+   "title": "`[command]` in options/menu items",
+   "wml": "`[command]`, `[option]`, `[set_menu_item]`"
+  },
+  {
+   "id": "12.59",
+   "category": 12,
+   "title": "`[allow_undo]`",
+   "wml": "`[allow_undo]`"
+  },
+  {
+   "id": "12.60",
+   "category": 12,
+   "title": "`[on_undo]`",
+   "wml": "`[on_undo]`"
+  },
+  {
+   "id": "12.61",
+   "category": 12,
+   "title": "`[cancel_action]`",
+   "wml": "`[cancel_action]`"
+  },
+  {
+   "id": "12.62",
+   "category": 12,
+   "title": "`[random_placement]`",
+   "wml": "`[random_placement]`, `[filter_location]`, `num_items=`, `variable=`, `[command]`"
+  },
+  {
+   "id": "12.63",
+   "category": 12,
+   "title": "`[role]` assignment",
+   "wml": "`[role]role=`, `[filter]`, `search_recall_list=`"
+  },
+  {
+   "id": "12.64",
+   "category": 12,
+   "title": "`[lua]` blocks",
+   "wml": "`[lua]code=`, `[args]`"
+  },
+  {
+   "id": "12.65",
+   "category": 12,
+   "title": "`[wml_message]` / `[chat]` / `[print]`",
+   "wml": "`[wml_message]logger=`, `[chat]`, `[print]`"
+  },
+  {
+   "id": "12.66",
+   "category": 12,
+   "title": "`[inspect]`",
+   "wml": "`[inspect]`"
+  },
+  {
+   "id": "12.67",
+   "category": 12,
+   "title": "Event recursion protection",
+   "wml": "`[fire_event]`"
+  },
+  {
+   "id": "12.68",
+   "category": 12,
+   "title": "Event execution during animation",
+   "wml": "`[event]`, `[animate_unit]`"
+  },
+  {
+   "id": "12.69",
+   "category": 12,
+   "title": "Event persistence in saves",
+   "wml": "`first_time_only=`, `[event]id=`"
+  },
+  {
+   "id": "12.70",
+   "category": 12,
+   "title": "SUF: basic keys",
+   "wml": "`[filter]id=`, `type=`, `side=`, `race=`"
+  },
+  {
+   "id": "12.71",
+   "category": 12,
+   "title": "SUF: numeric ranges",
+   "wml": "`hitpoints=1-10`, `level=2`"
+  },
+  {
+   "id": "12.72",
+   "category": 12,
+   "title": "SUF: `[filter_location]` inside SUF",
+   "wml": "`[filter][filter_location]`"
+  },
+  {
+   "id": "12.73",
+   "category": 12,
+   "title": "SUF: `[filter_adjacent]`",
+   "wml": "`[filter_adjacent]adjacent=`, `is_enemy=`, `count=`"
+  },
+  {
+   "id": "12.74",
+   "category": 12,
+   "title": "SUF: `[filter_wml]`",
+   "wml": "`[filter_wml]`, `[modifications]`, `[status]`"
+  },
+  {
+   "id": "12.75",
+   "category": 12,
+   "title": "SUF: `[filter_vision]`",
+   "wml": "`[filter_vision]visible=`, `side=`"
+  },
+  {
+   "id": "12.76",
+   "category": 12,
+   "title": "SUF: `[has_attack]`",
+   "wml": "`[has_attack]name=`, `type=`, `special_id=`"
+  },
+  {
+   "id": "12.77",
+   "category": 12,
+   "title": "SUF: `[filter_side]`",
+   "wml": "`[filter][filter_side]`"
+  },
+  {
+   "id": "12.78",
+   "category": 12,
+   "title": "SUF: `find_in=`",
+   "wml": "`find_in=`"
+  },
+  {
+   "id": "12.79",
+   "category": 12,
+   "title": "SUF: `x=`/`y=` with `recall`",
+   "wml": "`x=recall`"
+  },
+  {
+   "id": "12.80",
+   "category": 12,
+   "title": "Filter negation and nesting",
+   "wml": "`[filter][not]`, `[or]`"
+  },
+  {
+   "id": "13.1",
+   "category": 13,
+   "title": "Shroud state per side",
+   "wml": "`[side]shroud=`, `shroud_data=`"
+  },
+  {
+   "id": "13.2",
+   "category": 13,
+   "title": "Fog state per side",
+   "wml": "`[side]fog=`"
+  },
+  {
+   "id": "13.3",
+   "category": 13,
+   "title": "Vision points",
+   "wml": "`vision=`, `apply_to=vision`, `[vision_costs]`"
+  },
+  {
+   "id": "13.4",
+   "category": 13,
+   "title": "Vision cost pathing",
+   "wml": "`[vision_costs]`"
+  },
+  {
+   "id": "13.5",
+   "category": 13,
+   "title": "Shroud clearing on movement",
+   "wml": "`[move_unit]clear_shroud=`"
+  },
+  {
+   "id": "13.6",
+   "category": 13,
+   "title": "Fog clearing",
+   "wml": "`[reset_fog]`, `[lift_fog]`"
+  },
+  {
+   "id": "13.7",
+   "category": 13,
+   "title": "`[remove_shroud]`",
+   "wml": "`[remove_shroud]side=`, `[filter_location]`"
+  },
+  {
+   "id": "13.8",
+   "category": 13,
+   "title": "`[place_shroud]`",
+   "wml": "`[place_shroud]side=`, `x=`, `y=`"
+  },
+  {
+   "id": "13.9",
+   "category": 13,
+   "title": "`[lift_fog]` / `[reset_fog]`",
+   "wml": "`[lift_fog]`, `[reset_fog]`, `multiturn=`"
+  },
+  {
+   "id": "13.10",
+   "category": 13,
+   "title": "Jamming",
+   "wml": "`jamming=`, `[jamming_costs]`, `apply_to=jamming`"
+  },
+  {
+   "id": "13.11",
+   "category": 13,
+   "title": "Vision sharing between allies",
+   "wml": "`[side]share_vision=`, `share_maps=`"
+  },
+  {
+   "id": "13.12",
+   "category": 13,
+   "title": "`sighted` event firing",
+   "wml": "`[event]name=sighted`"
+  },
+  {
+   "id": "13.13",
+   "category": 13,
+   "title": "Movement halt on sighting",
+   "wml": "`sighted`, `[move_unit]`"
+  },
+  {
+   "id": "13.14",
+   "category": 13,
+   "title": "Undo blocked after shroud clearing",
+   "wml": "`[allow_undo]`"
+  },
+  {
+   "id": "13.15",
+   "category": 13,
+   "title": "Delayed shroud updates",
+   "wml": "preference, `[modify_side]`"
+  },
+  {
+   "id": "13.16",
+   "category": 13,
+   "title": "Hidden units under fog",
+   "wml": "fog, `[filter_vision]`"
+  },
+  {
+   "id": "13.17",
+   "category": 13,
+   "title": "Terrain under shroud",
+   "wml": "shroud rendering"
+  },
+  {
+   "id": "13.18",
+   "category": 13,
+   "title": "Village ownership under fog",
+   "wml": "fog, `[capture_village]`"
+  },
+  {
+   "id": "13.19",
+   "category": 13,
+   "title": "Fog/shroud rendering transitions",
+   "wml": "terrain graphics, fog images"
+  },
+  {
+   "id": "13.20",
+   "category": 13,
+   "title": "`[filter_vision]` in filters",
+   "wml": "`[filter_vision]`, `visible=`, `respect_fog=`"
+  },
+  {
+   "id": "13.21",
+   "category": 13,
+   "title": "Hides ability vs fog",
+   "wml": "`[hides]`, `[status]uncovered=`"
+  },
+  {
+   "id": "13.22",
+   "category": 13,
+   "title": "AI vision",
+   "wml": "`[side]fog=`, `[ai]`"
+  },
+  {
+   "id": "13.23",
+   "category": 13,
+   "title": "Vision recomputation triggers",
+   "wml": "`[modify_unit]`, `[terrain]`"
+  },
+  {
+   "id": "13.24",
+   "category": 13,
+   "title": "Vision effect ordering",
+   "wml": "`apply_to=movement`, `apply_to_vision=`, `apply_to=vision`"
+  },
+  {
+   "id": "13.25",
+   "category": 13,
+   "title": "Shroud data serialisation",
+   "wml": "`shroud_data=`, save file"
+  },
+  {
+   "id": "13.26",
+   "category": 13,
+   "title": "Scenario start visibility",
+   "wml": "`prestart`, `[remove_shroud]`"
+  },
+  {
+   "id": "13.27",
+   "category": 13,
+   "title": "Vision for units on villages/towers",
+   "wml": "`[vision_costs]`, `[illuminates]`"
+  },
+  {
+   "id": "13.28",
+   "category": 13,
+   "title": "Fog interaction with `[teleport]`",
+   "wml": "`[teleport][filter_vision]`"
+  },
+  {
+   "id": "13.29",
+   "category": 13,
+   "title": "Minimap under fog/shroud",
+   "wml": "minimap rendering"
+  },
+  {
+   "id": "14.1",
+   "category": 14,
+   "title": "`[time]` definition",
+   "wml": "`[time]id=`, `name=`, `image=`, `lawful_bonus=`, `red=`, `green=`, `blue=`"
+  },
+  {
+   "id": "14.2",
+   "category": 14,
+   "title": "Default schedule",
+   "wml": "`{DEFAULT_SCHEDULE}`, `[time]`"
+  },
+  {
+   "id": "14.3",
+   "category": 14,
+   "title": "Schedule progression",
+   "wml": "`[time]`, `turn` cycle"
+  },
+  {
+   "id": "14.4",
+   "category": 14,
+   "title": "`random_start_time=`",
+   "wml": "`random_start_time=`"
+  },
+  {
+   "id": "14.5",
+   "category": 14,
+   "title": "Alignment damage bonus",
+   "wml": "`alignment=`, `lawful_bonus=`"
+  },
+  {
+   "id": "14.6",
+   "category": 14,
+   "title": "Fearless negates penalty",
+   "wml": "`apply_to=fearless`"
+  },
+  {
+   "id": "14.7",
+   "category": 14,
+   "title": "`[illuminates]` effect on ToD",
+   "wml": "`[illuminates]value=`, `max_value=`"
+  },
+  {
+   "id": "14.8",
+   "category": 14,
+   "title": "`[time_area]` creation",
+   "wml": "`[time_area]id=`, `[filter_location]`, `[time]`"
+  },
+  {
+   "id": "14.9",
+   "category": 14,
+   "title": "`[remove_time_area]`",
+   "wml": "`[remove_time_area]id=`"
+  },
+  {
+   "id": "14.10",
+   "category": 14,
+   "title": "Local time area combat effects",
+   "wml": "`[time_area]`, `alignment=`"
+  },
+  {
+   "id": "14.11",
+   "category": 14,
+   "title": "`[replace_schedule]`",
+   "wml": "`[replace_schedule]`, `[time]`"
+  },
+  {
+   "id": "14.12",
+   "category": 14,
+   "title": "`[store_time_of_day]`",
+   "wml": "`[store_time_of_day]turn=`, `x=`, `y=`, `variable=`"
+  },
+  {
+   "id": "14.13",
+   "category": 14,
+   "title": "ToD lighting on the map",
+   "wml": "`red=`, `green=`, `blue=`, `[color_adjust]`"
+  },
+  {
+   "id": "14.14",
+   "category": 14,
+   "title": "ToD lighting in time areas",
+   "wml": "`[time_area][time]`"
+  },
+  {
+   "id": "14.15",
+   "category": 14,
+   "title": "Illumination lighting",
+   "wml": "`[illuminates]`"
+  },
+  {
+   "id": "14.16",
+   "category": 14,
+   "title": "ToD indicator in UI",
+   "wml": "`[time]image=`, `[theme]`"
+  },
+  {
+   "id": "14.17",
+   "category": 14,
+   "title": "ToD schedule preview",
+   "wml": "`[time]`, UI"
+  },
+  {
+   "id": "14.18",
+   "category": 14,
+   "title": "ToD-conditional events",
+   "wml": "`[filter_condition]`, `[store_time_of_day]`"
+  },
+  {
+   "id": "14.19",
+   "category": 14,
+   "title": "ToD-driven music changes",
+   "wml": "`[music]`, `[sound]`, `{SOUND_DAWN}`"
+  },
+  {
+   "id": "14.20",
+   "category": 14,
+   "title": "`[color_adjust]` manual override",
+   "wml": "`[color_adjust]red=`, `green=`, `blue=`"
+  },
+  {
+   "id": "14.21",
+   "category": 14,
+   "title": "Schedule with fewer/more than six phases",
+   "wml": "`[time]`"
+  },
+  {
+   "id": "14.22",
+   "category": 14,
+   "title": "Underground/indoor schedules",
+   "wml": "`{UNDERGROUND}`, `{INDOORS}`, `[time_area]`"
+  },
+  {
+   "id": "14.23",
+   "category": 14,
+   "title": "ToD sound effects",
+   "wml": "`[sound]`, `{SOUND_DAWN}`"
+  },
+  {
+   "id": "14.24",
+   "category": 14,
+   "title": "ToD persistence in saves",
+   "wml": "save file, `[time_area]`"
+  },
+  {
+   "id": "15.1",
+   "category": 15,
+   "title": "`[story]` playback",
+   "wml": "`[story]`, `[part]`"
+  },
+  {
+   "id": "15.2",
+   "category": 15,
+   "title": "`[part]` story text",
+   "wml": "`[part]story=`, `title=`, `text_alignment=`"
+  },
+  {
+   "id": "15.3",
+   "category": 15,
+   "title": "Story background image",
+   "wml": "`[part]background=`, `scale_background=`"
+  },
+  {
+   "id": "15.4",
+   "category": 15,
+   "title": "`[background_layer]`",
+   "wml": "`[background_layer]image=`, `scale_horizontally=`, `scale_vertically=`, `tile_horizontally=`, `base_layer=`, `keep_aspect_ratio=`"
+  },
+  {
+   "id": "15.5",
+   "category": 15,
+   "title": "Overlapping story images (map of Wesnoth)",
+   "wml": "`[image]x=`, `y=`, `file=`, `delay=`, `centered=`"
+  },
+  {
+   "id": "15.6",
+   "category": 15,
+   "title": "Story image delay/timing",
+   "wml": "`[image]delay=`, `[delay]`"
+  },
+  {
+   "id": "15.7",
+   "category": 15,
+   "title": "Story `[if]` branches",
+   "wml": "`[part][if]`, `[else]`"
+  },
+  {
+   "id": "15.8",
+   "category": 15,
+   "title": "Story music & sound",
+   "wml": "`[part]music=`, `sound=`"
+  },
+  {
+   "id": "15.9",
+   "category": 15,
+   "title": "Story voice/typing pace",
+   "wml": "`[part]`, UI"
+  },
+  {
+   "id": "15.10",
+   "category": 15,
+   "title": "Story skip",
+   "wml": "UI, `[story]`"
+  },
+  {
+   "id": "15.11",
+   "category": 15,
+   "title": "Story at scenario end",
+   "wml": "`[story]`, `[event]name=victory`"
+  },
+  {
+   "id": "15.12",
+   "category": 15,
+   "title": "`[message]` basic dialogue",
+   "wml": "`[message]speaker=`, `message=`, `image=`"
+  },
+  {
+   "id": "15.13",
+   "category": 15,
+   "title": "`speaker=` resolution",
+   "wml": "`speaker=unit`, `speaker=narrator`"
+  },
+  {
+   "id": "15.14",
+   "category": 15,
+   "title": "`[message][filter]`",
+   "wml": "`[message][filter]`"
+  },
+  {
+   "id": "15.15",
+   "category": 15,
+   "title": "Message portrait",
+   "wml": "`profile=`, `image=`, `mirror=`, `side_for=`"
+  },
+  {
+   "id": "15.16",
+   "category": 15,
+   "title": "Message caption",
+   "wml": "`caption=`"
+  },
+  {
+   "id": "15.17",
+   "category": 15,
+   "title": "Message scroll-to-speaker",
+   "wml": "`scroll=`, `[scroll_to_unit]`"
+  },
+  {
+   "id": "15.18",
+   "category": 15,
+   "title": "`[option]` choices",
+   "wml": "`[option]label=`, `[command]`, `image=`, `description=`"
+  },
+  {
+   "id": "15.19",
+   "category": 15,
+   "title": "Option `[show_if]`",
+   "wml": "`[option][show_if]`"
+  },
+  {
+   "id": "15.20",
+   "category": 15,
+   "title": "Option default/cancel",
+   "wml": "`[option]default=`"
+  },
+  {
+   "id": "15.21",
+   "category": 15,
+   "title": "Choice synchronisation",
+   "wml": "`[choose]`, replay"
+  },
+  {
+   "id": "15.22",
+   "category": 15,
+   "title": "`[text_input]`",
+   "wml": "`[message][text_input]variable=`, `label=`, `max_length=`, `text=`"
+  },
+  {
+   "id": "15.23",
+   "category": 15,
+   "title": "Message duration & auto-close",
+   "wml": "`[message]duration=`"
+  },
+  {
+   "id": "15.24",
+   "category": 15,
+   "title": "Message with `side_for=`",
+   "wml": "`side_for=`"
+  },
+  {
+   "id": "15.25",
+   "category": 15,
+   "title": "Narrator messages",
+   "wml": "`speaker=narrator`, `image=wesnoth-icon.png`"
+  },
+  {
+   "id": "15.26",
+   "category": 15,
+   "title": "Message markup",
+   "wml": "`message=`, `<span>`"
+  },
+  {
+   "id": "15.27",
+   "category": 15,
+   "title": "Message queueing",
+   "wml": "`[message]`"
+  },
+  {
+   "id": "15.28",
+   "category": 15,
+   "title": "Message during animation",
+   "wml": "`[message]`, `[animate_unit]`"
+  },
+  {
+   "id": "15.29",
+   "category": 15,
+   "title": "`[wml_message]` logging",
+   "wml": "`[wml_message]logger=`"
+  },
+  {
+   "id": "15.30",
+   "category": 15,
+   "title": "`[deprecated_message]`",
+   "wml": "`[deprecated_message]`"
+  },
+  {
+   "id": "15.31",
+   "category": 15,
+   "title": "Speaker portrait fallback",
+   "wml": "`profile=`, `image=`"
+  },
+  {
+   "id": "15.32",
+   "category": 15,
+   "title": "Full-screen story vs in-game message",
+   "wml": "`[story]`, `[message]`"
+  },
+  {
+   "id": "15.33",
+   "category": 15,
+   "title": "Dialogue history/log",
+   "wml": "`[chat]`, UI log"
+  },
+  {
+   "id": "15.34",
+   "category": 15,
+   "title": "Translated dialogue",
+   "wml": "`_ \"…\"`, `[textdomain]`"
+  },
+  {
+   "id": "16.1",
+   "category": 16,
+   "title": "Hex grid rendering",
+   "wml": "map rendering"
+  },
+  {
+   "id": "16.2",
+   "category": 16,
+   "title": "Terrain layer compositing",
+   "wml": "`[terrain_graphics][image]layer=`"
+  },
+  {
+   "id": "16.3",
+   "category": 16,
+   "title": "Unit sprite rendering",
+   "wml": "`image=`, `[frame]`"
+  },
+  {
+   "id": "16.4",
+   "category": 16,
+   "title": "Unit sprite team colouring",
+   "wml": "`[color_range]`, `RC()`"
+  },
+  {
+   "id": "16.5",
+   "category": 16,
+   "title": "Unit facing/mirroring",
+   "wml": "`facing=`, `[frame]auto_hflip=`"
+  },
+  {
+   "id": "16.6",
+   "category": 16,
+   "title": "HP bar",
+   "wml": "unit rendering"
+  },
+  {
+   "id": "16.7",
+   "category": 16,
+   "title": "XP bar",
+   "wml": "`experience=`, `advances_to=`"
+  },
+  {
+   "id": "16.8",
+   "category": 16,
+   "title": "Leader crown / hero icon",
+   "wml": "`canrecruit=`, `overlays=`"
+  },
+  {
+   "id": "16.9",
+   "category": 16,
+   "title": "Unit ellipse rendering",
+   "wml": "`ellipse=`, `misc/ellipse`"
+  },
+  {
+   "id": "16.10",
+   "category": 16,
+   "title": "Status icons on sprites",
+   "wml": "`[status]`, unit overlays"
+  },
+  {
+   "id": "16.11",
+   "category": 16,
+   "title": "Unit overlays",
+   "wml": "`[unit_overlay]`, `[remove_unit_overlay]`, `apply_to=overlay`"
+  },
+  {
+   "id": "16.12",
+   "category": 16,
+   "title": "Halo rendering",
+   "wml": "`halo=`, `[item]halo=`"
+  },
+  {
+   "id": "16.13",
+   "category": 16,
+   "title": "Village flag rendering",
+   "wml": "`[side]flag=`, `[terrain_type]gives_income=`"
+  },
+  {
+   "id": "16.14",
+   "category": 16,
+   "title": "Selected unit highlight",
+   "wml": "`[select_unit]`, UI"
+  },
+  {
+   "id": "16.15",
+   "category": 16,
+   "title": "Hex hover highlight",
+   "wml": "UI"
+  },
+  {
+   "id": "16.16",
+   "category": 16,
+   "title": "Reachable hex overlay",
+   "wml": "`[store_reachable_locations]`"
+  },
+  {
+   "id": "16.17",
+   "category": 16,
+   "title": "Attack direction indicator",
+   "wml": "UI, attack"
+  },
+  {
+   "id": "16.18",
+   "category": 16,
+   "title": "Defense percentage tooltip",
+   "wml": "`[defense]`"
+  },
+  {
+   "id": "16.19",
+   "category": 16,
+   "title": "Turns-to-reach display",
+   "wml": "`[find_path]`"
+  },
+  {
+   "id": "16.20",
+   "category": 16,
+   "title": "Hex coordinates display",
+   "wml": "UI, `[theme]`"
+  },
+  {
+   "id": "16.21",
+   "category": 16,
+   "title": "Map labels rendering",
+   "wml": "`[label]color=`, `visible_in_fog=`, `visible_in_shroud=`"
+  },
+  {
+   "id": "16.22",
+   "category": 16,
+   "title": "Item rendering",
+   "wml": "`[item]image=`, `halo=`, `redraw=`"
+  },
+  {
+   "id": "16.23",
+   "category": 16,
+   "title": "`[remove_item]`",
+   "wml": "`[remove_item]`, `image=`"
+  },
+  {
+   "id": "16.24",
+   "category": 16,
+   "title": "Camera panning",
+   "wml": "UI"
+  },
+  {
+   "id": "16.25",
+   "category": 16,
+   "title": "Camera zoom",
+   "wml": "`[zoom]`, UI"
+  },
+  {
+   "id": "16.26",
+   "category": 16,
+   "title": "`[scroll_to]`",
+   "wml": "`[scroll_to]x=`, `y=`, `check_fogged=`, `immediate=`"
+  },
+  {
+   "id": "16.27",
+   "category": 16,
+   "title": "`[scroll_to_unit]`",
+   "wml": "`[scroll_to_unit]`, `[filter]`"
+  },
+  {
+   "id": "16.28",
+   "category": 16,
+   "title": "`[scroll]`",
+   "wml": "`[scroll]x=`, `y=`"
+  },
+  {
+   "id": "16.29",
+   "category": 16,
+   "title": "`[lock_view]` / `[unlock_view]`",
+   "wml": "`[lock_view]`, `[unlock_view]`"
+  },
+  {
+   "id": "16.30",
+   "category": 16,
+   "title": "`[zoom]` action",
+   "wml": "`[zoom]factor=`"
+  },
+  {
+   "id": "16.31",
+   "category": 16,
+   "title": "Camera follow on unit move",
+   "wml": "preference, `[move_unit]`"
+  },
+  {
+   "id": "16.32",
+   "category": 16,
+   "title": "Camera on message",
+   "wml": "`[message]scroll=`"
+  },
+  {
+   "id": "16.33",
+   "category": 16,
+   "title": "Minimap rendering",
+   "wml": "`[theme]minimap`, `[terrain_type]color=`"
+  },
+  {
+   "id": "16.34",
+   "category": 16,
+   "title": "Minimap click-to-navigate",
+   "wml": "UI"
+  },
+  {
+   "id": "16.35",
+   "category": 16,
+   "title": "Map edges",
+   "wml": "`border_size=`"
+  },
+  {
+   "id": "16.36",
+   "category": 16,
+   "title": "`[redraw]`",
+   "wml": "`[redraw]side=`, `clear_shroud=`"
+  },
+  {
+   "id": "16.37",
+   "category": 16,
+   "title": "`[floating_text]`",
+   "wml": "`[floating_text]text=`, `color=`, `size=`, `[filter_location]`"
+  },
+  {
+   "id": "16.38",
+   "category": 16,
+   "title": "Damage/healing floating numbers",
+   "wml": "`[unstore_unit]text=`, `red=`, `green=`, `blue=`"
+  },
+  {
+   "id": "16.39",
+   "category": 16,
+   "title": "`[screen_fade]`",
+   "wml": "`[screen_fade]red=`, `duration=`"
+  },
+  {
+   "id": "16.40",
+   "category": 16,
+   "title": "`[color_adjust]`",
+   "wml": "`[color_adjust]`"
+  },
+  {
+   "id": "16.41",
+   "category": 16,
+   "title": "Render performance at max zoom-out",
+   "wml": "performance"
+  },
+  {
+   "id": "16.42",
+   "category": 16,
+   "title": "Dirty-region redraw",
+   "wml": "rendering"
+  },
+  {
+   "id": "16.43",
+   "category": 16,
+   "title": "Image path functions",
+   "wml": "`image=`, `[color_palette]`"
+  },
+  {
+   "id": "16.44",
+   "category": 16,
+   "title": "Image caching",
+   "wml": "internals"
+  },
+  {
+   "id": "16.45",
+   "category": 16,
+   "title": "Sprite atlas / batching",
+   "wml": "internals"
+  },
+  {
+   "id": "16.46",
+   "category": 16,
+   "title": "Mobile game view",
+   "wml": "UI"
+  },
+  {
+   "id": "16.47",
+   "category": 16,
+   "title": "Edge-of-screen panning (desktop)",
+   "wml": "preference"
+  },
+  {
+   "id": "16.48",
+   "category": 16,
+   "title": "Overlay terrain rendering (`^V`, `^F`)",
+   "wml": "`Gg^Vh`, `Gg^Fds`"
+  },
+  {
+   "id": "16.49",
+   "category": 16,
+   "title": "Time-of-day tint application",
+   "wml": "`[time]red=`"
+  },
+  {
+   "id": "16.50",
+   "category": 16,
+   "title": "Rendering under fog/shroud",
+   "wml": "fog/shroud images"
+  },
+  {
+   "id": "17.1",
+   "category": 17,
+   "title": "Main menu",
+   "wml": "`[theme]`, UI"
+  },
+  {
+   "id": "17.2",
+   "category": 17,
+   "title": "Main menu logo & background",
+   "wml": "UI assets"
+  },
+  {
+   "id": "17.3",
+   "category": 17,
+   "title": "Campaign picker",
+   "wml": "`[campaign]image=`, `description=`"
+  },
+  {
+   "id": "17.4",
+   "category": 17,
+   "title": "Campaign picture & description display",
+   "wml": "`[campaign]description=`, `icon=`"
+  },
+  {
+   "id": "17.5",
+   "category": 17,
+   "title": "Difficulty chooser dialog",
+   "wml": "`[difficulty]`"
+  },
+  {
+   "id": "17.6",
+   "category": 17,
+   "title": "Credits screen",
+   "wml": "`[about]`, `[entry]`, `[credits_group]`"
+  },
+  {
+   "id": "17.7",
+   "category": 17,
+   "title": "Game view layout",
+   "wml": "`[theme]`, `[resolution]`"
+  },
+  {
+   "id": "17.8",
+   "category": 17,
+   "title": "`[theme]` definition",
+   "wml": "`[theme]`, `[resolution]`, `[panel]`, `[status]`, `[menu]`"
+  },
+  {
+   "id": "17.9",
+   "category": 17,
+   "title": "`[change_theme]`",
+   "wml": "`[change_theme]theme=`"
+  },
+  {
+   "id": "17.10",
+   "category": 17,
+   "title": "Menu bar",
+   "wml": "`[theme][menu]`"
+  },
+  {
+   "id": "17.11",
+   "category": 17,
+   "title": "Unit sidebar: name & type",
+   "wml": "`[theme][status]`, `name=`, `type=`"
+  },
+  {
+   "id": "17.12",
+   "category": 17,
+   "title": "Unit sidebar: stats",
+   "wml": "`hitpoints=`, `experience=`, `moves=`"
+  },
+  {
+   "id": "17.13",
+   "category": 17,
+   "title": "Unit sidebar: traits/attributes",
+   "wml": "`[modifications][trait]`, `[abilities]`"
+  },
+  {
+   "id": "17.14",
+   "category": 17,
+   "title": "Unit sidebar: weapons",
+   "wml": "`[attack]`, `[specials]`"
+  },
+  {
+   "id": "17.15",
+   "category": 17,
+   "title": "Unit sidebar: resistances",
+   "wml": "`[resistance]`"
+  },
+  {
+   "id": "17.16",
+   "category": 17,
+   "title": "Unit sidebar: terrain defense",
+   "wml": "`[defense]`, `[movement_costs]`"
+  },
+  {
+   "id": "17.17",
+   "category": 17,
+   "title": "Unit sidebar: portrait",
+   "wml": "`small_profile=`, `profile=`"
+  },
+  {
+   "id": "17.18",
+   "category": 17,
+   "title": "Status bar: gold/villages/turn/ToD",
+   "wml": "`[theme][status]`"
+  },
+  {
+   "id": "17.19",
+   "category": 17,
+   "title": "Unit selection",
+   "wml": "`[select_unit]`, `select` event"
+  },
+  {
+   "id": "17.20",
+   "category": 17,
+   "title": "`[select_unit]` action",
+   "wml": "`[select_unit]`, `[filter]`, `highlight=`"
+  },
+  {
+   "id": "17.21",
+   "category": 17,
+   "title": "Right-click context menu",
+   "wml": "`[set_menu_item]`, `[clear_menu_item]`"
+  },
+  {
+   "id": "17.22",
+   "category": 17,
+   "title": "`[set_menu_item]`",
+   "wml": "`[set_menu_item]id=`, `description=`, `[show_if]`, `[filter_location]`, `[command]`, `needs_select=`"
+  },
+  {
+   "id": "17.23",
+   "category": 17,
+   "title": "`[clear_menu_item]`",
+   "wml": "`[clear_menu_item]id=`"
+  },
+  {
+   "id": "17.24",
+   "category": 17,
+   "title": "Keyboard shortcuts",
+   "wml": "preferences, hotkeys"
+  },
+  {
+   "id": "17.25",
+   "category": 17,
+   "title": "Hotkey conflicts & rebinding",
+   "wml": "preferences"
+  },
+  {
+   "id": "17.26",
+   "category": 17,
+   "title": "Interface lock/unlock",
+   "wml": "`[lock_view]`, UI state"
+  },
+  {
+   "id": "17.27",
+   "category": 17,
+   "title": "End Turn button",
+   "wml": "`[end_turn]`, `[disallow_end_turn]`"
+  },
+  {
+   "id": "17.28",
+   "category": 17,
+   "title": "Unmoved-unit warning",
+   "wml": "preference"
+  },
+  {
+   "id": "17.29",
+   "category": 17,
+   "title": "Objectives dialog",
+   "wml": "`[objectives]`, `[show_objectives]`"
+  },
+  {
+   "id": "17.30",
+   "category": 17,
+   "title": "Statistics dialog",
+   "wml": "`[statistics]`, `[team]`"
+  },
+  {
+   "id": "17.31",
+   "category": 17,
+   "title": "Unit list dialog",
+   "wml": "UI"
+  },
+  {
+   "id": "17.32",
+   "category": 17,
+   "title": "Recruit/recall dialogs",
+   "wml": "`recruit=`, `[recall]`"
+  },
+  {
+   "id": "17.33",
+   "category": 17,
+   "title": "Advancement dialog",
+   "wml": "`advances_to=`, `[advancement]`"
+  },
+  {
+   "id": "17.34",
+   "category": 17,
+   "title": "Combat simulation modal",
+   "wml": "`[attack]`, `[specials]`"
+  },
+  {
+   "id": "17.35",
+   "category": 17,
+   "title": "Combat results distribution display",
+   "wml": "combat simulator"
+  },
+  {
+   "id": "17.36",
+   "category": 17,
+   "title": "Save game manager",
+   "wml": "save system"
+  },
+  {
+   "id": "17.37",
+   "category": 17,
+   "title": "In-game help / encyclopedia",
+   "wml": "`[topic]`, `[section]`, `[toplevel]`, `[open_help]`"
+  },
+  {
+   "id": "17.38",
+   "category": 17,
+   "title": "Preferences dialog",
+   "wml": "`[advanced_preference]`"
+  },
+  {
+   "id": "17.39",
+   "category": 17,
+   "title": "Tooltips",
+   "wml": "`[theme]`, UI"
+  },
+  {
+   "id": "17.40",
+   "category": 17,
+   "title": "Navigation between screens",
+   "wml": "UI routing"
+  },
+  {
+   "id": "17.41",
+   "category": 17,
+   "title": "Mobile layout",
+   "wml": "UI"
+  },
+  {
+   "id": "17.42",
+   "category": 17,
+   "title": "Touch input",
+   "wml": "UI"
+  },
+  {
+   "id": "17.43",
+   "category": 17,
+   "title": "Responsive theme switching",
+   "wml": "`[theme][resolution]`"
+  },
+  {
+   "id": "17.44",
+   "category": 17,
+   "title": "Wesnoth-matching visual style",
+   "wml": "theme CSS/assets"
+  },
+  {
+   "id": "17.45",
+   "category": 17,
+   "title": "Locale: interface strings",
+   "wml": "`[textdomain]`, `.po` catalogues"
+  },
+  {
+   "id": "17.46",
+   "category": 17,
+   "title": "Locale: game data strings",
+   "wml": "`_ \"…\"`, `#textdomain`"
+  },
+  {
+   "id": "17.47",
+   "category": 17,
+   "title": "Locale switching at runtime",
+   "wml": "`[language]`, `[locale]`"
+  },
+  {
+   "id": "17.48",
+   "category": 17,
+   "title": "Plural forms & gender",
+   "wml": "`female_name=`, gettext plurals"
+  },
+  {
+   "id": "17.49",
+   "category": 17,
+   "title": "RTL and CJK text",
+   "wml": "`[fonts]`"
+  },
+  {
+   "id": "17.50",
+   "category": 17,
+   "title": "Missing translation fallback",
+   "wml": "gettext"
+  },
+  {
+   "id": "17.51",
+   "category": 17,
+   "title": "Number/date formatting",
+   "wml": "UI"
+  },
+  {
+   "id": "17.52",
+   "category": 17,
+   "title": "Accessibility: colourblind-safe cues",
+   "wml": "`[color_range]`, ellipses"
+  },
+  {
+   "id": "17.53",
+   "category": 17,
+   "title": "Accessibility: keyboard-only play",
+   "wml": "hotkeys"
+  },
+  {
+   "id": "17.54",
+   "category": 17,
+   "title": "Font scaling",
+   "wml": "`[fonts]`, preferences"
+  },
+  {
+   "id": "18.1",
+   "category": 18,
+   "title": "`[animation]` / `[frame]` basics",
+   "wml": "`[animation]`, `[frame]image=`, `duration=`, `begin=`, `end=`"
+  },
+  {
+   "id": "18.2",
+   "category": 18,
+   "title": "Animation frame timing",
+   "wml": "`start_time=`, `duration=`"
+  },
+  {
+   "id": "18.3",
+   "category": 18,
+   "title": "Standing animation",
+   "wml": "`[standing_anim]`, preference"
+  },
+  {
+   "id": "18.4",
+   "category": 18,
+   "title": "Idle animation",
+   "wml": "`[idle_anim]`, `{STANDARD_IDLE_FILTER}`"
+  },
+  {
+   "id": "18.5",
+   "category": 18,
+   "title": "Movement animation",
+   "wml": "`[movement_anim]`, `[pre_movement_anim]`, `[post_movement_anim]`"
+  },
+  {
+   "id": "18.6",
+   "category": 18,
+   "title": "Attack animation",
+   "wml": "`[attack_anim]`, `[filter_attack]`, `hits=`, `offset=`"
+  },
+  {
+   "id": "18.7",
+   "category": 18,
+   "title": "Defend animation",
+   "wml": "`[defend]`, `hits=`"
+  },
+  {
+   "id": "18.8",
+   "category": 18,
+   "title": "Missile frames",
+   "wml": "`[missile_frame]`, `offset=`"
+  },
+  {
+   "id": "18.9",
+   "category": 18,
+   "title": "Death animation",
+   "wml": "`[death]`, `die_sound=`"
+  },
+  {
+   "id": "18.10",
+   "category": 18,
+   "title": "Recruit animation",
+   "wml": "`[recruit_anim]`, `[recruiting_anim]`"
+  },
+  {
+   "id": "18.11",
+   "category": 18,
+   "title": "Level-up animations",
+   "wml": "`[levelin_anim]`, `[levelout_anim]`"
+  },
+  {
+   "id": "18.12",
+   "category": 18,
+   "title": "Healing animations",
+   "wml": "`[healing_anim]`, `[healed_anim]`"
+  },
+  {
+   "id": "18.13",
+   "category": 18,
+   "title": "Leading animation",
+   "wml": "`[leading_anim]`"
+  },
+  {
+   "id": "18.14",
+   "category": 18,
+   "title": "Victory animation",
+   "wml": "`[victory_anim]`"
+  },
+  {
+   "id": "18.15",
+   "category": 18,
+   "title": "Teleport animation",
+   "wml": "`[teleport_anim]`"
+  },
+  {
+   "id": "18.16",
+   "category": 18,
+   "title": "Draw/sheath weapon animations",
+   "wml": "`[draw_weapon_anim]`, `[sheath_weapon_anim]`"
+  },
+  {
+   "id": "18.17",
+   "category": 18,
+   "title": "Extra animations",
+   "wml": "`[extra_anim]flag=`, `[animate_unit]flag=`"
+  },
+  {
+   "id": "18.18",
+   "category": 18,
+   "title": "`[animate_unit]`",
+   "wml": "`[animate_unit]flag=`, `[filter]`, `[facing]`, `text=`, `with_bars=`"
+  },
+  {
+   "id": "18.19",
+   "category": 18,
+   "title": "Animation conditional branches",
+   "wml": "`[animation][if]`, `[else]`"
+  },
+  {
+   "id": "18.20",
+   "category": 18,
+   "title": "Animation filters",
+   "wml": "`direction=`, `terrain_types=`, `hits=`, `[filter]`"
+  },
+  {
+   "id": "18.21",
+   "category": 18,
+   "title": "Frame image modifiers",
+   "wml": "`[frame]image_mod=`, `blend_color=`, `blend_ratio=`, `alpha=`"
+  },
+  {
+   "id": "18.22",
+   "category": 18,
+   "title": "Frame offsets & layers",
+   "wml": "`offset=`, `layer=`, `x=`, `y=`"
+  },
+  {
+   "id": "18.23",
+   "category": 18,
+   "title": "Halo frames",
+   "wml": "`[frame]halo=`, `halo_x=`, `halo_y=`"
+  },
+  {
+   "id": "18.24",
+   "category": 18,
+   "title": "Auto flip",
+   "wml": "`auto_hflip=`, `auto_vflip=`"
+  },
+  {
+   "id": "18.25",
+   "category": 18,
+   "title": "Progressive values",
+   "wml": "`alpha=`, `offset=`, `submerge=`"
+  },
+  {
+   "id": "18.26",
+   "category": 18,
+   "title": "Terrain animation",
+   "wml": "`[terrain_graphics][image]`, `variations=`"
+  },
+  {
+   "id": "18.27",
+   "category": 18,
+   "title": "`[delay]`",
+   "wml": "`[delay]time=`, `accelerate=`"
+  },
+  {
+   "id": "18.28",
+   "category": 18,
+   "title": "Animation acceleration",
+   "wml": "preference, `[delay]accelerate=`"
+  },
+  {
+   "id": "18.29",
+   "category": 18,
+   "title": "Skipping animations",
+   "wml": "preference, replay"
+  },
+  {
+   "id": "18.30",
+   "category": 18,
+   "title": "Animation during fog",
+   "wml": "fog, `[animate_unit]`"
+  },
+  {
+   "id": "18.31",
+   "category": 18,
+   "title": "Screen shake / fade effects",
+   "wml": "`[screen_fade]`, `[color_adjust]`"
+  },
+  {
+   "id": "18.32",
+   "category": 18,
+   "title": "Floating text animation",
+   "wml": "`[floating_text]`"
+  },
+  {
+   "id": "18.33",
+   "category": 18,
+   "title": "Custom campaign animations",
+   "wml": "`apply_to=new_animation`"
+  },
+  {
+   "id": "18.34",
+   "category": 18,
+   "title": "Animation performance",
+   "wml": "performance"
+  },
+  {
+   "id": "18.35",
+   "category": 18,
+   "title": "Animation interruption",
+   "wml": "`[animate_unit]`"
+  },
+  {
+   "id": "19.1",
+   "category": 19,
+   "title": "`[music]` playlist",
+   "wml": "`[music]name=`, `append=`, `immediate=`, `play_once=`, `ms_before=`, `ms_after=`"
+  },
+  {
+   "id": "19.2",
+   "category": 19,
+   "title": "Music track transitions",
+   "wml": "`[music]ms_before=`, `ms_after=`"
+  },
+  {
+   "id": "19.3",
+   "category": 19,
+   "title": "Music change mid-scenario",
+   "wml": "`[music]immediate=`"
+  },
+  {
+   "id": "19.4",
+   "category": 19,
+   "title": "Music shuffle",
+   "wml": "preference, `[music]`"
+  },
+  {
+   "id": "19.5",
+   "category": 19,
+   "title": "Music persistence across scenarios",
+   "wml": "`[music]append=`"
+  },
+  {
+   "id": "19.6",
+   "category": 19,
+   "title": "Main menu music",
+   "wml": "`[music]`"
+  },
+  {
+   "id": "19.7",
+   "category": 19,
+   "title": "Victory/defeat music",
+   "wml": "`[music]`, `[endlevel]`"
+  },
+  {
+   "id": "19.8",
+   "category": 19,
+   "title": "`[sound]` action",
+   "wml": "`[sound]name=`, `repeat=`, `[delay]`"
+  },
+  {
+   "id": "19.9",
+   "category": 19,
+   "title": "Unit attack sounds",
+   "wml": "`[attack_anim][frame]sound=`"
+  },
+  {
+   "id": "19.10",
+   "category": 19,
+   "title": "Unit death sounds",
+   "wml": "`die_sound=`"
+  },
+  {
+   "id": "19.11",
+   "category": 19,
+   "title": "Movement/footstep sounds",
+   "wml": "`[movement_anim][frame]sound=`"
+  },
+  {
+   "id": "19.12",
+   "category": 19,
+   "title": "Village capture sound",
+   "wml": "`[sound]`, `capture`"
+  },
+  {
+   "id": "19.13",
+   "category": 19,
+   "title": "Recruit/recall sounds",
+   "wml": "`[recruit_anim]sound=`"
+  },
+  {
+   "id": "19.14",
+   "category": 19,
+   "title": "Level-up sound",
+   "wml": "`[levelin_anim]sound=`"
+  },
+  {
+   "id": "19.15",
+   "category": 19,
+   "title": "UI sounds",
+   "wml": "UI sounds"
+  },
+  {
+   "id": "19.16",
+   "category": 19,
+   "title": "Ambient time-of-day sounds",
+   "wml": "`{SOUND_DAWN}`, `[sound]`"
+  },
+  {
+   "id": "19.17",
+   "category": 19,
+   "title": "`[sound_source]`",
+   "wml": "`[sound_source]id=`, `sounds=`, `x=`, `y=`, `full_range=`, `fade_range=`, `chance=`, `loop=`"
+  },
+  {
+   "id": "19.18",
+   "category": 19,
+   "title": "`[remove_sound_source]`",
+   "wml": "`[remove_sound_source]id=`"
+  },
+  {
+   "id": "19.19",
+   "category": 19,
+   "title": "Sound source attenuation",
+   "wml": "`full_range=`, `fade_range=`"
+  },
+  {
+   "id": "19.20",
+   "category": 19,
+   "title": "`[volume]`",
+   "wml": "`[volume]music=`, `sound=`"
+  },
+  {
+   "id": "19.21",
+   "category": 19,
+   "title": "Volume preferences",
+   "wml": "preferences"
+  },
+  {
+   "id": "19.22",
+   "category": 19,
+   "title": "Mute handling",
+   "wml": "preferences"
+  },
+  {
+   "id": "19.23",
+   "category": 19,
+   "title": "Audio autoplay policy (web)",
+   "wml": "platform"
+  },
+  {
+   "id": "19.24",
+   "category": 19,
+   "title": "Audio asset loading",
+   "wml": "`[binary_path]`"
+  },
+  {
+   "id": "19.25",
+   "category": 19,
+   "title": "Simultaneous sound limit",
+   "wml": "audio engine"
+  },
+  {
+   "id": "19.26",
+   "category": 19,
+   "title": "Custom campaign sounds",
+   "wml": "`[binary_path]`, `[sound]`"
+  },
+  {
+   "id": "20.1",
+   "category": 20,
+   "title": "Save game creation",
+   "wml": "save file, `[snapshot]`, `[replay]`"
+  },
+  {
+   "id": "20.2",
+   "category": 20,
+   "title": "Save game loading",
+   "wml": "save file"
+  },
+  {
+   "id": "20.3",
+   "category": 20,
+   "title": "Autosaves",
+   "wml": "preferences"
+  },
+  {
+   "id": "20.4",
+   "category": 20,
+   "title": "Start-of-scenario saves",
+   "wml": "save system"
+  },
+  {
+   "id": "20.5",
+   "category": 20,
+   "title": "Save naming & metadata",
+   "wml": "`[campaign]abbrev=`"
+  },
+  {
+   "id": "20.6",
+   "category": 20,
+   "title": "Save/load in browser storage",
+   "wml": "platform"
+  },
+  {
+   "id": "20.7",
+   "category": 20,
+   "title": "Download save",
+   "wml": "platform"
+  },
+  {
+   "id": "20.8",
+   "category": 20,
+   "title": "Upload save",
+   "wml": "platform"
+  },
+  {
+   "id": "20.9",
+   "category": 20,
+   "title": "Delete save",
+   "wml": "platform"
+  },
+  {
+   "id": "20.10",
+   "category": 20,
+   "title": "List saves",
+   "wml": "platform"
+  },
+  {
+   "id": "20.11",
+   "category": 20,
+   "title": "Save version compatibility",
+   "wml": "`version=`"
+  },
+  {
+   "id": "20.12",
+   "category": 20,
+   "title": "Save file size",
+   "wml": "platform"
+  },
+  {
+   "id": "20.13",
+   "category": 20,
+   "title": "Undo single action",
+   "wml": "undo stack, `[allow_undo]`"
+  },
+  {
+   "id": "20.14",
+   "category": 20,
+   "title": "Undo stack depth",
+   "wml": "undo stack"
+  },
+  {
+   "id": "20.15",
+   "category": 20,
+   "title": "Redo",
+   "wml": "redo stack"
+  },
+  {
+   "id": "20.16",
+   "category": 20,
+   "title": "Undo blocking rules",
+   "wml": "`[allow_undo]`, `[on_undo]`"
+  },
+  {
+   "id": "20.17",
+   "category": 20,
+   "title": "`[on_undo]` custom reversal",
+   "wml": "`[on_undo]`"
+  },
+  {
+   "id": "20.18",
+   "category": 20,
+   "title": "Undo across turn boundary",
+   "wml": "undo stack"
+  },
+  {
+   "id": "20.19",
+   "category": 20,
+   "title": "Replay recording",
+   "wml": "`[replay]`, `[command]`, `[move]`, `[attack]`, `[recruit]`, `[recall]`, `[end_turn]`, `[choose]`"
+  },
+  {
+   "id": "20.20",
+   "category": 20,
+   "title": "Replay playback",
+   "wml": "`[replay]`, RNG seed"
+  },
+  {
+   "id": "20.21",
+   "category": 20,
+   "title": "RNG synchronisation",
+   "wml": "`[set_variable]rand=`, `random_traits=`, `[unsynced]`"
+  },
+  {
+   "id": "20.22",
+   "category": 20,
+   "title": "Out-of-sync detection",
+   "wml": "replay checksums"
+  },
+  {
+   "id": "20.23",
+   "category": 20,
+   "title": "`[sync_variable]` correctness",
+   "wml": "`[sync_variable]`"
+  },
+  {
+   "id": "20.24",
+   "category": 20,
+   "title": "Persistent global variables",
+   "wml": "`[set_global_variable]`, `[get_global_variable]`, `namespace=`"
+  },
+  {
+   "id": "20.25",
+   "category": 20,
+   "title": "Preferences persistence",
+   "wml": "`[advanced_preference]`"
+  },
+  {
+   "id": "20.26",
+   "category": 20,
+   "title": "Campaign completion persistence",
+   "wml": "preferences"
+  },
+  {
+   "id": "20.27",
+   "category": 20,
+   "title": "Achievement persistence",
+   "wml": "`[achievement]`, `[set_achievement]`"
+  },
+  {
+   "id": "20.28",
+   "category": 20,
+   "title": "Storage quota exhaustion",
+   "wml": "platform"
+  },
+  {
+   "id": "20.29",
+   "category": 20,
+   "title": "Campaign loading performance",
+   "wml": "performance"
+  },
+  {
+   "id": "20.30",
+   "category": 20,
+   "title": "Main menu loading performance",
+   "wml": "performance"
+  },
+  {
+   "id": "20.31",
+   "category": 20,
+   "title": "Asset lazy loading",
+   "wml": "performance"
+  },
+  {
+   "id": "20.32",
+   "category": 20,
+   "title": "Memory footprint",
+   "wml": "performance"
+  },
+  {
+   "id": "20.33",
+   "category": 20,
+   "title": "Frame rate under load",
+   "wml": "performance"
+  },
+  {
+   "id": "20.34",
+   "category": 20,
+   "title": "WASM build correctness",
+   "wml": "platform"
+  },
+  {
+   "id": "20.35",
+   "category": 20,
+   "title": "Cross-browser compatibility",
+   "wml": "platform"
+  },
+  {
+   "id": "20.36",
+   "category": 20,
+   "title": "Offline / service worker behaviour",
+   "wml": "platform"
+  },
+  {
+   "id": "20.37",
+   "category": 20,
+   "title": "Deep linking / routing",
+   "wml": "platform"
+  },
+  {
+   "id": "20.38",
+   "category": 20,
+   "title": "Error reporting",
+   "wml": "platform"
+  },
+  {
+   "id": "20.39",
+   "category": 20,
+   "title": "Unit test suite (engine core)",
+   "wml": "CI"
+  },
+  {
+   "id": "20.40",
+   "category": 20,
+   "title": "Integration test suite (scenario level)",
+   "wml": "`[test]`, `[test_do_attack_by_id]`, `[endlevel]`"
+  },
+  {
+   "id": "20.41",
+   "category": 20,
+   "title": "Golden/reference tests against upstream",
+   "wml": "`[test]`, replay files"
+  },
+  {
+   "id": "20.42",
+   "category": 20,
+   "title": "Web UI test suite",
+   "wml": "CI"
+  },
+  {
+   "id": "20.43",
+   "category": 20,
+   "title": "CI pipeline",
+   "wml": "CI"
+  },
+  {
+   "id": "20.44",
+   "category": 20,
+   "title": "Staging deployment",
+   "wml": "CI/CD"
+  },
+  {
+   "id": "20.45",
+   "category": 20,
+   "title": "Release deployment",
+   "wml": "CI/CD"
+  },
+  {
+   "id": "20.46",
+   "category": 20,
+   "title": "Performance regression tracking",
+   "wml": "CI"
+  },
+  {
+   "id": "20.47",
+   "category": 20,
+   "title": "Asset licence compliance",
+   "wml": "`[about]`, licence files"
+  },
+  {
+   "id": "20.48",
+   "category": 20,
+   "title": "Upstream data compatibility",
+   "wml": "whole WML surface"
+  }
+ ]
+}
