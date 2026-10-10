@@ -6556,3 +6556,41 @@ now does the same, one candidate-action execution at a time.
   frame gap during an AI turn is 1.3-1.9 s on this VM's software WebGL. `turn-end-playthrough`, `dialogue-playthrough` and
   `campaign-playthrough --campaign liberty` pass. `undo-replay-playthrough` was stale (hotseat side 2's
   "You have not started your turn yet" question was never answered, so Save Game could not open) and is fixed.
+
+## 2026-10-10: Phase 27 -- the feature completeness assessment
+
+Every item of the feature catalogue (`~/wesnoth-feature-catalogue.md`, 922 items in 20 categories) is
+classified against the port, with evidence, in `docs/COMPLETENESS.md`.
+
+**The numbers:**
+- 665 done;
+- 183 partial;
+- 55 missing;
+- 19 out of scope.
+
+**How:**
+- `apps/web/scripts/completeness.mjs index` numbers the catalogue (`<category>.<n>`). The catalogue stays
+  outside the repo, since the repo is public; only ids, titles and WML hooks are kept.
+- `report` joins that with `docs/completeness/assessment.json` and the hand-written
+  `docs/completeness/summary.md`. It fails on a missing evidence path or an unknown id.
+- One commit per category, then a pass that searched test bodies (not just titles) for every "untested"
+  note; six items moved up.
+
+**Done means** a real implementation with a test, a browser check, or shipped content that exercises it. A
+partial note says what is missing, usually a test.
+
+**Found:** bugs that change how shipped campaigns play, each confirmed in code and data.
+- `[modify_side] side=2,3` (about 1,000 uses) falls back to side 1, the player. HttT 42 hands the player the
+  orcs' income and goblin recruits. `[modify_side]` also ignores fog=, shroud=, hidden= and more.
+- An event's `[filter_attack]`/`[filter_second_attack]` is not evaluated (245 handlers in 73 scenarios), and
+  `$weapon` is not set.
+- The hit/miss and advance/post advance events never fire.
+- `[modify_unit_type]` is never applied (Dead Water's Kraken, OPP's recruit costs).
+- The `[disable]` special is missing, and `attacks_used=`/`movement_used=` are not applied.
+- Campaign-defined specials have no effect: the generic special pipeline is not ported.
+- 23 of 39 image path functions are missing, among them `~CS()` (192 uses).
+- Missing presentation: units stand still (no standing/idle animations), level-up and victory animations,
+  time-area lighting, linger mode, random names.
+
+**Proposed follow-ups:** correctness fixes first, then the ability/special pipeline, presentation gaps,
+test debt, and a batch of unused WML. With the out-of-scope list, these are for the user to decide.

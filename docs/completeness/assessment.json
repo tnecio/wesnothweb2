@@ -1,0 +1,6097 @@
+{
+ "1.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/parser.test.ts",
+   "packages/engine/test/wml/writer.test.ts"
+  ]
+ },
+ "1.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/parser.test.ts"
+  ],
+  "note": "Values are typed (number/boolean/string) when parsed, read back as strings where upstream does."
+ },
+ "1.3": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/parser.test.ts"
+  ]
+ },
+ "1.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/tokenizer.test.ts"
+  ]
+ },
+ "1.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/tokenizer.test.ts",
+   "packages/engine/test/wml/writer.test.ts"
+  ]
+ },
+ "1.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/writer.test.ts",
+   "packages/engine/test/wml/macroQuotedArgs.test.ts"
+  ]
+ },
+ "1.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/parser.test.ts"
+  ]
+ },
+ "1.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/tokenizer.test.ts",
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
+ },
+ "1.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts",
+   "packages/engine/test/events/variables.test.ts"
+  ]
+ },
+ "1.10": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
+ },
+ "1.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
+ },
+ "1.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
+ },
+ "1.13": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
+ },
+ "1.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts",
+   "packages/engine/test/wml/macroQuotedArgs.test.ts"
+  ],
+  "note": "Paren nesting is counted, more permissive than upstream's token-stack rule; real content builds."
+ },
+ "1.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts",
+   "packages/engine/src/wml/preprocessor.ts"
+  ],
+  "note": "Depth limits (100 macro, 40 include) raise an error; the limit itself has no test."
+ },
+ "1.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
+ },
+ "1.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ],
+  "note": "A directory prefers its _main.cfg, else its .cfg files in order; no subdirectory recursion or _first/_final ordering, which no shipped content needs."
+ },
+ "1.18": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/wml/preprocessor.ts"
+  ],
+  "note": "Relative and data-root paths only. ~ (user data, add-ons) and @ are not resolved; add-ons are out of scope."
+ },
+ "1.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
+ },
+ "1.20": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/wml/preprocessor.ts"
+  ],
+  "note": "#ifhave/#ifnhave/#ifver/#ifnver are implemented but have no test."
+ },
+ "1.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
+ },
+ "1.22": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs",
+   "apps/web/scripts/build-scenario-snapshot.mjs"
+  ],
+  "note": "Each scenario is built once per difficulty with its define; the menu opens the chosen build."
+ },
+ "1.23": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ],
+  "note": "Errors name the line but not always the file; problems surface when the data is built, not in the game."
+ },
+ "1.24": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/variables.test.ts"
+  ]
+ },
+ "1.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/variables.test.ts"
+  ]
+ },
+ "1.26": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/variables.test.ts"
+  ]
+ },
+ "1.27": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/variables.test.ts"
+  ]
+ },
+ "1.28": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/variables.test.ts"
+  ],
+  "note": "Inner references resolve first (right-to-left scan)."
+ },
+ "1.29": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/variables.ts",
+   "packages/engine/test/formula/formula.test.ts"
+  ],
+  "note": "$(...) is evaluated by the WFL interpreter but has no test (and the module comment still says it is missing); [set_variable] formula= is skipped."
+ },
+ "1.30": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/parser.test.ts"
+  ]
+ },
+ "1.31": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "1.32": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/parser.test.ts",
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "1.33": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts",
+   "packages/engine/test/events/shroudWml.test.ts",
+   "packages/engine/test/ai/aspect.test.ts"
+  ]
+ },
+ "1.34": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/frame.test.ts",
+   "packages/renderer/test/mapItems.test.ts"
+  ]
+ },
+ "1.35": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "1.36": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/variables.test.ts",
+   "packages/engine/src/model/Unit.ts"
+  ],
+  "note": "Scenario [variables] are tested; a unit's [variables] is kept and saved but has no test of its own."
+ },
+ "1.37": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "1.38": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/story/storyParser.ts",
+   "packages/lua-bridge/src/kernel/base.ts"
+  ],
+  "note": "[deprecated_message] and Lua deprecated_message log a warning; the #deprecated directive is skipped silently. No test."
+ },
+ "1.39": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Schema validation is a content-author tool (wesnoth --validate); the port ships only mainline data, which upstream validates."
+ },
+ "1.40": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/lib/binaryPaths.mjs",
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ],
+  "note": "Resolved when the data is built: a campaign's [binary_path]s first, then core. The campaign check fails on any missing file."
+ },
+ "1.41": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Add-ons are out of scope. [resource]/[load_resource]/[modification] are used only by World Conquest, which is Phase 31."
+ },
+ "1.42": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "1.43": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/gameConfig.ts",
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ],
+  "note": "The constants are upstream's defaults, pinned by tests, but hardcoded: a [game_config] in the data does not change them."
+ },
+ "1.44": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/build-team-colors.mjs",
+   "packages/renderer/src"
+  ],
+  "note": "[color_range]s are read from the data for team colours; [color_palette] (the ~PAL image function) is not used."
+ },
+ "1.45": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/build-fonts.mjs",
+   "packages/ui/src/fonts.css"
+  ],
+  "note": "Upstream's fonts ship, with their fallback order hand-written in CSS rather than read from [fonts]."
+ },
+ "1.46": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/PreferencesDialog.svelte"
+  ],
+  "note": "The Advanced tab lists the advanced_preferences.cfg entries the port can apply, written by hand rather than read from the data."
+ },
+ "1.47": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/error-screen-playthrough.mjs"
+  ],
+  "note": "Content is parsed when the data is built, so a malformed file stops the build with its error. In the game, an error shows the error screen with a report and the latest autosave."
+ },
+ "1.48": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/deadWaterIntegration.test.ts",
+   "apps/web/scripts/build-scenario-snapshot.mjs"
+  ],
+  "note": "Every shipped campaign is preprocessed and parsed when the data is built."
+ },
+ "1.49": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/writer.test.ts",
+   "packages/engine/test/wml/configJson.test.ts"
+  ]
+ },
+ "1.50": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/wml/deadWaterIntegration.test.ts"
+  ]
+ },
+ "2.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/engine/test/snapshot/gameBoardSnapshot.test.ts"
+  ]
+ },
+ "2.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts",
+   "apps/web/scripts/build-scenario-snapshot.mjs"
+  ],
+  "note": "Every shipped scenario's map_file= is resolved when the data is built."
+ },
+ "2.3": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/hexGeometry.test.ts",
+   "packages/engine/test/pathfind/astar.test.ts"
+  ]
+ },
+ "2.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/renderer/test/camera.test.ts",
+   "packages/renderer/test/terrain/terrainBuilder.test.ts"
+  ]
+ },
+ "2.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts"
+  ]
+ },
+ "2.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts"
+  ]
+ },
+ "2.7": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/Terrain.ts"
+  ],
+  "note": "mvt_alias= and def_alias= are read separately, but no test tells them apart."
+ },
+ "2.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts"
+  ]
+ },
+ "2.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts",
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "2.10": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts",
+   "packages/engine/test/events/locationFormula.test.ts",
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "Capture and income are tested; village healing is implemented but no test covers it."
+ },
+ "2.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/reachableHexesSynthetic.test.ts",
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "2.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "2.13": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/reachableHexesSynthetic.test.ts"
+  ]
+ },
+ "2.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts",
+   "packages/engine/test/actions/move.test.ts"
+  ]
+ },
+ "2.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts",
+   "packages/engine/test/pathfind/pathfindRealMap.test.ts"
+  ]
+ },
+ "2.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.18": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/miscWml.ts"
+  ],
+  "note": "replace_if_failed= is implemented but has no test."
+ },
+ "2.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "2.20": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ],
+  "note": "expand= is tested; shrink= and units left outside the new map follow the same code with no test of their own."
+ },
+ "2.22": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/engine/test/model/gameBoardIntegration.test.ts"
+  ]
+ },
+ "2.23": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.24": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.26": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.27": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts",
+   "packages/engine/test/events/shroudWml.test.ts"
+  ]
+ },
+ "2.28": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/shroudWml.test.ts",
+   "packages/engine/test/events/sufNewKeys.test.ts"
+  ]
+ },
+ "2.29": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/filter.ts"
+  ],
+  "note": "A location filter's [filter] (the unit on the hex) is implemented and used by shipped content, but has no test of its own."
+ },
+ "2.30": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "2.31": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/shroudWml.test.ts"
+  ]
+ },
+ "2.32": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "2.33": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "2.34": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "2.35": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts",
+   "packages/engine/test/actions/undo.test.ts",
+   "packages/engine/test/actions/victory.test.ts"
+  ]
+ },
+ "2.36": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/events/captureVillageAndRecall.test.ts"
+  ],
+  "note": "side= works; [filter_side] is not supported (logged as a no-op)."
+ },
+ "2.37": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/captureVillageAndRecall.test.ts"
+  ]
+ },
+ "2.38": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainBuilder.test.ts",
+   "packages/renderer/test/terrain/terrainGraphicsRules.real.test.ts",
+   "apps/web/scripts/image-golden.mjs"
+  ]
+ },
+ "2.39": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainGraphicsRules.test.ts",
+   "packages/renderer/test/terrain/terrainRotationGeometry.test.ts"
+  ]
+ },
+ "2.40": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainBuilder.test.ts"
+  ],
+  "note": "Variants are picked by upstream's location hash (get_noise), bit-exact."
+ },
+ "2.41": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainGraphicsRules.test.ts"
+  ]
+ },
+ "2.42": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/src/terrain/terrainBuilder.ts",
+   "apps/web/scripts/image-golden.mjs"
+  ],
+  "note": "Seeded by the location hash, so the same on every load; checked against upstream's rendering by the image goldens."
+ },
+ "2.43": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainBuilder.test.ts"
+  ]
+ },
+ "2.44": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/image-golden.mjs",
+   "apps/web/scripts/board-screenshots.mjs"
+  ]
+ },
+ "2.45": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainBuilder.test.ts",
+   "packages/renderer/test/terrain/terrainGraphicsRules.real.test.ts"
+  ]
+ },
+ "2.46": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/minimap.test.ts",
+   "apps/web/scripts/minimap-camera-playthrough.mjs"
+  ]
+ },
+ "2.47": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/help-playthrough.mjs",
+   "packages/ui/src/help/generators/terrains.ts"
+  ]
+ },
+ "2.48": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/help/helpWorld.ts"
+  ],
+  "note": "The help hides terrains marked hide_help; nothing else about hidden terrains (shown as their alias) is ported."
+ },
+ "2.49": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/renderer/test/mapItems.test.ts"
+  ]
+ },
+ "2.50": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.51": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/engine/test/actions/synced.test.ts"
+  ]
+ },
+ "2.52": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.53": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/mapItems.test.ts",
+   "packages/renderer/test/terrain/terrainBuilder.test.ts"
+  ]
+ },
+ "2.54": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/todWml.test.ts",
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "3.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "3.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "3.3": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/build-campaign-images.mjs",
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ],
+  "note": "Resolved through the binary paths when the data is built; the campaign check fails on any missing image."
+ },
+ "3.4": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts",
+   "packages/renderer/test/animation/sounds.test.ts",
+   "packages/ui/src/help/generators/units.ts"
+  ],
+  "note": "usage= and die_sound= are tested; zoc=, hide_help= and do_not_list= are implemented but untested."
+ },
+ "3.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "3.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts",
+   "packages/engine/test/events/objectWml.test.ts",
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "3.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "3.8": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/Unit.ts"
+  ],
+  "note": "gender= and random_gender= are implemented but untested."
+ },
+ "3.9": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts",
+   "packages/engine/src/model/UnitTypeDatabase.ts"
+  ],
+  "note": "Trait pools and num_traits= come from the race and are tested; its name generators are not used (3.10)."
+ },
+ "3.10": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/model/UnitTypeDatabase.ts"
+  ],
+  "note": "Units get no random names. The random draws naming takes upstream are made, so replays stay in step, but no name is generated."
+ },
+ "3.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "3.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts",
+   "packages/engine/test/actions/move.test.ts"
+  ]
+ },
+ "3.13": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts"
+  ]
+ },
+ "3.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts",
+   "packages/engine/test/actions/combat.test.ts"
+  ]
+ },
+ "3.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "3.16": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/vision.ts"
+  ],
+  "note": "Jamming is implemented but no test covers it."
+ },
+ "3.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/engine/test/actions/illumination.test.ts"
+  ]
+ },
+ "3.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "3.19": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/AttackDialog.svelte",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
+ },
+ "3.20": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/ai/default/attackAnalysis.ts"
+  ],
+  "note": "The AI weighs attacks by attack_weight=; defense_weight= and the best-weapon display are not tested."
+ },
+ "3.21": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "accuracy= and parry= enter the chance to hit, but no test covers them."
+ },
+ "3.22": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/UnitType.ts",
+   "packages/engine/src/actions/combat.ts"
+  ],
+  "note": "movement_used= and attacks_used= are read and filterable but not applied: an attack always costs one attack and ends movement."
+ },
+ "3.23": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/unitCanAct.test.ts"
+  ]
+ },
+ "3.24": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "3.25": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "For add-ons; removed upstream (Dead Water 6 only mentions it in a comment)."
+ },
+ "3.26": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "3.27": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/help/generators/units.ts"
+  ],
+  "note": "Shown in the help unit pages; untested."
+ },
+ "3.28": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/help-playthrough.mjs"
+  ]
+ },
+ "3.29": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "3.30": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ],
+  "note": "The formulas are upstream's and tested, but the constants are fixed, not read from [game_config] (see 1.43)."
+ },
+ "3.31": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/captureVillageAndRecall.test.ts",
+   "packages/engine/test/model/gameBoardIntegration.test.ts"
+  ]
+ },
+ "3.32": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "Units are found by id throughout; what happens to a duplicate id is untested."
+ },
+ "3.33": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/model/Unit.test.ts",
+   "packages/engine/test/actions/combat.test.ts"
+  ],
+  "note": "poisoned, slowed, petrified and guardian are tested; unhealable and invulnerable are implemented but untested."
+ },
+ "3.34": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ],
+  "note": "An occupied hex is not overwritten unless overwrite=yes, and x=recall goes to the recall list; the other placement= modes follow the same code."
+ },
+ "3.35": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts",
+   "packages/engine/test/model/Unit.test.ts"
+  ]
+ },
+ "3.36": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "3.37": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/unitOverlays.test.ts",
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "3.38": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "3.39": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts",
+   "apps/web/scripts/shared-tags-playthrough.mjs"
+  ]
+ },
+ "3.40": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/unitOverlays.test.ts"
+  ]
+ },
+ "3.41": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/playback.test.ts",
+   "packages/renderer/test/animation/frame.test.ts"
+  ]
+ },
+ "3.42": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/teamColor.test.ts",
+   "apps/web/scripts/build-team-colors.mjs"
+  ]
+ },
+ "3.43": {
+  "status": "missing",
+  "evidence": [
+   "apps/web/scripts/build-scenario-snapshot.mjs"
+  ],
+  "note": "Bug: copied into each scenario but never applied. Dead Water's Cuttle Fish cannot advance to Kraken; OPP 2-4's changed recruit costs (Peasant 16, not 8), and the HttT, DiD, EI and SotBE changes, do not happen."
+ },
+ "3.44": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "3.45": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported (upstream defines it in wml-tags.lua); no shipped campaign uses it."
+ },
+ "3.46": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/events/miscWml.ts",
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "3.47": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts",
+   "packages/engine/test/events/captureVillageAndRecall.test.ts"
+  ]
+ },
+ "3.48": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported (upstream defines them in wml-tags.lua); no shipped campaign uses them."
+ },
+ "3.49": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "3.50": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/help-playthrough.mjs",
+   "packages/ui/src/help/generators/units.ts"
+  ]
+ },
+ "4.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts",
+   "packages/engine/test/pathfind/pathfindRealMap.test.ts"
+  ]
+ },
+ "4.2": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts",
+   "packages/engine/test/actions/move.test.ts"
+  ]
+ },
+ "4.3": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts"
+  ]
+ },
+ "4.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts"
+  ],
+  "note": "As upstream: a hex is entered only with enough movement left (upstream has no \"always one hex\" rule)."
+ },
+ "4.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts",
+   "packages/engine/test/pathfind/astar.test.ts"
+  ]
+ },
+ "4.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts",
+   "packages/engine/test/pathfind/reachableHexesSynthetic.test.ts"
+  ]
+ },
+ "4.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts",
+   "packages/engine/test/pathfind/reachableHexesSynthetic.test.ts",
+   "packages/engine/test/pathfind/markRoute.test.ts"
+  ]
+ },
+ "4.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts",
+   "packages/renderer/test/unitOverlays.test.ts"
+  ]
+ },
+ "4.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts",
+   "packages/engine/test/pathfind/reachableHexesSynthetic.test.ts"
+  ]
+ },
+ "4.10": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/astar.test.ts",
+   "packages/engine/test/pathfind/pathfindRealMap.test.ts"
+  ]
+ },
+ "4.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/reachableHexesSynthetic.test.ts",
+   "packages/engine/test/pathfind/pathfindRealMap.test.ts"
+  ]
+ },
+ "4.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/markRoute.test.ts",
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "4.13": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts",
+   "apps/web/scripts/movement-orders-playthrough.mjs"
+  ]
+ },
+ "4.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveFog.test.ts",
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "4.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveSequence.test.ts",
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "4.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveFog.test.ts",
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "4.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts",
+   "packages/engine/test/events/captureVillageAndRecall.test.ts"
+  ]
+ },
+ "4.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/teleportWml.test.ts"
+  ]
+ },
+ "4.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/teleport.test.ts"
+  ]
+ },
+ "4.20": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/teleport.test.ts"
+  ]
+ },
+ "4.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/teleportWml.test.ts",
+   "packages/engine/test/pathfind/teleport.test.ts"
+  ]
+ },
+ "4.22": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/teleport.test.ts"
+  ]
+ },
+ "4.23": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts",
+   "packages/engine/test/actions/moveSequence.test.ts"
+  ]
+ },
+ "4.24": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts"
+  ]
+ },
+ "4.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/captureVillageAndRecall.test.ts"
+  ],
+  "note": "Upstream has no unit-level capture restriction beyond [capture_village]'s own filter."
+ },
+ "4.26": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts",
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "4.27": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/cutsceneWml.ts"
+  ],
+  "note": "Implemented and used by shipped cutscenes, but no test of its own."
+ },
+ "4.28": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/ai/caMoveToTargets.test.ts",
+   "packages/engine/test/model/Unit.test.ts"
+  ]
+ },
+ "4.29": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "4.30": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "4.31": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "4.32": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "4.33": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "4.34": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/MoveType.ts"
+  ],
+  "note": "As upstream now, a slowed unit pays double movement cost (the catalogue's halved MP is the older rule); implemented, but no test."
+ },
+ "4.35": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts",
+   "packages/engine/test/actions/unitCanAct.test.ts"
+  ]
+ },
+ "4.36": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts"
+  ],
+  "note": "An attack ends the attacker's movement; see 4.37 for weapons that should not."
+ },
+ "4.37": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/model/UnitType.ts"
+  ],
+  "note": "movement_used= is read but not applied (see 3.22)."
+ },
+ "4.38": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/teleport.test.ts",
+   "packages/engine/test/actions/undo.test.ts"
+  ]
+ },
+ "4.39": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/sharedTags.test.ts"
+  ],
+  "note": "Checked against upstream's own find_path.lua run in the game's Lua."
+ },
+ "4.40": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/flowWml.ts"
+  ],
+  "note": "Implemented; no test."
+ },
+ "4.41": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported; no shipped campaign uses it. The direction function it needs exists (relativeDirection)."
+ },
+ "4.42": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/hexGeometry.test.ts",
+   "packages/engine/test/pathfind/teleport.test.ts"
+  ]
+ },
+ "4.43": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "4.44": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/markRoute.test.ts"
+  ],
+  "note": "As upstream, the route shows the turn each step is reached in, not a movement cost."
+ },
+ "4.45": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts",
+   "apps/web/scripts/movement-orders-playthrough.mjs"
+  ]
+ },
+ "4.46": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/undo.test.ts",
+   "apps/web/scripts/undo-replay-playthrough.mjs"
+  ]
+ },
+ "4.47": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveFog.test.ts",
+   "packages/ui/src/sharedTags.test.ts"
+  ]
+ },
+ "4.48": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Upstream has no side-level movement restriction; nothing to port."
+ },
+ "4.49": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/pathfindRealMap.test.ts"
+  ],
+  "note": "Flying is movetype data (the real movetypes are loaded and tested)."
+ },
+ "4.50": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts"
+  ]
+ },
+ "4.51": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/playback.test.ts"
+  ]
+ },
+ "4.52": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "4.53": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "4.54": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts",
+   "packages/engine/test/pathfind/reachableHexesSynthetic.test.ts"
+  ]
+ },
+ "4.55": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "5.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/ui/src/movementOrders.test.ts",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
+ },
+ "5.2": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/AttackDialog.svelte",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
+ },
+ "5.3": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "The best-weapon choice is implemented but untested."
+ },
+ "5.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts"
+  ]
+ },
+ "5.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts"
+  ]
+ },
+ "5.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts",
+   "packages/engine/test/actions/combat.test.ts"
+  ]
+ },
+ "5.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/engine/test/actions/attackPrediction.test.ts"
+  ],
+  "note": "Defense-based chance to hit is tested; accuracy/parry (3.21) and the CTH specials (7.x) are not."
+ },
+ "5.8": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Clamped to 0-100 as upstream; untested."
+ },
+ "5.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts"
+  ]
+ },
+ "5.10": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ]
+ },
+ "5.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/engine/test/actions/illumination.test.ts"
+  ]
+ },
+ "5.12": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/gameConfig.ts"
+  ],
+  "note": "round_damage is ported, but no test pins it against upstream's rounding cases."
+ },
+ "5.13": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/gameConfig.ts"
+  ],
+  "note": "Part of round_damage; untested."
+ },
+ "5.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/ui/src/replay.test.ts"
+  ]
+ },
+ "5.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/engine/test/actions/attackSequence.test.ts"
+  ]
+ },
+ "5.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts",
+   "packages/engine/test/actions/combat.test.ts"
+  ]
+ },
+ "5.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "5.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "5.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "5.20": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combat.ts"
+  ],
+  "note": "One attack per attack action; attacks_used= is not applied (3.22). apply_to=max_attacks is covered in category 8."
+ },
+ "5.21": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts"
+  ],
+  "note": "See 4.37 for movement_used=."
+ },
+ "5.22": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts",
+   "packages/engine/src/events/pump.ts"
+  ],
+  "note": "Bug: the attack event fires, but [filter_attack]/[filter_second_attack] on an event are not evaluated, so such handlers run for any weapon (245 handlers in 73 shipped scenarios use them), and $weapon/$second_weapon are not set."
+ },
+ "5.23": {
+  "status": "missing",
+  "evidence": [],
+  "note": "attacker hits / defender hits (and unit hits) are never fired; HttT 4, 7 and 24, Legend of Wesmere and Sceptre of Fire 9 use them."
+ },
+ "5.24": {
+  "status": "missing",
+  "evidence": [],
+  "note": "attacker misses / defender misses are never fired."
+ },
+ "5.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/attackSequence.test.ts"
+  ]
+ },
+ "5.26": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/attackSequence.test.ts",
+   "packages/engine/test/events/suspendablePump.test.ts"
+  ]
+ },
+ "5.27": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/attackSequence.test.ts"
+  ]
+ },
+ "5.28": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/victory.test.ts"
+  ]
+ },
+ "5.29": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "5.30": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts",
+   "packages/engine/test/events/suspendablePump.test.ts"
+  ]
+ },
+ "5.31": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "5.32": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts",
+   "packages/engine/src/actions/combat.ts"
+  ],
+  "note": "Predicted and applied, but only the prediction is tested."
+ },
+ "5.33": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "Implemented (never below 1 HP), but untested."
+ },
+ "5.34": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combat.ts",
+   "packages/ui/src/save/wesnothSave.test.ts"
+  ],
+  "note": "unpoisonable is honoured and saved; no combat test."
+ },
+ "5.35": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "5.36": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts",
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Halved damage and doubled movement cost (4.34) are implemented; expiry and the damage halving are untested."
+ },
+ "5.37": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts",
+   "packages/engine/test/actions/unitCanAct.test.ts"
+  ],
+  "note": "[petrify] tags and what a petrified unit cannot do are tested; the petrifies special in combat is not."
+ },
+ "5.38": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts",
+   "packages/engine/src/actions/combat.ts"
+  ],
+  "note": "Implemented for the mainline special; only the prediction touches it in tests, and its [filter_opponent] is not evaluated (category 7)."
+ },
+ "5.39": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Implemented; no test."
+ },
+ "5.40": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts"
+  ],
+  "note": "Implemented; only the prediction touches it."
+ },
+ "5.41": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Implemented (offense only, both sides doubled); no test."
+ },
+ "5.42": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Implemented (offense only); no test."
+ },
+ "5.43": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Implemented; no test."
+ },
+ "5.44": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts"
+  ],
+  "note": "A geometric check of the mainline backstab condition, not its WFL [filter_opponent]."
+ },
+ "5.45": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts"
+  ]
+ },
+ "5.46": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/ui/src/plague.test.ts"
+  ]
+ },
+ "5.47": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts",
+   "packages/ui/src/CombatSimulationDialog.svelte"
+  ]
+ },
+ "5.48": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/attackPrediction.ts"
+  ],
+  "note": "The calculator handles drain, poison, slow, berserk, swarm and firststrike; only swarm has its own test."
+ },
+ "5.49": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/GameShell.svelte",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ],
+  "note": "Shown on every attack; the browser check attacks."
+ },
+ "5.50": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/playback.test.ts",
+   "packages/renderer/test/animation/unitAnimation.real.test.ts"
+  ]
+ },
+ "5.51": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/animationContext.test.ts"
+  ]
+ },
+ "5.52": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "An upstream test-suite tag, not used by campaigns."
+ },
+ "5.53": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Honoured in combat; untested."
+ },
+ "5.54": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Bug: the [disable] special is not implemented. The Deceiver's Gambit gives Eldred's baneblade [disable] active_on=offense, so he can attack with it; HttT uses it too."
+ },
+ "5.55": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/abilityEffects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "5.56": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/UnitType.ts",
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "set_alignment= changes the weapon's alignment, which combat uses; untested."
+ },
+ "5.57": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/statistics/statistics.test.ts",
+   "packages/ui/src/statistics.test.ts"
+  ]
+ },
+ "6.1": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/SidePanel.svelte",
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Abilities are listed and act; apply_to=new_ability/remove_ability are implemented but untested."
+ },
+ "6.2": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/SidePanel.svelte",
+   "apps/web/scripts/help-playthrough.mjs"
+  ],
+  "note": "name=, female_name= and description= are shown; name_inactive=/description_inactive= are not (6.27)."
+ },
+ "6.3": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ],
+  "note": "Read unconditionally (no filters on the ability evaluated), which is right for the mainline [heals]."
+ },
+ "6.4": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "poison=cured and poison=slowed (allies) are implemented; untested."
+ },
+ "6.5": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "The largest healer value applies, as upstream; untested."
+ },
+ "6.6": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "Any healer of the side whose turn it is heals, as upstream; untested."
+ },
+ "6.7": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "Implemented, read unconditionally; untested."
+ },
+ "6.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ]
+ },
+ "6.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ]
+ },
+ "6.10": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/illumination.test.ts"
+  ]
+ },
+ "6.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts",
+   "packages/engine/test/actions/moveFog.test.ts"
+  ]
+ },
+ "6.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveFog.test.ts"
+  ]
+ },
+ "6.13": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "6.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts"
+  ]
+ },
+ "6.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/teleport.test.ts"
+  ]
+ },
+ "6.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ]
+ },
+ "6.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts",
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ],
+  "note": "An ability's [filter] on its owner is evaluated (hides, leadership)."
+ },
+ "6.18": {
+  "status": "missing",
+  "evidence": [],
+  "note": "An ability's [filter_adjacent] is not evaluated (45 campaign files use [filter_adjacent], some on abilities)."
+ },
+ "6.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts",
+   "packages/engine/test/actions/moveFog.test.ts"
+  ]
+ },
+ "6.20": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/abilityEffects.ts",
+   "packages/engine/test/actions/illumination.test.ts"
+  ],
+  "note": "radius= (including all_map) works; adjacent= directions are not evaluated."
+ },
+ "6.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ]
+ },
+ "6.22": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported; no shipped content uses it."
+ },
+ "6.23": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/illumination.test.ts"
+  ],
+  "note": "cumulative= is honoured for illumination only."
+ },
+ "6.24": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ],
+  "note": "value= and multiply= are tested; add=, sub= and divide= are implemented but untested."
+ },
+ "6.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ]
+ },
+ "6.26": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported; 4 shipped campaign files use it."
+ },
+ "6.27": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Inactive abilities are not shown as such; 6 shipped campaign files set name_inactive=."
+ },
+ "6.28": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported; 2 shipped campaign files use it."
+ },
+ "6.29": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "apply_to=remove_ability is implemented but untested; the [experimental_filter_ability] form is missing."
+ },
+ "6.30": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "6.31": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "6.32": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/SidePanel.svelte",
+   "packages/engine/src/events/filter.ts"
+  ],
+  "note": "Any named ability is listed, and SUF ability= matches it."
+ },
+ "6.33": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/filter.ts"
+  ],
+  "note": "Events can filter on ability=; [experimental_filter_ability] is missing."
+ },
+ "6.34": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/illumination.test.ts"
+  ]
+ },
+ "6.35": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/sounds.test.ts",
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "6.36": {
+  "status": "partial",
+  "evidence": [
+   "packages/renderer/src/animation/unitAnimation.ts"
+  ],
+  "note": "leading_anim is parsed but not played during an assisted attack."
+ },
+ "6.37": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts",
+   "packages/engine/test/actions/illumination.test.ts"
+  ]
+ },
+ "6.38": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/actions/abilityEffects.ts"
+  ],
+  "note": "Abilities are found by a board scan that ignores fog, as upstream."
+ },
+ "6.39": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Leadership, resistance abilities and the mainline specials combine in upstream's order for mainline content; the general composition is not ported."
+ },
+ "6.40": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/help-playthrough.mjs"
+  ]
+ },
+ "6.41": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/help/generators/units.ts"
+  ],
+  "note": "See 3.27."
+ },
+ "7.1": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Specials apply only to combats using their weapon, but only those with a mainline id= (poison, slow, drains, petrifies, firststrike, berserk, swarm, marksman, magical, charge, backstab, heal_on_hit, plague) do anything; a campaign's own specials (Descent into Darkness's spells, parry, smoke, stagger and others in about 20 campaign files) are ignored. The generic special pipeline (units/abilities.cpp) is not ported."
+ },
+ "7.2": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts"
+  ],
+  "note": "Only the mainline [damage] specials (charge, backstab) apply; a [damage] with any other id is ignored."
+ },
+ "7.3": {
+  "status": "missing",
+  "evidence": [],
+  "note": "[filter_opponent] on a special is not evaluated."
+ },
+ "7.4": {
+  "status": "missing",
+  "evidence": [],
+  "note": "The generic [attacks] special is not applied (3 campaign files use it)."
+ },
+ "7.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts"
+  ]
+ },
+ "7.6": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Only marksman and magical; other [chance_to_hit] specials (18 campaign files) are ignored."
+ },
+ "7.7": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "7.8": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/attackPrediction.test.ts"
+  ],
+  "note": "Implemented; [filter_opponent] (undead immunity comes from resistance data, not the filter) is not evaluated; barely tested."
+ },
+ "7.9": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "7.10": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts"
+  ],
+  "note": "Implemented; barely tested."
+ },
+ "7.11": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "See 5.32."
+ },
+ "7.12": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "See 5.36."
+ },
+ "7.13": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "See 5.37."
+ },
+ "7.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/ui/src/plague.test.ts"
+  ]
+ },
+ "7.15": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/abilityEffects.ts"
+  ],
+  "note": "See 5.55."
+ },
+ "7.16": {
+  "status": "missing",
+  "evidence": [],
+  "note": "See 5.54."
+ },
+ "7.17": {
+  "status": "missing",
+  "evidence": [],
+  "note": "[filter_self] on a special is not evaluated."
+ },
+ "7.18": {
+  "status": "missing",
+  "evidence": [],
+  "note": "[filter_opponent] on a special is not evaluated."
+ },
+ "7.19": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not evaluated."
+ },
+ "7.20": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not evaluated."
+ },
+ "7.21": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts"
+  ],
+  "note": "Backstab's condition is a hand-written geometric check; [filter_adjacent] itself is not evaluated."
+ },
+ "7.22": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Hard-wired per mainline special (charge is both, backstab self); apply_to= is not read."
+ },
+ "7.23": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Hard-wired per mainline special (marksman, charge, backstab on offense); active_on= is not read."
+ },
+ "7.24": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not evaluated for specials."
+ },
+ "7.25": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ],
+  "note": "Evaluated for abilities (steadfast), not for specials."
+ },
+ "7.26": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported."
+ },
+ "7.27": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/UnitType.ts"
+  ],
+  "note": "Implemented (append/replace, specials_list=); untested."
+ },
+ "7.28": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/UnitType.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "7.29": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "7.30": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/AttackDialog.svelte",
+   "packages/ui/src/SidePanel.svelte"
+  ],
+  "note": "Specials are named; whether one is active is not shown (name_inactive=)."
+ },
+ "7.31": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/help/generators/units.ts"
+  ],
+  "note": "See 3.27."
+ },
+ "7.32": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/attackPrediction.ts"
+  ],
+  "note": "Combined as upstream for mainline specials; untested."
+ },
+ "7.33": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/attackPrediction.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "7.34": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/attackPrediction.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "7.35": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Implemented for the two mainline specials; untested together."
+ },
+ "7.36": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts"
+  ],
+  "note": "See 5.48."
+ },
+ "7.37": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/AttackDialog.svelte",
+   "packages/engine/src/model/UnitType.ts"
+  ],
+  "note": "A custom special is listed and weapon filters match it (special_id=), but it has no effect in combat."
+ },
+ "7.38": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "7.39": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Defender-side mainline specials apply in retaliation; untested, and apply_to=/active_on= are not read generically."
+ },
+ "8.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts",
+   "packages/ui/src/SidePanel.svelte"
+  ]
+ },
+ "8.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "8.3": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "8.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "8.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ],
+  "note": "Trait data through the same apply_to=attack code as strong."
+ },
+ "8.10": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.11": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "The healthy flag is applied and read by healing; untested."
+ },
+ "8.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.13": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combat.ts"
+  ],
+  "note": "The unpoisonable/unplagueable/undrainable statuses are honoured; untested."
+ },
+ "8.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ],
+  "note": "turn and scenario are tested; forever and level follow the same code."
+ },
+ "8.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.20": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Unit.test.ts",
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "8.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts",
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.22": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.23": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.24": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts",
+   "packages/engine/test/events/objectWml.test.ts"
+  ],
+  "note": "increase=, increase_total= and heal_full= are tested; set= and violate_maximum= are implemented but untested."
+ },
+ "8.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.26": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.27": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.28": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.29": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.30": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.31": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.32": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.33": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ],
+  "note": "Damage is tested through strong; attacks, accuracy and parry follow the same code, untested."
+ },
+ "8.34": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts",
+   "packages/engine/src/model/UnitType.ts"
+  ],
+  "note": "set_type= is tested; set_name=, set_description=, set_range= and set_icon= are implemented (Liberty 1's Baldras uses them) but untested."
+ },
+ "8.35": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/UnitType.ts"
+  ],
+  "note": "Changed by the effect but not applied in combat (3.22)."
+ },
+ "8.36": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/UnitType.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.37": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/UnitType.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.38": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.39": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.40": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.41": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.42": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.43": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts",
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.44": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.45": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.46": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.47": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.48": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.49": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "A no-op: a unit's own animations from effects are not modelled (15 shipped campaign and core files use apply_to=new_animation)."
+ },
+ "8.50": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Bug: the image mods are stored on the unit but never drawn."
+ },
+ "8.51": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts",
+   "packages/renderer/test/unitOverlays.test.ts"
+  ],
+  "note": "The effect sets the ellipse, which the board draws; the effect itself is untested."
+ },
+ "8.52": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Bug: the halo is stored on the unit but not passed to the board, so it is not drawn."
+ },
+ "8.53": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Overlays from the effect are drawn; untested."
+ },
+ "8.54": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.55": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.56": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.57": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.58": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.59": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "apps/web/scripts/phase24-playthrough.mjs"
+  ]
+ },
+ "8.60": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts",
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.61": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.62": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.63": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Bug: the advance event is never fired (14 shipped campaign files use advance or post advance: HttT, TSG, TDG, Dusk of Dawn...)."
+ },
+ "8.64": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Bug: the post advance event is never fired."
+ },
+ "8.65": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.66": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts",
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "8.67": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "8.68": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "advance= is implemented; untested."
+ },
+ "8.69": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "8.70": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "8.71": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "See 2.10."
+ },
+ "8.72": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.73": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "9.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/gameBoardIntegration.test.ts",
+   "packages/engine/test/snapshot/gameBoardSnapshot.test.ts"
+  ]
+ },
+ "9.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/teamController.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.3": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/gameBoardIntegration.test.ts"
+  ]
+ },
+ "9.4": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "Each canrecruit unit recruits from its own keep; untested."
+ },
+ "9.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/teamEnemy.test.ts",
+   "packages/engine/test/actions/victory.test.ts"
+  ]
+ },
+ "9.6": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/ai/wmlActions.ts"
+  ],
+  "note": "team_name= is applied, but only for one numeric side=. Bug: [modify_side] reads side= as one number, so a list (side=2,3; about 1,000 uses in shipped scenarios) or a missing side= with [filter_side] falls back to side 1, the player: HttT 42 gives the player the orcs' income and goblin recruit list, and the [ai] changes meant for enemy sides go to the player's side."
+ },
+ "9.7": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "apps/web/scripts/build-scenario-snapshot.mjs"
+  ]
+ },
+ "9.8": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/snapshot/gameBoardSnapshot.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.10": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.11": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "Gold may go below zero, as upstream; untested, and the status bar shows it without a separate warning."
+ },
+ "9.12": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "Implemented; no test of its own."
+ },
+ "9.13": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "Implemented; no test of its own."
+ },
+ "9.14": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/ai/wmlActions.ts"
+  ],
+  "note": "gold= and income= are applied; village_gold= and village_support= are not. Bug: [modify_side] reads side= as one number, so a list (side=2,3; about 1,000 uses in shipped scenarios) or a missing side= with [filter_side] falls back to side 1, the player: HttT 42 gives the player the orcs' income and goblin recruit list, and the [ai] changes meant for enemy sides go to the player's side."
+ },
+ "9.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "9.16": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "packages/engine/test/model/teamController.test.ts"
+  ]
+ },
+ "9.17": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.18": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.20": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "9.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/deadWaterPrestartEvent.test.ts"
+  ]
+ },
+ "9.22": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/deadWaterPrestartEvent.test.ts",
+   "packages/engine/test/snapshot/runScenarioStartupEvents.test.ts"
+  ]
+ },
+ "9.23": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "Fired in upstream's order; no test checks it."
+ },
+ "9.24": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/turn-end-playthrough.mjs",
+   "packages/ui/src/sharedTags.test.ts"
+  ]
+ },
+ "9.25": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "new turn and turn end are fired; no test checks them."
+ },
+ "9.26": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/turn-end-playthrough.mjs"
+  ],
+  "note": "side N turn M names are tested; turn= on an event is matched by the pump."
+ },
+ "9.27": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/sharedTags.test.ts"
+  ]
+ },
+ "9.28": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "9.29": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "packages/ui/src/movementOrders.test.ts"
+  ],
+  "note": "Rest and healer healing are tested and shown at each side's turn start; village healing, poison and their order are not tested."
+ },
+ "9.30": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.31": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/Unit.ts"
+  ],
+  "note": "Cleared at the turn start; untested."
+ },
+ "9.32": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/save/naming.test.ts",
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "9.33": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/victory.test.ts"
+  ]
+ },
+ "9.34": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/victory.test.ts"
+  ]
+ },
+ "9.35": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/endlevel.test.ts"
+  ]
+ },
+ "9.36": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/GameShell.svelte",
+   "packages/ui/src/ScenarioEndOverlay.svelte"
+  ],
+  "note": "linger_mode=no is honoured (a cutscene goes straight on), but lingering itself is missing: the end screen covers the board and cannot be dismissed to look around."
+ },
+ "9.37": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/carryover.test.ts"
+  ]
+ },
+ "9.38": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectives.test.ts"
+  ]
+ },
+ "9.39": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "9.40": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "9.41": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported (upstream defines it in wml-conditionals.lua); no shipped campaign uses it."
+ },
+ "9.42": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "9.43": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "9.44": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/engine/src/events/sideFilter.ts"
+  ],
+  "note": "[enemy_of] is tested; [allied_with] and [has_ally] are implemented but untested."
+ },
+ "9.45": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/board-screenshots.mjs",
+   "apps/web/scripts/image-golden.mjs"
+  ]
+ },
+ "9.46": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/statusTable.test.ts",
+   "packages/ui/src/ScenarioEndOverlay.svelte"
+  ]
+ },
+ "9.47": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/TopBar.svelte",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
+ },
+ "9.48": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "9.49": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/ai/wmlActions.ts"
+  ],
+  "note": "[modify_side] ignores fog=, shroud=, share_vision=, hidden=, color=, flag= and side_name= (about 140 uses in shipped scenarios)."
+ },
+ "9.50": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "Hidden sides are left out of the status table and side lists, but [modify_side] hidden= (44 uses) is ignored."
+ },
+ "9.51": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/statistics/statistics.test.ts",
+   "packages/ui/src/statistics.test.ts"
+  ]
+ },
+ "9.52": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "9.53": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "packages/ui/src/aiSteps.test.ts",
+   "apps/web/scripts/ai-turn-playthrough.mjs"
+  ]
+ },
+ "9.54": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/ai/manager.test.ts",
+   "packages/lua-bridge/test/ai/microAi.test.ts"
+  ]
+ },
+ "9.55": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/achievements.test.ts",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
+ },
+ "10.1": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "10.2": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/RecruitDialog.svelte",
+   "apps/web/scripts/undo-replay-playthrough.mjs"
+  ]
+ },
+ "10.3": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "10.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/reachableHexesSynthetic.test.ts",
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "10.5": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "No hex is offered, so nothing is recruited; untested."
+ },
+ "10.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "10.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "10.8": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/recruit.ts"
+  ],
+  "note": "Fired after placement, as upstream; no test checks it."
+ },
+ "10.9": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/recruit.ts"
+  ],
+  "note": "Fired before placement; untested."
+ },
+ "10.10": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "10.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "10.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "10.13": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "10.14": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/RecallDialog.svelte",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "10.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "10.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ],
+  "note": "Loyalty is a trait effect and stays with the unit."
+ },
+ "10.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/captureVillageAndRecall.test.ts"
+  ]
+ },
+ "10.18": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/recruit.ts"
+  ],
+  "note": "recall and prerecall are fired; untested."
+ },
+ "10.19": {
+  "status": "missing",
+  "evidence": [],
+  "note": "A side's [filter_recall] is kept in saves but not applied to what may be recalled."
+ },
+ "10.20": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "packages/engine/test/actions/carryover.test.ts"
+  ]
+ },
+ "10.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "10.22": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts",
+   "packages/engine/src/events/conditionalWml.ts"
+  ],
+  "note": "search_recall_list= works for [store_unit] and [have_unit]; untested."
+ },
+ "10.23": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/RecallDialog.svelte"
+  ],
+  "note": "The list scrolls; long lists come from the shipped campaigns' carryover."
+ },
+ "10.24": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/playback.test.ts",
+   "packages/ui/src/GameShell.svelte"
+  ]
+ },
+ "10.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/undo.test.ts",
+   "apps/web/scripts/undo-replay-playthrough.mjs"
+  ],
+  "note": "A recruit with random traits cannot be undone, as upstream; a recall can."
+ },
+ "10.26": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "Affordability reads the side's current gold every time."
+ },
+ "10.27": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Upstream's recruit dialog does not show the upkeep change either (unit_recruit.cpp)."
+ },
+ "10.28": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/replay.test.ts",
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "10.29": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/recruit.ts"
+  ],
+  "note": "prerecruit fires with the leader as second unit; untested."
+ },
+ "10.30": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/ai/recruitment.test.ts"
+  ]
+ },
+ "11.1": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/build-campaigns.mjs",
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "11.2": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "11.3": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "11.4": {
+  "status": "missing",
+  "evidence": [],
+  "note": "The legacy difficulties=/difficulty_descriptions= syntax is not read; no shipped campaign uses it."
+ },
+ "11.5": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/campaigns.test.ts"
+  ],
+  "note": "Every scenario of every shipped campaign opens without errors."
+ },
+ "11.6": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "11.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/endlevel.test.ts"
+  ]
+ },
+ "11.8": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs",
+   "packages/ui/src/Outro.svelte"
+  ]
+ },
+ "11.9": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/ScenarioEndOverlay.svelte"
+  ],
+  "note": "The end screen shows the turn and gold, not upstream's carryover report."
+ },
+ "11.10": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectives.test.ts",
+   "packages/ui/src/sharedTags.test.ts"
+  ]
+ },
+ "11.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectives.test.ts"
+  ]
+ },
+ "11.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "11.13": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/ObjectivesDialog.svelte",
+   "packages/ui/src/gameSession.ts"
+  ]
+ },
+ "11.14": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/GameShell.svelte",
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ]
+ },
+ "11.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/story/storyParser.test.ts",
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ]
+ },
+ "11.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/victory.test.ts"
+  ]
+ },
+ "11.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "11.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/musicList.test.ts",
+   "packages/ui/src/music.test.ts"
+  ]
+ },
+ "11.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "11.20": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/snapshot/runScenarioStartupEvents.test.ts",
+   "packages/engine/test/model/gameBoardIntegration.test.ts"
+  ]
+ },
+ "11.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/carryover.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "11.22": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "11.23": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/build-scenario-snapshot.mjs",
+   "packages/ui/src/campaigns.test.ts"
+  ],
+  "note": "A campaign's [event]s, [lua] and resources are added to each of its scenarios when the data is built."
+ },
+ "11.24": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/build-scenario-snapshot.mjs",
+   "packages/ui/src/aiTestScenarios.test.ts"
+  ],
+  "note": "Upstream's AI [test] scenarios are built and played."
+ },
+ "11.25": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Multiplayer is out of scope."
+ },
+ "11.26": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Add-on modifications are out of scope; a campaign's [resource]/[load_resource] is merged when the data is built (1.41)."
+ },
+ "11.27": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported; no shipped campaign has [options] (only the WL_Test fixture)."
+ },
+ "11.28": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "11.29": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/save/naming.test.ts",
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "11.30": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/measure-load.mjs",
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ]
+ },
+ "11.31": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ],
+  "note": "Any scenario opens directly by URL (?scenario=)."
+ },
+ "11.32": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/build-campaigns.mjs",
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "11.33": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/endlevel.test.ts",
+   "packages/ui/src/Outro.svelte"
+  ]
+ },
+ "11.34": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs",
+   "apps/web/scripts/build-scenario-snapshot.mjs"
+  ]
+ },
+ "11.35": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "11.36": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "11.37": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/ScenarioEndOverlay.svelte"
+  ],
+  "note": "Defeat offers only Quit to Menu; restarting the scenario or loading a save is done from the menu."
+ },
+ "11.38": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs",
+   "apps/web/scripts/replay-from-menu-playthrough.mjs"
+  ]
+ },
+ "12.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts",
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "12.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.3": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/events/pump.ts"
+  ],
+  "note": "A comma list of names registers the handler for each; used throughout shipped content."
+ },
+ "12.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/flowWml.test.ts"
+  ]
+ },
+ "12.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/events/pump.ts",
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.7": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/events/pump.ts"
+  ],
+  "note": "Bug: not evaluated -- a handler with them runs for any weapon (5.22)."
+ },
+ "12.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/events/pump.ts",
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.9": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/events/pump.ts"
+  ],
+  "note": "Not evaluated on an event (such a handler would run for every side); no shipped scenario uses it there."
+ },
+ "12.10": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/ai/aspect.test.ts",
+   "apps/web/scripts/turn-end-playthrough.mjs"
+  ],
+  "note": "turn N event names work; turn_at= is read where upstream reads it."
+ },
+ "12.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/suspendablePump.test.ts",
+   "packages/ui/src/sharedTags.test.ts"
+  ],
+  "note": "[primary_attack]/[secondary_attack] are not passed on (12.7)."
+ },
+ "12.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "12.13": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "12.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveSequence.test.ts",
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveFog.test.ts"
+  ]
+ },
+ "12.16": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "enter hex / exit hex are fired at each step and can stop the move; untested."
+ },
+ "12.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveSequence.test.ts"
+  ]
+ },
+ "12.18": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/sharedTags.test.ts"
+  ]
+ },
+ "12.19": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "Fired; untested."
+ },
+ "12.20": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "12.21": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "12.22": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/carryover.test.ts",
+   "packages/ui/src/gameSession.ts"
+  ]
+ },
+ "12.23": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts",
+   "packages/engine/test/events/supportWml.test.ts"
+  ],
+  "note": "$unit/$second_unit/$x1.. are bound; $weapon/$second_weapon are not, and $damage_inflicted is only set by [harm_unit] since the hit events are missing (5.23)."
+ },
+ "12.24": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/flowWml.test.ts"
+  ]
+ },
+ "12.26": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/flowWml.test.ts"
+  ]
+ },
+ "12.27": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/flowWml.test.ts"
+  ]
+ },
+ "12.28": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/flowWml.test.ts"
+  ]
+ },
+ "12.29": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/sufNewKeys.test.ts",
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "12.30": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/conditionalWml.ts"
+  ],
+  "note": "Implemented (count=, search_recall_list=); no test of its own."
+ },
+ "12.31": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/conditionalWml.ts"
+  ],
+  "note": "Implemented; no test of its own."
+ },
+ "12.32": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/flowWml.test.ts"
+  ]
+ },
+ "12.33": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/events/conditionalWml.ts"
+  ]
+ },
+ "12.34": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "12.35": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported (a debugging tag); no shipped campaign uses it."
+ },
+ "12.36": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.37": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "All of upstream's operations are implemented; only add= and multiply= appear in tests."
+ },
+ "12.38": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/randVariable.test.ts"
+  ]
+ },
+ "12.39": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "join, string_length, round and the rest are implemented; untested. (Upstream has no to_upper.)"
+ },
+ "12.40": {
+  "status": "missing",
+  "evidence": [],
+  "note": "formula= on [set_variable] is skipped (1.29)."
+ },
+ "12.41": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "12.42": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/variables.test.ts"
+  ]
+ },
+ "12.43": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/variables.test.ts",
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "12.44": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/flowWml.test.ts"
+  ]
+ },
+ "12.45": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "packages/engine/test/events/variables.test.ts"
+  ]
+ },
+ "12.46": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.47": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ],
+  "note": "advance= is untested (8.68)."
+ },
+ "12.48": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ],
+  "note": "[store_gold] has no test of its own (9.13)."
+ },
+ "12.49": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "12.50": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/todWml.test.ts"
+  ]
+ },
+ "12.51": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "12.52": {
+  "status": "missing",
+  "evidence": [],
+  "note": "See 3.48."
+ },
+ "12.53": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/flowWml.ts"
+  ],
+  "note": "[store_reachable_locations] is implemented but untested; [store_relative_direction] is missing (4.41)."
+ },
+ "12.54": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "12.55": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported (needed for multiplayer sync); no shipped campaign uses it."
+ },
+ "12.56": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "12.57": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/sharedTags.test.ts"
+  ]
+ },
+ "12.58": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts",
+   "packages/engine/test/events/messageChoices.test.ts"
+  ]
+ },
+ "12.59": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.60": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts",
+   "packages/engine/test/actions/undo.test.ts"
+  ]
+ },
+ "12.61": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "Stops a move at enter/exit hex; untested."
+ },
+ "12.62": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "12.63": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/engine/test/events/sufNewKeys.test.ts"
+  ]
+ },
+ "12.64": {
+  "status": "done",
+  "evidence": [
+   "packages/lua-bridge/test/runtime.test.ts",
+   "packages/ui/src/sharedTags.test.ts"
+  ]
+ },
+ "12.65": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts",
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "[print] is tested and [wml_message] logs; [chat] is missing (no shipped campaign uses it)."
+ },
+ "12.66": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "A debugging tool (the gamestate inspector); no shipped campaign uses it."
+ },
+ "12.67": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/events/pump.ts"
+  ],
+  "note": "A handler does not re-trigger itself while running, as upstream."
+ },
+ "12.68": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/suspendablePump.test.ts",
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "12.69": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "packages/ui/src/replay.test.ts"
+  ]
+ },
+ "12.70": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/sufNewKeys.test.ts",
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "12.71": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "12.72": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/filterVisionLocation.test.ts"
+  ]
+ },
+ "12.73": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/filter.ts"
+  ],
+  "note": "Implemented for units; no test of its own."
+ },
+ "12.74": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/filter.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "12.75": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/filterVisionLocation.test.ts"
+  ]
+ },
+ "12.76": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/filter.ts",
+   "packages/engine/test/events/sufNewKeys.test.ts"
+  ],
+  "note": "has_weapon= is tested; [has_attack] is implemented but untested."
+ },
+ "12.77": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/filter.ts"
+  ],
+  "note": "Implemented in unit filters; untested."
+ },
+ "12.78": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "12.79": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.80": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/sufNewKeys.test.ts",
+   "packages/engine/test/events/shroudWml.test.ts"
+  ]
+ },
+ "13.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "13.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "13.3": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "13.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "13.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveFog.test.ts"
+  ]
+ },
+ "13.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts",
+   "packages/engine/test/events/shroudWml.test.ts"
+  ]
+ },
+ "13.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/shroudWml.test.ts"
+  ]
+ },
+ "13.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/shroudWml.test.ts"
+  ]
+ },
+ "13.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/shroudWml.test.ts"
+  ]
+ },
+ "13.10": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/vision.ts"
+  ],
+  "note": "See 3.16."
+ },
+ "13.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "13.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts",
+   "packages/engine/test/actions/moveFog.test.ts"
+  ]
+ },
+ "13.13": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveFog.test.ts",
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "13.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveFog.test.ts"
+  ]
+ },
+ "13.15": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/actions/undo.ts"
+  ],
+  "note": "Delayed shroud updates (and the Update Shroud command) are not ported."
+ },
+ "13.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts",
+   "packages/renderer/test/minimap.test.ts"
+  ]
+ },
+ "13.17": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/fogShroud.test.ts"
+  ]
+ },
+ "13.18": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "Deviation: the port shows a fogged village's last-known owner; upstream (display::get_flag) shows the current owner's flag unless that owner is an enemy, and then none."
+ },
+ "13.19": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/fogShroud.test.ts"
+  ]
+ },
+ "13.20": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/filterVisionLocation.test.ts"
+  ]
+ },
+ "13.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "13.22": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/ai/context.ts"
+  ],
+  "note": "The AI weighs only enemies it can see; untested as a whole."
+ },
+ "13.23": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/vision.ts"
+  ],
+  "note": "Recomputed after moves, attacks, recruits and turn changes; after a [modify_unit] or [terrain] change it is untested."
+ },
+ "13.24": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "apply_to=movement/vision follow upstream's order; untested."
+ },
+ "13.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "13.26": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "Fog and shroud are cleared around the side's units before its first turn; untested."
+ },
+ "13.27": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ],
+  "note": "Upstream has no terrain vision bonus beyond vision costs, which are ported."
+ },
+ "13.28": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/teleport.test.ts"
+  ]
+ },
+ "13.29": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/minimap.test.ts"
+  ]
+ },
+ "14.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts",
+   "packages/renderer/test/todTint.test.ts"
+  ]
+ },
+ "14.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "14.3": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "14.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "14.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts"
+  ]
+ },
+ "14.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "14.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/illumination.test.ts"
+  ]
+ },
+ "14.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/todWml.test.ts",
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "14.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/todWml.test.ts",
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "14.10": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "14.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/todWml.test.ts",
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "14.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/todWml.test.ts"
+  ]
+ },
+ "14.13": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/todTint.test.ts",
+   "packages/renderer/test/animation/timeOfDay.test.ts"
+  ]
+ },
+ "14.14": {
+  "status": "missing",
+  "evidence": [
+   "packages/renderer/src/SnapshotBoard.ts"
+  ],
+  "note": "The whole board takes the global tint; a [time_area]'s hexes are not lit by their own schedule (their combat bonuses are right)."
+ },
+ "14.15": {
+  "status": "missing",
+  "evidence": [
+   "packages/renderer/src/SnapshotBoard.ts"
+  ],
+  "note": "Illuminated hexes are not drawn brighter (the combat bonus is right)."
+ },
+ "14.16": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/TopBar.svelte",
+   "packages/ui/src/SidePanel.svelte"
+  ]
+ },
+ "14.17": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Upstream has no schedule preview beyond the help."
+ },
+ "14.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts",
+   "packages/engine/test/events/todWml.test.ts"
+  ]
+ },
+ "14.19": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.ts",
+   "packages/ui/src/sounds.test.ts"
+  ],
+  "note": "A time of day's sound= plays as it begins."
+ },
+ "14.20": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/cutsceneWml.ts"
+  ],
+  "note": "A [color_adjust] beat tints the board over the time-of-day tint; untested."
+ },
+ "14.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "14.22": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/todTint.test.ts",
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "14.23": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/sounds.test.ts"
+  ]
+ },
+ "14.24": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "15.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/story/storyParser.test.ts",
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ]
+ },
+ "15.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/story/storyParser.test.ts",
+   "apps/web/scripts/story-screenshots.mjs"
+  ]
+ },
+ "15.3": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/story/storyParser.test.ts",
+   "apps/web/scripts/reference-story-screenshots.mjs"
+  ]
+ },
+ "15.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/story/storyParser.test.ts"
+  ]
+ },
+ "15.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/story/storyParser.test.ts",
+   "packages/ui/src/StoryViewer.svelte"
+  ]
+ },
+ "15.6": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/StoryViewer.svelte",
+   "apps/web/scripts/measure-story.mjs"
+  ]
+ },
+ "15.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/story/storyParser.test.ts"
+  ]
+ },
+ "15.8": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/GameShell.svelte",
+   "apps/web/scripts/audio-playthrough.mjs"
+  ]
+ },
+ "15.9": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/StoryViewer.svelte"
+  ],
+  "note": "As upstream, the text appears with the part and a click moves on."
+ },
+ "15.10": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/StoryViewer.svelte",
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ]
+ },
+ "15.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "15.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/message.test.ts",
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "15.13": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/message.test.ts",
+   "packages/engine/test/events/messageChoices.test.ts"
+  ]
+ },
+ "15.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/message.test.ts"
+  ]
+ },
+ "15.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/message.test.ts"
+  ]
+ },
+ "15.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/message.test.ts"
+  ]
+ },
+ "15.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/messageChoices.test.ts",
+   "packages/ui/src/GameShell.svelte"
+  ]
+ },
+ "15.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/messageChoices.test.ts",
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "15.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/messageChoices.test.ts"
+  ]
+ },
+ "15.20": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "15.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/messageChoices.test.ts",
+   "packages/ui/src/replay.test.ts"
+  ]
+ },
+ "15.22": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/messageChoices.test.ts",
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "15.23": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Upstream's [message] has no duration= (message.lua)."
+ },
+ "15.24": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/messageChoices.test.ts"
+  ]
+ },
+ "15.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/message.test.ts"
+  ]
+ },
+ "15.26": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/markup/pango.test.ts"
+  ]
+ },
+ "15.27": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/messageChoices.test.ts",
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "15.28": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/suspendablePump.test.ts",
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "15.29": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/story/storyParser.test.ts"
+  ]
+ },
+ "15.30": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/story/storyParser.ts"
+  ],
+  "note": "See 1.38."
+ },
+ "15.31": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/message.test.ts"
+  ]
+ },
+ "15.32": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/mobile-playthrough.mjs",
+   "apps/web/scripts/story-screenshots.mjs"
+  ]
+ },
+ "15.33": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Upstream keeps no dialogue history; its chat log is for multiplayer chat."
+ },
+ "15.34": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/i18n-playthrough.mjs",
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
+ },
+ "16.1": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/hexGeometry.test.ts",
+   "apps/web/scripts/image-golden.mjs"
+  ]
+ },
+ "16.2": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainBuilder.test.ts",
+   "packages/renderer/test/terrain/terrainGraphicsRules.test.ts"
+  ]
+ },
+ "16.3": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/board-screenshots.mjs",
+   "apps/web/scripts/image-golden.mjs"
+  ]
+ },
+ "16.4": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/teamColor.test.ts"
+  ]
+ },
+ "16.5": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/frame.test.ts",
+   "packages/renderer/test/animation/animationContext.test.ts"
+  ]
+ },
+ "16.6": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/unitOverlays.test.ts"
+  ]
+ },
+ "16.7": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/unitOverlays.test.ts"
+  ]
+ },
+ "16.8": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/src/SnapshotBoard.ts",
+   "apps/web/scripts/board-screenshots.mjs"
+  ]
+ },
+ "16.9": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/unitOverlays.test.ts"
+  ]
+ },
+ "16.10": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/unitOverlays.test.ts"
+  ]
+ },
+ "16.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts",
+   "apps/web/scripts/shared-tags-playthrough.mjs"
+  ]
+ },
+ "16.12": {
+  "status": "partial",
+  "evidence": [
+   "packages/renderer/test/mapItems.test.ts",
+   "packages/renderer/test/animation/playback.test.ts"
+  ],
+  "note": "Item halos and animation-frame halos are drawn; a unit's own halo= is not (8.52)."
+ },
+ "16.13": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/board-screenshots.mjs",
+   "apps/web/scripts/minimap-camera-playthrough.mjs"
+  ]
+ },
+ "16.14": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts",
+   "apps/web/scripts/movement-orders-playthrough.mjs"
+  ]
+ },
+ "16.15": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/movement-orders-playthrough.mjs"
+  ]
+ },
+ "16.16": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/movement-orders-playthrough.mjs"
+  ]
+ },
+ "16.17": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "16.18": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "16.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/markRoute.test.ts"
+  ]
+ },
+ "16.20": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "A debug-mode display in upstream; the port has no debug mode."
+ },
+ "16.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "apps/web/scripts/minimap-camera-playthrough.mjs"
+  ]
+ },
+ "16.22": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/renderer/test/mapItems.test.ts"
+  ]
+ },
+ "16.23": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "16.24": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/camera.test.ts",
+   "apps/web/scripts/minimap-camera-playthrough.mjs"
+  ]
+ },
+ "16.25": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/camera.test.ts",
+   "apps/web/scripts/minimap-camera-playthrough.mjs"
+  ]
+ },
+ "16.26": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/camera.test.ts",
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "16.27": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/cutsceneWml.ts"
+  ],
+  "note": "Implemented as a display beat; untested."
+ },
+ "16.28": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/cutsceneWml.ts"
+  ],
+  "note": "Implemented as a display beat; untested."
+ },
+ "16.29": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "16.30": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/cutsceneWml.ts"
+  ],
+  "note": "Implemented as a display beat; untested."
+ },
+ "16.31": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/minimap-camera-playthrough.mjs"
+  ]
+ },
+ "16.32": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/messageChoices.test.ts",
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "16.33": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/minimap.test.ts"
+  ]
+ },
+ "16.34": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/minimap-camera-playthrough.mjs"
+  ]
+ },
+ "16.35": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainBuilder.test.ts",
+   "packages/renderer/test/camera.test.ts"
+  ]
+ },
+ "16.36": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "A no-op, since the board redraws continuously; its side=/clear_shroud= (recomputing a side's shroud) is not applied."
+ },
+ "16.37": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "16.38": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/GameShell.svelte",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
+ },
+ "16.39": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "16.40": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/cutsceneWml.ts"
+  ],
+  "note": "See 14.20."
+ },
+ "16.41": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/measure-load.mjs"
+  ],
+  "note": "Image work was measured and moved off the main thread (Phase 28a); frame-rate budgets are Phase 28d's."
+ },
+ "16.42": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "The WebGL renderer redraws each frame by design; upstream's dirty-rectangle scheme does not apply."
+ },
+ "16.43": {
+  "status": "partial",
+  "evidence": [
+   "packages/renderer/src/images/compositor.ts",
+   "apps/web/scripts/image-golden.mjs"
+  ],
+  "note": "16 of upstream's 39 image functions are implemented (TC, RC, GS, FL, CROP, BLIT, MASK, O, SCALE*, TOD, HEXED...). The others draw the image unmodified with a warning, including ones shipped content uses: CS (192 uses), ROTATE (39), NO_TOD_SHIFT (26), XBRZ (10), G (9), CHAN (8), BLEND (6), BL (6), PAL, R, SWAP, BG."
+ },
+ "16.44": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/image-golden.mjs",
+   "packages/renderer/src/images/ImageCache.ts"
+  ]
+ },
+ "16.45": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/build-image-atlases.mjs"
+  ]
+ },
+ "16.46": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/mobile-playthrough.mjs"
+  ]
+ },
+ "16.47": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/minimap-camera-playthrough.mjs"
+  ]
+ },
+ "16.48": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainBuilder.deadwater.test.ts",
+   "apps/web/scripts/image-golden.mjs"
+  ]
+ },
+ "16.49": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/todTint.test.ts"
+  ]
+ },
+ "16.50": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/fogShroud.test.ts"
+  ]
+ },
+ "17.1": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "17.2": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "17.3": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "17.4": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "17.5": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "17.6": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs",
+   "apps/web/scripts/build-campaigns.mjs"
+  ]
+ },
+ "17.7": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/board-screenshots.mjs",
+   "apps/web/scripts/mobile-playthrough.mjs"
+  ]
+ },
+ "17.8": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "The port's game screen is its own responsive HTML layout, built to upstream's default theme; WML [theme]s are not interpreted."
+ },
+ "17.9": {
+  "status": "out-of-scope",
+  "evidence": [
+   "packages/engine/src/events/supportWml.ts"
+  ],
+  "note": "No themes (17.8); the tag is logged and skipped."
+ },
+ "17.10": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/TopBar.svelte",
+   "apps/web/scripts/keyboard-playthrough.mjs"
+  ]
+ },
+ "17.11": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "packages/ui/src/SidePanel.svelte"
+  ]
+ },
+ "17.12": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "17.13": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "packages/ui/src/SidePanel.svelte"
+  ]
+ },
+ "17.14": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "17.15": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "17.16": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "apps/web/scripts/help-playthrough.mjs"
+  ]
+ },
+ "17.17": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "17.18": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/TopBar.svelte",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
+ },
+ "17.19": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/keyboard-playthrough.mjs",
+   "apps/web/scripts/movement-orders-playthrough.mjs"
+  ]
+ },
+ "17.20": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/sharedTags.test.ts"
+  ]
+ },
+ "17.21": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/ContextMenu.svelte",
+   "apps/web/scripts/keyboard-playthrough.mjs"
+  ]
+ },
+ "17.22": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "17.23": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "17.24": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/commands.test.ts",
+   "apps/web/scripts/keyboard-playthrough.mjs"
+  ]
+ },
+ "17.25": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/hotkeys.test.ts",
+   "apps/web/scripts/phase24-playthrough.mjs"
+  ]
+ },
+ "17.26": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "17.27": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/turn-end-playthrough.mjs",
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "17.28": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/save-load-playthrough.mjs",
+   "apps/web/scripts/undo-replay-playthrough.mjs"
+  ],
+  "note": "Upstream's confirm_end_turn=no_moves question."
+ },
+ "17.29": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/sharedTags.test.ts",
+   "packages/ui/src/ObjectivesDialog.svelte"
+  ]
+ },
+ "17.30": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/statisticsView.test.ts",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
+ },
+ "17.31": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/unitList.test.ts",
+   "apps/web/scripts/phase24-playthrough.mjs"
+  ]
+ },
+ "17.32": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/RecruitDialog.svelte",
+   "packages/ui/src/RecallDialog.svelte",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "17.33": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/phase24-playthrough.mjs"
+  ]
+ },
+ "17.34": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/CombatSimulationDialog.svelte",
+   "packages/engine/test/actions/attackPrediction.test.ts"
+  ]
+ },
+ "17.35": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/CombatSimulationDialog.svelte"
+  ]
+ },
+ "17.36": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "17.37": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/help-playthrough.mjs"
+  ]
+ },
+ "17.38": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/phase24-playthrough.mjs"
+  ]
+ },
+ "17.39": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/SidePanel.svelte"
+  ]
+ },
+ "17.40": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs",
+   "apps/web/scripts/replay-from-menu-playthrough.mjs"
+  ]
+ },
+ "17.41": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/mobile-playthrough.mjs"
+  ]
+ },
+ "17.42": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/mobile-playthrough.mjs"
+  ]
+ },
+ "17.43": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/mobile-playthrough.mjs"
+  ],
+  "note": "The layout switches between desktop and phone by viewport, in place of theme resolutions."
+ },
+ "17.44": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/board-screenshots.mjs",
+   "apps/web/scripts/story-screenshots.mjs"
+  ],
+  "note": "Compared with upstream screenshots by eye; no automated check."
+ },
+ "17.45": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/i18n/audit.test.ts",
+   "apps/web/scripts/i18n-playthrough.mjs"
+  ]
+ },
+ "17.46": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/i18n/locale.test.ts",
+   "apps/web/scripts/i18n-playthrough.mjs"
+  ]
+ },
+ "17.47": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/i18n-playthrough.mjs"
+  ]
+ },
+ "17.48": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/i18n/tstring.test.ts",
+   "packages/engine/test/i18n/pluralHeaders.test.ts"
+  ]
+ },
+ "17.49": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/build-fonts.mjs"
+  ],
+  "note": "The shipped languages are Latin-script; the fallback fonts cover RTL scripts, but no right-to-left layout or CJK font ships."
+ },
+ "17.50": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/i18n/tstring.test.ts",
+   "apps/web/scripts/i18n-coverage.mjs"
+  ]
+ },
+ "17.51": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/LoadGameDialog.svelte"
+  ]
+ },
+ "17.52": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/accessibility.test.ts",
+   "packages/renderer/test/unitOverlays.test.ts"
+  ]
+ },
+ "17.53": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/keyboard-playthrough.mjs"
+  ]
+ },
+ "17.54": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/accessibility.test.ts"
+  ]
+ },
+ "18.1": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/frame.test.ts",
+   "packages/renderer/test/animation/unitAnimation.real.test.ts"
+  ]
+ },
+ "18.2": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/frame.test.ts"
+  ]
+ },
+ "18.3": {
+  "status": "missing",
+  "evidence": [
+   "packages/renderer/src/SnapshotBoard.ts"
+  ],
+  "note": "Units stand as a static sprite between actions; [standing_anim] loops (upstream's \"Show unit standing animations\", on by default) are not played."
+ },
+ "18.4": {
+  "status": "missing",
+  "evidence": [
+   "packages/renderer/src/animation/unitAnimation.ts"
+  ],
+  "note": "[idle_anim] is parsed but never played."
+ },
+ "18.5": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/animationContext.test.ts",
+   "packages/renderer/test/animation/playback.test.ts"
+  ]
+ },
+ "18.6": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/unitAnimation.real.test.ts",
+   "packages/renderer/test/animation/playback.test.ts"
+  ]
+ },
+ "18.7": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/animationContext.test.ts"
+  ]
+ },
+ "18.8": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/playback.test.ts"
+  ]
+ },
+ "18.9": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/sounds.test.ts",
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "18.10": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/playback.test.ts"
+  ]
+ },
+ "18.11": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Advancing plays no levelout/levelin animation."
+ },
+ "18.12": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/sounds.test.ts",
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "18.13": {
+  "status": "partial",
+  "evidence": [
+   "packages/renderer/src/animation/unitAnimation.ts"
+  ],
+  "note": "See 6.36."
+ },
+ "18.14": {
+  "status": "missing",
+  "evidence": [],
+  "note": "[victory_anim] is not played when the scenario is won."
+ },
+ "18.15": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/GameShell.svelte",
+   "packages/engine/test/pathfind/teleport.test.ts"
+  ],
+  "note": "pre_teleport/post_teleport play around a teleport move."
+ },
+ "18.16": {
+  "status": "missing",
+  "evidence": [],
+  "note": "draw_weapon/sheath_weapon animations are not played."
+ },
+ "18.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "18.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "18.19": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/unitAnimation.real.test.ts"
+  ]
+ },
+ "18.20": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/unitAnimation.real.test.ts"
+  ],
+  "note": "direction= and hits= are tested; terrain_types= is implemented but untested."
+ },
+ "18.21": {
+  "status": "partial",
+  "evidence": [
+   "packages/renderer/src/animation/frame.ts"
+  ],
+  "note": "image_mod= and alpha= are applied (alpha tested); blend_color=/blend_ratio= are applied but untested, and image_mod= is limited to the implemented image functions (16.43)."
+ },
+ "18.22": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/frame.test.ts",
+   "packages/renderer/test/animation/playback.test.ts"
+  ]
+ },
+ "18.23": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/playback.test.ts"
+  ]
+ },
+ "18.24": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/frame.test.ts"
+  ]
+ },
+ "18.25": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/frame.test.ts"
+  ],
+  "note": "alpha= and offset= are tested; submerge= is applied but untested."
+ },
+ "18.26": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/phase24-playthrough.mjs",
+   "packages/renderer/test/terrain/terrainBuilder.test.ts"
+  ]
+ },
+ "18.27": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "18.28": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/displayPrefs.test.ts",
+   "apps/web/scripts/phase24-playthrough.mjs"
+  ]
+ },
+ "18.29": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/turn-end-playthrough.mjs",
+   "packages/renderer/test/camera.test.ts"
+  ],
+  "note": "Skip Animation and the Skip AI moves preference."
+ },
+ "18.30": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ],
+  "note": "Enemy moves the viewing side cannot see are not shown."
+ },
+ "18.31": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ],
+  "note": "[screen_fade] is tested; [color_adjust] is not (14.20). Upstream has no screen shake tag."
+ },
+ "18.32": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "18.33": {
+  "status": "missing",
+  "evidence": [],
+  "note": "See 8.49."
+ },
+ "18.34": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/measure-load.mjs"
+  ],
+  "note": "Frames are prepared off the main thread (Phase 28a); budgets are Phase 28d's."
+ },
+ "18.35": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/GameShell.svelte",
+   "apps/web/scripts/turn-end-playthrough.mjs"
+  ],
+  "note": "Skip Animation finishes the one on screen at once."
+ },
+ "19.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/musicList.test.ts",
+   "apps/web/scripts/audio-playthrough.mjs"
+  ]
+ },
+ "19.2": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/audio/musicPlayer.test.ts",
+   "packages/engine/test/audio/musicList.test.ts"
+  ]
+ },
+ "19.3": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/audio/musicPlayer.test.ts"
+  ]
+ },
+ "19.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/musicList.test.ts"
+  ]
+ },
+ "19.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/musicList.test.ts",
+   "packages/ui/src/music.test.ts"
+  ]
+ },
+ "19.6": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/menu/MainMenu.svelte",
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "19.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/audio/musicList.ts",
+   "packages/ui/src/music.test.ts"
+  ]
+ },
+ "19.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/soundWml.test.ts",
+   "apps/web/scripts/sound-playthrough.mjs"
+  ]
+ },
+ "19.9": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/sounds.test.ts",
+   "apps/web/scripts/sound-playthrough.mjs"
+  ]
+ },
+ "19.10": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/sounds.test.ts"
+  ]
+ },
+ "19.11": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/sounds.test.ts"
+  ],
+  "note": "Frame sounds of movement animations play like any other."
+ },
+ "19.12": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Upstream plays no sound of its own on capture; a campaign's capture event can play one with [sound]."
+ },
+ "19.13": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/sounds.test.ts",
+   "packages/ui/src/sounds.test.ts"
+  ]
+ },
+ "19.14": {
+  "status": "missing",
+  "evidence": [],
+  "note": "No level-up animation, so no level-up sound (18.11)."
+ },
+ "19.15": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/sound-playthrough.mjs"
+  ]
+ },
+ "19.16": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/sounds.test.ts",
+   "apps/web/scripts/sound-playthrough.mjs"
+  ]
+ },
+ "19.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/soundSources.test.ts",
+   "packages/ui/src/audio/soundSources.test.ts"
+  ]
+ },
+ "19.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/soundSources.test.ts"
+  ]
+ },
+ "19.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/soundSources.test.ts",
+   "packages/ui/src/audio/soundSources.test.ts"
+  ]
+ },
+ "19.20": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/soundWml.test.ts",
+   "apps/web/scripts/sound-playthrough.mjs"
+  ]
+ },
+ "19.21": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/audio/settings.test.ts"
+  ]
+ },
+ "19.22": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/audio/settings.test.ts",
+   "apps/web/scripts/audio-playthrough.mjs"
+  ]
+ },
+ "19.23": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/audio/musicPlayer.test.ts",
+   "apps/web/scripts/audio-playthrough.mjs"
+  ]
+ },
+ "19.24": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/audio/audioPaths.test.ts",
+   "apps/web/scripts/sound-playthrough.mjs"
+  ]
+ },
+ "19.25": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/audio/soundEffects.test.ts"
+  ]
+ },
+ "19.26": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/audio/audioPaths.test.ts"
+  ]
+ },
+ "20.1": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/save/wesnothSave.test.ts",
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "20.2": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "20.3": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/save/naming.test.ts",
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "20.4": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/save/naming.test.ts"
+  ]
+ },
+ "20.5": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/save/naming.test.ts",
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "20.6": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "20.7": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/save-load-playthrough.mjs",
+   "packages/ui/src/save/wesnothSave.test.ts"
+  ],
+  "note": "As a real Wesnoth .gz save."
+ },
+ "20.8": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/save-load-playthrough.mjs",
+   "packages/ui/src/save/wesnothSave.test.ts"
+  ],
+  "note": "Including saves from the real game."
+ },
+ "20.9": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "20.10": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "20.11": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/save/wesnothSave.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ],
+  "note": "Saves carry a version and one older format is read (save version 1); there is no general migration or version check."
+ },
+ "20.12": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/save/naming.test.ts",
+   "packages/ui/src/save/wesnothSave.ts"
+  ],
+  "note": "Downloads are gzipped like upstream's."
+ },
+ "20.13": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/undo.test.ts",
+   "apps/web/scripts/undo-replay-playthrough.mjs"
+  ]
+ },
+ "20.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/undo.test.ts"
+  ],
+  "note": "Unlimited within a turn, as upstream."
+ },
+ "20.15": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/replay.test.ts",
+   "apps/web/scripts/undo-replay-playthrough.mjs"
+  ]
+ },
+ "20.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts",
+   "packages/engine/test/actions/moveFog.test.ts"
+  ]
+ },
+ "20.17": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/replay.test.ts",
+   "packages/engine/test/actions/undo.test.ts"
+  ]
+ },
+ "20.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/undo.test.ts"
+  ],
+  "note": "Ending the turn clears the undo stack, as upstream."
+ },
+ "20.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/synced.test.ts",
+   "packages/ui/src/replay.test.ts"
+  ]
+ },
+ "20.20": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/replay.test.ts",
+   "apps/web/scripts/undo-replay-playthrough.mjs",
+   "apps/web/scripts/replay-from-menu-playthrough.mjs"
+  ]
+ },
+ "20.21": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/replay.test.ts",
+   "packages/engine/test/events/randVariable.test.ts"
+  ]
+ },
+ "20.22": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/replay.test.ts"
+  ],
+  "note": "A replay that does not match reports where it went out of sync."
+ },
+ "20.23": {
+  "status": "missing",
+  "evidence": [],
+  "note": "See 12.55."
+ },
+ "20.24": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "20.25": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/displayPrefs.test.ts",
+   "packages/ui/src/audio/settings.test.ts"
+  ]
+ },
+ "20.26": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "20.27": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/achievements.test.ts",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
+ },
+ "20.28": {
+  "status": "missing",
+  "evidence": [],
+  "note": "A full browser storage is not handled specially (Phase 28d)."
+ },
+ "20.29": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/measure-load.mjs"
+  ],
+  "note": "Measured (Phase 28a); budgets are Phase 28d's."
+ },
+ "20.30": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/measure-load.mjs"
+  ],
+  "note": "Measured; budgets are Phase 28d's."
+ },
+ "20.31": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/sound-playthrough.mjs",
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ],
+  "note": "Images, atlases, audio and story art load per scenario on demand."
+ },
+ "20.32": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not measured (Phase 28d)."
+ },
+ "20.33": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/ai-turn-playthrough.mjs"
+  ],
+  "note": "Frame gaps are reported by some checks; no budget (Phase 28d)."
+ },
+ "20.34": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "The port has no WebAssembly build; its Lua runs on fengari, in JavaScript."
+ },
+ "20.35": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Only Chromium is tested (Phase 28d)."
+ },
+ "20.36": {
+  "status": "missing",
+  "evidence": [],
+  "note": "No service worker; offline play is Phase 28d."
+ },
+ "20.37": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/campaign-playthrough.mjs",
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ],
+  "note": "/play/<campaign>?scenario= and ?save= open directly."
+ },
+ "20.38": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/error-screen-playthrough.mjs"
+  ],
+  "note": "Kept client-side, as decided."
+ },
+ "20.39": {
+  "status": "done",
+  "evidence": [
+   ".github/workflows/ci.yml"
+  ]
+ },
+ "20.40": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/campaigns.test.ts",
+   "packages/ui/src/aiTestScenarios.test.ts"
+  ]
+ },
+ "20.41": {
+  "status": "done",
+  "evidence": [
+   "packages/oracle-tools/src/imageOracle.test.ts",
+   "apps/web/scripts/image-golden.mjs",
+   "packages/ui/src/save/wesnothSave.test.ts"
+  ],
+  "note": "Image goldens from upstream's own code and real Wesnoth saves; no replay-level comparison with the real game."
+ },
+ "20.42": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ],
+  "note": "The browser checks are run by hand, not in CI."
+ },
+ "20.43": {
+  "status": "done",
+  "evidence": [
+   ".github/workflows/ci.yml"
+  ]
+ },
+ "20.44": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "No staging environment by decision (docs/DEPLOYMENT.md): a tag deploys straight to production."
+ },
+ "20.45": {
+  "status": "done",
+  "evidence": [
+   ".github/workflows/deploy.yml",
+   "docs/DEPLOYMENT.md"
+  ]
+ },
+ "20.46": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not tracked (Phase 28d)."
+ },
+ "20.47": {
+  "status": "done",
+  "evidence": [
+   "COPYING",
+   "docs/ASSETS.md"
+  ]
+ },
+ "20.48": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/campaigns.test.ts",
+   "apps/web/scripts/check-upstream-unmodified.mjs"
+  ],
+  "note": "The data and Lua are upstream's, unmodified, and every shipped campaign opens."
+ }
+}
