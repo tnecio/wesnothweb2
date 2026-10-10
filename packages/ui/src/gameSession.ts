@@ -58,6 +58,8 @@ import {
   findSideConfig,
   type AiWmlHooks,
   type PersistentVariables,
+  type SideController,
+  type Team,
   type AiHost,
   type AiAnimationEvent,
   type ScenarioObjectives,
@@ -715,6 +717,33 @@ export interface AdvancementOption {
   /** Map sprite, for the row's own icon -- same source every other dialog's portraits use. */
   readonly image: string | null;
   readonly attacks: readonly WeaponInfo[];
+}
+
+/** One side as the status table (`gui2::dialogs::game_stats`) shows it, in both of its tabs. */
+export interface GameStatsRow {
+  readonly side: number;
+  /** The leader's name, `Unknown` when the viewing side cannot see it nor knows the side; '' without a leader. */
+  readonly leaderName: string;
+  /** The leader's sprite, or `units/unknown-unit.png` when unseen; null without a leader. Not yet team-coloured. */
+  readonly leaderImage: string | null;
+  readonly controller: SideController;
+  readonly teamName: string;
+  /** `team::knows_upkeep`: the figures below are shown only when true. */
+  readonly known: boolean;
+  /** Null for an enemy hidden by the viewing side's fog. */
+  readonly gold: number | null;
+  readonly villages: number;
+  /** The map's villages, shown as `n/total` when the viewing side has neither fog nor shroud. */
+  readonly totalVillages: number | null;
+  readonly units: number;
+  readonly upkeep: number;
+  readonly netIncome: number;
+  readonly startGold: number;
+  readonly baseIncome: number;
+  readonly villageGold: number;
+  readonly villageSupport: number;
+  readonly fog: boolean;
+  readonly shroud: boolean;
 }
 
 /** Phase 24: one row of the Unit List (`units_dialog::build_unit_list_dialog`). */
@@ -3737,6 +3766,76 @@ export class GameSession {
                 ? 'misc/invisible.png'
                 : null,
       }));
+  }
+
+  /** `team::knows_upkeep`: what `viewer` knows of `other`'s economy. */
+  private knowsUpkeep(viewer: Team, other: Team): boolean {
+    if (viewer === other) return true;
+    if (!viewer.usesShroud() && !viewer.usesFog()) return true;
+    if (viewer.isEnemy(other)) return false;
+    if (other.controller === 'human') return true;
+    if (viewer.shareMaps() && other.usesShroud()) return true;
+    if (viewer.shareView() && (other.usesFog() || other.usesShroud())) return true;
+    return false;
+  }
+
+  /**
+   * The status table's rows (`game_stats::pre_show`), as the viewing side sees them: every side not
+   * `hidden=`, with `team_data`'s units, upkeep and net income (`total_income - max(0, upkeep - support)`).
+   */
+  get gameStats(): GameStatsRow[] {
+    const viewer = this.board.getTeam(this.viewingSide);
+    const villagesOnMap = this.board.map.villages.length;
+    return this.board
+      .teams()
+      .filter((t) => !t.hidden)
+      .map((team) => {
+        const known = viewer ? this.knowsUpkeep(viewer, team) : true;
+        const enemy = viewer ? viewer.isEnemy(team) : false;
+        const leader = this.board.unitsForSide(team.side).find((u) => u.canRecruit);
+        let leaderName = '';
+        let leaderImage: string | null = null;
+        if (leader) {
+          const visible = !viewer || isUnitVisibleToTeam(this.board, leader, viewer, false);
+          if (visible || known) {
+            leaderName = this.unitDisplayName(leader);
+            leaderImage = this.unitImage(leader);
+          } else {
+            leaderName = t('Unknown');
+            leaderImage = 'units/unknown-unit.png';
+          }
+        }
+        const units = this.board.unitsForSide(team.side);
+        const upkeep = units.reduce((sum, u) => sum + u.upkeepCost, 0);
+        const villages = this.board.villageCount(team.side);
+        const support = villages * team.supportPerVillage;
+        return {
+          side: team.side,
+          leaderName,
+          leaderImage,
+          controller: team.controller,
+          teamName: team.userTeamName || team.teamName,
+          known,
+          gold: !enemy || !viewer?.usesFog() ? team.gold : null,
+          villages,
+          totalVillages: viewer && !viewer.usesFog() && !viewer.usesShroud() ? villagesOnMap : null,
+          units: units.length,
+          upkeep,
+          netIncome: this.totalIncomeFor(team.side) - Math.max(0, upkeep - support),
+          startGold: team.startGold,
+          baseIncome: team.income + GameSession.BASE_INCOME,
+          villageGold: team.incomePerVillage,
+          villageSupport: team.supportPerVillage,
+          fog: team.usesFog(),
+          shroud: team.usesShroud(),
+        };
+      });
+  }
+
+  /** `game_display::scroll_to_leader`'s target: the side's leader's hex, if it has one. */
+  leaderHexOf(side: number): { x: number; y: number } | null {
+    const leader = this.board.unitsForSide(side).find((u) => u.canRecruit);
+    return leader ? { x: leader.location.x, y: leader.location.y } : null;
   }
 
   /** Phase 24: the Unit List's Rename (`units_dialog::rename_unit`): not a recorded action, as upstream's is not. */
