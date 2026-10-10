@@ -3665,7 +3665,7 @@
   "evidence": [
    "packages/engine/src/events/pump.ts"
   ],
-  "note": "Not evaluated on an event, so such a handler runs for every side."
+  "note": "Not evaluated on an event (such a handler would run for every side); no shipped scenario uses it there."
  },
  "12.10": {
   "status": "done",
@@ -4124,6 +4124,193 @@
   "evidence": [
    "packages/engine/test/events/sufNewKeys.test.ts",
    "packages/engine/test/events/shroudWml.test.ts"
+  ]
+ },
+ "13.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "13.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "13.3": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "13.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "13.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveFog.test.ts"
+  ]
+ },
+ "13.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts",
+   "packages/engine/test/events/shroudWml.test.ts"
+  ]
+ },
+ "13.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/shroudWml.test.ts"
+  ]
+ },
+ "13.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/shroudWml.test.ts"
+  ]
+ },
+ "13.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/shroudWml.test.ts"
+  ]
+ },
+ "13.10": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/vision.ts"
+  ],
+  "note": "See 3.16."
+ },
+ "13.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "13.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts",
+   "packages/engine/test/actions/moveFog.test.ts"
+  ]
+ },
+ "13.13": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveFog.test.ts",
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "13.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveFog.test.ts"
+  ]
+ },
+ "13.15": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/actions/undo.ts"
+  ],
+  "note": "Delayed shroud updates (and the Update Shroud command) are not ported."
+ },
+ "13.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts",
+   "packages/renderer/test/minimap.test.ts"
+  ]
+ },
+ "13.17": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/fogShroud.test.ts"
+  ]
+ },
+ "13.18": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "Deviation: the port shows a fogged village's last-known owner; upstream (display::get_flag) shows the current owner's flag unless that owner is an enemy, and then none."
+ },
+ "13.19": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/fogShroud.test.ts"
+  ]
+ },
+ "13.20": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/filterVisionLocation.test.ts"
+  ]
+ },
+ "13.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "13.22": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/ai/context.ts"
+  ],
+  "note": "The AI weighs only enemies it can see; untested as a whole."
+ },
+ "13.23": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/vision.ts"
+  ],
+  "note": "Recomputed after moves, attacks, recruits and turn changes; after a [modify_unit] or [terrain] change it is untested."
+ },
+ "13.24": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "apply_to=movement/vision follow upstream's order; untested."
+ },
+ "13.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "13.26": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "Fog and shroud are cleared around the side's units before its first turn; untested."
+ },
+ "13.27": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ],
+  "note": "Upstream has no terrain vision bonus beyond vision costs, which are ported."
+ },
+ "13.28": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/teleport.test.ts"
+  ]
+ },
+ "13.29": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/minimap.test.ts"
   ]
  }
 }
