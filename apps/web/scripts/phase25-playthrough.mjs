@@ -5,7 +5,8 @@
  *
  *  1. `synthetic_combat`: the hero attacks the orc (keyboard, as `keyboard-playthrough.mjs`); S opens the
  *     statistics dialog, whose damage and hits rows now count that attack and whose scenario menu offers
- *     "All Scenarios" and this scenario.
+ *     "All Scenarios" and this scenario. Alt+S opens the status table: a row per side, the player's gold,
+ *     the Scenario Settings tab, and Scroll To.
  *  2. The title screen's Achievements button opens the dialog; The South Guard's group lists its
  *     achievements, "Completed 0/9". An earned one (as the game records it) shows completed, and is still
  *     there after a reload.
@@ -66,6 +67,20 @@ try {
       const options = await page.locator('[data-testid="stats-scenario"] option').allTextContents();
       check('the scenario menu: All Scenarios, then this scenario', options.length === 2 && options[0] === 'All Scenarios', options.join(' / '));
       await press(page, 'Escape');
+
+      // The status table (Alt+S): a row per side; the player's own gold shown; Scroll To closes it.
+      await press(page, 'Alt+s', 1000);
+      const sides = await page.locator('[data-testid^="game-stats-row-"]').count();
+      check('Alt+S opens the status table with a row per side', sides === 2, `${sides} rows`);
+      const gold = ((await page.locator('[data-testid="game-stats-gold-1"]').textContent()) ?? '').trim();
+      check("the player's own gold is shown", /^\u2212?\d+$/.test(gold), gold);
+      await page.locator('[data-testid="game-stats-tab-settings"]').click();
+      const startGold = ((await page.locator('[data-testid="game-stats-startGold-1"]').textContent()) ?? '').trim();
+      check('Scenario Settings shows the starting gold', /^\d+$/.test(startGold), startGold);
+      await page.locator('[data-testid="game-stats-row-2"]').click();
+      await page.locator('[data-testid="game-stats-scroll-to"]').click();
+      await page.waitForTimeout(800);
+      check('Scroll To closes it', (await page.locator('[data-testid="game-stats"]').count()) === 0);
     } finally {
       await context.close();
     }

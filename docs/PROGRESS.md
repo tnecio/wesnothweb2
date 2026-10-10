@@ -6502,6 +6502,25 @@ Branch `phase-25`, on top of `phase-24` (it uses the hotkey registry). Each part
 
   Both pass, as do the unit tests of every package, typecheck and lint.
 
+## 2026-10-05: the status table (v0.12.1)
+
+You asked after the status table, which Phases 24 and 25 had missed although upstream's game menu has it beside
+Statistics. `GameStatsDialog.svelte` ports `gui2::dialogs::game_stats` (the `statustable` command, Alt+S, and
+the game menu):
+
+- **Game Stats** ("Current Status"): every side not `hidden=`, as the viewing side sees it -- the leader's
+  sprite and name in the side's colour (`Unknown` and the unknown-unit sprite when the leader can be neither
+  seen nor known), the controller, the team; and when the viewing side knows the side's economy
+  (`team::knows_upkeep`: itself, everyone without fog or shroud, human allies, allies sharing maps or view)
+  its gold (left out for an enemy under fog), villages (`n/total` without fog or shroud), units, upkeep and
+  net income (`team_data`: total income less upkeep beyond village support), negatives in red.
+- **Scenario Settings:** side, starting gold, base income, gold and support per village, fog and shroud.
+- Every column sorts; Scroll To scrolls to the chosen side's leader (`scroll_to_leader`).
+
+`GameSession.gameStats` builds the rows (unit-tested against Dead Water 1, with and without fog), and
+`phase25-playthrough.mjs` now opens the table with Alt+S, reads the player's gold and starting gold, and
+scrolls to the enemy leader.
+
 ## 2026-10-09: Phase 29a -- AI turns shown action by action
 
 The user asked why the port computes an AI side's whole turn and only then animates it, where upstream
