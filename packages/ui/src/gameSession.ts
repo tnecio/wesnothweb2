@@ -4882,6 +4882,10 @@ export class GameSession {
     while (this.advancementQueue.length > 0) {
       const unit = this.advancementQueue.shift()!;
       if (!unit.advances()) continue; // healed/demoted by something else in between -- no longer eligible.
+      // `advance_unit_at`: `pre advance` before the choice; WML may make the unit unable to advance.
+      const at = unit.location;
+      this.eventPump.fire('pre advance', at, undefined, undefined, this.collectResponder);
+      if (this.board.unitAt(at) !== unit || !unit.advances()) continue;
       // Upstream's option list: `advances_to` types, then the AMLAs
       // (`get_modification_advances`); `[choose] value=` indexes both.
       const optionIds = unit.advancesTo;
@@ -4976,6 +4980,17 @@ export class GameSession {
   }
 
   private applyAdvancementOption(unit: Unit, index: number, typeIds: readonly string[], amlas: readonly WmlConfig[]): void {
+    // `advance_unit`: the `advance` event first. WML that removes the unit, takes its experience or changes its
+    // type invalidates the advancement.
+    const originalType = unit.type.id;
+    this.eventPump.fire('advance', unit.location, undefined, undefined, this.collectResponder);
+    if (this.board.unitAt(unit.location) !== unit || !unit.advances() || unit.type.id !== originalType) return;
+    this.applyAdvancementChoice(unit, index, typeIds, amlas);
+    // `post advance`, with the unit as it now is.
+    if (this.board.unitAt(unit.location) === unit) this.eventPump.fire('post advance', unit.location, undefined, undefined, this.collectResponder);
+  }
+
+  private applyAdvancementChoice(unit: Unit, index: number, typeIds: readonly string[], amlas: readonly WmlConfig[]): void {
     const before = unit.type.name;
     const env = effectEnvFor(this.eventPump.ctx, unit);
     if (index < typeIds.length) {
