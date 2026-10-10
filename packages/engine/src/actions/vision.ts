@@ -12,6 +12,7 @@
  *    needed: undo here restores snapshots rather than replaying clears.
  */
 
+import type { WmlConfig } from '../wml/config.js';
 import { Location, getAdjacentTiles, distanceBetween } from '../model/Location.js';
 import type { GameBoard } from '../model/GameBoard.js';
 import type { Team } from '../model/Team.js';
@@ -20,7 +21,8 @@ import type { TerrainCode } from '../model/Terrain.js';
 import { findRoutes, type FindRoutesResult } from '../pathfind/pathfind.js';
 import { getVisibleUnit, isUnitVisibleToTeam } from '../pathfind/visibility.js';
 
-export type RaiseEvent = (name: string, loc1: Location, loc2: Location) => void;
+/** Queues an event; `data` is the event's data (an attack's weapons as `[first]`/`[second]`, `damage_inflicted`). */
+export type RaiseEvent = (name: string, loc1: Location, loc2: Location, data?: WmlConfig) => void;
 
 /** `unit::vision()`: explicit `vision=` if set, otherwise the unit's max movement. */
 export function unitVisionRange(unit: Unit): number {

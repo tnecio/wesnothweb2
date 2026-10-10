@@ -50,6 +50,7 @@ import {
   distanceBetween,
   performMove,
   performAttack,
+  attackEventData,
   isBackstabActive,
   computeLeadershipBonus,
   computeResistanceModifier,
@@ -1738,7 +1739,7 @@ export class GameSession {
   private readonly eventPump: EventPump;
   /** Game turn whose `turn N`/`new turn` events have fired (`tod_manager::turn_event_fired`). */
   private turnEventsFiredFor = 0;
-  private readonly raiseEvent: RaiseEvent = (name, loc1, loc2) => this.eventPump.raise(name, loc1, loc2);
+  private readonly raiseEvent: RaiseEvent = (name, loc1, loc2, data) => this.eventPump.raise(name, loc1, loc2, data);
   /**
    * The real `[time]` schedule this scenario's own (already macro-expanded)
    * `scenarioConfigJson` declares -- see `Schedule`'s own doc comment. The
@@ -1901,7 +1902,7 @@ export class GameSession {
       turnNumber: () => this.turnNumber,
       timeOfDayId: () => this.currentTimeOfDay.id,
       raise: (name, loc1, loc2, data) => this.eventPump.raise(name, loc1, loc2, data),
-      fire: (name, loc1, loc2) => this.eventPump.fire(name, loc1, loc2),
+      fire: (name, loc1, loc2, data) => this.eventPump.fire(name, loc1, loc2, data),
       pump: () => this.pumpEvents(),
       log: (level, message) => {
         // The AI's own diagnostics: an error (a candidate action that threw) goes to the console; the rest stay quiet.
@@ -2549,7 +2550,11 @@ export class GameSession {
     if (!attacker.attacks[cmd.weapon]) return this.reject(action, `illegal weapon ${cmd.weapon}`);
     if (cmd.defenderWeapon >= defender.attacks.length) return this.reject(action, `illegal defender weapon ${cmd.defenderWeapon}`);
 
-    yield* this.fireFlow('attack', attackerLoc, defenderLoc);
+    // `attack::perform`: the weapons travel with the event, for [filter_attack] and $weapon.
+    // `defender_weapon=-1` (a [do_command] that names none, or a fight with no counter) means the defender's
+    // weapon is chosen now, as upstream's `battle_context` does.
+    const defenderWeapon = cmd.defenderWeapon >= 0 ? cmd.defenderWeapon : resolveDefenderWeaponIndex(this.board, attackerLoc, cmd.weapon, defenderLoc, this.attackOptions(attackerLoc, defenderLoc));
+    yield* this.fireFlow('attack', attackerLoc, defenderLoc, attackEventData(attacker.attacks[cmd.weapon], defenderWeapon >= 0 ? defender.attacks[defenderWeapon] : undefined));
     this.checkForGameEnd();
     if (this.scenarioResult || this.board.unitAt(attackerLoc) !== attacker || this.board.unitAt(defenderLoc) !== defender) {
       // The attack event ended the scenario or moved/removed a combatant: upstream aborts the attack.
@@ -2563,14 +2568,14 @@ export class GameSession {
     const attackerVariation = attacker.variation;
     const defenderVariation = defender.variation;
     const defenderTypeId = defender.type.id;
-    const result = performAttack(this.board, this.rng, attackerLoc, cmd.weapon, defenderLoc, cmd.defenderWeapon, {
+    const result = performAttack(this.board, this.rng, attackerLoc, cmd.weapon, defenderLoc, defenderWeapon, {
       ...this.attackOptions(attackerLoc, defenderLoc),
       raise: this.raiseEvent,
       // `last breath`/`die`, fired from inside `performAttack`'s own
       // callback: a plain function, so these cannot suspend -- their
       // messages are collected and shown after the attack animation
       // (`takeDeferredInteractions`).
-      fire: (name, loc1, loc2) => this.eventPump.fire(name, loc1, loc2, undefined, this.collectResponder),
+      fire: (name, loc1, loc2, data) => this.eventPump.fire(name, loc1, loc2, data, this.collectResponder),
     });
     yield* this.eventPump.pumpFlow();
 
@@ -2589,7 +2594,7 @@ export class GameSession {
       attacker,
       attackerWeaponIndex: cmd.weapon,
       defender,
-      defenderWeaponIndex: cmd.defenderWeapon,
+      defenderWeaponIndex: defenderWeapon,
       result,
       attackerHitpointsBefore,
       defenderHitpointsBefore,
@@ -2635,7 +2640,7 @@ export class GameSession {
    */
   private placeHooks(action: ActionState): PlaceRecruitHooks {
     return {
-      fire: (name, loc1, loc2) => this.fireFlow(name, loc1, loc2),
+      fire: (name, loc1, loc2, data) => this.fireFlow(name, loc1, loc2, data),
       raise: this.raiseEvent,
       ...(action.present
         ? {
@@ -3119,9 +3124,9 @@ export class GameSession {
     };
   }
 
-  private *fireFlow(name: string, loc1?: Location, loc2?: Location): Flow {
+  private *fireFlow(name: string, loc1?: Location, loc2?: Location, data?: WmlConfig): Flow {
     if (this.scenarioResult) return;
-    yield* this.eventPump.fireFlow(name, loc1, loc2);
+    yield* this.eventPump.fireFlow(name, loc1, loc2, data);
   }
 
   /** Pumps anything raised by the last action (sighted, moveto, ...), then applies `[endlevel]`/leader loss. */
