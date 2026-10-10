@@ -3356,5 +3356,255 @@
   "evidence": [
    "packages/engine/test/ai/recruitment.test.ts"
   ]
+ },
+ "11.1": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/build-campaigns.mjs",
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "11.2": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "11.3": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "11.4": {
+  "status": "missing",
+  "evidence": [],
+  "note": "The legacy difficulties=/difficulty_descriptions= syntax is not read; no shipped campaign uses it."
+ },
+ "11.5": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/campaigns.test.ts"
+  ],
+  "note": "Every scenario of every shipped campaign opens without errors."
+ },
+ "11.6": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "11.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/endlevel.test.ts"
+  ]
+ },
+ "11.8": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs",
+   "packages/ui/src/Outro.svelte"
+  ]
+ },
+ "11.9": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/ScenarioEndOverlay.svelte"
+  ],
+  "note": "The end screen shows the turn and gold, not upstream's carryover report."
+ },
+ "11.10": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectives.test.ts",
+   "packages/ui/src/sharedTags.test.ts"
+  ]
+ },
+ "11.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectives.test.ts"
+  ]
+ },
+ "11.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "11.13": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/ObjectivesDialog.svelte",
+   "packages/ui/src/gameSession.ts"
+  ]
+ },
+ "11.14": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/GameShell.svelte",
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ]
+ },
+ "11.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/story/storyParser.test.ts",
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ]
+ },
+ "11.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/victory.test.ts"
+  ]
+ },
+ "11.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "11.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/audio/musicList.test.ts",
+   "packages/ui/src/music.test.ts"
+  ]
+ },
+ "11.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "11.20": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/snapshot/runScenarioStartupEvents.test.ts",
+   "packages/engine/test/model/gameBoardIntegration.test.ts"
+  ]
+ },
+ "11.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/carryover.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "11.22": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "11.23": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/build-scenario-snapshot.mjs",
+   "packages/ui/src/campaigns.test.ts"
+  ],
+  "note": "A campaign's [event]s, [lua] and resources are added to each of its scenarios when the data is built."
+ },
+ "11.24": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/build-scenario-snapshot.mjs",
+   "packages/ui/src/aiTestScenarios.test.ts"
+  ],
+  "note": "Upstream's AI [test] scenarios are built and played."
+ },
+ "11.25": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Multiplayer is out of scope."
+ },
+ "11.26": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Add-on modifications are out of scope; a campaign's [resource]/[load_resource] is merged when the data is built (1.41)."
+ },
+ "11.27": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported; no shipped campaign has [options] (only the WL_Test fixture)."
+ },
+ "11.28": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "11.29": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/save/naming.test.ts",
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "11.30": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/measure-load.mjs",
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ]
+ },
+ "11.31": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ],
+  "note": "Any scenario opens directly by URL (?scenario=)."
+ },
+ "11.32": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/build-campaigns.mjs",
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "11.33": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/endlevel.test.ts",
+   "packages/ui/src/Outro.svelte"
+  ]
+ },
+ "11.34": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs",
+   "apps/web/scripts/build-scenario-snapshot.mjs"
+  ]
+ },
+ "11.35": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "11.36": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "11.37": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/ScenarioEndOverlay.svelte"
+  ],
+  "note": "Defeat offers only Quit to Menu; restarting the scenario or loading a save is done from the menu."
+ },
+ "11.38": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs",
+   "apps/web/scripts/replay-from-menu-playthrough.mjs"
+  ]
  }
 }
