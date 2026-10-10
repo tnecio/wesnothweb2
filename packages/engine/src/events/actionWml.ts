@@ -80,7 +80,7 @@ import type { EndLevelState } from './context.js';
 import { Direction, Location, parseDirection } from '../model/Location.js';
 import { Unit, UnitStatus } from '../model/Unit.js';
 import { WmlConfig, plainValue, type WmlStoredValue } from '../wml/config.js';
-import { placeWmlRecall, rollNewUnit } from '../actions/recruit.js';
+import { leaderCanRecall, placeWmlRecall, rollNewUnit } from '../actions/recruit.js';
 import { findPath, findVacantTile } from '../pathfind/pathfind.js';
 import type { Rng } from '../rng/Rng.js';
 import type { EffectEnv } from '../model/effects.js';
@@ -1424,6 +1424,7 @@ function actionRecall(cfg: WmlConfig, ctx: EventContext): void {
       // `underlyingId` (see `GameSession.tryRecallAt`), so `removeFromRecallList` could take the wrong one.
       for (const leader of leaders) {
         if (leaderFilter && !unitMatchesFilter(leader, leaderFilter, board)) continue;
+        if (!leaderCanRecall(leader, unit, board)) continue;
         const loc = vacantNear(board.map.onBoard(cfgLoc) ? cfgLoc : leader.location);
         if (loc && board.map.onBoard(loc)) {
           list.splice(index, 1);

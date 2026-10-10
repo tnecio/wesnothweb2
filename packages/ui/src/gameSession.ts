@@ -133,6 +133,7 @@ import {
   connectedCastleTiles,
   recruitUnitFlow,
   recallUnitFlow,
+  leaderCanRecall,
   type PlaceRecruitHooks,
   dismissUnitAt,
   unitCanAct,
@@ -1042,6 +1043,8 @@ function savedUnitFields(u: Unit): SavedUnit {
     modifications: u.modifications.map((m) => ({ kind: m.kind, cfg: m.cfg.toJSON() })),
     variables: u.variables?.toJSON(),
     goto: u.goto ? { x: u.goto.x, y: u.goto.y } : undefined,
+    extraRecruit: u.extraRecruit.length > 0 ? [...u.extraRecruit] : undefined,
+    filterRecall: u.filterRecall?.toJSON(),
   };
 }
 
@@ -1109,6 +1112,10 @@ export interface SavedUnit {
   /** The unit's own `[variables]` bag. */
   variables?: WmlConfigJson;
   goto?: { x: number; y: number };
+  /** A leader's `extra_recruit=` (`unit::recruits()`). */
+  extraRecruit?: readonly string[];
+  /** A leader's `[filter_recall]`. */
+  filterRecall?: WmlConfigJson;
   /**
    * Present only on a unit read out of a real Wesnoth save: that `[unit]`
    * block as the game wrote it. A real save records far more per unit than
@@ -2684,6 +2691,7 @@ export class GameSession {
     const index = this.recallIndexFor(team.side, cmd.id, cmd.index);
     const unit = this.board.recallList(team.side)[index];
     if (!unit) return this.reject(action, `illegal recall: unit '${cmd.id}' not on the recall list`);
+    if (!leaderCanRecall(leader, unit, this.board)) return this.reject(action, `illegal recall: ${leader.id || 'the leader'}'s [filter_recall] rejects '${cmd.id}'`);
     if (this.board.hasUnitAt(loc)) return this.reject(action, `cannot recall onto ${loc}: occupied`);
     this.board.removeFromRecallListAt(team.side, index);
     const ownerBefore = this.board.villageOwner(loc) ?? 0;
@@ -3719,7 +3727,9 @@ export class GameSession {
     if (!leader) return [];
     const team = this.board.getTeam(leader.side);
     if (!team) return [];
-    return this.board.recallList(leader.side).map((u, index) => {
+    // `get_recalls`: only the units this leader's `[filter_recall]` lets it recall; `index` stays the list position.
+    return this.board.recallList(leader.side).flatMap((u, index) => {
+      if (!leaderCanRecall(leader, u, this.board)) return [];
       const cost = u.recallCost >= 0 ? u.recallCost : team.recallCost;
       const snap = this.snapshot.unitTypes[u.type.id];
       return {
@@ -3742,7 +3752,7 @@ export class GameSession {
         maxMoves: u.maxMoves,
         attacks: u.attacks.map(buildWeaponInfo),
         abilities: visibleAbilityInfos(u.abilities),
-      };
+      } satisfies RecallOption;
     });
   }
 
@@ -5486,6 +5496,8 @@ export class GameSession {
       for (const s of u.statuses) unit.statuses.add(s);
     }
     if (u.goto) unit.goto = new Location(u.goto.x, u.goto.y);
+    if (u.extraRecruit) unit.extraRecruit = [...u.extraRecruit];
+    if (u.filterRecall) unit.filterRecall = WmlConfig.fromJSON(u.filterRecall);
     return unit;
   }
 
