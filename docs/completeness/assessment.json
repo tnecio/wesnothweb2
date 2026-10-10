@@ -2054,5 +2054,260 @@
    "packages/ui/src/help/generators/units.ts"
   ],
   "note": "See 3.27."
+ },
+ "7.1": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Specials apply only to combats using their weapon, but only those with a mainline id= (poison, slow, drains, petrifies, firststrike, berserk, swarm, marksman, magical, charge, backstab, heal_on_hit, plague) do anything; a campaign's own specials (Descent into Darkness's spells, parry, smoke, stagger and others in about 20 campaign files) are ignored. The generic special pipeline (units/abilities.cpp) is not ported."
+ },
+ "7.2": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts"
+  ],
+  "note": "Only the mainline [damage] specials (charge, backstab) apply; a [damage] with any other id is ignored."
+ },
+ "7.3": {
+  "status": "missing",
+  "evidence": [],
+  "note": "[filter_opponent] on a special is not evaluated."
+ },
+ "7.4": {
+  "status": "missing",
+  "evidence": [],
+  "note": "The generic [attacks] special is not applied (3 campaign files use it)."
+ },
+ "7.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts"
+  ]
+ },
+ "7.6": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Only marksman and magical; other [chance_to_hit] specials (18 campaign files) are ignored."
+ },
+ "7.7": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "7.8": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/attackPrediction.test.ts"
+  ],
+  "note": "Implemented; [filter_opponent] (undead immunity comes from resistance data, not the filter) is not evaluated; barely tested."
+ },
+ "7.9": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "7.10": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts"
+  ],
+  "note": "Implemented; barely tested."
+ },
+ "7.11": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "See 5.32."
+ },
+ "7.12": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "See 5.36."
+ },
+ "7.13": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "See 5.37."
+ },
+ "7.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/ui/src/plague.test.ts"
+  ]
+ },
+ "7.15": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/abilityEffects.ts"
+  ],
+  "note": "See 5.55."
+ },
+ "7.16": {
+  "status": "missing",
+  "evidence": [],
+  "note": "See 5.54."
+ },
+ "7.17": {
+  "status": "missing",
+  "evidence": [],
+  "note": "[filter_self] on a special is not evaluated."
+ },
+ "7.18": {
+  "status": "missing",
+  "evidence": [],
+  "note": "[filter_opponent] on a special is not evaluated."
+ },
+ "7.19": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not evaluated."
+ },
+ "7.20": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not evaluated."
+ },
+ "7.21": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts"
+  ],
+  "note": "Backstab's condition is a hand-written geometric check; [filter_adjacent] itself is not evaluated."
+ },
+ "7.22": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Hard-wired per mainline special (charge is both, backstab self); apply_to= is not read."
+ },
+ "7.23": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Hard-wired per mainline special (marksman, charge, backstab on offense); active_on= is not read."
+ },
+ "7.24": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not evaluated for specials."
+ },
+ "7.25": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ],
+  "note": "Evaluated for abilities (steadfast), not for specials."
+ },
+ "7.26": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported."
+ },
+ "7.27": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/UnitType.ts"
+  ],
+  "note": "Implemented (append/replace, specials_list=); untested."
+ },
+ "7.28": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/UnitType.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "7.29": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "7.30": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/AttackDialog.svelte",
+   "packages/ui/src/SidePanel.svelte"
+  ],
+  "note": "Specials are named; whether one is active is not shown (name_inactive=)."
+ },
+ "7.31": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/help/generators/units.ts"
+  ],
+  "note": "See 3.27."
+ },
+ "7.32": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/attackPrediction.ts"
+  ],
+  "note": "Combined as upstream for mainline specials; untested."
+ },
+ "7.33": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/attackPrediction.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "7.34": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/attackPrediction.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "7.35": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Implemented for the two mainline specials; untested together."
+ },
+ "7.36": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/attackPrediction.test.ts"
+  ],
+  "note": "See 5.48."
+ },
+ "7.37": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/AttackDialog.svelte",
+   "packages/engine/src/model/UnitType.ts"
+  ],
+  "note": "A custom special is listed and weapon filters match it (special_id=), but it has no effect in combat."
+ },
+ "7.38": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "7.39": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Defender-side mainline specials apply in retaliation; untested, and apply_to=/active_on= are not read generically."
  }
 }
