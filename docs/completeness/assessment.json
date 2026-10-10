@@ -2309,5 +2309,487 @@
    "packages/engine/src/actions/combatStats.ts"
   ],
   "note": "Defender-side mainline specials apply in retaliation; untested, and apply_to=/active_on= are not read generically."
+ },
+ "8.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts",
+   "packages/ui/src/SidePanel.svelte"
+  ]
+ },
+ "8.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "8.3": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "8.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "8.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ],
+  "note": "Trait data through the same apply_to=attack code as strong."
+ },
+ "8.10": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.11": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "The healthy flag is applied and read by healing; untested."
+ },
+ "8.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.13": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combat.ts"
+  ],
+  "note": "The unpoisonable/unplagueable/undrainable statuses are honoured; untested."
+ },
+ "8.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ],
+  "note": "turn and scenario are tested; forever and level follow the same code."
+ },
+ "8.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.20": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Unit.test.ts",
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "8.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts",
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.22": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.23": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.24": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ],
+  "note": "increase= and percentages are tested through traits; set=, heal_full= and violate_maximum= are implemented but untested."
+ },
+ "8.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.26": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.27": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.28": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.29": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.30": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.31": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.32": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.33": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ],
+  "note": "Damage is tested through strong; attacks, accuracy and parry follow the same code, untested."
+ },
+ "8.34": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts",
+   "packages/engine/src/model/UnitType.ts"
+  ],
+  "note": "Implemented (Liberty 1's Baldras uses set_description/set_icon); untested."
+ },
+ "8.35": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/UnitType.ts"
+  ],
+  "note": "Changed by the effect but not applied in combat (3.22)."
+ },
+ "8.36": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/UnitType.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.37": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/UnitType.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.38": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.39": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.40": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.41": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.42": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.43": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts",
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.44": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.45": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.46": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.47": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.48": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.49": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "A no-op: a unit's own animations from effects are not modelled (15 shipped campaign and core files use apply_to=new_animation)."
+ },
+ "8.50": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Bug: the image mods are stored on the unit but never drawn."
+ },
+ "8.51": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts",
+   "packages/renderer/test/unitOverlays.test.ts"
+  ],
+  "note": "The effect sets the ellipse, which the board draws; the effect itself is untested."
+ },
+ "8.52": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Bug: the halo is stored on the unit but not passed to the board, so it is not drawn."
+ },
+ "8.53": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Overlays from the effect are drawn; untested."
+ },
+ "8.54": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.55": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.56": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.57": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.58": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.59": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "apps/web/scripts/phase24-playthrough.mjs"
+  ]
+ },
+ "8.60": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts",
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.61": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.62": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "8.63": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Bug: the advance event is never fired (14 shipped campaign files use advance or post advance: HttT, TSG, TDG, Dusk of Dawn...)."
+ },
+ "8.64": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Bug: the post advance event is never fired."
+ },
+ "8.65": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "8.66": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts",
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "8.67": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "8.68": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "advance= is implemented; untested."
+ },
+ "8.69": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "8.70": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "8.71": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "See 2.10."
+ },
+ "8.72": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "8.73": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "Implemented; untested."
  }
 }
