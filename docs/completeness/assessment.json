@@ -5371,5 +5371,234 @@
   "evidence": [
    "packages/ui/src/accessibility.test.ts"
   ]
+ },
+ "18.1": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/frame.test.ts",
+   "packages/renderer/test/animation/unitAnimation.real.test.ts"
+  ]
+ },
+ "18.2": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/frame.test.ts"
+  ]
+ },
+ "18.3": {
+  "status": "missing",
+  "evidence": [
+   "packages/renderer/src/SnapshotBoard.ts"
+  ],
+  "note": "Units stand as a static sprite between actions; [standing_anim] loops (upstream's \"Show unit standing animations\", on by default) are not played."
+ },
+ "18.4": {
+  "status": "missing",
+  "evidence": [
+   "packages/renderer/src/animation/unitAnimation.ts"
+  ],
+  "note": "[idle_anim] is parsed but never played."
+ },
+ "18.5": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/animationContext.test.ts",
+   "packages/renderer/test/animation/playback.test.ts"
+  ]
+ },
+ "18.6": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/unitAnimation.real.test.ts",
+   "packages/renderer/test/animation/playback.test.ts"
+  ]
+ },
+ "18.7": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/animationContext.test.ts"
+  ]
+ },
+ "18.8": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/playback.test.ts"
+  ]
+ },
+ "18.9": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/sounds.test.ts",
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "18.10": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/playback.test.ts"
+  ]
+ },
+ "18.11": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Advancing plays no levelout/levelin animation."
+ },
+ "18.12": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/sounds.test.ts",
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "18.13": {
+  "status": "partial",
+  "evidence": [
+   "packages/renderer/src/animation/unitAnimation.ts"
+  ],
+  "note": "See 6.36."
+ },
+ "18.14": {
+  "status": "missing",
+  "evidence": [],
+  "note": "[victory_anim] is not played when the scenario is won."
+ },
+ "18.15": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/GameShell.svelte",
+   "packages/engine/test/pathfind/teleport.test.ts"
+  ],
+  "note": "pre_teleport/post_teleport play around a teleport move."
+ },
+ "18.16": {
+  "status": "missing",
+  "evidence": [],
+  "note": "draw_weapon/sheath_weapon animations are not played."
+ },
+ "18.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "18.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "18.19": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/unitAnimation.real.test.ts"
+  ]
+ },
+ "18.20": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/unitAnimation.real.test.ts"
+  ],
+  "note": "direction= and hits= are tested; terrain_types= is implemented but untested."
+ },
+ "18.21": {
+  "status": "partial",
+  "evidence": [
+   "packages/renderer/src/animation/frame.ts"
+  ],
+  "note": "image_mod= and alpha= are applied (alpha tested); blend_color=/blend_ratio= are applied but untested, and image_mod= is limited to the implemented image functions (16.43)."
+ },
+ "18.22": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/frame.test.ts",
+   "packages/renderer/test/animation/playback.test.ts"
+  ]
+ },
+ "18.23": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/playback.test.ts"
+  ]
+ },
+ "18.24": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/frame.test.ts"
+  ]
+ },
+ "18.25": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/frame.test.ts"
+  ],
+  "note": "alpha= and offset= are tested; submerge= is applied but untested."
+ },
+ "18.26": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/phase24-playthrough.mjs",
+   "packages/renderer/test/terrain/terrainBuilder.test.ts"
+  ]
+ },
+ "18.27": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "18.28": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/displayPrefs.test.ts",
+   "apps/web/scripts/phase24-playthrough.mjs"
+  ]
+ },
+ "18.29": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/turn-end-playthrough.mjs",
+   "packages/renderer/test/camera.test.ts"
+  ],
+  "note": "Skip Animation and the Skip AI moves preference."
+ },
+ "18.30": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ],
+  "note": "Enemy moves the viewing side cannot see are not shown."
+ },
+ "18.31": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ],
+  "note": "[screen_fade] is tested; [color_adjust] is not (14.20). Upstream has no screen shake tag."
+ },
+ "18.32": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "18.33": {
+  "status": "missing",
+  "evidence": [],
+  "note": "See 8.49."
+ },
+ "18.34": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/measure-load.mjs"
+  ],
+  "note": "Frames are prepared off the main thread (Phase 28a); budgets are Phase 28d's."
+ },
+ "18.35": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/GameShell.svelte",
+   "apps/web/scripts/turn-end-playthrough.mjs"
+  ],
+  "note": "Skip Animation finishes the one on screen at once."
  }
 }
