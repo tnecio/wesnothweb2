@@ -4470,5 +4470,226 @@
   "evidence": [
    "packages/engine/test/model/Schedule.test.ts"
   ]
+ },
+ "15.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/story/storyParser.test.ts",
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ]
+ },
+ "15.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/story/storyParser.test.ts",
+   "apps/web/scripts/story-screenshots.mjs"
+  ]
+ },
+ "15.3": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/story/storyParser.test.ts",
+   "apps/web/scripts/reference-story-screenshots.mjs"
+  ]
+ },
+ "15.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/story/storyParser.test.ts"
+  ]
+ },
+ "15.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/story/storyParser.test.ts",
+   "packages/ui/src/StoryViewer.svelte"
+  ]
+ },
+ "15.6": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/StoryViewer.svelte",
+   "apps/web/scripts/measure-story.mjs"
+  ]
+ },
+ "15.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/story/storyParser.test.ts"
+  ]
+ },
+ "15.8": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/GameShell.svelte",
+   "apps/web/scripts/audio-playthrough.mjs"
+  ]
+ },
+ "15.9": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/StoryViewer.svelte"
+  ],
+  "note": "As upstream, the text appears with the part and a click moves on."
+ },
+ "15.10": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/StoryViewer.svelte",
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ]
+ },
+ "15.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "15.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/message.test.ts",
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "15.13": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/message.test.ts",
+   "packages/engine/test/events/messageChoices.test.ts"
+  ]
+ },
+ "15.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/message.test.ts"
+  ]
+ },
+ "15.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/message.test.ts"
+  ]
+ },
+ "15.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/message.test.ts"
+  ]
+ },
+ "15.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/messageChoices.test.ts",
+   "packages/ui/src/GameShell.svelte"
+  ]
+ },
+ "15.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/messageChoices.test.ts",
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "15.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/messageChoices.test.ts"
+  ]
+ },
+ "15.20": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "15.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/messageChoices.test.ts",
+   "packages/ui/src/replay.test.ts"
+  ]
+ },
+ "15.22": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/messageChoices.test.ts",
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "15.23": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Upstream's [message] has no duration= (message.lua)."
+ },
+ "15.24": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/messageChoices.test.ts"
+  ]
+ },
+ "15.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/message.test.ts"
+  ]
+ },
+ "15.26": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/markup/pango.test.ts"
+  ]
+ },
+ "15.27": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/messageChoices.test.ts",
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "15.28": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/suspendablePump.test.ts",
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "15.29": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/story/storyParser.test.ts"
+  ]
+ },
+ "15.30": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/story/storyParser.ts"
+  ],
+  "note": "See 1.38."
+ },
+ "15.31": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/message.test.ts"
+  ]
+ },
+ "15.32": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/mobile-playthrough.mjs",
+   "apps/web/scripts/story-screenshots.mjs"
+  ]
+ },
+ "15.33": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Upstream keeps no dialogue history; its chat log is for multiplayer chat."
+ },
+ "15.34": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/i18n-playthrough.mjs",
+   "packages/engine/test/wml/preprocessor.test.ts"
+  ]
  }
 }
