@@ -78,7 +78,7 @@
 
 import type { EndLevelState } from './context.js';
 import { Direction, Location, parseDirection } from '../model/Location.js';
-import { Unit } from '../model/Unit.js';
+import { Unit, UnitStatus } from '../model/Unit.js';
 import { WmlConfig, plainValue, type WmlStoredValue } from '../wml/config.js';
 import { placeWmlRecall, rollNewUnit } from '../actions/recruit.js';
 import { findPath, findVacantTile } from '../pathfind/pathfind.js';
@@ -927,7 +927,28 @@ const MODIFY_UNIT_FIELDS: Record<string, (u: Unit, cfg: WmlConfig, key: string) 
   name: (u, cfg) => (u.name = cfg.getString('name', u.name)),
   role: (u, cfg) => (u.role = cfg.getString('role', u.role)),
   unrenamable: (u, cfg) => (u.unrenamable = cfg.getBoolean('unrenamable', u.unrenamable)),
+  // Phase 27a: modify_unit.lua writes any attribute of the stored unit (`unit::write`'s keys) before unstoring it.
+  attacks_left: (u, cfg) => (u.attacksLeft = cfg.getNumber('attacks_left', u.attacksLeft)),
+  max_attacks: (u, cfg) => (u.maxAttacksPerTurn = cfg.getNumber('max_attacks', u.maxAttacksPerTurn)),
+  resting: (u, cfg) => (u.resting = cfg.getBoolean('resting', u.resting)),
+  hidden: (u, cfg) => (u.hidden = cfg.getBoolean('hidden', u.hidden)),
+  profile: (u, cfg) => (u.profile = cfg.getString('profile', u.profile)),
+  upkeep: (u, cfg) => (u.upkeep = cfg.getString('upkeep', u.upkeep)),
+  recall_cost: (u, cfg) => (u.recallCost = cfg.getNumber('recall_cost', u.recallCost)),
+  extra_recruit: (u, cfg) => (u.extraRecruit = cfg.getString('extra_recruit', '').split(',').map((r) => r.trim()).filter((r) => r !== '')),
+  overlays: (u, cfg) => (u.overlays = cfg.getString('overlays', '').split(',').map((o) => o.trim()).filter((o) => o !== '')),
+  halo: (u, cfg) => (u.halo = cfg.getString('halo', u.halo)),
+  ellipse: (u, cfg) => (u.ellipse = cfg.getString('ellipse', u.ellipse)),
+  zoc: (u, cfg) => (u.emitZoc = cfg.getBoolean('zoc', u.emitZoc)),
+  vision: (u, cfg) => (u.vision = cfg.getNumber('vision', u.vision)),
+  jamming: (u, cfg) => (u.jamming = cfg.getNumber('jamming', u.jamming)),
+  ai_special: (u, cfg) => u.setStatus(UnitStatus.Guardian, cfg.getString('ai_special') === 'guardian'),
+  // `unit::write`'s `advances_to` (`null` for none).
+  advances_to: (u, cfg) => (u.advancesTo = cfg.getString('advances_to', '').split(',').map((t) => t.trim()).filter((t) => t !== '' && t !== 'null')),
 };
+
+/** Attributes `[modify_unit]` reads itself, or that `unit::write` keeps but this port's units do not (left as they are). */
+const MODIFY_UNIT_OTHER_KEYS = new Set(['mode', 'type', 'x', 'y', 'facing', 'id', 'underlying_id', 'gender', 'variation', 'race', 'alignment', 'level', 'cost', 'description', 'image', 'small_profile', 'random_traits', 'generate_name', 'goto_x', 'goto_y', 'flag_rgb', 'language_name', 'undead_variation', 'usage', 'portrait', 'image_icon']);
 
 function actionModifyUnit(cfg: WmlConfig, ctx: EventContext): void {
   const filterCfg = cfg.child('filter');
@@ -944,12 +965,25 @@ function actionModifyUnit(cfg: WmlConfig, ctx: EventContext): void {
     if (cfg.hasAttribute('facing')) {
       unit.facing = parseDirection(cfg.getString('facing'));
     }
+    for (const key of cfg.attributeNames()) {
+      if (!(key in MODIFY_UNIT_FIELDS) && !MODIFY_UNIT_OTHER_KEYS.has(key)) ctx.log('warn', `[modify_unit] ${key}= is not supported in this port -- ignored`);
+    }
+    // `x,y=`: the unstored unit lands there (`[unstore_unit]`'s placement).
+    if (cfg.hasAttribute('x') || cfg.hasAttribute('y')) {
+      const to = Location.fromWml(cfg.getNumber('x', unit.location.wmlX), cfg.getNumber('y', unit.location.wmlY));
+      if (!to.equals(unit.location) && ctx.board.map.onBoard(to) && !ctx.board.unitAt(to) && ctx.board.unitAt(unit.location) === unit) ctx.board.moveUnit(unit.location, to);
+    }
 
     const unitVars = new VariableStore(unit.variables ? varNodeFromConfig(unit.variables) : newVarNode());
     const subCtx: EventContext = { ...ctx, variables: unitVars };
     for (const { tag, config } of cfg.allChildren()) {
       if (tag === 'filter') continue;
       const expanded = ctx.variables.expandConfig(config);
+      if (tag === 'status') {
+        // `[status]` written over the stored unit's: each key a status, on or off.
+        for (const key of expanded.attributeNames()) unit.setStatus(key, expanded.getBoolean(key));
+        continue;
+      }
       if (tag === 'set_variable') applySetVariable(expanded, unitVars, ctx.log);
       else if (tag === 'set_variables') actionSetVariables(expanded, subCtx);
       else if (tag === 'clear_variable') actionClearVariable(expanded, subCtx);
@@ -966,6 +1000,13 @@ function actionModifyUnit(cfg: WmlConfig, ctx: EventContext): void {
       }
     }
     unit.variables = unitVars.toConfig();
+    // `type=`: the unit is made to advance into it (`advances_to` set, experience filled, then unstored).
+    if (cfg.hasAttribute('type')) {
+      const type = cfg.getString('type');
+      if (type !== '') unit.advancesTo = [type];
+      unit.experience = unit.maxExperience;
+      ctx.advanceUnit?.(unit);
+    }
   }
 }
 

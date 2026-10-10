@@ -52,6 +52,7 @@ import {
   performAttack,
   attackEventData,
   withScenarioFixes,
+  spendAttackCost,
   isBackstabActive,
   computeLeadershipBonus,
   computeResistanceModifier,
@@ -2557,7 +2558,14 @@ export class GameSession {
     // `defender_weapon=-1` (a [do_command] that names none, or a fight with no counter) means the defender's
     // weapon is chosen now, as upstream's `battle_context` does.
     const defenderWeapon = cmd.defenderWeapon >= 0 ? cmd.defenderWeapon : resolveDefenderWeaponIndex(this.board, attackerLoc, cmd.weapon, defenderLoc, this.attackOptions(attackerLoc, defenderLoc));
-    yield* this.fireFlow('attack', attackerLoc, defenderLoc, attackEventData(attacker.attacks[cmd.weapon], defenderWeapon >= 0 ? defender.attacks[defenderWeapon] : undefined));
+    const eventData = (): WmlConfig => attackEventData(attacker.attacks[cmd.weapon], defenderWeapon >= 0 ? defender.attacks[defenderWeapon] : undefined);
+    // `attack::perform`: `pre attack`, then the weapon's attacks and movement are spent, then `attack`.
+    yield* this.fireFlow('pre attack', attackerLoc, defenderLoc, eventData());
+    this.checkForGameEnd();
+    if (this.scenarioResult || this.board.unitAt(attackerLoc) !== attacker || this.board.unitAt(defenderLoc) !== defender) return null;
+    spendAttackCost(attacker, attacker.attacks[cmd.weapon]!);
+    attacker.setStatus('not_moved', false);
+    yield* this.fireFlow('attack', attackerLoc, defenderLoc, eventData());
     this.checkForGameEnd();
     if (this.scenarioResult || this.board.unitAt(attackerLoc) !== attacker || this.board.unitAt(defenderLoc) !== defender) {
       // The attack event ended the scenario or moved/removed a combatant: upstream aborts the attack.
@@ -2573,6 +2581,7 @@ export class GameSession {
     const defenderTypeId = defender.type.id;
     const result = performAttack(this.board, this.rng, attackerLoc, cmd.weapon, defenderLoc, defenderWeapon, {
       ...this.attackOptions(attackerLoc, defenderLoc),
+      attackCostPaid: true,
       raise: this.raiseEvent,
       // `last breath`/`die`, fired from inside `performAttack`'s own
       // callback: a plain function, so these cannot suspend -- their
@@ -2587,9 +2596,7 @@ export class GameSession {
     });
     yield* this.eventPump.pumpFlow();
 
-    // A unit that has fought is done moving (`attack::perform` spends the
-    // weapon's `movement_used`, which defaults to all of it).
-    if (!result.attackerDied) attacker.movesLeft = 0;
+    // `executeAttack` spent the weapon's `movement_used` (all of it, unless the weapon says otherwise).
 
     // Advancement comes right after the exchange, before any victory check
     // (`attack_unit_and_advance`) -- the unit landing the winning kill still levels.
@@ -2648,7 +2655,7 @@ export class GameSession {
    */
   private placeHooks(action: ActionState): PlaceRecruitHooks {
     return {
-      fire: (name, loc1, loc2, data) => this.fireFlow(name, loc1, loc2, data),
+      fire: (name, loc1, loc2) => this.fireFlow(name, loc1, loc2),
       raise: this.raiseEvent,
       ...(action.present
         ? {

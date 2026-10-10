@@ -127,3 +127,45 @@ describe('the strike events (perform_hit)', () => {
     expect(n(s, 'later')).toBe(0);
   });
 });
+
+describe("a weapon's attacks_used= and movement_used= (attack::perform)", () => {
+  async function kaiWith(effect: string, events: string[] = []): Promise<GameSession> {
+    const s = new GameSession(readScenarioSnapshot(deadWater1), { seed: 4 });
+    for (const wml of events) s['eventPump'].manager.addFromWml(parseConfig(wml).child('event')!);
+    await s.runStartupEvents();
+    runActionSequence(
+      parseConfig(`[modify_unit]\n[filter]\nid=Kai Krellis\n[/filter]\nattacks_left=3\nmoves=5\n[effect]\napply_to=attack\n${effect}\n[/effect]\n[/modify_unit]`),
+      s['eventPump'].ctx,
+    );
+    return s;
+  }
+  const attackNextToKai = async (s: GameSession): Promise<void> => {
+    const kai = s.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    const hex = getAdjacentTiles(kai.location).find((l) => s.board.map.onBoard(l) && !s.board.unitAt(l))!;
+    const run = (wml: string) => runActionSequence(parseConfig(wml), s['eventPump'].ctx);
+    run(`[unit]\nside=2\ntype=Skeleton Archer\nid=target\nx,y=${hex.wmlX},${hex.wmlY}\n[/unit]`);
+    run(`[do_command]\n[attack]\nweapon=0\n[source]\nx,y=${kai.location.wmlX},${kai.location.wmlY}\n[/source]\n[destination]\nx,y=${hex.wmlX},${hex.wmlY}\n[/destination]\n[/attack]\n[/do_command]`);
+  };
+
+  it('spends the weapon\'s attacks and movement, not one attack and all movement', async () => {
+    const s = await kaiWith('set_attacks_used=2\nset_movement_used=1');
+    await attackNextToKai(s);
+    const kai = s.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    expect(kai.attacksLeft).toBe(1);
+    expect(kai.movesLeft).toBe(4);
+  });
+
+  it('by default an attack costs one attack and ends movement', async () => {
+    const s = await kaiWith('increase_damage=0');
+    await attackNextToKai(s);
+    const kai = s.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    expect([kai.attacksLeft, kai.movesLeft]).toEqual([2, 0]);
+  });
+
+  it('pre attack fires before the cost is paid, attack after', async () => {
+    const seen = (event: string) => `[event]\nname=${event}\n[set_variable]\nname=${event.replace(' ', '_')}\nvalue=$unit.attacks_left\n[/set_variable]\n[/event]`;
+    const s = await kaiWith('set_attacks_used=2', [seen('pre attack'), seen('attack')]);
+    await attackNextToKai(s);
+    expect([Number(s.getVariable('pre_attack')), Number(s.getVariable('attack'))]).toEqual([3, 1]);
+  });
+});

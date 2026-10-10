@@ -41,6 +41,8 @@ describe('AiContext action log freezes action locations', () => {
     const ctx = new AiContext(makeAiHost(board), 1, new Map());
 
     ctx.executeAttack(attackFrom, 0, Location.fromWml(4, 3), -1);
+    // The attack spent all movement (`movement_used` defaults to all); an event could give it back.
+    attacker.movesLeft = attacker.maxMoves;
     ctx.executeMove(attacker, findPath(board, attacker, Location.fromWml(2, 3)).steps);
 
     expect(attacker.location.equals(attackFrom)).toBe(false);

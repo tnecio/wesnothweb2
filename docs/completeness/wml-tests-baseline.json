@@ -1,6 +1,7 @@
 {
  "note": "Tests that give their expected result (packages/ui/scripts/wml-tests.ts). --check fails if one stops doing so.",
  "passing": [
+  "add_or_replace_amla",
   "add_specific_female_amla_on_male",
   "affect_adjacent_direction_inactive",
   "affect_distant_direction_inactive",
@@ -86,6 +87,9 @@
   "event_test_filter_original_attack_type",
   "events-test_defeat",
   "events-test_die",
+  "events-test_filterable1",
+  "events-test_pre_attack_base",
+  "events-test_pre_attack_change_weapon",
   "events-test_victory",
   "events_test_priority_in_same_name",
   "events_test_priority_vs_origin",
@@ -239,6 +243,7 @@
   "test_ability_id_active",
   "test_assert",
   "test_assert_fail",
+  "test_attacks_used",
   "test_berserk_firststrike",
   "test_clear_one",
   "test_clear_two",
@@ -281,6 +286,7 @@
   "test_lua_return_victory",
   "test_move",
   "test_move_unit_in_circle",
+  "test_movement_used",
   "test_orc_fast_cave_movement",
   "test_orc_fast_forest_movement",
   "test_orc_longsighted_movement",
