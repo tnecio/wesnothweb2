@@ -51,6 +51,7 @@ import {
   performMove,
   performAttack,
   attackEventData,
+  withScenarioFixes,
   isBackstabActive,
   computeLeadershipBonus,
   computeResistanceModifier,
@@ -1756,7 +1757,9 @@ export class GameSession {
    */
   private readonly aiManager: AiManager;
 
-  constructor(snapshot: GameBoardSnapshot, options: GameSessionOptions = {}) {
+  constructor(scenarioSnapshot: GameBoardSnapshot, options: GameSessionOptions = {}) {
+    // `[modify_unit_type]` (`unit_types.apply_scenario_fix`), for this scenario's types only.
+    const snapshot = withScenarioFixes(scenarioSnapshot);
     this.snapshot = snapshot;
     this.playerSide = options.playerSide ?? 1;
     this.activeSide = this.playerSide;
