@@ -4312,5 +4312,163 @@
   "evidence": [
    "packages/renderer/test/minimap.test.ts"
   ]
+ },
+ "14.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts",
+   "packages/renderer/test/todTint.test.ts"
+  ]
+ },
+ "14.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "14.3": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "14.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "14.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts"
+  ]
+ },
+ "14.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/effects.test.ts"
+  ]
+ },
+ "14.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/illumination.test.ts"
+  ]
+ },
+ "14.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/todWml.test.ts",
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "14.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/todWml.test.ts",
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "14.10": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "14.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/todWml.test.ts",
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "14.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/todWml.test.ts"
+  ]
+ },
+ "14.13": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/todTint.test.ts",
+   "packages/renderer/test/animation/timeOfDay.test.ts"
+  ]
+ },
+ "14.14": {
+  "status": "missing",
+  "evidence": [
+   "packages/renderer/src/SnapshotBoard.ts"
+  ],
+  "note": "The whole board takes the global tint; a [time_area]'s hexes are not lit by their own schedule (their combat bonuses are right)."
+ },
+ "14.15": {
+  "status": "missing",
+  "evidence": [
+   "packages/renderer/src/SnapshotBoard.ts"
+  ],
+  "note": "Illuminated hexes are not drawn brighter (the combat bonus is right)."
+ },
+ "14.16": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/TopBar.svelte",
+   "packages/ui/src/SidePanel.svelte"
+  ]
+ },
+ "14.17": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "Upstream has no schedule preview beyond the help."
+ },
+ "14.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts",
+   "packages/engine/test/events/todWml.test.ts"
+  ]
+ },
+ "14.19": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.ts",
+   "packages/ui/src/sounds.test.ts"
+  ],
+  "note": "A time of day's sound= plays as it begins."
+ },
+ "14.20": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/cutsceneWml.ts"
+  ],
+  "note": "A [color_adjust] beat tints the board over the time-of-day tint; untested."
+ },
+ "14.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "14.22": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/todTint.test.ts",
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
+ },
+ "14.23": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/sounds.test.ts"
+  ]
+ },
+ "14.24": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
  }
 }
