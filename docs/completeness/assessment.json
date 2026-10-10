@@ -3606,5 +3606,524 @@
    "apps/web/scripts/main-menu-playthrough.mjs",
    "apps/web/scripts/replay-from-menu-playthrough.mjs"
   ]
+ },
+ "12.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts",
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "12.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.3": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/events/pump.ts"
+  ],
+  "note": "A comma list of names registers the handler for each; used throughout shipped content."
+ },
+ "12.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/flowWml.test.ts"
+  ]
+ },
+ "12.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/events/pump.ts",
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.7": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/events/pump.ts"
+  ],
+  "note": "Bug: not evaluated -- a handler with them runs for any weapon (5.22)."
+ },
+ "12.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/events/pump.ts",
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.9": {
+  "status": "missing",
+  "evidence": [
+   "packages/engine/src/events/pump.ts"
+  ],
+  "note": "Not evaluated on an event, so such a handler runs for every side."
+ },
+ "12.10": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/ai/aspect.test.ts",
+   "apps/web/scripts/turn-end-playthrough.mjs"
+  ],
+  "note": "turn N event names work; turn_at= is read where upstream reads it."
+ },
+ "12.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/suspendablePump.test.ts",
+   "packages/ui/src/sharedTags.test.ts"
+  ],
+  "note": "[primary_attack]/[secondary_attack] are not passed on (12.7)."
+ },
+ "12.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "12.13": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "12.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveSequence.test.ts",
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveFog.test.ts"
+  ]
+ },
+ "12.16": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "enter hex / exit hex are fired at each step and can stop the move; untested."
+ },
+ "12.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveSequence.test.ts"
+  ]
+ },
+ "12.18": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/sharedTags.test.ts"
+  ]
+ },
+ "12.19": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "Fired; untested."
+ },
+ "12.20": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "12.21": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts"
+  ]
+ },
+ "12.22": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/carryover.test.ts",
+   "packages/ui/src/gameSession.ts"
+  ]
+ },
+ "12.23": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts",
+   "packages/engine/test/events/supportWml.test.ts"
+  ],
+  "note": "$unit/$second_unit/$x1.. are bound; $weapon/$second_weapon are not, and $damage_inflicted is only set by [harm_unit] since the hit events are missing (5.23)."
+ },
+ "12.24": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/flowWml.test.ts"
+  ]
+ },
+ "12.26": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/flowWml.test.ts"
+  ]
+ },
+ "12.27": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/flowWml.test.ts"
+  ]
+ },
+ "12.28": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/flowWml.test.ts"
+  ]
+ },
+ "12.29": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/sufNewKeys.test.ts",
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "12.30": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/conditionalWml.ts"
+  ],
+  "note": "Implemented (count=, search_recall_list=); no test of its own."
+ },
+ "12.31": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/conditionalWml.ts"
+  ],
+  "note": "Implemented; no test of its own."
+ },
+ "12.32": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/flowWml.test.ts"
+  ]
+ },
+ "12.33": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/events/conditionalWml.ts"
+  ]
+ },
+ "12.34": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/objectWml.test.ts"
+  ]
+ },
+ "12.35": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported (a debugging tag); no shipped campaign uses it."
+ },
+ "12.36": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.37": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "All of upstream's operations are implemented; only add= and multiply= appear in tests."
+ },
+ "12.38": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/randVariable.test.ts"
+  ]
+ },
+ "12.39": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "join, string_length, round and the rest are implemented; untested. (Upstream has no to_upper.)"
+ },
+ "12.40": {
+  "status": "missing",
+  "evidence": [],
+  "note": "formula= on [set_variable] is skipped (1.29)."
+ },
+ "12.41": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "12.42": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/variables.test.ts"
+  ]
+ },
+ "12.43": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/variables.test.ts",
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "12.44": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/flowWml.test.ts"
+  ]
+ },
+ "12.45": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "packages/engine/test/events/variables.test.ts"
+  ]
+ },
+ "12.46": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.47": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ],
+  "note": "advance= is untested (8.68)."
+ },
+ "12.48": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ],
+  "note": "[store_gold] has no test of its own (9.13)."
+ },
+ "12.49": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "12.50": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/todWml.test.ts"
+  ]
+ },
+ "12.51": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "12.52": {
+  "status": "missing",
+  "evidence": [],
+  "note": "See 3.48."
+ },
+ "12.53": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/flowWml.ts"
+  ],
+  "note": "[store_reachable_locations] is implemented but untested; [store_relative_direction] is missing (4.41)."
+ },
+ "12.54": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "12.55": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported (needed for multiplayer sync); no shipped campaign uses it."
+ },
+ "12.56": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "12.57": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/sharedTags.test.ts"
+  ]
+ },
+ "12.58": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts",
+   "packages/engine/test/events/messageChoices.test.ts"
+  ]
+ },
+ "12.59": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.60": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts",
+   "packages/engine/test/actions/undo.test.ts"
+  ]
+ },
+ "12.61": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/gameSession.ts"
+  ],
+  "note": "Stops a move at enter/exit hex; untested."
+ },
+ "12.62": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "12.63": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/engine/test/events/sufNewKeys.test.ts"
+  ]
+ },
+ "12.64": {
+  "status": "done",
+  "evidence": [
+   "packages/lua-bridge/test/runtime.test.ts",
+   "packages/ui/src/sharedTags.test.ts"
+  ]
+ },
+ "12.65": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts",
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "[print] is tested and [wml_message] logs; [chat] is missing (no shipped campaign uses it)."
+ },
+ "12.66": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "A debugging tool (the gamestate inspector); no shipped campaign uses it."
+ },
+ "12.67": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/events/pump.ts"
+  ],
+  "note": "A handler does not re-trigger itself while running, as upstream."
+ },
+ "12.68": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/suspendablePump.test.ts",
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "12.69": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "packages/ui/src/replay.test.ts"
+  ]
+ },
+ "12.70": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/sufNewKeys.test.ts",
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "12.71": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "12.72": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/filterVisionLocation.test.ts"
+  ]
+ },
+ "12.73": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/filter.ts"
+  ],
+  "note": "Implemented for units; no test of its own."
+ },
+ "12.74": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/filter.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "12.75": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/filterVisionLocation.test.ts"
+  ]
+ },
+ "12.76": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/filter.ts",
+   "packages/engine/test/events/sufNewKeys.test.ts"
+  ],
+  "note": "has_weapon= is tested; [has_attack] is implemented but untested."
+ },
+ "12.77": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/filter.ts"
+  ],
+  "note": "Implemented in unit filters; untested."
+ },
+ "12.78": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "12.79": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts"
+  ]
+ },
+ "12.80": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/sufNewKeys.test.ts",
+   "packages/engine/test/events/shroudWml.test.ts"
+  ]
  }
 }
