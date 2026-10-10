@@ -336,5 +336,367 @@
   "evidence": [
    "packages/engine/test/wml/deadWaterIntegration.test.ts"
   ]
+ },
+ "2.1": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/engine/test/snapshot/gameBoardSnapshot.test.ts"
+  ]
+ },
+ "2.2": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts",
+   "apps/web/scripts/build-scenario-snapshot.mjs"
+  ],
+  "note": "Every shipped scenario's map_file= is resolved when the data is built."
+ },
+ "2.3": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/hexGeometry.test.ts",
+   "packages/engine/test/pathfind/astar.test.ts"
+  ]
+ },
+ "2.4": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/renderer/test/camera.test.ts",
+   "packages/renderer/test/terrain/terrainBuilder.test.ts"
+  ]
+ },
+ "2.5": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts"
+  ]
+ },
+ "2.6": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts"
+  ]
+ },
+ "2.7": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/Terrain.ts"
+  ],
+  "note": "mvt_alias= and def_alias= are read separately, but no test tells them apart."
+ },
+ "2.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts"
+  ]
+ },
+ "2.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts",
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "2.10": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts",
+   "packages/engine/test/events/locationFormula.test.ts",
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "Capture and income are tested; village healing is implemented but no test covers it."
+ },
+ "2.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/reachableHexesSynthetic.test.ts",
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "2.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/recruitHealAdvancement.test.ts"
+  ]
+ },
+ "2.13": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/reachableHexesSynthetic.test.ts"
+  ]
+ },
+ "2.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts",
+   "packages/engine/test/actions/move.test.ts"
+  ]
+ },
+ "2.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/Terrain.test.ts",
+   "packages/engine/test/pathfind/pathfindRealMap.test.ts"
+  ]
+ },
+ "2.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.18": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/miscWml.ts"
+  ],
+  "note": "replace_if_failed= is implemented but has no test."
+ },
+ "2.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "2.20": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ],
+  "note": "expand= is tested; shrink= and units left outside the new map follow the same code with no test of their own."
+ },
+ "2.22": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/engine/test/model/gameBoardIntegration.test.ts"
+  ]
+ },
+ "2.23": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.24": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.26": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.27": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts",
+   "packages/engine/test/events/shroudWml.test.ts"
+  ]
+ },
+ "2.28": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/shroudWml.test.ts",
+   "packages/engine/test/events/sufNewKeys.test.ts"
+  ]
+ },
+ "2.29": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/filter.ts"
+  ],
+  "note": "A location filter's [filter] (the unit on the hex) is implemented and used by shipped content, but has no test of its own."
+ },
+ "2.30": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "2.31": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/shroudWml.test.ts"
+  ]
+ },
+ "2.32": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "2.33": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "2.34": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/locationFilter.test.ts"
+  ]
+ },
+ "2.35": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts",
+   "packages/engine/test/actions/undo.test.ts",
+   "packages/engine/test/actions/victory.test.ts"
+  ]
+ },
+ "2.36": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/events/captureVillageAndRecall.test.ts"
+  ],
+  "note": "side= works; [filter_side] is not supported (logged as a no-op)."
+ },
+ "2.37": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/captureVillageAndRecall.test.ts"
+  ]
+ },
+ "2.38": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainBuilder.test.ts",
+   "packages/renderer/test/terrain/terrainGraphicsRules.real.test.ts",
+   "apps/web/scripts/image-golden.mjs"
+  ]
+ },
+ "2.39": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainGraphicsRules.test.ts",
+   "packages/renderer/test/terrain/terrainRotationGeometry.test.ts"
+  ]
+ },
+ "2.40": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainBuilder.test.ts"
+  ],
+  "note": "Variants are picked by upstream's location hash (get_noise), bit-exact."
+ },
+ "2.41": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainGraphicsRules.test.ts"
+  ]
+ },
+ "2.42": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/src/terrain/terrainBuilder.ts",
+   "apps/web/scripts/image-golden.mjs"
+  ],
+  "note": "Seeded by the location hash, so the same on every load; checked against upstream's rendering by the image goldens."
+ },
+ "2.43": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainBuilder.test.ts"
+  ]
+ },
+ "2.44": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/image-golden.mjs",
+   "apps/web/scripts/board-screenshots.mjs"
+  ]
+ },
+ "2.45": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainBuilder.test.ts",
+   "packages/renderer/test/terrain/terrainGraphicsRules.real.test.ts"
+  ]
+ },
+ "2.46": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/minimap.test.ts",
+   "apps/web/scripts/minimap-camera-playthrough.mjs"
+  ]
+ },
+ "2.47": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/help-playthrough.mjs",
+   "packages/ui/src/help/generators/terrains.ts"
+  ]
+ },
+ "2.48": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/help/helpWorld.ts"
+  ],
+  "note": "The help hides terrains marked hide_help; nothing else about hidden terrains (shown as their alias) is ported."
+ },
+ "2.49": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/renderer/test/mapItems.test.ts"
+  ]
+ },
+ "2.50": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.51": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/engine/test/actions/synced.test.ts"
+  ]
+ },
+ "2.52": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "2.53": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/mapItems.test.ts",
+   "packages/renderer/test/terrain/terrainBuilder.test.ts"
+  ]
+ },
+ "2.54": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/todWml.test.ts",
+   "packages/engine/test/model/Schedule.test.ts"
+  ]
  }
 }
