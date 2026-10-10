@@ -4691,5 +4691,331 @@
    "apps/web/scripts/i18n-playthrough.mjs",
    "packages/engine/test/wml/preprocessor.test.ts"
   ]
+ },
+ "16.1": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/hexGeometry.test.ts",
+   "apps/web/scripts/image-golden.mjs"
+  ]
+ },
+ "16.2": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainBuilder.test.ts",
+   "packages/renderer/test/terrain/terrainGraphicsRules.test.ts"
+  ]
+ },
+ "16.3": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/board-screenshots.mjs",
+   "apps/web/scripts/image-golden.mjs"
+  ]
+ },
+ "16.4": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/teamColor.test.ts"
+  ]
+ },
+ "16.5": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/frame.test.ts",
+   "packages/renderer/test/animation/animationContext.test.ts"
+  ]
+ },
+ "16.6": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/unitOverlays.test.ts"
+  ]
+ },
+ "16.7": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/unitOverlays.test.ts"
+  ]
+ },
+ "16.8": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/src/SnapshotBoard.ts",
+   "apps/web/scripts/board-screenshots.mjs"
+  ]
+ },
+ "16.9": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/unitOverlays.test.ts"
+  ]
+ },
+ "16.10": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/unitOverlays.test.ts"
+  ]
+ },
+ "16.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts",
+   "apps/web/scripts/shared-tags-playthrough.mjs"
+  ]
+ },
+ "16.12": {
+  "status": "partial",
+  "evidence": [
+   "packages/renderer/test/mapItems.test.ts",
+   "packages/renderer/test/animation/playback.test.ts"
+  ],
+  "note": "Item halos and animation-frame halos are drawn; a unit's own halo= is not (8.52)."
+ },
+ "16.13": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/board-screenshots.mjs",
+   "apps/web/scripts/minimap-camera-playthrough.mjs"
+  ]
+ },
+ "16.14": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts",
+   "apps/web/scripts/movement-orders-playthrough.mjs"
+  ]
+ },
+ "16.15": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/movement-orders-playthrough.mjs"
+  ]
+ },
+ "16.16": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/movement-orders-playthrough.mjs"
+  ]
+ },
+ "16.17": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "16.18": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "16.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/markRoute.test.ts"
+  ]
+ },
+ "16.20": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "A debug-mode display in upstream; the port has no debug mode."
+ },
+ "16.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "apps/web/scripts/minimap-camera-playthrough.mjs"
+  ]
+ },
+ "16.22": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts",
+   "packages/renderer/test/mapItems.test.ts"
+  ]
+ },
+ "16.23": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/miscWml.test.ts"
+  ]
+ },
+ "16.24": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/camera.test.ts",
+   "apps/web/scripts/minimap-camera-playthrough.mjs"
+  ]
+ },
+ "16.25": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/camera.test.ts",
+   "apps/web/scripts/minimap-camera-playthrough.mjs"
+  ]
+ },
+ "16.26": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/camera.test.ts",
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "16.27": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/cutsceneWml.ts"
+  ],
+  "note": "Implemented as a display beat; untested."
+ },
+ "16.28": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/cutsceneWml.ts"
+  ],
+  "note": "Implemented as a display beat; untested."
+ },
+ "16.29": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "16.30": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/cutsceneWml.ts"
+  ],
+  "note": "Implemented as a display beat; untested."
+ },
+ "16.31": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/minimap-camera-playthrough.mjs"
+  ]
+ },
+ "16.32": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/messageChoices.test.ts",
+   "apps/web/scripts/dialogue-playthrough.mjs"
+  ]
+ },
+ "16.33": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/minimap.test.ts"
+  ]
+ },
+ "16.34": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/minimap-camera-playthrough.mjs"
+  ]
+ },
+ "16.35": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainBuilder.test.ts",
+   "packages/renderer/test/camera.test.ts"
+  ]
+ },
+ "16.36": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/actionWml.ts"
+  ],
+  "note": "A no-op, since the board redraws continuously; its side=/clear_shroud= (recomputing a side's shroud) is not applied."
+ },
+ "16.37": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "16.38": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/GameShell.svelte",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
+ },
+ "16.39": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts"
+  ]
+ },
+ "16.40": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/cutsceneWml.ts"
+  ],
+  "note": "See 14.20."
+ },
+ "16.41": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/measure-load.mjs"
+  ],
+  "note": "Image work was measured and moved off the main thread (Phase 28a); frame-rate budgets are Phase 28d's."
+ },
+ "16.42": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "The WebGL renderer redraws each frame by design; upstream's dirty-rectangle scheme does not apply."
+ },
+ "16.43": {
+  "status": "partial",
+  "evidence": [
+   "packages/renderer/src/images/compositor.ts",
+   "apps/web/scripts/image-golden.mjs"
+  ],
+  "note": "16 of upstream's 39 image functions are implemented (TC, RC, GS, FL, CROP, BLIT, MASK, O, SCALE*, TOD, HEXED...). The others draw the image unmodified with a warning, including ones shipped content uses: CS (192 uses), ROTATE (39), NO_TOD_SHIFT (26), XBRZ (10), G (9), CHAN (8), BLEND (6), BL (6), PAL, R, SWAP, BG."
+ },
+ "16.44": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/image-golden.mjs",
+   "packages/renderer/src/images/ImageCache.ts"
+  ]
+ },
+ "16.45": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/build-image-atlases.mjs"
+  ]
+ },
+ "16.46": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/mobile-playthrough.mjs"
+  ]
+ },
+ "16.47": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/minimap-camera-playthrough.mjs"
+  ]
+ },
+ "16.48": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/terrain/terrainBuilder.deadwater.test.ts",
+   "apps/web/scripts/image-golden.mjs"
+  ]
+ },
+ "16.49": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/todTint.test.ts"
+  ]
+ },
+ "16.50": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/fogShroud.test.ts"
+  ]
  }
 }
