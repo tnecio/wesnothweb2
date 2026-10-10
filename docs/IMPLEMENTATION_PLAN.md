@@ -1793,7 +1793,14 @@ thumbnail in the list below was not built.
 
 ## Phase 27 — Feature completeness assessment
 
-**Status: not started.** A deliberate audit pass, not new feature work.
+**Status: delivered 2026-10-10 (branch `completeness`): `docs/COMPLETENESS.md`.**
+- Every one of the catalogue's 922 items is classified, with evidence: 665 done, 183 partial, 55 missing, 19 out of scope.
+- The tooling is `apps/web/scripts/completeness.mjs`. The data lives in `docs/completeness/`, with the findings in its `summary.md`.
+- The report lists bugs that change how shipped campaigns play (`[modify_side]` side lists, event `[filter_attack]`, the hit/miss and advance events, `[modify_unit_type]`, `[disable]`...).
+- It proposes five follow-ups: correctness fixes, the ability/special pipeline, presentation gaps, test debt, and unused WML.
+- They await the user's decision before going into the priority list, as does the report's out-of-scope list.
+
+A deliberate audit pass, not new feature work.
 
 - Walk `~/wesnoth-feature-catalogue.md` category by category (all ~1,000
   items) against the implementation: for each item record done / partial
@@ -2298,7 +2305,7 @@ pulled forward and delivered 2026-09-22.
    statistics dialog, achievements; delivered 2026-10-05) -- the user's call, 2026-10-05, which
    moves achievements into Phase 25 rather than ahead of Phase 24.
 14. **Phase 29a** (AI turns shown action by action, as upstream does) -- the user's call, 2026-10-09; delivered 2026-10-09.
-15. **Phase 27** (feature completeness assessment), then **Phase 28d**
+15. **Phase 27** (feature completeness assessment; delivered 2026-10-10, follow-ups proposed), then **Phase 28d**
    (performance budgets, cross-browser, offline; split from Phase 28).
 16. **Phase 31** (World Conquest), not yet scheduled.
 17. **Phase 30** (combat RNG modes, split from Phase 21) — last, after
