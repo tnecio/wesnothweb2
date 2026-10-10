@@ -1785,5 +1785,274 @@
    "packages/engine/test/statistics/statistics.test.ts",
    "packages/ui/src/statistics.test.ts"
   ]
+ },
+ "6.1": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/SidePanel.svelte",
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Abilities are listed and act; apply_to=new_ability/remove_ability are implemented but untested."
+ },
+ "6.2": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/SidePanel.svelte",
+   "apps/web/scripts/help-playthrough.mjs"
+  ],
+  "note": "name=, female_name= and description= are shown; name_inactive=/description_inactive= are not (6.27)."
+ },
+ "6.3": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "Implemented for the mainline [heals], read unconditionally (no filters on the ability evaluated); no test."
+ },
+ "6.4": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "poison=cured and poison=slowed (allies) are implemented; untested."
+ },
+ "6.5": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "The largest healer value applies, as upstream; untested."
+ },
+ "6.6": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "Any healer of the side whose turn it is heals, as upstream; untested."
+ },
+ "6.7": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/heal.ts"
+  ],
+  "note": "Implemented, read unconditionally; untested."
+ },
+ "6.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ]
+ },
+ "6.9": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ]
+ },
+ "6.10": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/illumination.test.ts"
+  ]
+ },
+ "6.11": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts",
+   "packages/engine/test/actions/moveFog.test.ts"
+  ]
+ },
+ "6.12": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/moveFog.test.ts"
+  ]
+ },
+ "6.13": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts"
+  ]
+ },
+ "6.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/move.test.ts"
+  ]
+ },
+ "6.15": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/pathfind/teleport.test.ts"
+  ]
+ },
+ "6.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ]
+ },
+ "6.17": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts",
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ],
+  "note": "An ability's [filter] on its owner is evaluated (hides, leadership)."
+ },
+ "6.18": {
+  "status": "missing",
+  "evidence": [],
+  "note": "An ability's [filter_adjacent] is not evaluated (45 campaign files use [filter_adjacent], some on abilities)."
+ },
+ "6.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/vision.test.ts",
+   "packages/engine/test/actions/moveFog.test.ts"
+  ]
+ },
+ "6.20": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/abilityEffects.ts",
+   "packages/engine/test/actions/illumination.test.ts"
+  ],
+  "note": "radius= (including all_map) works; adjacent= directions are not evaluated."
+ },
+ "6.21": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ]
+ },
+ "6.22": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported; no shipped content uses it."
+ },
+ "6.23": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/illumination.test.ts"
+  ],
+  "note": "cumulative= is honoured for illumination only."
+ },
+ "6.24": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ],
+  "note": "value= and multiply= are tested; add=, sub= and divide= are implemented but untested."
+ },
+ "6.25": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts"
+  ]
+ },
+ "6.26": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported; 4 shipped campaign files use it."
+ },
+ "6.27": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Inactive abilities are not shown as such; 6 shipped campaign files set name_inactive=."
+ },
+ "6.28": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not ported; 2 shipped campaign files use it."
+ },
+ "6.29": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "apply_to=remove_ability is implemented but untested; the [experimental_filter_ability] form is missing."
+ },
+ "6.30": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/model/effects.ts"
+  ],
+  "note": "Implemented; untested."
+ },
+ "6.31": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/UnitTypeDatabase.test.ts"
+  ]
+ },
+ "6.32": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/SidePanel.svelte",
+   "packages/engine/src/events/filter.ts"
+  ],
+  "note": "Any named ability is listed, and SUF ability= matches it."
+ },
+ "6.33": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/events/filter.ts"
+  ],
+  "note": "Events can filter on ability=; [experimental_filter_ability] is missing."
+ },
+ "6.34": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/illumination.test.ts"
+  ]
+ },
+ "6.35": {
+  "status": "done",
+  "evidence": [
+   "packages/renderer/test/animation/sounds.test.ts",
+   "packages/ui/src/movementOrders.test.ts"
+  ]
+ },
+ "6.36": {
+  "status": "partial",
+  "evidence": [
+   "packages/renderer/src/animation/unitAnimation.ts"
+  ],
+  "note": "leading_anim is parsed but not played during an assisted attack."
+ },
+ "6.37": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilityEffects.test.ts",
+   "packages/engine/test/actions/illumination.test.ts"
+  ]
+ },
+ "6.38": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/actions/abilityEffects.ts"
+  ],
+  "note": "Abilities are found by a board scan that ignores fog, as upstream."
+ },
+ "6.39": {
+  "status": "partial",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts"
+  ],
+  "note": "Leadership, resistance abilities and the mainline specials combine in upstream's order for mainline content; the general composition is not ported."
+ },
+ "6.40": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/help-playthrough.mjs"
+  ]
+ },
+ "6.41": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/help/generators/units.ts"
+  ],
+  "note": "See 3.27."
  }
 }
