@@ -723,9 +723,10 @@
   "status": "partial",
   "evidence": [
    "packages/engine/test/model/UnitTypeDatabase.test.ts",
+   "packages/renderer/test/animation/sounds.test.ts",
    "packages/ui/src/help/generators/units.ts"
   ],
-  "note": "usage= is tested; die_sound=, zoc=, hide_help= and do_not_list= are implemented but untested."
+  "note": "usage= and die_sound= are tested; zoc=, hide_help= and do_not_list= are implemented but untested."
  },
  "3.5": {
   "status": "done",
@@ -922,11 +923,11 @@
   "note": "poisoned, slowed, petrified and guardian are tested; unhealable and invulnerable are implemented but untested."
  },
  "3.34": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/events/actionWml.ts"
+   "packages/engine/test/events/cutsceneWml.test.ts"
   ],
-  "note": "placement= is implemented but no test covers its rules."
+  "note": "An occupied hex is not overwritten unless overwrite=yes, and x=recall goes to the recall list; the other placement= modes follow the same code."
  },
  "3.35": {
   "status": "done",
@@ -1385,11 +1386,11 @@
   ]
  },
  "4.54": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
+   "packages/engine/test/events/cutsceneWml.test.ts",
    "packages/engine/test/pathfind/reachableHexesSynthetic.test.ts"
-  ],
-  "note": "An occupied hex falls back to the nearest free one (tested); placement= modes are untested (3.34)."
+  ]
  },
  "4.55": {
   "status": "done",
@@ -2458,9 +2459,10 @@
  "8.24": {
   "status": "partial",
   "evidence": [
-   "packages/engine/test/model/effects.test.ts"
+   "packages/engine/test/model/effects.test.ts",
+   "packages/engine/test/events/objectWml.test.ts"
   ],
-  "note": "increase= and percentages are tested through traits; set=, heal_full= and violate_maximum= are implemented but untested."
+  "note": "increase=, increase_total= and heal_full= are tested; set= and violate_maximum= are implemented but untested."
  },
  "8.25": {
   "status": "done",
@@ -2526,10 +2528,10 @@
  "8.34": {
   "status": "partial",
   "evidence": [
-   "packages/engine/src/model/effects.ts",
+   "packages/engine/test/model/effects.test.ts",
    "packages/engine/src/model/UnitType.ts"
   ],
-  "note": "Implemented (Liberty 1's Baldras uses set_description/set_icon); untested."
+  "note": "set_type= is tested; set_name=, set_description=, set_range= and set_icon= are implemented (Liberty 1's Baldras uses them) but untested."
  },
  "8.35": {
   "status": "partial",
@@ -2579,11 +2581,10 @@
   "note": "Implemented; untested."
  },
  "8.42": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/model/effects.ts"
-  ],
-  "note": "Implemented; untested."
+   "packages/engine/test/model/effects.test.ts"
+  ]
  },
  "8.43": {
   "status": "done",
