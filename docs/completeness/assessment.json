@@ -5770,5 +5770,327 @@
   "evidence": [
    "packages/ui/src/audio/audioPaths.test.ts"
   ]
+ },
+ "20.1": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/save/wesnothSave.test.ts",
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "20.2": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/gameSession.test.ts",
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "20.3": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/save/naming.test.ts",
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "20.4": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/save/naming.test.ts"
+  ]
+ },
+ "20.5": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/save/naming.test.ts",
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "20.6": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "20.7": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/save-load-playthrough.mjs",
+   "packages/ui/src/save/wesnothSave.test.ts"
+  ],
+  "note": "As a real Wesnoth .gz save."
+ },
+ "20.8": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/save-load-playthrough.mjs",
+   "packages/ui/src/save/wesnothSave.test.ts"
+  ],
+  "note": "Including saves from the real game."
+ },
+ "20.9": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "20.10": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ]
+ },
+ "20.11": {
+  "status": "partial",
+  "evidence": [
+   "packages/ui/src/save/wesnothSave.ts",
+   "packages/ui/src/gameSession.test.ts"
+  ],
+  "note": "Saves carry a version and one older format is read (save version 1); there is no general migration or version check."
+ },
+ "20.12": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/save/naming.test.ts",
+   "packages/ui/src/save/wesnothSave.ts"
+  ],
+  "note": "Downloads are gzipped like upstream's."
+ },
+ "20.13": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/undo.test.ts",
+   "apps/web/scripts/undo-replay-playthrough.mjs"
+  ]
+ },
+ "20.14": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/undo.test.ts"
+  ],
+  "note": "Unlimited within a turn, as upstream."
+ },
+ "20.15": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/replay.test.ts",
+   "apps/web/scripts/undo-replay-playthrough.mjs"
+  ]
+ },
+ "20.16": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/pumpAndActions.test.ts",
+   "packages/engine/test/actions/moveFog.test.ts"
+  ]
+ },
+ "20.17": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/replay.test.ts",
+   "packages/engine/test/actions/undo.test.ts"
+  ]
+ },
+ "20.18": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/undo.test.ts"
+  ],
+  "note": "Ending the turn clears the undo stack, as upstream."
+ },
+ "20.19": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/synced.test.ts",
+   "packages/ui/src/replay.test.ts"
+  ]
+ },
+ "20.20": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/replay.test.ts",
+   "apps/web/scripts/undo-replay-playthrough.mjs",
+   "apps/web/scripts/replay-from-menu-playthrough.mjs"
+  ]
+ },
+ "20.21": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/replay.test.ts",
+   "packages/engine/test/events/randVariable.test.ts"
+  ]
+ },
+ "20.22": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/replay.test.ts"
+  ],
+  "note": "A replay that does not match reports where it went out of sync."
+ },
+ "20.23": {
+  "status": "missing",
+  "evidence": [],
+  "note": "See 12.55."
+ },
+ "20.24": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/events/supportWml.test.ts"
+  ]
+ },
+ "20.25": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/displayPrefs.test.ts",
+   "packages/ui/src/audio/settings.test.ts"
+  ]
+ },
+ "20.26": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ]
+ },
+ "20.27": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/achievements.test.ts",
+   "apps/web/scripts/phase25-playthrough.mjs"
+  ]
+ },
+ "20.28": {
+  "status": "missing",
+  "evidence": [],
+  "note": "A full browser storage is not handled specially (Phase 28d)."
+ },
+ "20.29": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/measure-load.mjs"
+  ],
+  "note": "Measured (Phase 28a); budgets are Phase 28d's."
+ },
+ "20.30": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/measure-load.mjs"
+  ],
+  "note": "Measured; budgets are Phase 28d's."
+ },
+ "20.31": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/sound-playthrough.mjs",
+   "apps/web/scripts/campaign-playthrough.mjs"
+  ],
+  "note": "Images, atlases, audio and story art load per scenario on demand."
+ },
+ "20.32": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not measured (Phase 28d)."
+ },
+ "20.33": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/ai-turn-playthrough.mjs"
+  ],
+  "note": "Frame gaps are reported by some checks; no budget (Phase 28d)."
+ },
+ "20.34": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "The port has no WebAssembly build; its Lua runs on fengari, in JavaScript."
+ },
+ "20.35": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Only Chromium is tested (Phase 28d)."
+ },
+ "20.36": {
+  "status": "missing",
+  "evidence": [],
+  "note": "No service worker; offline play is Phase 28d."
+ },
+ "20.37": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/campaign-playthrough.mjs",
+   "apps/web/scripts/save-load-playthrough.mjs"
+  ],
+  "note": "/play/<campaign>?scenario= and ?save= open directly."
+ },
+ "20.38": {
+  "status": "done",
+  "evidence": [
+   "apps/web/scripts/error-screen-playthrough.mjs"
+  ],
+  "note": "Kept client-side, as decided."
+ },
+ "20.39": {
+  "status": "done",
+  "evidence": [
+   ".github/workflows/ci.yml"
+  ]
+ },
+ "20.40": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/campaigns.test.ts",
+   "packages/ui/src/aiTestScenarios.test.ts"
+  ]
+ },
+ "20.41": {
+  "status": "done",
+  "evidence": [
+   "packages/oracle-tools/src/imageOracle.test.ts",
+   "apps/web/scripts/image-golden.mjs",
+   "packages/ui/src/save/wesnothSave.test.ts"
+  ],
+  "note": "Image goldens from upstream's own code and real Wesnoth saves; no replay-level comparison with the real game."
+ },
+ "20.42": {
+  "status": "partial",
+  "evidence": [
+   "apps/web/scripts/main-menu-playthrough.mjs"
+  ],
+  "note": "The browser checks are run by hand, not in CI."
+ },
+ "20.43": {
+  "status": "done",
+  "evidence": [
+   ".github/workflows/ci.yml"
+  ]
+ },
+ "20.44": {
+  "status": "out-of-scope",
+  "evidence": [],
+  "note": "No staging environment by decision (docs/DEPLOYMENT.md): a tag deploys straight to production."
+ },
+ "20.45": {
+  "status": "done",
+  "evidence": [
+   ".github/workflows/deploy.yml",
+   "docs/DEPLOYMENT.md"
+  ]
+ },
+ "20.46": {
+  "status": "missing",
+  "evidence": [],
+  "note": "Not tracked (Phase 28d)."
+ },
+ "20.47": {
+  "status": "done",
+  "evidence": [
+   "COPYING",
+   "docs/ASSETS.md"
+  ]
+ },
+ "20.48": {
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/campaigns.test.ts",
+   "apps/web/scripts/check-upstream-unmodified.mjs"
+  ],
+  "note": "The data and Lua are upstream's, unmodified, and every shipped campaign opens."
  }
 }
