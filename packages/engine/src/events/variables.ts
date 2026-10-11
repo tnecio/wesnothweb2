@@ -37,11 +37,8 @@
  *   first) and its `$var?default|` / `$|` / bare-`$` edge cases in
  *   simplified form -- close enough for real message text, not a
  *   character-for-character port of the C++ state machine.
- * - `$(...)` formula substitution is NOT implemented (left untouched in the
- *   output string) -- wiring the WFL interpreter (`packages/engine/src/
- *   formula/`) through here is a reasonable follow-up (see filter.ts for
- *   the one place this port *does* wire WFL in, for `formula=` unit
- *   filters) but wasn't needed by any real content exercised so far.
+ * - `$(...)` evaluates a WFL formula (`utils::detail::evaluate_formula`),
+ *   after the variables inside it are substituted (see `substitute`).
  */
 
 import { parseFormula } from '../formula/index.js';

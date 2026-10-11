@@ -211,6 +211,35 @@ export class AttackType {
   }
 
   /**
+   * `attack_type::write`: the weapon as WML -- what an attack event hands its handlers as `$weapon` /
+   * `$second_weapon` (`scoped_weapon_info`), its specials under `[specials]` with their own tags.
+   */
+  toConfig(): WmlConfig {
+    const cfg = new WmlConfig();
+    cfg.setAttribute('name', this.id);
+    if (this.nameT) cfg.setAttribute('description', this.nameT);
+    else cfg.setAttribute('description', this.nameText);
+    cfg.setAttribute('type', this.type);
+    cfg.setAttribute('range', this.range);
+    cfg.setAttribute('min_range', this.minRange);
+    cfg.setAttribute('max_range', this.maxRange);
+    if (this.alignment) cfg.setAttribute('alignment', this.alignment);
+    cfg.setAttribute('damage', this.damage);
+    cfg.setAttribute('number', this.numAttacks);
+    cfg.setAttribute('attack_weight', this.attackWeight);
+    cfg.setAttribute('defense_weight', this.defenseWeight);
+    cfg.setAttribute('accuracy', this.accuracy);
+    cfg.setAttribute('parry', this.parry);
+    cfg.setAttribute('movement_used', this.movementUsed);
+    cfg.setAttribute('attacks_used', this.attacksUsed);
+    if (this.specials.length > 0) {
+      const specials = cfg.addChild('specials');
+      for (const special of this.specials) specials.addChild(specialTag(special) || 'dummy', special.clone());
+    }
+    return cfg;
+  }
+
+  /**
    * `attack_type::matches_filter` (`matches_simple_filter` plus in-order
    * `[and]`/`[or]`/`[not]`) -- a weapon filter, e.g. `[effect]
    * apply_to=attack`'s own attributes. `special_id`/`special_type` and the

@@ -8,20 +8,15 @@ Assessed 2026-10-10, on top of the status table (#30) and AI steps (#31). Of the
 
 ### Bugs that affect shipped campaigns
 
-Each was confirmed against the code and the campaign data.
+Each was confirmed against the code and the campaign data. Phase 27a fixed the rest of the original list:
+`[modify_side]` side lists and keys, event weapon filters, the strike and advance events, `[modify_unit_type]`,
+`attacks_used=`/`movement_used=` and `[filter_recall]`.
 
 | What | Items | Effect |
 |---|---|---|
-| `[modify_side]` reads `side=` as one number; a list (`side=2,3`) or `[filter_side]` falls back to **side 1** | 9.6, 9.14 | The player receives what is meant for enemy sides. About 1,000 uses in shipped scenarios, mostly `[ai]` changes. In HttT 42 the player gets the orcs' income and a goblin recruit list. |
-| `[modify_side]` ignores `fog=`, `shroud=`, `hidden=`, `color=`, `flag=`, `share_vision=`, `village_gold=`, `village_support=` | 9.14, 9.49, 9.50 | About 140 uses: fog, shroud and hidden sides do not change when a scenario says so. |
-| An event's `[filter_attack]` / `[filter_second_attack]` is not evaluated, and `$weapon` / `$second_weapon` are not set | 5.22, 12.7 | 245 handlers in 73 shipped scenarios. On an `attack` event they fire for any weapon. |
-| `attacker hits` / `defender hits` / `attacker misses` / `defender misses` are never fired | 5.23, 5.24 | Dead handlers in HttT 4, 7 and 24, Legend of Wesmere and Sceptre of Fire 9. |
-| `advance` / `post advance` are never fired | 8.63, 8.64 | Used in 14 campaign files, including HttT, The South Guard, The Deceiver's Gambit and Dusk of Dawn. |
-| `[modify_unit_type]` is never applied | 3.43 | Dead Water's Cuttle Fish cannot become a Kraken. OPP 2–4 recruit costs, and changes in HttT, DiD, EI and SotBE, do not happen. |
-| The `[disable]` special is missing; `attacks_used=` / `movement_used=` are not applied | 5.54, 3.22 | TDG's Eldred can attack with a weapon meant only for retaliation. HttT's Jeniver can use her two-attack weapons once per turn as if they cost one. |
+| The `[disable]` special is missing | 5.54 | TDG's Eldred can attack with a weapon meant only for retaliation. |
 | Specials work only for mainline `id=`s; the generic special pipeline is not ported | 7.1–7.26 | A campaign's own `[damage]` / `[attacks]` / `[chance_to_hit]` specials and all special filters have no effect: Descent into Darkness's spells, and parry, smoke and stagger in about 20 campaign files. |
 | An ability's `[filter_adjacent]` and `[filter_student]` are not evaluated | 6.18, 6.26 | Conditional abilities act as always on. |
-| A side's `[filter_recall]` is not applied | 10.19 | Units the scenario forbids can be recalled. |
 
 ### Missing presentation
 
@@ -68,15 +63,7 @@ These are Phase 28d's, as planned:
 
 ## Proposed follow-ups
 
-1. **Correctness fixes** (the bugs table above, except the special pipeline). Each is a targeted port of upstream's code with a test:
-   - `[modify_side]` through the side filter, with all its keys;
-   - event `[filter_attack]`/`[filter_second_attack]` and `$weapon`;
-   - the hit/miss and advance events;
-   - `[modify_unit_type]`;
-   - `[disable]`, `attacks_used=` and `movement_used=`;
-   - `[filter_recall]`.
-
-   Highest priority: these change how shipped campaigns play.
+1. **Correctness fixes**: done in Phase 27a, except `[disable]`, which moved to the special pipeline (2).
 2. **The ability and special pipeline**: port `units/abilities.cpp` (filters, `apply_to=`, `active_on=`, `cumulative=`, `[filter_adjacent]`, `[filter_student]`, the generic `[damage]`/`[attacks]`/`[chance_to_hit]`) and route the mainline specials through it. Its own phase, as the plan has long flagged it as Phase 2's largest gap.
 3. **Presentation gaps**:
    - the missing image functions, led by `CS`, `ROTATE` and `NO_TOD_SHIFT`;
@@ -87,12 +74,9 @@ These are Phase 28d's, as planned:
    - random unit names;
    - fogged village flags as upstream.
 4. **Test debt**: tests for the untested partial items, starting with the mainline specials and healing.
-5. **Unused WML**:
-   - `[store_unit_type_ids]`, `[store_unit_defense(_on)]`, `[store_relative_direction]`, `[have_side]`;
-   - `[test_condition]`, `[set_variable] formula=`, `$( )` tests;
-   - delayed shroud updates.
-
-   No shipped campaign needs these. Port them as one small batch, or leave them.
+5. **Unused WML**: done in Phase 27a (`[store_unit_type_ids]`, `[store_unit_defense(_on)]`,
+   `[store_relative_direction]`, `[have_side]`, `[set_variable] formula=`, a `$( )` test), except `[test_condition]`
+   and delayed shroud updates.
 6. **Phase 28d** as planned, plus browser checks in CI.
 
 ## Out of scope: for confirmation

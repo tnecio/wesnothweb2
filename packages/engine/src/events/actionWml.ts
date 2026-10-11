@@ -78,15 +78,16 @@
 
 import type { EndLevelState } from './context.js';
 import { Direction, Location, parseDirection } from '../model/Location.js';
-import { Unit } from '../model/Unit.js';
-import { WmlConfig, plainValue, type WmlStoredValue } from '../wml/config.js';
-import { placeWmlRecall, rollNewUnit } from '../actions/recruit.js';
+import { Unit, UnitStatus } from '../model/Unit.js';
+import { WmlConfig, plainValue, type WmlAttributeValue, type WmlStoredValue } from '../wml/config.js';
+import { leaderCanRecall, placeWmlRecall, rollNewUnit } from '../actions/recruit.js';
 import { findPath, findVacantTile } from '../pathfind/pathfind.js';
 import type { Rng } from '../rng/Rng.js';
 import type { EffectEnv } from '../model/effects.js';
 import type { ActionHandler, EventContext, RecordedMessage } from './context.js';
 import { ActionRegistry } from './context.js';
 import { TString } from '../i18n/tstring.js';
+import { MapFormulaCallable, parseFormula, Variant } from '../formula/index.js';
 import { FLOATING_LABEL_COLOR, parseRgbString } from './floatingLabels.js';
 import { isFlow, runFlow, type Flow, type MessageOption, type MessageTexts, type Responder, type TextInputSpec } from './interaction.js';
 import { conditionalPassed } from './conditionalWml.js';
@@ -106,6 +107,10 @@ import {
   actionStoreStartingLocation,
   actionStoreTurns,
   actionStoreUnitType,
+  actionStoreUnitTypeIds,
+  actionStoreUnitDefense,
+  actionStoreUnitDefenseOn,
+  actionStoreRelativeDirection,
   actionStoreVillages,
   actionTerrain,
   actionTerrainMask,
@@ -544,6 +549,18 @@ export function applySetVariable(cfg: WmlConfig, variables: VariableStore, log: 
 
   if (cfg.hasAttribute('string_length')) variables.set(name, String(cfg.get('string_length')).length);
 
+  // `formula=` (set_variable.lua): a WFL formula over the variable's value, bound as `value`.
+  if (cfg.hasAttribute('formula')) {
+    try {
+      const context = new MapFormulaCallable().add('value', toFormulaValue(variables.get(name)));
+      const result = fromFormulaValue(parseFormula(cfg.getString('formula')).evaluate(context));
+      if (result === undefined) variables.clear(name);
+      else variables.set(name, result);
+    } catch (e) {
+      log('error', `[set_variable] formula= cannot be evaluated: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   const joinCfg = cfg.child('join');
   if (joinCfg) {
     const arrayName = joinCfg.getString('variable', '');
@@ -562,9 +579,25 @@ export function applySetVariable(cfg: WmlConfig, variables: VariableStore, log: 
 
   // `rand=` is handled by `actionSetVariable` above, which has the
   // context (and so the RNG) this shared helper deliberately does not.
-  // NOT ported: `rand=` here (needs the shared RNG, owned by packages/engine/src/rng/, out of
-  // scope here), `formula=` (would need a `value`-bound WFL context; skipped for now),
-  // `time=stamp` (no wall-clock concept in a deterministic headless engine).
+  // NOT ported: `time=stamp` (no wall-clock concept in a deterministic headless engine).
+}
+
+/** `luaW_tofaivariant` for a WML value: numbers (and numeric strings, as a config types them) become decimals. */
+function toFormulaValue(v: WmlStoredValue | undefined): Variant {
+  if (v === undefined || v === null) return Variant.null_();
+  const plain = typeof v === 'object' && !(v instanceof TString) ? undefined : plainValue(v as WmlAttributeValue);
+  if (typeof plain === 'boolean') return Variant.int(plain ? 1 : 0);
+  if (typeof plain === 'number') return Variant.decimalFromNumber(plain);
+  if (typeof plain === 'string') return plain.trim() !== '' && Number.isFinite(Number(plain)) ? Variant.decimalFromNumber(Number(plain)) : Variant.string(plain);
+  return Variant.null_();
+}
+
+/** `luaW_pushfaivariant` back to a WML value: ints and decimals as numbers, strings as strings, null as unset. */
+function fromFormulaValue(v: Variant): string | number | undefined {
+  if (v.isNull()) return undefined;
+  if (v.isInt()) return v.asInt();
+  if (v.isDecimal()) return v.asDecimal() / 1000;
+  return v.stringCast();
 }
 
 /**
@@ -640,7 +673,7 @@ function actionSetVariable(cfg: WmlConfig, ctx: EventContext): void {
  * `merge` merges element i of the data into element i (`config::merge_with`); `insert` inserts the data at the
  * index (the front, with none).
  */
-function actionSetVariables(cfg: WmlConfig, ctx: EventContext): void {
+export function actionSetVariables(cfg: WmlConfig, ctx: EventContext): void {
   const name = cfg.getString('name', '');
   if (name === '') {
     ctx.log('error', 'trying to set a variable with an empty name');
@@ -739,7 +772,7 @@ function isTruthy(v: WmlStoredValue | undefined): boolean {
 
 // --- [clear_variable] ---
 
-function actionClearVariable(cfg: WmlConfig, ctx: EventContext): void {
+export function actionClearVariable(cfg: WmlConfig, ctx: EventContext): void {
   const names = cfg.getString('name', '');
   if (names === '') {
     ctx.log('error', '[clear_variable] missing required name= attribute.');
@@ -927,7 +960,28 @@ const MODIFY_UNIT_FIELDS: Record<string, (u: Unit, cfg: WmlConfig, key: string) 
   name: (u, cfg) => (u.name = cfg.getString('name', u.name)),
   role: (u, cfg) => (u.role = cfg.getString('role', u.role)),
   unrenamable: (u, cfg) => (u.unrenamable = cfg.getBoolean('unrenamable', u.unrenamable)),
+  // Phase 27a: modify_unit.lua writes any attribute of the stored unit (`unit::write`'s keys) before unstoring it.
+  attacks_left: (u, cfg) => (u.attacksLeft = cfg.getNumber('attacks_left', u.attacksLeft)),
+  max_attacks: (u, cfg) => (u.maxAttacksPerTurn = cfg.getNumber('max_attacks', u.maxAttacksPerTurn)),
+  resting: (u, cfg) => (u.resting = cfg.getBoolean('resting', u.resting)),
+  hidden: (u, cfg) => (u.hidden = cfg.getBoolean('hidden', u.hidden)),
+  profile: (u, cfg) => (u.profile = cfg.getString('profile', u.profile)),
+  upkeep: (u, cfg) => (u.upkeep = cfg.getString('upkeep', u.upkeep)),
+  recall_cost: (u, cfg) => (u.recallCost = cfg.getNumber('recall_cost', u.recallCost)),
+  extra_recruit: (u, cfg) => (u.extraRecruit = cfg.getString('extra_recruit', '').split(',').map((r) => r.trim()).filter((r) => r !== '')),
+  overlays: (u, cfg) => (u.overlays = cfg.getString('overlays', '').split(',').map((o) => o.trim()).filter((o) => o !== '')),
+  halo: (u, cfg) => (u.halo = cfg.getString('halo', u.halo)),
+  ellipse: (u, cfg) => (u.ellipse = cfg.getString('ellipse', u.ellipse)),
+  zoc: (u, cfg) => (u.emitZoc = cfg.getBoolean('zoc', u.emitZoc)),
+  vision: (u, cfg) => (u.vision = cfg.getNumber('vision', u.vision)),
+  jamming: (u, cfg) => (u.jamming = cfg.getNumber('jamming', u.jamming)),
+  ai_special: (u, cfg) => u.setStatus(UnitStatus.Guardian, cfg.getString('ai_special') === 'guardian'),
+  // `unit::write`'s `advances_to` (`null` for none).
+  advances_to: (u, cfg) => (u.advancesTo = cfg.getString('advances_to', '').split(',').map((t) => t.trim()).filter((t) => t !== '' && t !== 'null')),
 };
+
+/** Attributes `[modify_unit]` reads itself, or that `unit::write` keeps but this port's units do not (left as they are). */
+const MODIFY_UNIT_OTHER_KEYS = new Set(['mode', 'type', 'x', 'y', 'facing', 'id', 'underlying_id', 'gender', 'variation', 'race', 'alignment', 'level', 'cost', 'description', 'image', 'small_profile', 'random_traits', 'generate_name', 'goto_x', 'goto_y', 'flag_rgb', 'language_name', 'undead_variation', 'usage', 'portrait', 'image_icon']);
 
 function actionModifyUnit(cfg: WmlConfig, ctx: EventContext): void {
   const filterCfg = cfg.child('filter');
@@ -944,12 +998,25 @@ function actionModifyUnit(cfg: WmlConfig, ctx: EventContext): void {
     if (cfg.hasAttribute('facing')) {
       unit.facing = parseDirection(cfg.getString('facing'));
     }
+    for (const key of cfg.attributeNames()) {
+      if (!(key in MODIFY_UNIT_FIELDS) && !MODIFY_UNIT_OTHER_KEYS.has(key)) ctx.log('warn', `[modify_unit] ${key}= is not supported in this port -- ignored`);
+    }
+    // `x,y=`: the unstored unit lands there (`[unstore_unit]`'s placement).
+    if (cfg.hasAttribute('x') || cfg.hasAttribute('y')) {
+      const to = Location.fromWml(cfg.getNumber('x', unit.location.wmlX), cfg.getNumber('y', unit.location.wmlY));
+      if (!to.equals(unit.location) && ctx.board.map.onBoard(to) && !ctx.board.unitAt(to) && ctx.board.unitAt(unit.location) === unit) ctx.board.moveUnit(unit.location, to);
+    }
 
     const unitVars = new VariableStore(unit.variables ? varNodeFromConfig(unit.variables) : newVarNode());
     const subCtx: EventContext = { ...ctx, variables: unitVars };
     for (const { tag, config } of cfg.allChildren()) {
       if (tag === 'filter') continue;
       const expanded = ctx.variables.expandConfig(config);
+      if (tag === 'status') {
+        // `[status]` written over the stored unit's: each key a status, on or off.
+        for (const key of expanded.attributeNames()) unit.setStatus(key, expanded.getBoolean(key));
+        continue;
+      }
       if (tag === 'set_variable') applySetVariable(expanded, unitVars, ctx.log);
       else if (tag === 'set_variables') actionSetVariables(expanded, subCtx);
       else if (tag === 'clear_variable') actionClearVariable(expanded, subCtx);
@@ -966,6 +1033,13 @@ function actionModifyUnit(cfg: WmlConfig, ctx: EventContext): void {
       }
     }
     unit.variables = unitVars.toConfig();
+    // `type=`: the unit is made to advance into it (`advances_to` set, experience filled, then unstored).
+    if (cfg.hasAttribute('type')) {
+      const type = cfg.getString('type');
+      if (type !== '') unit.advancesTo = [type];
+      unit.experience = unit.maxExperience;
+      ctx.advanceUnit?.(unit);
+    }
   }
 }
 
@@ -1383,6 +1457,7 @@ function actionRecall(cfg: WmlConfig, ctx: EventContext): void {
       // `underlyingId` (see `GameSession.tryRecallAt`), so `removeFromRecallList` could take the wrong one.
       for (const leader of leaders) {
         if (leaderFilter && !unitMatchesFilter(leader, leaderFilter, board)) continue;
+        if (!leaderCanRecall(leader, unit, board)) continue;
         const loc = vacantNear(board.map.onBoard(cfgLoc) ? cfgLoc : leader.location);
         if (loc && board.map.onBoard(loc)) {
           list.splice(index, 1);
@@ -1741,6 +1816,7 @@ function actionEndlevel(cfg: WmlConfig, ctx: EventContext): void {
     lingerMode: cfg.getBoolean('linger_mode', true),
     replaySave: cfg.getBoolean('replay_save', true),
     ...(cfg.getString('music', '') !== '' ? { music: cfg.getString('music').split(',').map((t) => t.trim()).filter((t) => t !== '') } : {}),
+    ...(cfg.getString('test_result', '') !== '' ? { testResult: cfg.getString('test_result') } : {}),
   };
 }
 
@@ -1968,6 +2044,10 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('store_locations', actionStoreLocations);
   registry.register('store_villages', actionStoreVillages);
   registry.register('store_unit_type', actionStoreUnitType);
+  registry.register('store_unit_type_ids', actionStoreUnitTypeIds);
+  registry.register('store_unit_defense', actionStoreUnitDefense);
+  registry.register('store_unit_defense_on', actionStoreUnitDefenseOn);
+  registry.register('store_relative_direction', actionStoreRelativeDirection);
   registry.register('store_side', actionStoreSide);
   registry.register('store_turns', actionStoreTurns);
   registry.register('store_map_dimensions', actionStoreMapDimensions);

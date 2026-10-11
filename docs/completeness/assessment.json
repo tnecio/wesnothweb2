@@ -185,12 +185,14 @@
   "note": "Inner references resolve first (right-to-left scan)."
  },
  "1.29": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
    "packages/engine/src/events/variables.ts",
-   "packages/engine/test/formula/formula.test.ts"
+   "packages/engine/test/events/variables.test.ts",
+   "packages/engine/test/formula/formula.test.ts",
+   "packages/ui/src/storeTags.test.ts"
   ],
-  "note": "$(...) is evaluated by the WFL interpreter but has no test (and the module comment still says it is missing); [set_variable] formula= is skipped."
+  "note": "$( ) and [set_variable] formula= both evaluate WFL (Phase 27a)."
  },
  "1.30": {
   "status": "done",
@@ -844,12 +846,13 @@
   "note": "accuracy= and parry= enter the chance to hit, but no test covers them."
  },
  "3.22": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
+   "packages/engine/src/actions/combat.ts",
    "packages/engine/src/model/UnitType.ts",
-   "packages/engine/src/actions/combat.ts"
+   "packages/ui/src/eventWeapons.test.ts"
   ],
-  "note": "movement_used= and attacks_used= are read and filterable but not applied: an attack always costs one attack and ends movement."
+  "note": "Phase 27a: an attack spends its weapon's attacks_used and movement_used, between pre attack and attack (attack::perform)."
  },
  "3.23": {
   "status": "done",
@@ -983,11 +986,12 @@
   ]
  },
  "3.43": {
-  "status": "missing",
+  "status": "done",
   "evidence": [
-   "apps/web/scripts/build-scenario-snapshot.mjs"
+   "apps/web/scripts/build-scenario-snapshot.mjs",
+   "packages/ui/src/modifyUnitType.test.ts"
   ],
-  "note": "Bug: copied into each scenario but never applied. Dead Water's Cuttle Fish cannot advance to Kraken; OPP 2-4's changed recruit costs (Peasant 16, not 8), and the HttT, DiD, EI and SotBE changes, do not happen."
+  "note": "Phase 27a: applied when the scenario starts (unit_types::apply_scenario_fix); set_experience changes units already placed."
  },
  "3.44": {
   "status": "done",
@@ -996,9 +1000,10 @@
   ]
  },
  "3.45": {
-  "status": "missing",
-  "evidence": [],
-  "note": "Not ported (upstream defines it in wml-tags.lua); no shipped campaign uses it."
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/storeTags.test.ts"
+  ]
  },
  "3.46": {
   "status": "done",
@@ -1015,9 +1020,10 @@
   ]
  },
  "3.48": {
-  "status": "missing",
-  "evidence": [],
-  "note": "Not ported (upstream defines them in wml-tags.lua); no shipped campaign uses them."
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/storeTags.test.ts"
+  ]
  },
  "3.49": {
   "status": "done",
@@ -1276,11 +1282,11 @@
   "note": "An attack ends the attacker's movement; see 4.37 for weapons that should not."
  },
  "4.37": {
-  "status": "missing",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/model/UnitType.ts"
-  ],
-  "note": "movement_used= is read but not applied (see 3.22)."
+   "packages/engine/src/model/UnitType.ts",
+   "packages/ui/src/eventWeapons.test.ts"
+  ]
  },
  "4.38": {
   "status": "done",
@@ -1304,9 +1310,10 @@
   "note": "Implemented; no test."
  },
  "4.41": {
-  "status": "missing",
-  "evidence": [],
-  "note": "Not ported; no shipped campaign uses it. The direction function it needs exists (relativeDirection)."
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/storeTags.test.ts"
+  ]
  },
  "4.42": {
   "status": "done",
@@ -1529,11 +1536,11 @@
   ]
  },
  "5.20": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/combat.ts"
-  ],
-  "note": "One attack per attack action; attacks_used= is not applied (3.22). apply_to=max_attacks is covered in category 8."
+   "packages/engine/src/actions/combat.ts",
+   "packages/ui/src/eventWeapons.test.ts"
+  ]
  },
  "5.21": {
   "status": "done",
@@ -1543,22 +1550,25 @@
   "note": "See 4.37 for movement_used=."
  },
  "5.22": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/ui/src/gameSession.ts",
-   "packages/engine/src/events/pump.ts"
+   "packages/engine/src/events/pump.ts",
+   "packages/ui/src/eventWeapons.test.ts",
+   "packages/ui/src/gameSession.ts"
   ],
-  "note": "Bug: the attack event fires, but [filter_attack]/[filter_second_attack] on an event are not evaluated, so such handlers run for any weapon (245 handlers in 73 shipped scenarios use them), and $weapon/$second_weapon are not set."
+  "note": "Phase 27a: [filter_attack]/[filter_second_attack] are evaluated and $weapon/$second_weapon set, for attack, attack end, last breath and die."
  },
  "5.23": {
-  "status": "missing",
-  "evidence": [],
-  "note": "attacker hits / defender hits (and unit hits) are never fired; HttT 4, 7 and 24, Legend of Wesmere and Sceptre of Fire 9 use them."
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/eventWeapons.test.ts"
+  ]
  },
  "5.24": {
-  "status": "missing",
-  "evidence": [],
-  "note": "attacker misses / defender misses are never fired."
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/eventWeapons.test.ts"
+  ]
  },
  "5.25": {
   "status": "done",
@@ -2725,14 +2735,16 @@
   ]
  },
  "8.63": {
-  "status": "missing",
-  "evidence": [],
-  "note": "Bug: the advance event is never fired (14 shipped campaign files use advance or post advance: HttT, TSG, TDG, Dusk of Dawn...)."
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/advanceEvents.test.ts"
+  ]
  },
  "8.64": {
-  "status": "missing",
-  "evidence": [],
-  "note": "Bug: the post advance event is never fired."
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/advanceEvents.test.ts"
+  ]
  },
  "8.65": {
   "status": "done",
@@ -2828,11 +2840,11 @@
   ]
  },
  "9.6": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/ai/wmlActions.ts"
-  ],
-  "note": "team_name= is applied, but only for one numeric side=. Bug: [modify_side] reads side= as one number, so a list (side=2,3; about 1,000 uses in shipped scenarios) or a missing side= with [filter_side] falls back to side 1, the player: HttT 42 gives the player the orcs' income and goblin recruit list, and the [ai] changes meant for enemy sides go to the player's side."
+   "packages/engine/src/ai/wmlActions.ts",
+   "packages/ui/src/modifySide.test.ts"
+  ]
  },
  "9.7": {
   "status": "done",
@@ -2882,11 +2894,11 @@
   "note": "Implemented; no test of its own."
  },
  "9.14": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/ai/wmlActions.ts"
-  ],
-  "note": "gold= and income= are applied; village_gold= and village_support= are not. Bug: [modify_side] reads side= as one number, so a list (side=2,3; about 1,000 uses in shipped scenarios) or a missing side= with [filter_side] falls back to side 1, the player: HttT 42 gives the player the orcs' income and goblin recruit list, and the [ai] changes meant for enemy sides go to the player's side."
+   "packages/engine/src/ai/wmlActions.ts",
+   "packages/ui/src/modifySide.test.ts"
+  ]
  },
  "9.15": {
   "status": "done",
@@ -3058,9 +3070,10 @@
   ]
  },
  "9.41": {
-  "status": "missing",
-  "evidence": [],
-  "note": "Not ported (upstream defines it in wml-conditionals.lua); no shipped campaign uses it."
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/storeTags.test.ts"
+  ]
  },
  "9.42": {
   "status": "done",
@@ -3110,18 +3123,19 @@
   ]
  },
  "9.49": {
-  "status": "missing",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/ai/wmlActions.ts"
-  ],
-  "note": "[modify_side] ignores fog=, shroud=, share_vision=, hidden=, color=, flag= and side_name= (about 140 uses in shipped scenarios)."
+   "packages/engine/src/ai/wmlActions.ts",
+   "packages/ui/src/modifySide.test.ts"
+  ]
  },
  "9.50": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/ui/src/gameSession.ts"
+   "packages/ui/src/gameSession.ts",
+   "packages/ui/src/modifySide.test.ts"
   ],
-  "note": "Hidden sides are left out of the status table and side lists, but [modify_side] hidden= (44 uses) is ignored."
+  "note": "Hidden sides are left out of the status table and side lists; [modify_side] hidden= is applied (Phase 27a)."
  },
  "9.51": {
   "status": "done",
@@ -3279,9 +3293,12 @@
   "note": "recall and prerecall are fired; untested."
  },
  "10.19": {
-  "status": "missing",
-  "evidence": [],
-  "note": "A side's [filter_recall] is kept in saves but not applied to what may be recalled."
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/model/sideFilterRecall.test.ts",
+   "packages/ui/src/filterRecall.test.ts"
+  ],
+  "note": "Upstream keeps it on the leader (saved_game moves a [side]'s children into its [leader]); applied to the recall list, recalls, the AI and [recall] (Phase 27a)."
  },
  "10.20": {
   "status": "done",
@@ -3648,11 +3665,11 @@
   ]
  },
  "12.7": {
-  "status": "missing",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/events/pump.ts"
-  ],
-  "note": "Bug: not evaluated -- a handler with them runs for any weapon (5.22)."
+   "packages/engine/src/events/pump.ts",
+   "packages/ui/src/eventWeapons.test.ts"
+  ]
  },
  "12.8": {
   "status": "done",
@@ -3662,11 +3679,11 @@
   ]
  },
  "12.9": {
-  "status": "missing",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/events/pump.ts"
-  ],
-  "note": "Not evaluated on an event (such a handler would run for every side); no shipped scenario uses it there."
+   "packages/engine/src/events/pump.ts",
+   "packages/ui/src/eventWeapons.test.ts"
+  ]
  },
  "12.10": {
   "status": "done",
@@ -3864,9 +3881,10 @@
   "note": "join, string_length, round and the rest are implemented; untested. (Upstream has no to_upper.)"
  },
  "12.40": {
-  "status": "missing",
-  "evidence": [],
-  "note": "formula= on [set_variable] is skipped (1.29)."
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/storeTags.test.ts"
+  ]
  },
  "12.41": {
   "status": "done",
@@ -3939,16 +3957,18 @@
   ]
  },
  "12.52": {
-  "status": "missing",
-  "evidence": [],
-  "note": "See 3.48."
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/storeTags.test.ts"
+  ]
  },
  "12.53": {
   "status": "partial",
   "evidence": [
-   "packages/engine/src/events/flowWml.ts"
+   "packages/engine/src/events/flowWml.ts",
+   "packages/ui/src/storeTags.test.ts"
   ],
-  "note": "[store_reachable_locations] is implemented but untested; [store_relative_direction] is missing (4.41)."
+  "note": "[store_relative_direction] is done (Phase 27a, both modes); [store_reachable_locations] is implemented but untested."
  },
  "12.54": {
   "status": "done",
@@ -5775,16 +5795,22 @@
  "20.1": {
   "status": "done",
   "evidence": [
-   "packages/ui/src/save/wesnothSave.test.ts",
-   "apps/web/scripts/save-load-playthrough.mjs"
-  ]
+   "apps/web/scripts/save-load-playthrough.mjs",
+   "packages/ui/src/filterRecall.test.ts",
+   "packages/ui/src/modifySide.test.ts",
+   "packages/ui/src/save/wesnothSave.test.ts"
+  ],
+  "note": "Correction (Phase 27a): saves kept only a side's gold, fog, shroud and villages, so [modify_side] changes were lost on reload; a side's whole state is now saved (Team.toConfig), with leaders' extra_recruit and [filter_recall]."
  },
  "20.2": {
   "status": "done",
   "evidence": [
+   "apps/web/scripts/save-load-playthrough.mjs",
+   "packages/ui/src/filterRecall.test.ts",
    "packages/ui/src/gameSession.test.ts",
-   "apps/web/scripts/save-load-playthrough.mjs"
-  ]
+   "packages/ui/src/modifySide.test.ts"
+  ],
+  "note": "Correction (Phase 27a): saves kept only a side's gold, fog, shroud and villages, so [modify_side] changes were lost on reload; a side's whole state is now saved (Team.toConfig), with leaders' extra_recruit and [filter_recall]."
  },
  "20.3": {
   "status": "done",

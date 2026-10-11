@@ -764,3 +764,74 @@ export function runScenarioStartupEvents(
 
   return { messages: pump.ctx.messages, variables, objectivesBySide: pump.ctx.objectivesBySide };
 }
+
+/**
+ * `unit_type::apply_scenario_fix` for one type's config: `set_experience=`, `set_advances_to=`, `set_cost=`,
+ * `add_advancement=`, `remove_advancement=` and a replacing set of `[advancement]`s, then the same for its gender
+ * types (with the fix's own `[male]`/`[female]` on top) and for each variation a `[variation] variation_id=` names.
+ */
+export function applyScenarioFix(typeCfg: WmlConfig, fix: WmlConfig): void {
+  const list = (v: string): string[] => v.split(',').map((s) => s.trim()).filter((s) => s !== '' && s !== 'null');
+  if (fix.hasAttribute('set_experience')) typeCfg.setAttribute('experience', fix.getNumber('set_experience'));
+  if (fix.hasAttribute('set_advances_to')) typeCfg.setAttribute('advances_to', fix.getString('set_advances_to'));
+  if (fix.hasAttribute('set_cost')) typeCfg.setAttribute('cost', fix.getNumber('set_cost', 1));
+  let advancesTo = list(typeCfg.getString('advances_to', ''));
+  if (fix.hasAttribute('add_advancement')) for (const id of list(fix.getString('add_advancement'))) if (!advancesTo.includes(id)) advancesTo.push(id);
+  if (fix.hasAttribute('remove_advancement')) {
+    const gone = new Set(list(fix.getString('remove_advancement')));
+    advancesTo = advancesTo.filter((id) => !gone.has(id));
+  }
+  if (fix.hasAttribute('add_advancement') || fix.hasAttribute('remove_advancement')) typeCfg.setAttribute('advances_to', advancesTo.length > 0 ? advancesTo.join(',') : 'null');
+  if (fix.children('advancement').length > 0) {
+    typeCfg.removeChildren('advancement');
+    for (const amla of fix.children('advancement')) typeCfg.addChild('advancement', amla.clone());
+  }
+  for (const gender of ['male', 'female']) {
+    const genderCfg = typeCfg.child(gender);
+    if (!genderCfg) continue;
+    applyScenarioFix(genderCfg, fix);
+    const own = fix.child(gender);
+    if (own) applyScenarioFix(genderCfg, own);
+  }
+  for (const variationFix of fix.children('variation')) {
+    for (const variation of typeCfg.children('variation')) {
+      if (variation.getString('variation_id', '') === variationFix.getString('variation_id', '')) applyScenarioFix(variation, variationFix);
+    }
+  }
+}
+
+/**
+ * `play_controller`'s constructor: the scenario's `[modify_unit_type]`s (a campaign's are put in each of its
+ * scenarios when the data is built) applied to the unit types for this scenario only -- a copy of the snapshot, so
+ * the next scenario, built from its own, starts without them (`remove_scenario_fixes`). Returns `snapshot` itself
+ * when there are none.
+ */
+export function withScenarioFixes(snapshot: GameBoardSnapshot): GameBoardSnapshot {
+  const fixes = WmlConfig.fromJSON(snapshot.scenarioConfigJson).children('modify_unit_type');
+  if (fixes.length === 0 || !snapshot.unitTypeConfigs) return snapshot;
+  const unitTypeConfigs = { ...snapshot.unitTypeConfigs };
+  const unitTypes = { ...snapshot.unitTypes };
+  for (const fix of fixes) {
+    const id = fix.getString('type', '');
+    const json = unitTypeConfigs[id];
+    if (!json) continue;
+    const cfg = WmlConfig.fromJSON(json);
+    applyScenarioFix(cfg, fix);
+    unitTypeConfigs[id] = cfg.toJSON();
+    const summary = unitTypes[id];
+    if (summary) {
+      const advancesTo = cfg.getString('advances_to', '');
+      unitTypes[id] = {
+        ...summary,
+        cost: cfg.getNumber('cost', summary.cost),
+        experienceNeededBase: cfg.getNumber('experience', summary.experienceNeededBase),
+        advancesTo: advancesTo === 'null' ? [] : advancesTo.split(',').map((s) => s.trim()).filter((s) => s !== ''),
+      };
+    }
+  }
+  // A unit placed when the data was built carries its type's old experience: it takes the fixed type's instead,
+  // as a unit created after `apply_scenario_fix` does.
+  const fixedXp = new Set(fixes.filter((f) => f.hasAttribute('set_experience')).map((f) => f.getString('type', '')));
+  const units = fixedXp.size === 0 ? snapshot.units : snapshot.units.map((u) => (fixedXp.has(u.typeId) ? { ...u, maxExperience: undefined } : u));
+  return { ...snapshot, unitTypeConfigs, unitTypes, units };
+}

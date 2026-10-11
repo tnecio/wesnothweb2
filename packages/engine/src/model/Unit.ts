@@ -152,6 +152,8 @@ export class Unit {
   interruptedMove: Location | undefined;
   /** `[unit] extra_recruit=`: types this leader may recruit beyond its side's list (`unit::recruits()`). */
   extraRecruit: string[];
+  /** `[unit] [filter_recall]`: which recall-list units this leader may recall (`unit::recall_filter`); null for any. */
+  filterRecall: WmlConfig | null;
   /** `[unit] profile=`: this unit's own portrait, overriding its type's; empty when not overridden. */
   profile: string;
   /** `[unit] gender=` (`unit::gender_`): `male` or `female`. */
@@ -276,6 +278,7 @@ export class Unit {
     this.goto = undefined;
     this.interruptedMove = undefined;
     this.extraRecruit = [];
+    this.filterRecall = null;
     this.profile = options.profile ?? '';
     this.gender = options.gender ?? type.genders[0] ?? 'male';
     // `unit::init`: the type's stats, then every modification's effects,
@@ -531,6 +534,8 @@ export class Unit {
       if (gotoLoc.valid()) unit.goto = gotoLoc;
     }
     unit.extraRecruit = cfg.getString('extra_recruit', '').split(',').map((s) => s.trim()).filter((s) => s !== '');
+    const filterRecall = cfg.child('filter_recall');
+    if (filterRecall) unit.filterRecall = filterRecall.clone();
 
     return unit;
   }
@@ -586,6 +591,7 @@ export class Unit {
       cfg.setAttribute('goto_y', this.goto.wmlY);
     }
     if (this.extraRecruit.length > 0) cfg.setAttribute('extra_recruit', this.extraRecruit.join(','));
+    if (this.filterRecall) cfg.addChild('filter_recall', this.filterRecall.clone());
     if (this.statuses.size > 0) {
       const statusCfg = cfg.addChild('status');
       for (const s of this.statuses) statusCfg.setAttribute(s, true);

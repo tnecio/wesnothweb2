@@ -20,9 +20,8 @@
  *    tree) and `handle_recruitment_more` (recruit extra units the
  *    `recruitment_more` aspect names once gold allows) -- both secondary
  *    refinements on top of the core score-driven loop this port keeps.
- *  - Per-leader `extra_recruit=`/`recall_filter=` (this port's `Unit` has
- *    no such fields yet -- every leader draws from the team's own
- *    `canRecruit` list and can recall anything on the team's recall list).
+ *  - Per-leader `extra_recruit=` (every leader draws from the team's own
+ *    `canRecruit` list). A leader's `[filter_recall]` is applied, as upstream.
  *  - The `unit_stats_cache`/`combat_cache_`/`cheapest_unit_costs_` perf
  *    caches (pure speed optimizations, not behavioural).
  *
@@ -39,7 +38,7 @@ import type { UnitType } from '../../model/UnitType.js';
 import type { Team } from '../../model/Team.js';
 import type { TerrainCode } from '../../model/Terrain.js';
 import { WmlConfig } from '../../wml/config.js';
-import { findVacantCastleTile } from '../../actions/recruit.js';
+import { findVacantCastleTile, leaderCanRecall } from '../../actions/recruit.js';
 import { buildBattleContext, chooseDefenderWeaponIndex, betterCombat, type UnitStatsOptions } from '../../actions/combatStats.js';
 import { Combatant, simulateCombat } from '../../actions/attackPrediction.js';
 import { POISON_AMOUNT } from '../../actions/gameConfig.js';
@@ -530,6 +529,7 @@ export class RecruitmentCandidateAction extends CandidateAction {
       const data: LeaderData = { leader, recruits: new Set(team.canRecruit), scores: new Map(), ratioScore: 1.0, recruitCount: 0, inDanger: false };
       for (const r of data.recruits) data.scores.set(r, 0);
       for (const recall of board.recallList(team.side)) {
+        if (!leaderCanRecall(leader, recall, board)) continue;
         const value = this.recallUnitValue(recall);
         if (value < 0) continue;
         data.recruits.add(recall.type.id);
@@ -642,6 +642,7 @@ export class RecruitmentCandidateAction extends CandidateAction {
     let bestValue = -1;
     for (const recall of this.ctx.board.recallList(team.side)) {
       if (recall.type.id !== type) continue;
+      if (!leaderCanRecall(data.leader, recall, this.ctx.board)) continue;
       const value = this.recallUnitValue(recall);
       if (value > bestValue) {
         bestValue = value;

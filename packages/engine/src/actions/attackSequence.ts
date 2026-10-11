@@ -25,15 +25,41 @@
 
 import type { GameBoard } from '../model/GameBoard.js';
 import type { Location } from '../model/Location.js';
+import type { AttackType } from '../model/UnitType.js';
 import type { Rng } from '../rng/Rng.js';
-import { executeAttack, type AttackOptions, type AttackResult } from './combat.js';
+import { WmlConfig } from '../wml/config.js';
+import { executeAttack, resolveDefenderWeaponIndex, type AttackOptions, type AttackResult } from './combat.js';
+
+/**
+ * An attack event's data (`attack::fire_event_impl`): each side's weapon written as `[first]` and `[second]`
+ * -- `name=none` for a side without one -- which `[filter_attack]`/`[filter_second_attack]` match and
+ * `$weapon`/`$second_weapon` show.
+ */
+export function attackEventData(first: AttackType | undefined, second: AttackType | undefined): WmlConfig {
+  const data = new WmlConfig();
+  const write = (tag: string, weapon: AttackType | undefined): void => {
+    const cfg = weapon ? weapon.toConfig() : new WmlConfig();
+    if (cfg.getString('name', '') === '') cfg.setAttribute('name', 'none');
+    data.addChild(tag, cfg);
+  };
+  write('first', first);
+  write('second', second);
+  return data;
+}
 import type { RaiseEvent } from './vision.js';
 
 export interface PerformAttackOptions extends AttackOptions {
   /** Queues `attack end` after the exchange, and is passed through to `executeAttack` for its own internal fog-recalculation events (e.g. `sighted`). */
   raise?: RaiseEvent;
   /** Fires `last breath` then `die`, immediately, for a unit that died in this exchange -- called once per death, while the dead unit is still on the board (matches `AttackOptions.onUnitDying`'s contract). */
-  fire?: (name: string, loc1: Location, loc2: Location) => void;
+  fire?: (name: string, loc1: Location, loc2: Location, data?: WmlConfig) => void;
+  /**
+   * Phase 27a: sets the `damage_inflicted` WML variable before a strike's events, and clears it (`undefined`)
+   * when the fight is over, as `perform_hit` and `attack::perform` do.
+   */
+  setDamageInflicted?: (damage: number | undefined) => void;
+  /** Whether an event has ended the scenario, which also ends the fight. */
+  scenarioEnded?: () => boolean;
 }
 
 export function performAttack(
@@ -45,15 +71,50 @@ export function performAttack(
   defenderWeaponIndex: number | undefined,
   options: PerformAttackOptions = {},
 ): AttackResult {
-  const { raise, fire, ...attackOptions } = options;
-  const result = executeAttack(board, rng, attackerLoc, attackerWeaponIndex, defenderLoc, defenderWeaponIndex, {
+  const { raise, fire, setDamageInflicted, scenarioEnded, ...attackOptions } = options;
+  // The weapons, as they are when the fight starts, for the events' data.
+  const attacker = board.unitAt(attackerLoc);
+  const defender = board.unitAt(defenderLoc);
+  const defWeapon = defenderWeaponIndex ?? resolveDefenderWeaponIndex(board, attackerLoc, attackerWeaponIndex, defenderLoc, attackOptions);
+  const attackerWeapon = attacker?.attacks[attackerWeaponIndex];
+  const defenderWeapon = defWeapon >= 0 ? defender?.attacks[defWeapon] : undefined;
+  // `fire_event_impl` after an event: both units still where they fought, still enemies, the scenario not over.
+  const fightGoesOn = (): boolean => {
+    if (!attacker || !defender || board.unitAt(attackerLoc) !== attacker || board.unitAt(defenderLoc) !== defender) return false;
+    const a = board.getTeam(attacker.side);
+    const d = board.getTeam(defender.side);
+    return !!a && !!d && a.isEnemy(d) && !scenarioEnded?.();
+  };
+  const result = executeAttack(board, rng, attackerLoc, attackerWeaponIndex, defenderLoc, defWeapon, {
     ...attackOptions,
     raise,
     onUnitDying: (dead, killer) => {
-      fire?.('last breath', dead.location, killer.location);
-      fire?.('die', dead.location, killer.location);
+      // `unit_killed`: the dying unit's weapon first, the killer's second.
+      const data = dead === attacker ? attackEventData(attackerWeapon, defenderWeapon) : attackEventData(defenderWeapon, attackerWeapon);
+      fire?.('last breath', dead.location, killer.location, data);
+      fire?.('die', dead.location, killer.location, data);
     },
+    // `perform_hit`: `attacker hits`/`defender hits` (or `misses`) with the attacker as the first unit, then
+    // `unit hits`/`unit misses` with the striker first; `damage_inflicted` set for the hits.
+    onStrike: fire
+      ? (attackerTurn, hit, damage) => {
+          if (hit) setDamageInflicted?.(damage);
+          const what = hit ? 'hits' : 'misses';
+          const forward = attackEventData(attackerWeapon, defenderWeapon);
+          const reversed = attackEventData(defenderWeapon, attackerWeapon);
+          if (hit) {
+            forward.setAttribute('damage_inflicted', damage);
+            reversed.setAttribute('damage_inflicted', damage);
+          }
+          fire(`${attackerTurn ? 'attacker' : 'defender'} ${what}`, attackerLoc, defenderLoc, forward);
+          if (!fightGoesOn()) return false;
+          if (attackerTurn) fire(`unit ${what}`, attackerLoc, defenderLoc, forward);
+          else fire(`unit ${what}`, defenderLoc, attackerLoc, reversed);
+          return fightGoesOn();
+        }
+      : undefined,
   });
-  raise?.('attack end', attackerLoc, defenderLoc);
+  setDamageInflicted?.(undefined);
+  raise?.('attack end', attackerLoc, defenderLoc, attackEventData(attackerWeapon, defenderWeapon));
   return result;
 }

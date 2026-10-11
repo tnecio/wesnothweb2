@@ -2365,7 +2365,8 @@
       return;
     }
     const side = session.activeSide;
-    if (!session.playerActed && session.board.unitsForSide(side).length > 0) {
+    // `[side] suppress_end_turn_confirmation=yes` never asks.
+    if (!session.playerActed && session.board.unitsForSide(side).length > 0 && !session.board.getTeam(side)?.suppressEndTurnConfirmation) {
       endTurnConfirmOpen = true;
       return;
     }

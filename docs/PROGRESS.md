@@ -6594,3 +6594,34 @@ partial note says what is missing, usually a test.
 
 **Proposed follow-ups:** correctness fixes first, then the ability/special pipeline, presentation gaps,
 test debt, and a batch of unused WML. With the out-of-scope list, these are for the user to decide.
+
+## 2026-10-11: Phase 27a -- correctness fixes
+
+Every play-changing bug the assessment found is fixed, except those that belong to the special pipeline
+(Phase 27b). Each stage ports upstream's code and has its own test.
+
+**S0, the conformance suite.** `packages/ui/scripts/wml-tests.ts` builds and plays upstream's WML unit tests
+(`data/test`) in memory and checks each against `wml_test_schedule`. A CI job (`wml-tests`) fails on any test
+that passed before (`docs/completeness/wml-tests-baseline.json`). Passing tests went from 315 to 335. Most of
+the rest fail on generic specials, which are 27b's.
+
+**Fixed:**
+- **S1:** `[modify_side]` as `modify_side.lua`: side lists and `[filter_side]` (`utils.get_sides`), and every
+  key. A side's whole state is saved (`Team.toConfig`); saves had kept only gold, fog, shroud and villages.
+- **S2:** attack events carry their weapons (`$weapon`, `$second_weapon`); an event's `[filter_attack]`,
+  `[filter_second_attack]` and `[filter_side]` are evaluated, as is every other filter child.
+  `[do_command]`'s `defender_weapon=-1` lets the defender choose.
+- **S3:** the strike events (`attacker hits`, `defender misses`, `unit hits`...) with `$damage_inflicted`. An
+  event that removes a fighter ends the fight there, as `attack_end_exception` does.
+- **S4:** `pre advance`, `advance` and `post advance`.
+- **S5:** `[modify_unit_type]` (Dead Water's Kraken, OPP's recruit costs).
+- **S6:** an attack spends its weapon's `attacks_used=`/`movement_used=`, between `pre attack` and `attack`.
+  `[modify_unit]` now writes the unit attributes upstream content sets (`attacks_left=`, `[status]`, `x,y=`,
+  `type=`...) and warns on any it ignores.
+- **S7:** a leader's `[filter_recall]` (a `[side]`'s goes to its leader) in the recall list, the recall
+  action, the AI and `[recall]`. Leaders' `extra_recruit=` is now saved too.
+- **S8:** `[store_unit_type_ids]`, `[store_unit_defense(_on)]`, `[store_relative_direction]`, `[have_side]`,
+  `[set_variable] formula=`, and a test for `$( )`.
+
+**Assessment:** 688 items done (was 665), 176 partial, 39 missing. Correction to 20.1/20.2: saves had been
+losing a side's `[modify_side]` changes; the bugs table now lists only 27b's items.

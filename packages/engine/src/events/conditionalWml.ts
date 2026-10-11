@@ -28,6 +28,7 @@
 import type { WmlConfig } from '../wml/config.js';
 import type { EventContext } from './context.js';
 import { findLocations, findUnits } from './filter.js';
+import { findSides } from './sideFilter.js';
 
 /** Parses a WML count= range list ("1-infinity", "2", "1-3,5") the same way `have_unit`'s count= does. */
 function parseCounts(text: string): Array<[number, number]> {
@@ -110,6 +111,11 @@ export const builtinConditions: Record<string, (cfg: WmlConfig, ctx: EventContex
   have_location: (cfg, ctx) => {
     const counts = cfg.hasAttribute('count') ? parseCounts(cfg.getString('count')) : DEFAULT_COUNTS;
     return inCounts(findLocations(ctx.board, cfg).length, counts);
+  },
+  // wml_conditionals.have_side: the sides the filter finds, `count=` of them exactly, else at least one.
+  have_side: (cfg, ctx) => {
+    const sides = findSides(ctx.board, cfg);
+    return cfg.hasAttribute('count') ? sides.length === cfg.getNumber('count') : sides.length > 0;
   },
   // object.lua's wml_conditionals.found_item: was the [object] with this id taken?
   found_item: (cfg, ctx) => ctx.usedItems.has(cfg.getString('id', '')),
