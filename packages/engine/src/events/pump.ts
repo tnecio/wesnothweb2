@@ -62,6 +62,7 @@ import { runFlow, type Flow, type Responder } from './interaction.js';
 import { conditionalPassed } from './conditionalWml.js';
 import { unitMatchesFilter } from './filter.js';
 import { sideMatchesFilter } from './sideFilter.js';
+import { SpecialsContext } from '../actions/abilities.js';
 import type { VariableStore } from './variables.js';
 import { MusicList } from '../audio/musicList.js';
 import { SoundSourceStore } from '../audio/soundSources.js';
@@ -468,13 +469,24 @@ export class EventPump {
         }
         case 'filter_attack':
         case 'filter_second_attack': {
+          // `filter_attack`: the weapon in a specials context of the event's two units (the first unit attacking for
+          // `[filter_attack]`, the second defending for `[filter_second_attack]`), so `special_id_active=` and the like
+          // see the fight.
           const first = tag === 'filter_attack';
+          const board = this.ctx.board;
           const loc = first ? ev.loc1 : ev.loc2;
+          const locD = first ? ev.loc2 : ev.loc1;
           const weapon = ev.data.child(first ? 'first' : 'second');
-          if (!loc.valid() || !this.ctx.board.unitAt(loc) || !weapon) return false;
+          const unit = loc.valid() ? board.unitAt(loc) : undefined;
+          if (!unit || !weapon) return false;
           const filter = this.ctx.variables.expandConfig(config);
           if (filter.attributeNames().length > 0 || filter.allChildren().length > 0) {
-            if (!AttackType.fromConfig(weapon).matchesFilter(filter)) return false;
+            const attack = AttackType.fromConfig(weapon);
+            const opp = locD.valid() ? board.unitAt(locD) : undefined;
+            const otherWeapon = ev.data.child(first ? 'second' : 'first');
+            const other = opp ? { un: opp, loc: locD, at: otherWeapon ? AttackType.fromConfig(otherWeapon) : undefined } : { loc: Location.NULL };
+            const specials = SpecialsContext.make(board, { un: unit, loc, at: attack }, other, first);
+            if (!specials.weaponMatchesFilter(first ? specials.attacker : specials.defender, filter)) return false;
           }
           break;
         }
