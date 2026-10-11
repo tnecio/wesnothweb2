@@ -13,6 +13,7 @@ import { parseConfig } from '../../src/index.js';
 import { buildBattleContext, chooseDefenderWeaponIndex } from '../../src/actions/combatStats.js';
 import { resistanceAgainst } from '../../src/actions/abilities.js';
 import { roundDamage } from '../../src/actions/gameConfig.js';
+import { calculateHealing } from '../../src/actions/heal.js';
 
 const real = loadRealContent();
 
@@ -198,5 +199,32 @@ describe("a campaign's own specials", () => {
       a.range === 'melee' ? AttackType.fromConfig(parseConfig(`name=${a.id}\ntype=${a.type}\nrange=melee\ndamage=${a.damage}\nnumber=${a.numAttacks}\n[specials]\n[disable]\nid=retaliation_only_not\nactive_on=defense\n[/disable]\n[/specials]`)) : a,
     );
     expect(chooseDefenderWeaponIndex({ board: b, attacker, defender }, weaponIndex(attacker, 'spear'))).toBe(-1);
+  });
+});
+
+describe('healing through the pipeline (heal.cpp)', () => {
+  it("a curer on the patient's side cures; an allied side's only slows the poison", () => {
+    const b = board();
+    b.getTeam(2)!.teamName = 'one';
+    const patient = place(b, 'Spearman', 1, 1, 1);
+    patient.hitpoints = 10;
+    patient.setStatus('poisoned', true);
+    const mage = place(b, 'White Mage', 2, 2, 1);
+    // Side 1's turn: the White Mage is an ally, not of this side, so the poison is only slowed.
+    const ally = calculateHealing(b, 1).find((o) => o.unit === patient)!;
+    expect(ally?.curePoison ?? false).toBe(false);
+    mage.side = 1;
+    const own = calculateHealing(b, 1).find((o) => o.unit === patient)!;
+    expect([own.curePoison, own.healers]).toEqual([true, [mage]]);
+  });
+
+  it("heals +8 heals this side's units next to the healer", () => {
+    const b = board();
+    const patient = place(b, 'Spearman', 1, 1, 1);
+    patient.hitpoints = 10;
+    patient.resting = false;
+    const mage = place(b, 'White Mage', 1, 2, 1);
+    expect(calculateHealing(b, 1).find((o) => o.unit === patient)).toMatchObject({ amount: 8, healers: [mage] });
+    expect(calculateHealing(b, 2).find((o) => o.unit === patient)).toBeUndefined();
   });
 });
