@@ -1814,7 +1814,7 @@ A deliberate audit pass, not new feature work.
 
 ## Phases 27a–27c — Executing the assessment's follow-ups (proposed 2026-10-10)
 
-**Status: proposed, awaiting the user's go-ahead.** Each phase is its own branch, PR and tag. It is merged and tagged only when the user says so.
+**Status: 27a delivered (2026-10-11, PR pending); 27b and 27c await the user's go-ahead.** Each phase is its own branch, PR and tag. It is merged and tagged only when the user says so.
 
 **What the three phases cover:**
 - They execute follow-ups 1–3 of `docs/COMPLETENESS.md`.
@@ -1830,6 +1830,11 @@ Every change is a port of upstream's code, never a rewrite of upstream's WML or 
 - 27c is presentation only, and independent of the other two.
 
 ### Phase 27a — Correctness fixes (branch `correctness-fixes`, tag `v0.14.0`)
+
+**Status: delivered** (2026-10-11), all stages S0–S8. WML conformance: 315 of upstream's tests at S0, 335 now,
+checked in CI. The completeness report now has 688 items done (was 665), and its bugs table holds only 27b's
+(`[disable]`, the special pipeline, ability filters). Not done from S8: `[test_condition]` and delayed shroud
+updates, left to test debt.
 
 **S0. Upstream's WML tests as a conformance suite.**
 
