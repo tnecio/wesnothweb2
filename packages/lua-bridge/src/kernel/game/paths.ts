@@ -2,17 +2,14 @@
  * `wesnoth.paths` and `wesnoth.simulate_combat` (`game_lua_kernel.cpp`: `intf_find_reach`, `intf_find_path`,
  * `intf_find_vacant_tile`, `intf_simulate_combat`), on the engine's own pathfinder and battle simulation.
  */
-import { distanceBetween, Location as LocationClass, type Location } from '@wesnothweb2/engine/src/model/Location.js';
+import { Location as LocationClass, type Location } from '@wesnothweb2/engine/src/model/Location.js';
 import { createJammingMap, unitVisionPath } from '@wesnothweb2/engine/src/actions/vision.js';
 import type { Unit } from '@wesnothweb2/engine/src/model/Unit.js';
 import { reachableHexes, findVacantTile, ShortestPathCalculator } from '@wesnothweb2/engine/src/pathfind/pathfind.js';
 import { aStarSearch, type CostCalculator } from '@wesnothweb2/engine/src/pathfind/astar.js';
 import { getTeleportLocations } from '@wesnothweb2/engine/src/pathfind/teleport.js';
-import { buildBattleContext, chooseDefenderWeaponIndex, hasSpecialId, type UnitStatsOptions } from '@wesnothweb2/engine/src/actions/combatStats.js';
+import { buildBattleContext, chooseAttackerWeapon, chooseDefenderWeaponIndex } from '@wesnothweb2/engine/src/actions/combatStats.js';
 import { simulateCombat, type BattleContextUnitStats, type Combatant } from '@wesnothweb2/engine/src/actions/attackPrediction.js';
-import { isBackstabActive } from '@wesnothweb2/engine/src/actions/combat.js';
-import { resistanceAgainst, underLeadership } from '@wesnothweb2/engine/src/actions/abilities.js';
-import { chooseAttackerWeapon } from '@wesnothweb2/engine/src/ai/default/attackAnalysis.js';
 import type { AttackType } from '@wesnothweb2/engine/src/model/UnitType.js';
 import { Unit as UnitClass } from '@wesnothweb2/engine/src/model/Unit.js';
 import { argError, checkInteger, lua, to_luastring, pushString, tableGet, toBoolean, type LuaKernel, type LuaState } from '../kernel.js';
@@ -250,60 +247,18 @@ export function installPaths(k: LuaKernel, host: GameKernelHost, units: LuaUnits
  */
 function battleContext(host: GameKernelHost, att: Unit, attW: number, def: Unit, defW: number) {
   const ctx = host.ctx();
-  const board = ctx.board;
-  const attLoc = att.location;
-  const defLoc = def.location;
-  const distance = distanceBetween(attLoc, defLoc);
-  const attackerTerrainDefense = att.defenseModifier(board.map.getTerrain(attLoc));
-  const defenderTerrainDefense = def.defenseModifier(board.map.getTerrain(defLoc));
-  const baseOptions: UnitStatsOptions = {
-    attackerLawfulBonus: board.lawfulBonusAt?.(attLoc) ?? 0,
-    defenderLawfulBonus: board.lawfulBonusAt?.(defLoc) ?? 0,
-    maxLiminalBonus: ctx.schedule.maxLiminalBonus,
-    backstabActive: isBackstabActive(board, attLoc, defLoc),
-    attackerLeadershipBonus: underLeadership(board, att),
-    defenderLeadershipBonus: underLeadership(board, def),
-  };
-  const optionsFor = (aw: AttackType | undefined, dw: AttackType | undefined): UnitStatsOptions => ({
-    ...baseOptions,
-    attackerResistanceModifier: aw ? resistanceAgainst(board, def, aw.type, false, defLoc) : undefined,
-    defenderResistanceModifier: dw ? resistanceAgainst(board, att, dw.type, true, attLoc) : undefined,
-  });
+  const input = { board: ctx.board, attacker: att, defender: def, options: { maxLiminalBonus: ctx.schedule.maxLiminalBonus } };
   let attackerWeaponIndex = attW;
   let defenderWeaponIndex = defW;
   if (attackerWeaponIndex < 0) {
-    const choice = chooseAttackerWeapon(att, def, distance, attackerTerrainDefense, defenderTerrainDefense, 0.0, baseOptions);
-    attackerWeaponIndex = choice?.attackerWeaponIndex ?? -1;
-    if (defenderWeaponIndex < 0) defenderWeaponIndex = choice?.defenderWeaponIndex ?? -1;
+    // Both weapons are chosen, whatever defender weapon was asked for.
+    ({ attackerWeaponIndex, defenderWeaponIndex } = chooseAttackerWeapon(input, 1.0));
+  } else if (defenderWeaponIndex < 0) {
+    defenderWeaponIndex = chooseDefenderWeaponIndex(input, attackerWeaponIndex);
   }
-  if (defenderWeaponIndex < 0 && attackerWeaponIndex >= 0) {
-    defenderWeaponIndex = chooseDefenderWeaponIndex(att, attackerWeaponIndex, def, distance, attackerTerrainDefense, defenderTerrainDefense, baseOptions);
-  }
-  const aw = att.attacks[attackerWeaponIndex];
+  const aw = attackerWeaponIndex >= 0 ? att.attacks[attackerWeaponIndex] : undefined;
   const dw = defenderWeaponIndex >= 0 ? def.attacks[defenderWeaponIndex] : undefined;
-  if (!aw) {
-    // No usable weapon: upstream's stats for a missing weapon strike nothing.
-    const stats = (u: Unit, isAttacker: boolean): BattleContextUnitStats => ({
-      isAttacker, isPoisoned: u.poisoned, isSlowed: u.slowed, slows: false, drains: false, petrifies: false, poisons: false,
-      firststrike: false, canAdvance: false, experience: u.experience, maxExperience: u.maxExperience, level: u.level, rounds: 1,
-      hp: u.hitpoints, maxHp: u.maxHitpoints, chanceToHit: 0, damage: 0, slowDamage: 0, drainPercent: 0, drainConstant: 0,
-      numBlows: 0, swarmMin: 0, swarmMax: 0,
-    });
-    const attackerStats = stats(att, true);
-    const defenderStats = stats(def, false);
-    const { attacker, defender } = simulateCombat(attackerStats, defenderStats);
-    return { attacker, defender, attackerStats, defenderStats, attackerWeaponIndex: -1, defenderWeaponIndex: -1 };
-  }
-  const { attacker: attackerStats, defender: defenderStats } = buildBattleContext({
-    attacker: att,
-    attackerWeapon: aw,
-    defender: def,
-    defenderWeapon: dw,
-    distance,
-    attackerTerrainDefense,
-    defenderTerrainDefense,
-    options: optionsFor(aw, dw),
-  });
+  const { attacker: attackerStats, defender: defenderStats } = buildBattleContext({ ...input, attackerWeapon: aw, defenderWeapon: dw });
   const { attacker, defender } = simulateCombat(attackerStats, defenderStats);
   return { attacker, defender, attackerStats, defenderStats, attackerWeaponIndex, defenderWeaponIndex };
 }
@@ -338,15 +293,14 @@ function pushSimWeapon(k: LuaKernel, units: LuaUnits, T: LuaState, s: BattleCont
     lua.lua_pushboolean(T, v);
     lua.lua_setfield(T, -2, to_luastring(key));
   };
-  const plague = weapon ? hasSpecialId(weapon, 'plague') : false;
   num('num_blows', s.numBlows);
   num('damage', s.damage);
   num('chance_to_hit', s.chanceToHit);
   bool('poisons', s.poisons);
   bool('slows', s.slows);
   bool('petrifies', s.petrifies);
-  bool('plagues', plague);
-  pushString(T, plague ? (weapon!.specials.find((sp) => sp.getString('id') === 'plague')?.getString('type', '') ?? '') : '');
+  bool('plagues', s.plagues ?? false);
+  pushString(T, s.plagueType ?? '');
   lua.lua_setfield(T, -2, to_luastring('plague_type'));
   num('rounds', s.rounds);
   bool('firststrike', s.firststrike);

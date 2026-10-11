@@ -18,11 +18,10 @@
  */
 
 import { findPath } from '../../pathfind/pathfind.js';
-import { isBackstabActive } from '../../actions/combat.js';
-import { underLeadership } from '../../actions/abilities.js';
+import { chooseAttackerWeapon } from '../../actions/combatStats.js';
 import { advanceUnitFully } from '../../actions/advancement.js';
 import { CandidateAction } from '../composite/rca.js';
-import { AttackAnalysis, chooseAttackerWeapon } from './attackAnalysis.js';
+import { AttackAnalysis } from './attackAnalysis.js';
 
 export class CombatCandidateAction extends CandidateAction {
   private bestAnalysis: AttackAnalysis | undefined;
@@ -75,15 +74,9 @@ export class CombatCandidateAction extends CandidateAction {
     const defender = board.unitAt(targetLoc);
     if (!attacker || !defender || attacker.attacksLeft <= 0) return;
 
-    const distance = 1;
-    const attackerTerrainDefense = attacker.defenseModifier(board.map.getTerrain(to));
-    const defenderTerrainDefense = defender.defenseModifier(board.map.getTerrain(targetLoc));
-    const choice = chooseAttackerWeapon(attacker, defender, distance, attackerTerrainDefense, defenderTerrainDefense, this.ctx.getAggression(), {
-      backstabActive: isBackstabActive(board, to, targetLoc),
-      attackerLeadershipBonus: underLeadership(board, attacker),
-      defenderLeadershipBonus: underLeadership(board, defender),
-    });
-    if (!choice) return;
+    // `attack_result::do_execute`: `battle_context(units, attacker_loc, defender_loc, -1, -1, aggression)`.
+    const choice = chooseAttackerWeapon({ board, attacker, defender }, 1.0 - this.ctx.getAggression());
+    if (choice.attackerWeaponIndex < 0) return;
 
     this.ctx.executeAttack(to, choice.attackerWeaponIndex, targetLoc, choice.defenderWeaponIndex);
 

@@ -13,7 +13,7 @@ import {
   directionBetween,
   distanceBetween,
   parseConfig,
-  isBackstabActive,
+  backstabCheck,
   createTypeResolver,
   type GameBoardSnapshot,
   type CutsceneBeat,
@@ -1736,7 +1736,7 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
 
     // Place a friendly-to-malKevek unit directly on the opposite side of
     // kaiKrellis from malKevek -- the real geometric backstab condition
-    // (see combat.ts's isBackstabActive), using the same direction-index
+    // (see combat.ts's backstabCheck), using the same direction-index
     // logic it uses internally.
     const dirIndex = ALL_DIRECTIONS.indexOf(directionBetween(malKevek.location, kaiKrellis.location)!);
     const flankerLoc = getAdjacentTiles(kaiKrellis.location)[dirIndex]!;
@@ -1747,7 +1747,7 @@ describe('CombatPreview/AttackerWeaponOption carry weapon type/range (real, repo
     // Confirms the placement above actually satisfies the real geometric
     // condition -- otherwise the assertions below would pass VACUOUSLY
     // (backstabActive would already be false with no flanker at all).
-    expect(isBackstabActive(session.board, malKevek.location, kaiKrellis.location)).toBe(true);
+    expect(backstabCheck(session.board, malKevek.location, kaiKrellis.location)).toBe(true);
 
     session.selectUnit(malKevek);
     await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);

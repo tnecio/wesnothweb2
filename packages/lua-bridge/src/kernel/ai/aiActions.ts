@@ -4,7 +4,7 @@
  * the action through the engine's `AiContext` (which records it as a synced command, as the built-in
  * candidate actions' are), then a check after. The result carries upstream's status codes.
  */
-import { distanceBetween, tilesAdjacent, Location } from '@wesnothweb2/engine/src/model/Location.js';
+import { tilesAdjacent, Location } from '@wesnothweb2/engine/src/model/Location.js';
 import type { Unit } from '@wesnothweb2/engine/src/model/Unit.js';
 import type { UnitType } from '@wesnothweb2/engine/src/model/UnitType.js';
 import type { AiContext } from '@wesnothweb2/engine/src/ai/context.js';
@@ -12,10 +12,7 @@ import { ShortestPathCalculator } from '@wesnothweb2/engine/src/pathfind/pathfin
 import { aStarSearch } from '@wesnothweb2/engine/src/pathfind/astar.js';
 import { getTeleportLocations } from '@wesnothweb2/engine/src/pathfind/teleport.js';
 import { checkRecruitLocation, type RecruitCheck } from '@wesnothweb2/engine/src/actions/recruit.js';
-import { chooseDefenderWeaponIndex, type UnitStatsOptions } from '@wesnothweb2/engine/src/actions/combatStats.js';
-import { chooseAttackerWeapon } from '@wesnothweb2/engine/src/ai/default/attackAnalysis.js';
-import { isBackstabActive } from '@wesnothweb2/engine/src/actions/combat.js';
-import { underLeadership } from '@wesnothweb2/engine/src/actions/abilities.js';
+import { chooseAttackerWeapon, chooseDefenderWeaponIndex } from '@wesnothweb2/engine/src/actions/combatStats.js';
 
 export const AI_ACTION_SUCCESS = 0;
 export const AI_ACTION_FAILURE = -1;
@@ -197,21 +194,18 @@ export function attackAction(ctx: AiContext, exec: boolean, attackerLoc: Locatio
     (r) => {
       const attacker = board.unitAt(attackerLoc)!;
       const defender = board.unitAt(defenderLoc)!;
-      const distance = distanceBetween(attackerLoc, defenderLoc);
-      const aDef = attacker.defenseModifier(board.map.getTerrain(attackerLoc));
-      const dDef = defender.defenseModifier(board.map.getTerrain(defenderLoc));
-      const options: UnitStatsOptions = {
-        attackerLawfulBonus: ctx.host.lawfulBonusAt(attackerLoc),
-        defenderLawfulBonus: ctx.host.lawfulBonusAt(defenderLoc),
-        maxLiminalBonus: ctx.host.maxLiminalBonus,
-        backstabActive: isBackstabActive(board, attackerLoc, defenderLoc),
-        attackerLeadershipBonus: underLeadership(board, attacker),
-        defenderLeadershipBonus: underLeadership(board, defender),
+      const input = {
+        board,
+        attacker,
+        defender,
+        options: { attackerLawfulBonus: ctx.host.lawfulBonusAt(attackerLoc), defenderLawfulBonus: ctx.host.lawfulBonusAt(defenderLoc), maxLiminalBonus: ctx.host.maxLiminalBonus },
       };
+      // `battle_context(units, attacker_loc, defender_loc, attacker_weapon, -1, aggression)`.
       let weapon = attackerWeapon;
-      if (weapon < 0) weapon = chooseAttackerWeapon(attacker, defender, distance, aDef, dDef, aggression, options)?.attackerWeaponIndex ?? -1;
+      let defenderWeapon: number;
+      if (weapon < 0) ({ attackerWeaponIndex: weapon, defenderWeaponIndex: defenderWeapon } = chooseAttackerWeapon(input, 1.0 - aggression));
+      else defenderWeapon = chooseDefenderWeaponIndex(input, weapon);
       if (weapon < 0) return r.fail(E.UNABLE_TO_CHOOSE_ATTACKER_WEAPON);
-      const defenderWeapon = chooseDefenderWeaponIndex(attacker, weapon, defender, distance, aDef, dDef, options);
       ctx.executeAttack(attackerLoc, weapon, defenderLoc, defenderWeapon);
       r.gamestateChanged = true;
     },

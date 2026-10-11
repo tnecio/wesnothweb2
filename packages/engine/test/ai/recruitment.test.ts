@@ -54,19 +54,20 @@ function runCa(ctx: ReturnType<typeof makeSetup>['ctx'], cfg = makeCfg()): { ca:
 }
 
 describe('compareUnitTypes', () => {
+  const board = makeBoard(terrainData);
   it('is antisymmetric: swapping the two types negates the result', () => {
     const strong = new UnitType('brute', 'brute', '', 'neutral', 1, 40, 5, 5, 0, 1, 25, -1, 500, [], '', false, false, false, flatMoveType(terrainData, 50), [makeWeapon(12, 3)], []);
     const weak = new UnitType('weakling', 'weakling', '', 'neutral', 1, 10, 5, 5, 0, 1, 5, -1, 500, [], '', false, false, false, flatMoveType(terrainData, 50), [makeWeapon(2, 1)], []);
 
-    const ab = compareUnitTypes(strong, weak, 50, 50, 0, 0);
-    const ba = compareUnitTypes(weak, strong, 50, 50, 0, 0);
+    const ab = compareUnitTypes(board, strong, weak, 50, 50, 0);
+    const ba = compareUnitTypes(board, weak, strong, 50, 50, 0);
     expect(ab).toBeGreaterThan(0); // strong wins the matchup
     expect(ba).toBeCloseTo(-ab, 6);
   });
 
   it('returns 0 for two types that cannot damage each other', () => {
     const harmless = new UnitType('harmless', 'harmless', '', 'neutral', 1, 10, 5, 5, 0, 1, 5, -1, 500, [], '', false, false, false, flatMoveType(terrainData, 50), [makeWeapon(0, 0)], []);
-    expect(compareUnitTypes(harmless, harmless, 50, 50, 0, 0)).toBe(0);
+    expect(compareUnitTypes(board, harmless, harmless, 50, 50, 0)).toBe(0);
   });
 });
 

@@ -72,6 +72,15 @@ export interface BattleContextUnitStats {
   readonly numBlows: number;
   readonly swarmMin: number;
   readonly swarmMax: number;
+  /** Phase 27b: the attack turns a slain opponent into `plagueType` (`plagues`, `plague_type`). */
+  readonly plagues?: boolean;
+  readonly plagueType?: string;
+  /** The number of strikes varies with hp (`swarm`). */
+  readonly swarm?: boolean;
+  /** The weapon cannot be used here: `[disable]`, or out of its range (`disable`). */
+  readonly disable?: boolean;
+  /** The leadership bonus in the damage, a percentage (`leadership_bonus`). */
+  readonly leadershipBonus?: number;
 }
 
 /**

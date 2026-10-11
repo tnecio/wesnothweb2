@@ -53,9 +53,8 @@ import {
   attackEventData,
   withScenarioFixes,
   spendAttackCost,
-  isBackstabActive,
-  underLeadership,
-  resistanceAgainst,
+  SpecialsContext,
+  type SpecialsCombatant,
   AiManager,
   registerAiWmlActions,
   findSideConfig,
@@ -74,7 +73,6 @@ import {
   buildBattleContext,
   chooseDefenderWeaponIndex,
   simulateCombat,
-  hasSpecialId,
   combatModifier,
   RngDeterministic,
   MtRng,
@@ -4333,18 +4331,7 @@ export class GameSession {
     if (!attackerWeapon) {
       throw new Error(`buildPreview: attacker has no weapon at index ${attackerWeaponIndex}`);
     }
-    const distance = 1; // caller guarantees adjacency (attackCandidates is adjacency-filtered).
-    const attackerTerrainDefense = attacker.defenseModifier(this.board.map.getTerrain(attacker.location));
-    const defenderTerrainDefense = defender.defenseModifier(this.board.map.getTerrain(defender.location));
-
-    const defenderWeaponIndex = chooseDefenderWeaponIndex(
-      attacker,
-      attackerWeaponIndex,
-      defender,
-      distance,
-      attackerTerrainDefense,
-      defenderTerrainDefense,
-    );
+    const defenderWeaponIndex = chooseDefenderWeaponIndex({ board: this.board, attacker, defender }, attackerWeaponIndex);
     const defenderWeapon = defenderWeaponIndex >= 0 ? defender.attacks[defenderWeaponIndex] : undefined;
 
     const attackerLawfulBonus = this.timeOfDayAt(attacker.location).lawfulBonus;
@@ -4371,56 +4358,29 @@ export class GameSession {
     const defenderToDModifier = defenderWeapon
       ? combatModifier(defenderLawfulBonus, defenderWeapon.alignment ?? defender.alignment, defender.fearless, this.schedule.maxLiminalBonus)
       : 0;
-    // The real GEOMETRIC condition (a flanking ally-of-attacker on the far
-    // side of the defender) -- feeds `buildBattleContext`'s own
-    // `hasSpecialId(weapon, 'backstab')`-gated damage doubling below, same
-    // as before. Real, reported bug (bugs5.md #2): this alone is NOT
-    // "backstab is happening" -- the geometric condition can hold with any
-    // weapon, backstab-capable or not (upstream's own combat math only
-    // ever doubles damage when BOTH this AND the weapon's own special are
-    // present) -- so the DISPLAYED badge (`attackerBackstabActive` below)
-    // additionally requires the attacker's actual weapon to have the
-    // special, matching what real Wesnoth actually applies rather than
-    // just this geometric precondition for it.
-    const backstabGeometry = isBackstabActive(this.board, attacker.location, defender.location);
-    const attackerBackstabActive = backstabGeometry && hasSpecialId(attackerWeapon, 'backstab');
-    const attackerLeadershipBonus = underLeadership(this.board, attacker);
-    const defenderLeadershipBonus = underLeadership(this.board, defender);
-    // Charge is only ever active "when used offensively" -- upstream's `active_on=offense` -- so it's
-    // the ATTACKER's weapon specifically that gates it for this whole exchange (see combatStats.ts's
-    // own `hasCharge` doc comment); both combatants' damage doubles when it is.
-    const chargeActive = hasSpecialId(attackerWeapon, 'charge');
-
     const { attacker: aStats, defender: dStats } = buildBattleContext({
+      board: this.board,
       attacker,
       attackerWeapon,
       defender,
       defenderWeapon,
-      distance,
-      attackerTerrainDefense,
-      defenderTerrainDefense,
-      options: {
-        attackerLawfulBonus,
-        defenderLawfulBonus,
-        maxLiminalBonus: this.schedule.maxLiminalBonus,
-        backstabActive: backstabGeometry,
-        attackerLeadershipBonus,
-        defenderLeadershipBonus,
-        attackerResistanceModifier: resistanceAgainst(this.board, defender, attackerWeapon.type, false, defender.location),
-        defenderResistanceModifier: defenderWeapon
-          ? resistanceAgainst(this.board, attacker, defenderWeapon.type, true, attacker.location)
-          : undefined,
-      },
+      options: { attackerLawfulBonus, defenderLawfulBonus, maxLiminalBonus: this.schedule.maxLiminalBonus },
     });
     const { attacker: aCombatant, defender: dCombatant } = simulateCombat(aStats, dStats);
 
-    /** Mirrors `computeUnitStats`'s own cth-override precedence (magical wins over marksman). */
-    const chanceToHitSourceFor = (weapon: AttackType | undefined): 'magical' | 'marksman' | null => {
-      if (!weapon) return null;
-      if (hasSpecialId(weapon, 'magical')) return 'magical';
-      if (hasSpecialId(weapon, 'marksman')) return 'marksman';
-      return null;
-    };
+    // The breakdown the dialogs show, from the same specials context the stats used.
+    const specials = new SpecialsContext(
+      this.board,
+      { un: attacker, loc: attacker.location, at: attackerWeapon },
+      { un: defender, loc: defender.location, at: defenderWeapon },
+    );
+    const activeId = (self: SpecialsCombatant, id: string): boolean => !!self.at && specials.hasActiveSpecialOrAbilityId(self, id);
+    const chargeActive = activeId(specials.attacker, 'charge');
+    const attackerBackstabActive = activeId(specials.attacker, 'backstab');
+    const chanceToHitSourceFor = (self: SpecialsCombatant): 'magical' | 'marksman' | null =>
+      activeId(self, 'magical') ? 'magical' : activeId(self, 'marksman') ? 'marksman' : null;
+    const attackerResistance = specials.effectiveDamageType(specials.attacker).res;
+    const defenderResistance = defenderWeapon ? specials.effectiveDamageType(specials.defender).res : undefined;
 
     const preview: CombatPreview = {
       attacker: {
@@ -4440,15 +4400,15 @@ export class GameSession {
         alignment: attacker.alignment,
         raceId: attacker.type.raceId,
         traits: attacker.traitNames,
-        resistanceModifier: resistanceAgainst(this.board, defender, attackerWeapon.type, false, defender.location),
+        resistanceModifier: attackerResistance,
         baseDamage: attackerWeapon.damage,
         hpDist: aCombatant.hpDist,
         lawfulBonus: attackerToDModifier,
-        leadershipBonus: attackerLeadershipBonus,
+        leadershipBonus: aStats.leadershipBonus ?? 0,
         chargeActive,
         backstabActive: attackerBackstabActive,
         slowed: attacker.slowed,
-        chanceToHitSource: chanceToHitSourceFor(attackerWeapon),
+        chanceToHitSource: chanceToHitSourceFor(specials.attacker),
       },
       defender: {
         name: this.unitDisplayName(defender),
@@ -4467,18 +4427,18 @@ export class GameSession {
         alignment: defender.alignment,
         raceId: defender.type.raceId,
         traits: defender.traitNames,
-        resistanceModifier: defenderWeapon ? resistanceAgainst(this.board, attacker, defenderWeapon.type, true, attacker.location) : undefined,
+        resistanceModifier: defenderResistance,
         baseDamage: defenderWeapon?.damage,
         hpDist: dCombatant.hpDist,
         lawfulBonus: defenderToDModifier,
-        leadershipBonus: defenderLeadershipBonus,
+        leadershipBonus: dStats.leadershipBonus ?? 0,
         // Charge only ever applies "when used offensively" -- the ATTACKER's own weapon gates it for
         // the whole exchange (see the comment above `chargeActive`'s computation), so the defender's
         // retaliation shares the exact same flag, not one keyed off its own weapon.
         chargeActive: defenderWeapon ? chargeActive : undefined,
         backstabActive: false, // never applies to a defender's own retaliation blow
         slowed: defender.slowed,
-        chanceToHitSource: chanceToHitSourceFor(defenderWeapon),
+        chanceToHitSource: defenderWeapon ? chanceToHitSourceFor(specials.defender) : null,
       },
     };
 
