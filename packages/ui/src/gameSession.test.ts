@@ -14,6 +14,7 @@ import {
   distanceBetween,
   parseConfig,
   backstabCheck,
+  fillWeaponChoices,
   createTypeResolver,
   type GameBoardSnapshot,
   type CutsceneBeat,
@@ -933,7 +934,7 @@ describe('GameSession recall dialog actions (real, reported bug: no way to renam
 });
 
 describe('GameSession weapon selection (attackerWeaponOptions / selectAttackerWeapon)', () => {
-  it('offers every usable weapon for a real multi-weapon attacker (Dark Sorcerer: staff/chill wave/shadow wave), defaulting to the first', async () => {
+  it('offers every usable weapon for a real multi-weapon attacker (Dark Sorcerer: staff/chill wave/shadow wave), defaulting to the best (fill_weapon_choices)', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
     expect(malKevek.attacks.length).toBeGreaterThan(1); // real content: 3 real weapons.
 
@@ -944,9 +945,10 @@ describe('GameSession weapon selection (attackerWeaponOptions / selectAttackerWe
     const options = session.attackerWeaponOptions;
     expect(options.length).toBe(malKevek.attacks.length);
     expect(options.map((o) => o.name)).toEqual(malKevek.attacks.map((a) => a.name));
-    expect(options[0]!.selected).toBe(true);
-    expect(options.filter((o) => o.selected)).toHaveLength(1);
-    expect(session.pendingAttack!.attackerWeaponIndex).toBe(0);
+    const { choices, best } = fillWeaponChoices({ board: session.board, attacker: malKevek, defender: kaiKrellis });
+    const expected = choices[best]!.attackerWeaponIndex;
+    expect(options.filter((o) => o.selected).map((o) => o.index)).toEqual([expected]);
+    expect(session.pendingAttack!.attackerWeaponIndex).toBe(expected);
   });
 
   it('selectAttackerWeapon switches the pending preview to a real, different weapon\'s real stats', async () => {

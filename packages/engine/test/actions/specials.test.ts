@@ -10,8 +10,8 @@ import { Unit } from '../../src/model/Unit.js';
 import { Location, relativeDirection } from '../../src/model/Location.js';
 import { AttackType } from '../../src/model/UnitType.js';
 import { parseConfig } from '../../src/index.js';
-import { buildBattleContext, chooseDefenderWeaponIndex } from '../../src/actions/combatStats.js';
-import { resistanceAgainst } from '../../src/actions/abilities.js';
+import { buildBattleContext, chooseDefenderWeaponIndex, fillWeaponChoices } from '../../src/actions/combatStats.js';
+import { SpecialsContext, resistanceAgainst } from '../../src/actions/abilities.js';
 import { roundDamage } from '../../src/actions/gameConfig.js';
 import { calculateHealing } from '../../src/actions/heal.js';
 
@@ -226,5 +226,30 @@ describe('healing through the pipeline (heal.cpp)', () => {
     const mage = place(b, 'White Mage', 1, 2, 1);
     expect(calculateHealing(b, 1).find((o) => o.unit === patient)).toMatchObject({ amount: 8, healers: [mage] });
     expect(calculateHealing(b, 2).find((o) => o.unit === patient)).toBeUndefined();
+  });
+});
+
+describe('what the player is shown (S5)', () => {
+  it("a special is inactive in a fight where its filter fails, active in the side panel's listing", () => {
+    const b = board();
+    const thief = place(b, 'Thief', 1, 1, 1);
+    const spearman = place(b, 'Spearman', 2, 2, 1);
+    const dagger = thief.attacks[weaponIndex(thief, 'dagger')]!;
+    const fightCtx = new SpecialsContext(b, { un: thief, loc: thief.location, at: dagger }, { un: spearman, loc: spearman.location });
+    expect(fightCtx.specialTooltips(fightCtx.attacker).map((t) => [t.name, t.active])).toEqual([['backstab', false]]);
+    const listing = new SpecialsContext(b, { un: thief, loc: thief.location, at: dagger }, { loc: Location.NULL });
+    listing.isForListing = true;
+    expect(listing.specialTooltips(listing.attacker).map((t) => t.active)).toEqual([true]);
+  });
+
+  it('fill_weapon_choices skips weapons with attack_weight=0 and those the answer disables, and picks the best', () => {
+    const b = board();
+    const mage = place(b, 'Mage', 1, 1, 1);
+    const spearman = place(b, 'Spearman', 2, 2, 1);
+    const { choices, best } = fillWeaponChoices({ board: b, attacker: mage, defender: spearman });
+    expect(choices.map((c) => mage.attacks[c.attackerWeaponIndex]!.id).sort()).toEqual(['missile', 'staff']);
+    expect(mage.attacks[choices[best]!.attackerWeaponIndex]!.id).toBe('missile');
+    mage.attacks = mage.attacks.map((a) => (a.id === 'staff' ? AttackType.fromConfig(parseConfig('name=staff\ntype=impact\nrange=melee\ndamage=5\nnumber=1\nattack_weight=0')) : a));
+    expect(fillWeaponChoices({ board: b, attacker: mage, defender: spearman }).choices.map((c) => mage.attacks[c.attackerWeaponIndex]!.id)).toEqual(['missile']);
   });
 });

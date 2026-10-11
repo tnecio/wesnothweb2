@@ -140,7 +140,7 @@
           {#if preview.attacker.weapon.specials.length > 0}
             <div class="specials">
               {#each preview.attacker.weapon.specials as special, i (i)}{#if i > 0},
-                {/if}<HelpLink request={{ topic: special.helpTopic }} title={special.description}>{special.name}</HelpLink>{/each}
+                {/if}<span class:inactive={!special.active}><HelpLink request={{ topic: special.helpTopic }} title={special.description}>{special.name}</HelpLink></span>{/each}
             </div>
           {/if}
           {#each modifierBadges(preview.attacker) as badge (badge)}
@@ -159,7 +159,7 @@
           {#if preview.defender.weapon.specials.length > 0}
             <div class="specials">
               {#each preview.defender.weapon.specials as special, i (i)}{#if i > 0},
-                {/if}<HelpLink request={{ topic: special.helpTopic }} title={special.description}>{special.name}</HelpLink>{/each}
+                {/if}<span class:inactive={!special.active}><HelpLink request={{ topic: special.helpTopic }} title={special.description}>{special.name}</HelpLink></span>{/each}
             </div>
           {/if}
           {#each modifierBadges(preview.defender) as badge (badge)}
@@ -339,5 +339,11 @@
       flex-direction: column;
       align-items: stretch;
     }
+  }
+
+  /* Phase 27b: a special or ability not active here, in upstream's `font::INACTIVE_COLOR`. */
+  .inactive,
+  .inactive :global(*) {
+    color: rgb(150, 150, 150);
   }
 </style>

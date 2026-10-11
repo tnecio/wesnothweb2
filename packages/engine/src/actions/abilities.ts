@@ -893,6 +893,14 @@ export function defenseModifier(board: GameBoard, unit: Unit, terrain: TerrainCo
 
 // --- specials_context_t ---
 
+/** `unit_ability_t::tooltip_info`, with whether it is active (the `active_list` bit). */
+export interface SpecialTooltip {
+  readonly name: string;
+  readonly description: string;
+  readonly helpTopicId: string;
+  readonly active: boolean;
+}
+
 /** `specials_context_t::specials_combatant`: one side of a fight -- the unit (if known), its hex and its weapon. */
 export interface SpecialsCombatant {
   readonly un?: Unit;
@@ -1096,6 +1104,51 @@ export class SpecialsContext {
       });
     }
     return res;
+  }
+
+  /**
+   * `special_tooltips`: `self`'s weapon's specials with a name, each with its name and description for whether it
+   * is active here (`name_inactive=`, `description_inactive=`).
+   */
+  specialTooltips(self: SpecialsCombatant): SpecialTooltip[] {
+    const res: SpecialTooltip[] = [];
+    if (!self.at) return res;
+    for (const ab of weaponSpecials(self.at)) {
+      const active = this.isSpecialActive(self, ab, 'either');
+      const name = ab.getName(!active);
+      if (name === '') continue;
+      res.push({ name, description: ab.getDescription(!active), helpTopicId: ab.helpTopicId(), active });
+    }
+    return res;
+  }
+
+  /** `abilities_special_tooltips`: the unit's weapon abilities that would apply to this weapon, by their `name_affected=`. */
+  abilitiesSpecialTooltips(self: SpecialsCombatant): SpecialTooltip[] {
+    const res: SpecialTooltip[] = [];
+    if (!self.un) return res;
+    const seen = new Set<string>();
+    foreachActiveAbility(this.board, self.un, self.loc, () => true, (ab) => {
+      if (!this.specialTooltipActive(self, ab)) return;
+      const active = this.isSpecialActive(self, ab, 'self');
+      const name = ab.substituteVariables(ab.cfg.getString('name_affected', ''));
+      if (name === '' || seen.has(name)) return;
+      seen.add(name);
+      res.push({ name, description: ab.substituteVariables(ab.cfg.getString('description_affected', '')), helpTopicId: ab.helpTopicId(), active });
+    });
+    return res;
+  }
+
+  /** `special_tooltip_active`: the ability affects `self`, and its student, attacker and defender filters pass. */
+  private specialTooltipActive(self: SpecialsCombatant, ab: UnitAbility): boolean {
+    const other = this.other(self);
+    const isAttacker = self === this.attacker;
+    const whomIsSelf = specialAffectsSelf(ab, isAttacker);
+    if (!whomIsSelf) return false;
+    const appliedBoth = ab.applyTo === 'both';
+    if (!this.specialUnitMatches(self.un, other.un, self, ab, 'filter_student', appliedBoth || whomIsSelf)) return false;
+    if (isAttacker && !this.specialUnitMatches(self.un, other.un, self, ab, 'filter_attacker', appliedBoth || whomIsSelf)) return false;
+    if (!isAttacker && !this.specialUnitMatches(self.un, other.un, self, ab, 'filter_defender', appliedBoth || whomIsSelf)) return false;
+    return true;
   }
 
   // --- attack_type, in this context ---

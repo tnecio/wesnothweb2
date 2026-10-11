@@ -55,6 +55,11 @@ import {
   spendAttackCost,
   SpecialsContext,
   type SpecialsCombatant,
+  weaponSpecials,
+  abilityTooltips,
+  defenseModifier,
+  resistanceAgainst,
+  fillWeaponChoices,
   AiManager,
   registerAiWmlActions,
   findSideConfig,
@@ -405,6 +410,8 @@ export interface WeaponSpecialInfo {
   description: string;
   /** Phase 24: the special's help page (`weaponspecial_<unique_id or id>`). */
   helpTopic: string;
+  /** Phase 27b: active in this context (`special_tooltips`' active list); shown in the inactive colour when not. */
+  active: boolean;
 }
 
 /** One real `[abilities]` child (e.g. `[heals]`), reduced the same way as `WeaponSpecialInfo`. */
@@ -413,6 +420,8 @@ export interface AbilityInfo {
   description: string;
   /** Phase 24: the ability's help page (`ability_<unique_id or id>`). */
   helpTopic: string;
+  /** Phase 27b: active where the unit stands (`ability_tooltips`' active list); always so for a unit type. */
+  active: boolean;
 }
 
 /** A view-model of one of a unit's `[attack]` weapons, for the side panel/combat prediction -- addresses "UI is missing information about weapon type" (real, reported: melee/ranged and damage type were shown nowhere). */
@@ -427,19 +436,37 @@ export interface WeaponInfo {
   specials: readonly WeaponSpecialInfo[];
 }
 
-export function buildWeaponInfo(weapon: AttackType): WeaponInfo {
+/**
+ * A weapon for display. With a specials context (`ctx`, `self` the weapon's combatant), its specials are as
+ * `special_tooltips` gives them -- active or not, by their active or inactive names -- followed by the unit's
+ * weapon abilities that would apply (`abilities_special_tooltips`); without one (a unit type), every named special,
+ * active.
+ */
+export function buildWeaponInfo(weapon: AttackType, ctx?: SpecialsContext, self?: SpecialsCombatant): WeaponInfo {
+  const specials: WeaponSpecialInfo[] =
+    ctx && self
+      ? [
+          ...ctx.specialTooltips(self).map((t) => ({ name: t.name, description: t.description, helpTopic: 'weaponspecial_' + t.helpTopicId, active: t.active })),
+          ...ctx.abilitiesSpecialTooltips(self).map((t) => ({ name: t.name, description: t.description, helpTopic: 'ability_' + t.helpTopicId, active: t.active })),
+        ]
+      : weaponSpecials(weapon)
+          .filter((ab) => ab.getName() !== '')
+          .map((ab) => ({ name: ab.getName(), description: ab.getDescription(), helpTopic: 'weaponspecial_' + ab.helpTopicId(), active: true }));
   return {
     name: weapon.name,
     type: weapon.type,
     range: weapon.range,
     damage: weapon.damage,
     numAttacks: weapon.numAttacks,
-    specials: weapon.specials.map((cfg) => ({
-      name: cfg.getString('name') || cfg.getString('id'),
-      description: cfg.getString('description'),
-      helpTopic: 'weaponspecial_' + cfg.getString('unique_id', cfg.getString('id')),
-    })),
+    specials,
   };
+}
+
+/** A unit's weapon in the side panel: `reports.cpp`'s listing context, the opponent unknown. */
+function listedWeaponInfo(board: GameBoard, unit: Unit, weapon: AttackType): WeaponInfo {
+  const ctx = new SpecialsContext(board, { un: unit, loc: unit.location, at: weapon }, { loc: Location.NULL });
+  ctx.isForListing = true;
+  return buildWeaponInfo(weapon, ctx, ctx.attacker);
 }
 
 export function buildAbilityInfo(entry: RegistryEntry): AbilityInfo {
@@ -447,6 +474,7 @@ export function buildAbilityInfo(entry: RegistryEntry): AbilityInfo {
     name: entry.config.getString('name') || entry.tag,
     description: entry.config.getString('description'),
     helpTopic: 'ability_' + entry.config.getString('unique_id', entry.config.getString('id')),
+    active: true,
   };
 }
 
@@ -568,10 +596,11 @@ export function buildUnitInfo(board: GameBoard, unit: Unit, displayName: string,
     maxMoves: unit.maxMoves,
     attacksLeft: unit.attacksLeft,
     terrainName: board.map.terrainName(unit.location),
-    defensePercent: 100 - unit.defenseModifier(board.map.getTerrain(unit.location)),
+    defensePercent: 100 - defenseModifier(board, unit, board.map.getTerrain(unit.location)),
     todBonus,
-    attacks: unit.attacks.map(buildWeaponInfo),
-    abilities: visibleAbilityInfos(unit.abilities),
+    attacks: unit.attacks.map((a) => listedWeaponInfo(board, unit, a)),
+    // `ability_tooltips(active_list, loc)`: by their inactive names where they are not active.
+    abilities: abilityTooltips(board, unit).map((t) => ({ name: t.name, description: t.description, helpTopic: 'ability_' + t.helpTopicId, active: t.active })),
     traits: unit.traitNames,
     traitTopics: unit.modifications.filter((m) => m.kind === 'trait').map((m) => 'traits_' + m.cfg.getString('id')),
     variation: unit.variation,
@@ -581,7 +610,7 @@ export function buildUnitInfo(board: GameBoard, unit: Unit, displayName: string,
     alignment: unit.alignment,
     raceId: unit.type.raceId,
     raceName: raceDisplayName(unit.type.raceId),
-    resistances: DAMAGE_TYPES.map((damageType) => ({ damageType, resistance: unit.resistanceAgainst(damageType) })),
+    resistances: DAMAGE_TYPES.map((damageType) => ({ damageType, resistance: resistanceAgainst(board, unit, damageType, false) })),
     statuses: STATUS_IDS.filter((status) => unit.hasStatus(status)).map(statusName),
   };
 }
@@ -1614,10 +1643,18 @@ export class GameSession {
   get attackerWeaponOptions(): AttackerWeaponOption[] {
     const pending = this.pendingAttack;
     if (!pending) return [];
-    return this.viableAttackerWeaponIndices(pending.attacker).map((index) => {
-      const weapon = pending.attacker.attacks[index]!;
-      const info = buildWeaponInfo(weapon);
-      return {
+    const { attacker, defender } = pending;
+    // `fill_weapon_choices`: the weapons the defender's answer does not disable, each with its specials in that fight.
+    return this.atAttackHex(attacker, pending.from, () =>
+      fillWeaponChoices({ board: this.board, attacker, defender }).choices.map(({ attackerWeaponIndex: index, defenderWeaponIndex }) => {
+        const weapon = attacker.attacks[index]!;
+        const ctx = new SpecialsContext(
+          this.board,
+          { un: attacker, loc: attacker.location, at: weapon },
+          { un: defender, loc: defender.location, at: defenderWeaponIndex >= 0 ? defender.attacks[defenderWeaponIndex] : undefined },
+        );
+        const info = buildWeaponInfo(weapon, ctx, ctx.attacker);
+        return {
         index,
         name: info.name,
         type: info.type,
@@ -1627,7 +1664,20 @@ export class GameSession {
         specials: info.specials,
         selected: index === pending.attackerWeaponIndex,
       };
-    });
+      }),
+    );
+  }
+
+  /** Runs `fn` with `attacker` standing on `from` (a move-and-attack's attack hex), as `buildPreview` does. */
+  private atAttackHex<T>(attacker: Unit, from: Location, fn: () => T): T {
+    const origin = attacker.location;
+    if (from.equals(origin)) return fn();
+    this.board.moveUnit(origin, from);
+    try {
+      return fn();
+    } finally {
+      this.board.moveUnit(from, origin);
+    }
   }
 
   /** Rebuilds `pendingAttack` (preview + defender's real counter-weapon choice) for a different attacker weapon, keeping the same target. No-op if there's no pending attack or `index` isn't one of the attacker's own weapons. */
@@ -3702,7 +3752,7 @@ export class GameSession {
         raceId: type.raceId,
         hitpoints: type.hitpoints,
         moves: type.movement,
-        attacks: type.attacks.map(buildWeaponInfo),
+        attacks: type.attacks.map((a) => buildWeaponInfo(a)),
         abilities: visibleAbilityInfos(type.abilities),
       };
     });
@@ -3749,7 +3799,7 @@ export class GameSession {
         raceId: u.type.raceId,
         movesLeft: u.movesLeft,
         maxMoves: u.maxMoves,
-        attacks: u.attacks.map(buildWeaponInfo),
+        attacks: u.attacks.map((a) => buildWeaponInfo(a)),
         abilities: visibleAbilityInfos(u.abilities),
       } satisfies RecallOption;
     });
@@ -4392,7 +4442,7 @@ export class GameSession {
         damagePerBlow: aStats.damage,
         numBlows: aStats.numBlows,
         deathChance: aCombatant.hpDist[0] ?? 0,
-        weapon: buildWeaponInfo(attackerWeapon),
+        weapon: buildWeaponInfo(attackerWeapon, specials, specials.attacker),
         typeId: attacker.type.id,
         typeName: attacker.type.name,
         image: this.snapshot.unitTypes[attacker.type.id]?.image ?? null,
@@ -4419,7 +4469,7 @@ export class GameSession {
         damagePerBlow: dStats.damage,
         numBlows: dStats.numBlows,
         deathChance: dCombatant.hpDist[0] ?? 0,
-        weapon: defenderWeapon ? buildWeaponInfo(defenderWeapon) : undefined,
+        weapon: defenderWeapon ? buildWeaponInfo(defenderWeapon, specials, specials.defender) : undefined,
         typeId: defender.type.id,
         typeName: defender.type.name,
         image: this.snapshot.unitTypes[defender.type.id]?.image ?? null,
@@ -4686,8 +4736,10 @@ export class GameSession {
         }
         const from = this.attackPosition(sel, clickedUnit, options.attackFrom);
         if (from) {
-          const firstWeapon = this.viableAttackerWeaponIndices(sel)[0];
-          if (firstWeapon === undefined) return null; // no usable weapon at this range -- shouldn't happen (computeAttackCandidates implies at least one), but don't throw on it.
+          // `fill_weapon_choices`: the weapon offered first is the best by `better_attack(..., 0.5)`.
+          const choice = this.atAttackHex(sel, from, () => fillWeaponChoices({ board: this.board, attacker: sel, defender: clickedUnit }));
+          if (choice.best < 0) return null;
+          const firstWeapon = choice.choices[choice.best]!.attackerWeaponIndex;
           this.pendingAttack = this.buildPreview(sel, clickedUnit, firstWeapon, from);
           return fmt(tx('$attacker could attack $defender -- review the prediction and confirm.'), { attacker: this.unitDisplayName(sel), defender: this.unitDisplayName(clickedUnit) });
         }
@@ -4900,7 +4952,7 @@ export class GameSession {
                 level: type.level,
                 hitpoints: type.hitpoints,
                 image: this.snapshot.unitTypes[type.id]?.image ?? null,
-                attacks: type.attacks.map(buildWeaponInfo),
+                attacks: type.attacks.map((a) => buildWeaponInfo(a)),
               })),
               // An AMLA row, as upstream's dialog shows it: the [advancement]'s
               // own description and image, over the unit as it stands.
@@ -4910,7 +4962,7 @@ export class GameSession {
                 level: unit.level,
                 hitpoints: unit.maxHitpoints,
                 image: amla.getString('image', '') || (this.snapshot.unitTypes[unit.type.id]?.image ?? null),
-                attacks: unit.attacks.map(buildWeaponInfo),
+                attacks: unit.attacks.map((a) => buildWeaponInfo(a)),
               })),
             ],
           };

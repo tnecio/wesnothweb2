@@ -401,3 +401,21 @@ export function chooseAttackerWeapon(input: WeaponChoiceInput, harmWeight: numbe
   for (const c of choices.slice(1)) if (c.betterAttack(best, harmWeight)) best = c;
   return { attackerWeaponIndex: best.attackerWeaponIndex, defenderWeaponIndex: best.defenderWeaponIndex };
 }
+
+/**
+ * `mouse_handler::fill_weapon_choices`: the attacker's weapons a player may pick against this defender -- those
+ * with a positive `attack_weight` that the defender's answer does not disable -- and the one offered first, the
+ * best by `better_attack` with harm weight 0.5. `best` is an index into `choices`, -1 with none.
+ */
+export function fillWeaponChoices(input: WeaponChoiceInput): { choices: { attackerWeaponIndex: number; defenderWeaponIndex: number }[]; best: number } {
+  const bcs: WeaponChoice[] = [];
+  let best = 0;
+  for (let i = 0; i < input.attacker.attacks.length; i++) {
+    if (input.attacker.attacks[i]!.attackWeight <= 0) continue;
+    const bc = chooseDefenderChoice(input, i);
+    if (bc.stats.attacker.disable) continue;
+    if (bcs.length > 0 && bc.betterAttack(bcs[best]!, 0.5)) best = bcs.length;
+    bcs.push(bc);
+  }
+  return { choices: bcs.map((c) => ({ attackerWeaponIndex: c.attackerWeaponIndex, defenderWeaponIndex: c.defenderWeaponIndex })), best: bcs.length > 0 ? best : -1 };
+}
