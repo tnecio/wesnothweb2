@@ -246,6 +246,8 @@ export interface EventContext {
   setTurnNumber?: (turn: number) => void;
   /** A unit type's full config (`unit_type::get_cfg`, for `[store_unit_type]`). Installed by the session. */
   unitTypeConfig?: (id: string) => WmlConfig | undefined;
+  /** Every unit type's id (`wesnoth.unit_types`' keys, for `[store_unit_type_ids]`). Installed by the session. */
+  unitTypeIds?: () => readonly string[];
   /** Every `[race]`'s config by id (`unit_type_data::races`, for `wesnoth.races`). Installed by the session. */
   raceConfigs?: () => ReadonlyMap<string, WmlConfig>;
   /** The current turn (`tod_manager::turn`). Installed by the session; `$turn_number` otherwise. */

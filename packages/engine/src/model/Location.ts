@@ -377,6 +377,34 @@ export function relativeDirection(from: Location, to: Location): Direction {
   return dir;
 }
 
+/** `is_vertically_higher_than` (location.cpp). */
+function isVerticallyHigherThan(m1: Location, m2: Location): boolean {
+  return m1.wmlX % 2 === 1 && m2.wmlX % 2 === 0 ? m1.wmlY <= m2.wmlY : m1.wmlY < m2.wmlY;
+}
+
+/** Mirrors `get_relative_dir(loc, RADIAL_SYMMETRY)`: the direction by 60-degree sector rather than nearest axis. */
+export function relativeDirectionRadial(from: Location, to: Location): Direction {
+  let temp = to;
+  if (isVerticallyHigherThan(temp, from)) {
+    temp = temp.rotateRightAroundCenter(from, 1);
+    if (!isVerticallyHigherThan(temp, from)) return Direction.NorthEast;
+    temp = temp.rotateRightAroundCenter(from, 1);
+    if (!isVerticallyHigherThan(temp, from)) return Direction.North;
+    return Direction.NorthWest;
+  } else if (isVerticallyHigherThan(from, temp)) {
+    temp = temp.rotateRightAroundCenter(from, 1);
+    if (!isVerticallyHigherThan(from, temp)) return Direction.SouthWest;
+    temp = temp.rotateRightAroundCenter(from, 1);
+    if (!isVerticallyHigherThan(from, temp)) return Direction.South;
+    return Direction.SouthEast;
+  } else if (temp.x > from.x) {
+    return Direction.SouthEast;
+  } else if (temp.x < from.x) {
+    return Direction.NorthWest;
+  }
+  return Direction.Indeterminate;
+}
+
 /** Mirrors `tiles_adjacent`. */
 export function tilesAdjacent(a: Location, b: Location): boolean {
   const dy = a.y - b.y;

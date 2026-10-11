@@ -79,7 +79,7 @@
 import type { EndLevelState } from './context.js';
 import { Direction, Location, parseDirection } from '../model/Location.js';
 import { Unit, UnitStatus } from '../model/Unit.js';
-import { WmlConfig, plainValue, type WmlStoredValue } from '../wml/config.js';
+import { WmlConfig, plainValue, type WmlAttributeValue, type WmlStoredValue } from '../wml/config.js';
 import { leaderCanRecall, placeWmlRecall, rollNewUnit } from '../actions/recruit.js';
 import { findPath, findVacantTile } from '../pathfind/pathfind.js';
 import type { Rng } from '../rng/Rng.js';
@@ -87,6 +87,7 @@ import type { EffectEnv } from '../model/effects.js';
 import type { ActionHandler, EventContext, RecordedMessage } from './context.js';
 import { ActionRegistry } from './context.js';
 import { TString } from '../i18n/tstring.js';
+import { MapFormulaCallable, parseFormula, Variant } from '../formula/index.js';
 import { FLOATING_LABEL_COLOR, parseRgbString } from './floatingLabels.js';
 import { isFlow, runFlow, type Flow, type MessageOption, type MessageTexts, type Responder, type TextInputSpec } from './interaction.js';
 import { conditionalPassed } from './conditionalWml.js';
@@ -106,6 +107,10 @@ import {
   actionStoreStartingLocation,
   actionStoreTurns,
   actionStoreUnitType,
+  actionStoreUnitTypeIds,
+  actionStoreUnitDefense,
+  actionStoreUnitDefenseOn,
+  actionStoreRelativeDirection,
   actionStoreVillages,
   actionTerrain,
   actionTerrainMask,
@@ -544,6 +549,18 @@ export function applySetVariable(cfg: WmlConfig, variables: VariableStore, log: 
 
   if (cfg.hasAttribute('string_length')) variables.set(name, String(cfg.get('string_length')).length);
 
+  // `formula=` (set_variable.lua): a WFL formula over the variable's value, bound as `value`.
+  if (cfg.hasAttribute('formula')) {
+    try {
+      const context = new MapFormulaCallable().add('value', toFormulaValue(variables.get(name)));
+      const result = fromFormulaValue(parseFormula(cfg.getString('formula')).evaluate(context));
+      if (result === undefined) variables.clear(name);
+      else variables.set(name, result);
+    } catch (e) {
+      log('error', `[set_variable] formula= cannot be evaluated: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   const joinCfg = cfg.child('join');
   if (joinCfg) {
     const arrayName = joinCfg.getString('variable', '');
@@ -562,9 +579,25 @@ export function applySetVariable(cfg: WmlConfig, variables: VariableStore, log: 
 
   // `rand=` is handled by `actionSetVariable` above, which has the
   // context (and so the RNG) this shared helper deliberately does not.
-  // NOT ported: `rand=` here (needs the shared RNG, owned by packages/engine/src/rng/, out of
-  // scope here), `formula=` (would need a `value`-bound WFL context; skipped for now),
-  // `time=stamp` (no wall-clock concept in a deterministic headless engine).
+  // NOT ported: `time=stamp` (no wall-clock concept in a deterministic headless engine).
+}
+
+/** `luaW_tofaivariant` for a WML value: numbers (and numeric strings, as a config types them) become decimals. */
+function toFormulaValue(v: WmlStoredValue | undefined): Variant {
+  if (v === undefined || v === null) return Variant.null_();
+  const plain = typeof v === 'object' && !(v instanceof TString) ? undefined : plainValue(v as WmlAttributeValue);
+  if (typeof plain === 'boolean') return Variant.int(plain ? 1 : 0);
+  if (typeof plain === 'number') return Variant.decimalFromNumber(plain);
+  if (typeof plain === 'string') return plain.trim() !== '' && Number.isFinite(Number(plain)) ? Variant.decimalFromNumber(Number(plain)) : Variant.string(plain);
+  return Variant.null_();
+}
+
+/** `luaW_pushfaivariant` back to a WML value: ints and decimals as numbers, strings as strings, null as unset. */
+function fromFormulaValue(v: Variant): string | number | undefined {
+  if (v.isNull()) return undefined;
+  if (v.isInt()) return v.asInt();
+  if (v.isDecimal()) return v.asDecimal() / 1000;
+  return v.stringCast();
 }
 
 /**
@@ -2011,6 +2044,10 @@ export function createDefaultActionRegistry(): ActionRegistry {
   registry.register('store_locations', actionStoreLocations);
   registry.register('store_villages', actionStoreVillages);
   registry.register('store_unit_type', actionStoreUnitType);
+  registry.register('store_unit_type_ids', actionStoreUnitTypeIds);
+  registry.register('store_unit_defense', actionStoreUnitDefense);
+  registry.register('store_unit_defense_on', actionStoreUnitDefenseOn);
+  registry.register('store_relative_direction', actionStoreRelativeDirection);
   registry.register('store_side', actionStoreSide);
   registry.register('store_turns', actionStoreTurns);
   registry.register('store_map_dimensions', actionStoreMapDimensions);

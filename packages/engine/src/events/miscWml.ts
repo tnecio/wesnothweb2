@@ -13,13 +13,13 @@
  */
 import { WmlConfig } from '../wml/config.js';
 import type { EventContext } from './context.js';
-import { Direction, Location } from '../model/Location.js';
+import { Direction, Location, relativeDirection, relativeDirectionRadial, writeDirection } from '../model/Location.js';
 import { UnitStatus } from '../model/Unit.js';
 import { applyModifier } from '../model/UnitType.js';
 import { BASE_INCOME } from '../actions/carryover.js';
 import { findLocations, findUnits } from './filter.js';
 import { findSides } from './sideFilter.js';
-import { parseTerrainCode, parseTerrainList, type MergeMode } from '../model/Terrain.js';
+import { parseTerrainCode, parseTerrainList, type MergeMode, type TerrainCode } from '../model/Terrain.js';
 import type { OverlayRule } from '../model/Map.js';
 
 /** The tag's config with variables substituted throughout, filter children included (`wml.parsed`). */
@@ -102,6 +102,59 @@ export function actionStoreUnitType(raw: WmlConfig, ctx: EventContext): void {
     items.push(typeCfg);
   }
   writeContainers(cfg, ctx, 'unit_type', items);
+}
+
+/** `[store_unit_type_ids]` (`wml-tags.lua`): every unit type's id, sorted, comma-separated. */
+export function actionStoreUnitTypeIds(raw: WmlConfig, ctx: EventContext): void {
+  const cfg = parsed(raw, ctx);
+  const ids = [...(ctx.unitTypeIds?.() ?? [])].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  ctx.variables.set(cfg.getString('variable', 'unit_type_ids'), ids.join(','));
+}
+
+/**
+ * `[store_unit_defense_on]` (`wml-tags.lua`): the first matching unit's defense (`unit:defense_on`) on `terrain=`,
+ * else on the hex `loc_x,loc_y`, else on its own hex. `chanceToBeHit` gives the deprecated `[store_unit_defense]`,
+ * which stores the chance to be hit instead.
+ */
+function storeUnitDefense(raw: WmlConfig, ctx: EventContext, tag: string, chanceToBeHit: boolean): void {
+  const cfg = parsed(raw, ctx);
+  const unit = findUnits(ctx.board, cfg)[0];
+  if (!unit) {
+    ctx.log('error', `[${tag}]'s filter didn't match any unit`);
+    return;
+  }
+  let terrain: TerrainCode;
+  if (cfg.hasAttribute('terrain')) terrain = parseTerrainCode(cfg.getString('terrain'));
+  else if (cfg.hasAttribute('loc_x') && cfg.hasAttribute('loc_y')) terrain = ctx.board.map.getTerrain(Location.fromWml(cfg.getNumber('loc_x'), cfg.getNumber('loc_y')));
+  else terrain = ctx.board.map.getTerrain(unit.location);
+  const hit = unit.defenseModifier(terrain);
+  ctx.variables.set(cfg.getString('variable', 'terrain_defense'), chanceToBeHit ? hit : 100 - hit);
+}
+
+export function actionStoreUnitDefenseOn(raw: WmlConfig, ctx: EventContext): void {
+  storeUnitDefense(raw, ctx, 'store_unit_defense_on', false);
+}
+
+export function actionStoreUnitDefense(raw: WmlConfig, ctx: EventContext): void {
+  ctx.log('warn', '[store_unit_defense] is deprecated: it stores the chance to be hit. Use [store_unit_defense_on].');
+  storeUnitDefense(raw, ctx, 'store_unit_defense', true);
+}
+
+/**
+ * `[store_relative_direction]` (`action_wml.cpp`): the direction from `[source]` to `[destination]`
+ * (`map_location::get_relative_dir`), `mode=0` the default, `mode=1` radially symmetric.
+ */
+export function actionStoreRelativeDirection(raw: WmlConfig, ctx: EventContext): void {
+  const cfg = parsed(raw, ctx);
+  const source = cfg.child('source');
+  const destination = cfg.child('destination');
+  if (!source) return ctx.log('warn', 'No source in [store_relative_direction]');
+  if (!destination) return ctx.log('warn', 'No destination in [store_relative_direction]');
+  if (!cfg.hasAttribute('variable')) return ctx.log('warn', 'No variable in [store_relative_direction]');
+  const src = Location.fromConfig(source);
+  const dst = Location.fromConfig(destination);
+  const dir = cfg.getNumber('mode', 0) === 1 ? relativeDirectionRadial(src, dst) : relativeDirection(src, dst);
+  ctx.variables.set(cfg.getString('variable'), writeDirection(dir));
 }
 
 /** `[store_side]`: the side's `__cfg`, plus the economy fields `__cfg` does not carry (`wml-tags.lua`). */

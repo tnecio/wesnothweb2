@@ -1834,6 +1834,7 @@ export class GameSession {
       const json = this.snapshot.unitTypeConfigs?.[id];
       return json ? WmlConfig.fromJSON(json) : undefined;
     };
+    this.eventPump.ctx.unitTypeIds = () => Object.keys(this.snapshot.unitTypeConfigs ?? {});
     let races: Map<string, WmlConfig> | undefined;
     this.eventPump.ctx.raceConfigs = () =>
       (races ??= new Map(Object.entries(this.snapshot.raceConfigs ?? {}).map(([id, json]) => [id, WmlConfig.fromJSON(json)])));
