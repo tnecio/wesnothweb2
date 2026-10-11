@@ -32,7 +32,7 @@
  */
 
 import type { GameBoard } from '../model/GameBoard.js';
-import { ALL_DIRECTIONS, Direction, Location, distanceBetween, getAdjacentTiles, parseDirection, writeDirection } from '../model/Location.js';
+import { ALL_DIRECTIONS, Direction, Location, distanceBetween, getAdjacentTiles, parseDirection, relativeDirectionRadial, tilesAdjacent, writeDirection } from '../model/Location.js';
 import type { AttackType } from '../model/UnitType.js';
 import { getActiveAbilities } from '../actions/abilityEffects.js';
 import { findSides } from './sideFilter.js';
@@ -67,7 +67,7 @@ function inRanges(n: number, ranges: Array<[number, number]>): boolean {
 }
 
 /** A map location as WFL sees it (`location_callable`): `x`/`y` in WML (1-based) coordinates, equal by position. */
-class LocationCallable implements Callable {
+export class LocationCallable implements Callable {
   constructor(readonly loc: Location) {}
   getValue(key: string): Variant {
     if (key === 'x') return Variant.int(this.loc.wmlX);
@@ -245,22 +245,166 @@ class TerrainCallable implements Callable {
   }
 }
 
-/** `unit_at(loc)` (function_gamestate.cpp): the unit on the live board at a location, or null. */
-function gameStateSymbols(board: GameBoard): FunctionSymbolTable {
+// --- WFL functions over game objects (formula/function.cpp's location functions, function_gamestate.cpp) ---
+
+type Evaluator = (args: readonly Expression[], vars: Callable) => Variant;
+
+/** A builtin taking `min`..`max` arguments (`DEFINE_WFL_FUNCTION(name, min, max)`). */
+function wflFunction(name: string, min: number, max: number, fn: Evaluator): (args: Expression[]) => Expression {
+  return (args: Expression[]): Expression => {
+    if (args.length < min) throw new FormulaError('Too few arguments');
+    if (args.length > max) throw new FormulaError('Too many arguments');
+    return { evaluate: (vars: Callable) => fn(args, vars), toString: () => `${name}(${args.map((a) => a.toString()).join(',')})` };
+  };
+}
+
+/** `try_convert<location_callable>()`: the location an argument names, or an invalid one. */
+function locArg(arg: Expression, vars: Callable): Location {
+  const v = arg.evaluate(vars);
+  if (v.isCallable()) {
+    const c = v.asCallable();
+    if (c instanceof LocationCallable) return c.loc;
+  }
+  return Location.NULL;
+}
+
+const locVariant = (loc: Location): Variant => Variant.callable(new LocationCallable(loc));
+
+/** `get_tiles_in_radius`: every hex within `radius` of `center`, excluding it, ring by ring. */
+function tilesInRadius(center: Location, radius: number): Location[] {
+  return center.getRing(1, radius);
+}
+
+// formula/function.cpp: the core location functions, available to every formula.
+const CORE_LOCATION_FUNCTIONS: Record<string, (args: Expression[]) => Expression> = {
+  loc: wflFunction('loc', 2, 2, (args, vars) => locVariant(Location.fromWml(args[0]!.evaluate(vars).asInt(), args[1]!.evaluate(vars).asInt()))),
+  distance_between: wflFunction('distance_between', 2, 2, (args, vars) => {
+    const a = locArg(args[0]!, vars);
+    const b = locArg(args[1]!, vars);
+    return a.valid() && b.valid() ? Variant.int(distanceBetween(a, b)) : Variant.null_();
+  }),
+  nearest_loc: wflFunction('nearest_loc', 2, 2, (args, vars) => {
+    const loc = locArg(args[0]!, vars);
+    if (!loc.valid()) return Variant.null_();
+    let best: Location | undefined;
+    for (const item of args[1]!.evaluate(vars).asList()) {
+      const c = item.asCallable();
+      if (!(c instanceof LocationCallable)) throw new FormulaError('nearest_loc: not a location');
+      if (!best || distanceBetween(loc, c.loc) < distanceBetween(loc, best)) best = c.loc;
+    }
+    return best ? locVariant(best) : Variant.null_();
+  }),
+  adjacent_locs: wflFunction('adjacent_locs', 1, 1, (args, vars) => {
+    const loc = locArg(args[0]!, vars);
+    return loc.valid() ? Variant.list(getAdjacentTiles(loc).map(locVariant)) : Variant.null_();
+  }),
+  locations_in_radius: wflFunction('locations_in_radius', 2, 2, (args, vars) => {
+    const loc = locArg(args[0]!, vars);
+    if (!loc.valid()) return Variant.null_();
+    const range = args[1]!.evaluate(vars).asInt();
+    if (range < 0) return Variant.null_();
+    if (range === 0) return locVariant(loc);
+    return Variant.list([loc, ...tilesInRadius(loc, range)].map(locVariant));
+  }),
+  are_adjacent: wflFunction('are_adjacent', 2, 2, (args, vars) => {
+    const a = locArg(args[0]!, vars);
+    const b = locArg(args[1]!, vars);
+    return a.valid() && b.valid() ? Variant.int(tilesAdjacent(a, b) ? 1 : 0) : Variant.null_();
+  }),
+  // `get_relative_dir(loc)`: the radially symmetric mode.
+  relative_dir: wflFunction('relative_dir', 2, 2, (args, vars) => {
+    const a = locArg(args[0]!, vars);
+    const b = locArg(args[1]!, vars);
+    return a.valid() && b.valid() ? Variant.string(writeDirection(relativeDirectionRadial(a, b))) : Variant.null_();
+  }),
+  direction_from: wflFunction('direction_from', 2, 3, (args, vars) => {
+    const loc = locArg(args[0]!, vars);
+    const dir = args[1]!.evaluate(vars).asString();
+    const n = args.length === 3 ? args[2]!.evaluate(vars).asInt() : 1;
+    return loc.valid() ? locVariant(loc.getDirection(parseDirection(dir), n)) : Variant.null_();
+  }),
+  rotate_loc_around: wflFunction('rotate_loc_around', 2, 3, (args, vars) => {
+    const center = locArg(args[0]!, vars);
+    const loc = locArg(args[1]!, vars);
+    if (!center.valid() || !loc.valid()) return Variant.null_();
+    const n = args.length === 3 ? args[2]!.evaluate(vars).asInt() : 1;
+    return locVariant(loc.rotateRightAroundCenter(center, n));
+  }),
+};
+for (const [name, factory] of Object.entries(CORE_LOCATION_FUNCTIONS)) FunctionSymbolTable.registerCoreBuiltin(name, factory);
+
+/** `try_convert<unit_callable>()`, else `team_callable`, else the number itself: a side number (`enemy_of`). */
+function sideArg(v: Variant): number {
+  if (v.isCallable()) {
+    const c = v.asCallable();
+    if (c instanceof UnitCallable) return c.unit.side;
+    return c.getValue('side_number').asInt();
+  }
+  return v.asInt();
+}
+
+/** `get_movement_property`: a unit (`unit_callable`) and a location; null for anything else. */
+function unitAndTerrain(board: GameBoard, args: readonly Expression[], vars: Callable): { unit: Unit; loc: Location } | undefined {
+  const u = args[0]!.evaluate(vars);
+  const l = args[1]!.evaluate(vars);
+  if (u.isNull() || l.isNull()) return undefined;
+  const c = u.isCallable() ? u.asCallable() : undefined;
+  const lc = l.isCallable() ? l.asCallable() : undefined;
+  if (!(c instanceof UnitCallable) || !(lc instanceof LocationCallable) || !board.map.onBoard(lc.loc)) return undefined;
+  return { unit: c.unit, loc: lc.loc };
+}
+
+/** function_gamestate.cpp: the functions that read the live board. */
+export function gameStateSymbols(board: GameBoard): FunctionSymbolTable {
   const symbols = new FunctionSymbolTable();
-  symbols.addBuiltin('unit_at', (args: Expression[]): Expression => {
-    if (args.length !== 1) throw new FormulaError(args.length < 1 ? 'Too few arguments' : 'Too many arguments');
-    return {
-      evaluate(vars: Callable): Variant {
-        const value = args[0]!.evaluate(vars);
-        if (!value.isCallable()) return Variant.null_();
-        const target = value.asCallable();
-        const loc = target instanceof LocationCallable ? target.loc : new Location(target.getValue('x').asInt() - 1, target.getValue('y').asInt() - 1);
-        const unit = board.unitAt(loc);
-        return unit ? Variant.callable(new UnitCallable(unit)) : Variant.null_();
-      },
-      toString: () => `unit_at(${args[0]!.toString()})`,
-    };
+  const add = (name: string, min: number, max: number, fn: Evaluator): void => symbols.addBuiltin(name, wflFunction(name, min, max, fn));
+  add('unit_at', 1, 1, (args, vars) => {
+    const value = args[0]!.evaluate(vars);
+    if (!value.isCallable()) return Variant.null_();
+    const target = value.asCallable();
+    const loc = target instanceof LocationCallable ? target.loc : new Location(target.getValue('x').asInt() - 1, target.getValue('y').asInt() - 1);
+    const unit = board.unitAt(loc);
+    return unit ? Variant.callable(new UnitCallable(unit)) : Variant.null_();
+  });
+  // The board's versions keep only on-board hexes.
+  add('adjacent_locs', 1, 1, (args, vars) => {
+    const loc = locArg(args[0]!, vars);
+    return Variant.list(getAdjacentTiles(loc).filter((l) => board.map.onBoard(l)).map(locVariant));
+  });
+  add('locations_in_radius', 2, 2, (args, vars) => {
+    const loc = locArg(args[0]!, vars);
+    const range = args[1]!.evaluate(vars).asInt();
+    if (range < 0) return Variant.null_();
+    if (range === 0) return locVariant(loc);
+    return Variant.list([loc, ...tilesInRadius(loc, range).filter((l) => board.map.onBoard(l))].map(locVariant));
+  });
+  add('enemy_of', 2, 2, (args, vars) => {
+    const self = sideArg(args[0]!.evaluate(vars));
+    const other = sideArg(args[1]!.evaluate(vars));
+    const selfTeam = board.getTeam(self);
+    const otherTeam = board.getTeam(other);
+    if (!selfTeam || !otherTeam) return Variant.int(0);
+    return Variant.int(selfTeam.isEnemy(otherTeam) ? 1 : 0);
+  });
+  add('defense_on', 2, 2, (args, vars) => {
+    const at = unitAndTerrain(board, args, vars);
+    return at ? Variant.int(100 - at.unit.defenseModifier(board.map.getTerrain(at.loc))) : Variant.null_();
+  });
+  add('chance_to_hit', 2, 2, (args, vars) => {
+    const at = unitAndTerrain(board, args, vars);
+    return at ? Variant.int(at.unit.defenseModifier(board.map.getTerrain(at.loc))) : Variant.null_();
+  });
+  add('movement_cost', 2, 2, (args, vars) => {
+    const at = unitAndTerrain(board, args, vars);
+    return at ? Variant.int(at.unit.movementCost(board.map.getTerrain(at.loc))) : Variant.null_();
+  });
+  add('vision_cost', 2, 2, (args, vars) => {
+    const at = unitAndTerrain(board, args, vars);
+    return at ? Variant.int(at.unit.moveType.visionCost(board.map.getTerrain(at.loc))) : Variant.null_();
+  });
+  add('jamming_cost', 2, 2, (args, vars) => {
+    const at = unitAndTerrain(board, args, vars);
+    return at ? Variant.int(at.unit.moveType.jammingCost(board.map.getTerrain(at.loc))) : Variant.null_();
   });
   return symbols;
 }

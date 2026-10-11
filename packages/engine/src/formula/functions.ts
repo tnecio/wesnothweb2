@@ -65,6 +65,14 @@ export class FunctionSymbolTable {
     return FunctionSymbolTable.builtinsInstance;
   }
 
+  /**
+   * Adds a function to the core table every formula sees (`function_symbol_table`'s builtins) -- for core
+   * functions over game objects, like the location ones, which the engine defines next to its callables.
+   */
+  static registerCoreBuiltin(name: string, factory: BuiltinFactory): void {
+    FunctionSymbolTable.builtins().custom.set(name, { builtin: factory });
+  }
+
   /** Registers a host-provided built-in (e.g. game-state functions like `unit_at`, which need the live board). */
   addBuiltin(name: string, factory: (args: Expression[]) => Expression): void {
     this.custom.set(name, { builtin: factory });

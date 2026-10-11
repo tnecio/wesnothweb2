@@ -12,6 +12,7 @@ export type { Callable, VariantKind, VariantMapEntry } from './variant';
 
 export {
   MapFormulaCallable,
+  queryValue,
   EMPTY_CALLABLE,
   withBackup,
   memberCallable,

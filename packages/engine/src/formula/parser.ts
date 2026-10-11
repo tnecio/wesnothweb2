@@ -18,7 +18,7 @@
 import { type Token, TokenType, tokenize } from './tokenizer';
 import type { Callable } from './variant';
 import { Variant } from './variant';
-import { dotCallable, listPropsCallable, mapPropsCallable, memberCallable, stringPropsCallable } from './callable';
+import { dotCallable, queryValue, listPropsCallable, mapPropsCallable, memberCallable, stringPropsCallable } from './callable';
 import type { Expression } from './expression';
 import { FormulaError } from './expression';
 import { FunctionSymbolTable, type UserFunctionDef } from './functions';
@@ -130,7 +130,7 @@ class IdentifierExpression implements Expression {
     return this.id;
   }
   evaluate(vars: Callable): Variant {
-    return vars.getValue(this.id);
+    return queryValue(vars, this.id);
   }
 }
 
@@ -296,6 +296,7 @@ class WhereExpression implements Expression {
   evaluate(vars: Callable): Variant {
     const cache = new Map<string, Variant>();
     const wrapped: Callable = {
+      hasSelf: false,
       getValue: (key: string) => {
         const expr = this.clauses.get(key);
         if (expr) {
@@ -305,7 +306,7 @@ class WhereExpression implements Expression {
           cache.set(key, v);
           return v;
         }
-        return vars.getValue(key);
+        return queryValue(vars, key);
       },
       getInputs: () => [...this.clauses.keys()],
     };
