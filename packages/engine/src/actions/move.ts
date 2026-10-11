@@ -90,11 +90,10 @@ export function planTurnMovement(
   const team = board.getTeam(unit.side);
   const seeAll = options.seeAll ?? false;
   const viewingTeam = seeAll ? undefined : options.viewingTeam;
-  const skirmisher = hasSkirmisher(unit);
 
   /** Mirrors `plot_turn`'s "can we leave this hex" check: `pathfind.ts`'s `enemyZoc` already looks at the *neighboring* units' own ZoC-emission, so this only needs to skip the check for skirmishers. */
   const inEnemyZoc = (loc: Location): boolean => {
-    if (!team || skirmisher) return false;
+    if (!team || hasSkirmisher(board, unit, loc)) return false;
     return enemyZoc(board, team, loc, viewingTeam, seeAll);
   };
 

@@ -22,21 +22,6 @@
  *    `emitsZoc()` below is `unit.emitZoc && !unit.incapacitated` --
  *    correct for the overwhelmingly common case (no override), wrong only
  *    for the rare WML scenario that explicitly flips a unit's ZoC.
- *  - **Skirmisher (and any other ability) as a live, filter-evaluated
- *    ability**: upstream's `get_ability_bool("skirmisher", loc)` runs the
- *    full ability-active-condition machinery (adjacency filters, WML
- *    `[filter_location]`, etc.). Ability evaluation isn't ported (abilities
- *    are inert raw WML per `UnitType`'s module doc comment), so
- *    `hasSkirmisher()` below is a raw-data proxy: true if any of the unit's
- *    type-level `[abilities]` children is TAG `skirmisher` (matching
- *    upstream's own `tag_name == "..."` ability-type matching, not the
- *    ability's `id=` -- see `UnitType.abilities`'s own doc comment on why
- *    `id=` isn't a safe discriminator in general, even though it happens
- *    to equal the tag name for every real mainline skirmisher-granting
- *    ability too). This is right for a unit that
- *    unconditionally has the ability and wrong for a hypothetical
- *    conditionally-active one -- there are no mainline abilities like that
- *    for skirmisher specifically, so this is a safe approximation today.
  *  - `full_cost_map`: a higher-level helper built on top of `find_routes`
  *    for AI cost-map aggregation. Not needed yet by anything in this
  *    project's scope; add when a caller needs it. (`mark_route`, the route
@@ -57,6 +42,7 @@ import type { Unit } from '../model/Unit.js';
 import { aStarSearch, NO_PATH_VALUE, type CostCalculator, type PlainRoute } from './astar.js';
 import { IndexedHeap } from './heap.js';
 import { getVisibleUnit, unitInvisible } from './visibility.js';
+import { getAbilityBool } from '../actions/abilities.js';
 
 export { NO_PATH_VALUE } from './astar.js';
 export type { PlainRoute } from './astar.js';
@@ -68,9 +54,9 @@ export function emitsZoc(unit: Unit): boolean {
   return unit.emitZoc && !unit.incapacitated;
 }
 
-/** Approximates `unit.get_ability_bool("skirmisher", loc)` -- see module doc comment. */
-export function hasSkirmisher(unit: Unit): boolean {
-  return unit.abilities.some((a) => a.tag === 'skirmisher');
+/** `unit.get_ability_bool("skirmisher", loc)`: the unit ignores zones of control at that hex. */
+export function hasSkirmisher(board: GameBoard, unit: Unit, loc: Location): boolean {
+  return getAbilityBool(board, unit, 'skirmisher', loc);
 }
 
 /** Mirrors `pathfind::enemy_zoc`. */
@@ -166,7 +152,7 @@ export class ShortestPathCalculator implements CostCalculator {
       unitTeam &&
       remainingMovement !== terrainCost &&
       enemyZoc(this.board, unitTeam, loc, this.viewingTeam, this.seeAll) &&
-      !hasSkirmisher(this.unit)
+      !hasSkirmisher(this.board, this.unit, loc)
     ) {
       moveCost += remainingMovement;
     } else {
@@ -237,7 +223,6 @@ export function markRoute(board: GameBoard, unit: Unit, steps: readonly Location
   if (steps.length === 0) return { steps, marks, moveCost: 0 };
   const unitTeam = board.getTeam(unit.side);
   const viewer = viewingTeam ?? unitTeam;
-  const skirmisher = hasSkirmisher(unit);
   let turns = 0;
   let totalCosts = 0;
   let movement = unit.movesLeft;
@@ -267,7 +252,7 @@ export function markRoute(board: GameBoard, unit: Unit, steps: readonly Location
       if (moveCost > movement) return { steps, marks, moveCost: totalCosts };
     }
 
-    zoc = !!unitTeam && enemyZoc(board, unitTeam, steps[i + 1]!, viewer, false) && !skirmisher;
+    zoc = !!unitTeam && enemyZoc(board, unitTeam, steps[i + 1]!, viewer, false) && !hasSkirmisher(board, unit, steps[i + 1]!);
     if (zoc) {
       totalCosts += movement;
       movement = 0;
@@ -465,7 +450,7 @@ export function findRoutes(options: FindRoutesOptions & { board: GameBoard; orig
           zocUnit &&
           nextMovesLeft > 0 &&
           enemyZoc(board, currentTeam, nextHex, viewingTeam, seeAll) &&
-          !hasSkirmisher(zocUnit)
+          !hasSkirmisher(board, zocUnit, nextHex)
         ) {
           nextMovesLeft = 0;
         }

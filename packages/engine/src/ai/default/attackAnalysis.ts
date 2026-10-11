@@ -28,7 +28,7 @@ import type { UnitStatsOptions } from '../../actions/combatStats.js';
 import { buildBattleContext, chooseDefenderWeaponIndex, betterCombat } from '../../actions/combatStats.js';
 import { Combatant, simulateCombat } from '../../actions/attackPrediction.js';
 import { isBackstabActive } from '../../actions/combat.js';
-import { computeLeadershipBonus, computeResistanceModifier } from '../../actions/abilityEffects.js';
+import { resistanceAgainst, underLeadership } from '../../actions/abilities.js';
 import { POISON_AMOUNT, killXp, combatXp } from '../../actions/gameConfig.js';
 import type { MoveMap } from '../moveMaps.js';
 import type { AiContext } from '../context.js';
@@ -198,8 +198,8 @@ export class AttackAnalysis {
         const defenderTerrainDefense = defendUnit.defenseModifier(board.map.getTerrain(this.target));
         const baseOptions: UnitStatsOptions = {
           backstabActive: isBackstabActive(board, m.to, this.target),
-          attackerLeadershipBonus: computeLeadershipBonus(board, up),
-          defenderLeadershipBonus: computeLeadershipBonus(board, defendUnit),
+          attackerLeadershipBonus: underLeadership(board, up),
+          defenderLeadershipBonus: underLeadership(board, defendUnit),
         };
 
         const choice = chooseAttackerWeapon(up, defendUnit, distance, attackerTerrainDefense, defenderTerrainDefense, mAggression, baseOptions);
@@ -218,9 +218,9 @@ export class AttackAnalysis {
           defenderTerrainDefense,
           options: {
             ...baseOptions,
-            attackerResistanceModifier: computeResistanceModifier(board, defendUnit, attackerWeapon.type, false, this.target),
+            attackerResistanceModifier: resistanceAgainst(board, defendUnit, attackerWeapon.type, false, this.target),
             defenderResistanceModifier: defenderWeapon
-              ? computeResistanceModifier(board, up, defenderWeapon.type, true, m.to)
+              ? resistanceAgainst(board, up, defenderWeapon.type, true, m.to)
               : undefined,
           },
         });

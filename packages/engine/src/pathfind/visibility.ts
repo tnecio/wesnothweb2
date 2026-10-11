@@ -16,40 +16,12 @@
 import type { GameBoard } from '../model/GameBoard.js';
 import { getAdjacentTiles, type Location } from '../model/Location.js';
 import type { Team } from '../model/Team.js';
-import { parseTerrainList, terrainMatches } from '../model/Terrain.js';
 import { UnitStatus, type Unit } from '../model/Unit.js';
-import type { WmlConfig } from '../wml/config.js';
-import { locationMatchesFilter, unitMatchesFilter } from '../events/filter.js';
-
-/** Mirrors `terrain_filter`'s `time_of_day=` check against the hex's effective lawful bonus. */
-function timeOfDayMatches(board: GameBoard, loc: Location, wanted: string): boolean {
-  const bonus = board.lawfulBonusAt?.(loc) ?? 0;
-  const alignment = bonus > 0 ? 'lawful' : bonus < 0 ? 'chaotic' : 'neutral';
-  return wanted
-    .split(',')
-    .map((s) => s.trim())
-    .some((w) => w === alignment || (w === 'liminal' && bonus === 0));
-}
-
-function filterLocationMatches(board: GameBoard, loc: Location, cfg: WmlConfig): boolean {
-  if (!locationMatchesFilter(loc, cfg)) return false;
-  if (cfg.hasAttribute('terrain') && !terrainMatches(board.map.getTerrain(loc), parseTerrainList(cfg.getString('terrain')))) {
-    return false;
-  }
-  if (cfg.hasAttribute('time_of_day') && !timeOfDayMatches(board, loc, cfg.getString('time_of_day'))) return false;
-  return true;
-}
+import { getAbilityBool } from '../actions/abilities.js';
 
 /** Whether `unit` standing at `loc` has an active `hides` ability (`get_ability_bool("hides", loc)`). */
 export function hidesActive(board: GameBoard, unit: Unit, loc: Location = unit.location): boolean {
-  return unit.abilities.some((entry) => {
-    if (entry.tag !== 'hides') return false;
-    if (!entry.config.getBoolean('affect_self', true)) return false;
-    const filter = entry.config.child('filter');
-    if (!filter) return true;
-    if (!unitMatchesFilter(unit, filter, board)) return false;
-    return filter.children('filter_location').every((fl) => filterLocationMatches(board, loc, fl));
-  });
+  return getAbilityBool(board, unit, 'hides', loc);
 }
 
 /** Mirrors `display_context::would_be_discovered`: an enemy of `side` adjacent to `loc` that `side` can see. */

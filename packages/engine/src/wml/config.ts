@@ -101,6 +101,12 @@ export class WmlConfig {
     return this;
   }
 
+  /** Mirrors config::remove_attribute(). */
+  removeAttribute(key: string): this {
+    this.attrs.delete(key);
+    return this;
+  }
+
   attributeNames(): string[] {
     return [...this.attrs.keys()];
   }

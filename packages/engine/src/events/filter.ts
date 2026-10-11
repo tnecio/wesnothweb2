@@ -34,7 +34,7 @@
 import type { GameBoard } from '../model/GameBoard.js';
 import { ALL_DIRECTIONS, Direction, Location, distanceBetween, getAdjacentTiles, parseDirection, relativeDirectionRadial, tilesAdjacent, writeDirection } from '../model/Location.js';
 import type { AttackType } from '../model/UnitType.js';
-import { getActiveAbilities } from '../actions/abilityEffects.js';
+import { getAbilities, hasActiveAbilityId, hasActiveAbilityMatchingFilter, unitAbilities } from '../actions/abilities.js';
 import { findSides } from './sideFilter.js';
 import { parseTerrainList, terrainMatches } from '../model/Terrain.js';
 import type { Unit } from '../model/Unit.js';
@@ -165,7 +165,7 @@ export class UnitCallable implements Callable {
 }
 
 /** `attack_type_callable`. */
-class AttackTypeCallable implements Callable {
+export class AttackTypeCallable implements Callable {
   constructor(readonly attack: AttackType) {}
   getValue(key: string): Variant {
     const a = this.attack;
@@ -433,7 +433,7 @@ const splitList = (s: string): string[] => s.split(',').map((x) => x.trim()).fil
 /**
  * `unit_filter_compound::matches` (`src/units/filter.cpp`): every attribute and filter child the unit must
  * satisfy, then `[and]`/`[or]`/`[not]` applied in document order. Attributes are already `$`-substituted by
- * callers. Not ported: `lua_function=`, `[filter_ability]`.
+ * callers. Not ported: `lua_function=`.
  */
 export function unitMatchesFilter(unit: Unit, filterCfg: WmlConfig, board?: GameBoard, options: UnitFilterOptions = {}): boolean {
   const loc = options.loc ?? unit.location;
@@ -494,14 +494,10 @@ function unitFilterImpl(u: Unit, cfg: WmlConfig, board: GameBoard | undefined, l
     if (!list('ability_type').some((t) => tags.has(t))) return false;
   }
   if (has('ability_id_active')) {
-    const wanted = new Set(list('ability_id_active'));
-    if (!board) return false;
-    const tags = new Set(u.abilities.map((a) => a.tag));
-    const active = [...tags].some((tag) => getActiveAbilities(board, u, tag, loc).some((a) => wanted.has(a.config.getString('id', ''))));
-    if (!active) return false;
+    if (!board || !list('ability_id_active').some((id) => hasActiveAbilityId(board, u, loc, id))) return false;
   }
   if (has('ability_type_active')) {
-    if (!board || !list('ability_type_active').some((tag) => getActiveAbilities(board, u, tag, loc).length > 0)) return false;
+    if (!board || !list('ability_type_active').some((tag) => getAbilities(board, u, tag, loc).length > 0)) return false;
   }
   if (has('trait')) {
     const traits = new Set(modificationIds(u, 'trait'));
@@ -564,6 +560,15 @@ function unitFilterImpl(u: Unit, cfg: WmlConfig, board: GameBoard | undefined, l
         if (!board) return false;
         if (!findSides(board, config).includes(u.side)) return false;
         break;
+      case 'filter_ability':
+      case 'experimental_filter_ability':
+        // `active=yes`: an active ability, its own or taught, matches; otherwise one of the unit's own.
+        if (!config.getBoolean('active', false)) {
+          if (!unitAbilities(u).some((ab) => ab.matchesFilter(config))) return false;
+        } else if (!board || !hasActiveAbilityMatchingFilter(board, u, loc, config)) {
+          return false;
+        }
+        break;
       case 'has_attack':
         if (!u.attacks.some((a) => a.matchesFilter(config))) return false;
         break;
@@ -586,7 +591,8 @@ function filterAdjacentMatches(board: GameBoard | undefined, u: Unit, loc: Locat
   for (const other of board.allUnits()) {
     const from = other.location;
     const distance = distanceBetween(from, loc);
-    if (other.underlyingId === u.underlyingId || distance > radius) continue;
+    // The unit itself (`underlying_id` equal; 0 is unassigned, which upstream never has).
+    if (other === u || (u.underlyingId !== 0 && other.underlyingId === u.underlyingId) || distance > radius) continue;
     if (!unitMatchesFilter(other, cfg, board, { loc: from, other: u })) continue;
     let dir = 0;
     for (let j = 0; j < adjacent.length; j++) {

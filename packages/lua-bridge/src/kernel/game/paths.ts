@@ -11,7 +11,7 @@ import { getTeleportLocations } from '@wesnothweb2/engine/src/pathfind/teleport.
 import { buildBattleContext, chooseDefenderWeaponIndex, hasSpecialId, type UnitStatsOptions } from '@wesnothweb2/engine/src/actions/combatStats.js';
 import { simulateCombat, type BattleContextUnitStats, type Combatant } from '@wesnothweb2/engine/src/actions/attackPrediction.js';
 import { isBackstabActive } from '@wesnothweb2/engine/src/actions/combat.js';
-import { computeLeadershipBonus, computeResistanceModifier } from '@wesnothweb2/engine/src/actions/abilityEffects.js';
+import { resistanceAgainst, underLeadership } from '@wesnothweb2/engine/src/actions/abilities.js';
 import { chooseAttackerWeapon } from '@wesnothweb2/engine/src/ai/default/attackAnalysis.js';
 import type { AttackType } from '@wesnothweb2/engine/src/model/UnitType.js';
 import { Unit as UnitClass } from '@wesnothweb2/engine/src/model/Unit.js';
@@ -261,13 +261,13 @@ function battleContext(host: GameKernelHost, att: Unit, attW: number, def: Unit,
     defenderLawfulBonus: board.lawfulBonusAt?.(defLoc) ?? 0,
     maxLiminalBonus: ctx.schedule.maxLiminalBonus,
     backstabActive: isBackstabActive(board, attLoc, defLoc),
-    attackerLeadershipBonus: computeLeadershipBonus(board, att),
-    defenderLeadershipBonus: computeLeadershipBonus(board, def),
+    attackerLeadershipBonus: underLeadership(board, att),
+    defenderLeadershipBonus: underLeadership(board, def),
   };
   const optionsFor = (aw: AttackType | undefined, dw: AttackType | undefined): UnitStatsOptions => ({
     ...baseOptions,
-    attackerResistanceModifier: aw ? computeResistanceModifier(board, def, aw.type, false, defLoc) : undefined,
-    defenderResistanceModifier: dw ? computeResistanceModifier(board, att, dw.type, true, attLoc) : undefined,
+    attackerResistanceModifier: aw ? resistanceAgainst(board, def, aw.type, false, defLoc) : undefined,
+    defenderResistanceModifier: dw ? resistanceAgainst(board, att, dw.type, true, attLoc) : undefined,
   });
   let attackerWeaponIndex = attW;
   let defenderWeaponIndex = defW;

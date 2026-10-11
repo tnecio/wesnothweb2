@@ -16,7 +16,7 @@ import type { WmlConfig } from '../../wml/config.js';
 import { unitMatchesFilter } from '../../events/filter.js';
 import { isUnitVisibleToTeam } from '../../pathfind/visibility.js';
 import { isBackstabActive } from '../../actions/combat.js';
-import { getActiveAbilities, computeAbilityEffect } from '../../actions/abilityEffects.js';
+import { underLeadership } from '../../actions/abilities.js';
 import { calculateMoves, type MoveMap } from '../moveMaps.js';
 import { powerProjection } from '../powerProjection.js';
 import type { AiContext } from '../context.js';
@@ -31,9 +31,7 @@ export interface AnalyzeTargetsOptions {
 
 /** Mirrors `contexts.cpp`'s `under_leadership(unit, loc)`: the leadership bonus `unit` would get if it stood at the (possibly hypothetical) `loc`, not necessarily its current location. */
 function leadershipBonusAt(board: GameBoard, unit: Unit, loc: Location): number {
-  const abilities = getActiveAbilities(board, unit, 'leadership', loc);
-  if (abilities.length === 0) return 0;
-  return computeAbilityEffect(abilities, 0, unit);
+  return underLeadership(board, unit, loc);
 }
 
 /** Mirrors `aspect_attacks_base::rate_terrain` (`aspect_attacks.cpp:335-363`). */

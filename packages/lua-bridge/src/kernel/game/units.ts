@@ -18,7 +18,7 @@ import { Unit } from '@wesnothweb2/engine/src/model/Unit.js';
 import type { AttackType, Alignment } from '@wesnothweb2/engine/src/model/UnitType.js';
 import { findUnits, unitMatchesFilter } from '@wesnothweb2/engine/src/events/filter.js';
 import { effectEnvFor } from '@wesnothweb2/engine/src/events/actionWml.js';
-import { getActiveAbilities, computeResistanceModifier } from '@wesnothweb2/engine/src/actions/abilityEffects.js';
+import { getAbilityBool, resistanceAgainst } from '@wesnothweb2/engine/src/actions/abilities.js';
 import { parseTerrainCode } from '@wesnothweb2/engine/src/model/Terrain.js';
 import { specialTag } from '@wesnothweb2/engine/src/model/UnitType.js';
 import {
@@ -827,7 +827,7 @@ export class LuaUnits {
       ability: (T) => {
         const unit = this.check(T, 1);
         const tag = checkString(T, 2);
-        lua.lua_pushboolean(T, getActiveAbilities(ctx().board, unit, tag).length > 0);
+        lua.lua_pushboolean(T, getAbilityBool(ctx().board, unit, tag));
         return 1;
       },
       defense_on: (T) => {
@@ -854,7 +854,7 @@ export class LuaUnits {
           attacker = toBoolean(T, 3);
           if (!lua.lua_isnoneornil(T, 4)) loc = k.checkLocation(T, 4);
         } else if (!lua.lua_isnoneornil(T, 3)) loc = k.checkLocation(T, 3);
-        lua.lua_pushinteger(T, 100 - computeResistanceModifier(ctx().board, unit, damageType, attacker, loc));
+        lua.lua_pushinteger(T, 100 - resistanceAgainst(ctx().board, unit, damageType, attacker, loc));
         return 1;
       },
       remove_modifications: (T) => {

@@ -54,8 +54,8 @@ import {
   withScenarioFixes,
   spendAttackCost,
   isBackstabActive,
-  computeLeadershipBonus,
-  computeResistanceModifier,
+  underLeadership,
+  resistanceAgainst,
   AiManager,
   registerAiWmlActions,
   findSideConfig,
@@ -333,7 +333,7 @@ export interface CombatantPreview {
   raceId: string;
   traits: readonly string[];
   /**
-   * `computeResistanceModifier`'s result against `weapon`'s damage type,
+   * `resistanceAgainst`'s result against `weapon`'s damage type,
    * as upstream's own percentage convention (100 = normal, >100 = weak
    * to it, <100 = resistant) -- e.g. 120 means "takes 20% MORE damage",
    * matching real Wesnoth's "Wrażliwość/Odporność ×1.2"-style breakdown
@@ -4384,8 +4384,8 @@ export class GameSession {
     // just this geometric precondition for it.
     const backstabGeometry = isBackstabActive(this.board, attacker.location, defender.location);
     const attackerBackstabActive = backstabGeometry && hasSpecialId(attackerWeapon, 'backstab');
-    const attackerLeadershipBonus = computeLeadershipBonus(this.board, attacker);
-    const defenderLeadershipBonus = computeLeadershipBonus(this.board, defender);
+    const attackerLeadershipBonus = underLeadership(this.board, attacker);
+    const defenderLeadershipBonus = underLeadership(this.board, defender);
     // Charge is only ever active "when used offensively" -- upstream's `active_on=offense` -- so it's
     // the ATTACKER's weapon specifically that gates it for this whole exchange (see combatStats.ts's
     // own `hasCharge` doc comment); both combatants' damage doubles when it is.
@@ -4406,9 +4406,9 @@ export class GameSession {
         backstabActive: backstabGeometry,
         attackerLeadershipBonus,
         defenderLeadershipBonus,
-        attackerResistanceModifier: computeResistanceModifier(this.board, defender, attackerWeapon.type, false, defender.location),
+        attackerResistanceModifier: resistanceAgainst(this.board, defender, attackerWeapon.type, false, defender.location),
         defenderResistanceModifier: defenderWeapon
-          ? computeResistanceModifier(this.board, attacker, defenderWeapon.type, true, attacker.location)
+          ? resistanceAgainst(this.board, attacker, defenderWeapon.type, true, attacker.location)
           : undefined,
       },
     });
@@ -4440,7 +4440,7 @@ export class GameSession {
         alignment: attacker.alignment,
         raceId: attacker.type.raceId,
         traits: attacker.traitNames,
-        resistanceModifier: computeResistanceModifier(this.board, defender, attackerWeapon.type, false, defender.location),
+        resistanceModifier: resistanceAgainst(this.board, defender, attackerWeapon.type, false, defender.location),
         baseDamage: attackerWeapon.damage,
         hpDist: aCombatant.hpDist,
         lawfulBonus: attackerToDModifier,
@@ -4467,7 +4467,7 @@ export class GameSession {
         alignment: defender.alignment,
         raceId: defender.type.raceId,
         traits: defender.traitNames,
-        resistanceModifier: defenderWeapon ? computeResistanceModifier(this.board, attacker, defenderWeapon.type, true, attacker.location) : undefined,
+        resistanceModifier: defenderWeapon ? resistanceAgainst(this.board, attacker, defenderWeapon.type, true, attacker.location) : undefined,
         baseDamage: defenderWeapon?.damage,
         hpDist: dCombatant.hpDist,
         lawfulBonus: defenderToDModifier,

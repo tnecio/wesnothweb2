@@ -15,7 +15,7 @@ import { checkRecruitLocation, type RecruitCheck } from '@wesnothweb2/engine/src
 import { chooseDefenderWeaponIndex, type UnitStatsOptions } from '@wesnothweb2/engine/src/actions/combatStats.js';
 import { chooseAttackerWeapon } from '@wesnothweb2/engine/src/ai/default/attackAnalysis.js';
 import { isBackstabActive } from '@wesnothweb2/engine/src/actions/combat.js';
-import { computeLeadershipBonus } from '@wesnothweb2/engine/src/actions/abilityEffects.js';
+import { underLeadership } from '@wesnothweb2/engine/src/actions/abilities.js';
 
 export const AI_ACTION_SUCCESS = 0;
 export const AI_ACTION_FAILURE = -1;
@@ -205,8 +205,8 @@ export function attackAction(ctx: AiContext, exec: boolean, attackerLoc: Locatio
         defenderLawfulBonus: ctx.host.lawfulBonusAt(defenderLoc),
         maxLiminalBonus: ctx.host.maxLiminalBonus,
         backstabActive: isBackstabActive(board, attackerLoc, defenderLoc),
-        attackerLeadershipBonus: computeLeadershipBonus(board, attacker),
-        defenderLeadershipBonus: computeLeadershipBonus(board, defender),
+        attackerLeadershipBonus: underLeadership(board, attacker),
+        defenderLeadershipBonus: underLeadership(board, defender),
       };
       let weapon = attackerWeapon;
       if (weapon < 0) weapon = chooseAttackerWeapon(attacker, defender, distance, aDef, dDef, aggression, options)?.attackerWeaponIndex ?? -1;

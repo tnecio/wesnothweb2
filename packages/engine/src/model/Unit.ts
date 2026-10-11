@@ -197,6 +197,14 @@ export class Unit {
     }
     return this.#abilityRadii.get(tag) ?? 0;
   }
+
+  /** `unit::max_ability_radius`: the widest `[affect_adjacent] radius=` of any of the unit's abilities. */
+  maxAbilityRadiusAny(): number {
+    this.maxAbilityRadius('');
+    let max = 0;
+    for (const r of this.#abilityRadii!.values()) max = Math.max(max, r);
+    return max;
+  }
   #abilityRadii: Map<string, number> | undefined;
   alignment: Alignment;
   /** `unit::emit_zoc_`. */

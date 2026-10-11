@@ -19,7 +19,7 @@
 
 import { findPath } from '../../pathfind/pathfind.js';
 import { isBackstabActive } from '../../actions/combat.js';
-import { computeLeadershipBonus } from '../../actions/abilityEffects.js';
+import { underLeadership } from '../../actions/abilities.js';
 import { advanceUnitFully } from '../../actions/advancement.js';
 import { CandidateAction } from '../composite/rca.js';
 import { AttackAnalysis, chooseAttackerWeapon } from './attackAnalysis.js';
@@ -80,8 +80,8 @@ export class CombatCandidateAction extends CandidateAction {
     const defenderTerrainDefense = defender.defenseModifier(board.map.getTerrain(targetLoc));
     const choice = chooseAttackerWeapon(attacker, defender, distance, attackerTerrainDefense, defenderTerrainDefense, this.ctx.getAggression(), {
       backstabActive: isBackstabActive(board, to, targetLoc),
-      attackerLeadershipBonus: computeLeadershipBonus(board, attacker),
-      defenderLeadershipBonus: computeLeadershipBonus(board, defender),
+      attackerLeadershipBonus: underLeadership(board, attacker),
+      defenderLeadershipBonus: underLeadership(board, defender),
     });
     if (!choice) return;
 
