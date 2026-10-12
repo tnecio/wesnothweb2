@@ -216,6 +216,18 @@ export interface SnapshotUnit {
   overlays?: readonly string[];
   /** `unit::image_ellipse` (`''` = `misc/ellipse`, `none` = no ellipse) and `emits_zoc` -- see `ellipseRef`. */
   ellipse?: string;
+  /**
+   * `unit::effect_image_mods()`: the unit's `apply_to=image_mod` functions. `image` already carries them (as
+   * upstream's `absolute_image() + image_mods()`); animation frames get them here (`params.image_mod =
+   * u.image_mods()`, `units/drawer.cpp`).
+   */
+  imageMods?: string;
+  /**
+   * The unit's halos (`units/drawer.cpp`): its own `halo=` (`unit::image_halo`), then its active abilities'
+   * `halo_image=` (`unit::halo_abilities`) -- each an animated image list (`image[:ms],...`), drawn centred on
+   * the unit above the units, team-coloured.
+   */
+  halos?: readonly string[];
   emitsZoc?: boolean;
   /**
    * A stable per-instance key for sprite identity across `updateUnits`
@@ -338,6 +350,11 @@ interface UnitVisual {
   orbIcon: PIXI.Sprite | null;
   /** The `path~mods` ref `orbIcon`'s texture was last resolved from, so `updateIcons` only re-resolves when `MovesOrbStatus` (or its visibility) actually changed. */
   lastOrbRef: string | null;
+  /** `SnapshotUnit.imageMods` this visual was last built from -- `playAnimations` adds them to every frame. */
+  imageMods: string;
+  /** The unit's halos (`SnapshotUnit.halos`) in `unitHaloLayer`, following `container`; `halosKey` is what they show. */
+  halo: PIXI.Container | null;
+  halosKey: string;
   /** `SnapshotUnit.flagRgb` this visual was last built from -- `playAnimations` needs it (together with `lastSide`) to append the same `~RC(flagRgb>sideColorId)` modifier to ANIMATION frame textures that `buildUnitVisual` already appends to the idle sprite (see that method's own doc comment). */
   flagRgb: string | undefined;
   /**
@@ -348,6 +365,19 @@ interface UnitVisual {
    * hitpoints value, without disturbing the XP bar/orb from a partial redraw.
    */
   lastUnit: SnapshotUnit;
+}
+
+/** Debug: one unit's sprite as drawn (`SnapshotBoard.unitSpriteStates`). */
+export interface UnitSpriteState {
+  visible: boolean;
+  alpha: number;
+  /** The sprite texture's label (its image reference) or source. */
+  image: string;
+  x: number;
+  y: number;
+  /** How many halos the unit has drawn, and where (they follow the unit). */
+  halos: number;
+  haloAt: { x: number; y: number } | null;
 }
 
 /** 0-based engine (x,y) -> 1-based renderer HexCoord -- see module doc comment. */
@@ -577,6 +607,8 @@ export class SnapshotBoard {
   private readonly itemLayer = new PIXI.Container();
   /** Map items' halos: upstream's halo manager draws them over everything map-side, untinted -- as the animation overlays here. */
   private readonly itemHaloLayer = new PIXI.Container();
+  /** Units' halos (`SnapshotUnit.halos`): above the units, as upstream's halo manager draws them, each following its unit. */
+  private readonly unitHaloLayer = new PIXI.Container();
   private itemsUpdate: Promise<void> = Promise.resolve();
   /** Map labels (`terrain_label`, drawn as floating labels over the map): above fog and the time-of-day tint. */
   private readonly labelLayer = new PIXI.Container();
@@ -767,6 +799,7 @@ export class SnapshotBoard {
       this.fogShroudLayer,
       this.todTintLayer,
       this.itemHaloLayer,
+      this.unitHaloLayer,
       this.labelLayer,
       this.animationOverlayLayer,
       this.selectionLayer,
@@ -783,6 +816,15 @@ export class SnapshotBoard {
     this.gridBottomLayer.visible = false;
     this.itemLayer.eventMode = 'none';
     this.itemHaloLayer.eventMode = 'none';
+    this.unitHaloLayer.eventMode = 'none';
+    // Each frame, every unit's halo goes where its unit is drawn (`halo_man.set_location`), and only while it is.
+    this.unitHaloLayer.onRender = () => {
+      for (const visual of this.unitVisuals.values()) {
+        if (!visual.halo || visual.halo.destroyed) continue;
+        visual.halo.position.copyFrom(visual.container.position);
+        visual.halo.visible = !visual.container.destroyed && visual.container.visible;
+      }
+    };
     this.labelLayer.eventMode = 'none';
     this.moveInfoLayer.eventMode = 'none';
     this.hoverLayer.eventMode = 'none';
@@ -1138,9 +1180,10 @@ export class SnapshotBoard {
    * animation, but really any of them), even though its static idle
    * sprite was already correctly recolored.
    */
-  private teamColoredRef(imagePath: string, side: number, flagRgb: string | undefined): string {
+  private teamColoredRef(imagePath: string, side: number, flagRgb: string | undefined, imageMods = ''): string {
     const colorId = this.sideColorId(side);
-    return colorId ? joinRef(imagePath, `RC(${flagRgb ?? 'magenta'}>${colorId})`) : imagePath;
+    const mods = [imageMods, colorId ? `RC(${flagRgb ?? 'magenta'}>${colorId})` : ''].filter(Boolean).join('~');
+    return mods ? joinRef(imagePath, mods) : imagePath;
   }
 
   /** `team::get_side_color_id`: the side's colour range id (`blue`, `red`, ...), or `''` before the colour data has loaded. */
@@ -1247,6 +1290,9 @@ export class SnapshotBoard {
       overlaysKey: '',
       orbIcon: null,
       lastOrbRef: null,
+      imageMods: unit.imageMods ?? '',
+      halo: null,
+      halosKey: '',
       flagRgb: unit.flagRgb,
       lastUnit: unit,
     };
@@ -1652,7 +1698,7 @@ export class SnapshotBoard {
       if (options.hidden) visual.container.visible = false;
       this.unitVisuals.set(key, visual);
       this.unitLayer.addChild(visual.container);
-    } else if (visual.lastImage !== unit.image || visual.lastSide !== unit.side) {
+    } else if (visual.lastImage !== unit.image || visual.lastSide !== unit.side || visual.imageMods !== (unit.imageMods ?? '')) {
       visual.container.removeChildren();
       const rebuilt = await this.buildUnitVisual(unit);
       visual.container.addChild(...rebuilt.container.removeChildren());
@@ -1668,6 +1714,7 @@ export class SnapshotBoard {
       visual.lastOrbRef = null;
       visual.lastImage = unit.image;
       visual.lastSide = unit.side;
+      visual.imageMods = unit.imageMods ?? '';
     }
     if (visual.overlay) visual.overlay.alpha = 0; // a hit-flash should never outlive the animation that caused it.
     visual.lastUnit = unit;
@@ -1675,6 +1722,7 @@ export class SnapshotBoard {
     if (visual.container.destroyed) return visual;
     this.updateOverlays(visual, unit);
     await this.updateIcons(visual, unit);
+    await this.updateHalos(visual, unit);
     // Defensive: `updateIcons` just awaited (a real texture load, in the
     // worst case), during which a CONCURRENT `renderUnits()`/`updateUnits()`
     // pass built from an older `this.units` snapshot (one that predates
@@ -1741,8 +1789,45 @@ export class SnapshotBoard {
       if (seen.has(key)) continue;
       this.unitLayer.removeChild(visual.container);
       visual.container.destroy({ children: true });
+      visual.halo?.destroy({ children: true });
       this.unitVisuals.delete(key);
     }
+  }
+
+  /**
+   * The unit's halos (`units/drawer.cpp`: `image_halo() + TC_image_mods()`, then each of `halo_abilities()`),
+   * each cycling its frames as a map item's halo does, centred on the unit in `unitHaloLayer`. Rebuilt only when
+   * the halos or the side's colour change.
+   */
+  private async updateHalos(visual: UnitVisual, unit: SnapshotUnit): Promise<void> {
+    const halos = unit.halos ?? [];
+    const key = halos.length === 0 ? '' : `${halos.join('|')}#${this.sideColorId(unit.side)}#${unit.flagRgb ?? ''}`;
+    if (key === visual.halosKey) return;
+    visual.halosKey = key;
+    visual.halo?.destroy({ children: true });
+    visual.halo = null;
+    if (key === '') return;
+    const holder = new PIXI.Container();
+    for (const halo of halos) {
+      const frames: PIXI.FrameObject[] = [];
+      for (const f of parseHaloFrames(halo)) {
+        const texture = await ImageCache.resolve(this.teamColoredRef(f.image, unit.side, unit.flagRgb));
+        if (texture) frames.push({ texture, time: f.durationMs });
+      }
+      if (frames.length === 0) continue;
+      const sprite = frames.length === 1 ? new PIXI.Sprite(frames[0]!.texture) : new PIXI.AnimatedSprite(frames);
+      sprite.anchor.set(0.5);
+      if (sprite instanceof PIXI.AnimatedSprite) sprite.play();
+      holder.addChild(sprite);
+    }
+    // Superseded (or the unit gone) while the textures loaded.
+    if (visual.halosKey !== key || visual.container.destroyed) {
+      holder.destroy({ children: true });
+      return;
+    }
+    holder.position.copyFrom(visual.container.position);
+    visual.halo = holder;
+    this.unitHaloLayer.addChild(holder);
   }
 
   /**
@@ -1851,7 +1936,7 @@ export class SnapshotBoard {
           for (const step of seq) paths.add(step.value);
         }
       }
-      await Promise.all([...paths].map((p) => ImageCache.resolve(this.teamColoredRef(p, visual.lastSide, visual.flagRgb))));
+      await Promise.all([...paths].map((p) => ImageCache.resolve(this.teamColoredRef(p, visual.lastSide, visual.flagRgb, visual.imageMods))));
     }
     performance.measure('anim:frames', 'anim:frames-start');
 
@@ -1907,7 +1992,7 @@ export class SnapshotBoard {
             }
             const sample = sampleAnimation(cue.anim, curDirection, animT, curSrc, curDst);
             if (sample.imagePath) {
-              const texture = await ImageCache.resolve(this.teamColoredRef(sample.imagePath, visual.lastSide, visual.flagRgb));
+              const texture = await ImageCache.resolve(this.teamColoredRef(sample.imagePath, visual.lastSide, visual.flagRgb, visual.imageMods));
               if (visual.container.destroyed) continue;
               if (texture && visual.sprite && visual.sprite.texture !== texture) visual.sprite.texture = texture;
             }
@@ -2170,8 +2255,8 @@ export class SnapshotBoard {
   }
 
   /** Debug: each unit sprite's visibility, alpha, image and position -- for checking when a unit shows. */
-  unitSpriteStates(): Record<string, { visible: boolean; alpha: number; image: string; x: number; y: number }> {
-    const out: Record<string, { visible: boolean; alpha: number; image: string; x: number; y: number }> = {};
+  unitSpriteStates(): Record<string, UnitSpriteState> {
+    const out: Record<string, UnitSpriteState> = {};
     for (const [key, visual] of this.unitVisuals) {
       if (visual.container.destroyed) continue;
       const source = visual.sprite?.texture?.source as { label?: string; resource?: { src?: string } } | undefined;
@@ -2181,6 +2266,8 @@ export class SnapshotBoard {
         image: source?.label ?? source?.resource?.src?.slice(-60) ?? '',
         x: Math.round(visual.container.x),
         y: Math.round(visual.container.y),
+        halos: visual.halo && !visual.halo.destroyed ? visual.halo.children.length : 0,
+        haloAt: visual.halo && !visual.halo.destroyed ? { x: Math.round(visual.halo.x), y: Math.round(visual.halo.y) } : null,
       };
     }
     return out;
@@ -2201,6 +2288,7 @@ export class SnapshotBoard {
     if (!visual) return;
     this.unitLayer.removeChild(visual.container);
     visual.container.destroy({ children: true });
+    visual.halo?.destroy({ children: true });
     this.unitVisuals.delete(key);
   }
 

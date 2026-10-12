@@ -479,6 +479,22 @@ function withSound(anim: UnitAnimationDef, prefix: string, files: string): UnitA
  * chain for events with no explicit author-provided animation).
  */
 export function parseUnitAnimations(unitTypeCfg: WmlConfig): UnitAnimationDef[] {
+  const out = addAnims(unitTypeCfg);
+  fillInitialAnimations(unitTypeCfg, out);
+  return out;
+}
+
+/**
+ * The animations a unit's `apply_to=new_animation` effects add to its type's
+ * (`unit_animation_component::apply_new_animation_effect`): `add_anims` over
+ * each effect's config, without the type-level fallbacks.
+ */
+export function parseNewAnimations(effects: readonly WmlConfig[]): UnitAnimationDef[] {
+  return effects.flatMap((effect) => addAnims(effect));
+}
+
+/** `unit_animation::add_anims`: every `[*_anim]`/`[defend]`/`[death]`/`[animation]` block of `cfg`. */
+function addAnims(unitTypeCfg: WmlConfig): UnitAnimationDef[] {
   const out: UnitAnimationDef[] = [];
 
   const forTag = (tagName: string, build: (branch: AnimBranch) => UnitAnimationDef[]): void => {
@@ -533,7 +549,11 @@ export function parseUnitAnimations(unitTypeCfg: WmlConfig): UnitAnimationDef[] 
     buildAnimationDef(branch, ['pre_teleport']),
     buildAnimationDef(branch, ['post_teleport']),
   ]);
+  return out;
+}
 
+/** The part of `fill_initial_animations` ported: a type's fallback default, defend flash and "recruited" fade. */
+function fillInitialAnimations(unitTypeCfg: WmlConfig, out: UnitAnimationDef[]): void {
   // Fallback: a unit type with no [standing_anim] at all still needs
   // *something* to match "default"/"standing" against (fill_initial_
   // animations' no-animation_base branch, animation.cpp ~L517-521).
@@ -594,8 +614,6 @@ export function parseUnitAnimations(unitTypeCfg: WmlConfig): UnitAnimationDef[] 
       animationParams: { ...base.animationParams, durationMs: RECRUITED_MS, highlightRatio: buildFrameFields(recruitedAlpha, RECRUITED_MS).highlightRatio },
     });
   }
-
-  return out;
 }
 
 const RECRUITED_MS = 600;

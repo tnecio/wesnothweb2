@@ -429,6 +429,8 @@ export class AiContext {
     const attackerHitpointsBefore = attacker?.hitpoints ?? 0;
     const attackerVariation = attacker?.variation ?? '';
     const defenderVariation = defender?.variation ?? '';
+    const attackerNewAnimations = attacker?.newAnimations ?? [];
+    const defenderNewAnimations = defender?.newAnimations ?? [];
     const defenderHitpointsBefore = defender?.hitpoints ?? 0;
     const attackerLocation = attackerLoc;
     const defenderLocation = defenderLoc;
@@ -463,6 +465,8 @@ export class AiContext {
           defenderTypeId: defender.type.id,
           attackerVariation,
           defenderVariation,
+          attackerNewAnimations,
+          defenderNewAnimations,
           attackerHitpointsBefore,
           defenderHitpointsBefore,
           attackerLocation,

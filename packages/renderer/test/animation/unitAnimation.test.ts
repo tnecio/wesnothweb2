@@ -12,6 +12,7 @@ import {
   expandAnimationBranches,
   MATCH_FAIL,
   matchAnimation,
+  parseNewAnimations,
   parseUnitAnimations,
   selectTopAnimations,
 } from '../../src/animation/unitAnimation.js';
@@ -281,5 +282,19 @@ describe('parseUnitAnimations: the "defend" hit-flash -- both the low-priority n
     const lastFrame = hitTop[0]!.frames[hitTop[0]!.frames.length - 1]!;
     expect(lastFrame.blendRatio.length).toBeGreaterThan(0);
     expect(lastFrame.blendColor).toBe('255,0,0');
+  });
+});
+
+describe('parseNewAnimations (apply_to=new_animation: add_anims over the effect)', () => {
+  it("gives the effect's own animations, without the type-level fallbacks (default, defend flash, recruited)", () => {
+    const effect = wml({ apply_to: 'new_animation' }, [
+      ['extra_anim', wml({ flag: 'glow' }, [['frame', wml({ image: 'a.png', duration: 100 })]])],
+      ['attack_anim', wml({}, [['frame', wml({ image: 'b.png', duration: 100 })]])],
+    ]);
+    const anims = parseNewAnimations([effect]);
+    // In add_anims' own order of tags.
+    expect(anims.map((a) => a.events)).toEqual([['attack'], ['glow']]);
+    // The same config as a type would also get the synthesised ones.
+    expect(parseUnitAnimations(effect).length).toBeGreaterThan(anims.length);
   });
 });

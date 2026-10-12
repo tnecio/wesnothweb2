@@ -38,6 +38,9 @@ export type AiAnimationEvent =
       /** Their variations then (`unit.variation`), with the type ids: the sprites and animations to play. */
       readonly attackerVariation: string;
       readonly defenderVariation: string;
+      /** Their `apply_to=new_animation` effects then (`Unit.newAnimations`). */
+      readonly attackerNewAnimations: readonly WmlConfig[];
+      readonly defenderNewAnimations: readonly WmlConfig[];
       readonly attackerHitpointsBefore: number;
       readonly defenderHitpointsBefore: number;
       /**

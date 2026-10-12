@@ -57,6 +57,7 @@ import {
   type SpecialsCombatant,
   weaponSpecials,
   abilityTooltips,
+  haloOrIconAbilities,
   defenseModifier,
   resistanceAgainst,
   fillWeaponChoices,
@@ -680,6 +681,9 @@ export interface LastAttackAnimation {
   /** Their variations at combat time (`unit.variation`), with the type ids above. */
   readonly attackerVariation: string;
   readonly defenderVariation: string;
+  /** Their `apply_to=new_animation` effects at combat time (`Unit.newAnimations`), with the type ids above. */
+  readonly attackerNewAnimations: readonly WmlConfig[];
+  readonly defenderNewAnimations: readonly WmlConfig[];
   /**
    * `attacker`/`defender`'s real hitpoints BEFORE this exchange resolved --
    * same rationale as `attackerTypeId`/`defenderTypeId` above, but for HP:
@@ -2647,6 +2651,8 @@ export class GameSession {
     const attackerTypeId = attacker.type.id;
     const attackerVariation = attacker.variation;
     const defenderVariation = defender.variation;
+    const attackerNewAnimations = attacker.newAnimations;
+    const defenderNewAnimations = defender.newAnimations;
     const defenderTypeId = defender.type.id;
     const result = performAttack(this.board, this.rng, attackerLoc, cmd.weapon, defenderLoc, defenderWeapon, {
       ...this.attackOptions(attackerLoc, defenderLoc),
@@ -2686,6 +2692,8 @@ export class GameSession {
       defenderTypeId,
       attackerVariation,
       defenderVariation,
+      attackerNewAnimations,
+      defenderNewAnimations,
       attackerLocation: attackerLoc,
       defenderLocation: defenderLoc,
     };
@@ -3350,7 +3358,10 @@ export class GameSession {
       canMove,
       canAttackHere,
       statuses: [...unit.statuses],
-      overlays: unit.overlays,
+      // `unit::overlays()`, then the active abilities' `overlay_image=`s (`overlays_abilities`, `units/drawer.cpp`).
+      overlays: [...unit.overlays, ...haloOrIconAbilities(this.board, unit, 'overlay')],
+      imageMods: unit.imageMods || undefined,
+      halos: [unit.halo, ...haloOrIconAbilities(this.board, unit, 'halo')].filter((h) => h !== ''),
       ellipse: unit.ellipse,
       emitsZoc: unit.emitZoc,
       underlyingId: this.renderKeyFor(unit),
@@ -3378,10 +3389,14 @@ export class GameSession {
   /** `rawUnitTypeConfig`'s variation sub-types, built once each. */
   private readonly variationConfigs = new Map<string, WmlConfigJson | undefined>();
 
-  /** The map sprite for `unit`: its variation's `image=` when it has one (a dwarf-shaped corpse), else its type's. */
+  /**
+   * The map sprite for `unit`: its variation's `image=` when it has one (a dwarf-shaped corpse), else its type's
+   * -- with the unit's `apply_to=image_mod` functions, as upstream's `absolute_image() + image_mods()` (the team
+   * colour is the renderer's to add).
+   */
   private unitImage(unit: Unit): string | null {
-    if (unit.variation !== '' && unit.type.image !== '') return unit.type.image;
-    return this.snapshot.unitTypes[unit.type.id]?.image ?? null;
+    const image = unit.variation !== '' && unit.type.image !== '' ? unit.type.image : this.snapshot.unitTypes[unit.type.id]?.image ?? null;
+    return image && unit.imageMods ? `${image}~${unit.imageMods}` : image;
   }
 
   unitDisplayName(u: Unit): string {
@@ -3502,6 +3517,24 @@ export class GameSession {
     this.selectedUnit = unit;
     this.reachable = this.reachOf(unit);
     this.attackCandidates = this.computeAttackCandidates(unit);
+  }
+
+  /**
+   * `mouse_handler::select_hex` with `fire_event` (a click, `n`/`N`): selects `unit`, and when it is the
+   * viewing side's own on its turn, fires `select` at it -- as upstream, outside any synced command (so, as
+   * there, what its handlers change is not part of the replay).
+   */
+  async selectUnitByPlayer(unit: Unit): Promise<void> {
+    await this.drive(this.selectUnitByPlayerFlow(unit));
+  }
+
+  private *selectUnitByPlayerFlow(unit: Unit): Flow {
+    this.selectUnit(unit);
+    if (unit.side !== this.viewingSide || unit.side !== this.activeSide || unit.hidden) return;
+    yield* this.fireFlow('select', unit.location);
+    yield* this.pumpEventsFlow();
+    // Its handlers may have changed the unit (an [object]): its reach and targets as they now are.
+    if (this.selectedUnit === unit && this.board.unitAt(unit.location) === unit) this.selectUnit(unit);
   }
 
   /**
@@ -4758,7 +4791,7 @@ export class GameSession {
           return fmt(tx('$attacker could attack $defender -- review the prediction and confirm.'), { attacker: this.unitDisplayName(sel), defender: this.unitDisplayName(clickedUnit) });
         }
         if (clickedUnit.side === this.activeSide) {
-          this.selectUnit(clickedUnit);
+          yield* this.selectUnitByPlayerFlow(clickedUnit);
           return null;
         }
         // An enemy (or an inactive side's unit) that isn't a valid attack
@@ -4783,7 +4816,7 @@ export class GameSession {
 
     if (clickedUnit) {
       if (clickedUnit.side === this.activeSide) {
-        this.selectUnit(clickedUnit);
+        yield* this.selectUnitByPlayerFlow(clickedUnit);
       } else {
         this.inspectUnit(clickedUnit);
         return fmt(tx('Viewing $unit.'), { unit: this.unitDisplayName(clickedUnit) });

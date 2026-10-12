@@ -51,6 +51,7 @@
     animationDurationMs,
     animationSoundFiles,
     parseUnitAnimations,
+    parseNewAnimations,
     chooseAnimation,
     buildAttackAnimationContexts,
     buildMovementAnimationContexts,
@@ -1162,7 +1163,7 @@
       [
         {
           key: spriteKey({ underlyingId: session.renderKeyFor(unit), typeId: unit.type.id, x: unit.location.x, y: unit.location.y }),
-          anim: chooseAnimation(animationsFor(unit.type.id, unit.variation), context),
+          anim: chooseAnimation(unitAnimations(unit), context),
           direction: unit.facing,
           srcHex: { x: unit.location.x, y: unit.location.y },
           dstHex: { x: unit.location.x, y: unit.location.y },
@@ -1641,9 +1642,16 @@
    * cheap enough not to need a cache -- revisit if profiling ever says
    * otherwise.
    */
-  function animationsFor(typeId: string, variation = ''): ReturnType<typeof parseUnitAnimations> {
+  function animationsFor(typeId: string, variation = '', newAnimations: readonly WmlConfig[] = []): ReturnType<typeof parseUnitAnimations> {
     const cfg = session.rawUnitTypeConfig(typeId, variation);
-    return cfg ? parseUnitAnimations(WmlConfig.fromJSON(cfg)) : [];
+    const own = cfg ? parseUnitAnimations(WmlConfig.fromJSON(cfg)) : [];
+    // A unit's `apply_to=new_animation` effects add theirs (`apply_new_animation_effect`).
+    return newAnimations.length > 0 ? [...own, ...parseNewAnimations(newAnimations)] : own;
+  }
+
+  /** {@link animationsFor} a live unit: its type's and variation's, and its own. */
+  function unitAnimations(unit: Unit): ReturnType<typeof parseUnitAnimations> {
+    return animationsFor(unit.type.id, unit.variation, unit.newAnimations);
   }
 
   /**
@@ -1674,8 +1682,8 @@
     // visually finishes. Use the type id captured at combat-resolution time.
     const attackerTypeId = info.attackerTypeId;
     const defenderTypeId = info.defenderTypeId;
-    const attackerAnims = animationsFor(attackerTypeId, info.attackerVariation);
-    const defenderAnims = animationsFor(defenderTypeId, info.defenderVariation);
+    const attackerAnims = animationsFor(attackerTypeId, info.attackerVariation, info.attackerNewAnimations);
+    const defenderAnims = animationsFor(defenderTypeId, info.defenderVariation, info.defenderNewAnimations);
     const attackerKey = spriteKey({
       underlyingId: session.renderKeyFor(info.attacker),
       typeId: attackerTypeId,
@@ -1902,7 +1910,7 @@
    */
   function buildMoveAnimationCues(info: LastMoveAnimation): UnitAnimationCue[][] {
     const contexts = buildMovementAnimationContexts(info.unit, info.path, terrainLookup(session.board));
-    const anims = animationsFor(info.unit.type.id, info.unit.variation);
+    const anims = unitAnimations(info.unit);
     const key = spriteKey({
       underlyingId: session.renderKeyFor(info.unit),
       typeId: info.unit.type.id,
@@ -2049,7 +2057,7 @@
       [
         {
           key: unitKey,
-          anim: chooseAnimation(animationsFor(info.unit.type.id, info.unit.variation), unitContext),
+          anim: chooseAnimation(unitAnimations(info.unit), unitContext),
           direction: info.unit.facing,
           srcHex: unitHex,
           dstHex: leaderHex,
@@ -2057,7 +2065,7 @@
         },
         {
           key: leaderKey,
-          anim: chooseAnimation(animationsFor(info.leader.type.id, info.leader.variation), leaderContext),
+          anim: chooseAnimation(unitAnimations(info.leader), leaderContext),
           direction: directionBetween(info.leaderLocation, info.unitLocation) ?? info.leader.facing,
           srcHex: leaderHex,
           dstHex: unitHex,
@@ -2102,7 +2110,7 @@
     const beat: UnitAnimationCue[] = [
       {
         key: healedKey,
-        anim: chooseAnimation(animationsFor(outcome.unit.type.id, outcome.unit.variation), healedContext),
+        anim: chooseAnimation(unitAnimations(outcome.unit), healedContext),
         direction: outcome.unit.facing,
         srcHex: healedHex,
         dstHex: healedHex,
@@ -2130,7 +2138,7 @@
       };
       beat.push({
         key: healerKey,
-        anim: chooseAnimation(animationsFor(healer.type.id, healer.variation), healerContext),
+        anim: chooseAnimation(unitAnimations(healer), healerContext),
         direction: directionBetween(healer.location, outcome.unit.location) ?? healer.facing,
         srcHex: healerHex,
         dstHex: healedHex,
@@ -3161,9 +3169,12 @@
           : candidates.length - 1
         : (currentIndex + step + candidates.length) % candidates.length;
     const unit = candidates[nextIndex]!;
-    session.selectUnit(unit);
+    // `cycle_units`: scroll to it, then `select_hex` -- which fires `select` for the player's own unit.
     boardView?.centerOnHex(unit.location.x, unit.location.y);
-    sync();
+    void runPlayerAction(async () => {
+      await session.selectUnitByPlayer(unit);
+      return null;
+    }).then(async (m) => (sync(m), await showDeferredInteractions()));
   }
 
   /** `l` (upstream `leader`): centre the view on this side's leader, without changing the selection. */

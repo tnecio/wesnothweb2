@@ -248,12 +248,16 @@ export function applyBuiltinEffect(unit: Unit, applyTo: string, effect: WmlConfi
       return;
     }
     case 'image_mod': {
-      if (has(effect, 'replace')) unit.imageMods = effect.getString('replace');
-      if (has(effect, 'add')) unit.imageMods = unit.imageMods === '' ? effect.getString('add') : `${unit.imageMods}~${effect.getString('add')}`;
+      // As upstream, an empty `replace=`/`add=` changes nothing.
+      const replace = effect.getString('replace', '');
+      const add = effect.getString('add', '');
+      if (replace !== '') unit.imageMods = replace;
+      if (add !== '') unit.imageMods = unit.imageMods === '' ? add : `${unit.imageMods}~${add}`;
       return;
     }
     case 'new_animation':
-      // Animations are the renderer's; the unit's own [*_anim] overrides are not modelled yet.
+      // The animations are the renderer's to build (`Unit.newAnimations`).
+      unit.newAnimations = [...unit.newAnimations, effect];
       return;
     case 'ellipse':
       unit.ellipse = effect.getString('ellipse', '');

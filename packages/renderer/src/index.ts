@@ -165,6 +165,7 @@ export {
   type MatchOptions,
   expandAnimationBranches,
   parseUnitAnimations,
+  parseNewAnimations,
   attackMatchesFilter,
   matchAnimation,
   scoreAnimations,
