@@ -8,15 +8,9 @@ Assessed 2026-10-10, on top of the status table (#30) and AI steps (#31). Of the
 
 ### Bugs that affect shipped campaigns
 
-Each was confirmed against the code and the campaign data. Phase 27a fixed the rest of the original list:
-`[modify_side]` side lists and keys, event weapon filters, the strike and advance events, `[modify_unit_type]`,
-`attacks_used=`/`movement_used=` and `[filter_recall]`.
-
-| What | Items | Effect |
-|---|---|---|
-| The `[disable]` special is missing | 5.54 | TDG's Eldred can attack with a weapon meant only for retaliation. |
-| Specials work only for mainline `id=`s; the generic special pipeline is not ported | 7.1–7.26 | A campaign's own `[damage]` / `[attacks]` / `[chance_to_hit]` specials and all special filters have no effect: Descent into Darkness's spells, and parry, smoke and stagger in about 20 campaign files. |
-| An ability's `[filter_adjacent]` and `[filter_student]` are not evaluated | 6.18, 6.26 | Conditional abilities act as always on. |
+None known. Phase 27a fixed the original list's correctness bugs; Phase 27b ported the ability and special
+pipeline (`[disable]`, campaign-defined specials, ability filters), and found and fixed one more: core's own
+Lua abilities -- the Ghast's feeding, stun, diversion -- never ran, for want of `wesnoth.game_events.add`.
 
 ### Missing presentation
 
@@ -64,7 +58,7 @@ These are Phase 28d's, as planned:
 ## Proposed follow-ups
 
 1. **Correctness fixes**: done in Phase 27a, except `[disable]`, which moved to the special pipeline (2).
-2. **The ability and special pipeline**: port `units/abilities.cpp` (filters, `apply_to=`, `active_on=`, `cumulative=`, `[filter_adjacent]`, `[filter_student]`, the generic `[damage]`/`[attacks]`/`[chance_to_hit]`) and route the mainline specials through it. Its own phase, as the plan has long flagged it as Phase 2's largest gap.
+2. **The ability and special pipeline**: done in Phase 27b.
 3. **Presentation gaps**:
    - the missing image functions, led by `CS`, `ROTATE` and `NO_TOD_SHIFT`;
    - `image_mod` and halo effects;

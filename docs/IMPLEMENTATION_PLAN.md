@@ -1814,7 +1814,7 @@ A deliberate audit pass, not new feature work.
 
 ## Phases 27a–27c — Executing the assessment's follow-ups (proposed 2026-10-10)
 
-**Status: 27a delivered (2026-10-11, PR pending); 27b and 27c await the user's go-ahead.** Each phase is its own branch, PR and tag. It is merged and tagged only when the user says so.
+**Status: 27a delivered (2026-10-11, PR #33); 27b delivered (2026-10-12, PR pending); 27c awaits the user's go-ahead.** Each phase is its own branch, PR and tag. It is merged and tagged only when the user says so.
 
 **What the three phases cover:**
 - They execute follow-ups 1–3 of `docs/COMPLETENESS.md`.
@@ -1918,6 +1918,14 @@ Upstream ships 855 test `.cfg` files under `data/test/` and lists the expected r
 - The assessment is updated for every item the phase touches.
 
 ### Phase 27b — The ability and special pipeline (branch `abilities-pipeline`, tag `v0.15.0`)
+
+**Status: delivered** (2026-10-12), S1–S5 and the checks below. `actions/abilities.ts` ports `abilities.cpp` and the
+special half of `attack_type.cpp`; combat, healing, the AI, the Lua bridge and the dialogs go through it. WML
+conformance went from 332 to 973 of upstream's tests; in `AbilitiesWML` and `Attacks`, all pass but five that
+depend on the side-1 AI's own choices (four teleport-and-attack tests, `hides_self`). The completeness report
+has 754 items done (was 688). Previews take 0.35 ms (0.08 ms before); AI turns are no slower.
+Found on the way and fixed: core's own Lua abilities (feeding, stun, diversion) never ran -- the port lacked
+`wesnoth.game_events.add` and its kin, now ported.
 
 A port of upstream's `units/abilities.cpp` (2,234 lines) and the special half of `attack_type.cpp` (943), replacing today's hand-written readings of mainline specials by `id=`. It has been flagged as Phase 2's largest gap since 2026-09-10.
 
