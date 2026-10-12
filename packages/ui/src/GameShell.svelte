@@ -701,6 +701,18 @@
   let mapItems = $state(session.mapItems);
   let mapLabels = $state(session.mapLabels);
   let timeOfDay = $state<TimeOfDayEntry>(session.currentTimeOfDay);
+  /** Phase 27c S5: the `[time_area]` hexes' lighting, replaced only when it changes (the board rebuilds its light map). */
+  let timeAreas = $state.raw<ReadonlyMap<string, { red: number; green: number; blue: number; mask?: string }>>(new Map());
+  let timeAreasKey = '';
+  function refreshTimeAreas(): void {
+    const next = session.timeAreaLighting();
+    const key = JSON.stringify([...next]);
+    if (key === timeAreasKey) return;
+    timeAreasKey = key;
+    timeAreas = next;
+  }
+  /** Phase 27c S5: `[color_adjust]`'s colour, added to every time of day's (`display::adjust_color_overlay`). */
+  let colorAdjust = $state<{ red: number; green: number; blue: number }>({ red: 0, green: 0, blue: 0 });
   let statusMessage = $state(tx('Click one of your units to select it.'));
   /** Phase 14: the infobox's "terrain info for the hovered hex" -- kept in sync by `GameBoardView`'s `onHexHoverChange`. */
   let hoveredHexInfo = $state<HoveredHexInfo | null>(null);
@@ -798,6 +810,7 @@
     recruitOptions = session.recruitOptions;
     recallOptions = session.recallOptions;
     timeOfDay = session.currentTimeOfDay;
+    refreshTimeAreas();
     hoveredHexInfo = hoveredHexInfo ? session.hoveredHexInfo(hoveredHexInfo.x, hoveredHexInfo.y) : null;
     statusMessage = statusFor();
   }
@@ -856,6 +869,7 @@
     mapItems = session.mapItems;
     mapLabels = session.mapLabels;
     timeOfDay = session.currentTimeOfDay;
+    refreshTimeAreas();
     refreshMinimap();
     armedMove = null;
 
@@ -1077,11 +1091,8 @@
         else boardView?.zoomTo(beat.factor);
         break;
       case 'colorAdjust':
-        // An instant tint, held until something sets it back to 0,0,0.
-        screenTint =
-          beat.red === 0 && beat.green === 0 && beat.blue === 0
-            ? null
-            : { r: Math.max(0, beat.red), g: Math.max(0, beat.green), b: Math.max(0, beat.blue), a: Math.min(1, Math.abs(beat.red + beat.green + beat.blue) / 765), ms: 0 };
+        // `adjust_color_overlay`: added to the time of day's colour wherever it lights the map, until set back to 0,0,0.
+        colorAdjust = { red: beat.red, green: beat.green, blue: beat.blue };
         break;
       case 'screenFade':
         screenTint = beat.alpha <= 0 ? null : { r: beat.red, g: beat.green, b: beat.blue, a: beat.alpha / 255, ms: Math.min(beat.durationMs, MAX_BEAT_MS) };
@@ -3559,6 +3570,8 @@
         labels={mapLabels}
         {hexVisibility}
         {timeOfDay}
+        {timeAreas}
+        {colorAdjust}
         onHexClick={handleBoardHexClick}
         onHexRightClick={handleHexRightClick}
         onHexHoverChange={handleHexHoverChange}

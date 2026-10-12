@@ -150,6 +150,8 @@ import {
   findVictoryEndlevelGoldConfig,
   computeCarryoverRecruits,
   scheduleFromScenarioConfigJson,
+  parseTimes,
+  findLocations,
   effectiveTimeOfDayAt,
   type Schedule,
   type ScheduleState,
@@ -1862,6 +1864,14 @@ export class GameSession {
     // matches upstream's own timing (tod_manager::resolve_random, called
     // from the play_controller constructor sequence before fire_prestart).
     this.schedule = scheduleFromScenarioConfigJson(snapshot.scenarioConfigJson, new RngDeterministic(this.mtRng));
+    // `game_state::init`: the scenario's own `[time_area]`s (`tod_manager::add_time_area(map, cfg)` -- the hexes
+    // its x=/y= name, border included).
+    for (const area of WmlConfig.fromJSON(snapshot.scenarioConfigJson).children('time_area')) {
+      const at = new WmlConfig();
+      for (const key of ['x', 'y']) if (area.hasAttribute(key)) at.setAttribute(key, area.getString(key));
+      const hexes = new Set(findLocations(this.board, at.setAttribute('include_borders', 'yes')).map((l) => l.key()));
+      this.schedule.addTimeArea(area.getString('id', ''), hexes, parseTimes(area), area.getNumber('current_time', 0), this.turnNumber);
+    }
     const manager = new EventManager();
     manager.loadScenarioEvents(WmlConfig.fromJSON(snapshot.scenarioConfigJson));
     this.eventPump = new EventPump(manager, {
@@ -2075,6 +2085,19 @@ export class GameSession {
    */
   get currentTimeOfDay(): TimeOfDayEntry {
     return this.schedule.timeOfDayForTurn(this.turnNumber);
+  }
+
+  /**
+   * Phase 27c S5: the hexes a `[time_area]` lights, each with the time of day it shows -- `get_time_of_day(loc)`,
+   * the schedule only (illumination changes combat, not the picture). Keyed `"x,y"`.
+   */
+  timeAreaLighting(): Map<string, { red: number; green: number; blue: number; mask?: string }> {
+    const out = new Map<string, { red: number; green: number; blue: number; mask?: string }>();
+    for (const key of this.schedule.areaHexKeys()) {
+      const tod = this.schedule.timeOfDayAt(Location.fromKey(key), this.turnNumber);
+      out.set(key, { red: tod.red, green: tod.green, blue: tod.blue, ...(tod.imageMask ? { mask: tod.imageMask } : {}) });
+    }
+    return out;
   }
 
   /**

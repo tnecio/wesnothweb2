@@ -14,8 +14,12 @@
  *   ("leading"), the attacker -- given draw/sheath/victory animations by an `apply_to=new_animation` --
  *   draws its weapon, wins ("victory"), sheathes it, and levels up ("levelout", then "levelin").
  *
+ * - lighting (S5), on Two Brothers 3 (its castle is a `[time_area]`, dark indoors): terrain, foreground
+ *   and items lit hex by hex -- the light map inside the castle from the castle's colour, outside from the
+ *   day's -- flags, grid and fog by the day's, units not at all; and combat in the castle at its lawful bonus.
+ *
  *   node apps/web/scripts/presentation-playthrough.mjs [--base http://localhost:5173]
- *     [--only unit-effects,standing-idle,combat-anims]
+ *     [--only unit-effects,standing-idle,combat-anims,lighting]
  *     [--shots <dir>]
  */
 import { chromium } from 'playwright';
@@ -321,6 +325,54 @@ ${anims}
     check('...in upstream\'s order: draw, blows, victory, sheath, levelout, levelin', at.every((v, i) => v >= 0 && (i === 0 || v > at[i - 1])), events.join(', '));
     const hero = await page.evaluate(() => window.__wesnoth.session.board.allUnits().find((u) => u.id === 'Debug Hero')?.type.id);
     check('the hero has advanced', hero !== 'Spearman', hero);
+    check('no page errors', errors.length === 0, errors.join(' | '));
+    await page.context().close();
+  }
+  if (runs('lighting')) {
+    const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await openScenario(page, base, 'two_brothers', '03_Guarded_Castle');
+    await skipToPlay(page);
+    await waitBoardReady(page);
+    await untilPlayable(page);
+    // An area hex (the castle) and one outside it, with the time of day each shows.
+    const probe = await page.evaluate(() => {
+      const s = window.__wesnoth.session;
+      const areas = s.timeAreaLighting();
+      const [inKey, inside] = [...areas].find(([, t]) => t.red === -60) ?? [];
+      let outKey = null;
+      for (let x = 0; x < s.board.map.w() && !outKey; x++) for (let y = 0; y < s.board.map.h(); y++) if (!areas.has(`${x},${y}`)) { outKey = `${x},${y}`; break; }
+      const day = s.currentTimeOfDay;
+      // A Location, made as the engine makes them (any unit's location's class).
+      const Loc = s.board.allUnits()[0].location.constructor;
+      const insideBonus = inKey ? s.timeOfDayAt(new Loc(...inKey.split(',').map(Number))).lawfulBonus : null;
+      return { inKey, inside, outKey, day: { red: day.red, green: day.green, blue: day.blue }, insideBonus };
+    });
+    check('the castle is a [time_area] of the session', !!probe.inKey && !!probe.outKey, JSON.stringify(probe));
+    check('...and combat in it is at the castle\'s lawful bonus (-25)', probe.insideBonus === -25, String(probe.insideBonus));
+    const at = async (key) => {
+      const [x, y] = key.split(',').map(Number);
+      for (let i = 0; i < 60; i++) {
+        const st = await page.evaluate(({ x, y }) => window.__wesnothDebug.lighting(x, y), { x, y });
+        if (st?.value && st.hexByHex) return st;
+        await page.waitForTimeout(1000);
+      }
+      return null;
+    };
+    const half = (v) => Math.trunc(v / 2);
+    const inside = await at(probe.inKey);
+    const outside = await at(probe.outKey);
+    check('inside the castle the light map is the castle\'s colour', JSON.stringify(inside?.value) === JSON.stringify([128 + half(-60), 128 + half(-45), 128 + half(-10)]), JSON.stringify(inside));
+    check('outside it the day\'s', JSON.stringify(outside?.value) === JSON.stringify([128 + half(probe.day.red), 128 + half(probe.day.green), 128 + half(probe.day.blue)]), JSON.stringify(outside));
+    const lit = inside?.lit ?? [];
+    check('terrain, foreground and items are lit; flags, grid and fog take the day; units nothing', ['terrain', 'foreground', 'items'].every((l) => lit.includes(l)) && !lit.includes('units'), lit.join(', '));
+    if (shots) {
+      await page.evaluate(() => window.__wesnothDebug.scrollToHex(13, 15, 'WARP'));
+      await page.waitForTimeout(2000);
+      await page.evaluate(() => window.__wesnothDebug.freezeAnimationsForCapture());
+      await page.screenshot({ path: `${shots}/lighting-castle.png` });
+    }
     check('no page errors', errors.length === 0, errors.join(' | '));
     await page.context().close();
   }

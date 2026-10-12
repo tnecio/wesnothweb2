@@ -471,30 +471,10 @@ export class Compositor {
    * the usual (bundle or canvas) path.
    */
   private decodeStraight(path: string): Promise<Raster | null> {
-    const Decoder = (globalThis as { ImageDecoder?: typeof ImageDecoder }).ImageDecoder
-    if (!Decoder) return Promise.resolve(null)
     const url = imageUrl(path)
     let decoded = this.straightDecodes.get(url)
     if (!decoded) {
-      decoded = (async () => {
-        try {
-          const resp = await fetch(url)
-          const type = resp.headers.get('content-type') ?? ''
-          if (!resp.ok || !type.startsWith('image/') || !(await Decoder.isTypeSupported(type))) return null
-          // `premultiplyAlpha` is in the WebCodecs spec (and Chromium) but not yet in TypeScript's DOM types.
-          const init = { data: await resp.arrayBuffer(), type, premultiplyAlpha: 'none', colorSpaceConversion: 'none' }
-          const decoder = new Decoder(init as ImageDecoderInit)
-          const { image } = await decoder.decode()
-          try {
-            return await frameToRaster(image)
-          } finally {
-            image.close()
-            decoder.close()
-          }
-        } catch {
-          return null
-        }
-      })()
+      decoded = decodeImageStraight(path)
       this.straightDecodes.set(url, decoded)
     }
     return decoded.then((r) => (r ? cloneRaster(r) : null))
@@ -596,6 +576,32 @@ function asRaster(s: Surface): Raster {
   if (s.width === 0 || s.height === 0) return makeRaster(s.width, s.height)
   const img = ctx2d(s).getImageData(0, 0, s.width, s.height)
   return { width: img.width, height: img.height, data: img.data }
+}
+
+/**
+ * An image file decoded to straight-alpha pixels, as SDL_image gives them (see `Compositor.decodeStraight`):
+ * null without `ImageDecoder` or for a file it cannot decode this way.
+ */
+export async function decodeImageStraight(path: string): Promise<Raster | null> {
+  const Decoder = (globalThis as { ImageDecoder?: typeof ImageDecoder }).ImageDecoder
+  if (!Decoder) return null
+  try {
+    const resp = await fetch(imageUrl(path))
+    const type = resp.headers.get('content-type') ?? ''
+    if (!resp.ok || !type.startsWith('image/') || !(await Decoder.isTypeSupported(type))) return null
+    // `premultiplyAlpha` is in the WebCodecs spec (and Chromium) but not yet in TypeScript's DOM types.
+    const init = { data: await resp.arrayBuffer(), type, premultiplyAlpha: 'none', colorSpaceConversion: 'none' }
+    const decoder = new Decoder(init as ImageDecoderInit)
+    const { image } = await decoder.decode()
+    try {
+      return await frameToRaster(image)
+    } finally {
+      image.close()
+      decoder.close()
+    }
+  } catch {
+    return null
+  }
 }
 
 /** A decoded frame's pixels as a straight-alpha raster; null for a pixel format other than (A)RGB/BGR(A). */

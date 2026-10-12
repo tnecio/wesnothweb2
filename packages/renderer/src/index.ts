@@ -241,6 +241,8 @@ export {
   type AmbientAnimationSource,
   type AmbientAnimationPrefs,
   nextIdleTick,
+  type BoardLighting,
+  type LitTimeOfDay,
 } from './SnapshotBoard'
 
 export { type HexVisibility, type FogShroudHex } from './fogShroud'

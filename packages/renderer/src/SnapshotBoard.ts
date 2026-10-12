@@ -69,7 +69,10 @@
 import * as PIXI from 'pixi.js';
 import { Direction, Location, getAdjacentTiles, relativeDirection, tilesAdjacent, writeDirection } from '@wesnothweb2/engine/src/model/Location.js';
 import { hexOverlayImages, defaultAssetExists, type FogShroudHex } from './fogShroud.js';
-import { splitTodTintColors } from './todTint.js';
+import { hexLighting, hexLightmap, worldLightmap, LIGHTMAP_IMAGES, type PlacedLightmap, type TodShift } from './lighting.js';
+import { LightingFilter, lightmapTexture, neutralLightmap } from './lightingFilter.js';
+import { decodeImageStraight, hexedRef, HEX_MASK } from './images/compositor.js';
+import { mask as maskRaster, makeRaster, type Raster } from './images/surfaceOps.js';
 import {
   hexCorners,
   hexToPixel,
@@ -398,6 +401,51 @@ function toHexCoord(x: number, y: number): HexCoord {
   return { x: x + 1, y: y + 1 };
 }
 
+/**
+ * Phase 27c S5: what lights the board (`SnapshotBoard.setLighting`): the global time of day's colour, the
+ * `[color_adjust]` added to every colour, and the hexes a `[time_area]` lights otherwise -- each with its time
+ * of day's colour and `mask=` image -- keyed `"x,y"` (engine-convention).
+ */
+export interface BoardLighting {
+  readonly global: LitTimeOfDay;
+  readonly adjust: TodShift;
+  readonly hexes: ReadonlyMap<string, LitTimeOfDay>;
+}
+
+/** A time of day as lighting sees it: its colour, and its `mask=` image if it has one. */
+export interface LitTimeOfDay extends TodShift {
+  readonly mask?: string;
+}
+
+let lightImages: Promise<{ lights: Map<string, Raster>; hexMask: Raster } | null> | null = null;
+
+/**
+ * The light maps and the hex mask, decoded straight (their translucent pixels' colour matters) and, as
+ * `get_surface(.., HEXED)` gives them, masked to the hex. Null where they cannot be decoded so.
+ */
+function loadLightImages(): Promise<{ lights: Map<string, Raster>; hexMask: Raster } | null> {
+  lightImages ??= (async () => {
+    const hexMask = await decodeImageStraight(HEX_MASK);
+    if (!hexMask) return null;
+    const lights = new Map<string, Raster>();
+    for (const name of LIGHTMAP_IMAGES) {
+      const img = await decodeImageStraight(name);
+      if (!img) return null;
+      maskRaster(img, hexMask, 0, 0);
+      lights.set(name, img);
+    }
+    return { lights, hexMask };
+  })();
+  return lightImages;
+}
+
+/** A 72x72 mask covering the whole square, for when the hex mask cannot be read. */
+function squareMask(): Raster {
+  const r = makeRaster(TILE_SIZE, TILE_SIZE);
+  r.data.fill(255);
+  return r;
+}
+
 /** `unit::incapacitated`: petrified. */
 function isIncapacitated(unit: SnapshotUnit): boolean {
   return unit.statuses?.includes('petrified') ?? false;
@@ -695,37 +743,16 @@ export class SnapshotBoard {
    */
   private readonly fogShroudLayer = new PIXI.Container();
   /**
-   * Mirrors upstream's `image::set_color_adjustment` (applied to every
-   * `image::TOD_COLORED` blit -- terrain, units, AND the fog/shroud
-   * overlay above, matching `drawing_layer::fog_shroud`'s own real ToD
-   * tinting): a per-channel additive shift, clamped to [0,255], covering
-   * the whole board.
-   *
-   * This project already has a faithful PER-TEXTURE port of that same
-   * formula (`animation/timeOfDay.ts`'s `applyTodTint`, wired into
-   * `ImageCache` as the `~TOD(r,g,b)` pseudo-op via `todRef` -- built
-   * ahead of this phase but never called). That approach bakes a tinted
-   * copy of every distinct terrain/unit texture the ToD touches, cached
-   * per (image, ToD) pair; with thousands of terrain images in play (see
-   * `renderTerrain`'s own preload cost), re-tinting on every ToD change
-   * would mean re-resolving and caching a second full copy of the
-   * terrain atlas per schedule entry. Implemented here instead as two
-   * full-board rects -- one filled with the positive part of
-   * (red,green,blue) drawn with `'add'` blend mode, one with the negative
-   * part's absolute value drawn with `'subtract'` -- which reconstructs
-   * the exact same per-channel additive/clamp result as a single
-   * composite step over whatever's already drawn, with no extra texture
-   * memory and no per-texture cache churn. `todRef`/`applyTodTint` remain
-   * available (and tested) for a future need this can't cover -- e.g. a
-   * `[time_area]`'s own distinct regional tint, which a single board-wide
-   * layer can't express without render-target compositing.
-   *
-   * Sits above `fogShroudLayer` (so fog/shroud get the tint too) and
-   * below `selectionLayer` (pure UI chrome, untinted).
+   * Phase 27c S5: the time-of-day lighting (`setLighting`) -- what it was built from, the filters it put on
+   * the lit layers, and a counter so a slow build superseded by a newer one is dropped.
    */
-  private readonly todTintLayer = new PIXI.Container();
-  private readonly todTintPositive = new PIXI.Graphics();
-  private readonly todTintNegative = new PIXI.Graphics();
+  private lighting: BoardLighting = { global: { red: 0, green: 0, blue: 0 }, adjust: { red: 0, green: 0, blue: 0 }, hexes: new Map() };
+  private lightingGeneration = 0;
+  private lightingTexture: PIXI.Texture | null = null;
+  /** Where `lightingTexture` lies on the map (world pixels). */
+  private lightingRect = new PIXI.Rectangle(0, 0, 1, 1);
+  /** `[time] mask=`: an image over each hex of a time of day with one (`draw_hex`), drawn unlit. */
+  private readonly todMaskLayer = new PIXI.Container();
   /**
    * Per-hex terrain containers built once by `renderTerrain`, keyed by
    * `"x,y"` (logical coordinates) -- lets `updateFogShroud` hide a
@@ -817,12 +844,12 @@ export class SnapshotBoard {
       this.footstepLayer,
       this.unitLayer,
       this.terrainForegroundLayer,
+      this.todMaskLayer,
       this.gridBottomLayer,
       this.moveInfoLayer,
       this.routeInfoLayer,
       this.hoverLayer,
       this.fogShroudLayer,
-      this.todTintLayer,
       this.itemHaloLayer,
       this.unitHaloLayer,
       this.labelLayer,
@@ -855,11 +882,7 @@ export class SnapshotBoard {
     this.labelLayer.eventMode = 'none';
     this.moveInfoLayer.eventMode = 'none';
     this.hoverLayer.eventMode = 'none';
-    this.todTintPositive.blendMode = 'add';
-    // A native blend equation -- see `installSubtractBlend`.
-    this.todTintNegative.blendMode = 'subtract';
-    this.todTintLayer.addChild(this.todTintPositive, this.todTintNegative);
-    this.todTintLayer.eventMode = 'none';
+    this.todMaskLayer.eventMode = 'none';
   }
 
   /**
@@ -888,42 +911,131 @@ export class SnapshotBoard {
     await this.gridBuilt;
   }
 
+  /**
+   * Phase 27c S5, for checks: the light map's value (`128 + colour / 2`) at the centre of hex (x, y), or null
+   * when nothing is lit hex by hex; and which layers carry a lighting filter.
+   */
+  lightingState(x: number, y: number): { value: [number, number, number] | null; lit: string[]; hexByHex: boolean } {
+    const layers: Record<string, PIXI.Container> = {
+      terrain: this.terrainLayer, foreground: this.terrainForegroundLayer, items: this.itemLayer, villages: this.villageLayer,
+      grid: this.gridTopLayer, fog: this.fogShroudLayer, units: this.unitLayer,
+    };
+    const lit = Object.entries(layers).filter(([, l]) => ((l.filters as PIXI.Filter[] | null) ?? []).some((f) => f instanceof LightingFilter)).map(([k]) => k);
+    const tex = this.lightingTexture;
+    const data = (tex?.source as { resource?: Uint8Array } | undefined)?.resource;
+    if (!tex || !data) return { value: null, lit, hexByHex: false };
+    const c = hexToPixel(toHexCoord(x, y));
+    const px = tex.width === 1 ? 0 : Math.round(c.x - this.lightingRect.x);
+    const py = tex.height === 1 ? 0 : Math.round(c.y - this.lightingRect.y);
+    const i = (py * tex.width + px) * 4;
+    return { value: [data[i]!, data[i + 1]!, data[i + 2]!], lit, hexByHex: tex.width > 1 };
+  }
+
   /** Phase 22, for checks: whether the grid overlay is showing, and how many hexes it covers. */
   gridState(): { visible: boolean; hexes: number } {
     return { visible: this.gridTopLayer.visible, hexes: this.gridTopLayer.children.length };
   }
 
   /**
-   * Draws (replacing any previous) the board-wide ToD colour tint from a
-   * `[time]` entry's real `red=`/`green=`/`blue=` -- see `todTintLayer`'s
-   * own doc comment. Pass `{ red: 0, green: 0, blue: 0 }` (neutral) to
-   * clear it. Per-`[time_area]` tinting (a region showing a DIFFERENT
-   * tint than the rest of the board) is a deliberate, documented gap --
-   * see this method's own doc comment below.
-   *
-   * NOT implemented: a hex-by-hex `[time_area]` tint. A single full-board
-   * filter/overlay can't show two different tints in two regions at once
-   * without render-target compositing (drawing the area's own hexes to a
-   * separate texture and tinting that in isolation) -- real, but bounded,
-   * additional work; the combat/event-filter consequences of
-   * `[time_area]` (the part that actually matters for gameplay) are
-   * already fully correct via `GameSession.timeOfDayAt`, independent of
-   * this visual simplification.
+   * The global time of day's `red=`/`green=`/`blue=` (`tod_manager::get_time_of_day()`): what lights every
+   * hex outside a `[time_area]`, and the flags, grid and fog. See `setLighting`.
    */
-  updateTimeOfDayTint(tod: { red: number; green: number; blue: number }): void {
+  updateTimeOfDayTint(tod: LitTimeOfDay): void {
+    this.setLighting({ ...this.lighting, global: { red: tod.red, green: tod.green, blue: tod.blue, ...(tod.mask ? { mask: tod.mask } : {}) } });
+  }
+
+  /**
+   * Phase 27c S5: the time of day as upstream draws it (`display::draw_hex`). Terrain (background and
+   * foreground) and items are lit hex by hex -- each hex by its own time of day (`hexes`, the `[time_area]`
+   * hexes; the rest by `global`), blending into differently lit neighbours through the light maps
+   * (`lighting.ts`); village flags, the grid and fog/shroud take the global colour exactly (`TOD_COLORED`);
+   * units are not shifted at all. `adjust` (`[color_adjust]`) is added to every colour.
+   */
+  setLighting(lighting: BoardLighting): void {
+    const prev = this.lighting;
+    const same = (a: LitTimeOfDay, b: LitTimeOfDay) => a.red === b.red && a.green === b.green && a.blue === b.blue && (a.mask ?? '') === (b.mask ?? '');
+    if (this.lightingGeneration > 0 && same(prev.global, lighting.global) && same(prev.adjust, lighting.adjust) && prev.hexes === lighting.hexes) return;
+    this.lighting = lighting;
+    void this.applyLighting();
+  }
+
+  private async applyLighting(): Promise<void> {
+    const generation = ++this.lightingGeneration;
+    const { global, adjust, hexes } = this.lighting;
     const { width, height } = this.snapshot.map;
-    const x = -HEX_COL_WIDTH;
-    const y = -HEX_ROW_HEIGHT;
-    const w = (width + 2) * HEX_COL_WIDTH;
-    const h = (height + 2) * HEX_ROW_HEIGHT;
+    // Every hex, the border's included: (x, y) from -1 to the size, engine-convention.
+    const rect = new PIXI.Rectangle(-HEX_COL_WIDTH, -HEX_ROW_HEIGHT, (width + 2) * HEX_COL_WIDTH + TILE_SIZE, (height + 2) * HEX_ROW_HEIGHT + TILE_SIZE);
+    const todAt = (x: number, y: number): LitTimeOfDay => hexes.get(`${x},${y}`) ?? global;
 
-    const { positive, negative } = splitTodTintColors(tod);
+    let light: PIXI.Texture | null = null;
+    let lightRect = new PIXI.Rectangle(0, 0, 1, 1);
+    if (hexes.size === 0) {
+      const flat = hexLightmap(hexLighting(global, Array(6).fill(global), adjust), () => null);
+      if (flat && 'flat' in flat && flat.flat.some((v) => v !== 128)) light = lightmapTexture(new Uint8ClampedArray([...flat.flat, 255]), 1, 1);
+    } else {
+      const images = await loadLightImages();
+      if (generation !== this.lightingGeneration) return;
+      const placed: PlacedLightmap[] = [];
+      for (let x = -1; x <= width; x++) {
+        for (let y = -1; y <= height; y++) {
+          const tod = todAt(x, y);
+          const around = getAdjacentTiles(new Location(x, y)).map((l) => todAt(l.x, l.y));
+          const list = hexLighting(tod, around, adjust);
+          // Without the light maps (no straight decoder), each hex its own colour, as if lit evenly.
+          const lightmap = hexLightmap(list, (name) => images?.lights.get(name) ?? null) ?? hexLightmap(hexLighting(tod, Array(6).fill(tod), adjust), () => null)!;
+          const center = hexToPixel(toHexCoord(x, y));
+          placed.push({ left: Math.round(center.x - TILE_SIZE / 2), top: Math.round(center.y - TILE_SIZE / 2), lightmap });
+        }
+      }
+      const left = Math.min(...placed.map((p) => p.left));
+      const top = Math.min(...placed.map((p) => p.top));
+      const right = Math.max(...placed.map((p) => p.left)) + TILE_SIZE;
+      const bottom = Math.max(...placed.map((p) => p.top)) + TILE_SIZE;
+      const world = worldLightmap(placed, images?.hexMask ?? squareMask(), left, top, right - left, bottom - top);
+      light = lightmapTexture(world.data, world.width, world.height);
+      lightRect = new PIXI.Rectangle(left, top, world.width, world.height);
+    }
+    if (generation !== this.lightingGeneration) {
+      light?.destroy(true);
+      return;
+    }
 
-    this.todTintPositive.clear();
-    if (positive !== 0) this.todTintPositive.rect(x, y, w, h).fill({ color: positive });
+    const exact = { red: global.red + adjust.red, green: global.green + adjust.green, blue: global.blue + adjust.blue };
+    const exactOffset: [number, number, number] = [exact.red, exact.green, exact.blue];
+    const lit = [this.terrainLayer, this.terrainForegroundLayer, this.itemLayer];
+    const todColored = [this.villageLayer, this.gridTopLayer, this.gridBottomLayer, this.fogShroudLayer];
+    for (const layer of [...lit, ...todColored]) {
+      for (const f of (layer.filters as PIXI.Filter[] | null) ?? []) f.destroy();
+      layer.filters = [];
+      layer.filterArea = rect;
+    }
+    this.lightingTexture?.destroy(true);
+    this.lightingTexture = light;
+    this.lightingRect = lightRect;
+    if (light) for (const layer of lit) layer.filters = [new LightingFilter(layer, light, lightRect, [0, 0, 0])];
+    if (exactOffset.some((v) => v !== 0)) {
+      for (const layer of todColored) layer.filters = [new LightingFilter(layer, neutralLightmap(), new PIXI.Rectangle(0, 0, 1, 1), exactOffset)];
+    }
 
-    this.todTintNegative.clear();
-    if (negative !== 0) this.todTintNegative.rect(x, y, w, h).fill({ color: negative });
+    // `[time] mask=`, hex by hex.
+    for (const child of this.todMaskLayer.removeChildren()) child.destroy();
+    const masks: { x: number; y: number; ref: string }[] = [];
+    for (let x = -1; x <= width; x++) {
+      for (let y = -1; y <= height; y++) {
+        const mask = todAt(x, y).mask;
+        if (mask) masks.push({ x, y, ref: hexedRef(mask) });
+      }
+    }
+    for (const { x, y, ref } of masks) {
+      const texture = await ImageCache.resolve(ref);
+      if (generation !== this.lightingGeneration) return;
+      if (!texture) continue;
+      const sprite = new PIXI.Sprite(texture);
+      sprite.anchor.set(0.5);
+      const c = hexToPixel(toHexCoord(x, y));
+      sprite.position.set(c.x, c.y);
+      this.todMaskLayer.addChild(sprite);
+    }
   }
 
   /** Queues a `renderUnits()` run behind any already in flight -- see `renderQueue`'s own doc comment. */
