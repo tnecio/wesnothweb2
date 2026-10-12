@@ -2130,9 +2130,8 @@ export class GameSession {
 
   /**
    * The real `[scenario] next_scenario=` this scenario declares, or `null`
-   * if it has none (the scenario chain ends here). Drives whether
-   * `ScenarioEndOverlay` offers a "Continue" button on victory -- see
-   * `startNextScenario`.
+   * if it has none (the scenario chain ends here). Decides where End
+   * Scenario goes after a victory (Phase 27c S6) -- see `startNextScenario`.
    */
   get nextScenarioId(): string | null {
     // An [endlevel] next_scenario= overrides the scenario's own (endlevel.lua sets wesnoth.scenario.next).
@@ -2154,10 +2153,10 @@ export class GameSession {
     return this.eventPump.ctx.endLevel?.testResult ?? null;
   }
 
-  get endLevelPresentation(): { endText?: string; endTextDuration?: number; endCredits?: boolean; lingerMode?: boolean; carryoverReport?: boolean; replaySave?: boolean } | null {
+  get endLevelPresentation(): { endText?: string; endTextDuration?: number; endCredits?: boolean; lingerMode?: boolean; carryoverReport?: boolean; replaySave?: boolean; revealMap?: boolean } | null {
     const endLevel = this.eventPump.ctx.endLevel;
     return endLevel
-      ? { endText: endLevel.endText, endTextDuration: endLevel.endTextDuration, endCredits: endLevel.endCredits, lingerMode: endLevel.lingerMode, carryoverReport: endLevel.carryoverReport, replaySave: endLevel.replaySave }
+      ? { endText: endLevel.endText, endTextDuration: endLevel.endTextDuration, endCredits: endLevel.endCredits, lingerMode: endLevel.lingerMode, carryoverReport: endLevel.carryoverReport, replaySave: endLevel.replaySave, revealMap: endLevel.revealMap }
       : null;
   }
 
@@ -3326,8 +3325,16 @@ export class GameSession {
    * `runStartupEvents` can put units of types never listed in the
    * snapshot's original `units` array onto the board.
    */
+  /**
+   * Phase 27c S6: the scenario is over and the player lingers on the map with `reveal_map` (the default):
+   * upstream shows every player the whole map, fog, shroud and hidden units included (`update_gui_linger`).
+   */
+  get mapRevealed(): boolean {
+    return this.scenarioResult !== null && (this.endLevelPresentation?.lingerMode ?? true) && (this.endLevelPresentation?.revealMap ?? true);
+  }
+
   get renderUnits(): SnapshotUnit[] {
-    const playerTeam = this.board.getTeam(this.viewingSide);
+    const playerTeam = this.mapRevealed ? undefined : this.board.getTeam(this.viewingSide);
     return this.board
       .allUnits()
       .filter((u) => !playerTeam || isUnitVisibleToTeam(this.board, u, playerTeam, false))
@@ -3371,7 +3378,9 @@ export class GameSession {
    */
   private toSnapshotUnit(unit: Unit, x: number, y: number, hitpoints: number): SnapshotUnit {
     const isOwnUnit = unit.side === this.viewingSide;
-    const { canMove, canAttackHere } = isOwnUnit ? unitCanAct(this.board, unit) : { canMove: undefined, canAttackHere: undefined };
+    // Phase 27c S6: once the scenario is over, every unit has ended its turn (`set_all_units_user_end_turn`).
+    const over = this.scenarioResult !== null;
+    const { canMove, canAttackHere } = !isOwnUnit ? { canMove: undefined, canAttackHere: undefined } : over ? { canMove: false, canAttackHere: false } : unitCanAct(this.board, unit);
     return {
       id: unit.id || null,
       name: unit.name || null,
@@ -3389,7 +3398,7 @@ export class GameSession {
       maxExperience: unit.maxExperience,
       level: unit.type.level,
       canAdvance: unit.advancesTo.length > 0,
-      movesLeft: isOwnUnit ? unit.movesLeft : undefined,
+      movesLeft: isOwnUnit ? (over ? 0 : unit.movesLeft) : undefined,
       maxMoves: isOwnUnit ? unit.maxMoves : undefined,
       attacksLeft: isOwnUnit ? unit.attacksLeft : undefined,
       maxAttacksPerTurn: isOwnUnit ? unit.maxAttacksPerTurn : undefined,
@@ -4382,7 +4391,7 @@ export class GameSession {
    */
   get hexVisibility(): HexVisibilityPoint[] {
     const team = this.board.getTeam(this.viewingSide);
-    if (!team || !team.fogOrShroud()) return [];
+    if (!team || !team.fogOrShroud() || this.mapRevealed) return [];
     const result: HexVisibilityPoint[] = [];
     // Includes the one-hex border ring beyond the playable area (same
     // -1..w()/-1..h() range `SnapshotBoard.renderTerrain` builds terrain

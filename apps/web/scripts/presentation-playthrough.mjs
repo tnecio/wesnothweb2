@@ -18,8 +18,12 @@
  *   and items lit hex by hex -- the light map inside the castle from the castle's colour, outside from the
  *   day's -- flags, grid and fog by the day's, units not at all; and combat in the castle at its lawful bonus.
  *
+ * - the end of a scenario (S6), on the debug fog scenario: after a defeat the player lingers on the map --
+ *   fog and shroud lifted and the enemy shown (`reveal_map`), every orb red, End Turn reading End Scenario --
+ *   and End Scenario goes back to the title screen.
+ *
  *   node apps/web/scripts/presentation-playthrough.mjs [--base http://localhost:5173]
- *     [--only unit-effects,standing-idle,combat-anims,lighting]
+ *     [--only unit-effects,standing-idle,combat-anims,lighting,linger]
  *     [--shots <dir>]
  */
 import { chromium } from 'playwright';
@@ -373,6 +377,41 @@ ${anims}
       await page.evaluate(() => window.__wesnothDebug.freezeAnimationsForCapture());
       await page.screenshot({ path: `${shots}/lighting-castle.png` });
     }
+    check('no page errors', errors.length === 0, errors.join(' | '));
+    await page.context().close();
+  }
+  if (runs('linger')) {
+    const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await openScenario(page, base, 'synthetic_fog');
+    await skipToPlay(page);
+    await waitBoardReady(page);
+    await untilPlayable(page);
+    const seen = () => page.evaluate(() => {
+      const s = window.__wesnoth.session;
+      return { hidden: s.hexVisibility.filter((h) => h.visibility !== 'clear').length, villain: s.renderUnits.some((u) => u.id === 'Debug Villain') };
+    });
+    const before = await seen();
+    check('before: fog and shroud hide part of the map and the enemy', before.hidden > 0 && !before.villain, JSON.stringify(before));
+    await page.evaluate(() => window.__wesnoth.addEvent('[event]\nname=select\n[endlevel]\nresult=defeat\n[/endlevel]\n[/event]'));
+    const kai = await page.evaluate(() => {
+      const k = window.__wesnoth.session.board.allUnits().find((u) => u.id === 'Debug Hero');
+      return { x: k.location.x, y: k.location.y };
+    });
+    await page.evaluate(({ x, y }) => window.__wesnoth.clickHex(x, y), kai);
+    const turnText = () => page.$eval('[data-testid="turn-button"]', (b) => (b.textContent ?? '').trim()).catch(() => '');
+    for (let i = 0; i < 40 && (await turnText()) !== 'End Scenario'; i++) {
+      if (await page.$('.window[role="dialog"]')) await page.keyboard.press('Enter');
+      await page.waitForTimeout(500);
+    }
+    check('a defeat leaves the player on the map: End Turn reads End Scenario', (await turnText()) === 'End Scenario', await turnText());
+    const after = { ...(await seen()), orbs: await page.evaluate(() => window.__wesnoth.session.renderUnits.filter((u) => u.side === window.__wesnoth.session.viewingSide).map((u) => `${u.movesLeft}/${u.canMove}`)) };
+    check('...the whole map shown, the enemy too (reveal_map)', after.hidden === 0 && after.villain, JSON.stringify(after));
+    check('...and every unit of the player has ended its turn (red orbs)', after.orbs.every((o) => o === '0/false'), after.orbs.join(' '));
+    await page.click('[data-testid="turn-button"]');
+    const title = await page.waitForSelector('[data-testid="title-screen"]', { timeout: 30000 }).catch(() => null);
+    check('End Scenario after a defeat returns to the title screen', title !== null);
     check('no page errors', errors.length === 0, errors.join(' | '));
     await page.context().close();
   }

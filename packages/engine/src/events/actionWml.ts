@@ -1817,6 +1817,7 @@ function actionEndlevel(cfg: WmlConfig, ctx: EventContext): void {
     ...(cfg.hasAttribute('end_credits') ? { endCredits: cfg.getBoolean('end_credits', true) } : {}),
     carryoverReport: cfg.getBoolean('carryover_report', true),
     lingerMode: cfg.getBoolean('linger_mode', true),
+    revealMap: cfg.getBoolean('reveal_map', true),
     replaySave: cfg.getBoolean('replay_save', true),
     ...(cfg.getString('music', '') !== '' ? { music: cfg.getString('music').split(',').map((t) => t.trim()).filter((t) => t !== '') } : {}),
     ...(cfg.getString('test_result', '') !== '' ? { testResult: cfg.getString('test_result') } : {}),

@@ -160,7 +160,6 @@
   import { stripPango } from './markup/pango.js';
   import AdvancementDialog from './AdvancementDialog.svelte';
   import ObjectivesDialog from './ObjectivesDialog.svelte';
-  import ScenarioEndOverlay from './ScenarioEndOverlay.svelte';
   import Outro from './Outro.svelte';
   import { buildOutroScreens, outroHoldMs } from './story/outro.js';
   import RecruitDialog from './RecruitDialog.svelte';
@@ -562,7 +561,6 @@
   let otherSidesTurn = $state<'thinking' | 'animating' | null>(null);
   /** Set by Skip Animation: the rest of this batch of the other sides' animations is not played. */
   let skipOtherSidesAnimations = false;
-  const turnButton = $derived<'end' | 'wait' | 'skip'>(otherSidesTurn === 'animating' ? 'skip' : otherSidesTurn === 'thinking' ? 'wait' : 'end');
 
   let phase = $state<'story' | 'objectives' | 'playing' | 'ended' | 'replay'>(
     initialReplaySession ? 'replay' : session.scenarioResult ? 'ended' : storyParts.length > 0 ? 'story' : 'playing',
@@ -598,24 +596,50 @@
       .then((json) => (creditsData = json))
       .catch((err) => console.error('[outro] could not load credits.json:', err));
   });
+  let pendingAdvancement = $state<PendingAdvancement | null>(null);
+  /** Phase 27c S6: End Scenario has been pressed (or there was no lingering) -- see the linger effect. */
+  let lingerDone = $state(false);
+  const lingering = $derived(phase === 'ended' && session.scenarioResult !== null && !pendingAdvancement && !lingerDone && (session.endLevelPresentation?.lingerMode ?? true));
+  // While the next scenario loads (`continuing`), the button is greyed out.
+  const turnButton = $derived<'end' | 'wait' | 'skip' | 'endScenario'>(continuing ? 'wait' : lingering ? 'endScenario' : otherSidesTurn === 'animating' ? 'skip' : otherSidesTurn === 'thinking' ? 'wait' : 'end');
   /**
-   * `[endlevel] linger_mode=no carryover_report=no` (a cutscene scenario such as Dusk of Dawn's prologue):
-   * upstream neither stays on the map nor shows the victory summary, and goes straight on to the next scenario.
+   * Phase 27c S6: `playsingle_controller::linger` -- once the scenario is over the player stays on the map
+   * (the whole of it, with `reveal_map`), the turn button reading End Scenario, until they press it; then the
+   * game goes on (`lingerDone`). `[endlevel] linger_mode=no` skips this.
    */
+  /** Whether what follows the scenario (`play_game` after `play_scenario`) has been started. */
+  let afterEndStarted = false;
+  /** A new scenario (or a loaded one): it has not ended, so it has not been lingered on; `[color_adjust]` is the display's, cleared. */
+  function resetScenarioEnd(): void {
+    lingerDone = false;
+    afterEndStarted = false;
+    colorAdjust = { red: 0, green: 0, blue: 0 };
+  }
   $effect(() => {
-    const presentation = session.endLevelPresentation;
-    if (!continuing && phase === 'ended' && session.scenarioResult === 'victory' && session.nextScenarioId !== null && presentation?.lingerMode === false && presentation.carryoverReport === false) {
-      void continueToNextScenario();
+    if (phase !== 'ended' || session.scenarioResult === null || pendingAdvancement || lingering || afterEndStarted) return;
+    afterEndStarted = true;
+    lingerDone = true;
+    // A victory goes on to the next scenario, or rolls the outro after the last (below); a defeat ends the
+    // campaign, back to the title screen.
+    if (session.scenarioResult === 'victory') {
+      if (session.nextScenarioId !== null) void continueToNextScenario();
+    } else {
+      onQuitToMenu?.();
     }
   });
   /** Upstream shows the outro only for a victory with no next scenario, and only when `end_credits` is not turned off. */
   const showOutro = $derived(
     phase === 'ended' &&
+      lingerDone &&
       session.scenarioResult === 'victory' &&
       session.nextScenarioId === null &&
       session.endLevelPresentation?.endCredits !== false &&
       !outroDone,
   );
+  /** After the campaign's last victory (and its outro), the title screen. */
+  $effect(() => {
+    if (phase === 'ended' && lingerDone && session.scenarioResult === 'victory' && session.nextScenarioId === null && !showOutro) onQuitToMenu?.();
+  });
   /**
    * Phase 17: the one `[message]` a suspended event is waiting on, if
    * any. Nothing else about the game advances while this is set -- the
@@ -648,7 +672,6 @@
   let recallOptions = $state<RecallOption[]>([]);
   let pendingRecallIndex = $state<number | null>(null);
   let pendingPreview = $state<CombatPreview | null>(null);
-  let pendingAdvancement = $state<PendingAdvancement | null>(null);
   /** Phase 13: whether the real modal Recruit/Recall dialogs are open -- opened via `SidePanel`'s "Recruit.../Recall..." trigger, distinct from `pendingRecruitTypeId`/`pendingRecallIndex` (the ARMED, awaiting-a-tile-click state that persists after the dialog closes). */
   let recruitDialogOpen = $state(false);
   let recallDialogOpen = $state(false);
@@ -2537,6 +2560,11 @@
    * units (upstream's default `confirm_end_turn=no_moves`).
    */
   function requestEndTurn(): void {
+    // Phase 27c S6: while lingering the button ends the scenario (`end_linger`).
+    if (lingering) {
+      lingerDone = true;
+      return;
+    }
     if (!canAct()) return;
     // Phase 28c: `[disallow_end_turn]` -- upstream shows the reason and does not end the turn.
     const blocked = session.endTurnBlocked;
@@ -2845,6 +2873,7 @@
     if (!replaySession) return;
     activeSnapshot = replaySnapshot;
     cursorHex = null; // the keyboard cursor belongs to the board it was on
+    resetScenarioEnd();
     session = replaySession;
     session.interactionHost = interactionHost;
     storyParts = [];
@@ -2927,6 +2956,7 @@
     const [nextSnapshot, assets] = await Promise.all([snapshotFor(scenarioId, savedDifficulty(data)), storyAssetsFor(scenarioId)]);
     activeSnapshot = nextSnapshot;
     cursorHex = null; // the keyboard cursor belongs to the board it was on
+    resetScenarioEnd();
     session = GameSession.fromSaveData(nextSnapshot, data, SESSION_OPTIONS);
     session.interactionHost = interactionHost;
     storyParts = [];
@@ -3055,6 +3085,7 @@
 
       activeSnapshot = nextSnapshot;
       cursorHex = null; // the keyboard cursor belongs to the board it was on
+      resetScenarioEnd();
       session = nextSession;
       storyParts = nextStoryParts;
       storyAssets = nextStoryAssets;
@@ -3073,6 +3104,10 @@
       }
     } catch (err) {
       continueError = err instanceof Error ? err.message : String(err);
+      // Back on the map, End Scenario trying again.
+      statusMessage = `${tx('Failed to continue:')} ${continueError}`;
+      lingerDone = false;
+      afterEndStarted = false;
     } finally {
       continuing = false;
     }
@@ -3238,7 +3273,8 @@
     // Upstream's own bindings (hotkeys.cfg: undo=u, redo=r).
     { id: 'undo', label: t('Undo'), enabled: phase === 'playing' && canUndo, handler: () => void handleUndo() },
     { id: 'redo', label: t('Redo'), enabled: phase === 'playing' && canRedo, handler: () => void handleRedo() },
-    { id: 'end-turn', label: t('End Turn'), enabled: phase === 'playing' && otherSidesTurn === null, handler: requestEndTurn },
+    // Phase 27c S6: while lingering, `endturn` ends the scenario.
+    { id: 'end-turn', label: lingering ? tw('End Scenario') : t('End Turn'), enabled: lingering || (phase === 'playing' && otherSidesTurn === null), handler: requestEndTurn },
   ]));
 
   /**
@@ -3845,13 +3881,10 @@
     />
   {:else if phase === 'ended' && session.scenarioResult && !pendingAdvancement}
     <!--
-      `!pendingAdvancement` guard: a kill that both wins the scenario AND
-      grants the killer a level-up choice is real (GameSession.confirmAttack
-      checks advancement before checkForGameEnd, mirroring real Wesnoth's
-      attack_unit_and_advance) -- without this, ScenarioEndOverlay (z-index
-      200) would render on top of AdvancementDialog (100) and leave the
-      player unable to ever resolve the pending choice. Once
-      chooseAdvancement clears it, this branch shows normally.
+      `!pendingAdvancement` guard: a kill that both wins the scenario AND grants the killer a level-up choice
+      is real (GameSession.confirmAttack checks advancement before checkForGameEnd, mirroring real Wesnoth's
+      attack_unit_and_advance): the choice comes first. Phase 27c S6: otherwise the player lingers on the map
+      (see `lingering`) -- only the campaign's outro is drawn over it.
     -->
     {#if showOutro}
       <!-- Phase 16 N7: the campaign's last victory rolls the outro first, as playcampaign.cpp does. -->
@@ -3859,17 +3892,6 @@
         screens={buildOutroScreens(session.endLevelPresentation?.endText, true, outroCredits)}
         holdMs={outroHoldMs(session.endLevelPresentation?.endTextDuration)}
         onDone={() => (outroDone = true)}
-      />
-    {:else}
-      <ScenarioEndOverlay
-        result={session.scenarioResult}
-        {turnNumber}
-        {gold}
-        nextScenarioAvailable={session.scenarioResult === 'victory' && session.nextScenarioId !== null}
-        {continuing}
-        {continueError}
-        onContinue={continueToNextScenario}
-        {onQuitToMenu}
       />
     {/if}
   {/if}

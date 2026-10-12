@@ -144,7 +144,7 @@ async function keyboardOnly(browser) {
         await press(page, 'ArrowDown', 300);
         await press(page, 'Enter', 1500);
       }
-      ended = (await page.$('.end-overlay')) !== null;
+      ended = (await page.$eval('[data-testid="turn-button"]', (b) => (b.textContent ?? '').trim()).catch(() => '')) === 'End Scenario';
       if (!ended) {
         await press(page, 'Escape', 300); // clear the selection
         await press(page, 'Control+Space', 2500); // end side 1's turn
@@ -155,14 +155,12 @@ async function keyboardOnly(browser) {
         await press(page, 'ArrowRight', 300);
       }
     }
-    check('the fight ends the scenario: the victory screen shows', ended);
+    // Phase 27c S6: the player lingers on the map; End Turn's key ends the scenario.
+    check('the fight ends the scenario: the player lingers, End Turn reading End Scenario', ended);
     if (ended) {
-      const overlay = await page.$eval('.end-overlay', (e) => `${e.getAttribute('role')}|${e.textContent ?? ''}`);
-      check('it is an alert dialog naming the result', /^alertdialog\|.*(Victory)/.test(overlay.replace(/\s+/g, ' ')), overlay.slice(0, 60));
-      check('focus is on Continue', /continue/.test(await focused()), await focused());
-      await press(page, 'Enter', 4000);
+      await press(page, 'Control+Space', 4000);
       await page.waitForFunction(() => document.querySelector('.scenario-name')?.textContent?.includes('2/2'), null, { timeout: 30000 }).catch(() => {});
-      check('Enter continues into the next scenario', /2\/2/.test(await page.$eval('.scenario-name', (e) => e.textContent ?? '').catch(() => '')));
+      check('Ctrl+Space (End Scenario) continues into the next scenario', /2\/2/.test(await page.$eval('.scenario-name', (e) => e.textContent ?? '').catch(() => '')));
     }
 
     // save, load and the language picker, by keys
