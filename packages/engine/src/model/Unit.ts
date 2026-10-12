@@ -600,6 +600,8 @@ export class Unit {
     }
     if (this.extraRecruit.length > 0) cfg.setAttribute('extra_recruit', this.extraRecruit.join(','));
     if (this.filterRecall) cfg.addChild('filter_recall', this.filterRecall.clone());
+    // `unit::write`: the unit's weapons as they are, effects applied (read back by `fromConfig`).
+    for (const attack of this.attacks) cfg.addChild('attack', attack.toConfig());
     if (this.statuses.size > 0) {
       const statusCfg = cfg.addChild('status');
       for (const s of this.statuses) statusCfg.setAttribute(s, true);
