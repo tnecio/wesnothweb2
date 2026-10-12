@@ -57,4 +57,10 @@ describe('parseDisplayPrefs', () => {
     expect(turboSpeed({ ...DEFAULT_DISPLAY_PREFS, turboSpeed: 4 })).toBe(1);
     expect(turboSpeed({ ...DEFAULT_DISPLAY_PREFS, turbo: true, turboSpeed: 4 })).toBe(4);
   });
+
+  it('Phase 27c: standing and idle animations on by default, the idle frequency clamped to -40..30', () => {
+    expect(parseDisplayPrefs(null)).toMatchObject({ standingAnimations: true, idleAnimations: true, idleAnimRate: 0 });
+    expect(parseDisplayPrefs(JSON.stringify({ standingAnimations: false, idleAnimRate: 99 }))).toMatchObject({ standingAnimations: false, idleAnimRate: 30 });
+    expect(parseDisplayPrefs(JSON.stringify({ idleAnimRate: -100 })).idleAnimRate).toBe(-40);
+  });
 });

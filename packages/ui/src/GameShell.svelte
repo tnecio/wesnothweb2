@@ -47,6 +47,7 @@
     type HexPoint,
     type UnitAnimationCue,
     type AnimationContext,
+    type UnitAnimationDef,
     HEX_STEP_MS,
     animationDurationMs,
     animationSoundFiles,
@@ -1456,9 +1457,50 @@
     // `GameSession.moveSelectedTo`), so they play at the point the WML
     // reaches them -- before whatever the `moveto`/`recruit` events they
     // trigger have to say, not after the click has fully resolved.
+    const before = session.selectedUnit;
     const message = await runPlayerAction(() => session.handleHexClick(x, y, options));
     sync(message);
+    playSelectedIfNew(before);
     await showDeferredInteractions();
+  }
+
+  /** `select_hex`'s `set_selecting`: the player's own unit, newly selected, plays its "selected" animation. */
+  function playSelectedIfNew(before: Unit | null): void {
+    const unit = session.selectedUnit;
+    if (!unit || unit === before || unit.side !== session.viewingSide || unit.side !== activeSide) return;
+    boardView?.playSelected(spriteKey({ underlyingId: session.renderKeyFor(unit), typeId: unit.type.id, x: unit.location.x, y: unit.location.y }));
+  }
+
+  /** Each type's (and variation's) own animations, parsed once (`unitAnimations` adds a unit's `new_animation`s). */
+  const typeAnimationCache = new Map<string, ReturnType<typeof parseUnitAnimations>>();
+
+  /**
+   * Phase 27c S3: a unit's standing, idle or selection animation (`unit_animation_component`), chosen as any
+   * of its animations is (`choose_animation`).
+   */
+  function ambientAnimation(snapshotUnit: SnapshotUnit, event: string): UnitAnimationDef | null {
+    const unit = session.board.allUnits().find((u) => session.renderKeyFor(u) === snapshotUnit.underlyingId);
+    if (!unit) return null;
+    const key = `${unit.type.id}|${unit.variation}`;
+    let anims = unit.newAnimations.length === 0 ? typeAnimationCache.get(key) : undefined;
+    if (!anims) {
+      anims = unitAnimations(unit);
+      if (unit.newAnimations.length === 0) typeAnimationCache.set(key, anims);
+    }
+    const context: AnimationContext = {
+      loc: unit.location,
+      secondLoc: unit.location,
+      myUnit: unit,
+      // Its direction filters see the way it is drawn facing (`displayFacing`).
+      facing: session.displayFacing(unit),
+      board: session.board,
+      event,
+      value: 0,
+      value2: 0,
+      hit: 'invalid',
+      terrainAtLoc: terrainLookup(session.board)(unit.location),
+    };
+    return chooseAnimation(anims, context) ?? null;
   }
 
   /** Whether "Continue Move" has a unit to move: the selected one, or the one under the pointer. */
@@ -3171,10 +3213,11 @@
     const unit = candidates[nextIndex]!;
     // `cycle_units`: scroll to it, then `select_hex` -- which fires `select` for the player's own unit.
     boardView?.centerOnHex(unit.location.x, unit.location.y);
+    const before = session.selectedUnit;
     void runPlayerAction(async () => {
       await session.selectUnitByPlayer(unit);
       return null;
-    }).then(async (m) => (sync(m), await showDeferredInteractions()));
+    }).then(async (m) => (sync(m), playSelectedIfNew(before), await showDeferredInteractions()));
   }
 
   /** `l` (upstream `leader`): centre the view on this side's leader, without changing the selection. */
@@ -3382,6 +3425,7 @@
         snapshot={boardSnapshot}
         onViewportResize={() => boardResizeTick++}
         onSound={(files) => audio.playSound({ files, repeats: 0, group: 'sound' })}
+        {ambientAnimation}
         {units}
         {selectedHex}
         cursorHex={cursorHex ?? armedMove}

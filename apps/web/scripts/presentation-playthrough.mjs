@@ -5,7 +5,12 @@
  *   ability with `halo_image=` changes his sprite to the modified image and draws both halos, following him
  *   when he moves.
  *
- *   node apps/web/scripts/presentation-playthrough.mjs [--base http://localhost:5173] [--only unit-effects]
+ * - standing and idle animations (S3), on Liberty 1 (Cavalrymen and Spearmen stand animated; Thugs, Footpads,
+ *   Peasants and Spearmen idle): units with a `[standing_anim]` loop it, units idle
+ *   (the frequency at its highest), a selected unit plays "selected", the frame time with and without them;
+ *   under `prefers-reduced-motion` every unit holds its `_disabled_` frame.
+ *
+ *   node apps/web/scripts/presentation-playthrough.mjs [--base http://localhost:5173] [--only unit-effects,standing-idle]
  *     [--shots <dir>]
  */
 import { chromium } from 'playwright';
@@ -25,7 +30,11 @@ function check(label, ok, detail) {
 }
 
 async function openDeadWater(page) {
-  await page.goto(`${base}/play/dead_water`);
+  await openCampaign(page, 'dead_water');
+}
+
+async function openCampaign(page, campaign) {
+  await page.goto(`${base}/play/${campaign}`);
   await skipToPlay(page);
   await waitBoardReady(page);
   await untilPlayable(page);
@@ -132,6 +141,108 @@ halo_image=halo/illuminates-aura.png
     }
     check('no page errors', errors.length === 0, errors.join(' | '));
     await page.context().close();
+  }
+  if (runs('standing-idle')) {
+    /** Every unit's rest animation and sprite texture, keyed by sprite key. */
+    const rest = (page) =>
+      page.evaluate(() => {
+        const board = window.__wesnothDebug.board();
+        const states = window.__wesnothDebug.unitSpriteStates();
+        const out = {};
+        for (const [key, visual] of board.unitVisuals) {
+          if (!visual.sprite) continue;
+          out[key] = { id: visual.lastUnit.id ?? visual.lastUnit.typeId, ambient: states[key]?.ambient ?? null, texture: visual.sprite.texture.uid };
+        }
+        return out;
+      });
+    /** Average and worst frame time over `ms`, from requestAnimationFrame. */
+    const frameTimes = (page, ms) =>
+      page.evaluate(
+        (ms) =>
+          new Promise((resolve) => {
+            const times = [];
+            let last = performance.now();
+            const end = last + ms;
+            const tick = (now) => {
+              times.push(now - last);
+              last = now;
+              if (now < end) requestAnimationFrame(tick);
+              else resolve({ avg: Math.round(times.reduce((a, b) => a + b, 0) / times.length), worst: Math.round(Math.max(...times)), frames: times.length });
+            };
+            requestAnimationFrame(tick);
+          }),
+        ms,
+      );
+    const setPrefs = (page, prefs) =>
+      page.addInitScript((prefs) => {
+        const key = 'wesnothweb2.display';
+        let current = {};
+        try {
+          current = JSON.parse(localStorage.getItem(key) ?? '{}');
+        } catch {
+          // Unreadable: start from nothing.
+        }
+        localStorage.setItem(key, JSON.stringify({ ...current, ...prefs }));
+      }, prefs);
+
+    {
+      const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      await setPrefs(page, { standingAnimations: true, idleAnimations: true, idleAnimRate: 30 });
+      await openCampaign(page, 'liberty');
+      const first = await rest(page);
+      const looping = Object.entries(first).filter(([, u]) => u.ambient?.event === 'standing' && u.ambient.durationMs > 1);
+      check('units with a standing animation loop it', looping.length > 0, looping.map(([, u]) => u.id).join(', '));
+      const changed = new Set();
+      let idled = null;
+      for (let i = 0; i < 40; i++) {
+        await page.waitForTimeout(500);
+        const now = await rest(page);
+        for (const [key] of looping) if (now[key] && now[key].texture !== first[key].texture) changed.add(key);
+        idled ??= Object.values(now).find((u) => u.ambient?.event === 'idling') ?? null;
+        if (changed.size > 0 && idled && i >= 6) break;
+      }
+      check('...their sprites change frame as it plays', changed.size > 0, `${changed.size} of ${looping.length}`);
+      const canIdle = await page.evaluate(() => {
+        const board = window.__wesnothDebug.board();
+        return [...board.unitVisuals.values()].filter((v) => board.ambientSource?.(v.lastUnit, 'idling')).map((v) => v.lastUnit.typeId);
+      });
+      check('a unit with an idle animation plays it (frequency at its highest)', canIdle.length === 0 || idled !== null, `can idle: ${canIdle.join(', ') || 'none'}; idled: ${idled?.id ?? 'none'}`);
+      // Selecting the leader: his "selected" animation (the white pulse), then standing again.
+      const leader = await page.evaluate(() => {
+        const s = window.__wesnoth.session;
+        const k = s.board.allUnits().find((u) => u.side === s.viewingSide && u.canRecruit);
+        return { x: k.location.x, y: k.location.y, id: k.id };
+      });
+      await page.evaluate(({ x, y }) => window.__wesnoth.clickHex(x, y), leader);
+      let selected = false;
+      for (let i = 0; i < 20 && !selected; i++) {
+        await page.waitForTimeout(50);
+        selected = Object.values(await rest(page)).some((u) => u.id === leader.id && u.ambient?.event === 'selected');
+      }
+      check('a selected unit plays "selected"', selected);
+      await page.waitForTimeout(1000);
+      const after = Object.values(await rest(page)).find((u) => u.id === leader.id);
+      check('...and stands again after it', after?.ambient?.event === 'standing', JSON.stringify(after?.ambient));
+      await page.keyboard.press('Escape');
+      const on = await frameTimes(page, 5000);
+      await page.evaluate(() => window.__wesnothDebug.board().setAmbientAnimations(null, { standing: false, idle: false, idleRate: 0 }));
+      const off = await frameTimes(page, 5000);
+      check('frame time with standing animations stays close to without', on.avg <= off.avg * 1.25 + 4, `on ${JSON.stringify(on)}, off ${JSON.stringify(off)}`);
+      check('no page errors', errors.length === 0, errors.join(' | '));
+      await page.context().close();
+    }
+    {
+      const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' })).newPage();
+      await openCampaign(page, 'liberty');
+      const first = await rest(page);
+      await page.waitForTimeout(3000);
+      const later = await rest(page);
+      const still = Object.entries(later).every(([key, u]) => u.ambient?.event === '_disabled_' && u.texture === first[key]?.texture);
+      check('under reduced motion every unit holds its _disabled_ frame', still, JSON.stringify(Object.values(later).slice(0, 3)));
+      await page.context().close();
+    }
   }
 } finally {
   await browser.close();

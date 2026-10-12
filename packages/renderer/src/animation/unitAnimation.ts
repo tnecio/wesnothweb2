@@ -265,6 +265,12 @@ export interface UnitAnimationDef {
    * way would be a guess, not a port of a real mechanism.
    */
   readonly usesDefaultMovementOffset: boolean;
+  /**
+   * `cycles=` (`particle::cycles_`): the frames loop for as long as the animation runs -- every
+   * `[standing_anim]` (`add_anims` sets it, and `<prefix>_cycles` on its sub-frames), and a synthesised
+   * "victory". A looping animation is finished as soon as it starts (`animation_finished_potential`).
+   */
+  readonly cycles: boolean;
 }
 
 function buildAnimationDef(branch: AnimBranch, events: readonly string[], baseScoreDelta = 0): UnitAnimationDef {
@@ -308,6 +314,7 @@ function buildAnimationDef(branch: AnimBranch, events: readonly string[], baseSc
     particles,
     animationParams: buildFrameFields(branchCfg, totalDurationMs),
     usesDefaultMovementOffset: false,
+    cycles: branchCfg.getBoolean('cycles', false),
   };
 }
 
@@ -513,10 +520,15 @@ function addAnims(unitTypeCfg: WmlConfig): UnitAnimationDef[] {
 
   // standing_anim registers under BOTH "standing" and "default" (add_anims
   // ~L667-715: standing animations double as the fallback default).
-  forTag('standing_anim', (branch) => [
-    buildAnimationDef(branch, ['standing']),
-    buildAnimationDef(branch, ['default']),
-  ]);
+  forTag('standing_anim', (branch) => {
+    // `add_anims`: a standing animation cycles, and so does each of its sub-frame particles.
+    const attrs = new Map(branch.attrs).set('cycles', 'yes');
+    for (const { tag } of branch.children) if (tag !== 'frame' && tag.endsWith('_frame')) attrs.set(`${tag.slice(0, -'frame'.length)}cycles`, 'yes');
+    const cycling = { attrs, children: branch.children };
+    const fallback = buildAnimationDef(cycling, ['default']);
+    standingDefaults.add(fallback);
+    return [buildAnimationDef(cycling, ['standing']), fallback];
+  });
 
   forTag('healing_anim', (branch) => [buildAnimationDef(
     bhas(branch, 'damage') ? { attrs: new Map(branch.attrs).set('value', battr(branch, 'damage')!), children: branch.children } : branch,
@@ -552,8 +564,41 @@ function addAnims(unitTypeCfg: WmlConfig): UnitAnimationDef[] {
   return out;
 }
 
+/**
+ * The "default" animations this port registers for each `[standing_anim]` (upstream's own second loop over
+ * them builds the config and never adds it, so `fill_initial_animations`' `animation_base` does not have them).
+ */
+const standingDefaults = new WeakSet<UnitAnimationDef>();
+
+/** A one-frame animation of `image` lasting `durationMs` (`frame_builder().image(...).duration(...)`). */
+function staticImageAnimation(image: string, events: readonly string[], baseScore: number, durationMs: number, frameCfg: WmlConfig = new WmlConfig()): UnitAnimationDef {
+  const frame = frameCfg.clone().setAttribute('duration', durationMs);
+  if (image) frame.setAttribute('image', image);
+  return buildAnimationDef({ attrs: new Map(), children: [{ tag: 'frame', config: frame }] }, events, baseScore);
+}
+
 /** The part of `fill_initial_animations` ported: a type's fallback default, defend flash and "recruited" fade. */
 function fillInitialAnimations(unitTypeCfg: WmlConfig, out: UnitAnimationDef[]): void {
+  // Upstream's `animation_base`: the "default" animations (an `[animation] apply_to=default`), else the type's
+  // image as a 1 ms frame. "standing", "selected" and the disabled forms are built from them.
+  const image = unitTypeCfg.getString('image', '');
+  const upstreamBase = out.filter((a) => a.events.includes('default') && !standingDefaults.has(a)).map((a) => ({ ...a, baseScore: a.baseScore + DEFAULT_ANIM }));
+  if (upstreamBase.length === 0) upstreamBase.push(staticImageAnimation(image, [], DEFAULT_ANIM, 1));
+  const whitePulse = new WmlConfig().setAttribute('blend_ratio', '0.0~0.3:100,0.3~0.0:200').setAttribute('blend_color', '255,255,255');
+  out.push(staticImageAnimation(image, ['_disabled_'], 0, 1));
+  out.push(staticImageAnimation(image, ['_disabled_selected_'], 0, 300, whitePulse));
+  const pulse = buildFrameFields(whitePulse, 300);
+  for (const base of upstreamBase) {
+    out.push({ ...base, events: ['standing'] });
+    // `override(0, 300ms, UNSET, "", "0.0~0.3:100,0.3~0.0:200", white)`.
+    out.push({
+      ...base,
+      events: ['selected'],
+      frames: framesForDuration(base.frames, 300),
+      animationParams: { ...base.animationParams, durationMs: 300, blendRatio: pulse.blendRatio, blendColor: pulse.blendColor },
+    });
+  }
+
   // Fallback: a unit type with no [standing_anim] at all still needs
   // *something* to match "default"/"standing" against (fill_initial_
   // animations' no-animation_base branch, animation.cpp ~L517-521).
@@ -743,17 +788,17 @@ export function matchAnimation(anim: UnitAnimationDef, ctx: AnimationContext, op
   }
 
   if (anim.directions.length > 0) {
-    if (!anim.directions.includes(ctx.myUnit.facing)) return MATCH_FAIL;
+    if (!anim.directions.includes(ctx.facing ?? ctx.myUnit.facing)) return MATCH_FAIL;
     result++;
   }
   for (const filter of anim.unitFilters) {
-    if (!unitMatchesFilter(ctx.myUnit, filter)) return MATCH_FAIL;
+    if (!unitMatchesFilter(ctx.myUnit, filter, ctx.board)) return MATCH_FAIL;
     result++;
   }
   if (anim.secondaryUnitFilters.length > 0) {
     if (!ctx.secondUnit) return MATCH_FAIL;
     for (const filter of anim.secondaryUnitFilters) {
-      if (!unitMatchesFilter(ctx.secondUnit, filter)) return MATCH_FAIL;
+      if (!unitMatchesFilter(ctx.secondUnit, filter, ctx.board)) return MATCH_FAIL;
       result++;
     }
   }

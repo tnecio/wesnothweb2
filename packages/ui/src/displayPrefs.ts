@@ -27,6 +27,8 @@
  *    - `showCombat` (`show_combat`, on): attack and death animations;
  *    - `askDelete` (`ask_delete`, on): deleting a save asks first;
  *    - `showAttackMissIndicator` (`show_attack_miss_indicator`, off): "miss" floats over a missed unit;
+ *    - Phase 27c: `standingAnimations` (`unit_standing_animations`, on), `idleAnimations` (`idle_anim`, on) and
+ *      `idleAnimRate` (`idle_anim_rate`, -40..30, 0): units' standing loops and their random idle animations;
  *    - `monteCarlo` (`damage_prediction_allow_monte_carlo_simulation`, on).
  *    The auto-save limit (`auto_save_max`) stays where Phase 26 keeps it, with the saves.
  *
@@ -66,6 +68,9 @@ export interface DisplayPrefs {
   askDelete: boolean;
   showAttackMissIndicator: boolean;
   monteCarlo: boolean;
+  standingAnimations: boolean;
+  idleAnimations: boolean;
+  idleAnimRate: number;
 }
 
 /** The Accelerated speed slider's steps (`preferences_dialog`'s `accl_speeds_`). */
@@ -95,7 +100,13 @@ export const DEFAULT_DISPLAY_PREFS: Readonly<DisplayPrefs> = {
   askDelete: true,
   showAttackMissIndicator: false,
   monteCarlo: true,
+  standingAnimations: true,
+  idleAnimations: true,
+  idleAnimRate: 0,
 };
+
+/** The idle animation frequency slider's range (`idle_anim_frequency`). */
+export const IDLE_ANIM_RATE_RANGE: readonly [number, number] = [-40, 30];
 
 export const DISPLAY_PREFS_KEY = 'wesnothweb2.display';
 
@@ -144,6 +155,12 @@ export function parseDisplayPrefs(raw: string | null | undefined): DisplayPrefs 
     askDelete: bool(data['askDelete'], d.askDelete),
     showAttackMissIndicator: bool(data['showAttackMissIndicator'], d.showAttackMissIndicator),
     monteCarlo: bool(data['monteCarlo'], d.monteCarlo),
+    standingAnimations: bool(data['standingAnimations'], d.standingAnimations),
+    idleAnimations: bool(data['idleAnimations'], d.idleAnimations),
+    idleAnimRate:
+      typeof data['idleAnimRate'] === 'number' && Number.isFinite(data['idleAnimRate'])
+        ? Math.min(IDLE_ANIM_RATE_RANGE[1], Math.max(IDLE_ANIM_RATE_RANGE[0], Math.round(data['idleAnimRate'])))
+        : d.idleAnimRate,
   };
 }
 

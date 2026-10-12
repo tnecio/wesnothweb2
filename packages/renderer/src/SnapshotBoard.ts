@@ -83,8 +83,10 @@ import { ImageCache, setImageBaseUrl, setEngineImageBaseUrl } from './images/Ima
 import { joinRef } from './images/ipf.js';
 import { resolveSideColorId, sideColorRgb } from './images/teamColor.js';
 import { squareParentheticalSplit } from './animation/frame.js';
-import { sampleAnimation, animationTimeline, animationSoundCues, sampleParticles, sampleUnitHalo, type OverlaySample, type SoundCue } from './animation/playback.js';
+import { sampleAnimation, animationTimeline, animationSoundCues, animationDurationMs, sampleParticles, sampleUnitHalo, type OverlaySample, type SoundCue } from './animation/playback.js';
 import { HEX_STEP_MS, type UnitAnimationDef } from './animation/unitAnimation.js';
+import { nextIdleTick, type AmbientAnimationPrefs, type AmbientAnimationSource, type AmbientAnimationEvent } from './animation/ambient.js';
+export { nextIdleTick, type AmbientAnimationPrefs, type AmbientAnimationSource, type AmbientAnimationEvent } from './animation/ambient.js';
 import { LABEL_FONT_SIZE, parseHaloFrames, type MapItemPoint, type MapLabelPoint } from './mapItems.js';
 import { layerAnimates, makeLayerSprite, type TerrainAnimation } from './terrainPositioning.js';
 import { ownTerrainGraphicsRules, type BuildingRule } from './terrain/terrainGraphicsRules.js';
@@ -352,6 +354,15 @@ interface UnitVisual {
   lastOrbRef: string | null;
   /** `SnapshotUnit.imageMods` this visual was last built from -- `playAnimations` adds them to every frame. */
   imageMods: string;
+  /**
+   * Phase 27c S3: the animation the unit plays at rest (`unit_animation_component`'s `anim_`): its standing
+   * loop, an idle animation or the selection pulse (`forget`: back to standing once finished). Null until
+   * the ambient driver starts one; `nextIdle` is when it next idles (`next_idling_`), `cues` how many
+   * `playAnimations` beats are animating it now (the driver leaves it alone meanwhile).
+   */
+  ambient: { event: AmbientAnimationEvent; anim: UnitAnimationDef | null; start: number; forget: boolean; sounds: SoundCue[]; nextSound: number } | null;
+  nextIdle: number;
+  cues: number;
   /** The unit's halos (`SnapshotUnit.halos`) in `unitHaloLayer`, following `container`; `halosKey` is what they show. */
   halo: PIXI.Container | null;
   halosKey: string;
@@ -375,6 +386,8 @@ export interface UnitSpriteState {
   image: string;
   x: number;
   y: number;
+  /** Its rest animation (Phase 27c S3): the event, and how long that animation is. */
+  ambient: { event: string; durationMs: number } | null;
   /** How many halos the unit has drawn, and where (they follow the unit). */
   halos: number;
   haloAt: { x: number; y: number } | null;
@@ -383,6 +396,11 @@ export interface UnitSpriteState {
 /** 0-based engine (x,y) -> 1-based renderer HexCoord -- see module doc comment. */
 function toHexCoord(x: number, y: number): HexCoord {
   return { x: x + 1, y: y + 1 };
+}
+
+/** `unit::incapacitated`: petrified. */
+function isIncapacitated(unit: SnapshotUnit): boolean {
+  return unit.statuses?.includes('petrified') ?? false;
 }
 
 /** Mirrors `sampleAnimation`'s own direction-to-hflip rule (frame.ts): art is authored facing "rightward," and the two leftward hex directions reuse it mirrored rather than being drawn separately. Shared here so the idle sprite mirrors the exact same way a combat/movement frame already does. */
@@ -609,6 +627,11 @@ export class SnapshotBoard {
   private readonly itemHaloLayer = new PIXI.Container();
   /** Units' halos (`SnapshotUnit.halos`): above the units, as upstream's halo manager draws them, each following its unit. */
   private readonly unitHaloLayer = new PIXI.Container();
+  /** Phase 27c S3: where units' rest animations come from, and the preferences that govern them (`setAmbientAnimations`). */
+  private ambientSource: AmbientAnimationSource | null = null;
+  private ambientPrefs: AmbientAnimationPrefs = { standing: true, idle: true, idleRate: 0 };
+  /** `freezeAmbientAnimations`: every unit shows its standing animation's first frame, for a capture. */
+  private ambientFrozen = false;
   private itemsUpdate: Promise<void> = Promise.resolve();
   /** Map labels (`terrain_label`, drawn as floating labels over the map): above fog and the time-of-day tint. */
   private readonly labelLayer = new PIXI.Container();
@@ -825,6 +848,8 @@ export class SnapshotBoard {
         visual.halo.visible = !visual.container.destroyed && visual.container.visible;
       }
     };
+    // Phase 27c S3: each frame, the units at rest play their standing, idle or selection animations.
+    this.unitLayer.onRender = () => this.tickAmbient(this.ambientFrozen ? 0 : performance.now());
     this.labelLayer.eventMode = 'none';
     this.moveInfoLayer.eventMode = 'none';
     this.hoverLayer.eventMode = 'none';
@@ -1291,6 +1316,9 @@ export class SnapshotBoard {
       orbIcon: null,
       lastOrbRef: null,
       imageMods: unit.imageMods ?? '',
+      ambient: null,
+      nextIdle: 0,
+      cues: 0,
       halo: null,
       halosKey: '',
       flagRgb: unit.flagRgb,
@@ -1795,6 +1823,102 @@ export class SnapshotBoard {
   }
 
   /**
+   * Phase 27c S3: where the units' rest animations come from, and upstream's preferences for them. Changing
+   * them restarts every unit's standing animation (`display::reset_standing_animations`).
+   */
+  setAmbientAnimations(source: AmbientAnimationSource | null, prefs: AmbientAnimationPrefs): void {
+    this.ambientSource = source;
+    this.ambientPrefs = { ...prefs };
+    for (const visual of this.unitVisuals.values()) visual.ambient = null;
+  }
+
+  /** For a capture: every unit back to the first frame of its standing animation, and held there. */
+  freezeAmbientAnimations(): void {
+    this.ambientFrozen = true;
+    for (const visual of this.unitVisuals.values()) visual.ambient = null;
+    this.tickAmbient(0);
+  }
+
+  /** `set_selecting`: the unit plays its "selected" animation (with standing animations off, `_disabled_selected_`). */
+  playSelected(key: string): void {
+    const visual = this.unitVisuals.get(key);
+    if (!visual || visual.container.destroyed || visual.cues > 0) return;
+    const event = this.ambientPrefs.standing && !isIncapacitated(visual.lastUnit) ? 'selected' : '_disabled_selected_';
+    this.startAmbient(visual, event, true, performance.now());
+  }
+
+  /** `start_animation` for a rest animation: a missing one leaves the current one (or starts standing). */
+  private startAmbient(visual: UnitVisual, event: AmbientAnimationEvent, forget: boolean, now: number): void {
+    const anim = this.ambientSource?.(visual.lastUnit, event) ?? null;
+    if (!anim && visual.ambient) return;
+    visual.ambient = { event, anim, start: now, forget, sounds: anim && forget ? animationSoundCues(anim) : [], nextSound: 0 };
+    visual.nextIdle = nextIdleTick(now, this.ambientPrefs);
+  }
+
+  /** `set_standing`. */
+  private startStanding(visual: UnitVisual, now: number): void {
+    const event = this.ambientPrefs.standing && !isIncapacitated(visual.lastUnit) ? 'standing' : '_disabled_';
+    const anim = this.ambientSource?.(visual.lastUnit, event) ?? null;
+    visual.ambient = { event, anim, start: now, forget: false, sounds: [], nextSound: 0 };
+    visual.nextIdle = nextIdleTick(now, this.ambientPrefs);
+  }
+
+  /**
+   * `unit_animation_component::refresh` and the drawing of the frame, for every unit not in a beat of
+   * `playAnimations`: a finished idle or selection animation gives way to standing; a standing unit idles
+   * when its time comes (or, if it was away longer than a second past it, picks a new time, so units do not
+   * all idle at once); then the frame's image, mirroring, alpha and blend are put on the sprite.
+   */
+  private tickAmbient(now: number): void {
+    if (!this.ambientSource) return;
+    for (const visual of this.unitVisuals.values()) {
+      if (visual.container.destroyed || visual.cues > 0 || !visual.sprite) continue;
+      if (!visual.ambient) this.startStanding(visual, now);
+      const ambient = visual.ambient!;
+      const anim = ambient.anim;
+      const elapsed = now - ambient.start;
+      const finished = !anim || anim.cycles || elapsed >= animationDurationMs(anim);
+      if (ambient.forget && finished) {
+        this.startStanding(visual, now);
+      } else if (!ambient.forget && now >= visual.nextIdle && !isIncapacitated(visual.lastUnit)) {
+        if (now > visual.nextIdle + 1000) visual.nextIdle = nextIdleTick(now, this.ambientPrefs);
+        else this.startAmbient(visual, 'idling', true, now);
+      }
+      this.drawAmbientFrame(visual, now);
+    }
+  }
+
+  private drawAmbientFrame(visual: UnitVisual, now: number): void {
+    const ambient = visual.ambient;
+    const anim = ambient?.anim;
+    const sprite = visual.sprite;
+    if (!ambient || !anim || !sprite) return;
+    const duration = Math.max(1, animationDurationMs(anim));
+    const elapsed = now - ambient.start;
+    const t = anim.cycles ? elapsed % duration : Math.min(elapsed, duration);
+    while (ambient.nextSound < ambient.sounds.length && ambient.sounds[ambient.nextSound]!.atMs <= anim.startTimeMs + t) {
+      this.soundSink?.(ambient.sounds[ambient.nextSound]!.files);
+      ambient.nextSound++;
+    }
+    const hex = hexToPixel(toHexCoord(visual.lastUnit.x, visual.lastUnit.y));
+    const sample = sampleAnimation(anim, visual.lastUnit.facing ?? Direction.Indeterminate, t, hex, hex);
+    if (sample.imagePath) {
+      const ref = this.teamColoredRef(sample.imagePath, visual.lastSide, visual.flagRgb, visual.imageMods);
+      const texture = ImageCache.getRef(ref);
+      if (texture) {
+        if (sprite.texture !== texture) sprite.texture = texture;
+      } else {
+        void ImageCache.resolve(ref);
+      }
+    }
+    sprite.scale.x = sample.hflip ? -Math.abs(sprite.scale.x) : Math.abs(sprite.scale.x);
+    sprite.alpha = sample.alpha;
+    visual.container.x = sample.x;
+    visual.container.y = sample.y;
+    this.applyBlend(visual, sample.blendRatio, sample.blendColor);
+  }
+
+  /**
    * The unit's halos (`units/drawer.cpp`: `image_halo() + TC_image_mods()`, then each of `halo_abilities()`),
    * each cycling its frames as a map item's halo does, centred on the unit in `unitHaloLayer`. Rebuilt only when
    * the halos or the side's colour change.
@@ -1898,163 +2022,172 @@ export class SnapshotBoard {
       .filter((a): a is NonNullable<typeof a> => a !== null);
 
     if (active.length === 0) return;
+    // Phase 27c S3: the rest animations leave these units alone for the beat, and start over after it.
+    for (const { visual } of active) visual.cues++;
+    try {
 
-    // bugs6.md (particles): every animation of a beat runs on one clock on
-    // which hits land at 0 -- `unit_animator::start_animations` starts them
-    // all at the earliest `begin=` among them, so an attack's missile
-    // arrives, and the defender flinches, on the blow. `clockStart` is that
-    // earliest start; grouped movement cues keep their own 0-based clock.
-    const timelines = active.flatMap((a) => (a.timeline ? [a.timeline] : []));
-    const clockStart = timelines.length > 0 ? Math.min(...timelines.map((t) => t.startMs)) : 0;
-    const timed = active.map((a) => {
-      const internalMs = a.grouped
-        ? a.legPixels!.length * HEX_STEP_MS
-        : a.timeline
-          ? a.timeline.endMs - clockStart
-          : defaultDurationMs;
-      return { ...a, duration: Math.max(1, internalMs / speedMultiplier), sounds: soundCuesFor(a.cue, a.grouped ? a.legPixels!.length : 0), nextSound: 0 };
-    });
+      // bugs6.md (particles): every animation of a beat runs on one clock on
+      // which hits land at 0 -- `unit_animator::start_animations` starts them
+      // all at the earliest `begin=` among them, so an attack's missile
+      // arrives, and the defender flinches, on the blow. `clockStart` is that
+      // earliest start; grouped movement cues keep their own 0-based clock.
+      const timelines = active.flatMap((a) => (a.timeline ? [a.timeline] : []));
+      const clockStart = timelines.length > 0 ? Math.min(...timelines.map((t) => t.startMs)) : 0;
+      const timed = active.map((a) => {
+        const internalMs = a.grouped
+          ? a.legPixels!.length * HEX_STEP_MS
+          : a.timeline
+            ? a.timeline.endMs - clockStart
+            : defaultDurationMs;
+        return { ...a, duration: Math.max(1, internalMs / speedMultiplier), sounds: soundCuesFor(a.cue, a.grouped ? a.legPixels!.length : 0), nextSound: 0 };
+      });
 
-    // Pre-resolve every real texture this playback will need up front, so
-    // no frame swap stalls on a still-loading image mid-animation.
-    // Phase 28a P0: the time this takes is an animation's start latency (measure-load.mjs).
-    performance.mark('anim:frames-start');
-    const isDiagonal = (d: Direction): boolean =>
-      d === Direction.NorthEast || d === Direction.SouthEast || d === Direction.NorthWest || d === Direction.SouthWest;
-    const overlayTextures = await this.preloadOverlayImages(active.flatMap((a) => (a.cue.anim ? [a.cue.anim] : [])));
-    for (const { cue, visual, legPixels } of active) {
-      if (!cue.anim) continue;
-      const paths = new Set<string>();
-      // A grouped multi-leg cue (see `UnitAnimationCue.legs`) can switch
-      // direction leg to leg (e.g. a WML-authored s/se/sw bucket covers
-      // all three) -- preload for every direction actually used, not just
-      // the cue's own first-leg `direction`.
-      const diagonalUsed = new Set<boolean>([isDiagonal(cue.direction), ...(legPixels?.map((l) => isDiagonal(l.direction)) ?? [])]);
-      for (const frame of cue.anim.frames) {
-        for (const diagonal of diagonalUsed) {
-          const seq = diagonal && frame.imageDiagonal.length > 0 ? frame.imageDiagonal : frame.image;
-          for (const step of seq) paths.add(step.value);
+      // Pre-resolve every real texture this playback will need up front, so
+      // no frame swap stalls on a still-loading image mid-animation.
+      // Phase 28a P0: the time this takes is an animation's start latency (measure-load.mjs).
+      performance.mark('anim:frames-start');
+      const isDiagonal = (d: Direction): boolean =>
+        d === Direction.NorthEast || d === Direction.SouthEast || d === Direction.NorthWest || d === Direction.SouthWest;
+      const overlayTextures = await this.preloadOverlayImages(active.flatMap((a) => (a.cue.anim ? [a.cue.anim] : [])));
+      for (const { cue, visual, legPixels } of active) {
+        if (!cue.anim) continue;
+        const paths = new Set<string>();
+        // A grouped multi-leg cue (see `UnitAnimationCue.legs`) can switch
+        // direction leg to leg (e.g. a WML-authored s/se/sw bucket covers
+        // all three) -- preload for every direction actually used, not just
+        // the cue's own first-leg `direction`.
+        const diagonalUsed = new Set<boolean>([isDiagonal(cue.direction), ...(legPixels?.map((l) => isDiagonal(l.direction)) ?? [])]);
+        for (const frame of cue.anim.frames) {
+          for (const diagonal of diagonalUsed) {
+            const seq = diagonal && frame.imageDiagonal.length > 0 ? frame.imageDiagonal : frame.image;
+            for (const step of seq) paths.add(step.value);
+          }
         }
+        await Promise.all([...paths].map((p) => ImageCache.resolve(this.teamColoredRef(p, visual.lastSide, visual.flagRgb, visual.imageMods))));
       }
-      await Promise.all([...paths].map((p) => ImageCache.resolve(this.teamColoredRef(p, visual.lastSide, visual.flagRgb, visual.imageMods))));
-    }
-    performance.measure('anim:frames', 'anim:frames-start');
+      performance.measure('anim:frames', 'anim:frames-start');
 
-    const totalMs = Math.max(...timed.map((a) => a.duration));
-    const start = performance.now();
-    const overlayPool: PIXI.Sprite[] = [];
+      const totalMs = Math.max(...timed.map((a) => a.duration));
+      const start = performance.now();
+      const overlayPool: PIXI.Sprite[] = [];
 
-    await new Promise<void>((resolve) => {
-      const tick = async (): Promise<void> => {
-        const skipped = this.skipGeneration !== skipAt;
-        const elapsed = skipped ? totalMs : performance.now() - start;
-        const overlays: OverlaySample[] = [];
+      await new Promise<void>((resolve) => {
+        const tick = async (): Promise<void> => {
+          const skipped = this.skipGeneration !== skipAt;
+          const elapsed = skipped ? totalMs : performance.now() - start;
+          const overlays: OverlaySample[] = [];
 
-        for (const entry of timed) {
-          const { cue, visual, src, dst, legPixels, duration, grouped } = entry;
-          // A visual replaced mid-animation (the unit changed or left -- e.g.
-          // the dialogue it plays under was advanced): nothing left to move.
-          // Touching it would throw and leave this promise unresolved.
-          if (visual.container.destroyed) continue;
-          const t = Math.min(elapsed, duration);
-          // Phase 19: frame sounds start when their frame first draws.
-          const soundClock = grouped && cue.anim ? t * speedMultiplier + cue.anim.startTimeMs : clockStart + t * speedMultiplier;
-          while (entry.nextSound < entry.sounds.length && entry.sounds[entry.nextSound]!.atMs <= soundClock) {
-            if (!skipped) this.soundSink?.(entry.sounds[entry.nextSound]!.files);
-            entry.nextSound++;
-          }
-          if (cue.anim) {
-            // `t` is wall-clock time (already compressed by speedMultiplier);
-            // scale it back up to the animation's own real internal
-            // timeline so a real anim's frame/offset progression plays
-            // faster, not truncated -- see this method's own doc comment.
-            // `absT` is that time on the shared clock (see `clockStart`);
-            // `animT` the same relative to this animation's own `[frame]`s.
-            const absT = grouped ? t * speedMultiplier + cue.anim.startTimeMs : clockStart + t * speedMultiplier;
-            const animT = Math.max(0, absT - cue.anim.startTimeMs);
-            // A grouped multi-leg cue samples ONE continuously-running
-            // animation across every hex (see `UnitAnimationCue.legs`'
-            // own doc comment) -- `animT` keeps counting up across the
-            // whole group (so the default offset's ramp and the frame
-            // images both progress naturally, exactly as the single
-            // reused instance they're modelling would), but which hex
-            // pair to interpolate position against switches every
-            // `HEX_STEP_MS`.
-            let curSrc = src;
-            let curDst = dst;
-            let curDirection = cue.direction;
-            if (legPixels && legPixels.length > 0) {
-              const legIndex = Math.min(Math.floor(animT / HEX_STEP_MS), legPixels.length - 1);
-              const leg = legPixels[legIndex]!;
-              curSrc = leg.src;
-              curDst = leg.dst;
-              curDirection = leg.direction;
-            }
-            const sample = sampleAnimation(cue.anim, curDirection, animT, curSrc, curDst);
-            if (sample.imagePath) {
-              const texture = await ImageCache.resolve(this.teamColoredRef(sample.imagePath, visual.lastSide, visual.flagRgb, visual.imageMods));
-              if (visual.container.destroyed) continue;
-              if (texture && visual.sprite && visual.sprite.texture !== texture) visual.sprite.texture = texture;
-            }
-            if (visual.sprite) {
-              visual.sprite.scale.x = sample.hflip ? -Math.abs(visual.sprite.scale.x) : Math.abs(visual.sprite.scale.x);
-              visual.sprite.alpha = sample.alpha;
-            }
-            visual.container.x = sample.x;
-            visual.container.y = sample.y;
-            this.applyBlend(visual, sample.blendRatio, sample.blendColor);
-            // Upstream takes a frame's facing from src->dst, so an in-place
-            // animation has none (no mirroring of its halos).
-            const inPlace = curSrc.x === curDst.x && curSrc.y === curDst.y;
-            const overlayDirection = inPlace ? Direction.Indeterminate : curDirection;
-            const halo = sampleUnitHalo(cue.anim, overlayDirection, absT, sample);
-            if (halo) overlays.push(halo);
-            overlays.push(...sampleParticles(cue.anim, overlayDirection, absT, curSrc, curDst));
-          } else if (!cue.holdInPlace && (cue.srcHex.x !== cue.dstHex.x || cue.srcHex.y !== cue.dstHex.y)) {
-            // No real anim: a synthetic beat appropriate to what this cue
-            // means. `restAt: 'dst'` (movement) glides straight there,
-            // offset 0 -> 1 over the full duration; the default (`'src'`,
-            // an attack lunge/reaction) bounces out partway and back:
-            // 0 -> 0.35 -> 0. `holdInPlace` (recruit cues) skips this
-            // entirely -- see its own doc comment.
-            const offset =
-              cue.restAt === 'dst'
-                ? t / duration
-                : t <= duration / 2
-                  ? (t / (duration / 2)) * 0.35
-                  : 0.35 * (1 - (t - duration / 2) / (duration / 2));
-            visual.container.x = offset * dst.x + (1 - offset) * src.x;
-            visual.container.y = offset * dst.y + (1 - offset) * src.y;
-          }
-          // A recruit is kept hidden until its animation draws (see `ensureUnitVisual`) -- shown only
-          // once this frame's image and alpha are on it.
-          visual.container.visible = true;
-        }
-
-        this.drawOverlays(overlayPool, elapsed >= totalMs ? [] : overlays, overlayTextures);
-
-        if (elapsed >= totalMs) {
-          for (const sprite of overlayPool) sprite.destroy();
-          // Settle each sprite at its own real resting hex -- `dst` for a
-          // `restAt: 'dst'` cue (movement: the unit's real new hex), `src`
-          // otherwise (attack: both the attacker's lunge-and-return and
-          // the defender's in-place reaction end where they started).
-          for (const { cue, visual, src, dst } of active) {
+          for (const entry of timed) {
+            const { cue, visual, src, dst, legPixels, duration, grouped } = entry;
+            // A visual replaced mid-animation (the unit changed or left -- e.g.
+            // the dialogue it plays under was advanced): nothing left to move.
+            // Touching it would throw and leave this promise unresolved.
             if (visual.container.destroyed) continue;
-            const rest = cue.restAt === 'dst' ? dst : src;
-            visual.container.x = rest.x;
-            visual.container.y = rest.y;
+            const t = Math.min(elapsed, duration);
+            // Phase 19: frame sounds start when their frame first draws.
+            const soundClock = grouped && cue.anim ? t * speedMultiplier + cue.anim.startTimeMs : clockStart + t * speedMultiplier;
+            while (entry.nextSound < entry.sounds.length && entry.sounds[entry.nextSound]!.atMs <= soundClock) {
+              if (!skipped) this.soundSink?.(entry.sounds[entry.nextSound]!.files);
+              entry.nextSound++;
+            }
+            if (cue.anim) {
+              // `t` is wall-clock time (already compressed by speedMultiplier);
+              // scale it back up to the animation's own real internal
+              // timeline so a real anim's frame/offset progression plays
+              // faster, not truncated -- see this method's own doc comment.
+              // `absT` is that time on the shared clock (see `clockStart`);
+              // `animT` the same relative to this animation's own `[frame]`s.
+              const absT = grouped ? t * speedMultiplier + cue.anim.startTimeMs : clockStart + t * speedMultiplier;
+              const animT = Math.max(0, absT - cue.anim.startTimeMs);
+              // A grouped multi-leg cue samples ONE continuously-running
+              // animation across every hex (see `UnitAnimationCue.legs`'
+              // own doc comment) -- `animT` keeps counting up across the
+              // whole group (so the default offset's ramp and the frame
+              // images both progress naturally, exactly as the single
+              // reused instance they're modelling would), but which hex
+              // pair to interpolate position against switches every
+              // `HEX_STEP_MS`.
+              let curSrc = src;
+              let curDst = dst;
+              let curDirection = cue.direction;
+              if (legPixels && legPixels.length > 0) {
+                const legIndex = Math.min(Math.floor(animT / HEX_STEP_MS), legPixels.length - 1);
+                const leg = legPixels[legIndex]!;
+                curSrc = leg.src;
+                curDst = leg.dst;
+                curDirection = leg.direction;
+              }
+              const sample = sampleAnimation(cue.anim, curDirection, animT, curSrc, curDst);
+              if (sample.imagePath) {
+                const texture = await ImageCache.resolve(this.teamColoredRef(sample.imagePath, visual.lastSide, visual.flagRgb, visual.imageMods));
+                if (visual.container.destroyed) continue;
+                if (texture && visual.sprite && visual.sprite.texture !== texture) visual.sprite.texture = texture;
+              }
+              if (visual.sprite) {
+                visual.sprite.scale.x = sample.hflip ? -Math.abs(visual.sprite.scale.x) : Math.abs(visual.sprite.scale.x);
+                visual.sprite.alpha = sample.alpha;
+              }
+              visual.container.x = sample.x;
+              visual.container.y = sample.y;
+              this.applyBlend(visual, sample.blendRatio, sample.blendColor);
+              // Upstream takes a frame's facing from src->dst, so an in-place
+              // animation has none (no mirroring of its halos).
+              const inPlace = curSrc.x === curDst.x && curSrc.y === curDst.y;
+              const overlayDirection = inPlace ? Direction.Indeterminate : curDirection;
+              const halo = sampleUnitHalo(cue.anim, overlayDirection, absT, sample);
+              if (halo) overlays.push(halo);
+              overlays.push(...sampleParticles(cue.anim, overlayDirection, absT, curSrc, curDst));
+            } else if (!cue.holdInPlace && (cue.srcHex.x !== cue.dstHex.x || cue.srcHex.y !== cue.dstHex.y)) {
+              // No real anim: a synthetic beat appropriate to what this cue
+              // means. `restAt: 'dst'` (movement) glides straight there,
+              // offset 0 -> 1 over the full duration; the default (`'src'`,
+              // an attack lunge/reaction) bounces out partway and back:
+              // 0 -> 0.35 -> 0. `holdInPlace` (recruit cues) skips this
+              // entirely -- see its own doc comment.
+              const offset =
+                cue.restAt === 'dst'
+                  ? t / duration
+                  : t <= duration / 2
+                    ? (t / (duration / 2)) * 0.35
+                    : 0.35 * (1 - (t - duration / 2) / (duration / 2));
+              visual.container.x = offset * dst.x + (1 - offset) * src.x;
+              visual.container.y = offset * dst.y + (1 - offset) * src.y;
+            }
+            // A recruit is kept hidden until its animation draws (see `ensureUnitVisual`) -- shown only
+            // once this frame's image and alpha are on it.
             visual.container.visible = true;
-            if (visual.sprite) visual.sprite.alpha = 1;
-            if (visual.overlay) visual.overlay.alpha = 0;
           }
-          resolve();
-          return;
-        }
+
+          this.drawOverlays(overlayPool, elapsed >= totalMs ? [] : overlays, overlayTextures);
+
+          if (elapsed >= totalMs) {
+            for (const sprite of overlayPool) sprite.destroy();
+            // Settle each sprite at its own real resting hex -- `dst` for a
+            // `restAt: 'dst'` cue (movement: the unit's real new hex), `src`
+            // otherwise (attack: both the attacker's lunge-and-return and
+            // the defender's in-place reaction end where they started).
+            for (const { cue, visual, src, dst } of active) {
+              if (visual.container.destroyed) continue;
+              const rest = cue.restAt === 'dst' ? dst : src;
+              visual.container.x = rest.x;
+              visual.container.y = rest.y;
+              visual.container.visible = true;
+              if (visual.sprite) visual.sprite.alpha = 1;
+              if (visual.overlay) visual.overlay.alpha = 0;
+            }
+            resolve();
+            return;
+          }
+          requestAnimationFrame(() => void tick());
+        };
         requestAnimationFrame(() => void tick());
-      };
-      requestAnimationFrame(() => void tick());
-    });
+      });
+    } finally {
+      for (const { visual } of active) {
+        visual.cues--;
+        visual.ambient = null;
+      }
+    }
   }
 
   /** Every missile/halo image `anims` can show (see `sampleParticles`/`sampleUnitHalo`), fetched up front so no frame waits on the network. */
@@ -2267,6 +2400,7 @@ export class SnapshotBoard {
         x: Math.round(visual.container.x),
         y: Math.round(visual.container.y),
         halos: visual.halo && !visual.halo.destroyed ? visual.halo.children.length : 0,
+        ambient: visual.ambient ? { event: visual.ambient.event, durationMs: visual.ambient.anim ? animationDurationMs(visual.ambient.anim) : 0 } : null,
         haloAt: visual.halo && !visual.halo.destroyed ? { x: Math.round(visual.halo.x), y: Math.round(visual.halo.y) } : null,
       };
     }

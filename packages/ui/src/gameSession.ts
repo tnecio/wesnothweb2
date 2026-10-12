@@ -3340,7 +3340,7 @@ export class GameSession {
       typeId: unit.type.id,
       image: this.unitImage(unit),
       flagRgb: this.snapshot.unitTypes[unit.type.id]?.flagRgb,
-      facing: unit.facing,
+      facing: this.displayFacing(unit),
       side: unit.side,
       x,
       y,
@@ -3388,6 +3388,16 @@ export class GameSession {
 
   /** `rawUnitTypeConfig`'s variation sub-types, built once each. */
   private readonly variationConfigs = new Map<string, WmlConfigJson | undefined>();
+
+  /**
+   * The way `unit` is drawn facing. Upstream gives a unit created without `facing=` a random direction
+   * (`get_random_direction`); the engine here leaves it Indeterminate, so the board shows a stand-in that is
+   * stable per unit -- a direction is what picks its standing and idle animations' `[if] direction=` branch.
+   */
+  displayFacing(unit: Unit): Direction {
+    if (unit.facing !== Direction.Indeterminate) return unit.facing;
+    return (Math.imul(this.renderKeyFor(unit), 2654435761) >>> 0) % 6;
+  }
 
   /**
    * The map sprite for `unit`: its variation's `image=` when it has one (a dwarf-shaped corpse), else its type's

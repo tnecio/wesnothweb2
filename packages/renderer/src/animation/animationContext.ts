@@ -19,7 +19,7 @@
 
 import type { AttackBlowResult, AttackResult } from '@wesnothweb2/engine/src/actions/combat.js';
 import type { GameBoard } from '@wesnothweb2/engine/src/model/GameBoard.js';
-import { Location } from '@wesnothweb2/engine/src/model/Location.js';
+import { Location, type Direction } from '@wesnothweb2/engine/src/model/Location.js';
 import type { TerrainCode } from '@wesnothweb2/engine/src/model/Terrain.js';
 import type { AttackType } from '@wesnothweb2/engine/src/model/UnitType.js';
 import type { Unit } from '@wesnothweb2/engine/src/model/Unit.js';
@@ -45,6 +45,10 @@ export interface AnimationContext {
   readonly secondAttack?: AttackType;
   readonly terrainAtLoc: TerrainCode;
   readonly secondUnit?: Unit;
+  /** The way the unit is drawn facing, when not its own `facing` (a stand-in for an Indeterminate one). */
+  readonly facing?: Direction;
+  /** The board, for unit filters that look around (`[filter_adjacent]`, as `STANDARD_IDLE_FILTER`'s). */
+  readonly board?: GameBoard;
 }
 
 /** Looks up the terrain at `loc` on `board`'s map — the "board/terrain lookup" `matches_headless` needs beyond what combat/move results carry. */

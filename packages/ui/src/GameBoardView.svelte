@@ -67,6 +67,7 @@
     edgeScrollAmount,
     type View,
     type ScrollType,
+    type AmbientAnimationSource,
   } from '@wesnothweb2/renderer';
   import { displayPrefs, prefersReducedMotion, turboSpeed } from './displayPrefs.js';
   import type { TimeOfDayEntry } from '@wesnothweb2/engine';
@@ -88,6 +89,7 @@
     labels = [],
     timeOfDay = undefined,
     onSound,
+    ambientAnimation,
     onHexClick,
     onHexRightClick,
     onHexHoverChange,
@@ -139,6 +141,8 @@
     labels?: readonly { x: number; y: number; text: string; color: string }[];
     /** Phase 19: a frame sound (`sound=`) starts in an animation being played -- a comma list, one of which is picked. */
     onSound?: (files: string) => void;
+    /** Phase 27c S3: a unit's standing, idle and selection animations (see `SnapshotBoard.setAmbientAnimations`). */
+    ambientAnimation?: AmbientAnimationSource;
     /** The current global ToD's red=/green=/blue= colour shift -- see `SnapshotBoard.updateTimeOfDayTint`. Omit for no tint (a scenario with no [time] schedule). */
     timeOfDay?: Pick<TimeOfDayEntry, 'red' | 'green' | 'blue'>;
     /** A click or tap on hex (x, y). `touch` (Phase 23): it was a finger (or pen), which may want a confirming second tap. */
@@ -724,6 +728,22 @@
     void board?.setGridVisible(grid);
   });
 
+  // Phase 27c S3: units' standing and idle animations, as the preferences say -- none under reduced motion.
+  $effect(() => {
+    const prefs = displayPrefs.value;
+    const still = prefersReducedMotion();
+    board?.setAmbientAnimations(ambientAnimation ?? null, {
+      standing: prefs.standingAnimations && !still,
+      idle: prefs.idleAnimations && !still,
+      idleRate: prefs.idleAnimRate,
+    });
+  });
+
+  /** `set_selecting`: the unit `key` plays its "selected" animation. */
+  export function playSelected(key: string): void {
+    board?.playSelected(key);
+  }
+
   // Phase 24: "Team color indicators", "Animate map" and "Animate water" take effect at once.
   $effect(() => {
     const prefs = displayPrefs.value;
@@ -865,6 +885,7 @@
       if (node instanceof PIXI.AnimatedSprite) node.gotoAndStop(0);
       for (const child of node.children) visit(child as PIXI.Container);
     };
+    board.freezeAmbientAnimations();
     visit(board.stage);
     pixiApp.render();
     return true;
