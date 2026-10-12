@@ -411,7 +411,7 @@ export class AiContext {
     if (outcome.moved) {
       if (removeMovement && unit.movesLeft > 0) {
         if (commands) commands.stopUnit(unit, true, false);
-        else unit.movesLeft = 0;
+        else unit.removeMovementAi();
       }
       this.bumpGamestateChange();
       this.host.pump();
@@ -522,7 +522,7 @@ export class AiContext {
     if (this.host.commands) {
       this.host.commands.stopUnit(unit, movement, attacks);
     } else {
-      if (movement) unit.movesLeft = 0;
+      if (movement) unit.removeMovementAi();
       if (attacks) unit.attacksLeft = 0;
     }
     this.bumpGamestateChange();

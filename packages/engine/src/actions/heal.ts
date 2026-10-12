@@ -1,47 +1,18 @@
 /**
- * TS port of upstream's `actions/heal.cpp` (`calculate_healing`): the
- * start-of-side-turn healing/poison-damage pass over every unit on the
- * board.
- *
- * Deliberately simplified vs. upstream's full ability-evaluation version
- * (`heal_amount`/`poison_progress`, which run `unit_abilities::effect`
- * over every `heals`/`regenerate` ability in range with full filter/
- * `active_on`/adjacency evaluation): this project's abilities are inert
- * raw `WmlConfig` data everywhere else too (see `UnitType.ts`'s and
- * `combatStats.ts`'s module doc comments), so this module reads
- * `[heals]`/`[regenerate]` `[abilities]` entries **unconditionally** --
- * present on an adjacent unit's type (for `heals`) or the patient's own
- * type (for `regenerate`) means active, with no `[filter]`/
- * `[filter_adjacent]`/race/alignment/time-of-day conditions evaluated.
- * Concretely:
- *  - `heals`: any unit within one hex whose type has a `[heals]` ability
- *    heals *allied* (same-side, matching `heal_amount`'s "only this side's
- *    healers heal now" rule -- a healer only heals units on `side`, the
- *    side currently taking its turn) units by that ability's `value=`
- *    (poison curing is `[heals] poison=cured` -- also read directly).
- *    Multiple simultaneous healers don't stack (matches upstream: `heal_
- *    amount` takes the single largest value via `update_healing`).
- *  - `regenerate`: the patient's own type having a `[regenerate]` ability
- *    grants its `value=` as self-healing (and optionally poison curing),
- *    unconditional on anything except being the patient's own turn.
- *  - Allied (non-same-side, non-enemy) healers/regenerators are correctly
- *    restricted to *slowing* poison progression rather than curing it,
- *    mirroring `poison_progress`'s ally-vs-own-side distinction -- this
- *    part of the real rule *is* preserved since it only needs side/team
- *    data already on hand, not ability filter evaluation.
- *  - Resting/full-health rest-heal (`rest_heal_amount`) and poison damage
- *    (`poison_amount`) are ported exactly (no ability evaluation needed).
+ * A port of upstream's `actions/heal.cpp` (`calculate_healing`): the start-of-side-turn healing and poison pass
+ * over every unit on the board. Phase 27b: `heals` and `regenerate` go through the ability pipeline
+ * (`get_abilities`, `unit_abilities::effect`), so their filters, `[affect_adjacent]` and `affect_allies=` count.
  */
 
-import { getAdjacentTiles } from '../model/Location.js';
 import type { GameBoard } from '../model/GameBoard.js';
 import type { Unit } from '../model/Unit.js';
-import type { WmlConfig } from '../wml/config.js';
 import { POISON_AMOUNT, REST_HEAL_AMOUNT } from './gameConfig.js';
+import { abilityEffect, getAbilities } from './abilities.js';
 
 type PoisonStatus = 'normal' | 'slowed' | 'cured';
 
-function poisonStatusRank(status: string): PoisonStatus {
+/** `poison_status`. */
+function poisonStatus(status: string): PoisonStatus {
   if (status === 'cured') return 'cured';
   if (status === 'slowed') return 'slowed';
   return 'normal';
@@ -59,71 +30,51 @@ export interface HealOutcome {
   readonly healers: readonly Unit[];
 }
 
-/**
- * Every `[tag]` ability this unit's type has, by TAG NAME (`heals`,
- * `regenerate`) -- not by the ability's own `id=` attribute. Real content's
- * `id=` is a *display* id, not a type discriminator: the real `heals`-tag
- * registry entries (`heals_4`/`heals_8`/`cures`) all set `id=healing` or
- * `id=curing`, never literally `id=heals` -- matching by tag is what
- * upstream itself does (`tag_name == "heals"`, `src/units/abilities.cpp`).
- * Real bug this fixes: every real healer using the common `abilities_list=`
- * shorthand (e.g. Dead Water's Cylanna, a real Mermaid Priestess --
- * `abilities_list=heals_8,cures`) was previously invisible to this
- * function's old `id === 'heals'` check even after `specials_list=`/
- * `abilities_list=` resolution was added, because the resolved ability's
- * `id=` is "healing"/"curing", not "heals".
- */
-function hasAbility(unit: Unit, tag: string): WmlConfig[] {
-  return unit.abilities.filter((a) => a.tag === tag).map((a) => a.config);
-}
-
-/** Mirrors `poison_progress`: how far (if at all) `patient`'s poison is being treated this side's turn. */
+/** `poison_progress`: how far `patient`'s poison is treated on `side`'s turn, and the unit curing it, if any. */
 function poisonProgress(board: GameBoard, side: number, patient: Unit): { status: PoisonStatus; healers: Unit[] } {
   const healers: Unit[] = [];
   let curing: PoisonStatus = 'normal';
-
-  if (patient.side === side && board.map.givesHealing(patient.location) > 0) {
-    return { status: 'cured', healers };
-  }
-
   if (patient.side === side) {
-    for (const regen of hasAbility(patient, 'regenerate')) {
-      const status = poisonStatusRank(regen.getString('poison', ''));
+    // Village healing?
+    if (board.map.givesHealing(patient.location) > 0) return { status: 'cured', healers };
+    // Regeneration?
+    for (const regen of getAbilities(board, patient, 'regenerate').items) {
+      const status = poisonStatus(regen.ability.cfg.getString('poison', ''));
       if (poisonRank(status) > poisonRank(curing)) curing = status;
       if (curing === 'cured') return { status: 'cured', healers };
     }
   }
 
+  // Look through the healers to find a curer.
   let curer: Unit | undefined;
-  for (const adj of getAdjacentTiles(patient.location)) {
-    const healer = board.unitAt(adj);
-    if (!healer) continue;
-    const healAbilities = hasAbility(healer, 'heals');
-    if (healAbilities.length === 0) continue;
-    let thisCure = poisonStatusRank(healAbilities[0]!.getString('poison', ''));
+  const team = board.getTeam(side);
+  for (const heal of getAbilities(board, patient, 'heals').items) {
+    let thisCure = poisonStatus(heal.ability.cfg.getString('poison', ''));
     if (poisonRank(thisCure) <= poisonRank(curing)) continue;
-
-    const healerTeam = board.getTeam(healer.side);
-    const patientTeam = board.getTeam(side);
-    if (healerTeam && patientTeam && patientTeam.isEnemy(healerTeam)) continue;
-    if (healer.side !== side) thisCure = 'slowed';
-
+    const cureUnit = board.unitAt(heal.teacherLoc);
+    if (!cureUnit) continue;
+    // Healers on the current side can cure poison (for any side); allies of the current side can only slow
+    // it (for the current side); enemies can do nothing.
+    const cureTeam = board.getTeam(cureUnit.side);
+    if (cureTeam && team && cureTeam.isEnemy(team)) continue;
+    if (cureUnit.side !== side) thisCure = 'slowed';
     if (thisCure === 'cured') {
-      return { status: 'cured', healers: [healer] };
+      healers.push(cureUnit);
+      return { status: 'cured', healers };
     }
-    curer = healer;
+    curer = cureUnit;
     curing = thisCure;
   }
   if (curer) healers.push(curer);
   return { status: curing, healers };
 }
 
-/** Mirrors `heal_amount`: the (uncapped) amount `patient` heals this side's turn from village/regenerate/heals sources, plus any contributing healers. */
+/** `heal_amount`: how much `patient` heals on `side`'s turn (a village, regeneration, this side's healers), and the healers. */
 function healAmount(board: GameBoard, side: number, patient: Unit): { amount: number; healers: Unit[] } {
   let healing = 0;
   let harming = 0;
   const healers: Unit[] = [];
-
+  /** `update_healing`. */
   const update = (value: number): boolean => {
     if (value > healing) {
       healing = value;
@@ -138,28 +89,18 @@ function healAmount(board: GameBoard, side: number, patient: Unit): { amount: nu
 
   if (patient.side === side) {
     update(board.map.givesHealing(patient.location));
-    for (const regen of hasAbility(patient, 'regenerate')) {
-      update(regen.getNumber('value', 0));
-    }
+    update(abilityEffect(getAbilities(board, patient, 'regenerate'), 0).compositeValue);
   }
 
-  let bestHealValue = 0;
-  let bestHealer: Unit | undefined;
-  for (const adj of getAdjacentTiles(patient.location)) {
-    const healer = board.unitAt(adj);
-    if (!healer || healer.side !== side) continue;
-    for (const heal of hasAbility(healer, 'heals')) {
-      const value = heal.getNumber('value', 0);
-      if (value > bestHealValue || bestHealer === undefined) {
-        bestHealValue = value;
-        bestHealer = healer;
-      }
+  // Healers not on this side do not heal now.
+  const healList = getAbilities(board, patient, 'heals').filter((i) => board.unitAt(i.teacherLoc)?.side === side);
+  const healEffect = abilityEffect(healList, 0);
+  if (update(healEffect.compositeValue)) {
+    for (const e of healEffect.effects) {
+      const healer = board.unitAt(e.loc);
+      if (healer) healers.push(healer);
     }
   }
-  if (bestHealer && update(bestHealValue)) {
-    healers.push(bestHealer);
-  }
-
   return { amount: healing + harming, healers };
 }
 

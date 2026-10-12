@@ -15,8 +15,8 @@ import type { Unit } from '../../model/Unit.js';
 import type { WmlConfig } from '../../wml/config.js';
 import { unitMatchesFilter } from '../../events/filter.js';
 import { isUnitVisibleToTeam } from '../../pathfind/visibility.js';
-import { isBackstabActive } from '../../actions/combat.js';
-import { getActiveAbilities, computeAbilityEffect } from '../../actions/abilityEffects.js';
+import { backstabCheck } from '../../actions/combat.js';
+import { getAbilityBool, underLeadership } from '../../actions/abilities.js';
 import { calculateMoves, type MoveMap } from '../moveMaps.js';
 import { powerProjection } from '../powerProjection.js';
 import type { AiContext } from '../context.js';
@@ -31,9 +31,7 @@ export interface AnalyzeTargetsOptions {
 
 /** Mirrors `contexts.cpp`'s `under_leadership(unit, loc)`: the leadership bonus `unit` would get if it stood at the (possibly hypothetical) `loc`, not necessarily its current location. */
 function leadershipBonusAt(board: GameBoard, unit: Unit, loc: Location): number {
-  const abilities = getActiveAbilities(board, unit, 'leadership', loc);
-  if (abilities.length === 0) return 0;
-  return computeAbilityEffect(abilities, 0, unit);
+  return underLeadership(board, unit, loc);
 }
 
 /** Mirrors `aspect_attacks_base::rate_terrain` (`aspect_attacks.cpp:335-363`). */
@@ -46,10 +44,7 @@ export function rateTerrain(board: GameBoard, unit: Unit, loc: Location): number
   const neutralVillageValue = 10;
   const enemyVillageValue = 15;
 
-  // Upstream checks `u.get_ability_bool("regenerate", loc)` (location-aware); this port's ability model has no
-  // per-location filter evaluation yet, so it falls back to "has the regenerate ability at all" -- matches
-  // `caHealing.ts`'s own established convention for the same ability.
-  if (board.map.givesHealing(loc) > 0 && !unit.abilities.some((a) => a.tag === 'regenerate')) {
+  if (board.map.givesHealing(loc) > 0 && !getAbilityBool(board, unit, 'regenerate', loc)) {
     rating += healingValue;
   }
 
@@ -156,12 +151,11 @@ function doAttackAnalysis(
       let backstabBonus = 1;
       let surroundBonus = 1.0;
       const oppositeTile = tiles[(j + 3) % 6]!;
-      if (!oppositeTile.equals(currentUnit) && isBackstabActive(board, tile, loc)) {
+      const oppositeUnit = oppositeTile.equals(currentUnit) ? undefined : board.unitAt(oppositeTile);
+      if (oppositeUnit && backstabCheck(board, tile, loc)) {
         if (backstab) backstabBonus = 2;
-        const oppositeUnit = board.unitAt(oppositeTile);
-        if (oppositeUnit && !oppositeUnit.abilities.some((a) => a.tag === 'skirmisher')) {
-          surroundBonus = 1.2;
-        }
+        // No surround bonus if target is skirmisher (upstream asks the unit on the far side).
+        if (!getAbilityBool(board, oppositeUnit, 'skirmisher')) surroundBonus = 1.2;
       }
 
       const rating = Math.trunc(rateTerrain(board, unit, tile) * backstabBonus * leadershipBonus);

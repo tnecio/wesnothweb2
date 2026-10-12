@@ -23,12 +23,8 @@
 
 import { getAdjacentTiles, type Location } from '../../model/Location.js';
 import type { GameBoard } from '../../model/GameBoard.js';
-import type { Unit } from '../../model/Unit.js';
-import type { UnitStatsOptions } from '../../actions/combatStats.js';
-import { buildBattleContext, chooseDefenderWeaponIndex, betterCombat } from '../../actions/combatStats.js';
-import { Combatant, simulateCombat } from '../../actions/attackPrediction.js';
-import { isBackstabActive } from '../../actions/combat.js';
-import { computeLeadershipBonus, computeResistanceModifier } from '../../actions/abilityEffects.js';
+import { buildBattleContext, chooseAttackerWeapon } from '../../actions/combatStats.js';
+import { Combatant } from '../../actions/attackPrediction.js';
 import { POISON_AMOUNT, killXp, combatXp } from '../../actions/gameConfig.js';
 import type { MoveMap } from '../moveMaps.js';
 import type { AiContext } from '../context.js';
@@ -36,62 +32,6 @@ import type { AiContext } from '../context.js';
 export interface AttackMovement {
   readonly from: Location;
   readonly to: Location;
-}
-
-/**
- * Mirrors `battle_context::choose_attacker_weapon` (`src/actions/attack.
- * cpp:415-466`): tries every weapon of `attacker` with a positive
- * `attackWeight`, picking the best-for-the-attacker `(attacker weapon,
- * defender counter)` pairing via `betterCombat` (harmWeight = 1 -
- * aggression). Not ported: the `disable` short-circuit (a weapon special
- * that disables itself against a given counter -- not modelled by this
- * port's simplified specials, see `combatStats.ts`'s own module doc
- * comment).
- */
-export function chooseAttackerWeapon(
-  attacker: Unit,
-  defender: Unit,
-  distance: number,
-  attackerTerrainDefense: number,
-  defenderTerrainDefense: number,
-  aggression: number,
-  options: UnitStatsOptions,
-): { readonly attackerWeaponIndex: number; readonly defenderWeaponIndex: number } | undefined {
-  const harmWeight = 1.0 - aggression;
-  let best:
-    | { attackerWeaponIndex: number; defenderWeaponIndex: number; attacker: Combatant; defender: Combatant; weight: number }
-    | undefined;
-
-  attacker.attacks.forEach((weapon, index) => {
-    if (weapon.attackWeight <= 0) return;
-    const defenderWeaponIndex = chooseDefenderWeaponIndex(
-      attacker,
-      index,
-      defender,
-      distance,
-      attackerTerrainDefense,
-      defenderTerrainDefense,
-      options,
-    );
-    const defenderWeapon = defenderWeaponIndex >= 0 ? defender.attacks[defenderWeaponIndex] : undefined;
-    const { attacker: aStats, defender: dStats } = buildBattleContext({
-      attacker,
-      attackerWeapon: weapon,
-      defender,
-      defenderWeapon,
-      distance,
-      attackerTerrainDefense,
-      defenderTerrainDefense,
-      options,
-    });
-    const { attacker: aCombatant, defender: dCombatant } = simulateCombat(aStats, dStats);
-
-    if (!best || betterCombat(aCombatant, dCombatant, weapon.attackWeight, best.attacker, best.defender, best.weight, harmWeight)) {
-      best = { attackerWeaponIndex: index, defenderWeaponIndex, attacker: aCombatant, defender: dCombatant, weight: weapon.attackWeight };
-    }
-  });
-
-  return best;
 }
 
 export class AttackAnalysis {
@@ -193,37 +133,13 @@ export class AttackAnalysis {
           mAggression = ctx.getLeaderAggression();
         }
 
-        const distance = 1;
-        const attackerTerrainDefense = up.defenseModifier(board.map.getTerrain(m.to));
-        const defenderTerrainDefense = defendUnit.defenseModifier(board.map.getTerrain(this.target));
-        const baseOptions: UnitStatsOptions = {
-          backstabActive: isBackstabActive(board, m.to, this.target),
-          attackerLeadershipBonus: computeLeadershipBonus(board, up),
-          defenderLeadershipBonus: computeLeadershipBonus(board, defendUnit),
-        };
-
-        const choice = chooseAttackerWeapon(up, defendUnit, distance, attackerTerrainDefense, defenderTerrainDefense, mAggression, baseOptions);
-        if (!choice) continue;
+        // `battle_context(units, m.second, target, -1, -1, aggression, prev_def)`: the unit is now at its attack hex.
+        const choice = chooseAttackerWeapon({ board, attacker: up, defender: defendUnit, prevDef }, 1.0 - mAggression);
+        if (choice.attackerWeaponIndex < 0) continue;
 
         const attackerWeapon = up.attacks[choice.attackerWeaponIndex]!;
         const defenderWeapon = choice.defenderWeaponIndex >= 0 ? defendUnit.attacks[choice.defenderWeaponIndex] : undefined;
-
-        const { attacker: aStats, defender: dStats } = buildBattleContext({
-          attacker: up,
-          attackerWeapon,
-          defender: defendUnit,
-          defenderWeapon,
-          distance,
-          attackerTerrainDefense,
-          defenderTerrainDefense,
-          options: {
-            ...baseOptions,
-            attackerResistanceModifier: computeResistanceModifier(board, defendUnit, attackerWeapon.type, false, this.target),
-            defenderResistanceModifier: defenderWeapon
-              ? computeResistanceModifier(board, up, defenderWeapon.type, true, m.to)
-              : undefined,
-          },
-        });
+        const { attacker: aStats, defender: dStats } = buildBattleContext({ board, attacker: up, attackerWeapon, defender: defendUnit, defenderWeapon });
 
         const att = new Combatant(aStats);
         const def = new Combatant(dStats, prevDef);

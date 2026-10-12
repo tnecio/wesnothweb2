@@ -576,3 +576,52 @@ describe('gui.show_dialog', () => {
     expect(vars.getNumber('button')).toBe(0);
   });
 });
+
+describe('wesnoth.game_events (Phase 27b: intf_add_event and kin)', () => {
+  const fire = (pump: EventPump, name: string) => runFlow(pump.ctx.fireNow(name), autoRespond);
+
+  it('add: an action function, run each time when first_time_only=false, with the event context', () => {
+    const { run, pump, vars } = setup();
+    run(`[lua]
+      code=<< wesnoth.game_events.add{ name = "ping", first_time_only = false, action = function()
+        wml.variables.count = (wml.variables.count or 0) + 1
+        wml.variables.seen = wesnoth.current.event_context.name
+      end } >>
+    [/lua]`);
+    fire(pump, 'ping');
+    fire(pump, 'ping');
+    expect([vars.getNumber('count'), vars.getString('seen')]).toEqual([2, 'ping']);
+  });
+
+  it('add: a function filter, and WML filters in named keys', () => {
+    const { run, pump, vars } = setup();
+    run(`[lua]
+      code=<< wesnoth.game_events.add{ name = "ping", first_time_only = false,
+        filter = function() return wml.variables.open == true end,
+        action = function() wml.variables.ran = true end }
+      wesnoth.game_events.add{ name = "pong", first_time_only = false,
+        filter = { condition = { wml.tag.variable { name = "open", boolean_equals = true } } },
+        action = function() wml.variables.ponged = true end } >>
+    [/lua]`);
+    fire(pump, 'ping');
+    fire(pump, 'pong');
+    expect([vars.get('ran'), vars.get('ponged')]).toEqual([undefined, undefined]);
+    vars.set('open', true);
+    fire(pump, 'ping');
+    fire(pump, 'pong');
+    expect([vars.get('ran'), vars.get('ponged')]).toEqual([true, true]);
+  });
+
+  it('add_repeating, remove, and on_event', () => {
+    const { run, pump, vars } = setup();
+    run(`[lua]
+      code=<< wesnoth.game_events.add{ id = "once", name = "ping", first_time_only = false, action = function() wml.variables.byid = true end }
+      wesnoth.game_events.remove("once")
+      wesnoth.game_events.add_repeating("ping", function() wml.variables.repeating = (wml.variables.repeating or 0) + 1 end)
+      local on_event = wesnoth.require("on_event")
+      on_event("ping", function(ctx) wml.variables.on_event = ctx.name end) >>
+    [/lua]`);
+    fire(pump, 'ping');
+    expect([vars.get('byid'), vars.getNumber('repeating'), vars.getString('on_event')]).toEqual([undefined, 1, 'ping']);
+  });
+});

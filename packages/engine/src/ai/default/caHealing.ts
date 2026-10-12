@@ -11,6 +11,7 @@ import type { Location } from '../../model/Location.js';
 import type { Unit } from '../../model/Unit.js';
 import { findPath } from '../../pathfind/pathfind.js';
 import { POISON_AMOUNT } from '../../actions/gameConfig.js';
+import { getAbilityBool } from '../../actions/abilities.js';
 import { CandidateAction } from '../composite/rca.js';
 
 export class HealingCandidateAction extends CandidateAction {
@@ -24,7 +25,7 @@ export class HealingCandidateAction extends CandidateAction {
     for (const unit of board.unitsForSide(this.ctx.side)) {
       if (this.ctx.isPassiveLeader(unit.id)) continue;
       if (!this.isAllowedUnit(unit)) continue;
-      if (unit.abilities.some((a) => a.tag === 'regenerate')) continue;
+      if (getAbilityBool(board, unit, 'regenerate')) continue;
       const damaged = unit.hitpoints < unit.maxHitpoints - POISON_AMOUNT / 2;
       if (!damaged && !unit.poisoned) continue;
 

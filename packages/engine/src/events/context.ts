@@ -177,6 +177,19 @@ export class ActionRegistry {
  * `resources::gamedata`, `wml.variables`) bundled into one explicit,
  * headless-safe object instead of module-level singletons.
  */
+/** One handler `wesnoth.game_events.add` registers (see `EventContext.addNativeEvent`). */
+export interface NativeEventSpec {
+  readonly name: string;
+  readonly id: string;
+  readonly repeatable: boolean;
+  readonly priority: number;
+  /** `[filter]`, `[filter_second]`, `[filter_attack]`... as children. */
+  readonly filters: WmlConfig;
+  readonly content: WmlConfig;
+  readonly action?: (content: WmlConfig) => Flow;
+  readonly filter?: () => boolean;
+}
+
 export interface EventContext {
   board: GameBoard;
   /** The scenario's live ToD schedule -- `[time_area]`/`[remove_time_area]`/`[replace_schedule]` mutate it in place (see `todWml.ts`). */
@@ -269,6 +282,9 @@ export interface EventContext {
   loc2: Location;
   /** The `queued_event`'s own `data` config (e.g. weapon info for combat events) -- opaque here, not yet consumed by any ported tag. */
   eventData: WmlConfig;
+  /** The event being handled: its name (standardized) and the id it was fired by, if any (`queued_event`). */
+  eventName?: string;
+  eventId?: string;
   exit: ExitState;
   /** Set by `[endlevel]` (first firing wins); the session ends the scenario when it sees this. */
   endLevel?: EndLevelState;
@@ -305,6 +321,12 @@ export interface EventContext {
   setUndoable: (undoable: boolean) => void;
   /** `wesnoth.game_events.add_wml`: registers an `[event]` at run time (a nested `[event]` tag). False if rejected (no name/id, or a duplicate id). */
   addEvent: (cfg: WmlConfig) => boolean;
+  /**
+   * `manager::add_event_handler_from_lua` (`wesnoth.game_events.add` and kin): a handler whose filters are
+   * `filters`' children, whose action is `action` called with `content` (or, without one, `content` run as
+   * ActionWML), and with an optional function filter. Not saved, as upstream.
+   */
+  addNativeEvent: (spec: NativeEventSpec) => boolean;
   /** `wesnoth.game_events.remove`: the handler with this id stops handling events (`[remove_event]`). */
   removeEvent: (id: string) => void;
   /**

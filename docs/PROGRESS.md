@@ -6625,3 +6625,36 @@ the rest fail on generic specials, which are 27b's.
 
 **Assessment:** 688 items done (was 665), 176 partial, 39 missing. Correction to 20.1/20.2: saves had been
 losing a side's `[modify_side]` changes; the bugs table now lists only 27b's items.
+
+## 2026-10-12: Phase 27b -- the ability and special pipeline
+
+A port of upstream's `units/abilities.cpp` and the special half of `units/attack_type.cpp`
+(`packages/engine/src/actions/abilities.ts`), replacing the readings of mainline specials by `id=`.
+
+**What it covers:**
+- **S1, abilities:** `unit_ability_t` (with `do_compat_fixes`), `foreach_active_ability`, `[affect_adjacent]`
+  (radius, directions, filter), affect_self/allies/enemies, the recursion guard, `[filter_ability]`, and
+  `unit_abilities::effect` (priority groups, value/add/sub/multiply/divide, cumulative, `[filter_base_value]`,
+  max/min_value, formulas with `base_value`, `student`, `other`). Leadership, resistance, `[defense]`,
+  teleport, skirmisher (per hex), hides and illumination (with the terrain's own `light=`) use it.
+- **S2-S3, specials and combat:** `specials_context_t` (apply_to=, active_on=, the built-in immunities, every
+  filter including `[filter_weapon]`, overwrite_specials=) and `battle_context_unit_stats`. Backstab is its real
+  `[filter_opponent]` formula, charge its `apply_to=both`, a campaign's own specials work. The weapon choosers
+  (`choose_defender_weapon`, `choose_attacker_weapon`, `fill_weapon_choices`), the AI's `attack_simulation` and
+  `refresh_bc` (stats rebuilt after every strike) are ported. An event's `[filter_attack]` sees the fight.
+- **S4, healing:** heals, cures and regenerate through the pipeline.
+- **S5, display:** specials and abilities by their active or inactive names, greyed when inactive; the weapon
+  list and the weapon offered first as upstream's.
+
+**Found and fixed on the way:**
+- Core's own Lua abilities (the Ghast's feeding, stun, diversion) never ran: the port did not load core's
+  game-config `[lua]`, and lacked `wesnoth.game_events.add`, `add_repeating`, `add_menu`, `add_wml`, `remove`,
+  `fire_by_id`, which core's `on_event` and campaigns' Lua need. All are ported, with the full
+  `event_context` and `unit:add_modification`.
+- Smaller bugs upstream's tests showed: a stored unit had no `[attack]`s; `[effect] new_ability` dropped a
+  second ability sharing an id; `[unit] location_id=` was ignored; a blank number read as 0; berserk 0 did not
+  fight to the death; `[modify_unit] level=` was ignored; resting is decided at turn end (`unit::end_turn`).
+
+**Numbers:** WML conformance 332 -> 973 (`AbilitiesWML` and `Attacks` all pass but five AI-choice tests);
+completeness 688 -> 754 items done. Attack previews 0.08 ms -> 0.35 ms; AI turns no slower on
+`synth_combat_02` (1.7 s mean per turn, 2.1 s before, same winners).

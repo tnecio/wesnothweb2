@@ -10,7 +10,7 @@ import { MoveType } from '../../src/model/MoveType.js';
 import { WmlConfig } from '../../src/wml/config.js';
 import { RngDeterministic } from '../../src/rng/RngDeterministic.js';
 import { MtRng } from '../../src/rng/MtRng.js';
-import { executeAttack, isBackstabActive } from '../../src/actions/combat.js';
+import { executeAttack, backstabCheck } from '../../src/actions/combat.js';
 
 /**
  * Combat resolution tests. Full real-unit-type loading (base_unit/gender
@@ -335,7 +335,7 @@ describe('executeAttack range matching (real, reported bug: melee/ranged retalia
   });
 });
 
-/** A weapon with one real `[specials][backstab]` child, matching the real `[damage] id=backstab multiply=2` macro shape (see `wesnoth/data/core/macros/weapon_specials.cfg`). */
+/** A weapon with the real `WEAPON_SPECIAL_BACKSTAB` special (`wesnoth/data/core/macros/weapon_specials.cfg`): `[damage] multiply=2`, on offense, when an enemy of the target stands behind it. */
 function makeBackstabWeapon(damage: number): AttackType {
   const cfg = new WmlConfig();
   cfg.setAttribute('name', 'backstab-weapon');
@@ -347,11 +347,15 @@ function makeBackstabWeapon(damage: number): AttackType {
   const backstab = new WmlConfig();
   backstab.setAttribute('id', 'backstab');
   backstab.setAttribute('multiply', 2);
+  backstab.setAttribute('active_on', 'offense');
+  backstab
+    .addChild('filter_opponent')
+    .setAttribute('formula', 'enemy_of(self, flanker) and not flanker.petrified where flanker = unit_at(direction_from(loc, other.facing))');
   specials.addChild('damage', backstab);
   return AttackType.fromConfig(cfg);
 }
 
-describe('isBackstabActive / real combat backstab damage (2026-09-11: geometric proxy for the real [filter_opponent] condition)', () => {
+describe('backstabCheck, and backstab in combat through its [filter_opponent] formula', () => {
   // Wider board than makeBoard() -- needs 4 in a row (attacker, defender,
   // flanker, plus border headroom), not just 2.
   function makeRowBoard(): { board: GameBoard; terrainData: TerrainTypeData } {
@@ -371,22 +375,22 @@ describe('isBackstabActive / real combat backstab damage (2026-09-11: geometric 
     const defender = Unit.create(t, 2, new Location(1, 2));
     board.addUnit(attacker);
     board.addUnit(defender);
-    expect(isBackstabActive(board, attacker.location, defender.location)).toBe(false); // no flanker yet.
+    expect(backstabCheck(board, attacker.location, defender.location)).toBe(false); // no flanker yet.
 
     // (0,2) -> (1,2) is a SE step; on this odd-column-offset grid the SE
     // direction continued one more step from (1,2) lands on (2,3), not
     // (2,2) -- verified via Location.toCubic() diffs, not assumed.
     const enemyFlanker = Unit.create(t, 2, new Location(2, 3)); // same side as defender -- not a flank.
     board.addUnit(enemyFlanker);
-    expect(isBackstabActive(board, attacker.location, defender.location)).toBe(false);
+    expect(backstabCheck(board, attacker.location, defender.location)).toBe(false);
 
     board.removeUnitAt(enemyFlanker.location);
     const allyFlanker = Unit.create(t, 1, new Location(2, 3)); // same side as attacker -- real flank.
     board.addUnit(allyFlanker);
-    expect(isBackstabActive(board, attacker.location, defender.location)).toBe(true);
+    expect(backstabCheck(board, attacker.location, defender.location)).toBe(true);
 
     allyFlanker.setStatus('petrified', true);
-    expect(isBackstabActive(board, attacker.location, defender.location)).toBe(false); // incapacitated flanker doesn't count.
+    expect(backstabCheck(board, attacker.location, defender.location)).toBe(false); // incapacitated flanker doesn't count.
   });
 
   it('real combat: a backstab-wielding attacker deals double damage with a flanking ally present, single damage without one', () => {

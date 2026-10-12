@@ -22,7 +22,7 @@ import type { Team } from '../model/Team.js';
 import type { Unit } from '../model/Unit.js';
 import { WmlConfig } from '../wml/config.js';
 import { findLocations, unitMatchesFilter } from '../events/filter.js';
-import { getActiveAbilities } from '../actions/abilityEffects.js';
+import { getAbilities } from '../actions/abilities.js';
 import { getVisibleUnit } from './visibility.js';
 import type { TeleportGroup } from './tunnels.js';
 
@@ -83,8 +83,8 @@ export interface TeleportOptions {
  */
 export function getTeleportLocations(board: GameBoard, unit: Unit, options: TeleportOptions = {}): TeleportMap {
   const groups: TeleportGroup[] = [];
-  for (const ability of getActiveAbilities(board, unit, 'teleport')) {
-    for (const tunnel of ability.config.children('tunnel')) groups.push({ cfg: tunnel, reversed: false, id: tunnel.getString('id', '') });
+  for (const { ability } of getAbilities(board, unit, 'teleport').items) {
+    for (const tunnel of ability.cfg.children('tunnel')) groups.push({ cfg: tunnel, reversed: false, id: tunnel.getString('id', '') });
   }
   groups.push(...board.tunnels.all());
 

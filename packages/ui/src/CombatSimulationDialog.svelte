@@ -97,7 +97,7 @@
               <span class="value hit">{chanceToHitLabel(side.c)}</span>
             </div>
             {#if side.c.weapon.specials.length > 0}
-              <div class="specials-line">{side.c.weapon.specials.map((s) => s.name).join(', ')}</div>
+              <div class="specials-line">{#each side.c.weapon.specials as special, i (i)}{#if i > 0}, {/if}<span class:inactive={!special.active}>{special.name}</span>{/each}</div>
             {/if}
             {#each modifierLines(side.c) as line (line)}
               <div class="modifier-line">{line}</div>
@@ -249,5 +249,11 @@
     .columns {
       flex-direction: column;
     }
+  }
+
+  /* Phase 27b: a special or ability not active here, in upstream's `font::INACTIVE_COLOR`. */
+  .inactive,
+  .inactive :global(*) {
+    color: rgb(150, 150, 150);
   }
 </style>

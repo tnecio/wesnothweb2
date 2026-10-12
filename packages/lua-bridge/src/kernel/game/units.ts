@@ -10,6 +10,7 @@
  * Reading an unknown key falls back to `wesnoth.units` (so `u:matches{}` works) and is otherwise an error,
  * as upstream's `luaW_Registry`.
  */
+import { applyModificationEffects } from '@wesnothweb2/engine/src/model/effects.js';
 import { WmlConfig } from '@wesnothweb2/engine/src/wml/config.js';
 import { TString } from '@wesnothweb2/engine/src/i18n/tstring.js';
 import { Location, getAdjacentTiles, parseDirection, writeDirection } from '@wesnothweb2/engine/src/model/Location.js';
@@ -18,7 +19,7 @@ import { Unit } from '@wesnothweb2/engine/src/model/Unit.js';
 import type { AttackType, Alignment } from '@wesnothweb2/engine/src/model/UnitType.js';
 import { findUnits, unitMatchesFilter } from '@wesnothweb2/engine/src/events/filter.js';
 import { effectEnvFor } from '@wesnothweb2/engine/src/events/actionWml.js';
-import { getActiveAbilities, computeResistanceModifier } from '@wesnothweb2/engine/src/actions/abilityEffects.js';
+import { getAbilityBool, resistanceAgainst } from '@wesnothweb2/engine/src/actions/abilities.js';
 import { parseTerrainCode } from '@wesnothweb2/engine/src/model/Terrain.js';
 import { specialTag } from '@wesnothweb2/engine/src/model/UnitType.js';
 import {
@@ -827,7 +828,7 @@ export class LuaUnits {
       ability: (T) => {
         const unit = this.check(T, 1);
         const tag = checkString(T, 2);
-        lua.lua_pushboolean(T, getActiveAbilities(ctx().board, unit, tag).length > 0);
+        lua.lua_pushboolean(T, getAbilityBool(ctx().board, unit, tag));
         return 1;
       },
       defense_on: (T) => {
@@ -854,8 +855,22 @@ export class LuaUnits {
           attacker = toBoolean(T, 3);
           if (!lua.lua_isnoneornil(T, 4)) loc = k.checkLocation(T, 4);
         } else if (!lua.lua_isnoneornil(T, 3)) loc = k.checkLocation(T, 3);
-        lua.lua_pushinteger(T, 100 - computeResistanceModifier(ctx().board, unit, damageType, attacker, loc));
+        lua.lua_pushinteger(T, 100 - resistanceAgainst(ctx().board, unit, damageType, attacker, loc));
         return 1;
+      },
+      // `intf_add_modification`: a trait, object or advancement, recorded in [modifications] unless the fourth
+      // argument is false (then only its effects are applied).
+      add_modification: (T) => {
+        const unit = this.check(T, 1);
+        let kind = checkString(T, 2);
+        if (kind === 'advance') kind = 'advancement';
+        if (kind !== 'advancement' && kind !== 'object' && kind !== 'trait') return lauxlib.luaL_argerror(T, 2, to_luastring('unknown modification type'));
+        const writeToMods = lua.lua_isnone(T, 4) ? true : lua.lua_toboolean(T, 4);
+        const cfg = k.checkConfig(T, 3);
+        const env = effectEnvFor(ctx(), unit);
+        if (writeToMods) unit.addModification(kind, cfg, env);
+        else applyModificationEffects(unit, cfg, false, env);
+        return 0;
       },
       remove_modifications: (T) => {
         const unit = this.check(T, 1);
@@ -867,7 +882,7 @@ export class LuaUnits {
       },
     });
     this.installAnimator();
-    for (const name of ['advance', 'transform', 'teleport', 'to_recall', 'jamming_on', 'add_modification', 'get_hovered', 'create_weapon']) {
+    for (const name of ['advance', 'transform', 'teleport', 'to_recall', 'jamming_on', 'get_hovered', 'create_weapon']) {
       k.unported(['wesnoth', 'units', name]);
     }
   }

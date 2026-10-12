@@ -274,6 +274,7 @@ export function installMisc(k: LuaKernel, host: GameKernelHost, units: LuaUnits)
     })();
     return host.yieldFlow(T, flow);
   });
+  // `add` and the others are installed by the runtime (they run Lua functions as the engine's flows).
   for (const name of ['add', 'add_repeating', 'add_menu', 'add_wml', 'remove', 'fire_by_id', 'add_undo_actions', 'set_undoable']) {
     k.unported(['wesnoth', 'game_events', name]);
   }

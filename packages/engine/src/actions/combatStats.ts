@@ -1,101 +1,24 @@
 /**
- * TS port of the non-prediction half of upstream's `actions/attack.hpp`/
- * `.cpp`: turning a `(unit, weapon, opponent, opponent weapon, terrain)`
- * tuple into a `battle_context_unit_stats` (chance to hit, damage, and
- * which weapon specials are in play), plus the small standalone
- * `combat_modifier`/`generic_combat_modifier` time-of-day/alignment
- * formula and best-weapon selection (`battle_context::choose_*_weapon`).
+ * A port of the stats half of upstream's `actions/attack.cpp`: `battle_context_unit_stats` (one combatant's
+ * chance to hit, damage, strikes and specials in a fight), `battle_context`'s weapon choice
+ * (`choose_attacker_weapon`, `choose_defender_weapon`, `better_combat`), and `combat_modifier`.
  *
- * ## Weapon specials: what's evaluated, and how (read this before assuming
- * a special "just works")
- *
- * Upstream's real special/ability system (`units/abilities.cpp`'s
- * `unit_abilities::effect`, `specials_context_t`) is a general filter+
- * composition engine: each `[specials]` sub-tag can be gated by
- * `active_on`/`[filter]`/`[filter_opponent]`/adjacency, and multiple
- * matching specials combine via `add`/`sub`/`multiply`/`divide`/`set`
- * with per-id "highest wins" dedup. None of that is ported here, matching
- * this project's established stance (see `UnitType.ts`'s module doc
- * comment: abilities/specials are kept as raw, unevaluated `WmlConfig`
- * data until the WFL/Lua phases). What *is* implemented is a small,
- * direct, **unconditional** reading of the specific specials mainline
- * content actually uses for the numbers combat resolution needs, matched
- * by each special's `id=` attribute (`poison`, `slow`, `drains`,
- * `petrifies`, `firststrike`, `berserk`, `swarm`, `marksman`, `magical`,
- * `charge`, `heal_on_hit`) rather than by WML tag name as upstream's own
- * `attack_type::has_special_or_ability` does: `UnitType.ts`'s
- * `AttackType.fromConfig` (out of bounds for this task -- see the
- * `specials_list=` note below) discards each `[specials]` child's own tag
- * when building `AttackType.specials: WmlConfig[]`
- * (`specialsCfg.allChildren().map((c) => c.config)`), so the tag isn't
- * available to key off of here. `id=` is a safe substitute: every
- * canonical mainline special in `data/core/macros/weapon_specials.cfg`
- * sets `id=` to the same name as its tag (e.g. `[poison] id=poison`,
- * `[chance_to_hit] id=marksman`), so this is precise for real content --
- * just keyed differently than upstream, for a data-model reason rather
- * than a design choice.
- *
- *  - No `[filter]`/`[filter_opponent]`/`[filter_adjacent]` conditions are
- *    evaluated -- a special present on the weapon is treated as always
- *    active. This is correct for the overwhelming majority of mainline
- *    weapon specials (poison/slow/drains/petrifies/firststrike/berserk/
- *    swarm/marksman/magical carry no such filters in `data/core/macros/
- *    weapon_specials.cfg`) and wrong only for conditional ones.
- *  - **Backstab IS evaluated** (2026-09-11), as a narrow, hand-coded
- *    geometric proxy rather than a general WFL `[filter_opponent]`
- *    evaluator: `isBackstabActive` below checks whether the hex
- *    continuing in a straight line past the defender (attacker ->
- *    defender -> flanker) holds a unit hostile to the defender and not
- *    incapacitated -- matching the special's own real, plain-language
- *    `description=` ("double damage if there is an enemy of the target on
- *    the opposite side of the target"), not the full WFL formula. Callers
- *    (`GameSession.buildPreview`, `combat.ts`'s `executeAttack`) compute
- *    it themselves (they have board/location access this module
- *    deliberately doesn't) and pass it in via `UnitStatsOptions.
- *    backstabActive`.
- *  - **Leadership IS applied** (2026-09-11, `under_leadership()` upstream):
- *    a board-wide adjacency+ability scan (`abilityEffects.ts`'s
- *    `getActiveAbilities`/`computeAbilityEffect`, the new "generalized
- *    ability pipeline" module) finds any active `leadership` ability
- *    reaching a unit (its own, or an adjacent higher-level ally's) and
- *    evaluates its real `value="(25 * (level - other.level))"` WFL
- *    formula. This module still doesn't compute it itself (no board
- *    access, by design) -- callers with board access
- *    (`combat.ts`'s `executeAttack`, `GameSession.buildPreview`) compute
- *    it and pass it in via `UnitStatsOptions.attackerLeadershipBonus`/
- *    `defenderLeadershipBonus`.
- *  - **Resistance-granting abilities (steadfast) ARE applied** (2026-09-11):
- *    same `abilityEffects.ts` module, `computeResistanceModifier` --
- *    folds in any active `resistance`-tagged ability (`multiply=`/
- *    `max_value=`/`[filter_base_value]`/`active_on=`) on top of the
- *    attacked unit's own `moveType.resistanceAgainst()`. Callers pass the
- *    real value via `UnitStatsOptions.attackerResistanceModifier`/
- *    `defenderResistanceModifier`; omitting them falls back to the plain
- *    move-type value, matching the old behaviour.
- *  - **`specials_list=`/`abilities_list=` (the modern shorthand most
- *    mainline `[attack]`/`[unit_type]` tags use instead of inline
- *    `[specials]`/`[abilities]` children, e.g. `specials_list=marksman,
- *    poison`) IS resolved** (2026-09-11) against the real `[units]
- *    [weapon_specials]`/`[abilities]` registry -- see `UnitType.ts`'s
- *    `AttackType.fromConfig`/`UnitType.fromConfig` and
- *    `UnitTypeDatabase.ts`'s `collectSpecialRegistry`. A weapon/type built
- *    without passing a registry (e.g. a hand-built test fixture) simply
- *    resolves `specials_list=`/`abilities_list=` to nothing, same as
- *    before -- this module's own `id=`-based special matching (see above)
- *    needed no change, since real content's weapon-special `id=` already
- *    equals its canonical tag name whether declared inline or via the
- *    registry.
- *  - **Plague** creates a replacement unit only if the caller supplies a
- *    `resolveType` callback (see `combat.ts`); otherwise it's flagged in
- *    the result but no unit is created.
+ * Phase 27b: every special and weapon ability goes through the ability pipeline (`abilities.ts`'s
+ * `SpecialsContext`): `[damage]`, `[attacks]`, `[chance_to_hit]`, `[berserk]`, `[swarm]`, `[drains]`,
+ * `[heal_on_hit]`, `[poison]`, `[slow]`, `[petrifies]`, `[firststrike]`, `[plague]`, `[damage_type]` and
+ * `[disable]`, with their filters, `apply_to=`, `active_on=` and the opponent's specials -- so backstab is its
+ * real `[filter_opponent]` formula, charge its `apply_to=both`, and a campaign's own specials work. Leadership,
+ * resistance and `[defense]` abilities come from the same pipeline.
  */
 
-import type { WmlConfig } from '../wml/config.js';
-import { AttackType, type Alignment } from '../model/UnitType.js';
+import type { AttackType, Alignment } from '../model/UnitType.js';
 import type { Unit } from '../model/Unit.js';
+import type { GameBoard } from '../model/GameBoard.js';
+import { distanceBetween, type Location } from '../model/Location.js';
 import type { BattleContextUnitStats } from './attackPrediction.js';
 import { swarmBlows, simulateCombat, Combatant } from './attackPrediction.js';
 import { roundDamage } from './gameConfig.js';
+import { SpecialsContext, abilityEffect, defenseModifier, type SpecialsCombatant } from './abilities.js';
 
 // --- time-of-day / alignment damage modifier ---
 
@@ -132,107 +55,75 @@ export function combatModifier(lawfulBonus: number, alignment: Alignment, isFear
   return bonus;
 }
 
-// --- raw weapon-special lookup helpers (see module doc comment) ---
-
-/** All `[specials]` sub-configs on `weapon` whose `id=` is `id` (see module doc comment for why `id=`, not tag name). */
-function specialsById(weapon: AttackType, id: string): WmlConfig[] {
-  return weapon.specials.filter((s) => s.getString('id', '') === id);
-}
-
-/**
- * Exported for `packages/ui`'s combat-prediction dialogs (bugs4.md #10):
- * `buildPreview` (`gameSession.ts`) needs to know WHICH of the several
- * chance-to-hit/damage modifiers this module already folds into
- * `chanceToHit`/`damage` actually applied to a given weapon, to show a
- * real breakdown (e.g. "70% (magical)") instead of just the final number.
- */
-export function hasSpecialId(weapon: AttackType, id: string): boolean {
-  return specialsById(weapon, id).length > 0;
-}
-
-/** The highest `value=` (or `attr=`) among an id's occurrences, or `fallback` if none present. */
-function highestSpecialValue(weapon: AttackType, id: string, attr = 'value', fallback = 0): number {
-  const specials = specialsById(weapon, id);
-  if (specials.length === 0) return fallback;
-  return Math.max(...specials.map((s) => s.getNumber(attr, fallback)));
-}
-
-// --- battle_context_unit_stats construction ---
+// --- battle_context_unit_stats ---
 
 export interface UnitStatsOptions {
   /**
-   * The real ToD lawful_bonus AT THE ATTACKER'S OWN HEX (schedule +
-   * `[time_area]` + `[illuminates]`, see `actions/illumination.ts`'s
-   * `effectiveTimeOfDayAt`) -- mirrors `combat_modifier`'s per-unit
-   * `get_illuminated_time_of_day(units, map, loc)` call, which upstream
-   * makes separately for the attacker and the defender's own locations
-   * (they can differ: standing in a lit radius, or straddling a
-   * `[time_area]` boundary, changes only THAT unit's bonus). Used only
-   * when `isAttacker` is true for this call. Default 0 (neutral ToD).
+   * `lawful_bonus`: the lawful bonus at the attacker's hex (with illumination), else the board's
+   * (`GameBoard.lawfulBonusAt`), else 0. Used for the attacker's stats.
    */
   readonly attackerLawfulBonus?: number;
-  /** Same, at the defender's own hex -- used only when `isAttacker` is false for this call. */
+  /** The same, at the defender's hex, for the defender's stats. */
   readonly defenderLawfulBonus?: number;
+  /** `tod_manager::get_max_liminal_bonus`; 0 by default. */
   readonly maxLiminalBonus?: number;
-  /** Overrides the terrain-defense-derived base hit chance (mirrors the `opp_terrain_defense` optional param). */
-  readonly opponentTerrainDefense?: number;
-  /** The real geometric backstab condition for THIS attacker/defender pair, computed by the caller (see `combat.ts`'s `isBackstabActive`) -- only doubles damage when `isAttacker` is also true for this call. Default false. */
-  readonly backstabActive?: boolean;
-  /** The attacker's own `leadership`-ability damage bonus percentage (`abilityEffects.ts`'s `computeLeadershipBonus`), used only when `isAttacker` is true for this call. Default 0. */
-  readonly attackerLeadershipBonus?: number;
-  /** Same, for the defender (used only when `isAttacker` is false for this call). */
-  readonly defenderLeadershipBonus?: number;
-  /** Overrides `opponent.resistanceAgainst(weapon.type)` with the real ability-aware value (`abilityEffects.ts`'s `computeResistanceModifier`, e.g. Dwarvish steadfast) for the attacker-computing call (`isAttacker` true -- i.e. the defender's resistance against the attacker's weapon). Falls back to the plain move-type resistance when omitted. */
-  readonly attackerResistanceModifier?: number;
-  /** Same, for the defender-computing call (`isAttacker` false -- the attacker's resistance against the defender's weapon, i.e. the counter-strike). */
-  readonly defenderResistanceModifier?: number;
+  /** `opp_terrain_defense`, for the attacker's stats: the defender's defense (a percentage, not the chance to be hit) instead of its hex's. */
+  readonly defenderDefense?: number;
+  /** The same, for the defender's stats: the attacker's defense. */
+  readonly attackerDefense?: number;
+}
+
+/** One combatant of a fight: the unit, the hex it fights from (its own by default), and its weapon (none for no counter). */
+export interface CombatantInput {
+  readonly unit: Unit;
+  readonly loc?: Location;
+  readonly weapon: AttackType | undefined;
 }
 
 /**
- * Builds one side's `BattleContextUnitStats`, mirroring the
- * `battle_context_unit_stats` constructor. `weapon` is the unit's own
- * weapon for this combat (`undefined` means "no weapon" -- upstream
- * returns a mostly-zeroed stats struct in that case, which callers
- * shouldn't normally reach since `combat.ts` filters those out first).
- * `defenderTerrain` is the terrain code under the *opponent's* location
- * (needed to compute the opponent's own defense -- i.e. when building the
- * defender's stats, `defenderTerrain` should be the terrain *the defender
- * unit is not standing on* -- callers pass the two locations' terrain
- * codes explicitly since this module doesn't own the map).
+ * `battle_context_unit_stats`: one combatant's numbers -- `u` at `uLoc` with `weapon`, attacking or defending
+ * against `opp` at `oppLoc` with `oppWeapon`. `oppTerrainDefense` (a defense percentage) replaces the
+ * opponent's hex's; `lawfulBonus` the board's lawful bonus at `uLoc`.
  */
-export function computeUnitStats(
-  unit: Unit,
-  isAttacker: boolean,
+export function battleContextUnitStats(
+  board: GameBoard,
+  u: Unit,
+  uLoc: Location,
   weapon: AttackType | undefined,
-  opponent: Unit,
-  opponentWeapon: AttackType | undefined,
-  distanceToOpponent: number,
-  opponentTerrainDefenseValue: number,
-  options: UnitStatsOptions = {},
+  attacking: boolean,
+  opp: Unit,
+  oppLoc: Location,
+  oppWeapon: AttackType | undefined,
+  oppTerrainDefense?: number,
+  lawfulBonus?: number,
+  maxLiminalBonus = 0,
 ): BattleContextUnitStats {
-  const hp = Math.max(0, Math.min(unit.hitpoints, unit.maxHitpoints));
-  const isPoisoned = unit.poisoned;
-  const isSlowed = unit.slowed;
-
+  const hp = Math.max(0, Math.min(u.hitpoints, u.maxHitpoints));
+  const base = {
+    isAttacker: attacking,
+    isPoisoned: u.poisoned,
+    isSlowed: u.slowed,
+    canAdvance: u.advances(),
+    experience: u.experience,
+    maxExperience: u.maxExperience,
+    level: u.level,
+    hp,
+    maxHp: u.maxHitpoints,
+  };
   if (!weapon) {
-    // Mirrors the early-return branch of the C++ constructor: a unit with
-    // no (usable) weapon deals no damage and never hits.
     return {
-      isAttacker,
-      isPoisoned,
-      isSlowed,
+      ...base,
       slows: false,
       drains: false,
       petrifies: false,
       poisons: false,
       firststrike: false,
-      canAdvance: unit.advances(),
-      experience: unit.experience,
-      maxExperience: unit.maxExperience,
-      level: unit.level,
+      plagues: false,
+      plagueType: '',
+      swarm: false,
+      disable: false,
+      leadershipBonus: 0,
       rounds: 1,
-      hp,
-      maxHp: unit.maxHitpoints,
       chanceToHit: 0,
       damage: 0,
       slowDamage: 0,
@@ -244,171 +135,104 @@ export function computeUnitStats(
     };
   }
 
-  const opponentAlreadyPoisoned = opponent.poisoned;
+  const ctx = SpecialsContext.make(board, { un: u, loc: uLoc, at: weapon }, { un: opp, loc: oppLoc, at: oppWeapon }, attacking);
+  const self = attacking ? ctx.attacker : ctx.defender;
 
-  const slows = hasSpecialId(weapon, 'slow');
-  const drainsSpecial = hasSpecialId(weapon, 'drains');
-  const petrifies = hasSpecialId(weapon, 'petrifies');
-  const poisons = hasSpecialId(weapon, 'poison') && !opponentAlreadyPoisoned;
-  const firststrike = hasSpecialId(weapon, 'firststrike');
-  const berserkSpecials = specialsById(weapon, 'berserk');
-  const rounds = berserkSpecials.length > 0 ? highestSpecialValue(weapon, 'berserk', 'value', 30) : 1;
+  const slows = ctx.hasSpecialOrAbility(self, 'slow') && !opp.hasStatus('unslowable');
+  let drains = !opp.hasStatus('undrainable') && ctx.hasSpecialOrAbility(self, 'drains');
+  const petrifies = !opp.hasStatus('unpetrifiable') && ctx.hasSpecialOrAbility(self, 'petrifies');
+  const poisons = !opp.hasStatus('unpoisonable') && ctx.hasSpecialOrAbility(self, 'poison') && !opp.poisoned;
+  // `unsigned int rounds`: a berserk value of 0 or below wraps around to a fight to the death.
+  const rounds = ctx.getSpecialsAndAbilities(self, 'berserk').highest('value', 1).value >>> 0;
+  const firststrike = ctx.hasSpecialOrAbility(self, 'firststrike');
 
-  const outOfRange = distanceToOpponent > weapon.maxRange || distanceToOpponent < weapon.minRange;
-  void outOfRange; // Exposed via `disable`-equivalent handling left to callers (combat.ts filters unusable weapons before this point).
+  const distance = distanceBetween(uLoc, oppLoc);
+  const outOfRange = distance > weapon.maxRange || distance < weapon.minRange;
+  const disable = ctx.hasSpecialOrAbility(self, 'disable') || outOfRange;
 
-  // --- chance to hit ---
-  const opponentInvulnerable = opponent.hasStatus('invulnerable');
-  const opponentBaseCth = opponentTerrainDefenseValue;
-  let cth = clampInt(opponentBaseCth + weapon.accuracy - (opponentWeapon?.parry ?? 0), 0, 100);
-  const magicalSpecials = specialsById(weapon, 'magical');
-  const marksmanSpecials = specialsById(weapon, 'marksman');
-  if (magicalSpecials.length > 0) {
-    cth = magicalSpecials[0]!.getNumber('value', 70);
-  } else if (marksmanSpecials.length > 0 && isAttacker) {
-    const marksmanValue = Math.max(...marksmanSpecials.map((s) => s.getNumber('value', 60)));
-    cth = Math.max(cth, marksmanValue);
-  }
-  if (opponentInvulnerable) cth = 0;
-  const chanceToHit = clampInt(cth, 0, 100);
+  // Plague: the special, an opponent that can be plagued (not `unplagueable`, an undead variation not `null`),
+  // on a hex that is not a village.
+  const plagueSpecials = ctx.getSpecialsAndAbilities(self, 'plague');
+  const plagues = !opp.hasStatus('unplagueable') && plagueSpecials.length > 0 && opp.undeadVariation !== 'null' && !board.map.isVillage(oppLoc);
+  let plagueType = '';
+  if (plagues) plagueType = plagueSpecials.items[0]!.ability.cfg.getString('type', '') || u.baseType.id;
 
-  // --- damage ---
-  const baseDamage = weapon.damage;
+  // Chance to hit.
+  const oppBaseCth = oppTerrainDefense !== undefined ? 100 - oppTerrainDefense : defenseModifier(board, opp, board.map.getTerrain(oppLoc), oppLoc);
+  let cth = ctx.modifiedChanceToHit(self, oppBaseCth);
+  if (opp.hasStatus('invulnerable')) cth = 0;
+  const chanceToHit = Math.min(100, Math.max(0, cth));
+
+  // Base damage, before the multiplier.
+  const baseDamage = ctx.modifiedDamage(self);
   let damageMultiplier = 100;
-  const lawfulBonus = (isAttacker ? options.attackerLawfulBonus : options.defenderLawfulBonus) ?? 0;
-  damageMultiplier += combatModifier(lawfulBonus, weapon.alignment ?? unit.alignment, unit.fearless, options.maxLiminalBonus ?? 0);
-  const leadershipBonus = (isAttacker ? options.attackerLeadershipBonus : options.defenderLeadershipBonus) ?? 0;
+  const alignment = weapon.alignment ?? u.alignment;
+  damageMultiplier += combatModifier(lawfulBonus ?? board.lawfulBonusAt?.(uLoc) ?? 0, alignment, u.fearless, maxLiminalBonus);
+  const leadershipBonus = underLeadershipInFight(ctx, self);
   if (leadershipBonus !== 0) damageMultiplier += leadershipBonus;
-  const resistanceModifier = (isAttacker ? options.attackerResistanceModifier : options.defenderResistanceModifier) ?? opponent.resistanceAgainst(weapon.type);
-  damageMultiplier *= resistanceModifier;
+  damageMultiplier *= ctx.effectiveDamageType(self).res;
 
   let damage = roundDamage(baseDamage, damageMultiplier, 10000);
-  let slowDamage = roundDamage(baseDamage, damageMultiplier, 20000);
-  if (isSlowed) damage = slowDamage;
-
-  // Backstab: `[damage] id=backstab` (default apply_to=self, active_on=offense)
-  // doubles ONLY the wielder's own damage, and only when it's the one doing
-  // the attacking in this exchange -- unlike charge below, never the
-  // defender's retaliation. `options.backstabActive` is the caller-computed
-  // geometric condition (see `isBackstabActive` in `combat.ts`); this
-  // module has no board/location access to compute it itself.
-  if (isAttacker && (options.backstabActive ?? false) && hasSpecialId(weapon, 'backstab')) {
-    damage *= 2;
-    slowDamage *= 2;
-  }
-
-  // Charge: `[damage] id=charge` with `apply_to=both` doubles both combatants'
-  // damage for this exchange, but only "when used offensively" (active_on=offense).
-  // Applied as a two-sided effect by `buildBattleContext` below (needs both stats).
+  const slowDamage = roundDamage(baseDamage, damageMultiplier, 20000);
+  if (base.isSlowed) damage = slowDamage;
 
   let drainPercent = 0;
-  let drainConstant = 0;
-  if (drainsSpecial) {
-    drainPercent = highestSpecialValue(weapon, 'drains', 'value', 50);
-  }
-  drainConstant += highestSpecialValue(weapon, 'heal_on_hit', 'value', 0);
-  const drains = drainConstant !== 0 || drainPercent !== 0;
+  if (drains) drainPercent = ctx.compositeValue(ctx.getSpecialsAndAbilities(self, 'drains'), 50);
+  const drainConstant = ctx.compositeValue(ctx.getSpecialsAndAbilities(self, 'heal_on_hit'), 0);
+  drains = drainConstant !== 0 || drainPercent !== 0;
 
-  const swarmSpecials = specialsById(weapon, 'swarm');
-  const attacksValue = Math.max(0, weapon.numAttacks);
-  let swarmMin = attacksValue;
-  let swarmMax = attacksValue;
-  if (swarmSpecials.length > 0) {
-    swarmMin = Math.max(0, highestSpecialValue(weapon, 'swarm', 'swarm_attacks_min', 0));
-    swarmMax = Math.max(0, highestSpecialValue(weapon, 'swarm', 'swarm_attacks_max', attacksValue));
-  }
-  const numBlows = swarmBlows(swarmMin, swarmMax, hp, unit.maxHitpoints || 1);
-
+  const { min: swarmMin, max: swarmMax } = ctx.modifiedAttacks(self);
   return {
-    isAttacker,
-    isPoisoned,
-    isSlowed,
+    ...base,
     slows,
     drains,
     petrifies,
     poisons,
     firststrike,
-    canAdvance: unit.advances(),
-    experience: unit.experience,
-    maxExperience: unit.maxExperience,
-    level: unit.level,
+    plagues,
+    plagueType,
+    swarm: swarmMin !== swarmMax,
+    disable,
+    leadershipBonus,
     rounds,
-    hp,
-    maxHp: unit.maxHitpoints,
     chanceToHit,
     damage,
     slowDamage,
     drainPercent,
     drainConstant,
-    numBlows,
+    numBlows: swarmBlows(swarmMin, swarmMax, hp, u.maxHitpoints),
     swarmMin,
     swarmMax,
   };
 }
 
-function clampInt(v: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, Math.trunc(v)));
-}
-
-/** Presence (unconditional, see module doc comment) of `[damage] id=charge` on `weapon`, only meaningful `active_on=offense`. */
-function hasCharge(weapon: AttackType | undefined): boolean {
-  if (!weapon) return false;
-  return hasSpecialId(weapon, 'charge');
+/** `under_leadership(u, context)`: the unit's leadership abilities active as specials in this fight. */
+function underLeadershipInFight(ctx: SpecialsContext, self: SpecialsCombatant): number {
+  return abilityEffect(ctx.getAbilitiesWeapons(self, 'leadership'), 0, undefined, 'cumulable').compositeValue;
 }
 
 export interface BattleContextInput {
+  readonly board: GameBoard;
   readonly attacker: Unit;
-  readonly attackerWeapon: AttackType;
+  /** Where the attacker fights from; its own hex by default (the AI asks about hexes it would move to). */
+  readonly attackerLoc?: Location;
+  readonly attackerWeapon: AttackType | undefined;
   readonly defender: Unit;
+  readonly defenderLoc?: Location;
   readonly defenderWeapon: AttackType | undefined;
-  readonly distance: number;
-  /** Terrain-defense value (0-100, "chance to be hit" convention -- see `Unit.defenseModifier`) for the attacker's own location. */
-  readonly attackerTerrainDefense: number;
-  /** Same, for the defender's location. */
-  readonly defenderTerrainDefense: number;
   readonly options?: UnitStatsOptions;
 }
 
-/**
- * Builds both combatants' stats for one attacker-weapon/defender-weapon
- * pairing, mirroring `battle_context`'s two-argument
- * `battle_context_unit_stats` construction plus the cross-combatant charge
- * effect (`apply_to=both`).
- */
+/** `battle_context(attacker, a_loc, a_weapon, defender, d_loc, d_weapon)`: both combatants' stats. */
 export function buildBattleContext(input: BattleContextInput): { attacker: BattleContextUnitStats; defender: BattleContextUnitStats } {
-  const { attacker, attackerWeapon, defender, defenderWeapon, distance, options } = input;
-
-  const attackerStats = computeUnitStats(
-    attacker,
-    true,
-    attackerWeapon,
-    defender,
-    defenderWeapon,
-    distance,
-    input.defenderTerrainDefense,
-    options,
-  );
-  const defenderStats = computeUnitStats(
-    defender,
-    false,
-    defenderWeapon,
-    attacker,
-    attackerWeapon,
-    distance,
-    input.attackerTerrainDefense,
-    options,
-  );
-
-  const chargeActive = hasCharge(attackerWeapon);
-  if (!chargeActive) {
-    return { attacker: attackerStats, defender: defenderStats };
-  }
-
-  const chargeMultiplier = specialsById(attackerWeapon, 'charge')[0]?.getNumber('multiply', 2) ?? 2;
-
+  const { board, attacker, defender, attackerWeapon, defenderWeapon } = input;
+  const options = input.options ?? {};
+  const aLoc = input.attackerLoc ?? attacker.location;
+  const dLoc = input.defenderLoc ?? defender.location;
+  const liminal = options.maxLiminalBonus ?? 0;
   return {
-    attacker: { ...attackerStats, damage: attackerStats.damage * chargeMultiplier, slowDamage: attackerStats.slowDamage * chargeMultiplier },
-    defender: { ...defenderStats, damage: defenderStats.damage * chargeMultiplier, slowDamage: defenderStats.slowDamage * chargeMultiplier },
+    attacker: battleContextUnitStats(board, attacker, aLoc, attackerWeapon, true, defender, dLoc, defenderWeapon, options.defenderDefense, options.attackerLawfulBonus, liminal),
+    defender: battleContextUnitStats(board, defender, dLoc, defenderWeapon, false, attacker, aLoc, attackerWeapon, options.attackerDefense, options.defenderLawfulBonus, liminal),
   };
 }
 
@@ -451,79 +275,148 @@ export function betterCombat(
   return damageA >= damageB;
 }
 
-/**
- * Picks the defender weapon (by index into `defender.attacks`, or `-1` for
- * "no weapon") that gives the best expected outcome for the defender
- * against `attackerWeaponIndex`, mirroring `battle_context::
- * choose_defender_weapon`'s intent (a simplified, non-harm-weighted
- * version -- upstream also considers AI aggression settings, which are a
- * caller concern here).
- *
- * The filter for "can this defender weapon even be used to retaliate" is
- * `def.range() != att.range()` (`attack.cpp`'s `choose_defender_weapon`,
- * verified directly) -- a STRING comparison of each weapon's `range=`
- * label ("melee"/"ranged"/a custom value), NOT the numeric `min_range`/
- * `max_range` distance bounds (those gate whether the ATTACKER can use a
- * weapon against a target at a given hex distance at all, a separate,
- * earlier check -- real combat is between adjacent hexes, distance 1, for
- * everything except specialised ranged-attack content). Filtering by
- * distance here made a melee attacker's target retaliate with ANY weapon
- * whose (distance-based) min/max happened to include 1, including a
- * defender's own ranged-only weapon -- e.g. a spearman's javelin throw
- * drawing a bow counter from a unit with no melee weapon at all. Real,
- * reported bug.
- */
-export function chooseDefenderWeaponIndex(
-  attacker: Unit,
-  attackerWeaponIndex: number,
-  defender: Unit,
-  distance: number,
-  attackerTerrainDefense: number,
-  defenderTerrainDefense: number,
-  options: UnitStatsOptions = {},
-): number {
-  const attackerWeapon = attacker.attacks[attackerWeaponIndex];
-  if (!attackerWeapon) return -1;
+/** A fight between one weapon pair: the stats, and the simulated outcome once asked for (`battle_context::simulate`). */
+class WeaponChoice {
+  private simulated: { attacker: Combatant; defender: Combatant } | undefined;
+  constructor(
+    readonly attackerWeaponIndex: number,
+    readonly defenderWeaponIndex: number,
+    readonly stats: { attacker: BattleContextUnitStats; defender: BattleContextUnitStats },
+    readonly attackerWeapon: AttackType | undefined,
+    readonly defenderWeapon: AttackType | undefined,
+    private readonly prevDef?: Combatant,
+  ) {}
 
-  let bestIndex = -1;
-  let bestDefCombatant: Combatant | undefined;
-  let bestAttCombatant: Combatant | undefined;
-
-  const tryWeapon = (index: number, weapon: AttackType | undefined): void => {
-    const { attacker: aStats, defender: dStats } = buildBattleContext({
-      attacker,
-      attackerWeapon,
-      defender,
-      defenderWeapon: weapon,
-      distance,
-      attackerTerrainDefense,
-      defenderTerrainDefense,
-      options,
-    });
-    const { attacker: aCombatant, defender: dCombatant } = simulateCombat(aStats, dStats);
-    if (
-      bestDefCombatant === undefined ||
-      bestAttCombatant === undefined ||
-      betterCombat(dCombatant, aCombatant, weapon?.defenseWeight ?? 1, bestDefCombatant, bestAttCombatant, 1, 1.0)
-    ) {
-      bestIndex = index;
-      bestDefCombatant = dCombatant;
-      bestAttCombatant = aCombatant;
+  /** `battle_context::simulate(prev_def)`. */
+  simulate(): { attacker: Combatant; defender: Combatant } {
+    if (!this.simulated) {
+      if (this.prevDef) {
+        const attacker = new Combatant(this.stats.attacker);
+        const defender = new Combatant(this.stats.defender, this.prevDef);
+        attacker.fight(defender);
+        this.simulated = { attacker, defender };
+      } else {
+        this.simulated = simulateCombat(this.stats.attacker, this.stats.defender);
+      }
     }
-  };
-
-  let consideredAny = false;
-  defender.attacks.forEach((weapon, index) => {
-    const rangeMatches = weapon.range === attackerWeapon.range;
-    if (!rangeMatches || weapon.defenseWeight <= 0) return;
-    consideredAny = true;
-    tryWeapon(index, weapon);
-  });
-
-  if (!consideredAny) {
-    // No usable counter-attack weapon: the defender fights back with nothing.
-    tryWeapon(-1, undefined);
+    return this.simulated;
   }
 
-  return bestIndex;
+  /** `better_defense`: is this a better fight for the defender than `that`? */
+  betterDefense(that: WeaponChoice, harmWeight: number): boolean {
+    const a = this.simulate();
+    const b = that.simulate();
+    return betterCombat(a.defender, a.attacker, this.defenderWeapon?.attackWeight ?? 1, b.defender, b.attacker, that.defenderWeapon?.attackWeight ?? 1, harmWeight);
+  }
+
+  /** `better_attack`. */
+  betterAttack(that: WeaponChoice, harmWeight: number): boolean {
+    const a = this.simulate();
+    const b = that.simulate();
+    return betterCombat(a.attacker, a.defender, this.attackerWeapon?.attackWeight ?? 1, b.attacker, b.defender, that.attackerWeapon?.attackWeight ?? 1, harmWeight);
+  }
+}
+
+export interface WeaponChoiceInput {
+  readonly board: GameBoard;
+  readonly attacker: Unit;
+  readonly attackerLoc?: Location;
+  readonly defender: Unit;
+  readonly defenderLoc?: Location;
+  readonly options?: UnitStatsOptions;
+  /** `prev_def`: the defender's outcome of an earlier fight this turn, which this one continues. */
+  readonly prevDef?: Combatant;
+}
+
+function choice(input: WeaponChoiceInput, attackerWeaponIndex: number, defenderWeaponIndex: number): WeaponChoice {
+  const attackerWeapon = attackerWeaponIndex >= 0 ? input.attacker.attacks[attackerWeaponIndex] : undefined;
+  const defenderWeapon = defenderWeaponIndex >= 0 ? input.defender.attacks[defenderWeaponIndex] : undefined;
+  const stats = buildBattleContext({ ...input, attackerWeapon, defenderWeapon });
+  return new WeaponChoice(attackerWeaponIndex, defenderWeaponIndex, stats, attackerWeapon, defenderWeapon, input.prevDef);
+}
+
+/**
+ * `battle_context::choose_defender_weapon`: the defender's answer to `attackerWeaponIndex` -- among its weapons
+ * of the same range with a positive `defense_weight` and not disabled, one that disables the attacker's weapon if
+ * any, else the one giving the defender the best fight among those rating at least the heaviest weapon's.
+ * Returns both indices and the stats (-1: no weapon).
+ */
+function chooseDefenderChoice(input: WeaponChoiceInput, attackerWeaponIndex: number): WeaponChoice {
+  const att = input.attacker.attacks[attackerWeaponIndex];
+  if (!att) throw new Error('An invalid attacker weapon got selected.');
+  const choices: WeaponChoice[] = [];
+  for (let i = 0; i < input.defender.attacks.length; i++) {
+    const def = input.defender.attacks[i]!;
+    if (def.range !== att.range || def.defenseWeight <= 0) continue;
+    const bc = choice(input, attackerWeaponIndex, i);
+    if (bc.stats.defender.disable) continue;
+    // The defender's weapon disables the attacker's: always this one.
+    if (bc.stats.attacker.disable) return bc;
+    choices.push(bc);
+  }
+  if (choices.length === 0) return choice(input, attackerWeaponIndex, -1);
+  if (choices.length === 1) return choices[0]!;
+
+  // First pass: the heaviest weight, and the lowest simple rating among weapons of that weight.
+  let minRating = 0;
+  let maxWeight = 0;
+  for (const c of choices) {
+    const dWeight = c.defenderWeapon!.defenseWeight;
+    if (dWeight >= maxWeight) {
+      const d = c.stats.defender;
+      maxWeight = dWeight;
+      const rating = Math.trunc(d.numBlows * d.damage * d.chanceToHit * dWeight);
+      // As upstream, `d_weight > max_weight` is never true here, having just been assigned.
+      if (rating < minRating) minRating = rating;
+    }
+  }
+  let best: WeaponChoice | undefined;
+  for (const c of choices) {
+    const d = c.stats.defender;
+    const simpleRating = Math.trunc(d.numBlows * d.damage * d.chanceToHit * c.defenderWeapon!.defenseWeight);
+    if (simpleRating >= minRating && (!best || c.betterDefense(best, 1.0))) best = c;
+  }
+  return best ?? choice(input, attackerWeaponIndex, -1);
+}
+
+/** `choose_defender_weapon`'s weapon: an index into the defender's attacks, or -1 for none. */
+export function chooseDefenderWeaponIndex(input: WeaponChoiceInput, attackerWeaponIndex: number): number {
+  return chooseDefenderChoice(input, attackerWeaponIndex).defenderWeaponIndex;
+}
+
+/**
+ * `battle_context::choose_attacker_weapon`: for each of the attacker's weapons with a positive `attack_weight`
+ * (and not disabled by the defender's answer), the defender's answer; then the best fight for the attacker
+ * with this `harmWeight` (1 - aggression). -1 for both when the attacker has no usable weapon.
+ */
+export function chooseAttackerWeapon(input: WeaponChoiceInput, harmWeight: number): { attackerWeaponIndex: number; defenderWeaponIndex: number } {
+  const choices: WeaponChoice[] = [];
+  for (let i = 0; i < input.attacker.attacks.length; i++) {
+    if (input.attacker.attacks[i]!.attackWeight <= 0) continue;
+    const bc = chooseDefenderChoice(input, i);
+    if (bc.stats.attacker.disable) continue;
+    choices.push(bc);
+  }
+  if (choices.length === 0) return { attackerWeaponIndex: -1, defenderWeaponIndex: -1 };
+  let best = choices[0]!;
+  for (const c of choices.slice(1)) if (c.betterAttack(best, harmWeight)) best = c;
+  return { attackerWeaponIndex: best.attackerWeaponIndex, defenderWeaponIndex: best.defenderWeaponIndex };
+}
+
+/**
+ * `mouse_handler::fill_weapon_choices`: the attacker's weapons a player may pick against this defender -- those
+ * with a positive `attack_weight` that the defender's answer does not disable -- and the one offered first, the
+ * best by `better_attack` with harm weight 0.5. `best` is an index into `choices`, -1 with none.
+ */
+export function fillWeaponChoices(input: WeaponChoiceInput): { choices: { attackerWeaponIndex: number; defenderWeaponIndex: number }[]; best: number } {
+  const bcs: WeaponChoice[] = [];
+  let best = 0;
+  for (let i = 0; i < input.attacker.attacks.length; i++) {
+    if (input.attacker.attacks[i]!.attackWeight <= 0) continue;
+    const bc = chooseDefenderChoice(input, i);
+    if (bc.stats.attacker.disable) continue;
+    if (bcs.length > 0 && bc.betterAttack(bcs[best]!, 0.5)) best = bcs.length;
+    bcs.push(bc);
+  }
+  return { choices: bcs.map((c) => ({ attackerWeaponIndex: c.attackerWeaponIndex, defenderWeaponIndex: c.defenderWeaponIndex })), best: bcs.length > 0 ? best : -1 };
 }

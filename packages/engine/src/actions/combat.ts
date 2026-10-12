@@ -24,7 +24,7 @@
 
 import { recalculateFog, type RaiseEvent } from './vision.js';
 import { rollNewUnit } from './recruit.js';
-import { Location, getAdjacentTiles, ALL_DIRECTIONS, distanceBetween, oppositeDirection, type Direction } from '../model/Location.js';
+import { Location, getAdjacentTiles, ALL_DIRECTIONS, oppositeDirection, type Direction } from '../model/Location.js';
 import type { GameBoard } from '../model/GameBoard.js';
 import { WmlConfig } from '../wml/config.js';
 import { Unit, UnitStatus } from '../model/Unit.js';
@@ -33,7 +33,6 @@ import type { Rng } from '../rng/Rng.js';
 import { buildBattleContext, chooseDefenderWeaponIndex, type UnitStatsOptions } from './combatStats.js';
 import type { BattleContextUnitStats } from './attackPrediction.js';
 import { combatXp, killXp } from './gameConfig.js';
-import { computeLeadershipBonus, computeResistanceModifier } from './abilityEffects.js';
 
 /** Outcome of a single blow (one strike within one round of combat). */
 export interface AttackBlowResult {
@@ -99,28 +98,22 @@ function directionTo(from: Location, to: Location): Direction {
 }
 
 /**
- * The real `[damage] id=backstab` condition, evaluated as a narrow
- * geometric proxy rather than the full WFL `[filter_opponent]` formula --
- * see `combatStats.ts`'s own module doc comment for why. Matches the
- * special's own plain-language `description=`: true when the hex
- * continuing in a straight line PAST the defender (attacker -> defender
- * -> flanker) holds a unit hostile to the defender (i.e. allied with the
- * attacker) and not incapacitated (petrified/stone). Exported so both
- * real combat resolution (`executeAttack` below) and the UI's attack
- * preview (`GameSession.buildPreview`, which has the same board/location
- * access but lives in a different package) compute it identically.
+ * `backstab_check` (actions/attack.cpp): is there a unit on the far side of the defender from `attackerLoc`,
+ * not incapacitated, and an enemy of the defender (or on no valid side)? The AI rates attack hexes with it; the
+ * backstab special itself is its `[filter_opponent]` formula, evaluated in the ability pipeline.
  */
-export function isBackstabActive(board: GameBoard, attackerLoc: Location, defenderLoc: Location): boolean {
-  const dirIndex = ALL_DIRECTIONS.indexOf(directionTo(attackerLoc, defenderLoc));
-  const flankerLoc = getAdjacentTiles(defenderLoc)[dirIndex];
-  if (!flankerLoc) return false;
-  const flanker = board.unitAt(flankerLoc);
-  if (!flanker || flanker.incapacitated) return false;
+export function backstabCheck(board: GameBoard, attackerLoc: Location, defenderLoc: Location): boolean {
   const defender = board.unitAt(defenderLoc);
   if (!defender) return false;
+  const adj = getAdjacentTiles(defenderLoc);
+  const i = adj.findIndex((l) => l.equals(attackerLoc));
+  if (i < 0) return false;
+  const opp = board.unitAt(adj[(i + 3) % 6]!);
+  if (!opp || opp.incapacitated) return false;
   const defenderTeam = board.getTeam(defender.side);
-  const flankerTeam = board.getTeam(flanker.side);
-  return !!defenderTeam && !!flankerTeam && defenderTeam.isEnemy(flankerTeam);
+  const oppTeam = board.getTeam(opp.side);
+  if (!defenderTeam || !oppTeam) return true;
+  return defenderTeam.isEnemy(oppTeam);
 }
 
 function healBy(unit: Unit, amount: number): void {
@@ -143,15 +136,7 @@ export function resolveDefenderWeaponIndex(
   const attacker = board.unitAt(attackerLoc);
   const defender = board.unitAt(defenderLoc);
   if (!attacker || !defender || !attacker.attacks[attackerWeaponIndex]) return -1;
-  return chooseDefenderWeaponIndex(
-    attacker,
-    attackerWeaponIndex,
-    defender,
-    distanceBetween(attackerLoc, defenderLoc),
-    attacker.defenseModifier(board.map.getTerrain(attackerLoc)),
-    defender.defenseModifier(board.map.getTerrain(defenderLoc)),
-    options,
-  );
+  return chooseDefenderWeaponIndex({ board, attacker, defender, options }, attackerWeaponIndex);
 }
 
 /** `attack::perform`: the weapon's `attacks_used` (default 1) of the attacker's attacks, and its `movement_used` (default all) of its movement. */
@@ -203,43 +188,24 @@ export function executeAttack(
   // attack::perform: an invisible attacker isn't anymore.
   attacker.setStatus(UnitStatus.Uncovered, true);
 
-  const distance = distanceBetween(attackerLoc, defenderLoc);
-  const attackerTerrainDefense = attacker.defenseModifier(board.map.getTerrain(attackerLoc));
-  const defenderTerrainDefense = defender.defenseModifier(board.map.getTerrain(defenderLoc));
-
   let defWeaponIdx = defenderWeaponIndex;
-  if (defWeaponIdx === undefined) {
-    defWeaponIdx = chooseDefenderWeaponIndex(
-      attacker,
-      attackerWeaponIndex,
-      defender,
-      distance,
-      attackerTerrainDefense,
-      defenderTerrainDefense,
-      options,
-    );
-  }
+  if (defWeaponIdx === undefined) defWeaponIdx = chooseDefenderWeaponIndex({ board, attacker, defender, options }, attackerWeaponIndex);
   const defenderWeapon = defWeaponIdx >= 0 ? defender.attacks[defWeaponIdx] : undefined;
 
-  const { attacker: attackerStats, defender: defenderStats } = buildBattleContext({
-    attacker,
-    attackerWeapon,
-    defender,
-    defenderWeapon,
-    distance,
-    attackerTerrainDefense,
-    defenderTerrainDefense,
-    options: {
-      ...options,
-      backstabActive: isBackstabActive(board, attackerLoc, defenderLoc),
-      attackerLeadershipBonus: computeLeadershipBonus(board, attacker),
-      defenderLeadershipBonus: computeLeadershipBonus(board, defender),
-      attackerResistanceModifier: computeResistanceModifier(board, defender, attackerWeapon.type, false, defenderLoc),
-      defenderResistanceModifier: defenderWeapon
-        ? computeResistanceModifier(board, attacker, defenderWeapon.type, true, attackerLoc)
-        : undefined,
-    },
-  });
+  const fightStats = () => buildBattleContext({ board, attacker, attackerLoc, attackerWeapon, defender, defenderLoc, defenderWeapon, options });
+  const { attacker: attackerStats, defender: defenderStats } = fightStats();
+  // `attack::refresh_bc`: the stats are rebuilt after every strike's events, so a status a hit gave (poisoned,
+  // slowed) or an event's change counts from the next strike on.
+  let aStats = attackerStats;
+  let dStats = defenderStats;
+  let attackerEffectiveDamage = attackerStats.damage;
+  let defenderEffectiveDamage = defenderStats.damage;
+  const refreshBc = (): void => {
+    if (board.unitAt(attackerLoc) !== attacker || board.unitAt(defenderLoc) !== defender) return;
+    ({ attacker: aStats, defender: dStats } = fightStats());
+    attackerEffectiveDamage = aStats.damage;
+    defenderEffectiveDamage = dStats.damage;
+  };
 
   // Phase 25: `statistics_attack_context`, with both units as they enter the fight.
   const statsContext = board.statistics?.attackContext(board.statsUnit(attacker), board.statsUnit(defender), attackerStats.chanceToHit, defenderStats.chanceToHit);
@@ -253,6 +219,11 @@ export function executeAttack(
   attacker.facing = directionTo(attackerLoc, defenderLoc);
   defender.facing = directionTo(defenderLoc, attackerLoc);
 
+  // `attack::perform`: an attack with a disabled weapon spends its cost and ends there, with no exchange.
+  if (attackerStats.disable) {
+    return { attackerLoc, defenderLoc, attackerStats, defenderStats, blows: [], attackerXp: 0, defenderXp: 0, attackerDied: false, defenderDied: false };
+  }
+
   const blows: AttackBlowResult[] = [];
   let attackerXp = combatXp(defenderStats.level);
   let defenderXp = combatXp(attackerStats.level);
@@ -265,11 +236,9 @@ export function executeAttack(
   const aOrigBlows = aBlowsLeft;
   const dOrigBlows = dBlowsLeft;
   let defenderStrikesFirst = defenderStats.firststrike && !attackerStats.firststrike;
-  let roundsLeft = Math.max(attackerStats.rounds, defenderStats.rounds) - 1;
+  // Unsigned, as upstream: rounds of 0 wrap around to (practically) unlimited.
+  let roundsLeft = (Math.max(attackerStats.rounds, defenderStats.rounds) - 1) >>> 0;
 
-  // Mutable "effective damage" trackers -- change mid-fight if the striker becomes slowed.
-  let attackerEffectiveDamage = attackerStats.damage;
-  let defenderEffectiveDamage = defenderStats.damage;
 
   const handleDeath = (killerIsAttacker: boolean, killerUnit: Unit, deadUnit: Unit): void => {
     const deadLoc = deadUnit.location;
@@ -279,19 +248,11 @@ export function executeAttack(
     }
     board.removeUnitAt(deadLoc);
 
-    const killerWeapon = killerIsAttacker ? attackerWeapon : defenderWeapon;
-    if (!killerWeapon) return;
-    // `battle_context_unit_stats`: plague needs the special, a victim that is not `unplagueable` and whose
-    // undead variation is not `null`, and a hex that is not a village.
-    const plagueSpecials = killerWeapon.specials.filter((s) => s.getString('id', '') === 'plague');
-    if (plagueSpecials.length === 0) return;
-    if (deadUnit.hasStatus('unplagueable')) return;
+    // `battle_context_unit_stats` worked out whether the killer's weapon plagues this victim, and into what.
+    const killerStats = killerIsAttacker ? aStats : dStats;
+    if (!killerStats.plagues) return;
+    const plagueType = killerStats.plagueType ?? '';
     const undeadVariation = deadUnit.undeadVariation;
-    if (undeadVariation === 'null') return;
-    if (board.map.isVillage(deadLoc)) return;
-
-    // No `type=`: the killer's own kind (`u.type().parent_id()`).
-    const plagueType = plagueSpecials[0]!.getString('type', '') || killerUnit.baseType.id;
 
     const type = options.resolveType?.(plagueType);
     if (!type) {
@@ -322,7 +283,7 @@ export function executeAttack(
   const performHit = (attackerTurn: boolean): boolean => {
     const striker = attackerTurn ? attacker : defender;
     const target = attackerTurn ? defender : attacker;
-    const strikerStats = attackerTurn ? attackerStats : defenderStats;
+    const strikerStats = attackerTurn ? aStats : dStats;
     const strikerDamage = attackerTurn ? attackerEffectiveDamage : defenderEffectiveDamage;
 
     const roll = rng.getRandomInt(0, 99);
@@ -349,6 +310,7 @@ export function executeAttack(
     // The strike's events (`perform_hit`), before drain and death. An event that ends the fight ends it here;
     // a unit it left at no hitpoints still dies (upstream would leave it standing until something else hits it).
     if (options.onStrike && !options.onStrike(attackerTurn, hit, damage)) {
+      refreshBc();
       blows.push({ attackerTurn, chanceToHit: strikerStats.chanceToHit, hit, damage, drainAmount: 0, strikerDiedFromDrain: false, targetDied, poisoned: false, slowed: false, petrified: false });
       if (targetDied && board.unitAt(target.location) === target && target.hitpoints <= 0) {
         if (attackerTurn) defenderDied = true;
@@ -357,6 +319,8 @@ export function executeAttack(
       }
       return false;
     }
+
+    refreshBc();
 
     let strikerDiedFromDrain = false;
     if (drainAmount > 0) {
@@ -396,8 +360,8 @@ export function executeAttack(
       if (strikerStats.slows && !target.slowed) {
         target.setStatus(UnitStatus.Slowed, true);
         slowed = true;
-        if (attackerTurn) defenderEffectiveDamage = defenderStats.slowDamage;
-        else attackerEffectiveDamage = attackerStats.slowDamage;
+        if (attackerTurn) defenderEffectiveDamage = dStats.slowDamage;
+        else attackerEffectiveDamage = aStats.slowDamage;
       }
       if (strikerStats.petrifies) {
         target.setStatus(UnitStatus.Petrified, true);
@@ -410,6 +374,7 @@ export function executeAttack(
           dBlowsLeft = 0;
           aBlowsLeft = -1;
         }
+        refreshBc();
       }
     }
 
@@ -446,7 +411,7 @@ export function executeAttack(
       aBlowsLeft = aOrigBlows;
       dBlowsLeft = dOrigBlows;
       roundsLeft -= 1;
-      defenderStrikesFirst = defenderStats.firststrike && !attackerStats.firststrike;
+      defenderStrikesFirst = dStats.firststrike && !aStats.firststrike;
     }
     if (aBlowsLeft <= 0 && dBlowsLeft <= 0) break;
   }
