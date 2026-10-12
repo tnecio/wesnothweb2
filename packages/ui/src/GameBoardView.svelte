@@ -928,6 +928,8 @@
       unitSpriteFilterCounts: () => board?.unitSpriteFilterCounts() ?? null,
       /** Missiles/halos on the latest animation frame, for checking particle effects. */
       animationOverlays: () => board?.lastAnimationOverlays ?? null,
+      /** Phase 27c: the events of the animations played (`SnapshotBoard.playedAnimations`). */
+      playedAnimations: () => board?.playedAnimations.map((p) => ({ ...p })) ?? [],
       /** Phase 28b: the route drawn (footprint count, marked hexes and their labels) and the attack indicator's sprite count. */
       route: () => board?.routeState() ?? null,
       attackIndicator: () => board?.attackIndicatorState() ?? 0,

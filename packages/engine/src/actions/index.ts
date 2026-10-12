@@ -16,3 +16,4 @@ export * from './synced.js';
 export * from './victory.js';
 export * from './carryover.js';
 export * from './illumination.js';
+export * from './attackHelpers.js';

@@ -58,6 +58,8 @@ import {
   weaponSpecials,
   abilityTooltips,
   haloOrIconAbilities,
+  attackHelpers,
+  type AttackHelpers,
   defenseModifier,
   resistanceAgainst,
   fillWeaponChoices,
@@ -643,6 +645,15 @@ export interface HexClickOptions {
   attackFrom?: HexPoint | null;
 }
 
+/** Phase 27c S4: one advancement to show -- the unit, where it stood, and what it was before. */
+export interface AdvancementAnimation {
+  readonly unit: Unit;
+  readonly loc: Location;
+  readonly fromTypeId: string;
+  readonly fromVariation: string;
+  readonly fromNewAnimations: readonly WmlConfig[];
+}
+
 /**
  * Everything a caller needs to animate the attack `confirmAttack` just
  * resolved (see `GameSession.lastAttackAnimation`), one real blow at a
@@ -684,6 +695,8 @@ export interface LastAttackAnimation {
   /** Their `apply_to=new_animation` effects at combat time (`Unit.newAnimations`), with the type ids above. */
   readonly attackerNewAnimations: readonly WmlConfig[];
   readonly defenderNewAnimations: readonly WmlConfig[];
+  /** Phase 27c S4: the units playing `leading`/`resistance`/`teaching` with the blows, as the fight started. */
+  readonly helpers: AttackHelpers;
   /**
    * `attacker`/`defender`'s real hitpoints BEFORE this exchange resolved --
    * same rationale as `attackerTypeId`/`defenderTypeId` above, but for HP:
@@ -2653,6 +2666,7 @@ export class GameSession {
     const defenderVariation = defender.variation;
     const attackerNewAnimations = attacker.newAnimations;
     const defenderNewAnimations = defender.newAnimations;
+    const helpers = attackHelpers(this.board, attacker, attacker.attacks[cmd.weapon], defender, defenderWeapon >= 0 ? defender.attacks[defenderWeapon] : undefined);
     const defenderTypeId = defender.type.id;
     const result = performAttack(this.board, this.rng, attackerLoc, cmd.weapon, defenderLoc, defenderWeapon, {
       ...this.attackOptions(attackerLoc, defenderLoc),
@@ -2694,6 +2708,7 @@ export class GameSession {
       defenderVariation,
       attackerNewAnimations,
       defenderNewAnimations,
+      helpers,
       attackerLocation: attackerLoc,
       defenderLocation: defenderLoc,
     };
@@ -5080,8 +5095,22 @@ export class GameSession {
     if (this.board.unitAt(unit.location) === unit) this.eventPump.fire('post advance', unit.location, undefined, undefined, this.collectResponder);
   }
 
+  /**
+   * Phase 27c S4: the advancements to show (`animate_unit_advancement`'s levelout and levelin), oldest first,
+   * each with what the unit was before it.
+   */
+  private advancementAnimations: AdvancementAnimation[] = [];
+
+  /** Takes the advancements made since the last call, to animate. */
+  takeAdvancementAnimations(): AdvancementAnimation[] {
+    const out = this.advancementAnimations;
+    this.advancementAnimations = [];
+    return out;
+  }
+
   private applyAdvancementChoice(unit: Unit, index: number, typeIds: readonly string[], amlas: readonly WmlConfig[]): void {
     const before = unit.type.name;
+    this.advancementAnimations.push({ unit, loc: unit.location, fromTypeId: unit.type.id, fromVariation: unit.variation, fromNewAnimations: unit.newAnimations });
     const env = effectEnvFor(this.eventPump.ctx, unit);
     if (index < typeIds.length) {
       const result = advanceUnitTo(unit, this.resolveType(typeIds[index]!), 100, env);

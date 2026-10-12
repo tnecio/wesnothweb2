@@ -10,11 +10,16 @@
  *   (the frequency at its highest), a selected unit plays "selected", the frame time with and without them;
  *   under `prefers-reduced-motion` every unit holds its `_disabled_` frame.
  *
- *   node apps/web/scripts/presentation-playthrough.mjs [--base http://localhost:5173] [--only unit-effects,standing-idle]
+ * - the other combat animations (S4), on the debug combat scenario: a Lieutenant beside the attacker leads
+ *   ("leading"), the attacker -- given draw/sheath/victory animations by an `apply_to=new_animation` --
+ *   draws its weapon, wins ("victory"), sheathes it, and levels up ("levelout", then "levelin").
+ *
+ *   node apps/web/scripts/presentation-playthrough.mjs [--base http://localhost:5173]
+ *     [--only unit-effects,standing-idle,combat-anims]
  *     [--shots <dir>]
  */
 import { chromium } from 'playwright';
-import { skipToPlay, untilPlayable, waitBoardReady } from './lib/browserFlows.mjs';
+import { openScenario, performAttack, skipToPlay, untilPlayable, waitBoardReady } from './lib/browserFlows.mjs';
 
 const args = process.argv.slice(2);
 const base = args.includes('--base') ? args[args.indexOf('--base') + 1] : 'http://localhost:5173';
@@ -243,6 +248,81 @@ halo_image=halo/illuminates-aura.png
       check('under reduced motion every unit holds its _disabled_ frame', still, JSON.stringify(Object.values(later).slice(0, 3)));
       await page.context().close();
     }
+  }
+  if (runs('combat-anims')) {
+    const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await openScenario(page, base, 'synthetic_combat');
+    await skipToPlay(page);
+    await waitBoardReady(page);
+    await untilPlayable(page);
+    const frame = (tag) => `[${tag}]\n[frame]\nimage=units/human-loyalists/spearman.png:200\n[/frame]\n[/${tag}]`;
+    await page.evaluate(
+      (anims) =>
+        window.__wesnoth.addEvent(`[event]
+name=select
+[filter]
+id=Debug Hero
+[/filter]
+[unit]
+type=Lieutenant
+side=1
+x,y=1,3
+[/unit]
+[modify_unit]
+[filter]
+id=Debug Hero
+[/filter]
+experience=41
+[/modify_unit]
+[modify_unit]
+[filter]
+id=Debug Villain
+[/filter]
+hitpoints=1
+[/modify_unit]
+[object]
+silent=yes
+[filter]
+id=Debug Hero
+[/filter]
+[effect]
+apply_to=new_animation
+${anims}
+[/effect]
+[/object]
+[/event]`),
+      ['draw_weapon_anim', 'sheath_weapon_anim', 'victory_anim'].map(frame).join('\n'),
+    );
+    await page.evaluate(() => window.__wesnoth.clickHex(1, 2));
+    await page.waitForTimeout(1500);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+    await performAttack(page, { x: 1, y: 2 }, { x: 2, y: 2 });
+    // Three advancement choices: take the first.
+    for (let i = 0; i < 60; i++) {
+      if (await page.getByText('Advance Unit').first().isVisible().catch(() => false)) {
+        await page.keyboard.press('Enter');
+        break;
+      }
+      await page.waitForTimeout(500);
+    }
+    let events = [];
+    for (let i = 0; i < 60 && !events.includes('levelin'); i++) {
+      await page.waitForTimeout(500);
+      events = (await page.evaluate(() => window.__wesnothDebug.playedAnimations())).map((p) => p.event);
+    }
+    const order = (names) => names.map((n) => events.indexOf(n));
+    for (const name of ['draw_weapon', 'attack', 'leading', 'victory', 'sheath_weapon', 'levelout', 'levelin']) {
+      check(`"${name}" is played`, events.includes(name));
+    }
+    const at = order(['draw_weapon', 'attack', 'victory', 'sheath_weapon', 'levelout', 'levelin']);
+    check('...in upstream\'s order: draw, blows, victory, sheath, levelout, levelin', at.every((v, i) => v >= 0 && (i === 0 || v > at[i - 1])), events.join(', '));
+    const hero = await page.evaluate(() => window.__wesnoth.session.board.allUnits().find((u) => u.id === 'Debug Hero')?.type.id);
+    check('the hero has advanced', hero !== 'Spearman', hero);
+    check('no page errors', errors.length === 0, errors.join(' | '));
+    await page.context().close();
   }
 } finally {
   await browser.close();

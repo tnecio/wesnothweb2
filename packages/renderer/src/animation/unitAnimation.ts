@@ -588,8 +588,22 @@ function fillInitialAnimations(unitTypeCfg: WmlConfig, out: UnitAnimationDef[]):
   out.push(staticImageAnimation(image, ['_disabled_'], 0, 1));
   out.push(staticImageAnimation(image, ['_disabled_selected_'], 0, 300, whitePulse));
   const pulse = buildFrameFields(whitePulse, 300);
+  const white = (ratio: string) => buildFrameFields(new WmlConfig().setAttribute('blend_ratio', ratio).setAttribute('blend_color', '255,255,255'), 600);
+  const levelin = white('1~0:600');
+  const levelout = white('0~1:600,1');
   for (const base of upstreamBase) {
     out.push({ ...base, events: ['standing'] });
+    // `override(0, 600ms, NO_CYCLE, "", "1~0:600", white)` and `"0~1:600,1"`: a unit levelling up turns white
+    // and its new self comes out of the white.
+    for (const [event, fields] of [['levelin', levelin], ['levelout', levelout]] as const) {
+      out.push({
+        ...base,
+        events: [event],
+        cycles: false,
+        frames: framesForDuration(base.frames, 600),
+        animationParams: { ...base.animationParams, durationMs: 600, blendRatio: fields.blendRatio, blendColor: fields.blendColor },
+      });
+    }
     // `override(0, 300ms, UNSET, "", "0.0~0.3:100,0.3~0.0:200", white)`.
     out.push({
       ...base,

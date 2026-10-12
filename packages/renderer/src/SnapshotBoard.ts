@@ -630,6 +630,8 @@ export class SnapshotBoard {
   /** Phase 27c S3: where units' rest animations come from, and the preferences that govern them (`setAmbientAnimations`). */
   private ambientSource: AmbientAnimationSource | null = null;
   private ambientPrefs: AmbientAnimationPrefs = { standing: true, idle: true, idleRate: 0 };
+  /** Debug: the last 200 cues `playAnimations` played -- the sprite and its animation's event (null for none). */
+  readonly playedAnimations: { key: string; event: string | null }[] = [];
   /** `freezeAmbientAnimations`: every unit shows its standing animation's first frame, for a capture. */
   private ambientFrozen = false;
   private itemsUpdate: Promise<void> = Promise.resolve();
@@ -2024,6 +2026,10 @@ export class SnapshotBoard {
     if (active.length === 0) return;
     // Phase 27c S3: the rest animations leave these units alone for the beat, and start over after it.
     for (const { visual } of active) visual.cues++;
+    for (const { cue } of active) {
+      this.playedAnimations.push({ key: cue.key, event: cue.anim?.events[0] ?? null });
+      if (this.playedAnimations.length > 200) this.playedAnimations.shift();
+    }
     try {
 
       // bugs6.md (particles): every animation of a beat runs on one clock on

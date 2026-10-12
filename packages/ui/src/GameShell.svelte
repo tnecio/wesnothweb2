@@ -1771,7 +1771,27 @@
       // `unit_attack`'s extra_hit_sounds: a hit that poisons, slows or petrifies says so once, as it lands.
       const blow = info.result.blows[blowIndex];
       const extraSounds = blow?.hit ? extraHitSounds(blow) : [];
+      // Phase 27c S4: the striker's leaders lead, the struck one's neighbours resist, teachers teach.
+      const helpers = attackerContext.myUnit === info.attacker ? info.helpers.attackerStrikes : info.helpers.defenderStrikes;
+      const helperCues = helpers.flatMap((h): UnitAnimationCue[] => {
+        const facing = relativeDirection(h.loc, h.towards);
+        const anim = chooseAnimation(animationsFor(h.typeId, h.variation, h.newAnimations), {
+          ...attackerContext,
+          loc: h.loc,
+          secondLoc: h.towards,
+          myUnit: h.unit,
+          event: h.event,
+          terrainAtLoc: terrainLookup(session.board)(h.loc),
+          secondUnit: undefined,
+          facing,
+          board: session.board,
+        });
+        if (!anim) return [];
+        const key = spriteKey({ underlyingId: session.renderKeyFor(h.unit), typeId: h.typeId, x: h.loc.x, y: h.loc.y });
+        return [{ key, anim, direction: facing, srcHex: { x: h.loc.x, y: h.loc.y }, dstHex: { x: h.towards.x, y: h.towards.y } }];
+      });
       return [
+        ...helperCues,
         {
           key: strikerRes.key,
           anim: chooseAnimation(strikerRes.anims, attackerContext),
@@ -1821,8 +1841,30 @@
         dstHex: winnerRes.hex,
       });
     };
+    // `unit_die`: the winner, if it lives, plays "victory" while the loser dies.
+    const addVictoryCue = (winner: Unit, loser: Unit): void => {
+      const winnerRes = resourcesFor(winner);
+      const loserRes = resourcesFor(loser);
+      const anim = chooseAnimation(winnerRes.anims, {
+        loc: winner.location,
+        secondLoc: loser.location,
+        myUnit: winner,
+        event: 'victory',
+        value: 0,
+        value2: 0,
+        hit: 'kill',
+        attack: winner === info.attacker ? attackerWeapon : defenderWeapon,
+        secondAttack: winner === info.attacker ? defenderWeapon : attackerWeapon,
+        terrainAtLoc: terrainLookup(session.board)(winner.location),
+        secondUnit: loser,
+        board: session.board,
+      });
+      if (anim) deathBeat.push({ key: winnerRes.key, anim, direction: winner.facing, srcHex: winnerRes.hex, dstHex: loserRes.hex });
+    };
     if (info.result.attackerDied) addDeathCue(info.attacker, info.defender);
     if (info.result.defenderDied) addDeathCue(info.defender, info.attacker);
+    if (info.result.attackerDied && !info.result.defenderDied) addVictoryCue(info.defender, info.attacker);
+    if (info.result.defenderDied && !info.result.attackerDied) addVictoryCue(info.attacker, info.defender);
     if (deathBeat.length > 0) cues.push(deathBeat);
 
     return cues;
@@ -1848,9 +1890,54 @@
    * (`unit_display::unit_attack`'s `show_combat` guard) nothing is shown: no animation, no labels.
    */
   async function playAttack(info: LastAttackAnimation, attackerAt: Location, defenderAt: Location): Promise<void> {
-    if (!boardView || !displayPrefs.peek().showCombat) return;
+    if (boardView && displayPrefs.peek().showCombat) await playAttackBlows(info, attackerAt, defenderAt);
+    // Advancing is shown whether or not combat is (`advance_unit_at`'s `animate`).
+    await playAdvancements();
+  }
+
+  async function playAttackBlows(info: LastAttackAnimation, attackerAt: Location, defenderAt: Location): Promise<void> {
+    if (!boardView) return;
     await followAttack(attackerAt, defenderAt);
+    // `unit_draw_weapon` before the blows, `unit_sheath_weapon` for whoever is left after them.
+    const draw = buildWeaponBeat(info, 'draw_weapon');
+    if (draw.length > 0) await boardView.playAnimationSequence([draw], 1);
     await boardView.playAnimationSequence(buildBlowAnimationCues(info), 1, makeBlowPreview(info));
+    const sheath = buildWeaponBeat(info, 'sheath_weapon');
+    if (sheath.length > 0) await boardView?.playAnimationSequence([sheath], 1);
+  }
+
+  /**
+   * Phase 27c S4: `unit_draw_weapon` (the attacker as for a hit, the defender as for a miss) or
+   * `unit_sheath_weapon` (each survivor), facing each other -- a cue only for a unit that has the animation.
+   */
+  function buildWeaponBeat(info: LastAttackAnimation, event: 'draw_weapon' | 'sheath_weapon'): UnitAnimationCue[] {
+    const attackerWeapon = info.attacker.attacks[info.attackerWeaponIndex];
+    const defenderWeapon = info.defenderWeaponIndex >= 0 ? info.defender.attacks[info.defenderWeaponIndex] : undefined;
+    const sides = [
+      { unit: info.attacker, typeId: info.attackerTypeId, variation: info.attackerVariation, own: info.attackerNewAnimations, at: info.attackerLocation, other: info.defenderLocation, weapon: attackerWeapon, otherWeapon: defenderWeapon, hit: 'hit' as const, died: info.result.attackerDied },
+      { unit: info.defender, typeId: info.defenderTypeId, variation: info.defenderVariation, own: info.defenderNewAnimations, at: info.defenderLocation, other: info.attackerLocation, weapon: defenderWeapon, otherWeapon: attackerWeapon, hit: 'miss' as const, died: info.result.defenderDied },
+    ];
+    return sides.flatMap((side): UnitAnimationCue[] => {
+      if (event === 'sheath_weapon' && side.died) return [];
+      const facing = relativeDirection(side.at, side.other);
+      const anim = chooseAnimation(animationsFor(side.typeId, side.variation, side.own), {
+        loc: side.at,
+        secondLoc: side.other,
+        myUnit: side.unit,
+        event,
+        value: 0,
+        value2: 0,
+        hit: event === 'draw_weapon' ? side.hit : 'invalid',
+        attack: side.weapon,
+        secondAttack: side.otherWeapon,
+        terrainAtLoc: terrainLookup(session.board)(side.at),
+        facing,
+        board: session.board,
+      });
+      if (!anim) return [];
+      const key = spriteKey({ underlyingId: session.renderKeyFor(side.unit), typeId: side.typeId, x: side.at.x, y: side.at.y });
+      return [{ key, anim, direction: facing, srcHex: { x: side.at.x, y: side.at.y }, dstHex: { x: side.other.x, y: side.other.y } }];
+    });
   }
 
   function makeBlowPreview(info: LastAttackAnimation): (beatIndex: number) => void {
@@ -2253,7 +2340,39 @@
 
   function handleChooseAdvancement(typeId: string): void {
     session.chooseAdvancement(typeId);
-    sync();
+    void playAdvancements().then(() => sync());
+  }
+
+  /**
+   * Phase 27c S4: `animate_unit_advancement` for each advancement since the last call -- the unit as it was
+   * plays "levelout" (turning white), then as it now is "levelin" (coming out of the white).
+   */
+  async function playAdvancements(): Promise<void> {
+    for (const adv of session.takeAdvancementAnimations()) {
+      if (!boardView) continue;
+      const facing = session.displayFacing(adv.unit);
+      const context = (event: string): AnimationContext => ({
+        loc: adv.loc,
+        secondLoc: adv.loc,
+        myUnit: adv.unit,
+        event,
+        value: 0,
+        value2: 0,
+        hit: 'invalid',
+        terrainAtLoc: terrainLookup(session.board)(adv.loc),
+        facing,
+        board: session.board,
+      });
+      const hex = { x: adv.loc.x, y: adv.loc.y };
+      const out = chooseAnimation(animationsFor(adv.fromTypeId, adv.fromVariation, adv.fromNewAnimations), context('levelout'));
+      const key = spriteKey({ underlyingId: session.renderKeyFor(adv.unit), typeId: adv.fromTypeId, x: hex.x, y: hex.y });
+      if (out) await boardView.playAnimationSequence([[{ key, anim: out, direction: facing, srcHex: hex, dstHex: hex }]], 1);
+      const now = session.renderUnits.find((u) => u.underlyingId === session.renderKeyFor(adv.unit));
+      if (!now || session.board.unitAt(adv.loc) !== adv.unit) continue;
+      await boardView.ensureUnitVisual(now);
+      const into = chooseAnimation(unitAnimations(adv.unit), context('levelin'));
+      if (into) await boardView.playAnimationSequence([[{ key: spriteKey(now), anim: into, direction: facing, srcHex: hex, dstHex: hex }]], 1);
+    }
   }
 
   function handleSelectAttackerWeapon(index: number): void {

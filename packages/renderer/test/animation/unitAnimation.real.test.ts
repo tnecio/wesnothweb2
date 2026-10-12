@@ -79,8 +79,8 @@ describe('parseUnitAnimations + matching (real Elvish Fighter content)', () => {
 
   it('parses every real anim block: 1 movement_anim + 3 sword/1 bow attack_anim (each hit/miss-split by SOUND:HIT_AND_MISS) + 1 defend (hit/miss-split by DEFENSE_ANIM_RANGE) x2 ranges + the no-standing_anim default fallback + the generic engine-injected defend hit-flash fallback (2 variants: hit/kill-flash + miss-passthrough) + the recruited fade in', () => {
     // 1 movement + (3 sword + 1 bow attack_anim blocks) x 2 (hit/miss split) + 2 defend blocks x 3 (miss/hit-or-kill auto-split + the DEFENSE_ANIM_RANGE hit-specific [if] branch) + 1 synthesized default + 2 generic defend fallback (see unitAnimation.ts's own doc comment -- always added, regardless of real content, but low-priority so real [defend] blocks like this unit's own still win) + 1 recruited.
-    // ...plus fill_initial_animations' "_disabled_", "_disabled_selected_", and "standing" and "selected" from its animation_base (the type's image).
-    expect(animations.length).toBe(1 + 4 * 2 + 2 * 3 + 1 + 2 + 1 + 4);
+    // ...plus fill_initial_animations' "_disabled_", "_disabled_selected_", and "standing", "selected", "levelin" and "levelout" from its animation_base (the type's image).
+    expect(animations.length).toBe(1 + 4 * 2 + 2 * 3 + 1 + 2 + 1 + 4 + 2);
   });
 
   it('"recruited" fades the unit in over 600 ms, as fill_initial_animations synthesizes it', () => {
