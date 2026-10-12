@@ -206,6 +206,11 @@ export function executeAttack(
   attacker.facing = directionTo(attackerLoc, defenderLoc);
   defender.facing = directionTo(defenderLoc, attackerLoc);
 
+  // `attack::perform`: an attack with a disabled weapon spends its cost and ends there, with no exchange.
+  if (attackerStats.disable) {
+    return { attackerLoc, defenderLoc, attackerStats, defenderStats, blows: [], attackerXp: 0, defenderXp: 0, attackerDied: false, defenderDied: false };
+  }
+
   const blows: AttackBlowResult[] = [];
   let attackerXp = combatXp(defenderStats.level);
   let defenderXp = combatXp(attackerStats.level);
@@ -218,7 +223,8 @@ export function executeAttack(
   const aOrigBlows = aBlowsLeft;
   const dOrigBlows = dBlowsLeft;
   let defenderStrikesFirst = defenderStats.firststrike && !attackerStats.firststrike;
-  let roundsLeft = Math.max(attackerStats.rounds, defenderStats.rounds) - 1;
+  // Unsigned, as upstream: rounds of 0 wrap around to (practically) unlimited.
+  let roundsLeft = (Math.max(attackerStats.rounds, defenderStats.rounds) - 1) >>> 0;
 
   // Mutable "effective damage" trackers -- change mid-fight if the striker becomes slowed.
   let attackerEffectiveDamage = attackerStats.damage;

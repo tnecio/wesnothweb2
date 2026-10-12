@@ -80,6 +80,8 @@ export class WmlConfig {
   getNumber(key: string, fallback = 0): number {
     const v = this.get(key);
     if (v === undefined) return fallback;
+    // `config_attribute_value::to_int(def)`: a blank value is the default, not 0.
+    if (typeof v === 'string' && v.trim() === '') return fallback;
     const n = typeof v === 'number' ? v : Number(v);
     return Number.isNaN(n) ? fallback : n;
   }

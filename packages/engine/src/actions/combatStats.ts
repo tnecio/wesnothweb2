@@ -142,7 +142,8 @@ export function battleContextUnitStats(
   let drains = !opp.hasStatus('undrainable') && ctx.hasSpecialOrAbility(self, 'drains');
   const petrifies = !opp.hasStatus('unpetrifiable') && ctx.hasSpecialOrAbility(self, 'petrifies');
   const poisons = !opp.hasStatus('unpoisonable') && ctx.hasSpecialOrAbility(self, 'poison') && !opp.poisoned;
-  const rounds = ctx.getSpecialsAndAbilities(self, 'berserk').highest('value', 1).value;
+  // `unsigned int rounds`: a berserk value of 0 or below wraps around to a fight to the death.
+  const rounds = ctx.getSpecialsAndAbilities(self, 'berserk').highest('value', 1).value >>> 0;
   const firststrike = ctx.hasSpecialOrAbility(self, 'firststrike');
 
   const distance = distanceBetween(uLoc, oppLoc);

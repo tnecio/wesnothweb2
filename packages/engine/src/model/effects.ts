@@ -228,10 +228,13 @@ export function applyBuiltinEffect(unit: Unit, applyTo: string, effect: WmlConfi
       if (effect.hasAttribute('value')) unit.emitZoc = effect.getBoolean('value');
       return;
     case 'new_ability': {
-      for (const entry of abilitiesOf(effect, unit.type.registries.abilities)) {
+      // As upstream, each new ability is checked against the abilities the unit had before, not those added with it.
+      const before = unit.abilities;
+      const toAppend = abilitiesOf(effect, unit.type.registries.abilities).filter((entry) => {
         const id = entry.config.getString('id', '');
-        if (!unit.abilities.some((a) => a.config.getString('id', '') === id)) unit.abilities = [...unit.abilities, entry];
-      }
+        return !before.some((a) => a.config.getString('id', '') === id);
+      });
+      if (toAppend.length > 0) unit.abilities = [...before, ...toAppend];
       return;
     }
     case 'remove_ability': {

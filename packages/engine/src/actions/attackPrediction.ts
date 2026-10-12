@@ -943,7 +943,8 @@ function complexFight(
           oppHitUnknown *= 1.0 - thisHitKilledA;
         }
       }
-    } while (--rounds > 0 && pm.deadProb() < 0.99);
+    // `--rounds` on an unsigned count: 0 rounds wraps around and the fight goes on.
+    } while ((rounds = (rounds - 1) >>> 0) !== 0 && pm.deadProb() < 0.99);
 
     selfHit = Math.min(selfHit, 1.0);
     oppHit = Math.min(oppHit, 1.0);

@@ -1211,8 +1211,9 @@ function actionTransformUnit(cfg: WmlConfig, ctx: EventContext): void {
  *
  * `placement=` is walked in order and always falls back to `map` then
  * `recall`, as upstream; `passable=yes` makes the vacant-tile search
- * avoid terrain this unit cannot enter. Not ported: `location_id=`
- * (this port's `GameMap` has no named special locations yet).
+ * avoid terrain this unit cannot enter. For the `map` placements, a
+ * `location_id=` (a special location, or a side's start position) comes
+ * before `x,y=`.
  */
 function placeNewUnit(cfg: WmlConfig, ctx: EventContext, unit: Unit, side: number): Location | undefined {
   const passable = cfg.getBoolean('passable', false);
@@ -1230,7 +1231,8 @@ function placeNewUnit(cfg: WmlConfig, ctx: EventContext, unit: Unit, side: numbe
       const leader = ctx.board.unitsForSide(side).find((u) => u.canRecruit);
       loc = leader ? leader.location : ctx.board.map.startingPosition(side);
     } else if (place === 'map' || place === 'map_passable' || place === 'map_overwrite') {
-      loc = unit.location;
+      if (cfg.hasAttribute('location_id')) loc = ctx.board.map.specialLocation(cfg.getString('location_id'));
+      if (!loc.valid()) loc = unit.location;
     } else {
       continue; // an unknown placement is simply skipped, as upstream's own loop does
     }

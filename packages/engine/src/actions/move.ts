@@ -361,11 +361,6 @@ export function* executeMoveFlow(board: GameBoard, unit: Unit, path: readonly Lo
   const moved = !finalHex.equals(start);
   if (moved) {
     unit.setStatus(UnitStatus.NotMoved, false);
-    // Mirrors `unit::end_turn()`'s `movement_ != total_movement()` check:
-    // spending any movement this turn disqualifies the unit from its next
-    // side-turn's rest-heal (`GameSession.advanceOneTurn` resets `resting`
-    // back to true for every unit at the start of its own next turn).
-    unit.resting = false;
   }
   if (raise) actorSighted(board, unit, raise, notSeeing);
 

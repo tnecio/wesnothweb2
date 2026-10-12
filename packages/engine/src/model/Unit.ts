@@ -412,11 +412,23 @@ export class Unit {
     this.setStatus(UnitStatus.Uncovered, false);
   }
 
-  /** `unit::end_turn` (at the end of the unit's own side's turn): `duration=turn end` modifications expire, slow wears off, and an interrupted move is forgotten. */
+  /**
+   * `unit::end_turn` (at the end of the unit's own side's turn): `duration=turn end` modifications expire, slow
+   * wears off, a unit whose movement is not full (and that is not marked `not_moved`) is no longer resting, and an
+   * interrupted move is forgotten.
+   */
   endTurn(env: EffectEnv = {}): void {
     this.expireModifications('turn end', env);
     this.setStatus(UnitStatus.Slowed, false);
+    if (this.movesLeft !== this.maxMoves && !this.hasStatus(UnitStatus.NotMoved)) this.resting = false;
+    this.setStatus(UnitStatus.NotMoved, false);
     this.interruptedMove = undefined;
+  }
+
+  /** `unit::remove_movement_ai`: the AI ends the unit's movement; one that has not moved stays able to rest. */
+  removeMovementAi(): void {
+    if (this.movesLeft === this.maxMoves) this.setStatus(UnitStatus.NotMoved, true);
+    this.movesLeft = 0;
   }
 
   /** `unit::move_interrupted()`: a move stopped by sighting units can be continued (it has moves left). */

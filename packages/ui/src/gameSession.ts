@@ -2621,6 +2621,19 @@ export class GameSession {
     if (this.scenarioResult || this.board.unitAt(attackerLoc) !== attacker || this.board.unitAt(defenderLoc) !== defender) return null;
     spendAttackCost(attacker, attacker.attacks[cmd.weapon]!);
     attacker.setStatus('not_moved', false);
+    attacker.resting = false;
+    defender.resting = false;
+    attacker.setStatus('uncovered', true);
+    // `attack::perform`: an attack with a disabled weapon ends here, before the `attack` event.
+    const { attacker: openingStats } = buildBattleContext({
+      board: this.board,
+      attacker,
+      attackerWeapon: attacker.attacks[cmd.weapon],
+      defender,
+      defenderWeapon: defenderWeapon >= 0 ? defender.attacks[defenderWeapon] : undefined,
+      options: this.attackOptions(attackerLoc, defenderLoc),
+    });
+    if (openingStats.disable) return null;
     yield* this.fireFlow('attack', attackerLoc, defenderLoc, eventData());
     this.checkForGameEnd();
     if (this.scenarioResult || this.board.unitAt(attackerLoc) !== attacker || this.board.unitAt(defenderLoc) !== defender) {
@@ -2773,7 +2786,8 @@ export class GameSession {
   private execStopUnit(cmd: StopUnitCommand, action: ActionState): boolean | null {
     const unit = this.board.unitAt(locOf(cmd.loc));
     if (!unit) return this.reject(action, `no unit to stop at ${locOf(cmd.loc)}`);
-    if (cmd.movement) unit.movesLeft = 0;
+    // `stop_unit_result`: `remove_movement_ai`.
+    if (cmd.movement) unit.removeMovementAi();
     if (cmd.attacks) unit.attacksLeft = 0;
     return true;
   }
