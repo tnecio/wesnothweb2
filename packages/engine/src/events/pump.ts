@@ -57,7 +57,7 @@ import { AttackType, type UnitType } from '../model/UnitType.js';
 import type { Rng } from '../rng/Rng.js';
 import { WmlConfig } from '../wml/config.js';
 import { createDefaultActionRegistry, runActionFlow, unitToVarNode } from './actionWml.js';
-import { ActionRegistry, type EventContext, type RecordedMessage } from './context.js';
+import { ActionRegistry, type EventContext, type NativeEventSpec, type RecordedMessage } from './context.js';
 import { runFlow, type Flow, type Responder } from './interaction.js';
 import { conditionalPassed } from './conditionalWml.js';
 import { unitMatchesFilter } from './filter.js';
@@ -80,6 +80,8 @@ export interface WmlEventHandler {
   repeatable: boolean;
   priority: number;
   disabled: boolean;
+  /** Registered from Lua (`addNativeEvent`): its function action and filter, and the content the action gets. */
+  native?: { readonly content: WmlConfig; readonly action?: (content: WmlConfig) => Flow; readonly filter?: () => boolean };
 }
 
 export interface QueuedEvent {
@@ -101,15 +103,32 @@ export class EventManager {
     if (nameRaw === '' && id === '') return undefined;
     if (id !== '' && this.handlers.some((h) => h.id === id && !h.disabled)) return undefined;
 
-    const names = nameRaw === '' ? [] : nameRaw.split(',').map((s) => standardizeEventName(s));
-    const handler: WmlEventHandler = {
+    return this.add({
       rawCfg: cfg,
-      names,
+      names: nameRaw === '' ? [] : nameRaw.split(',').map((s) => standardizeEventName(s)),
       id,
       repeatable: !cfg.getBoolean('first_time_only', true),
       priority: cfg.getNumber('priority', 0),
       disabled: false,
-    };
+    });
+  }
+
+  /** `add_event_handler_from_lua`: a handler from `wesnoth.game_events.add` and kin. */
+  addNative(spec: NativeEventSpec): WmlEventHandler | undefined {
+    if (spec.name === '' && spec.id === '') return undefined;
+    if (spec.id !== '' && this.handlers.some((h) => h.id === spec.id && !h.disabled)) return undefined;
+    return this.add({
+      rawCfg: spec.filters,
+      names: spec.name === '' ? [] : spec.name.split(',').map((s) => standardizeEventName(s)),
+      id: spec.id,
+      repeatable: spec.repeatable,
+      priority: spec.priority,
+      disabled: false,
+      native: { content: spec.content, action: spec.action, filter: spec.filter },
+    });
+  }
+
+  private add(handler: WmlEventHandler): WmlEventHandler {
     this.handlers.push(handler);
     // Highest priority first (`std::stable_sort(active_.rbegin(), active_.rend(), cmp)`); Array#sort is stable
     // (ES2019+), so ties keep registration order. Heir to the Throne 1's `priority=-50` prestart must run last.
@@ -146,7 +165,8 @@ export class EventManager {
    * `first_time_only` handler is gone, one added at run time is there).
    */
   activeConfigs(): WmlConfig[] {
-    return this.getActive().map((h) => h.rawCfg);
+    // Lua's handlers are not saved: the content adds them again when it loads (`has_preloaded_`).
+    return this.getActive().filter((h) => !h.native).map((h) => h.rawCfg);
   }
 
   /** Replaces every handler with `cfgs`, as loading a save's `[event]`s does. */
@@ -232,6 +252,7 @@ export class EventPump {
       fireNow: (name, loc1 = Location.NULL, loc2 = Location.NULL, data = new WmlConfig(), id = '') =>
         this.fireNowFlow(name, loc1, loc2, data, id),
       addEvent: (cfg) => this.manager.addFromWml(cfg) !== undefined,
+      addNativeEvent: (spec) => this.manager.addNative(spec) !== undefined,
       removeEvent: (id) => this.manager.removeById(id),
       skipMessages: false,
       setUndoable: (undoable) => {
@@ -430,6 +451,8 @@ export class EventPump {
     this.ctx.loc1 = ev.loc1;
     this.ctx.loc2 = ev.loc2;
     this.ctx.eventData = ev.data;
+    this.ctx.eventName = ev.name;
+    this.ctx.eventId = ev.id;
     this.ctx.exit = { type: 'none' };
 
     // `context::scoped` (pump.cpp:324-343): a nested event inherits the
@@ -440,7 +463,8 @@ export class EventPump {
     if (this.nesting <= 1) this.ctx.skipMessages = false;
     this.undoDisabled.push(true);
     try {
-      yield* runActionFlow(handler.rawCfg, this.ctx);
+      if (handler.native?.action) yield* handler.native.action(handler.native.content);
+      else yield* runActionFlow(handler.native ? handler.native.content : handler.rawCfg, this.ctx);
     } finally {
       this.ctx.skipMessages = outerSkip;
       const disabled = this.undoDisabled.pop()!;
@@ -497,6 +521,8 @@ export class EventPump {
         }
       }
     }
+    // A Lua handler's function filter (`lua_event_filter`), after the WML ones.
+    if (handler.native?.filter && !handler.native.filter()) return false;
     return true;
   }
 

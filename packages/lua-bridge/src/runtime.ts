@@ -27,6 +27,7 @@
  * (`guiDialog.ts`) and `gui.show_help` (an `openHelp` beat). Everything else is the kernel's.
  */
 import { WmlConfig, type WmlConfigJson } from '@wesnothweb2/engine/src/wml/config.js';
+import { Location } from '@wesnothweb2/engine/src/model/Location.js';
 import { TString } from '@wesnothweb2/engine/src/i18n/tstring.js';
 import type { ActionHandler, EventContext } from '@wesnothweb2/engine/src/events/context.js';
 import { isFlow, runFlow, type Flow, type InteractionResult, type Responder } from '@wesnothweb2/engine/src/events/interaction.js';
@@ -215,6 +216,9 @@ interface OpenDialog {
   retval: number;
 }
 
+/** The core abilities core's game config loads in Lua: feeding, diversion and stun. */
+export const CORE_GAME_CONFIG_LUA: readonly string[] = ['lua/feeding.lua', 'lua/diversion.lua', 'lua/stun.lua'];
+
 export class LuaRuntime {
   readonly kernel: LuaKernel;
   readonly units: LuaUnits;
@@ -260,6 +264,15 @@ export class LuaRuntime {
    * builder marks `game_config=yes` and puts first), then the scenario's other top-level `[lua]`.
    */
   *initialize(scenario: WmlConfig): Flow {
+    // Core's own game-config `[lua]` (`data/core/_main.cfg`) comes first, as it does upstream -- less
+    // `wml-tags.lua` (the engine implements the tags) and `scenario_end_events.lua` (the session fires them).
+    for (const file of CORE_GAME_CONFIG_LUA) {
+      try {
+        yield* this.runChunk(`wesnoth.dofile '${file}'`, `=${file}`, undefined);
+      } catch (e) {
+        this.ctx().log('error', `[lua] preload ${file}: ${(e as Error).message}`);
+      }
+    }
     for (const lua of scenario.children('lua')) {
       try {
         yield* this.runChunk(lua.getString('code', ''), lua.getString('name', '') || '=[lua] preload', lua.child('args'));
@@ -460,7 +473,171 @@ export class LuaRuntime {
 
   // --- the runtime's own API ---
 
+  /**
+   * `wesnoth.game_events` (`game_lua_kernel`'s `intf_add_event`, `intf_add_event_simple`, `intf_add_event_wml`,
+   * `intf_remove_event`, `intf_fire_event`): handlers from Lua -- an action function (called with the handler's
+   * content) or WML content, filters as WML or a function -- on the engine's event manager.
+   */
+  private installGameEvents(k: LuaKernel): void {
+    const ctx = (): EventContext => this.ctx();
+    const ref = (T: LuaState, idx: number): number => {
+      lua.lua_pushvalue(T, idx);
+      return lauxlib.luaL_ref(T, lua.LUA_REGISTRYINDEX);
+    };
+    const action = (fnRef: number) => (content: WmlConfig): Flow => this.callLuaRef(fnRef, content);
+    /** `read_event_name`: a string, or a list of strings joined with commas. */
+    const readEventName = (T: LuaState, idx: number): string => {
+      if (lua.lua_type(T, idx) === lua.LUA_TSTRING) return lua.lua_tojsstring(T, idx);
+      lauxlib.luaL_checktype(T, idx, lua.LUA_TTABLE);
+      const names: string[] = [];
+      const n = lua.lua_rawlen(T, idx);
+      for (let i = 1; i <= n; i++) {
+        lua.lua_rawgeti(T, idx, i);
+        names.push(lua.lua_tojsstring(T, -1));
+        lua.lua_pop(T, 1);
+      }
+      return names.join(',');
+    };
+    /** Reads `t[key]` with `read(index)`, `undefined` for nil. */
+    const field = <V>(T: LuaState, t: number, key: string, read: (idx: number) => V): V | undefined => {
+      lua.lua_getfield(T, t, to_luastring(key));
+      const top = lua.lua_gettop(T);
+      const v = lua.lua_isnil(T, top) ? undefined : read(top);
+      lua.lua_settop(T, top - 1);
+      return v;
+    };
+
+    k.define(['wesnoth', 'game_events', 'add'], (T) => {
+      lauxlib.luaL_checktype(T, 1, lua.LUA_TTABLE);
+      const id = field(T, 1, 'id', (i) => lua.lua_tojsstring(T, i)) ?? '';
+      const repeatable = !(field(T, 1, 'first_time_only', (i) => lua.lua_toboolean(T, i)) ?? true);
+      const menuItem = field(T, 1, 'menu_item', (i) => lua.lua_toboolean(T, i)) ?? false;
+      const priority = field(T, 1, 'priority', (i) => lua.lua_tonumber(T, i)) ?? 0;
+      let name = field(T, 1, 'name', (i) => readEventName(T, i)) ?? '';
+      if (name === '' && menuItem) {
+        if (id === '') return lauxlib.luaL_argerror(T, 1, to_luastring('non-empty id is required for a menu item'));
+        name = `menu item ${id}`;
+      }
+      if (id === '' && name === '') return lauxlib.luaL_argerror(T, 1, to_luastring('either a name or id is required'));
+      const content = field(T, 1, 'content', (i) => k.checkConfig(T, i)) ?? new WmlConfig().setAttribute('__empty_lua_event', true);
+      let filters = new WmlConfig();
+      let filter: (() => boolean) | undefined;
+      lua.lua_getfield(T, 1, to_luastring('filter'));
+      const fi = lua.lua_gettop(T);
+      if (!lua.lua_isnil(T, fi)) {
+        const asConfig = k.toConfig(T, fi);
+        if (asConfig) {
+          filters = asConfig;
+        } else if (lua.lua_isfunction(T, fi)) {
+          const fnRef = ref(T, fi);
+          const args = field(T, 1, 'filter_args', (i) => k.checkConfig(T, i)) ?? new WmlConfig();
+          filter = () => this.callLuaFilter(fnRef, args);
+        } else {
+          for (const [key, tag] of [['condition', 'filter_condition'], ['side', 'filter_side'], ['unit', 'filter'], ['attack', 'filter_attack'], ['second_unit', 'filter_second'], ['second_attack', 'filter_second_attack']] as const) {
+            field(T, fi, key, (i) => {
+              if (lua.lua_type(T, i) === lua.LUA_TSTRING) filters.addChild('insert_tag').setAttribute('name', tag).setAttribute('variable', lua.lua_tojsstring(T, i));
+              else filters.addChild(tag, k.checkConfig(T, i));
+            });
+          }
+          const formula = field(T, fi, 'formula', (i) => lua.lua_tojsstring(T, i));
+          if (formula !== undefined) filters.setAttribute('filter_formula', formula);
+        }
+      }
+      lua.lua_settop(T, fi - 1);
+      const act = field(T, 1, 'action', (i) => (lua.lua_isfunction(T, i) ? action(ref(T, i)) : undefined));
+      ctx().addNativeEvent({ name, id, repeatable, priority, filters, content, action: act, filter });
+      return 0;
+    });
+
+    // `intf_add_event_simple`: add_repeating (name, function, priority) and add_menu (id, function).
+    const addSimple = (menuItem: boolean) => (T: LuaState): number => {
+      let name = readEventName(T, 1);
+      const priority = lua.lua_isnoneornil(T, 3) ? 0 : lauxlib.luaL_checknumber(T, 3);
+      if (name === '') return lauxlib.luaL_argerror(T, 1, to_luastring('must not be empty'));
+      let id = '';
+      if (menuItem) {
+        id = name;
+        name = `menu item ${name}`;
+      }
+      lauxlib.luaL_checktype(T, 2, lua.LUA_TFUNCTION);
+      const content = new WmlConfig().setAttribute('__quick_lua_event', true);
+      ctx().addNativeEvent({ name, id, repeatable: true, priority, filters: new WmlConfig(), content, action: action(ref(T, 2)) });
+      return 0;
+    };
+    k.define(['wesnoth', 'game_events', 'add_repeating'], addSimple(false));
+    k.define(['wesnoth', 'game_events', 'add_menu'], addSimple(true));
+    // `intf_add_event_wml`: an [event], its variables substituted only with delayed_variable_substitution=no.
+    k.define(['wesnoth', 'game_events', 'add_wml'], (T) => {
+      const cfg = k.checkConfig(T, 1);
+      ctx().addEvent(cfg.getBoolean('delayed_variable_substitution', true) ? cfg : ctx().variables.expandConfig(cfg));
+      return 0;
+    });
+    k.define(['wesnoth', 'game_events', 'remove'], (T) => {
+      ctx().removeEvent(checkString(T, 1));
+      return 0;
+    });
+    // `intf_fire_event<true>`: by the handler's id, with optional hexes and data.
+    k.define(['wesnoth', 'game_events', 'fire_by_id'], (T) => {
+      const id = checkString(T, 1);
+      let pos = 2;
+      const loc = (): Location => {
+        if (lua.lua_type(T, pos) === lua.LUA_TNUMBER && lua.lua_type(T, pos + 1) === lua.LUA_TNUMBER) {
+          const l = Location.fromWml(Number(lua.lua_tointeger(T, pos)), Number(lua.lua_tointeger(T, pos + 1)));
+          pos += 2;
+          return l;
+        }
+        return Location.NULL;
+      };
+      const l1 = loc();
+      const l2 = loc();
+      const data = lua.lua_isnoneornil(T, pos) ? new WmlConfig() : k.checkConfig(T, pos);
+      const flow = (function* (): Flow<boolean> {
+        yield* ctx().fireNow('', l1, l2, data, id);
+        return true;
+      })();
+      return this.yieldFlow(T, flow);
+    });
+    // The running event made no change an undo would have to take back (or did).
+    k.define(['wesnoth', 'game_events', 'set_undoable'], (T) => {
+      ctx().setUndoable(lua.lua_toboolean(T, 1));
+      return 0;
+    });
+  }
+
+  /** Calls a Lua function kept in the registry, with one config argument, as a flow (`run_wml_event`). */
+  private *callLuaRef(fnRef: number, arg: WmlConfig): Flow {
+    const T = this.newThread();
+    try {
+      lua.lua_rawgeti(T.state, lua.LUA_REGISTRYINDEX, fnRef);
+      this.kernel.pushConfig(T.state, arg);
+      yield* this.drive(T.state, 1);
+    } catch (e) {
+      this.ctx().log('error', `Lua event handler: ${(e as Error).message}`);
+    } finally {
+      this.release(T.ref);
+    }
+  }
+
+  /** `lua_event_filter`: the function, called with the filter arguments, decides; an error is a fail. */
+  private callLuaFilter(fnRef: number, args: WmlConfig): boolean {
+    const L = this.L;
+    const top = lua.lua_gettop(L);
+    try {
+      lua.lua_rawgeti(L, lua.LUA_REGISTRYINDEX, fnRef);
+      this.kernel.pushConfig(L, args);
+      if (lua.lua_pcall(L, 1, 1, 0) !== lua.LUA_OK) {
+        this.ctx().log('error', `Lua event filter: ${lua.lua_tojsstring(L, -1)}`);
+        return false;
+      }
+      return lua.lua_toboolean(L, -1);
+    } finally {
+      lua.lua_settop(L, top);
+    }
+  }
+
   private installFunctions(k: LuaKernel): void {
+    this.installGameEvents(k);
+
     // wesnoth.sync.invoke_command: a synced `[custom_command]`.
     k.define(['wesnoth', 'sync', 'invoke_command'], (T) => {
       const name = checkString(T, 1);

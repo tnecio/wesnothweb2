@@ -242,10 +242,24 @@ export function installWorld(k: LuaKernel, host: GameKernelHost, units: LuaUnits
     user_can_invoke_commands: (T) => lua.lua_pushboolean(T, false),
     map: (T) => pushMap(T),
     user_is_replaying: (T) => lua.lua_pushboolean(T, false),
+    // `CURRENT_GETTER("event_context")`: the event's name, id and data, its weapons, damage_inflicted and hexes.
     event_context: (T) => {
       const c = ctx();
       const cfg = new WmlConfig();
-      cfg.setAttribute('name', c.eventData.getString('name', ''));
+      cfg.setAttribute('name', c.eventName ?? '');
+      cfg.setAttribute('id', c.eventId ?? '');
+      cfg.addChild('data', c.eventData.clone());
+      const first = c.eventData.child('first');
+      if (first) cfg.addChild('weapon', first.clone());
+      const second = c.eventData.child('second');
+      if (second) cfg.addChild('second_weapon', second.clone());
+      const di = c.eventData.getRaw('damage_inflicted');
+      if (di !== undefined && String(di) !== '') cfg.setAttribute('damage_inflicted', di);
+      if (c.loc1.valid()) {
+        cfg.setAttribute('x1', c.loc1.wmlX).setAttribute('y1', c.loc1.wmlY);
+        cfg.setAttribute('unit_x', c.loc1.wmlX).setAttribute('unit_y', c.loc1.wmlY);
+      }
+      if (c.loc2.valid()) cfg.setAttribute('x2', c.loc2.wmlX).setAttribute('y2', c.loc2.wmlY);
       k.pushConfig(T, cfg);
     },
   };

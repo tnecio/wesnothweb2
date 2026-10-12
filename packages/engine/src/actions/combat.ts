@@ -192,7 +192,20 @@ export function executeAttack(
   if (defWeaponIdx === undefined) defWeaponIdx = chooseDefenderWeaponIndex({ board, attacker, defender, options }, attackerWeaponIndex);
   const defenderWeapon = defWeaponIdx >= 0 ? defender.attacks[defWeaponIdx] : undefined;
 
-  const { attacker: attackerStats, defender: defenderStats } = buildBattleContext({ board, attacker, attackerWeapon, defender, defenderWeapon, options });
+  const fightStats = () => buildBattleContext({ board, attacker, attackerLoc, attackerWeapon, defender, defenderLoc, defenderWeapon, options });
+  const { attacker: attackerStats, defender: defenderStats } = fightStats();
+  // `attack::refresh_bc`: the stats are rebuilt after every strike's events, so a status a hit gave (poisoned,
+  // slowed) or an event's change counts from the next strike on.
+  let aStats = attackerStats;
+  let dStats = defenderStats;
+  let attackerEffectiveDamage = attackerStats.damage;
+  let defenderEffectiveDamage = defenderStats.damage;
+  const refreshBc = (): void => {
+    if (board.unitAt(attackerLoc) !== attacker || board.unitAt(defenderLoc) !== defender) return;
+    ({ attacker: aStats, defender: dStats } = fightStats());
+    attackerEffectiveDamage = aStats.damage;
+    defenderEffectiveDamage = dStats.damage;
+  };
 
   // Phase 25: `statistics_attack_context`, with both units as they enter the fight.
   const statsContext = board.statistics?.attackContext(board.statsUnit(attacker), board.statsUnit(defender), attackerStats.chanceToHit, defenderStats.chanceToHit);
@@ -226,9 +239,6 @@ export function executeAttack(
   // Unsigned, as upstream: rounds of 0 wrap around to (practically) unlimited.
   let roundsLeft = (Math.max(attackerStats.rounds, defenderStats.rounds) - 1) >>> 0;
 
-  // Mutable "effective damage" trackers -- change mid-fight if the striker becomes slowed.
-  let attackerEffectiveDamage = attackerStats.damage;
-  let defenderEffectiveDamage = defenderStats.damage;
 
   const handleDeath = (killerIsAttacker: boolean, killerUnit: Unit, deadUnit: Unit): void => {
     const deadLoc = deadUnit.location;
@@ -239,7 +249,7 @@ export function executeAttack(
     board.removeUnitAt(deadLoc);
 
     // `battle_context_unit_stats` worked out whether the killer's weapon plagues this victim, and into what.
-    const killerStats = killerIsAttacker ? attackerStats : defenderStats;
+    const killerStats = killerIsAttacker ? aStats : dStats;
     if (!killerStats.plagues) return;
     const plagueType = killerStats.plagueType ?? '';
     const undeadVariation = deadUnit.undeadVariation;
@@ -273,7 +283,7 @@ export function executeAttack(
   const performHit = (attackerTurn: boolean): boolean => {
     const striker = attackerTurn ? attacker : defender;
     const target = attackerTurn ? defender : attacker;
-    const strikerStats = attackerTurn ? attackerStats : defenderStats;
+    const strikerStats = attackerTurn ? aStats : dStats;
     const strikerDamage = attackerTurn ? attackerEffectiveDamage : defenderEffectiveDamage;
 
     const roll = rng.getRandomInt(0, 99);
@@ -300,6 +310,7 @@ export function executeAttack(
     // The strike's events (`perform_hit`), before drain and death. An event that ends the fight ends it here;
     // a unit it left at no hitpoints still dies (upstream would leave it standing until something else hits it).
     if (options.onStrike && !options.onStrike(attackerTurn, hit, damage)) {
+      refreshBc();
       blows.push({ attackerTurn, chanceToHit: strikerStats.chanceToHit, hit, damage, drainAmount: 0, strikerDiedFromDrain: false, targetDied, poisoned: false, slowed: false, petrified: false });
       if (targetDied && board.unitAt(target.location) === target && target.hitpoints <= 0) {
         if (attackerTurn) defenderDied = true;
@@ -308,6 +319,8 @@ export function executeAttack(
       }
       return false;
     }
+
+    refreshBc();
 
     let strikerDiedFromDrain = false;
     if (drainAmount > 0) {
@@ -347,8 +360,8 @@ export function executeAttack(
       if (strikerStats.slows && !target.slowed) {
         target.setStatus(UnitStatus.Slowed, true);
         slowed = true;
-        if (attackerTurn) defenderEffectiveDamage = defenderStats.slowDamage;
-        else attackerEffectiveDamage = attackerStats.slowDamage;
+        if (attackerTurn) defenderEffectiveDamage = dStats.slowDamage;
+        else attackerEffectiveDamage = aStats.slowDamage;
       }
       if (strikerStats.petrifies) {
         target.setStatus(UnitStatus.Petrified, true);
@@ -361,6 +374,7 @@ export function executeAttack(
           dBlowsLeft = 0;
           aBlowsLeft = -1;
         }
+        refreshBc();
       }
     }
 
@@ -397,7 +411,7 @@ export function executeAttack(
       aBlowsLeft = aOrigBlows;
       dBlowsLeft = dOrigBlows;
       roundsLeft -= 1;
-      defenderStrikesFirst = defenderStats.firststrike && !attackerStats.firststrike;
+      defenderStrikesFirst = dStats.firststrike && !aStats.firststrike;
     }
     if (aBlowsLeft <= 0 && dBlowsLeft <= 0) break;
   }
