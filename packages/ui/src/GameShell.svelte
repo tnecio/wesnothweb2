@@ -47,10 +47,12 @@
     type HexPoint,
     type UnitAnimationCue,
     type AnimationContext,
+    type UnitAnimationDef,
     HEX_STEP_MS,
     animationDurationMs,
     animationSoundFiles,
     parseUnitAnimations,
+    parseNewAnimations,
     chooseAnimation,
     buildAttackAnimationContexts,
     buildMovementAnimationContexts,
@@ -158,7 +160,6 @@
   import { stripPango } from './markup/pango.js';
   import AdvancementDialog from './AdvancementDialog.svelte';
   import ObjectivesDialog from './ObjectivesDialog.svelte';
-  import ScenarioEndOverlay from './ScenarioEndOverlay.svelte';
   import Outro from './Outro.svelte';
   import { buildOutroScreens, outroHoldMs } from './story/outro.js';
   import RecruitDialog from './RecruitDialog.svelte';
@@ -560,7 +561,6 @@
   let otherSidesTurn = $state<'thinking' | 'animating' | null>(null);
   /** Set by Skip Animation: the rest of this batch of the other sides' animations is not played. */
   let skipOtherSidesAnimations = false;
-  const turnButton = $derived<'end' | 'wait' | 'skip'>(otherSidesTurn === 'animating' ? 'skip' : otherSidesTurn === 'thinking' ? 'wait' : 'end');
 
   let phase = $state<'story' | 'objectives' | 'playing' | 'ended' | 'replay'>(
     initialReplaySession ? 'replay' : session.scenarioResult ? 'ended' : storyParts.length > 0 ? 'story' : 'playing',
@@ -596,24 +596,50 @@
       .then((json) => (creditsData = json))
       .catch((err) => console.error('[outro] could not load credits.json:', err));
   });
+  let pendingAdvancement = $state<PendingAdvancement | null>(null);
+  /** Phase 27c S6: End Scenario has been pressed (or there was no lingering) -- see the linger effect. */
+  let lingerDone = $state(false);
+  const lingering = $derived(phase === 'ended' && session.scenarioResult !== null && !pendingAdvancement && !lingerDone && (session.endLevelPresentation?.lingerMode ?? true));
+  // While the next scenario loads (`continuing`), the button is greyed out.
+  const turnButton = $derived<'end' | 'wait' | 'skip' | 'endScenario'>(continuing ? 'wait' : lingering ? 'endScenario' : otherSidesTurn === 'animating' ? 'skip' : otherSidesTurn === 'thinking' ? 'wait' : 'end');
   /**
-   * `[endlevel] linger_mode=no carryover_report=no` (a cutscene scenario such as Dusk of Dawn's prologue):
-   * upstream neither stays on the map nor shows the victory summary, and goes straight on to the next scenario.
+   * Phase 27c S6: `playsingle_controller::linger` -- once the scenario is over the player stays on the map
+   * (the whole of it, with `reveal_map`), the turn button reading End Scenario, until they press it; then the
+   * game goes on (`lingerDone`). `[endlevel] linger_mode=no` skips this.
    */
+  /** Whether what follows the scenario (`play_game` after `play_scenario`) has been started. */
+  let afterEndStarted = false;
+  /** A new scenario (or a loaded one): it has not ended, so it has not been lingered on; `[color_adjust]` is the display's, cleared. */
+  function resetScenarioEnd(): void {
+    lingerDone = false;
+    afterEndStarted = false;
+    colorAdjust = { red: 0, green: 0, blue: 0 };
+  }
   $effect(() => {
-    const presentation = session.endLevelPresentation;
-    if (!continuing && phase === 'ended' && session.scenarioResult === 'victory' && session.nextScenarioId !== null && presentation?.lingerMode === false && presentation.carryoverReport === false) {
-      void continueToNextScenario();
+    if (phase !== 'ended' || session.scenarioResult === null || pendingAdvancement || lingering || afterEndStarted) return;
+    afterEndStarted = true;
+    lingerDone = true;
+    // A victory goes on to the next scenario, or rolls the outro after the last (below); a defeat ends the
+    // campaign, back to the title screen.
+    if (session.scenarioResult === 'victory') {
+      if (session.nextScenarioId !== null) void continueToNextScenario();
+    } else {
+      onQuitToMenu?.();
     }
   });
   /** Upstream shows the outro only for a victory with no next scenario, and only when `end_credits` is not turned off. */
   const showOutro = $derived(
     phase === 'ended' &&
+      lingerDone &&
       session.scenarioResult === 'victory' &&
       session.nextScenarioId === null &&
       session.endLevelPresentation?.endCredits !== false &&
       !outroDone,
   );
+  /** After the campaign's last victory (and its outro), the title screen. */
+  $effect(() => {
+    if (phase === 'ended' && lingerDone && session.scenarioResult === 'victory' && session.nextScenarioId === null && !showOutro) onQuitToMenu?.();
+  });
   /**
    * Phase 17: the one `[message]` a suspended event is waiting on, if
    * any. Nothing else about the game advances while this is set -- the
@@ -646,7 +672,6 @@
   let recallOptions = $state<RecallOption[]>([]);
   let pendingRecallIndex = $state<number | null>(null);
   let pendingPreview = $state<CombatPreview | null>(null);
-  let pendingAdvancement = $state<PendingAdvancement | null>(null);
   /** Phase 13: whether the real modal Recruit/Recall dialogs are open -- opened via `SidePanel`'s "Recruit.../Recall..." trigger, distinct from `pendingRecruitTypeId`/`pendingRecallIndex` (the ARMED, awaiting-a-tile-click state that persists after the dialog closes). */
   let recruitDialogOpen = $state(false);
   let recallDialogOpen = $state(false);
@@ -699,6 +724,18 @@
   let mapItems = $state(session.mapItems);
   let mapLabels = $state(session.mapLabels);
   let timeOfDay = $state<TimeOfDayEntry>(session.currentTimeOfDay);
+  /** Phase 27c S5: the `[time_area]` hexes' lighting, replaced only when it changes (the board rebuilds its light map). */
+  let timeAreas = $state.raw<ReadonlyMap<string, { red: number; green: number; blue: number; mask?: string }>>(new Map());
+  let timeAreasKey = '';
+  function refreshTimeAreas(): void {
+    const next = session.timeAreaLighting();
+    const key = JSON.stringify([...next]);
+    if (key === timeAreasKey) return;
+    timeAreasKey = key;
+    timeAreas = next;
+  }
+  /** Phase 27c S5: `[color_adjust]`'s colour, added to every time of day's (`display::adjust_color_overlay`). */
+  let colorAdjust = $state<{ red: number; green: number; blue: number }>({ red: 0, green: 0, blue: 0 });
   let statusMessage = $state(tx('Click one of your units to select it.'));
   /** Phase 14: the infobox's "terrain info for the hovered hex" -- kept in sync by `GameBoardView`'s `onHexHoverChange`. */
   let hoveredHexInfo = $state<HoveredHexInfo | null>(null);
@@ -796,6 +833,7 @@
     recruitOptions = session.recruitOptions;
     recallOptions = session.recallOptions;
     timeOfDay = session.currentTimeOfDay;
+    refreshTimeAreas();
     hoveredHexInfo = hoveredHexInfo ? session.hoveredHexInfo(hoveredHexInfo.x, hoveredHexInfo.y) : null;
     statusMessage = statusFor();
   }
@@ -854,6 +892,7 @@
     mapItems = session.mapItems;
     mapLabels = session.mapLabels;
     timeOfDay = session.currentTimeOfDay;
+    refreshTimeAreas();
     refreshMinimap();
     armedMove = null;
 
@@ -1075,11 +1114,8 @@
         else boardView?.zoomTo(beat.factor);
         break;
       case 'colorAdjust':
-        // An instant tint, held until something sets it back to 0,0,0.
-        screenTint =
-          beat.red === 0 && beat.green === 0 && beat.blue === 0
-            ? null
-            : { r: Math.max(0, beat.red), g: Math.max(0, beat.green), b: Math.max(0, beat.blue), a: Math.min(1, Math.abs(beat.red + beat.green + beat.blue) / 765), ms: 0 };
+        // `adjust_color_overlay`: added to the time of day's colour wherever it lights the map, until set back to 0,0,0.
+        colorAdjust = { red: beat.red, green: beat.green, blue: beat.blue };
         break;
       case 'screenFade':
         screenTint = beat.alpha <= 0 ? null : { r: beat.red, g: beat.green, b: beat.blue, a: beat.alpha / 255, ms: Math.min(beat.durationMs, MAX_BEAT_MS) };
@@ -1162,7 +1198,7 @@
       [
         {
           key: spriteKey({ underlyingId: session.renderKeyFor(unit), typeId: unit.type.id, x: unit.location.x, y: unit.location.y }),
-          anim: chooseAnimation(animationsFor(unit.type.id, unit.variation), context),
+          anim: chooseAnimation(unitAnimations(unit), context),
           direction: unit.facing,
           srcHex: { x: unit.location.x, y: unit.location.y },
           dstHex: { x: unit.location.x, y: unit.location.y },
@@ -1455,9 +1491,50 @@
     // `GameSession.moveSelectedTo`), so they play at the point the WML
     // reaches them -- before whatever the `moveto`/`recruit` events they
     // trigger have to say, not after the click has fully resolved.
+    const before = session.selectedUnit;
     const message = await runPlayerAction(() => session.handleHexClick(x, y, options));
     sync(message);
+    playSelectedIfNew(before);
     await showDeferredInteractions();
+  }
+
+  /** `select_hex`'s `set_selecting`: the player's own unit, newly selected, plays its "selected" animation. */
+  function playSelectedIfNew(before: Unit | null): void {
+    const unit = session.selectedUnit;
+    if (!unit || unit === before || unit.side !== session.viewingSide || unit.side !== activeSide) return;
+    boardView?.playSelected(spriteKey({ underlyingId: session.renderKeyFor(unit), typeId: unit.type.id, x: unit.location.x, y: unit.location.y }));
+  }
+
+  /** Each type's (and variation's) own animations, parsed once (`unitAnimations` adds a unit's `new_animation`s). */
+  const typeAnimationCache = new Map<string, ReturnType<typeof parseUnitAnimations>>();
+
+  /**
+   * Phase 27c S3: a unit's standing, idle or selection animation (`unit_animation_component`), chosen as any
+   * of its animations is (`choose_animation`).
+   */
+  function ambientAnimation(snapshotUnit: SnapshotUnit, event: string): UnitAnimationDef | null {
+    const unit = session.board.allUnits().find((u) => session.renderKeyFor(u) === snapshotUnit.underlyingId);
+    if (!unit) return null;
+    const key = `${unit.type.id}|${unit.variation}`;
+    let anims = unit.newAnimations.length === 0 ? typeAnimationCache.get(key) : undefined;
+    if (!anims) {
+      anims = unitAnimations(unit);
+      if (unit.newAnimations.length === 0) typeAnimationCache.set(key, anims);
+    }
+    const context: AnimationContext = {
+      loc: unit.location,
+      secondLoc: unit.location,
+      myUnit: unit,
+      // Its direction filters see the way it is drawn facing (`displayFacing`).
+      facing: session.displayFacing(unit),
+      board: session.board,
+      event,
+      value: 0,
+      value2: 0,
+      hit: 'invalid',
+      terrainAtLoc: terrainLookup(session.board)(unit.location),
+    };
+    return chooseAnimation(anims, context) ?? null;
   }
 
   /** Whether "Continue Move" has a unit to move: the selected one, or the one under the pointer. */
@@ -1641,9 +1718,16 @@
    * cheap enough not to need a cache -- revisit if profiling ever says
    * otherwise.
    */
-  function animationsFor(typeId: string, variation = ''): ReturnType<typeof parseUnitAnimations> {
+  function animationsFor(typeId: string, variation = '', newAnimations: readonly WmlConfig[] = []): ReturnType<typeof parseUnitAnimations> {
     const cfg = session.rawUnitTypeConfig(typeId, variation);
-    return cfg ? parseUnitAnimations(WmlConfig.fromJSON(cfg)) : [];
+    const own = cfg ? parseUnitAnimations(WmlConfig.fromJSON(cfg)) : [];
+    // A unit's `apply_to=new_animation` effects add theirs (`apply_new_animation_effect`).
+    return newAnimations.length > 0 ? [...own, ...parseNewAnimations(newAnimations)] : own;
+  }
+
+  /** {@link animationsFor} a live unit: its type's and variation's, and its own. */
+  function unitAnimations(unit: Unit): ReturnType<typeof parseUnitAnimations> {
+    return animationsFor(unit.type.id, unit.variation, unit.newAnimations);
   }
 
   /**
@@ -1674,8 +1758,8 @@
     // visually finishes. Use the type id captured at combat-resolution time.
     const attackerTypeId = info.attackerTypeId;
     const defenderTypeId = info.defenderTypeId;
-    const attackerAnims = animationsFor(attackerTypeId, info.attackerVariation);
-    const defenderAnims = animationsFor(defenderTypeId, info.defenderVariation);
+    const attackerAnims = animationsFor(attackerTypeId, info.attackerVariation, info.attackerNewAnimations);
+    const defenderAnims = animationsFor(defenderTypeId, info.defenderVariation, info.defenderNewAnimations);
     const attackerKey = spriteKey({
       underlyingId: session.renderKeyFor(info.attacker),
       typeId: attackerTypeId,
@@ -1721,7 +1805,27 @@
       // `unit_attack`'s extra_hit_sounds: a hit that poisons, slows or petrifies says so once, as it lands.
       const blow = info.result.blows[blowIndex];
       const extraSounds = blow?.hit ? extraHitSounds(blow) : [];
+      // Phase 27c S4: the striker's leaders lead, the struck one's neighbours resist, teachers teach.
+      const helpers = attackerContext.myUnit === info.attacker ? info.helpers.attackerStrikes : info.helpers.defenderStrikes;
+      const helperCues = helpers.flatMap((h): UnitAnimationCue[] => {
+        const facing = relativeDirection(h.loc, h.towards);
+        const anim = chooseAnimation(animationsFor(h.typeId, h.variation, h.newAnimations), {
+          ...attackerContext,
+          loc: h.loc,
+          secondLoc: h.towards,
+          myUnit: h.unit,
+          event: h.event,
+          terrainAtLoc: terrainLookup(session.board)(h.loc),
+          secondUnit: undefined,
+          facing,
+          board: session.board,
+        });
+        if (!anim) return [];
+        const key = spriteKey({ underlyingId: session.renderKeyFor(h.unit), typeId: h.typeId, x: h.loc.x, y: h.loc.y });
+        return [{ key, anim, direction: facing, srcHex: { x: h.loc.x, y: h.loc.y }, dstHex: { x: h.towards.x, y: h.towards.y } }];
+      });
       return [
+        ...helperCues,
         {
           key: strikerRes.key,
           anim: chooseAnimation(strikerRes.anims, attackerContext),
@@ -1771,8 +1875,30 @@
         dstHex: winnerRes.hex,
       });
     };
+    // `unit_die`: the winner, if it lives, plays "victory" while the loser dies.
+    const addVictoryCue = (winner: Unit, loser: Unit): void => {
+      const winnerRes = resourcesFor(winner);
+      const loserRes = resourcesFor(loser);
+      const anim = chooseAnimation(winnerRes.anims, {
+        loc: winner.location,
+        secondLoc: loser.location,
+        myUnit: winner,
+        event: 'victory',
+        value: 0,
+        value2: 0,
+        hit: 'kill',
+        attack: winner === info.attacker ? attackerWeapon : defenderWeapon,
+        secondAttack: winner === info.attacker ? defenderWeapon : attackerWeapon,
+        terrainAtLoc: terrainLookup(session.board)(winner.location),
+        secondUnit: loser,
+        board: session.board,
+      });
+      if (anim) deathBeat.push({ key: winnerRes.key, anim, direction: winner.facing, srcHex: winnerRes.hex, dstHex: loserRes.hex });
+    };
     if (info.result.attackerDied) addDeathCue(info.attacker, info.defender);
     if (info.result.defenderDied) addDeathCue(info.defender, info.attacker);
+    if (info.result.attackerDied && !info.result.defenderDied) addVictoryCue(info.defender, info.attacker);
+    if (info.result.defenderDied && !info.result.attackerDied) addVictoryCue(info.attacker, info.defender);
     if (deathBeat.length > 0) cues.push(deathBeat);
 
     return cues;
@@ -1798,9 +1924,54 @@
    * (`unit_display::unit_attack`'s `show_combat` guard) nothing is shown: no animation, no labels.
    */
   async function playAttack(info: LastAttackAnimation, attackerAt: Location, defenderAt: Location): Promise<void> {
-    if (!boardView || !displayPrefs.peek().showCombat) return;
+    if (boardView && displayPrefs.peek().showCombat) await playAttackBlows(info, attackerAt, defenderAt);
+    // Advancing is shown whether or not combat is (`advance_unit_at`'s `animate`).
+    await playAdvancements();
+  }
+
+  async function playAttackBlows(info: LastAttackAnimation, attackerAt: Location, defenderAt: Location): Promise<void> {
+    if (!boardView) return;
     await followAttack(attackerAt, defenderAt);
+    // `unit_draw_weapon` before the blows, `unit_sheath_weapon` for whoever is left after them.
+    const draw = buildWeaponBeat(info, 'draw_weapon');
+    if (draw.length > 0) await boardView.playAnimationSequence([draw], 1);
     await boardView.playAnimationSequence(buildBlowAnimationCues(info), 1, makeBlowPreview(info));
+    const sheath = buildWeaponBeat(info, 'sheath_weapon');
+    if (sheath.length > 0) await boardView?.playAnimationSequence([sheath], 1);
+  }
+
+  /**
+   * Phase 27c S4: `unit_draw_weapon` (the attacker as for a hit, the defender as for a miss) or
+   * `unit_sheath_weapon` (each survivor), facing each other -- a cue only for a unit that has the animation.
+   */
+  function buildWeaponBeat(info: LastAttackAnimation, event: 'draw_weapon' | 'sheath_weapon'): UnitAnimationCue[] {
+    const attackerWeapon = info.attacker.attacks[info.attackerWeaponIndex];
+    const defenderWeapon = info.defenderWeaponIndex >= 0 ? info.defender.attacks[info.defenderWeaponIndex] : undefined;
+    const sides = [
+      { unit: info.attacker, typeId: info.attackerTypeId, variation: info.attackerVariation, own: info.attackerNewAnimations, at: info.attackerLocation, other: info.defenderLocation, weapon: attackerWeapon, otherWeapon: defenderWeapon, hit: 'hit' as const, died: info.result.attackerDied },
+      { unit: info.defender, typeId: info.defenderTypeId, variation: info.defenderVariation, own: info.defenderNewAnimations, at: info.defenderLocation, other: info.attackerLocation, weapon: defenderWeapon, otherWeapon: attackerWeapon, hit: 'miss' as const, died: info.result.defenderDied },
+    ];
+    return sides.flatMap((side): UnitAnimationCue[] => {
+      if (event === 'sheath_weapon' && side.died) return [];
+      const facing = relativeDirection(side.at, side.other);
+      const anim = chooseAnimation(animationsFor(side.typeId, side.variation, side.own), {
+        loc: side.at,
+        secondLoc: side.other,
+        myUnit: side.unit,
+        event,
+        value: 0,
+        value2: 0,
+        hit: event === 'draw_weapon' ? side.hit : 'invalid',
+        attack: side.weapon,
+        secondAttack: side.otherWeapon,
+        terrainAtLoc: terrainLookup(session.board)(side.at),
+        facing,
+        board: session.board,
+      });
+      if (!anim) return [];
+      const key = spriteKey({ underlyingId: session.renderKeyFor(side.unit), typeId: side.typeId, x: side.at.x, y: side.at.y });
+      return [{ key, anim, direction: facing, srcHex: { x: side.at.x, y: side.at.y }, dstHex: { x: side.other.x, y: side.other.y } }];
+    });
   }
 
   function makeBlowPreview(info: LastAttackAnimation): (beatIndex: number) => void {
@@ -1902,7 +2073,7 @@
    */
   function buildMoveAnimationCues(info: LastMoveAnimation): UnitAnimationCue[][] {
     const contexts = buildMovementAnimationContexts(info.unit, info.path, terrainLookup(session.board));
-    const anims = animationsFor(info.unit.type.id, info.unit.variation);
+    const anims = unitAnimations(info.unit);
     const key = spriteKey({
       underlyingId: session.renderKeyFor(info.unit),
       typeId: info.unit.type.id,
@@ -2049,7 +2220,7 @@
       [
         {
           key: unitKey,
-          anim: chooseAnimation(animationsFor(info.unit.type.id, info.unit.variation), unitContext),
+          anim: chooseAnimation(unitAnimations(info.unit), unitContext),
           direction: info.unit.facing,
           srcHex: unitHex,
           dstHex: leaderHex,
@@ -2057,7 +2228,7 @@
         },
         {
           key: leaderKey,
-          anim: chooseAnimation(animationsFor(info.leader.type.id, info.leader.variation), leaderContext),
+          anim: chooseAnimation(unitAnimations(info.leader), leaderContext),
           direction: directionBetween(info.leaderLocation, info.unitLocation) ?? info.leader.facing,
           srcHex: leaderHex,
           dstHex: unitHex,
@@ -2102,7 +2273,7 @@
     const beat: UnitAnimationCue[] = [
       {
         key: healedKey,
-        anim: chooseAnimation(animationsFor(outcome.unit.type.id, outcome.unit.variation), healedContext),
+        anim: chooseAnimation(unitAnimations(outcome.unit), healedContext),
         direction: outcome.unit.facing,
         srcHex: healedHex,
         dstHex: healedHex,
@@ -2130,7 +2301,7 @@
       };
       beat.push({
         key: healerKey,
-        anim: chooseAnimation(animationsFor(healer.type.id, healer.variation), healerContext),
+        anim: chooseAnimation(unitAnimations(healer), healerContext),
         direction: directionBetween(healer.location, outcome.unit.location) ?? healer.facing,
         srcHex: healerHex,
         dstHex: healedHex,
@@ -2203,7 +2374,39 @@
 
   function handleChooseAdvancement(typeId: string): void {
     session.chooseAdvancement(typeId);
-    sync();
+    void playAdvancements().then(() => sync());
+  }
+
+  /**
+   * Phase 27c S4: `animate_unit_advancement` for each advancement since the last call -- the unit as it was
+   * plays "levelout" (turning white), then as it now is "levelin" (coming out of the white).
+   */
+  async function playAdvancements(): Promise<void> {
+    for (const adv of session.takeAdvancementAnimations()) {
+      if (!boardView) continue;
+      const facing = session.displayFacing(adv.unit);
+      const context = (event: string): AnimationContext => ({
+        loc: adv.loc,
+        secondLoc: adv.loc,
+        myUnit: adv.unit,
+        event,
+        value: 0,
+        value2: 0,
+        hit: 'invalid',
+        terrainAtLoc: terrainLookup(session.board)(adv.loc),
+        facing,
+        board: session.board,
+      });
+      const hex = { x: adv.loc.x, y: adv.loc.y };
+      const out = chooseAnimation(animationsFor(adv.fromTypeId, adv.fromVariation, adv.fromNewAnimations), context('levelout'));
+      const key = spriteKey({ underlyingId: session.renderKeyFor(adv.unit), typeId: adv.fromTypeId, x: hex.x, y: hex.y });
+      if (out) await boardView.playAnimationSequence([[{ key, anim: out, direction: facing, srcHex: hex, dstHex: hex }]], 1);
+      const now = session.renderUnits.find((u) => u.underlyingId === session.renderKeyFor(adv.unit));
+      if (!now || session.board.unitAt(adv.loc) !== adv.unit) continue;
+      await boardView.ensureUnitVisual(now);
+      const into = chooseAnimation(unitAnimations(adv.unit), context('levelin'));
+      if (into) await boardView.playAnimationSequence([[{ key: spriteKey(now), anim: into, direction: facing, srcHex: hex, dstHex: hex }]], 1);
+    }
   }
 
   function handleSelectAttackerWeapon(index: number): void {
@@ -2357,6 +2560,11 @@
    * units (upstream's default `confirm_end_turn=no_moves`).
    */
   function requestEndTurn(): void {
+    // Phase 27c S6: while lingering the button ends the scenario (`end_linger`).
+    if (lingering) {
+      lingerDone = true;
+      return;
+    }
     if (!canAct()) return;
     // Phase 28c: `[disallow_end_turn]` -- upstream shows the reason and does not end the turn.
     const blocked = session.endTurnBlocked;
@@ -2665,6 +2873,7 @@
     if (!replaySession) return;
     activeSnapshot = replaySnapshot;
     cursorHex = null; // the keyboard cursor belongs to the board it was on
+    resetScenarioEnd();
     session = replaySession;
     session.interactionHost = interactionHost;
     storyParts = [];
@@ -2747,6 +2956,7 @@
     const [nextSnapshot, assets] = await Promise.all([snapshotFor(scenarioId, savedDifficulty(data)), storyAssetsFor(scenarioId)]);
     activeSnapshot = nextSnapshot;
     cursorHex = null; // the keyboard cursor belongs to the board it was on
+    resetScenarioEnd();
     session = GameSession.fromSaveData(nextSnapshot, data, SESSION_OPTIONS);
     session.interactionHost = interactionHost;
     storyParts = [];
@@ -2875,6 +3085,7 @@
 
       activeSnapshot = nextSnapshot;
       cursorHex = null; // the keyboard cursor belongs to the board it was on
+      resetScenarioEnd();
       session = nextSession;
       storyParts = nextStoryParts;
       storyAssets = nextStoryAssets;
@@ -2893,6 +3104,10 @@
       }
     } catch (err) {
       continueError = err instanceof Error ? err.message : String(err);
+      // Back on the map, End Scenario trying again.
+      statusMessage = `${tx('Failed to continue:')} ${continueError}`;
+      lingerDone = false;
+      afterEndStarted = false;
     } finally {
       continuing = false;
     }
@@ -3058,7 +3273,8 @@
     // Upstream's own bindings (hotkeys.cfg: undo=u, redo=r).
     { id: 'undo', label: t('Undo'), enabled: phase === 'playing' && canUndo, handler: () => void handleUndo() },
     { id: 'redo', label: t('Redo'), enabled: phase === 'playing' && canRedo, handler: () => void handleRedo() },
-    { id: 'end-turn', label: t('End Turn'), enabled: phase === 'playing' && otherSidesTurn === null, handler: requestEndTurn },
+    // Phase 27c S6: while lingering, `endturn` ends the scenario.
+    { id: 'end-turn', label: lingering ? tw('End Scenario') : t('End Turn'), enabled: lingering || (phase === 'playing' && otherSidesTurn === null), handler: requestEndTurn },
   ]));
 
   /**
@@ -3161,9 +3377,13 @@
           : candidates.length - 1
         : (currentIndex + step + candidates.length) % candidates.length;
     const unit = candidates[nextIndex]!;
-    session.selectUnit(unit);
+    // `cycle_units`: scroll to it, then `select_hex` -- which fires `select` for the player's own unit.
     boardView?.centerOnHex(unit.location.x, unit.location.y);
-    sync();
+    const before = session.selectedUnit;
+    void runPlayerAction(async () => {
+      await session.selectUnitByPlayer(unit);
+      return null;
+    }).then(async (m) => (sync(m), playSelectedIfNew(before), await showDeferredInteractions()));
   }
 
   /** `l` (upstream `leader`): centre the view on this side's leader, without changing the selection. */
@@ -3371,6 +3591,7 @@
         snapshot={boardSnapshot}
         onViewportResize={() => boardResizeTick++}
         onSound={(files) => audio.playSound({ files, repeats: 0, group: 'sound' })}
+        {ambientAnimation}
         {units}
         {selectedHex}
         cursorHex={cursorHex ?? armedMove}
@@ -3385,6 +3606,8 @@
         labels={mapLabels}
         {hexVisibility}
         {timeOfDay}
+        {timeAreas}
+        {colorAdjust}
         onHexClick={handleBoardHexClick}
         onHexRightClick={handleHexRightClick}
         onHexHoverChange={handleHexHoverChange}
@@ -3658,13 +3881,10 @@
     />
   {:else if phase === 'ended' && session.scenarioResult && !pendingAdvancement}
     <!--
-      `!pendingAdvancement` guard: a kill that both wins the scenario AND
-      grants the killer a level-up choice is real (GameSession.confirmAttack
-      checks advancement before checkForGameEnd, mirroring real Wesnoth's
-      attack_unit_and_advance) -- without this, ScenarioEndOverlay (z-index
-      200) would render on top of AdvancementDialog (100) and leave the
-      player unable to ever resolve the pending choice. Once
-      chooseAdvancement clears it, this branch shows normally.
+      `!pendingAdvancement` guard: a kill that both wins the scenario AND grants the killer a level-up choice
+      is real (GameSession.confirmAttack checks advancement before checkForGameEnd, mirroring real Wesnoth's
+      attack_unit_and_advance): the choice comes first. Phase 27c S6: otherwise the player lingers on the map
+      (see `lingering`) -- only the campaign's outro is drawn over it.
     -->
     {#if showOutro}
       <!-- Phase 16 N7: the campaign's last victory rolls the outro first, as playcampaign.cpp does. -->
@@ -3672,17 +3892,6 @@
         screens={buildOutroScreens(session.endLevelPresentation?.endText, true, outroCredits)}
         holdMs={outroHoldMs(session.endLevelPresentation?.endTextDuration)}
         onDone={() => (outroDone = true)}
-      />
-    {:else}
-      <ScenarioEndOverlay
-        result={session.scenarioResult}
-        {turnNumber}
-        {gold}
-        nextScenarioAvailable={session.scenarioResult === 'victory' && session.nextScenarioId !== null}
-        {continuing}
-        {continueError}
-        onContinue={continueToNextScenario}
-        {onQuitToMenu}
       />
     {/if}
   {/if}

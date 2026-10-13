@@ -63,7 +63,7 @@
  *    real type has stats ONLY inside `[male]`/`[female]`.
  */
 
-import { WmlConfig } from '../wml/config.js';
+import { WmlConfig, type WmlStoredValue } from '../wml/config.js';
 
 /**
  * Walks a parsed WML tree collecting every `[unit_type]`'s raw (unflattened)
@@ -316,6 +316,21 @@ export function nameDrawCount(race: WmlConfig | undefined, gender: 'male' | 'fem
 }
 
 /**
+ * Phase 27c S7: which of `race`'s name generators names a unit of `gender` (`name_generator_factory`):
+ * `<gender>_name_generator=` (a grammar), else `<gender>_names=` (markov), else the ungendered
+ * `name_generator=`/`names=`; null for none. `value` is the attribute as stored (translatable).
+ */
+export function raceNameSource(race: WmlConfig, gender: 'male' | 'female'): { kind: 'grammar' | 'markov'; value: WmlStoredValue } | null {
+  for (const prefix of [`${gender}_`, '']) {
+    const grammar = race.getRaw(`${prefix}name_generator`);
+    if (grammar !== undefined) return { kind: 'grammar', value: grammar };
+    const names = race.getRaw(`${prefix}names`);
+    if (names !== undefined && race.getString(`${prefix}names`, '').trim() !== '') return { kind: 'markov', value: names };
+  }
+  return null;
+}
+
+/**
  * Folds each unit type's race into its own config the way upstream's
  * `unit_type` constructor does (`types.cpp`, `build_help_index`): the
  * possible traits in upstream's order -- the global ones (unless the race
@@ -351,6 +366,14 @@ export function resolveTraitPools(
     if (!cfg.hasAttribute('num_traits')) cfg.setAttribute('num_traits', race ? race.getNumber('num_traits', 0) : 0);
     cfg.setAttribute('name_draws_male', nameDrawCount(race, 'male'));
     cfg.setAttribute('name_draws_female', nameDrawCount(race, 'female'));
+    // Phase 27c S7: the race's name generator for each gender, its text kept translatable.
+    for (const gender of ['male', 'female'] as const) {
+      const source = race ? raceNameSource(race, gender) : null;
+      if (!source) continue;
+      cfg.setAttribute(`name_source_${gender}_kind`, source.kind);
+      cfg.setAttribute(`name_source_${gender}`, source.value);
+    }
+    if (race) cfg.setAttribute('name_markov_chain_size', race.getNumber('markov_chain_size', 2));
     cfg.setAttribute('traits_resolved', true);
     // `unit_type::build_full`: a type without its own `undead_variation=` takes its race's (a merman's plague
     // corpse swims, a dwarf's is a dwarf).

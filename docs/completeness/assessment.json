@@ -763,14 +763,16 @@
    "packages/engine/test/actions/recruitHealAdvancement.test.ts",
    "packages/engine/src/model/UnitTypeDatabase.ts"
   ],
-  "note": "Trait pools and num_traits= come from the race and are tested; its name generators are not used (3.10)."
+  "note": "Trait pools and num_traits= come from the race and are tested; its name generators name new units (3.10)."
  },
  "3.10": {
-  "status": "missing",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/model/UnitTypeDatabase.ts"
+   "packages/engine/src/model/names.ts",
+   "packages/engine/test/model/names.test.ts",
+   "apps/web/scripts/presentation-playthrough.mjs"
   ],
-  "note": "Units get no random names. The random draws naming takes upstream are made, so replays stay in step, but no name is generated."
+  "note": "Phase 27c S7: markov_generator and context_free_grammar_generator ported; a new unit is named from the draws already made, so replays and saves are unchanged."
  },
  "3.11": {
   "status": "done",
@@ -2059,11 +2061,13 @@
   ]
  },
  "6.36": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/renderer/src/animation/unitAnimation.ts"
+   "packages/engine/src/actions/attackHelpers.ts",
+   "packages/engine/test/actions/attackHelpers.test.ts",
+   "apps/web/scripts/presentation-playthrough.mjs"
   ],
-  "note": "leading_anim is parsed but not played during an assisted attack."
+  "note": "Phase 27c S4: leaders play leading_anim with each blow they lift (also resistance and teaching)."
  },
  "6.37": {
   "status": "done",
@@ -2721,25 +2725,31 @@
   "note": "Implemented; untested."
  },
  "8.48": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/model/effects.ts"
+   "packages/engine/src/model/effects.ts",
+   "packages/engine/test/model/effects.test.ts"
   ],
-  "note": "Implemented; untested."
+  "note": "Phase 27c S2: replace=/add=, an empty one changing nothing, as upstream; tested."
  },
  "8.49": {
-  "status": "missing",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/model/effects.ts"
+   "packages/renderer/src/animation/unitAnimation.ts",
+   "packages/engine/test/model/effects.test.ts",
+   "packages/ui/src/unitAppearance.test.ts",
+   "apps/web/scripts/presentation-playthrough.mjs"
   ],
-  "note": "A no-op: a unit's own animations from effects are not modelled (15 shipped campaign and core files use apply_to=new_animation)."
+  "note": "Phase 27c S2: the effect's [*_anim]s join the type's (add_anims), played in combat."
  },
  "8.50": {
-  "status": "missing",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/model/effects.ts"
+   "packages/ui/src/gameSession.ts",
+   "packages/ui/src/unitAppearance.test.ts",
+   "apps/web/scripts/presentation-playthrough.mjs"
   ],
-  "note": "Bug: the image mods are stored on the unit but never drawn."
+  "note": "Phase 27c S2: the sprite, its animation frames and the side panel carry the unit's image mods."
  },
  "8.51": {
   "status": "partial",
@@ -2750,11 +2760,13 @@
   "note": "The effect sets the ellipse, which the board draws; the effect itself is untested."
  },
  "8.52": {
-  "status": "missing",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/model/effects.ts"
+   "packages/renderer/src/SnapshotBoard.ts",
+   "packages/ui/src/unitAppearance.test.ts",
+   "apps/web/scripts/presentation-playthrough.mjs"
   ],
-  "note": "Bug: the halo is stored on the unit but not passed to the board, so it is not drawn."
+  "note": "Phase 27c S2: drawn above the units, team-coloured, following the unit."
  },
  "8.53": {
   "status": "partial",
@@ -3128,12 +3140,13 @@
   ]
  },
  "9.36": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
    "packages/ui/src/GameShell.svelte",
-   "packages/ui/src/ScenarioEndOverlay.svelte"
+   "apps/web/scripts/presentation-playthrough.mjs",
+   "apps/web/scripts/turn-end-playthrough.mjs"
   ],
-  "note": "linger_mode=no is honoured (a cutscene goes straight on), but lingering itself is missing: the end screen covers the board and cannot be dismissed to look around."
+  "note": "Phase 27c S6: linger mode -- the map stays, End Scenario, reveal_map, red orbs; linger_mode=no goes on at once."
  },
  "9.37": {
   "status": "done",
@@ -3196,7 +3209,7 @@
   "status": "done",
   "evidence": [
    "packages/ui/src/statusTable.test.ts",
-   "packages/ui/src/ScenarioEndOverlay.svelte"
+   "packages/ui/src/GameShell.svelte"
   ]
  },
  "9.47": {
@@ -3517,11 +3530,12 @@
   ]
  },
  "11.9": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/ui/src/ScenarioEndOverlay.svelte"
+   "packages/ui/src/GameShell.svelte",
+   "packages/ui/src/music.test.ts"
   ],
-  "note": "The end screen shows the turn and gold, not upstream's carryover report."
+  "note": "Phase 27c S6: upstream 1.19 has no carryover report dialog; carryover_report= decides only the victory music, as here."
  },
  "11.10": {
   "status": "done",
@@ -3702,11 +3716,12 @@
   ]
  },
  "11.37": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/ui/src/ScenarioEndOverlay.svelte"
+   "packages/ui/src/GameShell.svelte",
+   "apps/web/scripts/presentation-playthrough.mjs"
   ],
-  "note": "Defeat offers only Quit to Menu; restarting the scenario or loading a save is done from the menu."
+  "note": "Phase 27c S6: upstream 1.19 offers no defeat dialog: the player lingers, then End Scenario returns to the title screen, as here."
  },
  "11.38": {
   "status": "done",
@@ -4346,11 +4361,12 @@
   ]
  },
  "13.18": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/ui/src/gameSession.ts"
+   "packages/ui/src/gameSession.ts",
+   "packages/ui/src/villageFlags.test.ts"
   ],
-  "note": "Deviation: the port shows a fogged village's last-known owner; upstream (display::get_flag) shows the current owner's flag unless that owner is an enemy, and then none."
+  "note": "Phase 27c S8: display::get_flag -- the current owner's flag, none for an enemy's under fog, none under shroud."
  },
  "13.19": {
   "status": "done",
@@ -4428,7 +4444,7 @@
   "status": "done",
   "evidence": [
    "packages/engine/test/model/Schedule.test.ts",
-   "packages/renderer/test/todTint.test.ts"
+   "packages/renderer/test/lighting.test.ts"
   ]
  },
  "14.2": {
@@ -4505,23 +4521,25 @@
  "14.13": {
   "status": "done",
   "evidence": [
-   "packages/renderer/test/todTint.test.ts",
+   "packages/renderer/test/lighting.test.ts",
    "packages/renderer/test/animation/timeOfDay.test.ts"
   ]
  },
  "14.14": {
-  "status": "missing",
+  "status": "done",
   "evidence": [
-   "packages/renderer/src/SnapshotBoard.ts"
+   "packages/renderer/src/lighting.ts",
+   "packages/renderer/test/lighting.test.ts",
+   "apps/web/scripts/presentation-playthrough.mjs"
   ],
-  "note": "The whole board takes the global tint; a [time_area]'s hexes are not lit by their own schedule (their combat bonuses are right)."
+  "note": "Phase 27c S5: terrain and items lit hex by hex with upstream's light maps; scenario-level [time_area]s now load (they did not)."
  },
  "14.15": {
-  "status": "missing",
+  "status": "done",
   "evidence": [
-   "packages/renderer/src/SnapshotBoard.ts"
+   "packages/renderer/src/lighting.ts"
   ],
-  "note": "Illuminated hexes are not drawn brighter (the combat bonus is right)."
+  "note": "Phase 27c S5: upstream draws illumination neither (get_time_of_day(loc) ignores it); only combat sees it, as here."
  },
  "14.16": {
   "status": "done",
@@ -4551,11 +4569,12 @@
   "note": "A time of day's sound= plays as it begins."
  },
  "14.20": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/events/cutsceneWml.ts"
+   "packages/renderer/src/lighting.ts",
+   "packages/renderer/test/lighting.test.ts"
   ],
-  "note": "A [color_adjust] beat tints the board over the time-of-day tint; untested."
+  "note": "Phase 27c S5: added to every time-of-day colour (adjust_color_overlay), as upstream."
  },
  "14.21": {
   "status": "done",
@@ -4566,7 +4585,7 @@
  "14.22": {
   "status": "done",
   "evidence": [
-   "packages/renderer/test/todTint.test.ts",
+   "packages/renderer/test/lighting.test.ts",
    "packages/engine/test/model/Schedule.test.ts"
   ]
  },
@@ -4876,12 +4895,13 @@
   ]
  },
  "16.12": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
    "packages/renderer/test/mapItems.test.ts",
-   "packages/renderer/test/animation/playback.test.ts"
+   "packages/renderer/test/animation/playback.test.ts",
+   "apps/web/scripts/presentation-playthrough.mjs"
   ],
-  "note": "Item halos and animation-frame halos are drawn; a unit's own halo= is not (8.52)."
+  "note": "Item, animation-frame and (Phase 27c S2) unit and ability halos are drawn."
  },
  "16.13": {
   "status": "done",
@@ -5078,12 +5098,13 @@
   "note": "The WebGL renderer redraws each frame by design; upstream's dirty-rectangle scheme does not apply."
  },
  "16.43": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/renderer/src/images/compositor.ts",
-   "apps/web/scripts/image-golden.mjs"
+   "packages/renderer/src/images/modifications.ts",
+   "packages/renderer/test/imageOracle.test.ts",
+   "apps/web/scripts/image-oracle-check.mjs"
   ],
-  "note": "16 of upstream's 39 image functions are implemented (TC, RC, GS, FL, CROP, BLIT, MASK, O, SCALE*, TOD, HEXED...). The others draw the image unmodified with a warning, including ones shipped content uses: CS (192 uses), ROTATE (39), NO_TOD_SHIFT (26), XBRZ (10), G (9), CHAN (8), BLEND (6), BL (6), PAL, R, SWAP, BG."
+  "note": "Phase 27c S1: all of upstream's image functions, each pixel-exact against wl-image-oracle."
  },
  "16.44": {
   "status": "done",
@@ -5120,7 +5141,7 @@
  "16.49": {
   "status": "done",
   "evidence": [
-   "packages/renderer/test/todTint.test.ts"
+   "packages/renderer/test/lighting.test.ts"
   ]
  },
  "16.50": {
@@ -5497,18 +5518,21 @@
   ]
  },
  "18.3": {
-  "status": "missing",
+  "status": "done",
   "evidence": [
-   "packages/renderer/src/SnapshotBoard.ts"
+   "packages/renderer/src/SnapshotBoard.ts",
+   "packages/renderer/test/animation/ambient.test.ts",
+   "apps/web/scripts/presentation-playthrough.mjs"
   ],
-  "note": "Units stand as a static sprite between actions; [standing_anim] loops (upstream's \"Show unit standing animations\", on by default) are not played."
+  "note": "Phase 27c S3: standing loops, upstream's preferences, none under reduced motion."
  },
  "18.4": {
-  "status": "missing",
+  "status": "done",
   "evidence": [
-   "packages/renderer/src/animation/unitAnimation.ts"
+   "packages/renderer/src/animation/ambient.ts",
+   "apps/web/scripts/presentation-playthrough.mjs"
   ],
-  "note": "[idle_anim] is parsed but never played."
+  "note": "Phase 27c S3: idle animations on upstream's timer and frequency preference."
  },
  "18.5": {
   "status": "done",
@@ -5550,9 +5574,12 @@
   ]
  },
  "18.11": {
-  "status": "missing",
-  "evidence": [],
-  "note": "Advancing plays no levelout/levelin animation."
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/GameShell.svelte",
+   "apps/web/scripts/presentation-playthrough.mjs"
+  ],
+  "note": "Phase 27c S4: levelout then levelin; upstream plays no level-up sound."
  },
  "18.12": {
   "status": "done",
@@ -5569,9 +5596,12 @@
   "note": "See 6.36."
  },
  "18.14": {
-  "status": "missing",
-  "evidence": [],
-  "note": "[victory_anim] is not played when the scenario is won."
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/GameShell.svelte",
+   "apps/web/scripts/presentation-playthrough.mjs"
+  ],
+  "note": "Phase 27c S4: played by the winner of a fight while the loser dies (unit_die), as upstream -- not at a won scenario."
  },
  "18.15": {
   "status": "done",
@@ -5582,9 +5612,12 @@
   "note": "pre_teleport/post_teleport play around a teleport move."
  },
  "18.16": {
-  "status": "missing",
-  "evidence": [],
-  "note": "draw_weapon/sheath_weapon animations are not played."
+  "status": "done",
+  "evidence": [
+   "packages/ui/src/GameShell.svelte",
+   "apps/web/scripts/presentation-playthrough.mjs"
+  ],
+  "note": "Phase 27c S4: before and after a fight."
  },
  "18.17": {
   "status": "done",
@@ -5616,7 +5649,7 @@
   "evidence": [
    "packages/renderer/src/animation/frame.ts"
   ],
-  "note": "image_mod= and alpha= are applied (alpha tested); blend_color=/blend_ratio= are applied but untested, and image_mod= is limited to the implemented image functions (16.43)."
+  "note": "image_mod= and alpha= are applied (alpha tested), with every image function (16.43); blend_color=/blend_ratio= are applied but untested."
  },
  "18.22": {
   "status": "done",

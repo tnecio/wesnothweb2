@@ -249,7 +249,8 @@ async function winByKeys(page) {
       await press(page, 'ArrowDown', 300);
       await press(page, 'Enter', 1500);
     }
-    if (await page.$('.end-overlay, .outro')) return true; // the campaign's last win rolls the outro before the end screen
+    // Phase 27c S6: a won scenario leaves the player on the map, the turn button reading End Scenario.
+    if ((await page.$eval('[data-testid="turn-button"]', (b) => (b.textContent ?? '').trim()).catch(() => '')) === 'End Scenario') return true;
     await press(page, 'Escape', 300);
     await press(page, 'Control+Space', 2500);
     await press(page, 'Control+Space', 2500);
@@ -296,9 +297,9 @@ async function keyboardRun(browser) {
   await page.waitForSelector('.modal-box', { timeout: 15000 });
   await press(page, 'Enter', 700);
   check('scenario 1 is won by keys', await winByKeys(page));
-  await press(page, 'Enter', 1000); // Continue
-  await page.waitForFunction(() => window.__wesnoth?.session?.snapshot?.scenario?.id === 'synth_keyboard_02' && !document.querySelector('.end-overlay'), null, { timeout: 60000 });
-  check('Enter continues into scenario 2', /2\/2/.test(await page.$eval('.scenario-name', (e) => e.textContent ?? '').catch(() => '')));
+  await press(page, 'Control+Space', 1000); // End Scenario
+  await page.waitForFunction(() => window.__wesnoth?.session?.snapshot?.scenario?.id === 'synth_keyboard_02', null, { timeout: 60000 });
+  check('Ctrl+Space (End Scenario) continues into scenario 2', /2\/2/.test(await page.$eval('.scenario-name', (e) => e.textContent ?? '').catch(() => '')));
   await waitBoardReady(page);
   await page.waitForTimeout(3000);
   const won2 = await winByKeys(page);
@@ -308,16 +309,14 @@ async function keyboardRun(browser) {
   }
   check('scenario 2 (the last) is won by keys', won2);
 
-  // the campaign's last victory: the credits (Escape skips them), then the end screen with Quit to Menu
-  if (await page.$('.outro')) {
+  // the campaign's last victory: End Scenario, the credits (Escape skips them), then the title screen
+  await press(page, 'Control+Space', 1500);
+  if (await page.waitForSelector('.outro', { timeout: 15000 }).catch(() => null)) {
     check('the campaign end rolls the outro', true);
     await press(page, 'Escape', 1200);
   }
-  await page.waitForSelector('.end-overlay', { timeout: 30000 });
-  check('the end screen offers Quit to Menu, focused', (await focusedTestId(page)) === 'end-quit-to-menu', await focusedTestId(page));
-  await press(page, 'Enter', 1500);
-  await page.waitForSelector('[data-testid="title-screen"]', { timeout: 15000 });
-  check('Enter returns to the title screen', new URL(page.url()).pathname === '/');
+  await page.waitForSelector('[data-testid="title-screen"]', { timeout: 30000 });
+  check('...and then returns to the title screen', new URL(page.url()).pathname === '/');
 
   await press(page, 'c', 700);
   await filterFor(page, 'keyboard');

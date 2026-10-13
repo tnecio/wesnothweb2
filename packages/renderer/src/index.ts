@@ -165,6 +165,7 @@ export {
   type MatchOptions,
   expandAnimationBranches,
   parseUnitAnimations,
+  parseNewAnimations,
   attackMatchesFilter,
   matchAnimation,
   scoreAnimations,
@@ -236,6 +237,12 @@ export {
   type HighlightState,
   type VillageOwnerPoint,
   type UnitAnimationCue,
+  type AmbientAnimationEvent,
+  type AmbientAnimationSource,
+  type AmbientAnimationPrefs,
+  nextIdleTick,
+  type BoardLighting,
+  type LitTimeOfDay,
 } from './SnapshotBoard'
 
 export { type HexVisibility, type FogShroudHex } from './fogShroud'

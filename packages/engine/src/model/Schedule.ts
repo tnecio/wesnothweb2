@@ -52,6 +52,8 @@ export interface TimeOfDayEntry {
   readonly blue: number;
   /** `[time] sound=`: the ambient sound played once when the turn starts (`time_of_day::sounds`). */
   readonly sounds?: string;
+  /** `[time] mask=` (`time_of_day::image_mask`): an image drawn over every hex of this time of day. */
+  readonly imageMask?: string;
 }
 
 /** Parses a config's `[time]` children into `TimeOfDayEntry`s -- shared by the global schedule, `[time_area]`, and `[replace_schedule]`. */
@@ -72,6 +74,7 @@ export function parseTimes(cfg: WmlConfig): TimeOfDayEntry[] {
       green: t.getNumber('green', 0),
       blue: t.getNumber('blue', 0),
       sounds: t.getString('sound', ''),
+      imageMask: t.getString('mask', ''),
     }),
   );
 }
@@ -161,6 +164,13 @@ export class Schedule {
       }
     }
     return this.timeOfDayForTurn(turnNumber);
+  }
+
+  /** Every hex some `[time_area]` with a schedule covers (`"x,y"` keys). */
+  areaHexKeys(): Set<string> {
+    const out = new Set<string>();
+    for (const area of this.areas) if (area.schedule.times.length > 0) for (const key of area.hexes) out.add(key);
+    return out;
   }
 
   /** The `[time_area]` id (if any, else `undefined`) covering `loc` right now -- mirrors `get_area_on_hex`. */

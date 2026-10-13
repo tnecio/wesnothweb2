@@ -229,8 +229,9 @@ try {
       await tap('.modal-box button.primary', 1500);
       check('the advancement choice is made by taps', (await page.$('.modal-box')) === null);
     }
-    for (let i = 0; i < 20 && !(await page.$('.end-overlay')) && (await page.$('.window[role="dialog"]')); i++) await tap('.window[role="dialog"]', 800);
-    ended = (await page.$('.end-overlay')) !== null;
+    for (let i = 0; i < 20 && (await page.$('.window[role="dialog"]')); i++) await tap('.window[role="dialog"]', 800);
+    // Phase 27c S6: a won scenario leaves the player on the map, the turn button reading End Scenario.
+    ended = (await page.$eval('[data-testid="turn-button"]', (b) => (b.textContent ?? '').trim()).catch(() => '')) === 'End Scenario';
     if (!ended) {
       // Watch the turn button through the other sides' turn: greyed out while they think.
       await page.evaluate(() => {
@@ -254,12 +255,12 @@ try {
       if (attempt === 0) check("during the other sides' turn End Turn is greyed out, then comes back", states.includes('End Turn (disabled)') && states[states.length - 1] === 'End Turn', states.join(' > '));
     }
   }
-  check('the fight ends the scenario: the victory screen shows', ended);
+  check('the fight ends the scenario: the player lingers on the map, End Scenario on screen', ended);
   if (ended) {
-    check('Continue is on screen', await visible('.end-overlay .continue'));
-    await tap('.end-overlay .continue', 4000);
+    check('End Scenario is on screen', await visible('[data-testid="turn-button"]'));
+    await tap('[data-testid="turn-button"]', 4000);
     await page.waitForFunction(() => document.querySelector('.scenario-name')?.textContent?.includes('2/2'), null, { timeout: 60000 }).catch(() => {});
-    check('tapping Continue goes on into the next scenario', /2\/2/.test(await page.$eval('.scenario-name', (e) => e.textContent ?? '').catch(() => '')));
+    check('tapping End Scenario goes on into the next scenario', /2\/2/.test(await page.$eval('.scenario-name', (e) => e.textContent ?? '').catch(() => '')));
     await waitBoardReady(page);
     for (let i = 0; i < 30; i++) {
       if (await page.$('.story')) await tap('.story .skip', 800);

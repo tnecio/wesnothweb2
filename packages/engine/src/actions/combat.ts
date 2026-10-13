@@ -261,8 +261,8 @@ export function executeAttack(
     }
     // attack::unit_killed: `unit::create(*reanimator, side, true, MALE)` --
     // a real new unit, so it rolls its traits and name as any does.
-    const { traits } = rollNewUnit(type, rng, { gender: 'male', randomGender: false, randomTraits: true, canRecruit: false, named: false });
-    const spawned = Unit.create(type, killerUnit.side, deadLoc, { gender: 'male', modifications: traits });
+    const { traits, name } = rollNewUnit(type, rng, { gender: 'male', randomGender: false, randomTraits: true, canRecruit: false, named: false });
+    const spawned = Unit.create(type, killerUnit.side, deadLoc, { gender: 'male', modifications: traits, ...(name ? { name } : {}) });
     board.assignUnitId(spawned);
     spawned.attacksLeft = 0;
     spawned.movesLeft = 0;

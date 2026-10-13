@@ -57,6 +57,9 @@ import {
   type SpecialsCombatant,
   weaponSpecials,
   abilityTooltips,
+  haloOrIconAbilities,
+  attackHelpers,
+  type AttackHelpers,
   defenseModifier,
   resistanceAgainst,
   fillWeaponChoices,
@@ -147,6 +150,8 @@ import {
   findVictoryEndlevelGoldConfig,
   computeCarryoverRecruits,
   scheduleFromScenarioConfigJson,
+  parseTimes,
+  findLocations,
   effectiveTimeOfDayAt,
   type Schedule,
   type ScheduleState,
@@ -642,6 +647,15 @@ export interface HexClickOptions {
   attackFrom?: HexPoint | null;
 }
 
+/** Phase 27c S4: one advancement to show -- the unit, where it stood, and what it was before. */
+export interface AdvancementAnimation {
+  readonly unit: Unit;
+  readonly loc: Location;
+  readonly fromTypeId: string;
+  readonly fromVariation: string;
+  readonly fromNewAnimations: readonly WmlConfig[];
+}
+
 /**
  * Everything a caller needs to animate the attack `confirmAttack` just
  * resolved (see `GameSession.lastAttackAnimation`), one real blow at a
@@ -680,6 +694,11 @@ export interface LastAttackAnimation {
   /** Their variations at combat time (`unit.variation`), with the type ids above. */
   readonly attackerVariation: string;
   readonly defenderVariation: string;
+  /** Their `apply_to=new_animation` effects at combat time (`Unit.newAnimations`), with the type ids above. */
+  readonly attackerNewAnimations: readonly WmlConfig[];
+  readonly defenderNewAnimations: readonly WmlConfig[];
+  /** Phase 27c S4: the units playing `leading`/`resistance`/`teaching` with the blows, as the fight started. */
+  readonly helpers: AttackHelpers;
   /**
    * `attacker`/`defender`'s real hitpoints BEFORE this exchange resolved --
    * same rationale as `attackerTypeId`/`defenderTypeId` above, but for HP:
@@ -1845,6 +1864,14 @@ export class GameSession {
     // matches upstream's own timing (tod_manager::resolve_random, called
     // from the play_controller constructor sequence before fire_prestart).
     this.schedule = scheduleFromScenarioConfigJson(snapshot.scenarioConfigJson, new RngDeterministic(this.mtRng));
+    // `game_state::init`: the scenario's own `[time_area]`s (`tod_manager::add_time_area(map, cfg)` -- the hexes
+    // its x=/y= name, border included).
+    for (const area of WmlConfig.fromJSON(snapshot.scenarioConfigJson).children('time_area')) {
+      const at = new WmlConfig();
+      for (const key of ['x', 'y']) if (area.hasAttribute(key)) at.setAttribute(key, area.getString(key));
+      const hexes = new Set(findLocations(this.board, at.setAttribute('include_borders', 'yes')).map((l) => l.key()));
+      this.schedule.addTimeArea(area.getString('id', ''), hexes, parseTimes(area), area.getNumber('current_time', 0), this.turnNumber);
+    }
     const manager = new EventManager();
     manager.loadScenarioEvents(WmlConfig.fromJSON(snapshot.scenarioConfigJson));
     this.eventPump = new EventPump(manager, {
@@ -2061,6 +2088,19 @@ export class GameSession {
   }
 
   /**
+   * Phase 27c S5: the hexes a `[time_area]` lights, each with the time of day it shows -- `get_time_of_day(loc)`,
+   * the schedule only (illumination changes combat, not the picture). Keyed `"x,y"`.
+   */
+  timeAreaLighting(): Map<string, { red: number; green: number; blue: number; mask?: string }> {
+    const out = new Map<string, { red: number; green: number; blue: number; mask?: string }>();
+    for (const key of this.schedule.areaHexKeys()) {
+      const tod = this.schedule.timeOfDayAt(Location.fromKey(key), this.turnNumber);
+      out.set(key, { red: tod.red, green: tod.green, blue: tod.blue, ...(tod.imageMask ? { mask: tod.imageMask } : {}) });
+    }
+    return out;
+  }
+
+  /**
    * The real, fully location-aware ToD at `loc` -- schedule, any covering
    * `[time_area]`, and `[illuminates]`, all layered the way upstream's own
    * `get_illuminated_time_of_day` does. This is what combat/event filters
@@ -2090,9 +2130,8 @@ export class GameSession {
 
   /**
    * The real `[scenario] next_scenario=` this scenario declares, or `null`
-   * if it has none (the scenario chain ends here). Drives whether
-   * `ScenarioEndOverlay` offers a "Continue" button on victory -- see
-   * `startNextScenario`.
+   * if it has none (the scenario chain ends here). Decides where End
+   * Scenario goes after a victory (Phase 27c S6) -- see `startNextScenario`.
    */
   get nextScenarioId(): string | null {
     // An [endlevel] next_scenario= overrides the scenario's own (endlevel.lua sets wesnoth.scenario.next).
@@ -2114,10 +2153,10 @@ export class GameSession {
     return this.eventPump.ctx.endLevel?.testResult ?? null;
   }
 
-  get endLevelPresentation(): { endText?: string; endTextDuration?: number; endCredits?: boolean; lingerMode?: boolean; carryoverReport?: boolean; replaySave?: boolean } | null {
+  get endLevelPresentation(): { endText?: string; endTextDuration?: number; endCredits?: boolean; lingerMode?: boolean; carryoverReport?: boolean; replaySave?: boolean; revealMap?: boolean } | null {
     const endLevel = this.eventPump.ctx.endLevel;
     return endLevel
-      ? { endText: endLevel.endText, endTextDuration: endLevel.endTextDuration, endCredits: endLevel.endCredits, lingerMode: endLevel.lingerMode, carryoverReport: endLevel.carryoverReport, replaySave: endLevel.replaySave }
+      ? { endText: endLevel.endText, endTextDuration: endLevel.endTextDuration, endCredits: endLevel.endCredits, lingerMode: endLevel.lingerMode, carryoverReport: endLevel.carryoverReport, replaySave: endLevel.replaySave, revealMap: endLevel.revealMap }
       : null;
   }
 
@@ -2647,6 +2686,9 @@ export class GameSession {
     const attackerTypeId = attacker.type.id;
     const attackerVariation = attacker.variation;
     const defenderVariation = defender.variation;
+    const attackerNewAnimations = attacker.newAnimations;
+    const defenderNewAnimations = defender.newAnimations;
+    const helpers = attackHelpers(this.board, attacker, attacker.attacks[cmd.weapon], defender, defenderWeapon >= 0 ? defender.attacks[defenderWeapon] : undefined);
     const defenderTypeId = defender.type.id;
     const result = performAttack(this.board, this.rng, attackerLoc, cmd.weapon, defenderLoc, defenderWeapon, {
       ...this.attackOptions(attackerLoc, defenderLoc),
@@ -2686,6 +2728,9 @@ export class GameSession {
       defenderTypeId,
       attackerVariation,
       defenderVariation,
+      attackerNewAnimations,
+      defenderNewAnimations,
+      helpers,
       attackerLocation: attackerLoc,
       defenderLocation: defenderLoc,
     };
@@ -3219,7 +3264,6 @@ export class GameSession {
   private *pumpEventsFlow(): Flow {
     if (!this.scenarioResult) yield* this.eventPump.pumpFlow();
     this.checkForGameEnd();
-    this.syncVillageMemory();
   }
 
   /**
@@ -3280,8 +3324,16 @@ export class GameSession {
    * `runStartupEvents` can put units of types never listed in the
    * snapshot's original `units` array onto the board.
    */
+  /**
+   * Phase 27c S6: the scenario is over and the player lingers on the map with `reveal_map` (the default):
+   * upstream shows every player the whole map, fog, shroud and hidden units included (`update_gui_linger`).
+   */
+  get mapRevealed(): boolean {
+    return this.scenarioResult !== null && (this.endLevelPresentation?.lingerMode ?? true) && (this.endLevelPresentation?.revealMap ?? true);
+  }
+
   get renderUnits(): SnapshotUnit[] {
-    const playerTeam = this.board.getTeam(this.viewingSide);
+    const playerTeam = this.mapRevealed ? undefined : this.board.getTeam(this.viewingSide);
     return this.board
       .allUnits()
       .filter((u) => !playerTeam || isUnitVisibleToTeam(this.board, u, playerTeam, false))
@@ -3325,14 +3377,16 @@ export class GameSession {
    */
   private toSnapshotUnit(unit: Unit, x: number, y: number, hitpoints: number): SnapshotUnit {
     const isOwnUnit = unit.side === this.viewingSide;
-    const { canMove, canAttackHere } = isOwnUnit ? unitCanAct(this.board, unit) : { canMove: undefined, canAttackHere: undefined };
+    // Phase 27c S6: once the scenario is over, every unit has ended its turn (`set_all_units_user_end_turn`).
+    const over = this.scenarioResult !== null;
+    const { canMove, canAttackHere } = !isOwnUnit ? { canMove: undefined, canAttackHere: undefined } : over ? { canMove: false, canAttackHere: false } : unitCanAct(this.board, unit);
     return {
       id: unit.id || null,
       name: unit.name || null,
       typeId: unit.type.id,
       image: this.unitImage(unit),
       flagRgb: this.snapshot.unitTypes[unit.type.id]?.flagRgb,
-      facing: unit.facing,
+      facing: this.displayFacing(unit),
       side: unit.side,
       x,
       y,
@@ -3343,14 +3397,17 @@ export class GameSession {
       maxExperience: unit.maxExperience,
       level: unit.type.level,
       canAdvance: unit.advancesTo.length > 0,
-      movesLeft: isOwnUnit ? unit.movesLeft : undefined,
+      movesLeft: isOwnUnit ? (over ? 0 : unit.movesLeft) : undefined,
       maxMoves: isOwnUnit ? unit.maxMoves : undefined,
       attacksLeft: isOwnUnit ? unit.attacksLeft : undefined,
       maxAttacksPerTurn: isOwnUnit ? unit.maxAttacksPerTurn : undefined,
       canMove,
       canAttackHere,
       statuses: [...unit.statuses],
-      overlays: unit.overlays,
+      // `unit::overlays()`, then the active abilities' `overlay_image=`s (`overlays_abilities`, `units/drawer.cpp`).
+      overlays: [...unit.overlays, ...haloOrIconAbilities(this.board, unit, 'overlay')],
+      imageMods: unit.imageMods || undefined,
+      halos: [unit.halo, ...haloOrIconAbilities(this.board, unit, 'halo')].filter((h) => h !== ''),
       ellipse: unit.ellipse,
       emitsZoc: unit.emitZoc,
       underlyingId: this.renderKeyFor(unit),
@@ -3378,10 +3435,24 @@ export class GameSession {
   /** `rawUnitTypeConfig`'s variation sub-types, built once each. */
   private readonly variationConfigs = new Map<string, WmlConfigJson | undefined>();
 
-  /** The map sprite for `unit`: its variation's `image=` when it has one (a dwarf-shaped corpse), else its type's. */
+  /**
+   * The way `unit` is drawn facing. Upstream gives a unit created without `facing=` a random direction
+   * (`get_random_direction`); the engine here leaves it Indeterminate, so the board shows a stand-in that is
+   * stable per unit -- a direction is what picks its standing and idle animations' `[if] direction=` branch.
+   */
+  displayFacing(unit: Unit): Direction {
+    if (unit.facing !== Direction.Indeterminate) return unit.facing;
+    return (Math.imul(this.renderKeyFor(unit), 2654435761) >>> 0) % 6;
+  }
+
+  /**
+   * The map sprite for `unit`: its variation's `image=` when it has one (a dwarf-shaped corpse), else its type's
+   * -- with the unit's `apply_to=image_mod` functions, as upstream's `absolute_image() + image_mods()` (the team
+   * colour is the renderer's to add).
+   */
   private unitImage(unit: Unit): string | null {
-    if (unit.variation !== '' && unit.type.image !== '') return unit.type.image;
-    return this.snapshot.unitTypes[unit.type.id]?.image ?? null;
+    const image = unit.variation !== '' && unit.type.image !== '' ? unit.type.image : this.snapshot.unitTypes[unit.type.id]?.image ?? null;
+    return image && unit.imageMods ? `${image}~${unit.imageMods}` : image;
   }
 
   unitDisplayName(u: Unit): string {
@@ -3502,6 +3573,24 @@ export class GameSession {
     this.selectedUnit = unit;
     this.reachable = this.reachOf(unit);
     this.attackCandidates = this.computeAttackCandidates(unit);
+  }
+
+  /**
+   * `mouse_handler::select_hex` with `fire_event` (a click, `n`/`N`): selects `unit`, and when it is the
+   * viewing side's own on its turn, fires `select` at it -- as upstream, outside any synced command (so, as
+   * there, what its handlers change is not part of the replay).
+   */
+  async selectUnitByPlayer(unit: Unit): Promise<void> {
+    await this.drive(this.selectUnitByPlayerFlow(unit));
+  }
+
+  private *selectUnitByPlayerFlow(unit: Unit): Flow {
+    this.selectUnit(unit);
+    if (unit.side !== this.viewingSide || unit.side !== this.activeSide || unit.hidden) return;
+    yield* this.fireFlow('select', unit.location);
+    yield* this.pumpEventsFlow();
+    // Its handlers may have changed the unit (an [object]): its reach and targets as they now are.
+    if (this.selectedUnit === unit && this.board.unitAt(unit.location) === unit) this.selectUnit(unit);
   }
 
   /**
@@ -4254,41 +4343,22 @@ export class GameSession {
   }
 
   /**
-   * Remembers, per village, the last owner seen while that hex was NOT
-   * fogged for `playerSide` -- mirrors upstream's own "under fog you see
-   * the last-known owner, not the current one" rule (`display.cpp`'s
-   * `draw_villages`/`draw_flag`, both gated on `!fogged(loc) ||
-   * !viewing_team().is_enemy(...)`). Updated by `syncVillageMemory`,
-   * called after every action that can move the game forward.
+   * Phase 27c S8: the village flags the viewing side sees (`display::get_flag`): each village's current owner,
+   * except an enemy's village under fog (no flag), and nothing under shroud (`draw_hex` draws no flags there).
+   * While the map is revealed at the end of the scenario, every flag.
    */
-  private readonly lastKnownVillageOwnerBySide = new Map<number, Map<string, number>>();
-
-  /** The viewing side's memory of village owners (each side remembers its own). */
-  private get lastKnownVillageOwner(): Map<string, number> {
-    let memory = this.lastKnownVillageOwnerBySide.get(this.viewingSide);
-    if (!memory) {
-      memory = new Map();
-      this.lastKnownVillageOwnerBySide.set(this.viewingSide, memory);
-    }
-    return memory;
-  }
-
-  private syncVillageMemory(): void {
-    const memory = this.lastKnownVillageOwner;
-    for (const loc of this.board.map.villages) {
-      if (this.board.isFogged(this.viewingSide, loc)) continue;
-      const side = this.board.villageOwner(loc);
-      if (side !== undefined) memory.set(loc.key(), side);
-      else memory.delete(loc.key());
-    }
-  }
-
-  /** Every village whose owner is known to `playerSide` (current if visible, else last-known under fog), for the board's live ownership-flag markers -- unowned villages are omitted (nothing to mark; the terrain colour alone already shows "this is a village," see `SnapshotBoard`'s own doc comment). */
   get villageOwnership(): VillageOwnerInfo[] {
+    const viewer = this.board.getTeam(this.viewingSide);
     const result: VillageOwnerInfo[] = [];
     for (const loc of this.board.map.villages) {
-      const side = this.board.isFogged(this.viewingSide, loc) ? this.lastKnownVillageOwner.get(loc.key()) : this.board.villageOwner(loc);
-      if (side !== undefined) result.push({ x: loc.x, y: loc.y, side });
+      const side = this.board.villageOwner(loc);
+      if (side === undefined) continue;
+      if (!this.mapRevealed) {
+        if (this.board.isShrouded(this.viewingSide, loc)) continue;
+        const owner = this.board.getTeam(side);
+        if (this.board.isFogged(this.viewingSide, loc) && viewer && owner && viewer.isEnemy(owner)) continue;
+      }
+      result.push({ x: loc.x, y: loc.y, side });
     }
     return result;
   }
@@ -4301,7 +4371,7 @@ export class GameSession {
    */
   get hexVisibility(): HexVisibilityPoint[] {
     const team = this.board.getTeam(this.viewingSide);
-    if (!team || !team.fogOrShroud()) return [];
+    if (!team || !team.fogOrShroud() || this.mapRevealed) return [];
     const result: HexVisibilityPoint[] = [];
     // Includes the one-hex border ring beyond the playable area (same
     // -1..w()/-1..h() range `SnapshotBoard.renderTerrain` builds terrain
@@ -4758,7 +4828,7 @@ export class GameSession {
           return fmt(tx('$attacker could attack $defender -- review the prediction and confirm.'), { attacker: this.unitDisplayName(sel), defender: this.unitDisplayName(clickedUnit) });
         }
         if (clickedUnit.side === this.activeSide) {
-          this.selectUnit(clickedUnit);
+          yield* this.selectUnitByPlayerFlow(clickedUnit);
           return null;
         }
         // An enemy (or an inactive side's unit) that isn't a valid attack
@@ -4783,7 +4853,7 @@ export class GameSession {
 
     if (clickedUnit) {
       if (clickedUnit.side === this.activeSide) {
-        this.selectUnit(clickedUnit);
+        yield* this.selectUnitByPlayerFlow(clickedUnit);
       } else {
         this.inspectUnit(clickedUnit);
         return fmt(tx('Viewing $unit.'), { unit: this.unitDisplayName(clickedUnit) });
@@ -5037,8 +5107,22 @@ export class GameSession {
     if (this.board.unitAt(unit.location) === unit) this.eventPump.fire('post advance', unit.location, undefined, undefined, this.collectResponder);
   }
 
+  /**
+   * Phase 27c S4: the advancements to show (`animate_unit_advancement`'s levelout and levelin), oldest first,
+   * each with what the unit was before it.
+   */
+  private advancementAnimations: AdvancementAnimation[] = [];
+
+  /** Takes the advancements made since the last call, to animate. */
+  takeAdvancementAnimations(): AdvancementAnimation[] {
+    const out = this.advancementAnimations;
+    this.advancementAnimations = [];
+    return out;
+  }
+
   private applyAdvancementChoice(unit: Unit, index: number, typeIds: readonly string[], amlas: readonly WmlConfig[]): void {
     const before = unit.type.name;
+    this.advancementAnimations.push({ unit, loc: unit.location, fromTypeId: unit.type.id, fromVariation: unit.variation, fromNewAnimations: unit.newAnimations });
     const env = effectEnvFor(this.eventPump.ctx, unit);
     if (index < typeIds.length) {
       const result = advanceUnitTo(unit, this.resolveType(typeIds[index]!), 100, env);
@@ -5231,8 +5315,6 @@ export class GameSession {
     // scenario's own static config.
     if (data.schedule) this.schedule.importState(data.schedule);
     this.clearSelection();
-    this.lastKnownVillageOwnerBySide.clear();
-    this.syncVillageMemory();
     this.restoreUndoStack(data.undoStack);
   }
 
@@ -5368,7 +5450,6 @@ export class GameSession {
     if (log[log.length - 1] === container.command) this.recorder.cutLast();
     else this.recorder.replaceAll(log.filter((c) => c !== container.command));
     this.clearSelection();
-    this.syncVillageMemory();
     const message = fmt(tx('Undid $action.'), { action: describeCommand(container.command.command) });
     this.log.unshift(message);
     return message;
