@@ -3264,7 +3264,6 @@ export class GameSession {
   private *pumpEventsFlow(): Flow {
     if (!this.scenarioResult) yield* this.eventPump.pumpFlow();
     this.checkForGameEnd();
-    this.syncVillageMemory();
   }
 
   /**
@@ -4344,41 +4343,22 @@ export class GameSession {
   }
 
   /**
-   * Remembers, per village, the last owner seen while that hex was NOT
-   * fogged for `playerSide` -- mirrors upstream's own "under fog you see
-   * the last-known owner, not the current one" rule (`display.cpp`'s
-   * `draw_villages`/`draw_flag`, both gated on `!fogged(loc) ||
-   * !viewing_team().is_enemy(...)`). Updated by `syncVillageMemory`,
-   * called after every action that can move the game forward.
+   * Phase 27c S8: the village flags the viewing side sees (`display::get_flag`): each village's current owner,
+   * except an enemy's village under fog (no flag), and nothing under shroud (`draw_hex` draws no flags there).
+   * While the map is revealed at the end of the scenario, every flag.
    */
-  private readonly lastKnownVillageOwnerBySide = new Map<number, Map<string, number>>();
-
-  /** The viewing side's memory of village owners (each side remembers its own). */
-  private get lastKnownVillageOwner(): Map<string, number> {
-    let memory = this.lastKnownVillageOwnerBySide.get(this.viewingSide);
-    if (!memory) {
-      memory = new Map();
-      this.lastKnownVillageOwnerBySide.set(this.viewingSide, memory);
-    }
-    return memory;
-  }
-
-  private syncVillageMemory(): void {
-    const memory = this.lastKnownVillageOwner;
-    for (const loc of this.board.map.villages) {
-      if (this.board.isFogged(this.viewingSide, loc)) continue;
-      const side = this.board.villageOwner(loc);
-      if (side !== undefined) memory.set(loc.key(), side);
-      else memory.delete(loc.key());
-    }
-  }
-
-  /** Every village whose owner is known to `playerSide` (current if visible, else last-known under fog), for the board's live ownership-flag markers -- unowned villages are omitted (nothing to mark; the terrain colour alone already shows "this is a village," see `SnapshotBoard`'s own doc comment). */
   get villageOwnership(): VillageOwnerInfo[] {
+    const viewer = this.board.getTeam(this.viewingSide);
     const result: VillageOwnerInfo[] = [];
     for (const loc of this.board.map.villages) {
-      const side = this.board.isFogged(this.viewingSide, loc) ? this.lastKnownVillageOwner.get(loc.key()) : this.board.villageOwner(loc);
-      if (side !== undefined) result.push({ x: loc.x, y: loc.y, side });
+      const side = this.board.villageOwner(loc);
+      if (side === undefined) continue;
+      if (!this.mapRevealed) {
+        if (this.board.isShrouded(this.viewingSide, loc)) continue;
+        const owner = this.board.getTeam(side);
+        if (this.board.isFogged(this.viewingSide, loc) && viewer && owner && viewer.isEnemy(owner)) continue;
+      }
+      result.push({ x: loc.x, y: loc.y, side });
     }
     return result;
   }
@@ -5335,8 +5315,6 @@ export class GameSession {
     // scenario's own static config.
     if (data.schedule) this.schedule.importState(data.schedule);
     this.clearSelection();
-    this.lastKnownVillageOwnerBySide.clear();
-    this.syncVillageMemory();
     this.restoreUndoStack(data.undoStack);
   }
 
@@ -5472,7 +5450,6 @@ export class GameSession {
     if (log[log.length - 1] === container.command) this.recorder.cutLast();
     else this.recorder.replaceAll(log.filter((c) => c !== container.command));
     this.clearSelection();
-    this.syncVillageMemory();
     const message = fmt(tx('Undid $action.'), { action: describeCommand(container.command.command) });
     this.log.unshift(message);
     return message;
