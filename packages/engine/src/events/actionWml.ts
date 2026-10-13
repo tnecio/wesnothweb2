@@ -1261,7 +1261,7 @@ function withCreationRolls(cfg: WmlConfig, ctx: EventContext): WmlConfig {
   const typeId = cfg.hasAttribute('parent_type') ? cfg.getString('parent_type') : cfg.getString('type');
   const type = ctx.resolveType(typeId).variation(cfg.getString('variation', ''));
   const existing = cfg.children('modifications').flatMap((m) => m.children('trait').map((t) => ({ kind: 'trait', cfg: t })));
-  const { gender, traits } = rollNewUnit(type, ctx.rng, {
+  const { gender, traits, name } = rollNewUnit(type, ctx.rng, {
     ...(cfg.hasAttribute('gender') ? { gender: cfg.getString('gender') } : {}),
     randomGender: cfg.getBoolean('random_gender', false),
     existing,
@@ -1271,6 +1271,7 @@ function withCreationRolls(cfg: WmlConfig, ctx: EventContext): WmlConfig {
   });
   const out = cfg.clone();
   out.setAttribute('gender', gender);
+  if (name) out.setAttribute('name', name);
   if (traits.length > 0) {
     const mods = out.child('modifications') ?? out.addChild('modifications');
     for (const t of traits) mods.addChild('trait', t.cfg);

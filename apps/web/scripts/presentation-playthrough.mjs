@@ -22,8 +22,11 @@
  *   fog and shroud lifted and the enemy shown (`reveal_map`), every orb red, End Turn reading End Scenario --
  *   and End Scenario goes back to the title screen.
  *
+ * - random names (S7), on Dead Water 1: the units its WML gives no name (the merfolk citizens, the enemy's)
+ *   come with one, generated from their race's name generator, shown in the side panel.
+ *
  *   node apps/web/scripts/presentation-playthrough.mjs [--base http://localhost:5173]
- *     [--only unit-effects,standing-idle,combat-anims,lighting,linger]
+ *     [--only unit-effects,standing-idle,combat-anims,lighting,linger,names]
  *     [--shots <dir>]
  */
 import { chromium } from 'playwright';
@@ -412,6 +415,32 @@ ${anims}
     await page.click('[data-testid="turn-button"]');
     const title = await page.waitForSelector('[data-testid="title-screen"]', { timeout: 30000 }).catch(() => null);
     check('End Scenario after a defeat returns to the title screen', title !== null);
+    check('no page errors', errors.length === 0, errors.join(' | '));
+    await page.context().close();
+  }
+  if (runs('names')) {
+    const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await openDeadWater(page);
+    const units = await page.evaluate(() =>
+      window.__wesnoth.session.board.allUnits().map((u) => ({
+        id: u.id,
+        name: typeof u.name === 'string' ? u.name : String(u.name ?? ''),
+        x: u.location.x,
+        y: u.location.y,
+        // A race with no name generator (the undead) names nobody, upstream too.
+        nameable: Object.keys(u.type.nameSources ?? {}).length > 0,
+      })),
+    );
+    const nameable = units.filter((u) => u.nameable);
+    const named = nameable.filter((u) => u.name.trim() !== '');
+    check('the units come with names, generated where the WML gave none', nameable.length > 0 && named.length === nameable.length, `${named.length} of ${nameable.length} (of ${units.length}): ${named.slice(0, 6).map((u) => u.name).join(', ')}`);
+    const citizen = units.find((u) => /Citizen|Fighter|Grunt|Naga/.test(u.id) && u.name) ?? units[0];
+    await page.evaluate(({ x, y }) => window.__wesnoth.clickHex(x, y), citizen);
+    await page.waitForTimeout(800);
+    const panel = await page.$eval('.side-panel', (e) => e.textContent ?? '').catch(() => '');
+    check('...and the side panel shows the name', panel.includes(citizen.name), `${citizen.id}: ${citizen.name}`);
     check('no page errors', errors.length === 0, errors.join(' | '));
     await page.context().close();
   }
