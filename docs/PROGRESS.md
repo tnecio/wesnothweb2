@@ -6658,3 +6658,43 @@ A port of upstream's `units/abilities.cpp` and the special half of `units/attack
 **Numbers:** WML conformance 332 -> 973 (`AbilitiesWML` and `Attacks` all pass but five AI-choice tests);
 completeness 688 -> 754 items done. Attack previews 0.08 ms -> 0.35 ms; AI turns no slower on
 `synth_combat_02` (1.7 s mean per turn, 2.1 s before, same winners).
+
+## 2026-10-13: Phase 27c -- the presentation gaps
+
+Eight stages, each a port of upstream's own code with its own tests; the browser checks are in a new
+`apps/web/scripts/presentation-playthrough.mjs`.
+
+**What it covers:**
+- **S1, image path functions:** all of `image_modifications.cpp`, on straight-alpha pixels
+  (`images/modifications.ts`, `surfaceOps.ts`; `xbrz.ts` ports xBRZ; `~CHAN`/`~ADJUST_ALPHA` run WFL per
+  pixel). TC/RC/PAL run first, as `modification_queue` orders them. Each is checked against `wl-image-oracle`:
+  66 references, every pixel exact (`test/imageOracle.test.ts`); in the browser, those and 1084 golden terrain
+  references match too (`image-oracle-check.mjs`). Image goldens re-recorded (exact arithmetic moved 421
+  translucent-pixel hashes).
+- **S2, unit effects:** `apply_to=image_mod` on the sprite, its frames and the side panel; unit and ability
+  halos above the units, following them; `apply_to=new_animation`.
+- **S3, standing and idle animations:** `unit_animation_component`'s standing loop, idle timer and selection
+  pulse; upstream's two preferences and the frequency slider; nothing moves under reduced motion. A unit
+  without `facing=` gets a stable stand-in direction for drawing (upstream draws a random one).
+- **S4, combat animations:** draw/sheath weapon, `leading` (and `resistance`, `teaching`) with each blow,
+  `victory` for a fight's winner, levelout and levelin when advancing.
+- **S5, lighting:** upstream's per-hex lighting (`display::get_terrain_images`, `apply_light`) as a filter on
+  terrain and items; flags, grid and fog take the global colour; units none. `[color_adjust]` and `[time]
+  mask=` are drawn.
+- **S6, the end of a scenario:** linger mode -- End Scenario, `reveal_map`, ended orbs -- replacing the
+  port's own end overlay.
+- **S7, random names:** the markov and grammar generators, fed from the draws already made.
+- **S8, village flags under fog:** `display::get_flag`.
+
+**Where upstream differs from the plan:** 1.19 has no carryover report and no defeat dialog, no level-up
+sound, no drawn illumination, and no time-of-day tint on units; `victory_anim` is played at a kill. The port
+follows upstream (see the plan's 27c notes).
+
+**Found and fixed on the way:**
+- A scenario's own `[time_area]`s were never loaded, so their hexes fought at the day's lawful bonus.
+- Selecting one's own unit never fired `select` (TSG's tutorial arrows depend on it).
+- Animation unit filters had no board, so `[filter_adjacent]` (`STANDARD_IDLE_FILTER`) never matched.
+- MASK and BLIT used canvas arithmetic; now SDL's.
+
+**Numbers:** completeness 754 -> 774 items done (115 partial, 14 missing). WML conformance unchanged at 973.
+Frame time on Liberty 1 is the same with standing animations on and off.

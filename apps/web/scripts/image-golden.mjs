@@ -98,7 +98,11 @@ const browser = await chromium.launch();
 try {
   if (record) {
     const hashes = {};
-    const collect = async (page) => Object.assign(hashes, await page.evaluate(hashInPage, { refs: await cachedRefs(page), fresh: false }));
+    const collect = async (page) => {
+      const batch = await page.evaluate(hashInPage, { refs: await cachedRefs(page), fresh: false });
+      delete batch.__timing;
+      Object.assign(hashes, batch);
+    };
     for (const campaign of ['dead_water', 'liberty']) {
       await withScenario(browser, campaign, undefined, async (page) => {
         await page.waitForTimeout(3000); // let unit sprites resolve after the terrain

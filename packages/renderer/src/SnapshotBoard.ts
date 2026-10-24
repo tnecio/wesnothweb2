@@ -69,7 +69,10 @@
 import * as PIXI from 'pixi.js';
 import { Direction, Location, getAdjacentTiles, relativeDirection, tilesAdjacent, writeDirection } from '@wesnothweb2/engine/src/model/Location.js';
 import { hexOverlayImages, defaultAssetExists, type FogShroudHex } from './fogShroud.js';
-import { splitTodTintColors } from './todTint.js';
+import { hexLighting, hexLightmap, worldLightmap, LIGHTMAP_IMAGES, type PlacedLightmap, type TodShift } from './lighting.js';
+import { LightingFilter, lightmapTexture, neutralLightmap } from './lightingFilter.js';
+import { decodeImageStraight, hexedRef, HEX_MASK } from './images/compositor.js';
+import { mask as maskRaster, makeRaster, type Raster } from './images/surfaceOps.js';
 import {
   hexCorners,
   hexToPixel,
@@ -83,8 +86,10 @@ import { ImageCache, setImageBaseUrl, setEngineImageBaseUrl } from './images/Ima
 import { joinRef } from './images/ipf.js';
 import { resolveSideColorId, sideColorRgb } from './images/teamColor.js';
 import { squareParentheticalSplit } from './animation/frame.js';
-import { sampleAnimation, animationTimeline, animationSoundCues, sampleParticles, sampleUnitHalo, type OverlaySample, type SoundCue } from './animation/playback.js';
+import { sampleAnimation, animationTimeline, animationSoundCues, animationDurationMs, sampleParticles, sampleUnitHalo, type OverlaySample, type SoundCue } from './animation/playback.js';
 import { HEX_STEP_MS, type UnitAnimationDef } from './animation/unitAnimation.js';
+import { nextIdleTick, type AmbientAnimationPrefs, type AmbientAnimationSource, type AmbientAnimationEvent } from './animation/ambient.js';
+export { nextIdleTick, type AmbientAnimationPrefs, type AmbientAnimationSource, type AmbientAnimationEvent } from './animation/ambient.js';
 import { LABEL_FONT_SIZE, parseHaloFrames, type MapItemPoint, type MapLabelPoint } from './mapItems.js';
 import { layerAnimates, makeLayerSprite, type TerrainAnimation } from './terrainPositioning.js';
 import { ownTerrainGraphicsRules, type BuildingRule } from './terrain/terrainGraphicsRules.js';
@@ -216,6 +221,18 @@ export interface SnapshotUnit {
   overlays?: readonly string[];
   /** `unit::image_ellipse` (`''` = `misc/ellipse`, `none` = no ellipse) and `emits_zoc` -- see `ellipseRef`. */
   ellipse?: string;
+  /**
+   * `unit::effect_image_mods()`: the unit's `apply_to=image_mod` functions. `image` already carries them (as
+   * upstream's `absolute_image() + image_mods()`); animation frames get them here (`params.image_mod =
+   * u.image_mods()`, `units/drawer.cpp`).
+   */
+  imageMods?: string;
+  /**
+   * The unit's halos (`units/drawer.cpp`): its own `halo=` (`unit::image_halo`), then its active abilities'
+   * `halo_image=` (`unit::halo_abilities`) -- each an animated image list (`image[:ms],...`), drawn centred on
+   * the unit above the units, team-coloured.
+   */
+  halos?: readonly string[];
   emitsZoc?: boolean;
   /**
    * A stable per-instance key for sprite identity across `updateUnits`
@@ -338,6 +355,20 @@ interface UnitVisual {
   orbIcon: PIXI.Sprite | null;
   /** The `path~mods` ref `orbIcon`'s texture was last resolved from, so `updateIcons` only re-resolves when `MovesOrbStatus` (or its visibility) actually changed. */
   lastOrbRef: string | null;
+  /** `SnapshotUnit.imageMods` this visual was last built from -- `playAnimations` adds them to every frame. */
+  imageMods: string;
+  /**
+   * Phase 27c S3: the animation the unit plays at rest (`unit_animation_component`'s `anim_`): its standing
+   * loop, an idle animation or the selection pulse (`forget`: back to standing once finished). Null until
+   * the ambient driver starts one; `nextIdle` is when it next idles (`next_idling_`), `cues` how many
+   * `playAnimations` beats are animating it now (the driver leaves it alone meanwhile).
+   */
+  ambient: { event: AmbientAnimationEvent; anim: UnitAnimationDef | null; start: number; forget: boolean; sounds: SoundCue[]; nextSound: number } | null;
+  nextIdle: number;
+  cues: number;
+  /** The unit's halos (`SnapshotUnit.halos`) in `unitHaloLayer`, following `container`; `halosKey` is what they show. */
+  halo: PIXI.Container | null;
+  halosKey: string;
   /** `SnapshotUnit.flagRgb` this visual was last built from -- `playAnimations` needs it (together with `lastSide`) to append the same `~RC(flagRgb>sideColorId)` modifier to ANIMATION frame textures that `buildUnitVisual` already appends to the idle sprite (see that method's own doc comment). */
   flagRgb: string | undefined;
   /**
@@ -350,9 +381,74 @@ interface UnitVisual {
   lastUnit: SnapshotUnit;
 }
 
+/** Debug: one unit's sprite as drawn (`SnapshotBoard.unitSpriteStates`). */
+export interface UnitSpriteState {
+  visible: boolean;
+  alpha: number;
+  /** The sprite texture's label (its image reference) or source. */
+  image: string;
+  x: number;
+  y: number;
+  /** Its rest animation (Phase 27c S3): the event, and how long that animation is. */
+  ambient: { event: string; durationMs: number } | null;
+  /** How many halos the unit has drawn, and where (they follow the unit). */
+  halos: number;
+  haloAt: { x: number; y: number } | null;
+}
+
 /** 0-based engine (x,y) -> 1-based renderer HexCoord -- see module doc comment. */
 function toHexCoord(x: number, y: number): HexCoord {
   return { x: x + 1, y: y + 1 };
+}
+
+/**
+ * Phase 27c S5: what lights the board (`SnapshotBoard.setLighting`): the global time of day's colour, the
+ * `[color_adjust]` added to every colour, and the hexes a `[time_area]` lights otherwise -- each with its time
+ * of day's colour and `mask=` image -- keyed `"x,y"` (engine-convention).
+ */
+export interface BoardLighting {
+  readonly global: LitTimeOfDay;
+  readonly adjust: TodShift;
+  readonly hexes: ReadonlyMap<string, LitTimeOfDay>;
+}
+
+/** A time of day as lighting sees it: its colour, and its `mask=` image if it has one. */
+export interface LitTimeOfDay extends TodShift {
+  readonly mask?: string;
+}
+
+let lightImages: Promise<{ lights: Map<string, Raster>; hexMask: Raster } | null> | null = null;
+
+/**
+ * The light maps and the hex mask, decoded straight (their translucent pixels' colour matters) and, as
+ * `get_surface(.., HEXED)` gives them, masked to the hex. Null where they cannot be decoded so.
+ */
+function loadLightImages(): Promise<{ lights: Map<string, Raster>; hexMask: Raster } | null> {
+  lightImages ??= (async () => {
+    const hexMask = await decodeImageStraight(HEX_MASK);
+    if (!hexMask) return null;
+    const lights = new Map<string, Raster>();
+    for (const name of LIGHTMAP_IMAGES) {
+      const img = await decodeImageStraight(name);
+      if (!img) return null;
+      maskRaster(img, hexMask, 0, 0);
+      lights.set(name, img);
+    }
+    return { lights, hexMask };
+  })();
+  return lightImages;
+}
+
+/** A 72x72 mask covering the whole square, for when the hex mask cannot be read. */
+function squareMask(): Raster {
+  const r = makeRaster(TILE_SIZE, TILE_SIZE);
+  r.data.fill(255);
+  return r;
+}
+
+/** `unit::incapacitated`: petrified. */
+function isIncapacitated(unit: SnapshotUnit): boolean {
+  return unit.statuses?.includes('petrified') ?? false;
 }
 
 /** Mirrors `sampleAnimation`'s own direction-to-hflip rule (frame.ts): art is authored facing "rightward," and the two leftward hex directions reuse it mirrored rather than being drawn separately. Shared here so the idle sprite mirrors the exact same way a combat/movement frame already does. */
@@ -577,6 +673,15 @@ export class SnapshotBoard {
   private readonly itemLayer = new PIXI.Container();
   /** Map items' halos: upstream's halo manager draws them over everything map-side, untinted -- as the animation overlays here. */
   private readonly itemHaloLayer = new PIXI.Container();
+  /** Units' halos (`SnapshotUnit.halos`): above the units, as upstream's halo manager draws them, each following its unit. */
+  private readonly unitHaloLayer = new PIXI.Container();
+  /** Phase 27c S3: where units' rest animations come from, and the preferences that govern them (`setAmbientAnimations`). */
+  private ambientSource: AmbientAnimationSource | null = null;
+  private ambientPrefs: AmbientAnimationPrefs = { standing: true, idle: true, idleRate: 0 };
+  /** Debug: the last 200 cues `playAnimations` played -- the sprite and its animation's event (null for none). */
+  readonly playedAnimations: { key: string; event: string | null }[] = [];
+  /** `freezeAmbientAnimations`: every unit shows its standing animation's first frame, for a capture. */
+  private ambientFrozen = false;
   private itemsUpdate: Promise<void> = Promise.resolve();
   /** Map labels (`terrain_label`, drawn as floating labels over the map): above fog and the time-of-day tint. */
   private readonly labelLayer = new PIXI.Container();
@@ -638,37 +743,16 @@ export class SnapshotBoard {
    */
   private readonly fogShroudLayer = new PIXI.Container();
   /**
-   * Mirrors upstream's `image::set_color_adjustment` (applied to every
-   * `image::TOD_COLORED` blit -- terrain, units, AND the fog/shroud
-   * overlay above, matching `drawing_layer::fog_shroud`'s own real ToD
-   * tinting): a per-channel additive shift, clamped to [0,255], covering
-   * the whole board.
-   *
-   * This project already has a faithful PER-TEXTURE port of that same
-   * formula (`animation/timeOfDay.ts`'s `applyTodTint`, wired into
-   * `ImageCache` as the `~TOD(r,g,b)` pseudo-op via `todRef` -- built
-   * ahead of this phase but never called). That approach bakes a tinted
-   * copy of every distinct terrain/unit texture the ToD touches, cached
-   * per (image, ToD) pair; with thousands of terrain images in play (see
-   * `renderTerrain`'s own preload cost), re-tinting on every ToD change
-   * would mean re-resolving and caching a second full copy of the
-   * terrain atlas per schedule entry. Implemented here instead as two
-   * full-board rects -- one filled with the positive part of
-   * (red,green,blue) drawn with `'add'` blend mode, one with the negative
-   * part's absolute value drawn with `'subtract'` -- which reconstructs
-   * the exact same per-channel additive/clamp result as a single
-   * composite step over whatever's already drawn, with no extra texture
-   * memory and no per-texture cache churn. `todRef`/`applyTodTint` remain
-   * available (and tested) for a future need this can't cover -- e.g. a
-   * `[time_area]`'s own distinct regional tint, which a single board-wide
-   * layer can't express without render-target compositing.
-   *
-   * Sits above `fogShroudLayer` (so fog/shroud get the tint too) and
-   * below `selectionLayer` (pure UI chrome, untinted).
+   * Phase 27c S5: the time-of-day lighting (`setLighting`) -- what it was built from, the filters it put on
+   * the lit layers, and a counter so a slow build superseded by a newer one is dropped.
    */
-  private readonly todTintLayer = new PIXI.Container();
-  private readonly todTintPositive = new PIXI.Graphics();
-  private readonly todTintNegative = new PIXI.Graphics();
+  private lighting: BoardLighting = { global: { red: 0, green: 0, blue: 0 }, adjust: { red: 0, green: 0, blue: 0 }, hexes: new Map() };
+  private lightingGeneration = 0;
+  private lightingTexture: PIXI.Texture | null = null;
+  /** Where `lightingTexture` lies on the map (world pixels). */
+  private lightingRect = new PIXI.Rectangle(0, 0, 1, 1);
+  /** `[time] mask=`: an image over each hex of a time of day with one (`draw_hex`), drawn unlit. */
+  private readonly todMaskLayer = new PIXI.Container();
   /**
    * Per-hex terrain containers built once by `renderTerrain`, keyed by
    * `"x,y"` (logical coordinates) -- lets `updateFogShroud` hide a
@@ -760,13 +844,14 @@ export class SnapshotBoard {
       this.footstepLayer,
       this.unitLayer,
       this.terrainForegroundLayer,
+      this.todMaskLayer,
       this.gridBottomLayer,
       this.moveInfoLayer,
       this.routeInfoLayer,
       this.hoverLayer,
       this.fogShroudLayer,
-      this.todTintLayer,
       this.itemHaloLayer,
+      this.unitHaloLayer,
       this.labelLayer,
       this.animationOverlayLayer,
       this.selectionLayer,
@@ -783,14 +868,21 @@ export class SnapshotBoard {
     this.gridBottomLayer.visible = false;
     this.itemLayer.eventMode = 'none';
     this.itemHaloLayer.eventMode = 'none';
+    this.unitHaloLayer.eventMode = 'none';
+    // Each frame, every unit's halo goes where its unit is drawn (`halo_man.set_location`), and only while it is.
+    this.unitHaloLayer.onRender = () => {
+      for (const visual of this.unitVisuals.values()) {
+        if (!visual.halo || visual.halo.destroyed) continue;
+        visual.halo.position.copyFrom(visual.container.position);
+        visual.halo.visible = !visual.container.destroyed && visual.container.visible;
+      }
+    };
+    // Phase 27c S3: each frame, the units at rest play their standing, idle or selection animations.
+    this.unitLayer.onRender = () => this.tickAmbient(this.ambientFrozen ? 0 : performance.now());
     this.labelLayer.eventMode = 'none';
     this.moveInfoLayer.eventMode = 'none';
     this.hoverLayer.eventMode = 'none';
-    this.todTintPositive.blendMode = 'add';
-    // A native blend equation -- see `installSubtractBlend`.
-    this.todTintNegative.blendMode = 'subtract';
-    this.todTintLayer.addChild(this.todTintPositive, this.todTintNegative);
-    this.todTintLayer.eventMode = 'none';
+    this.todMaskLayer.eventMode = 'none';
   }
 
   /**
@@ -819,42 +911,131 @@ export class SnapshotBoard {
     await this.gridBuilt;
   }
 
+  /**
+   * Phase 27c S5, for checks: the light map's value (`128 + colour / 2`) at the centre of hex (x, y), or null
+   * when nothing is lit hex by hex; and which layers carry a lighting filter.
+   */
+  lightingState(x: number, y: number): { value: [number, number, number] | null; lit: string[]; hexByHex: boolean } {
+    const layers: Record<string, PIXI.Container> = {
+      terrain: this.terrainLayer, foreground: this.terrainForegroundLayer, items: this.itemLayer, villages: this.villageLayer,
+      grid: this.gridTopLayer, fog: this.fogShroudLayer, units: this.unitLayer,
+    };
+    const lit = Object.entries(layers).filter(([, l]) => ((l.filters as PIXI.Filter[] | null) ?? []).some((f) => f instanceof LightingFilter)).map(([k]) => k);
+    const tex = this.lightingTexture;
+    const data = (tex?.source as { resource?: Uint8Array } | undefined)?.resource;
+    if (!tex || !data) return { value: null, lit, hexByHex: false };
+    const c = hexToPixel(toHexCoord(x, y));
+    const px = tex.width === 1 ? 0 : Math.round(c.x - this.lightingRect.x);
+    const py = tex.height === 1 ? 0 : Math.round(c.y - this.lightingRect.y);
+    const i = (py * tex.width + px) * 4;
+    return { value: [data[i]!, data[i + 1]!, data[i + 2]!], lit, hexByHex: tex.width > 1 };
+  }
+
   /** Phase 22, for checks: whether the grid overlay is showing, and how many hexes it covers. */
   gridState(): { visible: boolean; hexes: number } {
     return { visible: this.gridTopLayer.visible, hexes: this.gridTopLayer.children.length };
   }
 
   /**
-   * Draws (replacing any previous) the board-wide ToD colour tint from a
-   * `[time]` entry's real `red=`/`green=`/`blue=` -- see `todTintLayer`'s
-   * own doc comment. Pass `{ red: 0, green: 0, blue: 0 }` (neutral) to
-   * clear it. Per-`[time_area]` tinting (a region showing a DIFFERENT
-   * tint than the rest of the board) is a deliberate, documented gap --
-   * see this method's own doc comment below.
-   *
-   * NOT implemented: a hex-by-hex `[time_area]` tint. A single full-board
-   * filter/overlay can't show two different tints in two regions at once
-   * without render-target compositing (drawing the area's own hexes to a
-   * separate texture and tinting that in isolation) -- real, but bounded,
-   * additional work; the combat/event-filter consequences of
-   * `[time_area]` (the part that actually matters for gameplay) are
-   * already fully correct via `GameSession.timeOfDayAt`, independent of
-   * this visual simplification.
+   * The global time of day's `red=`/`green=`/`blue=` (`tod_manager::get_time_of_day()`): what lights every
+   * hex outside a `[time_area]`, and the flags, grid and fog. See `setLighting`.
    */
-  updateTimeOfDayTint(tod: { red: number; green: number; blue: number }): void {
+  updateTimeOfDayTint(tod: LitTimeOfDay): void {
+    this.setLighting({ ...this.lighting, global: { red: tod.red, green: tod.green, blue: tod.blue, ...(tod.mask ? { mask: tod.mask } : {}) } });
+  }
+
+  /**
+   * Phase 27c S5: the time of day as upstream draws it (`display::draw_hex`). Terrain (background and
+   * foreground) and items are lit hex by hex -- each hex by its own time of day (`hexes`, the `[time_area]`
+   * hexes; the rest by `global`), blending into differently lit neighbours through the light maps
+   * (`lighting.ts`); village flags, the grid and fog/shroud take the global colour exactly (`TOD_COLORED`);
+   * units are not shifted at all. `adjust` (`[color_adjust]`) is added to every colour.
+   */
+  setLighting(lighting: BoardLighting): void {
+    const prev = this.lighting;
+    const same = (a: LitTimeOfDay, b: LitTimeOfDay) => a.red === b.red && a.green === b.green && a.blue === b.blue && (a.mask ?? '') === (b.mask ?? '');
+    if (this.lightingGeneration > 0 && same(prev.global, lighting.global) && same(prev.adjust, lighting.adjust) && prev.hexes === lighting.hexes) return;
+    this.lighting = lighting;
+    void this.applyLighting();
+  }
+
+  private async applyLighting(): Promise<void> {
+    const generation = ++this.lightingGeneration;
+    const { global, adjust, hexes } = this.lighting;
     const { width, height } = this.snapshot.map;
-    const x = -HEX_COL_WIDTH;
-    const y = -HEX_ROW_HEIGHT;
-    const w = (width + 2) * HEX_COL_WIDTH;
-    const h = (height + 2) * HEX_ROW_HEIGHT;
+    // Every hex, the border's included: (x, y) from -1 to the size, engine-convention.
+    const rect = new PIXI.Rectangle(-HEX_COL_WIDTH, -HEX_ROW_HEIGHT, (width + 2) * HEX_COL_WIDTH + TILE_SIZE, (height + 2) * HEX_ROW_HEIGHT + TILE_SIZE);
+    const todAt = (x: number, y: number): LitTimeOfDay => hexes.get(`${x},${y}`) ?? global;
 
-    const { positive, negative } = splitTodTintColors(tod);
+    let light: PIXI.Texture | null = null;
+    let lightRect = new PIXI.Rectangle(0, 0, 1, 1);
+    if (hexes.size === 0) {
+      const flat = hexLightmap(hexLighting(global, Array(6).fill(global), adjust), () => null);
+      if (flat && 'flat' in flat && flat.flat.some((v) => v !== 128)) light = lightmapTexture(new Uint8ClampedArray([...flat.flat, 255]), 1, 1);
+    } else {
+      const images = await loadLightImages();
+      if (generation !== this.lightingGeneration) return;
+      const placed: PlacedLightmap[] = [];
+      for (let x = -1; x <= width; x++) {
+        for (let y = -1; y <= height; y++) {
+          const tod = todAt(x, y);
+          const around = getAdjacentTiles(new Location(x, y)).map((l) => todAt(l.x, l.y));
+          const list = hexLighting(tod, around, adjust);
+          // Without the light maps (no straight decoder), each hex its own colour, as if lit evenly.
+          const lightmap = hexLightmap(list, (name) => images?.lights.get(name) ?? null) ?? hexLightmap(hexLighting(tod, Array(6).fill(tod), adjust), () => null)!;
+          const center = hexToPixel(toHexCoord(x, y));
+          placed.push({ left: Math.round(center.x - TILE_SIZE / 2), top: Math.round(center.y - TILE_SIZE / 2), lightmap });
+        }
+      }
+      const left = Math.min(...placed.map((p) => p.left));
+      const top = Math.min(...placed.map((p) => p.top));
+      const right = Math.max(...placed.map((p) => p.left)) + TILE_SIZE;
+      const bottom = Math.max(...placed.map((p) => p.top)) + TILE_SIZE;
+      const world = worldLightmap(placed, images?.hexMask ?? squareMask(), left, top, right - left, bottom - top);
+      light = lightmapTexture(world.data, world.width, world.height);
+      lightRect = new PIXI.Rectangle(left, top, world.width, world.height);
+    }
+    if (generation !== this.lightingGeneration) {
+      light?.destroy(true);
+      return;
+    }
 
-    this.todTintPositive.clear();
-    if (positive !== 0) this.todTintPositive.rect(x, y, w, h).fill({ color: positive });
+    const exact = { red: global.red + adjust.red, green: global.green + adjust.green, blue: global.blue + adjust.blue };
+    const exactOffset: [number, number, number] = [exact.red, exact.green, exact.blue];
+    const lit = [this.terrainLayer, this.terrainForegroundLayer, this.itemLayer];
+    const todColored = [this.villageLayer, this.gridTopLayer, this.gridBottomLayer, this.fogShroudLayer];
+    for (const layer of [...lit, ...todColored]) {
+      for (const f of (layer.filters as PIXI.Filter[] | null) ?? []) f.destroy();
+      layer.filters = [];
+      layer.filterArea = rect;
+    }
+    this.lightingTexture?.destroy(true);
+    this.lightingTexture = light;
+    this.lightingRect = lightRect;
+    if (light) for (const layer of lit) layer.filters = [new LightingFilter(layer, light, lightRect, [0, 0, 0])];
+    if (exactOffset.some((v) => v !== 0)) {
+      for (const layer of todColored) layer.filters = [new LightingFilter(layer, neutralLightmap(), new PIXI.Rectangle(0, 0, 1, 1), exactOffset)];
+    }
 
-    this.todTintNegative.clear();
-    if (negative !== 0) this.todTintNegative.rect(x, y, w, h).fill({ color: negative });
+    // `[time] mask=`, hex by hex.
+    for (const child of this.todMaskLayer.removeChildren()) child.destroy();
+    const masks: { x: number; y: number; ref: string }[] = [];
+    for (let x = -1; x <= width; x++) {
+      for (let y = -1; y <= height; y++) {
+        const mask = todAt(x, y).mask;
+        if (mask) masks.push({ x, y, ref: hexedRef(mask) });
+      }
+    }
+    for (const { x, y, ref } of masks) {
+      const texture = await ImageCache.resolve(ref);
+      if (generation !== this.lightingGeneration) return;
+      if (!texture) continue;
+      const sprite = new PIXI.Sprite(texture);
+      sprite.anchor.set(0.5);
+      const c = hexToPixel(toHexCoord(x, y));
+      sprite.position.set(c.x, c.y);
+      this.todMaskLayer.addChild(sprite);
+    }
   }
 
   /** Queues a `renderUnits()` run behind any already in flight -- see `renderQueue`'s own doc comment. */
@@ -1138,9 +1319,10 @@ export class SnapshotBoard {
    * animation, but really any of them), even though its static idle
    * sprite was already correctly recolored.
    */
-  private teamColoredRef(imagePath: string, side: number, flagRgb: string | undefined): string {
+  private teamColoredRef(imagePath: string, side: number, flagRgb: string | undefined, imageMods = ''): string {
     const colorId = this.sideColorId(side);
-    return colorId ? joinRef(imagePath, `RC(${flagRgb ?? 'magenta'}>${colorId})`) : imagePath;
+    const mods = [imageMods, colorId ? `RC(${flagRgb ?? 'magenta'}>${colorId})` : ''].filter(Boolean).join('~');
+    return mods ? joinRef(imagePath, mods) : imagePath;
   }
 
   /** `team::get_side_color_id`: the side's colour range id (`blue`, `red`, ...), or `''` before the colour data has loaded. */
@@ -1247,6 +1429,12 @@ export class SnapshotBoard {
       overlaysKey: '',
       orbIcon: null,
       lastOrbRef: null,
+      imageMods: unit.imageMods ?? '',
+      ambient: null,
+      nextIdle: 0,
+      cues: 0,
+      halo: null,
+      halosKey: '',
       flagRgb: unit.flagRgb,
       lastUnit: unit,
     };
@@ -1652,7 +1840,7 @@ export class SnapshotBoard {
       if (options.hidden) visual.container.visible = false;
       this.unitVisuals.set(key, visual);
       this.unitLayer.addChild(visual.container);
-    } else if (visual.lastImage !== unit.image || visual.lastSide !== unit.side) {
+    } else if (visual.lastImage !== unit.image || visual.lastSide !== unit.side || visual.imageMods !== (unit.imageMods ?? '')) {
       visual.container.removeChildren();
       const rebuilt = await this.buildUnitVisual(unit);
       visual.container.addChild(...rebuilt.container.removeChildren());
@@ -1668,6 +1856,7 @@ export class SnapshotBoard {
       visual.lastOrbRef = null;
       visual.lastImage = unit.image;
       visual.lastSide = unit.side;
+      visual.imageMods = unit.imageMods ?? '';
     }
     if (visual.overlay) visual.overlay.alpha = 0; // a hit-flash should never outlive the animation that caused it.
     visual.lastUnit = unit;
@@ -1675,6 +1864,7 @@ export class SnapshotBoard {
     if (visual.container.destroyed) return visual;
     this.updateOverlays(visual, unit);
     await this.updateIcons(visual, unit);
+    await this.updateHalos(visual, unit);
     // Defensive: `updateIcons` just awaited (a real texture load, in the
     // worst case), during which a CONCURRENT `renderUnits()`/`updateUnits()`
     // pass built from an older `this.units` snapshot (one that predates
@@ -1741,8 +1931,141 @@ export class SnapshotBoard {
       if (seen.has(key)) continue;
       this.unitLayer.removeChild(visual.container);
       visual.container.destroy({ children: true });
+      visual.halo?.destroy({ children: true });
       this.unitVisuals.delete(key);
     }
+  }
+
+  /**
+   * Phase 27c S3: where the units' rest animations come from, and upstream's preferences for them. Changing
+   * them restarts every unit's standing animation (`display::reset_standing_animations`).
+   */
+  setAmbientAnimations(source: AmbientAnimationSource | null, prefs: AmbientAnimationPrefs): void {
+    this.ambientSource = source;
+    this.ambientPrefs = { ...prefs };
+    for (const visual of this.unitVisuals.values()) visual.ambient = null;
+  }
+
+  /** For a capture: every unit back to the first frame of its standing animation, and held there. */
+  freezeAmbientAnimations(): void {
+    this.ambientFrozen = true;
+    for (const visual of this.unitVisuals.values()) visual.ambient = null;
+    this.tickAmbient(0);
+  }
+
+  /** `set_selecting`: the unit plays its "selected" animation (with standing animations off, `_disabled_selected_`). */
+  playSelected(key: string): void {
+    const visual = this.unitVisuals.get(key);
+    if (!visual || visual.container.destroyed || visual.cues > 0) return;
+    const event = this.ambientPrefs.standing && !isIncapacitated(visual.lastUnit) ? 'selected' : '_disabled_selected_';
+    this.startAmbient(visual, event, true, performance.now());
+  }
+
+  /** `start_animation` for a rest animation: a missing one leaves the current one (or starts standing). */
+  private startAmbient(visual: UnitVisual, event: AmbientAnimationEvent, forget: boolean, now: number): void {
+    const anim = this.ambientSource?.(visual.lastUnit, event) ?? null;
+    if (!anim && visual.ambient) return;
+    visual.ambient = { event, anim, start: now, forget, sounds: anim && forget ? animationSoundCues(anim) : [], nextSound: 0 };
+    visual.nextIdle = nextIdleTick(now, this.ambientPrefs);
+  }
+
+  /** `set_standing`. */
+  private startStanding(visual: UnitVisual, now: number): void {
+    const event = this.ambientPrefs.standing && !isIncapacitated(visual.lastUnit) ? 'standing' : '_disabled_';
+    const anim = this.ambientSource?.(visual.lastUnit, event) ?? null;
+    visual.ambient = { event, anim, start: now, forget: false, sounds: [], nextSound: 0 };
+    visual.nextIdle = nextIdleTick(now, this.ambientPrefs);
+  }
+
+  /**
+   * `unit_animation_component::refresh` and the drawing of the frame, for every unit not in a beat of
+   * `playAnimations`: a finished idle or selection animation gives way to standing; a standing unit idles
+   * when its time comes (or, if it was away longer than a second past it, picks a new time, so units do not
+   * all idle at once); then the frame's image, mirroring, alpha and blend are put on the sprite.
+   */
+  private tickAmbient(now: number): void {
+    if (!this.ambientSource) return;
+    for (const visual of this.unitVisuals.values()) {
+      if (visual.container.destroyed || visual.cues > 0 || !visual.sprite) continue;
+      if (!visual.ambient) this.startStanding(visual, now);
+      const ambient = visual.ambient!;
+      const anim = ambient.anim;
+      const elapsed = now - ambient.start;
+      const finished = !anim || anim.cycles || elapsed >= animationDurationMs(anim);
+      if (ambient.forget && finished) {
+        this.startStanding(visual, now);
+      } else if (!ambient.forget && now >= visual.nextIdle && !isIncapacitated(visual.lastUnit)) {
+        if (now > visual.nextIdle + 1000) visual.nextIdle = nextIdleTick(now, this.ambientPrefs);
+        else this.startAmbient(visual, 'idling', true, now);
+      }
+      this.drawAmbientFrame(visual, now);
+    }
+  }
+
+  private drawAmbientFrame(visual: UnitVisual, now: number): void {
+    const ambient = visual.ambient;
+    const anim = ambient?.anim;
+    const sprite = visual.sprite;
+    if (!ambient || !anim || !sprite) return;
+    const duration = Math.max(1, animationDurationMs(anim));
+    const elapsed = now - ambient.start;
+    const t = anim.cycles ? elapsed % duration : Math.min(elapsed, duration);
+    while (ambient.nextSound < ambient.sounds.length && ambient.sounds[ambient.nextSound]!.atMs <= anim.startTimeMs + t) {
+      this.soundSink?.(ambient.sounds[ambient.nextSound]!.files);
+      ambient.nextSound++;
+    }
+    const hex = hexToPixel(toHexCoord(visual.lastUnit.x, visual.lastUnit.y));
+    const sample = sampleAnimation(anim, visual.lastUnit.facing ?? Direction.Indeterminate, t, hex, hex);
+    if (sample.imagePath) {
+      const ref = this.teamColoredRef(sample.imagePath, visual.lastSide, visual.flagRgb, visual.imageMods);
+      const texture = ImageCache.getRef(ref);
+      if (texture) {
+        if (sprite.texture !== texture) sprite.texture = texture;
+      } else {
+        void ImageCache.resolve(ref);
+      }
+    }
+    sprite.scale.x = sample.hflip ? -Math.abs(sprite.scale.x) : Math.abs(sprite.scale.x);
+    sprite.alpha = sample.alpha;
+    visual.container.x = sample.x;
+    visual.container.y = sample.y;
+    this.applyBlend(visual, sample.blendRatio, sample.blendColor);
+  }
+
+  /**
+   * The unit's halos (`units/drawer.cpp`: `image_halo() + TC_image_mods()`, then each of `halo_abilities()`),
+   * each cycling its frames as a map item's halo does, centred on the unit in `unitHaloLayer`. Rebuilt only when
+   * the halos or the side's colour change.
+   */
+  private async updateHalos(visual: UnitVisual, unit: SnapshotUnit): Promise<void> {
+    const halos = unit.halos ?? [];
+    const key = halos.length === 0 ? '' : `${halos.join('|')}#${this.sideColorId(unit.side)}#${unit.flagRgb ?? ''}`;
+    if (key === visual.halosKey) return;
+    visual.halosKey = key;
+    visual.halo?.destroy({ children: true });
+    visual.halo = null;
+    if (key === '') return;
+    const holder = new PIXI.Container();
+    for (const halo of halos) {
+      const frames: PIXI.FrameObject[] = [];
+      for (const f of parseHaloFrames(halo)) {
+        const texture = await ImageCache.resolve(this.teamColoredRef(f.image, unit.side, unit.flagRgb));
+        if (texture) frames.push({ texture, time: f.durationMs });
+      }
+      if (frames.length === 0) continue;
+      const sprite = frames.length === 1 ? new PIXI.Sprite(frames[0]!.texture) : new PIXI.AnimatedSprite(frames);
+      sprite.anchor.set(0.5);
+      if (sprite instanceof PIXI.AnimatedSprite) sprite.play();
+      holder.addChild(sprite);
+    }
+    // Superseded (or the unit gone) while the textures loaded.
+    if (visual.halosKey !== key || visual.container.destroyed) {
+      holder.destroy({ children: true });
+      return;
+    }
+    holder.position.copyFrom(visual.container.position);
+    visual.halo = holder;
+    this.unitHaloLayer.addChild(holder);
   }
 
   /**
@@ -1813,163 +2136,176 @@ export class SnapshotBoard {
       .filter((a): a is NonNullable<typeof a> => a !== null);
 
     if (active.length === 0) return;
-
-    // bugs6.md (particles): every animation of a beat runs on one clock on
-    // which hits land at 0 -- `unit_animator::start_animations` starts them
-    // all at the earliest `begin=` among them, so an attack's missile
-    // arrives, and the defender flinches, on the blow. `clockStart` is that
-    // earliest start; grouped movement cues keep their own 0-based clock.
-    const timelines = active.flatMap((a) => (a.timeline ? [a.timeline] : []));
-    const clockStart = timelines.length > 0 ? Math.min(...timelines.map((t) => t.startMs)) : 0;
-    const timed = active.map((a) => {
-      const internalMs = a.grouped
-        ? a.legPixels!.length * HEX_STEP_MS
-        : a.timeline
-          ? a.timeline.endMs - clockStart
-          : defaultDurationMs;
-      return { ...a, duration: Math.max(1, internalMs / speedMultiplier), sounds: soundCuesFor(a.cue, a.grouped ? a.legPixels!.length : 0), nextSound: 0 };
-    });
-
-    // Pre-resolve every real texture this playback will need up front, so
-    // no frame swap stalls on a still-loading image mid-animation.
-    // Phase 28a P0: the time this takes is an animation's start latency (measure-load.mjs).
-    performance.mark('anim:frames-start');
-    const isDiagonal = (d: Direction): boolean =>
-      d === Direction.NorthEast || d === Direction.SouthEast || d === Direction.NorthWest || d === Direction.SouthWest;
-    const overlayTextures = await this.preloadOverlayImages(active.flatMap((a) => (a.cue.anim ? [a.cue.anim] : [])));
-    for (const { cue, visual, legPixels } of active) {
-      if (!cue.anim) continue;
-      const paths = new Set<string>();
-      // A grouped multi-leg cue (see `UnitAnimationCue.legs`) can switch
-      // direction leg to leg (e.g. a WML-authored s/se/sw bucket covers
-      // all three) -- preload for every direction actually used, not just
-      // the cue's own first-leg `direction`.
-      const diagonalUsed = new Set<boolean>([isDiagonal(cue.direction), ...(legPixels?.map((l) => isDiagonal(l.direction)) ?? [])]);
-      for (const frame of cue.anim.frames) {
-        for (const diagonal of diagonalUsed) {
-          const seq = diagonal && frame.imageDiagonal.length > 0 ? frame.imageDiagonal : frame.image;
-          for (const step of seq) paths.add(step.value);
-        }
-      }
-      await Promise.all([...paths].map((p) => ImageCache.resolve(this.teamColoredRef(p, visual.lastSide, visual.flagRgb))));
+    // Phase 27c S3: the rest animations leave these units alone for the beat, and start over after it.
+    for (const { visual } of active) visual.cues++;
+    for (const { cue } of active) {
+      this.playedAnimations.push({ key: cue.key, event: cue.anim?.events[0] ?? null });
+      if (this.playedAnimations.length > 200) this.playedAnimations.shift();
     }
-    performance.measure('anim:frames', 'anim:frames-start');
+    try {
 
-    const totalMs = Math.max(...timed.map((a) => a.duration));
-    const start = performance.now();
-    const overlayPool: PIXI.Sprite[] = [];
+      // bugs6.md (particles): every animation of a beat runs on one clock on
+      // which hits land at 0 -- `unit_animator::start_animations` starts them
+      // all at the earliest `begin=` among them, so an attack's missile
+      // arrives, and the defender flinches, on the blow. `clockStart` is that
+      // earliest start; grouped movement cues keep their own 0-based clock.
+      const timelines = active.flatMap((a) => (a.timeline ? [a.timeline] : []));
+      const clockStart = timelines.length > 0 ? Math.min(...timelines.map((t) => t.startMs)) : 0;
+      const timed = active.map((a) => {
+        const internalMs = a.grouped
+          ? a.legPixels!.length * HEX_STEP_MS
+          : a.timeline
+            ? a.timeline.endMs - clockStart
+            : defaultDurationMs;
+        return { ...a, duration: Math.max(1, internalMs / speedMultiplier), sounds: soundCuesFor(a.cue, a.grouped ? a.legPixels!.length : 0), nextSound: 0 };
+      });
 
-    await new Promise<void>((resolve) => {
-      const tick = async (): Promise<void> => {
-        const skipped = this.skipGeneration !== skipAt;
-        const elapsed = skipped ? totalMs : performance.now() - start;
-        const overlays: OverlaySample[] = [];
-
-        for (const entry of timed) {
-          const { cue, visual, src, dst, legPixels, duration, grouped } = entry;
-          // A visual replaced mid-animation (the unit changed or left -- e.g.
-          // the dialogue it plays under was advanced): nothing left to move.
-          // Touching it would throw and leave this promise unresolved.
-          if (visual.container.destroyed) continue;
-          const t = Math.min(elapsed, duration);
-          // Phase 19: frame sounds start when their frame first draws.
-          const soundClock = grouped && cue.anim ? t * speedMultiplier + cue.anim.startTimeMs : clockStart + t * speedMultiplier;
-          while (entry.nextSound < entry.sounds.length && entry.sounds[entry.nextSound]!.atMs <= soundClock) {
-            if (!skipped) this.soundSink?.(entry.sounds[entry.nextSound]!.files);
-            entry.nextSound++;
+      // Pre-resolve every real texture this playback will need up front, so
+      // no frame swap stalls on a still-loading image mid-animation.
+      // Phase 28a P0: the time this takes is an animation's start latency (measure-load.mjs).
+      performance.mark('anim:frames-start');
+      const isDiagonal = (d: Direction): boolean =>
+        d === Direction.NorthEast || d === Direction.SouthEast || d === Direction.NorthWest || d === Direction.SouthWest;
+      const overlayTextures = await this.preloadOverlayImages(active.flatMap((a) => (a.cue.anim ? [a.cue.anim] : [])));
+      for (const { cue, visual, legPixels } of active) {
+        if (!cue.anim) continue;
+        const paths = new Set<string>();
+        // A grouped multi-leg cue (see `UnitAnimationCue.legs`) can switch
+        // direction leg to leg (e.g. a WML-authored s/se/sw bucket covers
+        // all three) -- preload for every direction actually used, not just
+        // the cue's own first-leg `direction`.
+        const diagonalUsed = new Set<boolean>([isDiagonal(cue.direction), ...(legPixels?.map((l) => isDiagonal(l.direction)) ?? [])]);
+        for (const frame of cue.anim.frames) {
+          for (const diagonal of diagonalUsed) {
+            const seq = diagonal && frame.imageDiagonal.length > 0 ? frame.imageDiagonal : frame.image;
+            for (const step of seq) paths.add(step.value);
           }
-          if (cue.anim) {
-            // `t` is wall-clock time (already compressed by speedMultiplier);
-            // scale it back up to the animation's own real internal
-            // timeline so a real anim's frame/offset progression plays
-            // faster, not truncated -- see this method's own doc comment.
-            // `absT` is that time on the shared clock (see `clockStart`);
-            // `animT` the same relative to this animation's own `[frame]`s.
-            const absT = grouped ? t * speedMultiplier + cue.anim.startTimeMs : clockStart + t * speedMultiplier;
-            const animT = Math.max(0, absT - cue.anim.startTimeMs);
-            // A grouped multi-leg cue samples ONE continuously-running
-            // animation across every hex (see `UnitAnimationCue.legs`'
-            // own doc comment) -- `animT` keeps counting up across the
-            // whole group (so the default offset's ramp and the frame
-            // images both progress naturally, exactly as the single
-            // reused instance they're modelling would), but which hex
-            // pair to interpolate position against switches every
-            // `HEX_STEP_MS`.
-            let curSrc = src;
-            let curDst = dst;
-            let curDirection = cue.direction;
-            if (legPixels && legPixels.length > 0) {
-              const legIndex = Math.min(Math.floor(animT / HEX_STEP_MS), legPixels.length - 1);
-              const leg = legPixels[legIndex]!;
-              curSrc = leg.src;
-              curDst = leg.dst;
-              curDirection = leg.direction;
-            }
-            const sample = sampleAnimation(cue.anim, curDirection, animT, curSrc, curDst);
-            if (sample.imagePath) {
-              const texture = await ImageCache.resolve(this.teamColoredRef(sample.imagePath, visual.lastSide, visual.flagRgb));
-              if (visual.container.destroyed) continue;
-              if (texture && visual.sprite && visual.sprite.texture !== texture) visual.sprite.texture = texture;
-            }
-            if (visual.sprite) {
-              visual.sprite.scale.x = sample.hflip ? -Math.abs(visual.sprite.scale.x) : Math.abs(visual.sprite.scale.x);
-              visual.sprite.alpha = sample.alpha;
-            }
-            visual.container.x = sample.x;
-            visual.container.y = sample.y;
-            this.applyBlend(visual, sample.blendRatio, sample.blendColor);
-            // Upstream takes a frame's facing from src->dst, so an in-place
-            // animation has none (no mirroring of its halos).
-            const inPlace = curSrc.x === curDst.x && curSrc.y === curDst.y;
-            const overlayDirection = inPlace ? Direction.Indeterminate : curDirection;
-            const halo = sampleUnitHalo(cue.anim, overlayDirection, absT, sample);
-            if (halo) overlays.push(halo);
-            overlays.push(...sampleParticles(cue.anim, overlayDirection, absT, curSrc, curDst));
-          } else if (!cue.holdInPlace && (cue.srcHex.x !== cue.dstHex.x || cue.srcHex.y !== cue.dstHex.y)) {
-            // No real anim: a synthetic beat appropriate to what this cue
-            // means. `restAt: 'dst'` (movement) glides straight there,
-            // offset 0 -> 1 over the full duration; the default (`'src'`,
-            // an attack lunge/reaction) bounces out partway and back:
-            // 0 -> 0.35 -> 0. `holdInPlace` (recruit cues) skips this
-            // entirely -- see its own doc comment.
-            const offset =
-              cue.restAt === 'dst'
-                ? t / duration
-                : t <= duration / 2
-                  ? (t / (duration / 2)) * 0.35
-                  : 0.35 * (1 - (t - duration / 2) / (duration / 2));
-            visual.container.x = offset * dst.x + (1 - offset) * src.x;
-            visual.container.y = offset * dst.y + (1 - offset) * src.y;
-          }
-          // A recruit is kept hidden until its animation draws (see `ensureUnitVisual`) -- shown only
-          // once this frame's image and alpha are on it.
-          visual.container.visible = true;
         }
+        await Promise.all([...paths].map((p) => ImageCache.resolve(this.teamColoredRef(p, visual.lastSide, visual.flagRgb, visual.imageMods))));
+      }
+      performance.measure('anim:frames', 'anim:frames-start');
 
-        this.drawOverlays(overlayPool, elapsed >= totalMs ? [] : overlays, overlayTextures);
+      const totalMs = Math.max(...timed.map((a) => a.duration));
+      const start = performance.now();
+      const overlayPool: PIXI.Sprite[] = [];
 
-        if (elapsed >= totalMs) {
-          for (const sprite of overlayPool) sprite.destroy();
-          // Settle each sprite at its own real resting hex -- `dst` for a
-          // `restAt: 'dst'` cue (movement: the unit's real new hex), `src`
-          // otherwise (attack: both the attacker's lunge-and-return and
-          // the defender's in-place reaction end where they started).
-          for (const { cue, visual, src, dst } of active) {
+      await new Promise<void>((resolve) => {
+        const tick = async (): Promise<void> => {
+          const skipped = this.skipGeneration !== skipAt;
+          const elapsed = skipped ? totalMs : performance.now() - start;
+          const overlays: OverlaySample[] = [];
+
+          for (const entry of timed) {
+            const { cue, visual, src, dst, legPixels, duration, grouped } = entry;
+            // A visual replaced mid-animation (the unit changed or left -- e.g.
+            // the dialogue it plays under was advanced): nothing left to move.
+            // Touching it would throw and leave this promise unresolved.
             if (visual.container.destroyed) continue;
-            const rest = cue.restAt === 'dst' ? dst : src;
-            visual.container.x = rest.x;
-            visual.container.y = rest.y;
+            const t = Math.min(elapsed, duration);
+            // Phase 19: frame sounds start when their frame first draws.
+            const soundClock = grouped && cue.anim ? t * speedMultiplier + cue.anim.startTimeMs : clockStart + t * speedMultiplier;
+            while (entry.nextSound < entry.sounds.length && entry.sounds[entry.nextSound]!.atMs <= soundClock) {
+              if (!skipped) this.soundSink?.(entry.sounds[entry.nextSound]!.files);
+              entry.nextSound++;
+            }
+            if (cue.anim) {
+              // `t` is wall-clock time (already compressed by speedMultiplier);
+              // scale it back up to the animation's own real internal
+              // timeline so a real anim's frame/offset progression plays
+              // faster, not truncated -- see this method's own doc comment.
+              // `absT` is that time on the shared clock (see `clockStart`);
+              // `animT` the same relative to this animation's own `[frame]`s.
+              const absT = grouped ? t * speedMultiplier + cue.anim.startTimeMs : clockStart + t * speedMultiplier;
+              const animT = Math.max(0, absT - cue.anim.startTimeMs);
+              // A grouped multi-leg cue samples ONE continuously-running
+              // animation across every hex (see `UnitAnimationCue.legs`'
+              // own doc comment) -- `animT` keeps counting up across the
+              // whole group (so the default offset's ramp and the frame
+              // images both progress naturally, exactly as the single
+              // reused instance they're modelling would), but which hex
+              // pair to interpolate position against switches every
+              // `HEX_STEP_MS`.
+              let curSrc = src;
+              let curDst = dst;
+              let curDirection = cue.direction;
+              if (legPixels && legPixels.length > 0) {
+                const legIndex = Math.min(Math.floor(animT / HEX_STEP_MS), legPixels.length - 1);
+                const leg = legPixels[legIndex]!;
+                curSrc = leg.src;
+                curDst = leg.dst;
+                curDirection = leg.direction;
+              }
+              const sample = sampleAnimation(cue.anim, curDirection, animT, curSrc, curDst);
+              if (sample.imagePath) {
+                const texture = await ImageCache.resolve(this.teamColoredRef(sample.imagePath, visual.lastSide, visual.flagRgb, visual.imageMods));
+                if (visual.container.destroyed) continue;
+                if (texture && visual.sprite && visual.sprite.texture !== texture) visual.sprite.texture = texture;
+              }
+              if (visual.sprite) {
+                visual.sprite.scale.x = sample.hflip ? -Math.abs(visual.sprite.scale.x) : Math.abs(visual.sprite.scale.x);
+                visual.sprite.alpha = sample.alpha;
+              }
+              visual.container.x = sample.x;
+              visual.container.y = sample.y;
+              this.applyBlend(visual, sample.blendRatio, sample.blendColor);
+              // Upstream takes a frame's facing from src->dst, so an in-place
+              // animation has none (no mirroring of its halos).
+              const inPlace = curSrc.x === curDst.x && curSrc.y === curDst.y;
+              const overlayDirection = inPlace ? Direction.Indeterminate : curDirection;
+              const halo = sampleUnitHalo(cue.anim, overlayDirection, absT, sample);
+              if (halo) overlays.push(halo);
+              overlays.push(...sampleParticles(cue.anim, overlayDirection, absT, curSrc, curDst));
+            } else if (!cue.holdInPlace && (cue.srcHex.x !== cue.dstHex.x || cue.srcHex.y !== cue.dstHex.y)) {
+              // No real anim: a synthetic beat appropriate to what this cue
+              // means. `restAt: 'dst'` (movement) glides straight there,
+              // offset 0 -> 1 over the full duration; the default (`'src'`,
+              // an attack lunge/reaction) bounces out partway and back:
+              // 0 -> 0.35 -> 0. `holdInPlace` (recruit cues) skips this
+              // entirely -- see its own doc comment.
+              const offset =
+                cue.restAt === 'dst'
+                  ? t / duration
+                  : t <= duration / 2
+                    ? (t / (duration / 2)) * 0.35
+                    : 0.35 * (1 - (t - duration / 2) / (duration / 2));
+              visual.container.x = offset * dst.x + (1 - offset) * src.x;
+              visual.container.y = offset * dst.y + (1 - offset) * src.y;
+            }
+            // A recruit is kept hidden until its animation draws (see `ensureUnitVisual`) -- shown only
+            // once this frame's image and alpha are on it.
             visual.container.visible = true;
-            if (visual.sprite) visual.sprite.alpha = 1;
-            if (visual.overlay) visual.overlay.alpha = 0;
           }
-          resolve();
-          return;
-        }
+
+          this.drawOverlays(overlayPool, elapsed >= totalMs ? [] : overlays, overlayTextures);
+
+          if (elapsed >= totalMs) {
+            for (const sprite of overlayPool) sprite.destroy();
+            // Settle each sprite at its own real resting hex -- `dst` for a
+            // `restAt: 'dst'` cue (movement: the unit's real new hex), `src`
+            // otherwise (attack: both the attacker's lunge-and-return and
+            // the defender's in-place reaction end where they started).
+            for (const { cue, visual, src, dst } of active) {
+              if (visual.container.destroyed) continue;
+              const rest = cue.restAt === 'dst' ? dst : src;
+              visual.container.x = rest.x;
+              visual.container.y = rest.y;
+              visual.container.visible = true;
+              if (visual.sprite) visual.sprite.alpha = 1;
+              if (visual.overlay) visual.overlay.alpha = 0;
+            }
+            resolve();
+            return;
+          }
+          requestAnimationFrame(() => void tick());
+        };
         requestAnimationFrame(() => void tick());
-      };
-      requestAnimationFrame(() => void tick());
-    });
+      });
+    } finally {
+      for (const { visual } of active) {
+        visual.cues--;
+        visual.ambient = null;
+      }
+    }
   }
 
   /** Every missile/halo image `anims` can show (see `sampleParticles`/`sampleUnitHalo`), fetched up front so no frame waits on the network. */
@@ -2170,8 +2506,8 @@ export class SnapshotBoard {
   }
 
   /** Debug: each unit sprite's visibility, alpha, image and position -- for checking when a unit shows. */
-  unitSpriteStates(): Record<string, { visible: boolean; alpha: number; image: string; x: number; y: number }> {
-    const out: Record<string, { visible: boolean; alpha: number; image: string; x: number; y: number }> = {};
+  unitSpriteStates(): Record<string, UnitSpriteState> {
+    const out: Record<string, UnitSpriteState> = {};
     for (const [key, visual] of this.unitVisuals) {
       if (visual.container.destroyed) continue;
       const source = visual.sprite?.texture?.source as { label?: string; resource?: { src?: string } } | undefined;
@@ -2181,6 +2517,9 @@ export class SnapshotBoard {
         image: source?.label ?? source?.resource?.src?.slice(-60) ?? '',
         x: Math.round(visual.container.x),
         y: Math.round(visual.container.y),
+        halos: visual.halo && !visual.halo.destroyed ? visual.halo.children.length : 0,
+        ambient: visual.ambient ? { event: visual.ambient.event, durationMs: visual.ambient.anim ? animationDurationMs(visual.ambient.anim) : 0 } : null,
+        haloAt: visual.halo && !visual.halo.destroyed ? { x: Math.round(visual.halo.x), y: Math.round(visual.halo.y) } : null,
       };
     }
     return out;
@@ -2201,6 +2540,7 @@ export class SnapshotBoard {
     if (!visual) return;
     this.unitLayer.removeChild(visual.container);
     visual.container.destroy({ children: true });
+    visual.halo?.destroy({ children: true });
     this.unitVisuals.delete(key);
   }
 

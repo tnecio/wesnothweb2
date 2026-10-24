@@ -123,10 +123,16 @@ message="The last words, after the end."
   const box = await page.$('.window[role="dialog"]');
   const text = box ? (await box.innerText()).replace(/\s+/g, ' ') : '';
   check('the message after [endlevel] is shown', /The last words, after the end\./.test(text), text.slice(0, 120));
-  check('...with no end screen over or behind it yet', (await page.$('.end-overlay')) === null);
+  const turnButtonText = () => page.$eval('[data-testid="turn-button"]', (b) => (b.textContent ?? '').trim()).catch(() => '');
+  check('...with the scenario not left yet', (await turnButtonText()) !== 'End Scenario' || !!box);
   await page.keyboard.press('Enter');
-  const overlay = await page.waitForSelector('.end-overlay', { timeout: 30000 }).catch(() => null);
-  check('dismissing it shows the victory screen', !!overlay && /victory/i.test(await overlay.innerText()));
+  // Phase 27c S6: the player lingers on the map, the turn button reading End Scenario (`playsingle_controller::linger`).
+  let lingering = false;
+  for (let i = 0; i < 60 && !lingering; i++) {
+    lingering = (await turnButtonText()) === 'End Scenario' && !(await page.$('.window[role="dialog"]'));
+    if (!lingering) await page.waitForTimeout(500);
+  }
+  check('dismissing it leaves the player on the map, End Turn now End Scenario', lingering, await turnButtonText());
   check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await page.close();
 } finally {

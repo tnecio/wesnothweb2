@@ -42,6 +42,7 @@ import type { UnitType } from '../model/UnitType.js';
 import type { Rng } from '../rng/Rng.js';
 import type { Flow } from '../events/interaction.js';
 import { unitMatchesFilter } from '../events/filter.js';
+import { generateName } from '../model/names.js';
 import { WmlConfig } from '../wml/config.js';
 
 function splitList(value: string): string[] {
@@ -98,8 +99,8 @@ export function generateTraits(type: UnitType, rng: Rng, existing: readonly Unit
 /**
  * The synced random draws upstream's `unit::init` makes for a *new* unit,
  * in its order: the gender (when there is a choice to make), the traits,
- * then the name. This port does not generate names, but it makes the
- * same number of draws (`UnitType.nameDraws`), so every draw after them in
+ * then the name -- made from exactly its race generator's fixed count of
+ * draws (`UnitType.nameDraws`, Phase 27c S7), so every draw after them in
  * the same action -- the next unit's traits, the combat that follows --
  * lines up with the real game's.
  *
@@ -112,7 +113,7 @@ export function rollNewUnit(
   type: UnitType,
   rng: Rng,
   options: { gender?: string; randomGender: boolean; existing?: readonly UnitModification[]; randomTraits: boolean; canRecruit: boolean; named: boolean },
-): { gender: string; traits: UnitModification[] } {
+): { gender: string; traits: UnitModification[]; name?: string } {
   const genders = type.genders;
   const gender =
     options.gender ??
@@ -120,11 +121,15 @@ export function rollNewUnit(
   const traits = options.randomTraits
     ? generateTraits(type, rng, options.existing ?? [], options.canRecruit)
     : generateMustHaveTraits(type, options.existing ?? []);
+  let name: string | undefined;
   if (!options.named) {
     const draws = gender === 'female' ? type.nameDraws.female : type.nameDraws.male;
-    for (let i = 0; i < draws; i++) rng.nextRandom();
+    const random: number[] = [];
+    for (let i = 0; i < draws; i++) random.push(rng.nextRandom());
+    const source = type.nameSource(gender);
+    if (source && random.length > 0) name = generateName(source, random);
   }
-  return { gender, traits };
+  return { gender, traits, ...(name ? { name } : {}) };
 }
 
 /** `generate_traits(must_have_only=true)`: just the missing `musthave` traits, no randomness. */
@@ -406,8 +411,8 @@ export function* recruitUnitFlow(
   rng: Rng,
   hooks: PlaceRecruitHooks,
 ): Flow<PlaceRecruitResult | null> {
-  const { gender, traits } = rollNewUnit(type, rng, { randomGender: true, randomTraits: true, canRecruit: false, named: false });
-  const unit = Unit.create(type, team.side, loc, { canRecruit: false, gender, modifications: traits });
+  const { gender, traits, name } = rollNewUnit(type, rng, { randomGender: true, randomTraits: true, canRecruit: false, named: false });
+  const unit = Unit.create(type, team.side, loc, { canRecruit: false, gender, modifications: traits, ...(name ? { name } : {}) });
   board.assignUnitId(unit);
   const result = yield* placeRecruitFlow(board, team, unit, loc, from, type.cost, false, hooks);
   // Phase 25: `recruit_unit` counts it once placed, whatever its events did.
@@ -442,8 +447,8 @@ export function* recallUnitFlow(
 export function recruitUnit(board: GameBoard, team: Team, type: UnitType, loc: Location, from: Location, rng: Rng, raise?: RaiseEvent): PlaceRecruitResult {
   // unit::init's synced draws, in upstream's order (see `rollNewUnit`). Its
   // facing draw uses the unsynced generator, so it is not mirrored.
-  const { gender, traits } = rollNewUnit(type, rng, { randomGender: true, randomTraits: true, canRecruit: false, named: false });
-  const unit = Unit.create(type, team.side, loc, { canRecruit: false, gender, modifications: traits });
+  const { gender, traits, name } = rollNewUnit(type, rng, { randomGender: true, randomTraits: true, canRecruit: false, named: false });
+  const unit = Unit.create(type, team.side, loc, { canRecruit: false, gender, modifications: traits, ...(name ? { name } : {}) });
   board.assignUnitId(unit);
   const result = placeRecruit(board, team, unit, loc, from, type.cost, false, false, undefined, raise);
   board.statistics?.recruitUnit(board.statsUnit(unit));

@@ -67,6 +67,8 @@
     edgeScrollAmount,
     type View,
     type ScrollType,
+    type AmbientAnimationSource,
+    type BoardLighting,
   } from '@wesnothweb2/renderer';
   import { displayPrefs, prefersReducedMotion, turboSpeed } from './displayPrefs.js';
   import type { TimeOfDayEntry } from '@wesnothweb2/engine';
@@ -87,7 +89,10 @@
     items = [],
     labels = [],
     timeOfDay = undefined,
+    timeAreas = undefined,
+    colorAdjust = undefined,
     onSound,
+    ambientAnimation,
     onHexClick,
     onHexRightClick,
     onHexHoverChange,
@@ -139,8 +144,14 @@
     labels?: readonly { x: number; y: number; text: string; color: string }[];
     /** Phase 19: a frame sound (`sound=`) starts in an animation being played -- a comma list, one of which is picked. */
     onSound?: (files: string) => void;
-    /** The current global ToD's red=/green=/blue= colour shift -- see `SnapshotBoard.updateTimeOfDayTint`. Omit for no tint (a scenario with no [time] schedule). */
-    timeOfDay?: Pick<TimeOfDayEntry, 'red' | 'green' | 'blue'>;
+    /** Phase 27c S3: a unit's standing, idle and selection animations (see `SnapshotBoard.setAmbientAnimations`). */
+    ambientAnimation?: AmbientAnimationSource;
+    /** The current global ToD's red=/green=/blue= colour shift (and `mask=`) -- see `SnapshotBoard.setLighting`. Omit for none (a scenario with no [time] schedule). */
+    timeOfDay?: Pick<TimeOfDayEntry, 'red' | 'green' | 'blue' | 'imageMask'>;
+    /** Phase 27c S5: the hexes a `[time_area]` lights otherwise, keyed `"x,y"` (`GameSession.timeAreaLighting`). */
+    timeAreas?: ReadonlyMap<string, { red: number; green: number; blue: number; mask?: string }>;
+    /** Phase 27c S5: `[color_adjust]`, added to every time-of-day colour. */
+    colorAdjust?: { red: number; green: number; blue: number };
     /** A click or tap on hex (x, y). `touch` (Phase 23): it was a finger (or pen), which may want a confirming second tap. */
     onHexClick: (x: number, y: number, input?: { touch: boolean }) => void;
     /**
@@ -611,7 +622,7 @@
       newBoard.setHighlights({ selected: selectedHex, cursor: cursorHex, reachable, attackTargets });
       newBoard.updateVillageOwnership(villageOwners);
       newBoard.updateFogShroud(hexVisibility);
-      if (timeOfDay) newBoard.updateTimeOfDayTint(timeOfDay);
+      newBoard.setLighting(currentLighting());
     })()
       .catch((err) => {
         console.error(err);
@@ -724,6 +735,22 @@
     void board?.setGridVisible(grid);
   });
 
+  // Phase 27c S3: units' standing and idle animations, as the preferences say -- none under reduced motion.
+  $effect(() => {
+    const prefs = displayPrefs.value;
+    const still = prefersReducedMotion();
+    board?.setAmbientAnimations(ambientAnimation ?? null, {
+      standing: prefs.standingAnimations && !still,
+      idle: prefs.idleAnimations && !still,
+      idleRate: prefs.idleAnimRate,
+    });
+  });
+
+  /** `set_selecting`: the unit `key` plays its "selected" animation. */
+  export function playSelected(key: string): void {
+    board?.playSelected(key);
+  }
+
   // Phase 24: "Team color indicators", "Animate map" and "Animate water" take effect at once.
   $effect(() => {
     const prefs = displayPrefs.value;
@@ -755,8 +782,20 @@
     if (board) board.soundSink = onSound ?? null;
   });
 
+  /** Phase 27c S5: the board's lighting from the time of day, the `[time_area]` hexes and `[color_adjust]`. */
+  function currentLighting(): BoardLighting {
+    const zero = { red: 0, green: 0, blue: 0 };
+    const tod = timeOfDay ?? zero;
+    return {
+      global: { red: tod.red, green: tod.green, blue: tod.blue, ...('imageMask' in tod && tod.imageMask ? { mask: tod.imageMask } : {}) },
+      adjust: colorAdjust ?? zero,
+      hexes: timeAreas ?? new Map(),
+    };
+  }
+
   $effect(() => {
-    if (timeOfDay) board?.updateTimeOfDayTint(timeOfDay);
+    const lighting = currentLighting();
+    board?.setLighting(lighting);
   });
 
   /**
@@ -865,6 +904,7 @@
       if (node instanceof PIXI.AnimatedSprite) node.gotoAndStop(0);
       for (const child of node.children) visit(child as PIXI.Container);
     };
+    board.freezeAmbientAnimations();
     visit(board.stage);
     pixiApp.render();
     return true;
@@ -907,6 +947,10 @@
       unitSpriteFilterCounts: () => board?.unitSpriteFilterCounts() ?? null,
       /** Missiles/halos on the latest animation frame, for checking particle effects. */
       animationOverlays: () => board?.lastAnimationOverlays ?? null,
+      /** Phase 27c S5: the light map at hex (x, y) and the lit layers (`SnapshotBoard.lightingState`). */
+      lighting: (x: number, y: number) => board?.lightingState(x, y) ?? null,
+      /** Phase 27c: the events of the animations played (`SnapshotBoard.playedAnimations`). */
+      playedAnimations: () => board?.playedAnimations.map((p) => ({ ...p })) ?? [],
       /** Phase 28b: the route drawn (footprint count, marked hexes and their labels) and the attack indicator's sprite count. */
       route: () => board?.routeState() ?? null,
       attackIndicator: () => board?.attackIndicatorState() ?? 0,

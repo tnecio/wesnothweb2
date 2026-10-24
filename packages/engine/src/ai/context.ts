@@ -25,6 +25,8 @@ import { locationMatchesFilterOnBoard } from '../events/filter.js';
 import { performMove, type PerformMoveResult } from '../actions/moveSequence.js';
 import { performAttack } from '../actions/attackSequence.js';
 import type { AttackResult } from '../actions/combat.js';
+import { attackHelpers } from '../actions/attackHelpers.js';
+import { chooseDefenderWeaponIndex } from '../actions/combatStats.js';
 import { recruitUnit, recallUnit, type PlaceRecruitResult } from '../actions/recruit.js';
 import type { UnitType } from '../model/UnitType.js';
 import type { AiHost, AiAction } from './types.js';
@@ -429,9 +431,17 @@ export class AiContext {
     const attackerHitpointsBefore = attacker?.hitpoints ?? 0;
     const attackerVariation = attacker?.variation ?? '';
     const defenderVariation = defender?.variation ?? '';
+    const attackerNewAnimations = attacker?.newAnimations ?? [];
+    const defenderNewAnimations = defender?.newAnimations ?? [];
     const defenderHitpointsBefore = defender?.hitpoints ?? 0;
     const attackerLocation = attackerLoc;
     const defenderLocation = defenderLoc;
+    // Who plays `leading`/`resistance`/`teaching` with the blows, as the fight starts.
+    const shownDefenderWeapon = attacker && defender ? (defenderWeaponIndex ?? chooseDefenderWeaponIndex({ board, attacker, defender }, attackerWeaponIndex)) : -1;
+    const helpers =
+      attacker && defender
+        ? attackHelpers(board, attacker, attacker.attacks[attackerWeaponIndex], defender, shownDefenderWeapon >= 0 ? defender.attacks[shownDefenderWeapon] : undefined)
+        : { attackerStrikes: [], defenderStrikes: [] };
 
     const result = this.host.commands
       ? this.host.commands.attack(attackerLoc, attackerWeaponIndex, defenderLoc, defenderWeaponIndex)
@@ -463,6 +473,9 @@ export class AiContext {
           defenderTypeId: defender.type.id,
           attackerVariation,
           defenderVariation,
+          attackerNewAnimations,
+          defenderNewAnimations,
+          helpers,
           attackerHitpointsBefore,
           defenderHitpointsBefore,
           attackerLocation,

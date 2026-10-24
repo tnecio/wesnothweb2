@@ -30,11 +30,13 @@
  * `test/compositorIsolation.test.ts`.
  */
 
-import { parseAlpha, parseIpf, splitRef } from './ipf'
-import {
-  applyColorMapping, DEFAULT_TC_PALETTE, generateColorMapping, type ColorData,
-} from './teamColor'
-import { applyTodTint, type TodColor } from '../animation/timeOfDay'
+import { parseIpf, splitRef, type IpfOp } from './ipf'
+import { generateColorMapping, type ColorData } from './teamColor'
+import type { TodColor } from '../animation/timeOfDay'
+import { cloneRaster, makeRaster, type Raster } from './surfaceOps'
+import { applyModification, modificationOrder, PIXEL_OPS, STRAIGHT_OPS, type ModificationContext } from './modifications'
+
+export { scaledSize } from './modifications'
 
 /** Hex tile size, and the alpha mask every terrain image is clipped by. */
 const TILE = 72
@@ -227,31 +229,6 @@ type Bitmap = ImageBitmap | HTMLImageElement
 /** A composited result: an OffscreenCanvas where available (always, in a worker), else a DOM canvas. */
 export type CompositedImage = OffscreenCanvas | HTMLCanvasElement
 
-/**
- * The size `~SCALE`, `~SCALE_SHARP`, `~SCALE_INTO` and `~SCALE_INTO_SHARP` give a `srcW`x`srcH` image
- * (`parse_scale_args` and `scale_modification::operator()`, image_modifications.cpp): each dimension is
- * pixels, or a percentage of the original with `%`; 0 (or a negative or missing one) keeps the original;
- * the `_INTO` forms fit the image inside that box, keeping its aspect ratio. Null when no argument is given.
- */
-export function scaledSize(args: readonly string[], srcW: number, srcH: number, preserveAspect: boolean): [number, number] | null {
-  if (args.length === 0 || (args.length === 1 && args[0]!.trim() === '')) return null
-  const dim = (arg: string | undefined, original: number): number => {
-    const s = (arg ?? '').trim()
-    const relative = s.includes('%')
-    const n = parseInt(relative ? s.slice(0, s.lastIndexOf('%')) : s, 10)
-    if (!Number.isFinite(n) || n <= 0) return original
-    return relative ? Math.trunc(original * (n / 100)) : n
-  }
-  let w = dim(args[0], srcW)
-  let h = dim(args[1], srcH)
-  if (preserveAspect) {
-    const ratio = Math.min(w / srcW, h / srcH)
-    w = Math.trunc(srcW * ratio)
-    h = Math.trunc(srcH * ratio)
-  }
-  return w > 0 && h > 0 ? [w, h] : null
-}
-
 function makeCanvas(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {
   if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h)
   const c = document.createElement('canvas')
@@ -304,6 +281,7 @@ export class Compositor {
   /** Drop every decoded source image. */
   clear(): void {
     this.bitmaps.clear()
+    this.straightDecodes.clear()
     this.atlasBitmaps.clear()
   }
 
@@ -449,44 +427,83 @@ export class Compositor {
     this.bitmaps.set(url, p)
     return p
   }
-
   /**
    * Render one image reference to a canvas, applying its modifier chain.
    * Recurses for ops whose arguments are themselves image references.
    */
   async render(ref: string): Promise<CompositedImage | null> {
-    const { path, mods } = splitRef(ref)
-    const base = await this.loadBitmap(path)
-    if (!base) return null
-
-    let canvas = makeCanvas(base.width, base.height)
-    ctx2d(canvas).drawImage(base as CanvasImageSource, 0, 0)
-
-    for (const op of parseIpf(mods)) {
-      canvas = await this.applyOp(canvas, op) ?? canvas
-    }
-    return canvas
+    const surface = await this.renderSurface(ref)
+    return surface ? asCanvas(surface) : null
   }
 
-  private async applyOp(
-    src: OffscreenCanvas | HTMLCanvasElement,
-    op: { name: string; args: string[] },
-  ): Promise<OffscreenCanvas | HTMLCanvasElement | null> {
+  /**
+   * {@link render}, but leaving the result as straight-alpha pixels when the last op left it so: nested
+   * references use this, so their translucent pixels do not go through a (premultiplying) canvas.
+   */
+  private async renderSurface(ref: string, straight = false): Promise<Surface | null> {
+    const { path, mods } = splitRef(ref)
+    const ops = modificationOrder(parseIpf(mods))
+
+    let image: Surface | null = null
+    if (straight || ops.some((op) => STRAIGHT_OPS.has(op.name))) image = await this.decodeStraight(path)
+    if (!image) {
+      const base = await this.loadBitmap(path)
+      if (!base) return null
+      const canvas = makeCanvas(base.width, base.height)
+      ctx2d(canvas).drawImage(base as CanvasImageSource, 0, 0)
+      image = canvas
+    }
+
+    for (const op of ops) {
+      image = await this.applyOp(image, op)
+    }
+    return image
+  }
+
+  /** Straight-alpha decodes, keyed by URL (see `decodeStraight`). */
+  private readonly straightDecodes = new Map<string, Promise<Raster | null>>()
+
+  /**
+   * An image file decoded to straight-alpha pixels, as SDL_image gives them: through `ImageDecoder` with
+   * `premultiplyAlpha: 'none'`, since a canvas premultiplies and so rounds away the colour of translucent
+   * pixels -- which a lightmap (`~L`) or an op that raises alpha (`~WIPE_ALPHA`, `~SWAP`, `~CHAN`) shows.
+   * Null where the browser has no `ImageDecoder` or cannot decode the file this way; the caller then takes
+   * the usual (bundle or canvas) path.
+   */
+  private decodeStraight(path: string): Promise<Raster | null> {
+    const url = imageUrl(path)
+    let decoded = this.straightDecodes.get(url)
+    if (!decoded) {
+      decoded = decodeImageStraight(path)
+      this.straightDecodes.set(url, decoded)
+    }
+    return decoded.then((r) => (r ? cloneRaster(r) : null))
+  }
+
+  private readonly modificationContext: ModificationContext = {
+    loadRaster: async (ref, straight) => {
+      const surface = await this.renderSurface(ref, straight)
+      return surface ? asRaster(surface) : null
+    },
+    tcMapping: (side, palette) => this.tcMapping(side, palette),
+    rcMapping: (spec) => this.rcMapping(spec),
+    palette: (name) => this.colors?.palettes[name],
+  }
+
+  private async applyOp(image: Surface, op: IpfOp): Promise<Surface> {
     const { name, args } = op
 
-    switch (name) {
-      case 'NOP':
-        return src
-
-      // ~CROP(x,y,w,h) — take a sub-rectangle.
-      case 'CROP': {
-        const [x, y, w, h] = args.map(Number)
-        if (![x, y, w, h].every(Number.isFinite) || !w || !h || w <= 0 || h <= 0) return src
-        const out = makeCanvas(w, h)
-        ctx2d(out).drawImage(src as CanvasImageSource, x ?? 0, y ?? 0, w, h, 0, 0, w, h)
-        return out
+    if (PIXEL_OPS.has(name)) {
+      const t0 = performance.now()
+      const out = await applyModification(asRaster(image), op, this.modificationContext)
+      if (name === 'TC' || name === 'RC' || name === 'PAL') {
+        this.recolorMs += performance.now() - t0
+        this.recolorCount++
       }
+      return out
+    }
 
+    switch (name) {
       // ~GLOBAL(locX,locY,centerX,centerY) — pseudo-op (not a real IPF
       // modifier, see `hexedRef`'s own doc comment for the pattern this
       // follows) emitted by `terrain/terrainBuilder.ts`'s `globalCropMod`
@@ -499,6 +516,7 @@ export class Compositor {
       // components are >= 0 (upstream's sentinel for "not set" is -1).
       // Always runs before the final `~HEXED()` masking step.
       case 'GLOBAL': {
+        const src = asCanvas(image)
         const [locX, locY, centerX, centerY] = args.map(Number)
         if (![locX, locY, centerX, centerY].every(Number.isFinite)) return src
         let x = TILE * 0.75 * locX!
@@ -512,119 +530,6 @@ export class Compositor {
         return out
       }
 
-      // ~MASK(ref[,x,y]) — clip to the mask.
-      //
-      // The engine takes the per-pixel MINIMUM of the two alphas
-      // (mask_surface in sdl/utils.cpp), which is not what canvas gives you:
-      // 'destination-in' multiplies them. The two agree only where one side is
-      // fully opaque, and diverge everywhere both are partly transparent —
-      // antialiased edges, and translucent art like water overlays and fords.
-      // So the alpha channel is combined by hand.
-      case 'MASK': {
-        const mask = args[0] ? await this.render(args[0]) : null
-        if (!mask) return src
-        const x = Number(args[1] ?? 0) || 0
-        const y = Number(args[2] ?? 0) || 0
-
-        // The engine blits the mask into a surface the size of the source, so
-        // anything the mask does not cover ends up alpha 0 and is clipped away.
-        const maskCanvas = makeCanvas(src.width, src.height)
-        ctx2d(maskCanvas).drawImage(mask as CanvasImageSource, x, y)
-
-        const out = makeCanvas(src.width, src.height)
-        const g = ctx2d(out)
-        g.drawImage(src as CanvasImageSource, 0, 0)
-
-        const sd = g.getImageData(0, 0, src.width, src.height)
-        const md = ctx2d(maskCanvas).getImageData(0, 0, src.width, src.height)
-        for (let i = 3; i < sd.data.length; i += 4) {
-          if ((md.data[i] ?? 0) < (sd.data[i] ?? 0)) sd.data[i] = md.data[i] ?? 0
-        }
-        g.putImageData(sd, 0, 0)
-        return out
-      }
-
-      // ~BLIT(ref[,x,y]) — composite another image on top.
-      case 'BLIT': {
-        const top = args[0] ? await this.render(args[0]) : null
-        if (!top) return src
-        const x = Number(args[1] ?? 0) || 0
-        const y = Number(args[2] ?? 0) || 0
-        const g = ctx2d(src)
-        g.drawImage(top as CanvasImageSource, x, y)
-        return src
-      }
-
-      // ~O(alpha) — scale opacity.
-      //
-      // Done by hand rather than with globalAlpha so the arithmetic matches the
-      // engine exactly. Upstream converts the argument with
-      // float_to_color (truncating n*256, so 0.16 gives 40, not 41) and then
-      // applies color_multiply, an integer (a*b)/255. Canvas's globalAlpha
-      // rounds differently and left every translucent image off by one or two.
-      case 'O': {
-        const a = parseAlpha(args[0])
-        if (a >= 1) return src
-
-        const alphaMod = a <= 0 ? 0 : Math.min(255, Math.trunc(a * 256))
-        const out = makeCanvas(src.width, src.height)
-        const g = ctx2d(out)
-        g.drawImage(src as CanvasImageSource, 0, 0)
-
-        const d = g.getImageData(0, 0, src.width, src.height)
-        for (let i = 3; i < d.data.length; i += 4) {
-          d.data[i] = Math.trunc(((d.data[i] ?? 0) * alphaMod) / 255)
-        }
-        g.putImageData(d, 0, 0)
-        return out
-      }
-
-      // ~FL([horiz|vert]) — flip; no argument means horizontal.
-      case 'FL': {
-        const spec = (args[0] ?? '').toLowerCase()
-        const horiz = spec === '' || spec.includes('horiz')
-        const vert = spec.includes('vert')
-        const out = makeCanvas(src.width, src.height)
-        const g = ctx2d(out)
-        g.translate(horiz ? src.width : 0, vert ? src.height : 0)
-        g.scale(horiz ? -1 : 1, vert ? -1 : 1)
-        g.drawImage(src as CanvasImageSource, 0, 0)
-        return out
-      }
-
-      // ~SCALE(w,h) / ~SCALE_SHARP(w,h)
-      case 'SCALE':
-      case 'SCALE_SHARP':
-      case 'SCALE_INTO':
-      case 'SCALE_INTO_SHARP': {
-        const size = scaledSize(args, src.width, src.height, name.startsWith('SCALE_INTO'))
-        if (!size) return src
-        const [w, h] = size
-        const out = makeCanvas(w, h)
-        const g = ctx2d(out)
-        g.imageSmoothingEnabled = !name.endsWith('SHARP')
-        g.drawImage(src as CanvasImageSource, 0, 0, w, h)
-        return out
-      }
-
-      // ~TC(side, palette) — recolour `palette` to that side's team colour.
-      // ~RC(palette>range)  — recolour `palette` to a named colour range.
-      case 'TC':
-      case 'RC': {
-        const map = name === 'TC'
-          ? this.tcMapping(Number(args[0]), args[1] ?? DEFAULT_TC_PALETTE)
-          : this.rcMapping(args[0] ?? '')
-        if (!map || map.size === 0) return src
-        const t0 = performance.now()
-        const g = ctx2d(src)
-        const img = g.getImageData(0, 0, src.width, src.height)
-        applyColorMapping(img.data, map)
-        g.putImageData(img, 0, 0)
-        this.recolorMs += performance.now() - t0
-        this.recolorCount++
-        return src
-      }
-
       // ~HEXED() — what image::HEXED does (picture.cpp get_hexed()).
       //
       // Crop the image into a 72x72 box — or centre it there, if smaller —
@@ -632,7 +537,8 @@ export class Compositor {
       // deliberately no offset: the engine positions every terrain texture at
       // the hex and uses rule_image basex/basey only to order layers.
       case 'HEXED': {
-        const mask = await this.render(HEX_MASK)
+        const src = asCanvas(image)
+        const hexMask = await this.render(HEX_MASK)
         const out = makeCanvas(TILE, TILE)
         const g = ctx2d(out)
 
@@ -644,37 +550,91 @@ export class Compositor {
         const dy = Math.max(0, Math.trunc((TILE - src.height) / 2))
         g.drawImage(src as CanvasImageSource, sx, sy, sw, sh, dx, dy, sw, sh)
 
-        if (mask) {
+        if (hexMask) {
           g.globalCompositeOperation = 'destination-in'
-          g.drawImage(mask as CanvasImageSource, 0, 0)
+          g.drawImage(hexMask as CanvasImageSource, 0, 0)
         }
-        return out
-      }
-
-      // ~TOD(r,g,b) — see `todRef` above: additive time-of-day tint, not a
-      // real engine IPF op, appended the same way `~HEXED()` is.
-      case 'TOD': {
-        const [r, g, b] = args.map(Number)
-        if (![r, g, b].every(Number.isFinite)) return src
-        const g2 = ctx2d(src)
-        const img = g2.getImageData(0, 0, src.width, src.height)
-        applyTodTint(img.data, { r: r!, g: g!, b: b! })
-        g2.putImageData(img, 0, 0)
-        return src
-      }
-
-      // ~GS() — greyscale.
-      case 'GS': {
-        const out = makeCanvas(src.width, src.height)
-        const g = ctx2d(out)
-        g.filter = 'grayscale(100%)'
-        g.drawImage(src as CanvasImageSource, 0, 0)
         return out
       }
 
       default:
         warnOnce(name)
-        return src
+        return image
     }
   }
+}
+
+/** What a modifier chain is worked on as: a canvas (for the canvas pseudo-ops) or straight-alpha pixels. */
+type Surface = CompositedImage | Raster
+
+function isRaster(s: Surface): s is Raster {
+  return (s as Raster).data instanceof Uint8ClampedArray
+}
+
+function asRaster(s: Surface): Raster {
+  if (isRaster(s)) return s
+  if (s.width === 0 || s.height === 0) return makeRaster(s.width, s.height)
+  const img = ctx2d(s).getImageData(0, 0, s.width, s.height)
+  return { width: img.width, height: img.height, data: img.data }
+}
+
+/**
+ * An image file decoded to straight-alpha pixels, as SDL_image gives them (see `Compositor.decodeStraight`):
+ * null without `ImageDecoder` or for a file it cannot decode this way.
+ */
+export async function decodeImageStraight(path: string): Promise<Raster | null> {
+  const Decoder = (globalThis as { ImageDecoder?: typeof ImageDecoder }).ImageDecoder
+  if (!Decoder) return null
+  try {
+    const resp = await fetch(imageUrl(path))
+    const type = resp.headers.get('content-type') ?? ''
+    if (!resp.ok || !type.startsWith('image/') || !(await Decoder.isTypeSupported(type))) return null
+    // `premultiplyAlpha` is in the WebCodecs spec (and Chromium) but not yet in TypeScript's DOM types.
+    const init = { data: await resp.arrayBuffer(), type, premultiplyAlpha: 'none', colorSpaceConversion: 'none' }
+    const decoder = new Decoder(init as ImageDecoderInit)
+    const { image } = await decoder.decode()
+    try {
+      return await frameToRaster(image)
+    } finally {
+      image.close()
+      decoder.close()
+    }
+  } catch {
+    return null
+  }
+}
+
+/** A decoded frame's pixels as a straight-alpha raster; null for a pixel format other than (A)RGB/BGR(A). */
+async function frameToRaster(frame: VideoFrame): Promise<Raster | null> {
+  const format = frame.format
+  if (format !== 'RGBA' && format !== 'RGBX' && format !== 'BGRA' && format !== 'BGRX') return null
+  const width = frame.codedWidth
+  const height = frame.codedHeight
+  const buffer = new Uint8Array(frame.allocationSize())
+  const [plane] = await frame.copyTo(buffer)
+  const stride = plane?.stride ?? width * 4
+  const offset = plane?.offset ?? 0
+  const out = makeRaster(width, height)
+  const bgr = format.startsWith('BGR')
+  const opaque = format.endsWith('X')
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const p = offset + y * stride + x * 4
+      const q = (y * width + x) * 4
+      out.data[q] = buffer[p + (bgr ? 2 : 0)]!
+      out.data[q + 1] = buffer[p + 1]!
+      out.data[q + 2] = buffer[p + (bgr ? 0 : 2)]!
+      out.data[q + 3] = opaque ? 255 : buffer[p + 3]!
+    }
+  }
+  return out
+}
+
+function asCanvas(s: Surface): CompositedImage {
+  if (!isRaster(s)) return s
+  const c = makeCanvas(s.width, s.height)
+  if (s.width > 0 && s.height > 0) {
+    ctx2d(c).putImageData(new ImageData(s.data as Uint8ClampedArray<ArrayBuffer>, s.width, s.height), 0, 0)
+  }
+  return c
 }

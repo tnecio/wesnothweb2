@@ -1814,7 +1814,7 @@ A deliberate audit pass, not new feature work.
 
 ## Phases 27a–27c — Executing the assessment's follow-ups (proposed 2026-10-10)
 
-**Status: 27a delivered (2026-10-11, PR #33); 27b delivered (2026-10-12, PR pending); 27c awaits the user's go-ahead.** Each phase is its own branch, PR and tag. It is merged and tagged only when the user says so.
+**Status: 27a delivered (2026-10-11, PR #33); 27b delivered (2026-10-12, PR #34); 27c delivered (2026-10-13, PR pending).** Each phase is its own branch, PR and tag. It is merged and tagged only when the user says so.
 
 **What the three phases cover:**
 - They execute follow-ups 1–3 of `docs/COMPLETENESS.md`.
@@ -1973,6 +1973,14 @@ A port of upstream's `units/abilities.cpp` (2,234 lines) and the special half of
 **Risk: speed.** The prediction runs on every hover. Stats are cached per (unit, weapon, opponent, hex) and the time per hover is measured before and after.
 
 ### Phase 27c — Presentation gaps (branch `presentation-gaps`, tag `v0.16.0`)
+
+**Delivered 2026-10-13** (see PROGRESS). Where upstream 1.19 turned out to differ from this plan, the port
+follows upstream:
+- no carryover report and no defeat dialog (S6): upstream lingers, then End Scenario goes on or back to the title;
+- no level-up sound (S4);
+- `victory_anim` is the winner's at a kill, not at a won scenario (S4);
+- illumination is not drawn (S5);
+- units take no time-of-day tint (S5).
 
 **S1. Image path functions.**
 - **Port:** the 23 missing functions of `image_modifications.cpp` into the worker compositor, led by `CS` (192 uses), `ROTATE` (39) and `NO_TOD_SHIFT` (26), then `XBRZ`, `G`/`R`/`B`, `CHAN`, `BLEND`, `BL`, `PAL`, `SWAP`, `BG` and the rest.
@@ -2510,7 +2518,7 @@ pulled forward and delivered 2026-09-22.
    statistics dialog, achievements; delivered 2026-10-05) -- the user's call, 2026-10-05, which
    moves achievements into Phase 25 rather than ahead of Phase 24.
 14. **Phase 29a** (AI turns shown action by action, as upstream does) -- the user's call, 2026-10-09; delivered 2026-10-09.
-15. **Phase 27** (feature completeness assessment; delivered 2026-10-10), then -- proposed, awaiting the user's go-ahead -- **Phases 27a** (correctness fixes and upstream's WML tests as a conformance suite), **27b** (the ability and special pipeline) and **27c** (presentation gaps); then **Phase 28d**
+15. **Phase 27** (feature completeness assessment; delivered 2026-10-10), then **Phases 27a** (correctness fixes and upstream's WML tests as a conformance suite; delivered 2026-10-11), **27b** (the ability and special pipeline; delivered 2026-10-12) and **27c** (presentation gaps; delivered 2026-10-13); then **Phase 28d**
    (performance budgets, cross-browser, offline; split from Phase 28).
 16. **Phase 31** (World Conquest), not yet scheduled.
 17. **Phase 30** (combat RNG modes, split from Phase 21) — last, after

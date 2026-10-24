@@ -17,7 +17,7 @@
   import AudioPanel from './AudioPanel.svelte';
   import HotkeysPanel from './HotkeysPanel.svelte';
   import { menuPrefs } from './menu/menuPrefs.js';
-  import { displayPrefs, TURBO_SPEEDS, type DisplayPrefs } from './displayPrefs.js';
+  import { displayPrefs, IDLE_ANIM_RATE_RANGE, TURBO_SPEEDS, type DisplayPrefs } from './displayPrefs.js';
   import { readSetting, writeSetting } from './persistence.js';
   import { DEFAULT_AUTO_SAVE_MAX, INFINITE_AUTO_SAVES } from './save/naming.js';
   import { t, tw } from './i18n/locale.js';
@@ -163,6 +163,22 @@
         {@render check('grid', t('Grid overlay'), t('Overlay a grid over the map'))}
         {@render check('animateMap', t('Animate map'), t('Display animated terrain graphics'))}
         {@render check('animateWater', t('Animate water'), t('Display animated water graphics (can be slow)'), !displayPrefs.value.animateMap)}
+        {@render check('standingAnimations', t('Unit standing animations'), t('Continuously animate standing units on the battlefield'))}
+        {@render check('idleAnimations', t('Unit idle animations'), t('Play short random animations for idle units'))}
+        <label class="slider indent" title={t('Set the frequency of unit idle animations')}>
+          <span>{t('Frequency:')}</span>
+          <input
+            type="range"
+            min={IDLE_ANIM_RATE_RANGE[0]}
+            max={IDLE_ANIM_RATE_RANGE[1]}
+            step="1"
+            value={displayPrefs.value.idleAnimRate}
+            disabled={!displayPrefs.value.idleAnimations}
+            oninput={(e) => displayPrefs.update({ idleAnimRate: Number(e.currentTarget.value) })}
+            data-testid="prefs-idle-anim-rate"
+          />
+          <span class="value">{displayPrefs.value.idleAnimRate}</span>
+        </label>
       {:else if tab === 'sound'}
         <AudioPanel settings={audioSettings} onChange={onAudioChange} />
       {:else}

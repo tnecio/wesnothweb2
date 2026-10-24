@@ -48,7 +48,7 @@
      * The turn button: End Turn ('end'); greyed out while the other sides' turns are being computed
      * ('wait'); Skip Animation while their moves are shown ('skip').
      */
-    turnButton?: 'end' | 'wait' | 'skip';
+    turnButton?: 'end' | 'wait' | 'skip' | 'endScenario';
     onSkipAnimation?: () => void;
     /** Phase 22: what sits at the top of the panel, above everything else -- the minimap, as in upstream's theme. */
     top?: Snippet;
@@ -88,6 +88,8 @@
     const pct = 100 - resistance;
     return `${pct >= 0 ? '+' : ''}${pct}%`;
   }
+  /** Phase 27c S6: while the player lingers after the scenario, the button ends it (the theme's `title2`). */
+  const turnLabel = $derived(turnButton === 'endScenario' ? tw('End Scenario') : t('End Turn'));
 </script>
 
 <aside class="side-panel" class:collapsed data-testid="side-panel">
@@ -279,7 +281,7 @@
     {#if turnButton === 'skip'}
       <button class="primary" data-testid="turn-button" onclick={() => onSkipAnimation?.()}>{tx('Skip Animation')}</button>
     {:else}
-      <button class="primary" data-testid="turn-button" disabled={turnButton === 'wait'} onclick={onEndTurn}>{t('End Turn')}</button>
+      <button class="primary" data-testid="turn-button" disabled={turnButton === 'wait'} onclick={onEndTurn}>{turnLabel}</button>
     {/if}
   </section>
 </aside>

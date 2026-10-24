@@ -153,6 +153,31 @@ blade=-20
     expect(corpse.movementCost(water)).toBeLessThan(walkingCost);
   });
 
+  it('apply_to=image_mod replaces or adds image functions, an empty one changing nothing; a rebuild re-applies them', () => {
+    const u = Unit.create(content.unitType('Spearman'), 1, Location.fromWml(1, 1));
+    u.addModification('object', object('[effect]\napply_to=image_mod\nreplace="CS(10,0,0)"\n[/effect]'));
+    u.addModification('object', object('[effect]\napply_to=image_mod\nadd="GS()"\n[/effect]'));
+    u.addModification('object', object('[effect]\napply_to=image_mod\nreplace=""\n[/effect]'));
+    expect(u.imageMods).toBe('CS(10,0,0)~GS()');
+    u.rebuild();
+    expect(u.imageMods).toBe('CS(10,0,0)~GS()');
+  });
+
+  it('apply_to=new_animation keeps its animations for the renderer, once per rebuild', () => {
+    const u = Unit.create(content.unitType('Spearman'), 1, Location.fromWml(1, 1));
+    u.addModification('object', object('[effect]\napply_to=new_animation\n[extra_anim]\nflag=glow\n[frame]\nimage=units/human-loyalists/spearman.png:100\n[/frame]\n[/extra_anim]\n[/effect]'));
+    expect(u.newAnimations).toHaveLength(1);
+    expect(u.newAnimations[0]!.child('extra_anim')?.getString('flag')).toBe('glow');
+    u.rebuild();
+    expect(u.newAnimations).toHaveLength(1);
+  });
+
+  it('apply_to=halo sets the unit\'s halo', () => {
+    const u = Unit.create(content.unitType('Spearman'), 1, Location.fromWml(1, 1));
+    u.addModification('object', object('[effect]\napply_to=halo\nhalo=halo/elven/shaman-heal-halo.png\n[/effect]'));
+    expect(u.halo).toBe('halo/elven/shaman-heal-halo.png');
+  });
+
   it('advancing keeps traits: a strong Spearman advances to a strong Swordsman', () => {
     const u = unitWith('Spearman', ['strong']);
     u.advanceTo(content.unitType('Swordsman'));

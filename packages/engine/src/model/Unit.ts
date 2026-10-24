@@ -224,6 +224,11 @@ export class Unit {
   /** `recall_cost=`, -1 for the side's default. */
   recallCost: number;
   imageMods: string;
+  /**
+   * `unit_animation_component::apply_new_animation_effect`: the `apply_to=new_animation` effects' configs, whose
+   * `[*_anim]`s join the type's animations (the renderer parses them, as it does the type's).
+   */
+  newAnimations: readonly WmlConfig[];
   overlays: readonly string[];
   halo: string;
   ellipse: string;
@@ -262,6 +267,7 @@ export class Unit {
     this.upkeep = 'full';
     this.recallCost = -1;
     this.imageMods = '';
+    this.newAnimations = [];
     this.overlays = [];
     this.halo = '';
     this.ellipse = '';
@@ -312,6 +318,7 @@ export class Unit {
     this.fearless = false;
     this.healthy = false;
     this.imageMods = '';
+    this.newAnimations = [];
     this.overlays = [];
     this.ellipse = type.ellipse;
     this.halo = type.halo;

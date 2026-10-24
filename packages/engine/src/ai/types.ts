@@ -13,6 +13,7 @@ import type { GameBoard } from '../model/GameBoard.js';
 import type { Rng } from '../rng/Rng.js';
 import type { WmlConfig } from '../wml/config.js';
 import type { AttackResult } from '../actions/combat.js';
+import type { AttackHelpers } from '../actions/attackHelpers.js';
 import type { Team } from '../model/Team.js';
 import type { PerformMoveResult } from '../actions/moveSequence.js';
 import type { PlaceRecruitResult } from '../actions/recruit.js';
@@ -38,6 +39,11 @@ export type AiAnimationEvent =
       /** Their variations then (`unit.variation`), with the type ids: the sprites and animations to play. */
       readonly attackerVariation: string;
       readonly defenderVariation: string;
+      /** Their `apply_to=new_animation` effects then (`Unit.newAnimations`). */
+      readonly attackerNewAnimations: readonly WmlConfig[];
+      readonly defenderNewAnimations: readonly WmlConfig[];
+      /** The units playing `leading`/`resistance`/`teaching` with the blows (`attackHelpers`). */
+      readonly helpers: AttackHelpers;
       readonly attackerHitpointsBefore: number;
       readonly defenderHitpointsBefore: number;
       /**

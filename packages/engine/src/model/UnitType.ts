@@ -55,6 +55,7 @@ import { WmlConfig } from '../wml/config.js';
 import { MoveType } from './MoveType.js';
 import { mergeUnitTypeConfig } from './UnitTypeDatabase.js';
 import type { TerrainTypeData } from './Terrain.js';
+import type { NameSource } from './names.js';
 
 export type Alignment = 'lawful' | 'neutral' | 'chaotic' | 'liminal';
 
@@ -143,6 +144,20 @@ function resolveIdList(listValue: string, registry: ReadonlyMap<string, Registry
 }
 
 /** What `UnitType` keeps beyond its positional stats (see its constructor). */
+/** A race's name generator for one gender, as a unit type keeps it (`resolveTraitPools`). */
+export interface TypeNameSource {
+  readonly kind: 'grammar' | 'markov';
+  readonly text: TString;
+  readonly chainSize: number;
+}
+
+function typeNameSource(cfg: WmlConfig, gender: 'male' | 'female'): TypeNameSource | undefined {
+  const kind = cfg.getString(`name_source_${gender}_kind`, '');
+  const text = cfg.getTString(`name_source_${gender}`);
+  if ((kind !== 'grammar' && kind !== 'markov') || !text) return undefined;
+  return { kind, text, chainSize: cfg.getNumber('name_markov_chain_size', 2) };
+}
+
 export interface UnitTypeExtras {
   readonly registries?: { readonly weaponSpecials: ReadonlyMap<string, RegistryEntry>; readonly abilities: ReadonlyMap<string, RegistryEntry> };
   readonly advancements?: readonly WmlConfig[];
@@ -150,6 +165,8 @@ export interface UnitTypeExtras {
   readonly variationId?: string;
   readonly halo?: string;
   readonly ellipse?: string;
+  /** Phase 27c S7: the race's name generator per gender (`name_source_<gender>`), its text translatable. */
+  readonly nameSources?: { readonly male?: TypeNameSource; readonly female?: TypeNameSource };
   readonly makeVariation?: (id: string) => UnitType | undefined;
   readonly nameT?: TString;
 }
@@ -477,6 +494,7 @@ export class UnitType {
     this.upkeep = extras.upkeep ?? 'full';
     this.variationId = extras.variationId ?? '';
     this.halo = extras.halo ?? '';
+    this.nameSources = extras.nameSources ?? {};
     this.ellipse = extras.ellipse ?? '';
     this.makeVariation = extras.makeVariation;
     this.nameT = extras.nameT;
@@ -500,6 +518,15 @@ export class UnitType {
   readonly variationId: string;
   /** `halo=`. */
   readonly halo: string;
+  /** Phase 27c S7: see `UnitTypeExtras.nameSources`. */
+  readonly nameSources: { readonly male?: TypeNameSource; readonly female?: TypeNameSource };
+
+  /** The name generator of a new `gender` unit of this type, in the current language (`unit_race::generate_name`). */
+  nameSource(gender: string): NameSource | null {
+    const src = gender === 'female' ? this.nameSources.female : this.nameSources.male;
+    if (!src) return null;
+    return src.kind === 'grammar' ? { kind: 'grammar', grammar: src.text.str() } : { kind: 'markov', names: src.text.str(), chainSize: src.chainSize };
+  }
   /** `ellipse=` (`unit_type::ellipse`). */
   readonly ellipse: string;
   private readonly makeVariation: ((id: string) => UnitType | undefined) | undefined;
@@ -610,6 +637,10 @@ export class UnitType {
         halo: cfg.getString('halo', ''),
         ellipse: cfg.getString('ellipse', ''),
         nameT: cfg.isTranslatable('name') ? cfg.getTString('name') : undefined,
+        nameSources: {
+          ...(typeNameSource(cfg, 'male') ? { male: typeNameSource(cfg, 'male')! } : {}),
+          ...(typeNameSource(cfg, 'female') ? { female: typeNameSource(cfg, 'female')! } : {}),
+        },
         makeVariation: (variationId) => {
           const varCfg = cfg.children('variation').find((v) => v.getString('variation_id') === variationId);
           if (!varCfg) return undefined;
