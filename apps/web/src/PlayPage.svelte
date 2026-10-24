@@ -121,7 +121,10 @@
 
 <main>
   {#if status === 'loading'}
-    <p class="loading">{tx('Loading scenario...')}</p>
+    <div class="loading-screen" role="status" aria-live="polite">
+      <div class="spinner" aria-hidden="true"></div>
+      <p>{tx('Loading scenario...')}</p>
+    </div>
   {:else if status === 'error'}
     <div class="loading">
       <p>{tx('Failed to load:')} {errorMessage}</p>
@@ -146,6 +149,46 @@
     height: 100dvh;
     display: flex;
     flex-direction: column;
+  }
+  /* The scenario's data can take a while to arrive: say so in the middle of the screen. */
+  .loading-screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.25rem;
+    padding: 1rem;
+  }
+  .loading-screen p {
+    margin: 0;
+    font-size: 1.5rem;
+    letter-spacing: 0.02em;
+    color: #e4c860;
+    text-align: center;
+  }
+  .spinner {
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 50%;
+    border: 4px solid rgba(138, 106, 46, 0.35);
+    border-top-color: #e4c860;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.4;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .spinner {
+      animation: pulse 2s ease-in-out infinite;
+    }
   }
   .loading {
     padding: 1rem;
