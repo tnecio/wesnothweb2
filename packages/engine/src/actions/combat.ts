@@ -28,7 +28,7 @@ import { Location, getAdjacentTiles, ALL_DIRECTIONS, distanceBetween, oppositeDi
 import type { GameBoard } from '../model/GameBoard.js';
 import { WmlConfig } from '../wml/config.js';
 import { Unit, UnitStatus } from '../model/Unit.js';
-import type { UnitType } from '../model/UnitType.js';
+import type { AttackType, UnitType } from '../model/UnitType.js';
 import type { Rng } from '../rng/Rng.js';
 import { buildBattleContext, chooseDefenderWeaponIndex, type UnitStatsOptions } from './combatStats.js';
 import type { BattleContextUnitStats } from './attackPrediction.js';
@@ -72,6 +72,8 @@ export interface AttackResult {
 }
 
 export interface AttackOptions extends UnitStatsOptions {
+  /** The caller has already spent the weapon's attacks and movement (between `pre attack` and `attack`, as `attack::perform`). */
+  attackCostPaid?: boolean;
   /**
    * If provided, an attacker weapon with a `[*] id=plague` special (see
    * `combatStats.ts`'s module doc comment on how specials are matched)
@@ -152,16 +154,20 @@ export function resolveDefenderWeaponIndex(
   );
 }
 
+/** `attack::perform`: the weapon's `attacks_used` (default 1) of the attacker's attacks, and its `movement_used` (default all) of its movement. */
+export function spendAttackCost(attacker: Unit, weapon: AttackType): void {
+  attacker.attacksLeft = Math.max(0, attacker.attacksLeft - weapon.attacksUsed);
+  attacker.movesLeft = Math.max(0, attacker.movesLeft - weapon.movementUsed);
+}
+
 /**
  * Executes a full attack action between the units at `attackerLoc` and
  * `defenderLoc`, mirroring `attack::perform()`'s net state-mutating effect.
  * `attackerWeaponIndex` selects `attacker.attacks[i]`; `defenderWeaponIndex`
  * selects the defender's counter-weapon, or omit it (or pass `-1`) to
  * auto-select via `chooseDefenderWeaponIndex` (upstream's default UX).
- * Consumes exactly one of the attacker's `attacksLeft` (see module doc
- * comment on `attacks_used()` not being tracked per-weapon here -- every
- * weapon costs exactly one of the unit's per-turn attacks, matching the
- * overwhelmingly common case).
+ * Spends the weapon's `attacks_used` of the attacker's `attacksLeft` and its
+ * `movement_used` of its movement (Phase 27a), as `attack::perform` does.
  */
 export function executeAttack(
   board: GameBoard,
@@ -177,6 +183,12 @@ export function executeAttack(
      * If WML removes, replaces or heals the unit, it is not removed and no plague spawns.
      */
     onUnitDying?: (dead: Unit, killer: Unit) => void;
+    /**
+     * Phase 27a: after each blow lands or misses, with its damage applied and before a death is handled
+     * (`perform_hit` firing `attacker hits`, `defender misses`...). Returns false to end the fight there, as
+     * upstream's `attack_end_exception` does when an event removed a combatant or made them allies.
+     */
+    onStrike?: (attackerTurn: boolean, hit: boolean, damage: number) => boolean;
   } = {},
 ): AttackResult {
   const attacker = board.unitAt(attackerLoc);
@@ -232,8 +244,9 @@ export function executeAttack(
   // Phase 25: `statistics_attack_context`, with both units as they enter the fight.
   const statsContext = board.statistics?.attackContext(board.statsUnit(attacker), board.statsUnit(defender), attackerStats.chanceToHit, defenderStats.chanceToHit);
 
-  // Consume exactly one of the attacker's per-turn attacks (see this function's doc comment).
-  attacker.attacksLeft = Math.max(0, attacker.attacksLeft - 1);
+  // `attack::perform`: the weapon's `attacks_used` (default 1) of the attacker's attacks, and its `movement_used`
+  // (default all) of its movement.
+  if (!options.attackCostPaid) spendAttackCost(attacker, attackerWeapon);
   attacker.setStatus(UnitStatus.NotMoved, false);
   attacker.resting = false;
   defender.resting = false;
@@ -332,6 +345,18 @@ export function executeAttack(
     const hitResult = hit ? (targetDied ? 'kills' : 'hits') : 'misses';
     if (attackerTurn) statsContext?.attackResult(hitResult, strikerStats.chanceToHit, damageDone, drainAmount);
     else statsContext?.defendResult(hitResult, strikerStats.chanceToHit, damageDone, drainAmount);
+
+    // The strike's events (`perform_hit`), before drain and death. An event that ends the fight ends it here;
+    // a unit it left at no hitpoints still dies (upstream would leave it standing until something else hits it).
+    if (options.onStrike && !options.onStrike(attackerTurn, hit, damage)) {
+      blows.push({ attackerTurn, chanceToHit: strikerStats.chanceToHit, hit, damage, drainAmount: 0, strikerDiedFromDrain: false, targetDied, poisoned: false, slowed: false, petrified: false });
+      if (targetDied && board.unitAt(target.location) === target && target.hitpoints <= 0) {
+        if (attackerTurn) defenderDied = true;
+        else attackerDied = true;
+        handleDeath(attackerTurn, striker, target);
+      }
+      return false;
+    }
 
     let strikerDiedFromDrain = false;
     if (drainAmount > 0) {

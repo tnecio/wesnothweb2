@@ -26,10 +26,9 @@
  *   re-trigger itself), matching `event_handler::handle_event`.
  *
  * ## NOT ported / simplified
- * - `[filter_side]`, `[filter_attack]`/`[filter_second_attack]`,
- *   `filter_formula=` on `[event]` itself: not matched (a handler with
- *   only these filter kinds runs unconditionally rather than being
- *   correctly gated -- flagged here rather than silently "supported").
+ * - `filter_formula=` on `[event]` itself: not matched (the handler runs
+ *   as if it passed). `[filter_side]` and `[filter_attack]`/
+ *   `[filter_second_attack]` are (Phase 27a), see `filterEvent`.
  * - `[insert_tag]`-based dynamic handler content, `[filter_condition]`
  *   with `might_contain_variables` deferred re-evaluation
  *   (`dynamic_`/`by_name_` split in `manager_impl.cpp`): all handlers are
@@ -54,7 +53,7 @@ import { LabelStore } from './labelsWml.js';
 import type { GameBoard } from '../model/GameBoard.js';
 import { Location } from '../model/Location.js';
 import { Schedule, DEFAULT_MAX_LIMINAL_BONUS } from '../model/Schedule.js';
-import type { UnitType } from '../model/UnitType.js';
+import { AttackType, type UnitType } from '../model/UnitType.js';
 import type { Rng } from '../rng/Rng.js';
 import { WmlConfig } from '../wml/config.js';
 import { createDefaultActionRegistry, runActionFlow, unitToVarNode } from './actionWml.js';
@@ -62,6 +61,7 @@ import { ActionRegistry, type EventContext, type RecordedMessage } from './conte
 import { runFlow, type Flow, type Responder } from './interaction.js';
 import { conditionalPassed } from './conditionalWml.js';
 import { unitMatchesFilter } from './filter.js';
+import { sideMatchesFilter } from './sideFilter.js';
 import type { VariableStore } from './variables.js';
 import { MusicList } from '../audio/musicList.js';
 import { SoundSourceStore } from '../audio/soundSources.js';
@@ -391,13 +391,32 @@ export class EventPump {
     };
   }
 
-  /** Mirrors `wml_event_pump::process_event`: bind `$unit`/`$second_unit`, filter, then (if first-time-only) disable, then run the body. */
+  /**
+   * `scoped_weapon_info`: binds `$<name>` to the weapon an attack event carries (its data's `[first]` or
+   * `[second]`), and returns the function that puts back what the variable held. No weapon: left alone.
+   */
+  private bindEventWeapon(name: string, weapon: WmlConfig | undefined): () => void {
+    if (!weapon) return () => {};
+    const previous = [...this.ctx.variables.getArray(name)];
+    this.ctx.variables.clear(name);
+    this.ctx.variables.setConfig(name, weapon);
+    return () => {
+      this.ctx.variables.clear(name);
+      if (previous.length > 0) this.ctx.variables.setArray(name, previous);
+    };
+  }
+
+  /** Mirrors `wml_event_pump::process_event`: bind `$unit`/`$second_unit` and `$weapon`/`$second_weapon`, filter, then (if first-time-only) disable, then run the body. */
   private *processEvent(handler: WmlEventHandler, ev: QueuedEvent): Flow {
     const restoreUnit = this.bindEventUnit('unit', ev.loc1);
     const restoreSecond = this.bindEventUnit('second_unit', ev.loc2);
+    const restoreWeapon = this.bindEventWeapon('weapon', ev.data.child('first'));
+    const restoreSecondWeapon = this.bindEventWeapon('second_weapon', ev.data.child('second'));
     try {
       yield* this.processBoundEvent(handler, ev);
     } finally {
+      restoreSecondWeapon();
+      restoreWeapon();
       restoreSecond();
       restoreUnit();
     }
@@ -428,27 +447,45 @@ export class EventPump {
     }
   }
 
-  /** Mirrors `event_handler::filter_event`, for the filter kinds this port implements -- see module doc comment. */
+  /**
+   * Mirrors `event_handler::filter_event` (`handlers.cpp`): every filter child of the `[event]`, in order, must
+   * match -- `[filter]`/`[filter_second]` the units at the event's hexes, `[filter_attack]`/`[filter_second_attack]`
+   * the weapons its data carries (the unit at the first or second hex must be there too), `[filter_side]` the side
+   * whose turn it is, `[filter_condition]` a conditional. `filter_formula=` is not evaluated (the handler runs).
+   */
   private filterEvent(handler: WmlEventHandler, ev: QueuedEvent): boolean {
-    const cfg = handler.rawCfg;
-
-    const filterConditionCfg = cfg.child('filter_condition');
-    if (filterConditionCfg && !conditionalPassed(this.ctx.variables.expandConfig(filterConditionCfg), this.ctx)) {
-      return false;
+    for (const { tag, config } of handler.rawCfg.allChildren()) {
+      switch (tag) {
+        case 'filter_condition':
+          if (!conditionalPassed(this.ctx.variables.expandConfig(config), this.ctx)) return false;
+          break;
+        case 'filter':
+        case 'filter_second': {
+          const loc = tag === 'filter' ? ev.loc1 : ev.loc2;
+          const unit = loc.valid() ? this.ctx.board.unitAt(loc) : undefined;
+          if (!unit || !unitMatchesFilter(unit, this.ctx.variables.expandConfig(config), this.ctx.board)) return false;
+          break;
+        }
+        case 'filter_attack':
+        case 'filter_second_attack': {
+          const first = tag === 'filter_attack';
+          const loc = first ? ev.loc1 : ev.loc2;
+          const weapon = ev.data.child(first ? 'first' : 'second');
+          if (!loc.valid() || !this.ctx.board.unitAt(loc) || !weapon) return false;
+          const filter = this.ctx.variables.expandConfig(config);
+          if (filter.attributeNames().length > 0 || filter.allChildren().length > 0) {
+            if (!AttackType.fromConfig(weapon).matchesFilter(filter)) return false;
+          }
+          break;
+        }
+        case 'filter_side': {
+          const team = this.ctx.board.getTeam(this.ctx.variables.getNumber('side_number', 1));
+          if (!team || !sideMatchesFilter(this.ctx.board, this.ctx.variables.expandConfig(config), team)) return false;
+          break;
+        }
+      }
     }
-
-    const filterCfg = cfg.child('filter');
-    if (filterCfg) {
-      const unit = ev.loc1.valid() ? this.ctx.board.unitAt(ev.loc1) : undefined;
-      if (!unit || !unitMatchesFilter(unit, this.ctx.variables.expandConfig(filterCfg), this.ctx.board)) return false;
-    }
-
-    const filterSecondCfg = cfg.child('filter_second');
-    if (filterSecondCfg) {
-      const unit = ev.loc2.valid() ? this.ctx.board.unitAt(ev.loc2) : undefined;
-      if (!unit || !unitMatchesFilter(unit, this.ctx.variables.expandConfig(filterSecondCfg), this.ctx.board)) return false;
-    }
-
     return true;
   }
+
 }

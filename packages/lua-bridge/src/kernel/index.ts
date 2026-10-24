@@ -24,6 +24,11 @@ export interface GameKernelOptions extends WorldOptions {
   readonly gameConfig?: () => GameConfigValues;
   /** Runs between the game API and `load_core` (`LuaRuntime` installs its WML-action proxy here). */
   readonly beforeCore?: (k: LuaKernel, units: LuaUnits) => void;
+  /**
+   * A unit test (`[test] is_unit_test=yes`, `game_classification::is_test`): the `unit_test` table exists before
+   * `load_core`, so `lua/core/unit_test.lua` fills in its helpers (`unit_test.assert`, `succeed`...).
+   */
+  readonly unitTest?: boolean;
 }
 
 export interface GameKernel {
@@ -44,6 +49,8 @@ export function createGameKernel(host: GameKernelHost, options: GameKernelOption
   installPaths(k, host, units);
   installMisc(k, host, units);
   options.beforeCore?.(k, units);
+  // `fire_wml_menu_item`, the one native function upstream puts in it, is not ported.
+  if (options.unitTest) k.run('rawset(_G, "unit_test", {})', '=unit_test');
   loadCore(k);
   return { kernel: k, units };
 }

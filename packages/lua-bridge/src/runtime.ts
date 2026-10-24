@@ -67,6 +67,8 @@ export interface LuaRuntimeOptions {
    * recorder), which calls `customCommand` back. Without it the command just runs.
    */
   readonly invokeCommand?: (name: string, data: WmlConfig) => Flow<unknown>;
+  /** A unit test: see `GameKernelOptions.unitTest`. */
+  readonly unitTest?: boolean;
 }
 
 /** A request a Lua coroutine yields to `drive`. */
@@ -243,6 +245,7 @@ export class LuaRuntime {
       rng: options.rng ?? (() => ctx().rng ?? this.fallbackRng),
       sideAiConfigs: options.sideAiConfigs,
       beforeCore: (k) => this.installFunctions(k),
+      unitTest: options.unitTest,
     });
     this.kernel = game.kernel;
     this.units = game.units;

@@ -50,6 +50,9 @@ import {
   distanceBetween,
   performMove,
   performAttack,
+  attackEventData,
+  withScenarioFixes,
+  spendAttackCost,
   isBackstabActive,
   computeLeadershipBonus,
   computeResistanceModifier,
@@ -130,6 +133,7 @@ import {
   connectedCastleTiles,
   recruitUnitFlow,
   recallUnitFlow,
+  leaderCanRecall,
   type PlaceRecruitHooks,
   dismissUnitAt,
   unitCanAct,
@@ -1039,6 +1043,8 @@ function savedUnitFields(u: Unit): SavedUnit {
     modifications: u.modifications.map((m) => ({ kind: m.kind, cfg: m.cfg.toJSON() })),
     variables: u.variables?.toJSON(),
     goto: u.goto ? { x: u.goto.x, y: u.goto.y } : undefined,
+    extraRecruit: u.extraRecruit.length > 0 ? [...u.extraRecruit] : undefined,
+    filterRecall: u.filterRecall?.toJSON(),
   };
 }
 
@@ -1106,6 +1112,10 @@ export interface SavedUnit {
   /** The unit's own `[variables]` bag. */
   variables?: WmlConfigJson;
   goto?: { x: number; y: number };
+  /** A leader's `extra_recruit=` (`unit::recruits()`). */
+  extraRecruit?: readonly string[];
+  /** A leader's `[filter_recall]`. */
+  filterRecall?: WmlConfigJson;
   /**
    * Present only on a unit read out of a real Wesnoth save: that `[unit]`
    * block as the game wrote it. A real save records far more per unit than
@@ -1164,6 +1174,12 @@ export interface SaveGameData {
      * during play reverted to unowned and the side's income with it.
      */
     villages?: readonly { x: number; y: number }[];
+    /**
+     * Phase 27a: the whole side as `team::write` saves it (`Team.toConfig`): recruit list, team, controller,
+     * income, fog and shroud flags... -- everything WML can change during play. Absent in older saves, which
+     * kept only the fields above.
+     */
+    config?: WmlConfigJson;
   }[];
   units: readonly SavedUnit[];
   /**
@@ -1732,7 +1748,7 @@ export class GameSession {
   private readonly eventPump: EventPump;
   /** Game turn whose `turn N`/`new turn` events have fired (`tod_manager::turn_event_fired`). */
   private turnEventsFiredFor = 0;
-  private readonly raiseEvent: RaiseEvent = (name, loc1, loc2) => this.eventPump.raise(name, loc1, loc2);
+  private readonly raiseEvent: RaiseEvent = (name, loc1, loc2, data) => this.eventPump.raise(name, loc1, loc2, data);
   /**
    * The real `[time]` schedule this scenario's own (already macro-expanded)
    * `scenarioConfigJson` declares -- see `Schedule`'s own doc comment. The
@@ -1749,7 +1765,9 @@ export class GameSession {
    */
   private readonly aiManager: AiManager;
 
-  constructor(snapshot: GameBoardSnapshot, options: GameSessionOptions = {}) {
+  constructor(scenarioSnapshot: GameBoardSnapshot, options: GameSessionOptions = {}) {
+    // `[modify_unit_type]` (`unit_types.apply_scenario_fix`), for this scenario's types only.
+    const snapshot = withScenarioFixes(scenarioSnapshot);
     this.snapshot = snapshot;
     this.playerSide = options.playerSide ?? 1;
     this.activeSide = this.playerSide;
@@ -1816,6 +1834,7 @@ export class GameSession {
       const json = this.snapshot.unitTypeConfigs?.[id];
       return json ? WmlConfig.fromJSON(json) : undefined;
     };
+    this.eventPump.ctx.unitTypeIds = () => Object.keys(this.snapshot.unitTypeConfigs ?? {});
     let races: Map<string, WmlConfig> | undefined;
     this.eventPump.ctx.raceConfigs = () =>
       (races ??= new Map(Object.entries(this.snapshot.raceConfigs ?? {}).map(([id, json]) => [id, WmlConfig.fromJSON(json)])));
@@ -1873,6 +1892,7 @@ export class GameSession {
           return this.runSynced(cmd, (action) => this.execCustomCommand(cmd, action), { present: true });
         },
         sideAiConfigs: (side) => (this.aiManager ? [this.aiManager.toConfig(side)] : []),
+        unitTest: ['yes', 'true', true].includes(snapshot.scenarioConfigJson.attrs?.is_unit_test as string | boolean),
         log: (level, message) => {
           options.onLog?.(level, message);
           if (level === 'error') console.error(`[lua] ${message}`);
@@ -1894,7 +1914,7 @@ export class GameSession {
       turnNumber: () => this.turnNumber,
       timeOfDayId: () => this.currentTimeOfDay.id,
       raise: (name, loc1, loc2, data) => this.eventPump.raise(name, loc1, loc2, data),
-      fire: (name, loc1, loc2) => this.eventPump.fire(name, loc1, loc2),
+      fire: (name, loc1, loc2, data) => this.eventPump.fire(name, loc1, loc2, data),
       pump: () => this.pumpEvents(),
       log: (level, message) => {
         // The AI's own diagnostics: an error (a candidate action that threw) goes to the console; the rest stay quiet.
@@ -2041,6 +2061,11 @@ export class GameSession {
    * ended through `[endlevel]`; null otherwise (e.g. a leader kill), which
    * means upstream's defaults.
    */
+  /** `[endlevel] test_result=`, once a unit test has ended (the WML test runner reads it). */
+  get testResult(): string | null {
+    return this.eventPump.ctx.endLevel?.testResult ?? null;
+  }
+
   get endLevelPresentation(): { endText?: string; endTextDuration?: number; endCredits?: boolean; lingerMode?: boolean; carryoverReport?: boolean; replaySave?: boolean } | null {
     const endLevel = this.eventPump.ctx.endLevel;
     return endLevel
@@ -2376,6 +2401,7 @@ export class GameSession {
       this.eventPump.ctx.log('error', `Error via [do_command]: cannot read [${tag}]`);
       return;
     }
+    this.eventPump.ctx.log('debug', `[do_command] ${JSON.stringify(command)}`);
     let rejected: string | null = null;
     yield* this.runSynced(command, function* (this: GameSession, action: ActionState) {
       // A refused command is reported, as its spectator does; the action it ran in goes on.
@@ -2536,7 +2562,18 @@ export class GameSession {
     if (!attacker.attacks[cmd.weapon]) return this.reject(action, `illegal weapon ${cmd.weapon}`);
     if (cmd.defenderWeapon >= defender.attacks.length) return this.reject(action, `illegal defender weapon ${cmd.defenderWeapon}`);
 
-    yield* this.fireFlow('attack', attackerLoc, defenderLoc);
+    // `attack::perform`: the weapons travel with the event, for [filter_attack] and $weapon.
+    // `defender_weapon=-1` (a [do_command] that names none, or a fight with no counter) means the defender's
+    // weapon is chosen now, as upstream's `battle_context` does.
+    const defenderWeapon = cmd.defenderWeapon >= 0 ? cmd.defenderWeapon : resolveDefenderWeaponIndex(this.board, attackerLoc, cmd.weapon, defenderLoc, this.attackOptions(attackerLoc, defenderLoc));
+    const eventData = (): WmlConfig => attackEventData(attacker.attacks[cmd.weapon], defenderWeapon >= 0 ? defender.attacks[defenderWeapon] : undefined);
+    // `attack::perform`: `pre attack`, then the weapon's attacks and movement are spent, then `attack`.
+    yield* this.fireFlow('pre attack', attackerLoc, defenderLoc, eventData());
+    this.checkForGameEnd();
+    if (this.scenarioResult || this.board.unitAt(attackerLoc) !== attacker || this.board.unitAt(defenderLoc) !== defender) return null;
+    spendAttackCost(attacker, attacker.attacks[cmd.weapon]!);
+    attacker.setStatus('not_moved', false);
+    yield* this.fireFlow('attack', attackerLoc, defenderLoc, eventData());
     this.checkForGameEnd();
     if (this.scenarioResult || this.board.unitAt(attackerLoc) !== attacker || this.board.unitAt(defenderLoc) !== defender) {
       // The attack event ended the scenario or moved/removed a combatant: upstream aborts the attack.
@@ -2550,20 +2587,24 @@ export class GameSession {
     const attackerVariation = attacker.variation;
     const defenderVariation = defender.variation;
     const defenderTypeId = defender.type.id;
-    const result = performAttack(this.board, this.rng, attackerLoc, cmd.weapon, defenderLoc, cmd.defenderWeapon, {
+    const result = performAttack(this.board, this.rng, attackerLoc, cmd.weapon, defenderLoc, defenderWeapon, {
       ...this.attackOptions(attackerLoc, defenderLoc),
+      attackCostPaid: true,
       raise: this.raiseEvent,
       // `last breath`/`die`, fired from inside `performAttack`'s own
       // callback: a plain function, so these cannot suspend -- their
       // messages are collected and shown after the attack animation
       // (`takeDeferredInteractions`).
-      fire: (name, loc1, loc2) => this.eventPump.fire(name, loc1, loc2, undefined, this.collectResponder),
+      fire: (name, loc1, loc2, data) => this.eventPump.fire(name, loc1, loc2, data, this.collectResponder),
+      setDamageInflicted: (damage) => {
+        if (damage === undefined) this.eventPump.ctx.variables.clear('damage_inflicted');
+        else this.eventPump.ctx.variables.set('damage_inflicted', damage);
+      },
+      scenarioEnded: () => !!this.eventPump.ctx.endLevel || this.scenarioResult !== null,
     });
     yield* this.eventPump.pumpFlow();
 
-    // A unit that has fought is done moving (`attack::perform` spends the
-    // weapon's `movement_used`, which defaults to all of it).
-    if (!result.attackerDied) attacker.movesLeft = 0;
+    // `executeAttack` spent the weapon's `movement_used` (all of it, unless the weapon says otherwise).
 
     // Advancement comes right after the exchange, before any victory check
     // (`attack_unit_and_advance`) -- the unit landing the winning kill still levels.
@@ -2576,7 +2617,7 @@ export class GameSession {
       attacker,
       attackerWeaponIndex: cmd.weapon,
       defender,
-      defenderWeaponIndex: cmd.defenderWeapon,
+      defenderWeaponIndex: defenderWeapon,
       result,
       attackerHitpointsBefore,
       defenderHitpointsBefore,
@@ -2651,6 +2692,7 @@ export class GameSession {
     const index = this.recallIndexFor(team.side, cmd.id, cmd.index);
     const unit = this.board.recallList(team.side)[index];
     if (!unit) return this.reject(action, `illegal recall: unit '${cmd.id}' not on the recall list`);
+    if (!leaderCanRecall(leader, unit, this.board)) return this.reject(action, `illegal recall: ${leader.id || 'the leader'}'s [filter_recall] rejects '${cmd.id}'`);
     if (this.board.hasUnitAt(loc)) return this.reject(action, `cannot recall onto ${loc}: occupied`);
     this.board.removeFromRecallListAt(team.side, index);
     const ownerBefore = this.board.villageOwner(loc) ?? 0;
@@ -3106,9 +3148,9 @@ export class GameSession {
     };
   }
 
-  private *fireFlow(name: string, loc1?: Location, loc2?: Location): Flow {
+  private *fireFlow(name: string, loc1?: Location, loc2?: Location, data?: WmlConfig): Flow {
     if (this.scenarioResult) return;
-    yield* this.eventPump.fireFlow(name, loc1, loc2);
+    yield* this.eventPump.fireFlow(name, loc1, loc2, data);
   }
 
   /** Pumps anything raised by the last action (sighted, moveto, ...), then applies `[endlevel]`/leader loss. */
@@ -3686,7 +3728,9 @@ export class GameSession {
     if (!leader) return [];
     const team = this.board.getTeam(leader.side);
     if (!team) return [];
-    return this.board.recallList(leader.side).map((u, index) => {
+    // `get_recalls`: only the units this leader's `[filter_recall]` lets it recall; `index` stays the list position.
+    return this.board.recallList(leader.side).flatMap((u, index) => {
+      if (!leaderCanRecall(leader, u, this.board)) return [];
       const cost = u.recallCost >= 0 ? u.recallCost : team.recallCost;
       const snap = this.snapshot.unitTypes[u.type.id];
       return {
@@ -3709,7 +3753,7 @@ export class GameSession {
         maxMoves: u.maxMoves,
         attacks: u.attacks.map(buildWeaponInfo),
         abilities: visibleAbilityInfos(u.abilities),
-      };
+      } satisfies RecallOption;
     });
   }
 
@@ -4859,6 +4903,10 @@ export class GameSession {
     while (this.advancementQueue.length > 0) {
       const unit = this.advancementQueue.shift()!;
       if (!unit.advances()) continue; // healed/demoted by something else in between -- no longer eligible.
+      // `advance_unit_at`: `pre advance` before the choice; WML may make the unit unable to advance.
+      const at = unit.location;
+      this.eventPump.fire('pre advance', at, undefined, undefined, this.collectResponder);
+      if (this.board.unitAt(at) !== unit || !unit.advances()) continue;
       // Upstream's option list: `advances_to` types, then the AMLAs
       // (`get_modification_advances`); `[choose] value=` indexes both.
       const optionIds = unit.advancesTo;
@@ -4953,6 +5001,17 @@ export class GameSession {
   }
 
   private applyAdvancementOption(unit: Unit, index: number, typeIds: readonly string[], amlas: readonly WmlConfig[]): void {
+    // `advance_unit`: the `advance` event first. WML that removes the unit, takes its experience or changes its
+    // type invalidates the advancement.
+    const originalType = unit.type.id;
+    this.eventPump.fire('advance', unit.location, undefined, undefined, this.collectResponder);
+    if (this.board.unitAt(unit.location) !== unit || !unit.advances() || unit.type.id !== originalType) return;
+    this.applyAdvancementChoice(unit, index, typeIds, amlas);
+    // `post advance`, with the unit as it now is.
+    if (this.board.unitAt(unit.location) === unit) this.eventPump.fire('post advance', unit.location, undefined, undefined, this.collectResponder);
+  }
+
+  private applyAdvancementChoice(unit: Unit, index: number, typeIds: readonly string[], amlas: readonly WmlConfig[]): void {
     const before = unit.type.name;
     const env = effectEnvFor(this.eventPump.ctx, unit);
     if (index < typeIds.length) {
@@ -5019,6 +5078,7 @@ export class GameSession {
         shroudData: t.shroud.write(),
         fogData: t.fog.write(),
         villages: this.board.villagesOwnedBy(t.side).map((loc) => ({ x: loc.x, y: loc.y })),
+        config: t.toConfig().toJSON(),
       })),
       units: this.board.allUnits().map((u) => ({
         ...savedUnitFields(u),
@@ -5060,6 +5120,7 @@ export class GameSession {
     for (const t of data.teams) {
       const team = this.board.getTeam(t.side);
       if (!team) continue;
+      if (t.config) team.applyConfig(WmlConfig.fromJSON(t.config));
       team.gold = t.gold;
       if (t.shroudData !== undefined) team.shroud.read(t.shroudData);
       if (t.fogData !== undefined) team.fog.read(t.fogData);
@@ -5436,6 +5497,8 @@ export class GameSession {
       for (const s of u.statuses) unit.statuses.add(s);
     }
     if (u.goto) unit.goto = new Location(u.goto.x, u.goto.y);
+    if (u.extraRecruit) unit.extraRecruit = [...u.extraRecruit];
+    if (u.filterRecall) unit.filterRecall = WmlConfig.fromJSON(u.filterRecall);
     return unit;
   }
 

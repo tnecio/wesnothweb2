@@ -41,6 +41,8 @@ import { Unit, type UnitModification } from '../model/Unit.js';
 import type { UnitType } from '../model/UnitType.js';
 import type { Rng } from '../rng/Rng.js';
 import type { Flow } from '../events/interaction.js';
+import { unitMatchesFilter } from '../events/filter.js';
+import { WmlConfig } from '../wml/config.js';
 
 function splitList(value: string): string[] {
   return value
@@ -459,6 +461,14 @@ export function recallUnit(board: GameBoard, team: Team, unit: Unit, loc: Locati
   const result = placeRecruit(board, team, unit, loc, from, cost, true, false, facing, raise);
   board.statistics?.recallUnit(board.statsUnit(unit));
   return result;
+}
+
+/**
+ * Whether `leader` may recall `unit`: its `[filter_recall]` matches the unit, or it has none (`unit::recall_filter`,
+ * checked by `get_recalls`, `check_unit_recall_location`, the RCA AI's recruitment and `[recall]`).
+ */
+export function leaderCanRecall(leader: Unit, unit: Unit, board: GameBoard): boolean {
+  return !leader.filterRecall || unitMatchesFilter(unit, leader.filterRecall, board, { loc: Location.fromConfig(new WmlConfig()) });
 }
 
 /**
