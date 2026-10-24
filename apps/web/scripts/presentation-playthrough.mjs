@@ -14,6 +14,9 @@
  *   ("leading"), the attacker -- given draw/sheath/victory animations by an `apply_to=new_animation` --
  *   draws its weapon, wins ("victory"), sheathes it, and levels up ("levelout", then "levelin").
  *
+ * - an attack's own events speak after its blows (`attack::perform`), on the debug combat scenario: an
+ *   `[event] name=attack end` `[message]` (The South Guard's quintain) opens only once the fight has played.
+ *
  * - lighting (S5), on Two Brothers 3 (its castle is a `[time_area]`, dark indoors): terrain, foreground
  *   and items lit hex by hex -- the light map inside the castle from the castle's colour, outside from the
  *   day's -- flags, grid and fog by the day's, units not at all; and combat in the castle at its lawful bonus.
@@ -26,7 +29,7 @@
  *   come with one, generated from their race's name generator, shown in the side panel.
  *
  *   node apps/web/scripts/presentation-playthrough.mjs [--base http://localhost:5173]
- *     [--only unit-effects,standing-idle,combat-anims,lighting,linger,names]
+ *     [--only unit-effects,standing-idle,combat-anims,attack-end-order,lighting,linger,names]
  *     [--shots <dir>]
  */
 import { chromium } from 'playwright';
@@ -332,6 +335,33 @@ ${anims}
     check('...in upstream\'s order: draw, blows, victory, sheath, levelout, levelin', at.every((v, i) => v >= 0 && (i === 0 || v > at[i - 1])), events.join(', '));
     const hero = await page.evaluate(() => window.__wesnoth.session.board.allUnits().find((u) => u.id === 'Debug Hero')?.type.id);
     check('the hero has advanced', hero !== 'Spearman', hero);
+    check('no page errors', errors.length === 0, errors.join(' | '));
+    await page.context().close();
+  }
+  if (runs('attack-end-order')) {
+    const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await openScenario(page, base, 'synthetic_combat');
+    await skipToPlay(page);
+    await waitBoardReady(page);
+    await untilPlayable(page);
+    await page.evaluate(() => {
+      window.__wesnoth.addEvent('[event]\nname=attack end\n[message]\nspeaker=narrator\nmessage=after the fight\n[/message]\n[/event]');
+      // The animations played by the time the message opened.
+      window.__atMessage = null;
+      new MutationObserver(() => {
+        if (window.__atMessage || !document.querySelector('.window[role="dialog"]')) return;
+        const played = window.__wesnothDebug.playedAnimations().map((p) => p.event);
+        window.__atMessage = { played };
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+    const before = await page.evaluate(() => window.__wesnothDebug.playedAnimations().length);
+    await performAttack(page, { x: 1, y: 2 }, { x: 2, y: 2 });
+    await page.waitForSelector('.window[role="dialog"]', { timeout: 60000 });
+    const at = await page.evaluate((n) => ({ ...window.__atMessage, played: window.__atMessage?.played.slice(n) }), before);
+    check('the attack end message opens after the blows were played', !!at.played && at.played.includes('attack') && at.played.includes('defend'), at.played?.join(', '));
+    await page.keyboard.press('Enter');
     check('no page errors', errors.length === 0, errors.join(' | '));
     await page.context().close();
   }
