@@ -1438,6 +1438,12 @@ export class GameSession {
    */
   lastAttackAnimation: LastAttackAnimation | null = null;
   /**
+   * Set while a player's attack (or a shown replay's) runs: `execAttack` then hands the exchange to the display
+   * (`lastAttackAnimation`, an `attackExchange` beat) as soon as it is fought out, before `attack end` fires --
+   * upstream draws the blows inside `attack::perform`, so the attack's own events speak after them.
+   */
+  private showAttackLive = false;
+  /**
    * Phase 17 retired this: a human move's walk is now a `moveUnit`
    * cutscene beat yielded by the move itself (see `moveSelectedTo`), so
    * it plays before the `moveto`/`sighted` dialogue it triggers rather
@@ -2705,18 +2711,7 @@ export class GameSession {
       },
       scenarioEnded: () => !!this.eventPump.ctx.endLevel || this.scenarioResult !== null,
     });
-    yield* this.eventPump.pumpFlow();
-
-    // `executeAttack` spent the weapon's `movement_used` (all of it, unless the weapon says otherwise).
-
-    // Advancement comes right after the exchange, before any victory check
-    // (`attack_unit_and_advance`) -- the unit landing the winning kill still levels.
-    if (!result.attackerDied) this.queueAdvancement(attacker);
-    if (!result.defenderDied) this.queueAdvancement(defender);
-    this.processAdvancementQueue(action.rec, action.source ? action : null);
-
-    if (result.defenderDied || result.attackerDied) this.checkForGameEnd();
-    return {
+    const animation: LastAttackAnimation = {
       attacker,
       attackerWeaponIndex: cmd.weapon,
       defender,
@@ -2734,6 +2729,24 @@ export class GameSession {
       attackerLocation: attackerLoc,
       defenderLocation: defenderLoc,
     };
+    if (this.showAttackLive) {
+      // The blows are drawn now, before `attack end` (queued by `performAttack`) and its messages.
+      this.showAttackLive = false;
+      this.lastAttackAnimation = animation;
+      yield { kind: 'beat', beat: { kind: 'attackExchange' } };
+    }
+    yield* this.eventPump.pumpFlow();
+
+    // `executeAttack` spent the weapon's `movement_used` (all of it, unless the weapon says otherwise).
+
+    // Advancement comes right after the exchange, before any victory check
+    // (`attack_unit_and_advance`) -- the unit landing the winning kill still levels.
+    if (!result.attackerDied) this.queueAdvancement(attacker);
+    if (!result.defenderDied) this.queueAdvancement(defender);
+    this.processAdvancementQueue(action.rec, action.source ? action : null);
+
+    if (result.defenderDied || result.attackerDied) this.checkForGameEnd();
+    return animation;
   }
 
   /** `[recruit]` (`recruit_unit`): a new unit of `type` at `loc`, called by the leader at `from`. */
@@ -4937,13 +4950,19 @@ export class GameSession {
     // (`execAttack`), exactly as for the AI, a replay and a redo.
     const cmd = this.attackCommand(pending.attacker.location, pending.attackerWeaponIndex, pending.defender.location, pending.defenderWeaponIndex);
     const logBefore = this.log.length;
-    const animation = yield* this.runSynced(cmd, (action) => this.execAttack(cmd, action), { present: true });
+    // `execAttack` hands the exchange to the display itself (`showAttackLive`), before the attack's last events.
+    this.showAttackLive = true;
+    let animation: LastAttackAnimation | null;
+    try {
+      animation = yield* this.runSynced(cmd, (action) => this.execAttack(cmd, action), { present: true });
+    } finally {
+      this.showAttackLive = false;
+    }
     if (!animation) {
       // The attack event ended the scenario or moved/removed a combatant: upstream aborts the attack.
       this.clearSelection();
       return null;
     }
-    this.lastAttackAnimation = animation;
     const { result } = animation;
 
     const attackerName = pending.preview.attacker.name;
@@ -5506,16 +5525,16 @@ export class GameSession {
     // (`lastAttackAnimation`) and a side turn's healing (`lastHealAnimations`).
     const heals: HealOutcome[] = [];
     if (present) this.healOutcomeSink = heals;
+    // An attack's blows are handed over by `execAttack` itself, before its last events (`showAttackLive`).
+    this.showAttackLive = present && rec.command.kind === 'attack';
     let done: unknown;
     try {
       done = yield* this.runSynced(rec.command, (action) => this.execCommand(rec.command, action), { source: rec.dependents, present });
     } finally {
       if (present) this.healOutcomeSink = null;
+      this.showAttackLive = false;
     }
-    if (present) {
-      if (rec.command.kind === 'attack' && done) this.lastAttackAnimation = done as LastAttackAnimation;
-      if (heals.length > 0) this.lastHealAnimations = heals;
-    }
+    if (present && heals.length > 0) this.lastHealAnimations = heals;
     const mine = this.recorder.last();
     if (done !== null && rec.digest !== undefined && mine && mine.digest !== rec.digest && this.syncIssues.length === before) {
       this.syncIssues.push({
