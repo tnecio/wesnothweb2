@@ -13,6 +13,15 @@ import type { Callable } from './variant';
 import { Variant } from './variant';
 
 /**
+ * `formula_callable::query_value`: `self` names the callable itself when it has one (`has_self_`), else the
+ * lookup goes on as for any key -- so through a `map_formula_callable` to its fallback, a unit's `self` is the unit.
+ */
+export function queryValue(c: Callable, key: string): Variant {
+  if (key === 'self' && c.hasSelf !== false) return Variant.callable(c);
+  return c.getValue(key);
+}
+
+/**
  * TS port of `wfl::map_formula_callable`: a simple named-variable bag with
  * an optional fallback callable for keys it doesn't have. Used both as the
  * default top-level evaluation context and to bind function-call arguments
@@ -21,6 +30,7 @@ import { Variant } from './variant';
 export class MapFormulaCallable implements Callable {
   private readonly values = new Map<string, Variant>();
   private fallback: Callable | null = null;
+  readonly hasSelf = false;
 
   add(key: string, value: Variant): this {
     this.values.set(key, value);
@@ -38,7 +48,7 @@ export class MapFormulaCallable implements Callable {
   getValue(key: string): Variant {
     const v = this.values.get(key);
     if (v !== undefined) return v;
-    if (this.fallback) return this.fallback.getValue(key);
+    if (this.fallback) return queryValue(this.fallback, key);
     return Variant.null_();
   }
 
@@ -58,9 +68,10 @@ export const EMPTY_CALLABLE: Callable = { getValue: () => Variant.null_(), getIn
  */
 export function withBackup(main: Callable, backup: Callable): Callable {
   return {
+    hasSelf: false,
     getValue(key: string): Variant {
-      const v = main.getValue(key);
-      return v.isNull() ? backup.getValue(key) : v;
+      const v = queryValue(main, key);
+      return v.isNull() ? queryValue(backup, key) : v;
     },
     getInputs(): string[] {
       return [...(main.getInputs?.() ?? []), ...(backup.getInputs?.() ?? [])];
@@ -77,6 +88,7 @@ export function withBackup(main: Callable, backup: Callable): Callable {
  */
 export function memberCallable(item: Variant): Callable {
   return {
+    hasSelf: false,
     getValue(key: string): Variant {
       return item.getMember(key);
     },
@@ -96,8 +108,8 @@ export function memberCallable(item: Variant): Callable {
 export function dotCallable(global: Callable, local: Callable): Callable {
   return {
     getValue(key: string): Variant {
-      const v = local.getValue(key);
-      return v.isNull() ? global.getValue(key) : v;
+      const v = queryValue(local, key);
+      return v.isNull() ? queryValue(global, key) : v;
     },
     getInputs(): string[] {
       return local.getInputs?.() ?? [];

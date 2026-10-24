@@ -216,7 +216,7 @@
               {#if atk.specials.length > 0}
                 <span class="specials">
                   {#each atk.specials as special, i (i)}{#if i > 0},
-                    {/if}<HelpLink request={{ topic: special.helpTopic }} title={special.description}>{special.name}</HelpLink>{/each}
+                    {/if}<span class:inactive={!special.active}><HelpLink request={{ topic: special.helpTopic }} title={special.description}>{special.name}</HelpLink></span>{/each}
                 </span>
               {/if}
             </li>
@@ -230,7 +230,7 @@
         <div class="attacks-label">{t('Abilities:')}</div>
         <ul>
           {#each info.abilities as ab (ab.name)}
-            <li><HelpLink request={{ topic: ab.helpTopic }} title={ab.description}>{ab.name}</HelpLink></li>
+            <li class:inactive={!ab.active}><HelpLink request={{ topic: ab.helpTopic }} title={ab.description}>{ab.name}</HelpLink></li>
           {/each}
         </ul>
       </div>
@@ -663,5 +663,11 @@
   }
   .turn-actions button {
     flex: 1 1 auto;
+  }
+
+  /* Phase 27b: a special or ability not active here, in upstream's `font::INACTIVE_COLOR`. */
+  .inactive,
+  .inactive :global(*) {
+    color: rgb(150, 150, 150);
   }
 </style>

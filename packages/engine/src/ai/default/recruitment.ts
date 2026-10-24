@@ -36,11 +36,12 @@ import { Location } from '../../model/Location.js';
 import { Unit } from '../../model/Unit.js';
 import type { UnitType } from '../../model/UnitType.js';
 import type { Team } from '../../model/Team.js';
+import type { GameBoard } from '../../model/GameBoard.js';
 import type { TerrainCode } from '../../model/Terrain.js';
 import { WmlConfig } from '../../wml/config.js';
 import { findVacantCastleTile, leaderCanRecall } from '../../actions/recruit.js';
-import { buildBattleContext, chooseDefenderWeaponIndex, betterCombat, type UnitStatsOptions } from '../../actions/combatStats.js';
-import { Combatant, simulateCombat } from '../../actions/attackPrediction.js';
+import { battleContextUnitStats, betterCombat } from '../../actions/combatStats.js';
+import { Combatant } from '../../actions/attackPrediction.js';
 import { POISON_AMOUNT } from '../../actions/gameConfig.js';
 import { CandidateAction } from '../composite/rca.js';
 
@@ -77,57 +78,77 @@ function normalizedScores(data: LeaderData): Map<string, number> {
 }
 
 /**
- * Mirrors `simulate_attack`: the best attacker-weapon/defender-counter
- * pairing (via the same `chooseDefenderWeaponIndex`/`betterCombat`
- * machinery `attackAnalysis.ts` uses), fought once, reporting each side's
- * expected HP loss (poison-adjusted, clamped to `[0, maxHitpoints]`,
- * matching `attack_simulation::get_avg_hp_of_combatant`). No board, no
- * abilities (leadership/backstab/resistance) -- upstream's own dummy
- * matchup simulation doesn't model those either.
+ * `attack_simulation`: one fight between dummy units of two types, at no hex, each on the given average
+ * defense (a percentage, rounded as upstream) and lawful bonus (with no liminal bonus, as
+ * `generic_combat_modifier(lawful_bonus, ..., 0)`).
+ */
+class AttackSimulation {
+  readonly attacker: Combatant;
+  readonly defender: Combatant;
+  constructor(
+    board: GameBoard,
+    readonly attackerUnit: Unit,
+    readonly defenderUnit: Unit,
+    attackerDefense: number,
+    defenderDefense: number,
+    attackerWeaponIndex: number,
+    defenderWeaponIndex: number,
+    lawfulBonus: number,
+  ) {
+    const aw = attackerUnit.attacks[attackerWeaponIndex];
+    const dw = defenderWeaponIndex >= 0 ? defenderUnit.attacks[defenderWeaponIndex] : undefined;
+    const aStats = battleContextUnitStats(board, attackerUnit, Location.NULL, aw, true, defenderUnit, Location.NULL, dw, Math.round(defenderDefense), lawfulBonus);
+    const dStats = battleContextUnitStats(board, defenderUnit, Location.NULL, dw, false, attackerUnit, Location.NULL, aw, Math.round(attackerDefense), lawfulBonus);
+    this.attacker = new Combatant(aStats);
+    this.defender = new Combatant(dStats);
+    this.attacker.fight(this.defender);
+  }
+
+  /** `better_result`: harm weight 0, for the defender's choice or the attacker's. */
+  betterResult(other: AttackSimulation, forDefender: boolean): boolean {
+    return forDefender
+      ? betterCombat(this.defender, this.attacker, 1, other.defender, other.attacker, 1, 0)
+      : betterCombat(this.attacker, this.defender, 1, other.attacker, other.defender, 1, 0);
+  }
+
+  /** `get_avg_hp_of_combatant`: average hp, less poison, clamped to the unit's maximum. */
+  avgHp(ofAttacker: boolean): number {
+    const c = ofAttacker ? this.attacker : this.defender;
+    const u = ofAttacker ? this.attackerUnit : this.defenderUnit;
+    return Math.min(u.maxHitpoints, Math.max(0, c.averageHp() - c.poisoned * POISON_AMOUNT));
+  }
+}
+
+/**
+ * `simulate_attack`: for each of the attacker's weapons, the defender's best answer among its weapons of the same
+ * range (or none), then the attacker's best of those; each side's expected hp loss.
  */
 function simulateAttackDamage(
+  board: GameBoard,
   attackerType: UnitType,
   defenderType: UnitType,
   attackerDefense: number,
   defenderDefense: number,
   lawfulBonus: number,
-  maxLiminalBonus: number,
 ): { damageToAttacker: number; damageToDefender: number } {
   const attacker = Unit.create(attackerType, 1, Location.NULL);
   const defender = Unit.create(defenderType, 2, Location.NULL);
-  const options: UnitStatsOptions = { attackerLawfulBonus: lawfulBonus, defenderLawfulBonus: lawfulBonus, maxLiminalBonus };
-
-  let best: { attacker: Combatant; defender: Combatant } | undefined;
+  let bestAttack: AttackSimulation | undefined;
   for (let i = 0; i < attacker.attacks.length; i++) {
-    const attackerWeapon = attacker.attacks[i]!;
-    const defenderWeaponIndex = chooseDefenderWeaponIndex(attacker, i, defender, 1, attackerDefense, defenderDefense, options);
-    const defenderWeapon = defenderWeaponIndex >= 0 ? defender.attacks[defenderWeaponIndex] : undefined;
-    const { attacker: aStats, defender: dStats } = buildBattleContext({
-      attacker,
-      attackerWeapon,
-      defender,
-      defenderWeapon,
-      distance: 1,
-      attackerTerrainDefense: attackerDefense,
-      defenderTerrainDefense: defenderDefense,
-      options,
-    });
-    const { attacker: aCombatant, defender: dCombatant } = simulateCombat(aStats, dStats);
-    // harmWeight 0: the attacker's own choice here only cares about maximizing damage dealt (mirrors
-    // attack_simulation::better_result's `battle_context::better_combat(..., 0)` call for `for_defender=false`).
-    if (!best || betterCombat(aCombatant, dCombatant, 1, best.attacker, best.defender, 1, 0)) {
-      best = { attacker: aCombatant, defender: dCombatant };
+    let bestResponse: AttackSimulation | undefined;
+    for (let j = 0; j < defender.attacks.length; j++) {
+      if (attacker.attacks[i]!.range !== defender.attacks[j]!.range) continue;
+      const sim = new AttackSimulation(board, attacker, defender, attackerDefense, defenderDefense, i, j, lawfulBonus);
+      if (!bestResponse || sim.betterResult(bestResponse, true)) bestResponse = sim;
     }
+    // The defender cannot fight back: simulate that as well.
+    bestResponse ??= new AttackSimulation(board, attacker, defender, attackerDefense, defenderDefense, i, -1, lawfulBonus);
+    if (!bestAttack || bestResponse.betterResult(bestAttack, false)) bestAttack = bestResponse;
   }
-  if (!best) return { damageToAttacker: 0, damageToDefender: 0 };
-
-  const avgHp = (c: Combatant, maxHp: number): number => {
-    const hp = Math.max(0, Math.min(maxHp, c.averageHp() - c.poisoned * POISON_AMOUNT));
-    return hp;
-  };
+  if (!bestAttack) return { damageToAttacker: 0, damageToDefender: 0 };
   return {
-    damageToAttacker: attackerType.hitpoints - avgHp(best.attacker, attackerType.hitpoints),
-    damageToDefender: defenderType.hitpoints - avgHp(best.defender, defenderType.hitpoints),
+    damageToAttacker: attacker.maxHitpoints - bestAttack.avgHp(true),
+    damageToDefender: defender.maxHitpoints - bestAttack.avgHp(false),
   };
 }
 
@@ -139,16 +160,9 @@ function simulateAttackDamage(
  * combined, so the return value only depends on the two types (and the
  * given defenses/ToD), not on attack order.
  */
-export function compareUnitTypes(
-  typeA: UnitType,
-  typeB: UnitType,
-  defenseA: number,
-  defenseB: number,
-  lawfulBonus: number,
-  maxLiminalBonus: number,
-): number {
-  const aAttacksB = simulateAttackDamage(typeA, typeB, defenseA, defenseB, lawfulBonus, maxLiminalBonus);
-  const bAttacksA = simulateAttackDamage(typeB, typeA, defenseB, defenseA, lawfulBonus, maxLiminalBonus);
+export function compareUnitTypes(board: GameBoard, typeA: UnitType, typeB: UnitType, defenseA: number, defenseB: number, lawfulBonus: number): number {
+  const aAttacksB = simulateAttackDamage(board, typeA, typeB, defenseA, defenseB, lawfulBonus);
+  const bAttacksA = simulateAttackDamage(board, typeB, typeA, defenseB, defenseA, lawfulBonus);
   const damageToA = aAttacksB.damageToAttacker + bAttacksA.damageToDefender;
   const damageToB = aAttacksB.damageToDefender + bAttacksA.damageToAttacker;
 
@@ -340,9 +354,10 @@ export class RecruitmentCandidateAction extends CandidateAction {
   // --- combat analysis (mirrors do_combat_analysis, minus important-hexes weighting) ---
 
   private averageDefense(type: UnitType, terrainCodes: readonly TerrainCode[]): number {
-    if (terrainCodes.length === 0) return 50;
+    // `get_average_defense`: defense, not the chance to be hit; 0 with no terrain.
+    if (terrainCodes.length === 0) return 0;
     let sum = 0;
-    for (const code of terrainCodes) sum += type.moveType.defenseModifier(code);
+    for (const code of terrainCodes) sum += 100 - type.moveType.defenseModifier(code);
     return sum / terrainCodes.length;
   }
 
@@ -368,7 +383,6 @@ export class RecruitmentCandidateAction extends CandidateAction {
     const team = this.ctx.team();
     const terrainCodes = this.boardTerrainCodes();
     const lawfulBonus = this.ctx.host.lawfulBonusAt(leaderData[0]?.leader.location ?? Location.NULL);
-    const maxLiminalBonus = this.ctx.host.maxLiminalBonus;
 
     const enemyUnits: Array<{ type: UnitType; hp: number }> = [];
     for (const u of board.allUnits()) {
@@ -405,7 +419,7 @@ export class RecruitmentCandidateAction extends CandidateAction {
         for (const recruit of data.recruits) {
           const recruitType = this.resolveType(recruit);
           if (!recruitType) continue;
-          let score = compareUnitTypes(recruitType, enemy.type, getDefense(recruitType), getDefense(enemy.type), lawfulBonus, maxLiminalBonus);
+          let score = compareUnitTypes(this.ctx.board, recruitType, enemy.type, getDefense(recruitType), getDefense(enemy.type), lawfulBonus);
           score *= enemy.hp;
           score = Math.pow(score, COMBAT_SCORE_POWER);
           tempScores.set(recruit, (tempScores.get(recruit) ?? 0) + score);

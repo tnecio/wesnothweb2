@@ -794,7 +794,7 @@
  "3.14": {
   "status": "done",
   "evidence": [
-   "packages/engine/test/actions/abilityEffects.test.ts",
+   "packages/engine/test/actions/abilities.test.ts",
    "packages/engine/test/actions/combat.test.ts"
   ]
  },
@@ -1421,11 +1421,13 @@
   ]
  },
  "5.3": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "packages/ui/src/gameSession.test.ts"
   ],
-  "note": "The best-weapon choice is implemented but untested."
+  "note": "Phase 27b: fill_weapon_choices -- the weapon offered first is the best by better_attack(..., 0.5)."
  },
  "5.4": {
   "status": "done",
@@ -1455,11 +1457,12 @@
   "note": "Defense-based chance to hit is tested; accuracy/parry (3.21) and the CTH specials (7.x) are not."
  },
  "5.8": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
-  ],
-  "note": "Clamped to 0-100 as upstream; untested."
+   "docs/completeness/wml-tests-baseline.json",
+   "packages/engine/src/actions/combatStats.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/chance_to_hit"
+  ]
  },
  "5.9": {
   "status": "done",
@@ -1470,7 +1473,7 @@
  "5.10": {
   "status": "done",
   "evidence": [
-   "packages/engine/test/actions/abilityEffects.test.ts"
+   "packages/engine/test/actions/abilities.test.ts"
   ]
  },
  "5.11": {
@@ -1615,12 +1618,13 @@
   ]
  },
  "5.32": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
+   "docs/completeness/wml-tests-baseline.json",
+   "packages/engine/src/actions/combat.ts",
    "packages/engine/test/actions/attackPrediction.test.ts",
-   "packages/engine/src/actions/combat.ts"
-  ],
-  "note": "Predicted and applied, but only the prediction is tested."
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/poison"
+  ]
  },
  "5.33": {
   "status": "partial",
@@ -1630,78 +1634,86 @@
   "note": "Implemented (never below 1 HP), but untested."
  },
  "5.34": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
+   "docs/completeness/wml-tests-baseline.json",
    "packages/engine/src/actions/combat.ts",
-   "packages/ui/src/save/wesnothSave.test.ts"
-  ],
-  "note": "unpoisonable is honoured and saved; no combat test."
+   "packages/ui/src/save/wesnothSave.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/poison"
+  ]
  },
  "5.35": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/heal.ts"
-  ],
-  "note": "Implemented; untested."
+   "packages/engine/src/actions/heal.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/heals",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/regenerate"
+  ]
  },
  "5.36": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
+   "docs/completeness/wml-tests-baseline.json",
+   "packages/engine/src/actions/combatStats.ts",
    "packages/engine/test/actions/attackPrediction.test.ts",
-   "packages/engine/src/actions/combatStats.ts"
-  ],
-  "note": "Halved damage and doubled movement cost (4.34) are implemented; expiry and the damage halving are untested."
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/slow"
+  ]
  },
  "5.37": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
+   "docs/completeness/wml-tests-baseline.json",
+   "packages/engine/test/actions/unitCanAct.test.ts",
    "packages/engine/test/events/supportWml.test.ts",
-   "packages/engine/test/actions/unitCanAct.test.ts"
-  ],
-  "note": "[petrify] tags and what a petrified unit cannot do are tested; the petrifies special in combat is not."
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/petrifies"
+  ]
  },
  "5.38": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
+   "packages/engine/src/actions/combat.ts",
    "packages/engine/test/actions/attackPrediction.test.ts",
-   "packages/engine/src/actions/combat.ts"
-  ],
-  "note": "Implemented for the mainline special; only the prediction touches it in tests, and its [filter_opponent] is not evaluated (category 7)."
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/drains"
+  ]
  },
  "5.39": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
-  ],
-  "note": "Implemented; no test."
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/berserk"
+  ]
  },
  "5.40": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/test/actions/attackPrediction.test.ts"
-  ],
-  "note": "Implemented; only the prediction touches it."
+   "packages/engine/test/actions/attackPrediction.test.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/firststrike"
+  ]
  },
  "5.41": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
-  ],
-  "note": "Implemented (offense only, both sides doubled); no test."
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/specials.test.ts"
+  ]
  },
  "5.42": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
-  ],
-  "note": "Implemented (offense only); no test."
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/specials.test.ts"
+  ]
  },
  "5.43": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
-  ],
-  "note": "Implemented; no test."
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/specials.test.ts"
+  ]
  },
  "5.44": {
   "status": "done",
@@ -1735,7 +1747,7 @@
   "evidence": [
    "packages/engine/src/actions/attackPrediction.ts"
   ],
-  "note": "The calculator handles drain, poison, slow, berserk, swarm and firststrike; only swarm has its own test."
+  "note": "The calculator takes every special through the pipeline (Phase 27b); only swarm has its own prediction test."
  },
  "5.49": {
   "status": "done",
@@ -1771,16 +1783,20 @@
   "note": "Honoured in combat; untested."
  },
  "5.54": {
-  "status": "missing",
-  "evidence": [],
-  "note": "Bug: the [disable] special is not implemented. The Deceiver's Gambit gives Eldred's baneblade [disable] active_on=offense, so he can attack with it; HttT uses it too."
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/campaignSpecials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/disable"
+  ],
+  "note": "Phase 27b: [disable] (and out of range) makes a weapon unusable: not offered, not chosen to answer, and an attack with it ends before the attack event."
  },
  "5.55": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/abilityEffects.ts"
-  ],
-  "note": "Implemented; untested."
+   "packages/engine/src/actions/abilities.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage_type"
+  ]
  },
  "5.56": {
   "status": "partial",
@@ -1798,20 +1814,24 @@
   ]
  },
  "6.1": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
+   "docs/completeness/wml-tests-baseline.json",
+   "packages/engine/src/model/effects.ts",
    "packages/ui/src/SidePanel.svelte",
-   "packages/engine/src/model/effects.ts"
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/heals"
   ],
-  "note": "Abilities are listed and act; apply_to=new_ability/remove_ability are implemented but untested."
+  "note": "Phase 27b: through the ability and special pipeline; upstream's own tests in AbilitiesWML."
  },
  "6.2": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/ui/src/SidePanel.svelte",
-   "apps/web/scripts/help-playthrough.mjs"
+   "apps/web/scripts/help-playthrough.mjs",
+   "packages/engine/test/actions/abilities.test.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "packages/ui/src/SidePanel.svelte"
   ],
-  "note": "name=, female_name= and description= are shown; name_inactive=/description_inactive= are not (6.27)."
+  "note": "Phase 27b: names and descriptions by ability_tooltips, inactive ones by name_inactive=/description_inactive=, drawn in the inactive colour."
  },
  "6.3": {
   "status": "done",
@@ -1821,43 +1841,47 @@
   "note": "Read unconditionally (no filters on the ability evaluated), which is right for the mainline [heals]."
  },
  "6.4": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/heal.ts"
-  ],
-  "note": "poison=cured and poison=slowed (allies) are implemented; untested."
+   "packages/engine/src/actions/heal.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/heals"
+  ]
  },
  "6.5": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/heal.ts"
-  ],
-  "note": "The largest healer value applies, as upstream; untested."
+   "packages/engine/src/actions/heal.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/heals"
+  ]
  },
  "6.6": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/heal.ts"
-  ],
-  "note": "Any healer of the side whose turn it is heals, as upstream; untested."
+   "packages/engine/src/actions/heal.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/heals"
+  ]
  },
  "6.7": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/heal.ts"
+   "packages/engine/src/actions/heal.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/regenerate"
   ],
-  "note": "Implemented, read unconditionally; untested."
+  "note": "Phase 27b: all 39 of upstream's regenerate tests pass."
  },
  "6.8": {
   "status": "done",
   "evidence": [
-   "packages/engine/test/actions/abilityEffects.test.ts"
+   "packages/engine/test/actions/abilities.test.ts"
   ]
  },
  "6.9": {
   "status": "done",
   "evidence": [
-   "packages/engine/test/actions/abilityEffects.test.ts"
+   "packages/engine/test/actions/abilities.test.ts"
   ]
  },
  "6.10": {
@@ -1900,21 +1924,22 @@
  "6.16": {
   "status": "done",
   "evidence": [
-   "packages/engine/test/actions/abilityEffects.test.ts"
+   "packages/engine/test/actions/abilities.test.ts"
   ]
  },
  "6.17": {
   "status": "done",
   "evidence": [
-   "packages/engine/test/actions/vision.test.ts",
-   "packages/engine/test/actions/abilityEffects.test.ts"
+   "packages/engine/test/actions/abilities.test.ts",
+   "packages/engine/test/actions/vision.test.ts"
   ],
   "note": "An ability's [filter] on its owner is evaluated (hides, leadership)."
  },
  "6.18": {
-  "status": "missing",
-  "evidence": [],
-  "note": "An ability's [filter_adjacent] is not evaluated (45 campaign files use [filter_adjacent], some on abilities)."
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilities.test.ts"
+  ]
  },
  "6.19": {
   "status": "done",
@@ -1924,17 +1949,17 @@
   ]
  },
  "6.20": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/abilityEffects.ts",
+   "packages/engine/src/actions/abilities.ts",
+   "packages/engine/test/actions/abilities.test.ts",
    "packages/engine/test/actions/illumination.test.ts"
-  ],
-  "note": "radius= (including all_map) works; adjacent= directions are not evaluated."
+  ]
  },
  "6.21": {
   "status": "done",
   "evidence": [
-   "packages/engine/test/actions/abilityEffects.test.ts"
+   "packages/engine/test/actions/abilities.test.ts"
   ]
  },
  "6.22": {
@@ -1943,53 +1968,61 @@
   "note": "Not ported; no shipped content uses it."
  },
  "6.23": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/test/actions/illumination.test.ts"
-  ],
-  "note": "cumulative= is honoured for illumination only."
+   "packages/engine/test/actions/abilities.test.ts",
+   "packages/engine/test/actions/illumination.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/leadership"
+  ]
  },
  "6.24": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/test/actions/abilityEffects.test.ts"
-  ],
-  "note": "value= and multiply= are tested; add=, sub= and divide= are implemented but untested."
+   "packages/engine/test/actions/abilities.test.ts"
+  ]
  },
  "6.25": {
   "status": "done",
   "evidence": [
-   "packages/engine/test/actions/abilityEffects.test.ts"
+   "packages/engine/test/actions/abilities.test.ts"
   ]
  },
  "6.26": {
-  "status": "missing",
-  "evidence": [],
-  "note": "Not ported; 4 shipped campaign files use it."
+  "status": "done",
+  "evidence": [
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/leadership",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/resistance"
+  ]
  },
  "6.27": {
-  "status": "missing",
-  "evidence": [],
-  "note": "Inactive abilities are not shown as such; 6 shipped campaign files set name_inactive=."
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/specials.test.ts"
+  ],
+  "note": "Phase 27b: see 6.2; weapon specials likewise (special_tooltips)."
  },
  "6.28": {
-  "status": "missing",
-  "evidence": [],
-  "note": "Not ported; 2 shipped campaign files use it."
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/abilities.test.ts"
+  ],
+  "note": "Phase 27b: [filter_ability] and its older name [experimental_filter_ability], active=yes or not."
  },
  "6.29": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/model/effects.ts"
-  ],
-  "note": "apply_to=remove_ability is implemented but untested; the [experimental_filter_ability] form is missing."
+   "docs/completeness/wml-tests-baseline.json",
+   "packages/engine/src/model/effects.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/heals"
+  ]
  },
  "6.30": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/model/effects.ts"
-  ],
-  "note": "Implemented; untested."
+   "docs/completeness/wml-tests-baseline.json",
+   "packages/engine/src/model/effects.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/heals"
+  ]
  },
  "6.31": {
   "status": "done",
@@ -2006,11 +2039,11 @@
   "note": "Any named ability is listed, and SUF ability= matches it."
  },
  "6.33": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/events/filter.ts"
-  ],
-  "note": "Events can filter on ability=; [experimental_filter_ability] is missing."
+   "packages/engine/src/events/filter.ts",
+   "packages/engine/test/actions/abilities.test.ts"
+  ]
  },
  "6.34": {
   "status": "done",
@@ -2035,23 +2068,26 @@
  "6.37": {
   "status": "done",
   "evidence": [
-   "packages/engine/test/actions/abilityEffects.test.ts",
+   "packages/engine/test/actions/abilities.test.ts",
    "packages/engine/test/actions/illumination.test.ts"
   ]
  },
  "6.38": {
   "status": "done",
   "evidence": [
-   "packages/engine/src/actions/abilityEffects.ts"
+   "packages/engine/src/actions/abilities.ts"
   ],
   "note": "Abilities are found by a board scan that ignores fog, as upstream."
  },
  "6.39": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/leadership",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/resistance"
   ],
-  "note": "Leadership, resistance abilities and the mainline specials combine in upstream's order for mainline content; the general composition is not ported."
+  "note": "Phase 27b: abilities and specials combine through unit_abilities::effect, priority groups and overwrite_specials= as upstream."
  },
  "6.40": {
   "status": "done",
@@ -2067,28 +2103,34 @@
   "note": "See 3.27."
  },
  "7.1": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
-  ],
-  "note": "Specials apply only to combats using their weapon, but only those with a mainline id= (poison, slow, drains, petrifies, firststrike, berserk, swarm, marksman, magical, charge, backstab, heal_on_hit, plague) do anything; a campaign's own specials (Descent into Darkness's spells, parry, smoke, stagger and others in about 20 campaign files) are ignored. The generic special pipeline (units/abilities.cpp) is not ported."
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.2": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/test/actions/combat.test.ts"
-  ],
-  "note": "Only the mainline [damage] specials (charge, backstab) apply; a [damage] with any other id is ignored."
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.3": {
-  "status": "missing",
-  "evidence": [],
-  "note": "[filter_opponent] on a special is not evaluated."
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.4": {
-  "status": "missing",
-  "evidence": [],
-  "note": "The generic [attacks] special is not applied (3 campaign files use it)."
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/attacks"
+  ]
  },
  "7.5": {
   "status": "done",
@@ -2097,61 +2139,69 @@
   ]
  },
  "7.6": {
-  "status": "partial",
-  "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
-  ],
-  "note": "Only marksman and magical; other [chance_to_hit] specials (18 campaign files) are ignored."
- },
- "7.7": {
-  "status": "partial",
-  "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
-  ],
-  "note": "Implemented; untested."
- },
- "7.8": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
    "packages/engine/src/actions/combatStats.ts",
-   "packages/engine/test/actions/attackPrediction.test.ts"
-  ],
-  "note": "Implemented; [filter_opponent] (undead immunity comes from resistance data, not the filter) is not evaluated; barely tested."
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/chance_to_hit"
+  ]
+ },
+ "7.7": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/berserk"
+  ]
+ },
+ "7.8": {
+  "status": "done",
+  "evidence": [
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/attackPrediction.test.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/drains"
+  ]
  },
  "7.9": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
-  ],
-  "note": "Implemented; untested."
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/heal_on_hit"
+  ]
  },
  "7.10": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/test/actions/attackPrediction.test.ts"
-  ],
-  "note": "Implemented; barely tested."
+   "packages/engine/test/actions/attackPrediction.test.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/firststrike"
+  ]
  },
  "7.11": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
-  ],
-  "note": "See 5.32."
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/poison"
+  ]
  },
  "7.12": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
-  ],
-  "note": "See 5.36."
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/slow"
+  ]
  },
  "7.13": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
-  ],
-  "note": "See 5.37."
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/petrifies"
+  ]
  },
  "7.14": {
   "status": "done",
@@ -2161,88 +2211,120 @@
   ]
  },
  "7.15": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/abilityEffects.ts"
-  ],
-  "note": "See 5.55."
+   "packages/engine/src/actions/abilities.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage_type"
+  ]
  },
  "7.16": {
-  "status": "missing",
-  "evidence": [],
-  "note": "See 5.54."
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/disable"
+  ]
  },
  "7.17": {
-  "status": "missing",
-  "evidence": [],
-  "note": "[filter_self] on a special is not evaluated."
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/chance_to_hit",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.18": {
-  "status": "missing",
-  "evidence": [],
-  "note": "[filter_opponent] on a special is not evaluated."
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/chance_to_hit",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.19": {
-  "status": "missing",
-  "evidence": [],
-  "note": "Not evaluated."
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/chance_to_hit",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.20": {
-  "status": "missing",
-  "evidence": [],
-  "note": "Not evaluated."
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/chance_to_hit",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.21": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/test/actions/combat.test.ts"
+   "packages/engine/test/actions/combat.test.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/chance_to_hit",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
   ],
-  "note": "Backstab's condition is a hand-written geometric check; [filter_adjacent] itself is not evaluated."
+  "note": "Phase 27b: backstab is its real [filter_opponent] formula; the old top-level [filter_adjacent] becomes [filter_self][filter_adjacent], as upstream's do_compat_fixes."
  },
  "7.22": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
-  ],
-  "note": "Hard-wired per mainline special (charge is both, backstab self); apply_to= is not read."
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/chance_to_hit",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.23": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
-  ],
-  "note": "Hard-wired per mainline special (marksman, charge, backstab on offense); active_on= is not read."
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/chance_to_hit",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.24": {
-  "status": "missing",
-  "evidence": [],
-  "note": "Not evaluated for specials."
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/chance_to_hit",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.25": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/test/actions/abilityEffects.test.ts"
-  ],
-  "note": "Evaluated for abilities (steadfast), not for specials."
+   "packages/engine/test/actions/abilities.test.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/chance_to_hit",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.26": {
-  "status": "missing",
-  "evidence": [],
-  "note": "Not ported."
+  "status": "done",
+  "evidence": [
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/chance_to_hit",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.27": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/model/UnitType.ts"
-  ],
-  "note": "Implemented (append/replace, specials_list=); untested."
+   "docs/completeness/wml-tests-baseline.json",
+   "packages/engine/src/model/UnitType.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.28": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/model/UnitType.ts"
-  ],
-  "note": "Implemented; untested."
+   "docs/completeness/wml-tests-baseline.json",
+   "packages/engine/src/model/UnitType.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.29": {
   "status": "done",
@@ -2251,12 +2333,13 @@
   ]
  },
  "7.30": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
+   "packages/engine/test/actions/specials.test.ts",
    "packages/ui/src/AttackDialog.svelte",
    "packages/ui/src/SidePanel.svelte"
   ],
-  "note": "Specials are named; whether one is active is not shown (name_inactive=)."
+  "note": "Phase 27b: the attack dialog and damage calculation show each special as active or not in that fight."
  },
  "7.31": {
   "status": "partial",
@@ -2266,47 +2349,53 @@
   "note": "See 3.27."
  },
  "7.32": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/attackPrediction.ts"
-  ],
-  "note": "Combined as upstream for mainline specials; untested."
+   "packages/engine/src/actions/attackPrediction.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.33": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/attackPrediction.ts"
-  ],
-  "note": "Implemented; untested."
+   "packages/engine/src/actions/attackPrediction.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.34": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/attackPrediction.ts"
-  ],
-  "note": "Implemented; untested."
+   "packages/engine/src/actions/attackPrediction.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.35": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
-  ],
-  "note": "Implemented for the two mainline specials; untested together."
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "7.36": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/test/actions/attackPrediction.test.ts"
-  ],
-  "note": "See 5.48."
+   "packages/engine/test/actions/attackPrediction.test.ts",
+   "packages/engine/test/actions/specials.test.ts"
+  ]
  },
  "7.37": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/ui/src/AttackDialog.svelte",
-   "packages/engine/src/model/UnitType.ts"
+   "packages/engine/src/model/UnitType.ts",
+   "packages/engine/test/actions/campaignSpecials.test.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "packages/ui/src/AttackDialog.svelte"
   ],
-  "note": "A custom special is listed and weapon filters match it (special_id=), but it has no effect in combat."
+  "note": "Phase 27b: a campaign's own specials and weapon abilities take effect (Descent into Darkness's soul eater, The Deceiver's Gambit's [disable])."
  },
  "7.38": {
   "status": "done",
@@ -2315,11 +2404,12 @@
   ]
  },
  "7.39": {
-  "status": "partial",
+  "status": "done",
   "evidence": [
-   "packages/engine/src/actions/combatStats.ts"
-  ],
-  "note": "Defender-side mainline specials apply in retaliation; untested, and apply_to=/active_on= are not read generically."
+   "packages/engine/src/actions/combatStats.ts",
+   "packages/engine/test/actions/specials.test.ts",
+   "wesnoth/data/test/scenarios/wml_tests/UnitsWML/AbilitiesWML/damage"
+  ]
  },
  "8.1": {
   "status": "done",

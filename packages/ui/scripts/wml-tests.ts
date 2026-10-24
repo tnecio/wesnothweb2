@@ -166,7 +166,10 @@ if (verbose) for (const e of parseErrors) console.log(`  parse: ${e}`);
 function snapshotOf(test: WmlConfig): GameBoardSnapshot {
   const scenario = test.clone();
   const mapFile = scenario.getString('map_file', '');
-  if (mapFile) scenario.setAttribute('map_data', fs.readFileSync(path.join(dataRoot, mapFile), 'utf8'));
+  // A map file is found under the data directory, or (a `data/...` path) the game directory, as upstream's
+  // `get_wml_location` does.
+  const mapPath = mapFile.startsWith('data/') ? path.join(dataRoot, '..', mapFile) : path.join(dataRoot, mapFile);
+  if (mapFile) scenario.setAttribute('map_data', fs.readFileSync(mapPath, 'utf8'));
   else if (!scenario.hasAttribute('map_data')) scenario.setAttribute('map_data', 'Gg');
   gameConfigLua.forEach((code, i) => {
     const lua = new WmlConfig();

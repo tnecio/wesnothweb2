@@ -29,6 +29,11 @@ export interface Callable {
   /** Returns the named property, or a null Variant if it doesn't exist. */
   getValue(key: string): Variant;
   /**
+   * `formula_callable::has_self_`: whether `self` names this object (see `queryValue`). True unless set; the
+   * scope wrappers that only forward to another callable (`map_formula_callable`, `where`) set it false.
+   */
+  readonly hasSelf?: boolean;
+  /**
    * Lists the names this object exposes, for iteration (`tolist(obj)`,
    * `dir()`-style introspection) and for debug-string dumps. Optional --
    * objects that don't implement it simply can't be iterated.
@@ -271,7 +276,9 @@ export class Variant {
   /** Property access used by `.` and by predicate contexts (`self.x`, item member lookup). */
   getMember(name: string): Variant {
     if (this.isCallable()) {
-      return this.asCallable().getValue(name);
+      // `obj->query_value(name)`: `self` on a callable is the callable itself.
+      const obj = this.asCallable();
+      return name === 'self' && obj.hasSelf !== false ? this : obj.getValue(name);
     }
     if (name === 'self') return this;
     return Variant.null_();

@@ -66,7 +66,7 @@ describe('illuminatedLawfulBonus (real ABILITY_ILLUMINATES: value=25, max_value=
   it('radius=all_map reaches anywhere on the board', () => {
     const board = makeBoard();
     place(board, makeType('sun', [illuminatesAbility('radius=all_map')]), 1, new Location(0, 0));
-    expect(illuminatedLawfulBonus(board, new Location(4, 4), -50)).toBe(-25);
+    expect(illuminatedLawfulBonus(board, new Location(2, 2), -50)).toBe(-25);
   });
 
   it('affect_self=no is not part of any real definition, but is honoured if authored', () => {

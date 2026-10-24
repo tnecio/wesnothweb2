@@ -197,6 +197,14 @@ export class Unit {
     }
     return this.#abilityRadii.get(tag) ?? 0;
   }
+
+  /** `unit::max_ability_radius`: the widest `[affect_adjacent] radius=` of any of the unit's abilities. */
+  maxAbilityRadiusAny(): number {
+    this.maxAbilityRadius('');
+    let max = 0;
+    for (const r of this.#abilityRadii!.values()) max = Math.max(max, r);
+    return max;
+  }
   #abilityRadii: Map<string, number> | undefined;
   alignment: Alignment;
   /** `unit::emit_zoc_`. */
@@ -404,11 +412,23 @@ export class Unit {
     this.setStatus(UnitStatus.Uncovered, false);
   }
 
-  /** `unit::end_turn` (at the end of the unit's own side's turn): `duration=turn end` modifications expire, slow wears off, and an interrupted move is forgotten. */
+  /**
+   * `unit::end_turn` (at the end of the unit's own side's turn): `duration=turn end` modifications expire, slow
+   * wears off, a unit whose movement is not full (and that is not marked `not_moved`) is no longer resting, and an
+   * interrupted move is forgotten.
+   */
   endTurn(env: EffectEnv = {}): void {
     this.expireModifications('turn end', env);
     this.setStatus(UnitStatus.Slowed, false);
+    if (this.movesLeft !== this.maxMoves && !this.hasStatus(UnitStatus.NotMoved)) this.resting = false;
+    this.setStatus(UnitStatus.NotMoved, false);
     this.interruptedMove = undefined;
+  }
+
+  /** `unit::remove_movement_ai`: the AI ends the unit's movement; one that has not moved stays able to rest. */
+  removeMovementAi(): void {
+    if (this.movesLeft === this.maxMoves) this.setStatus(UnitStatus.NotMoved, true);
+    this.movesLeft = 0;
   }
 
   /** `unit::move_interrupted()`: a move stopped by sighting units can be continued (it has moves left). */
@@ -592,6 +612,8 @@ export class Unit {
     }
     if (this.extraRecruit.length > 0) cfg.setAttribute('extra_recruit', this.extraRecruit.join(','));
     if (this.filterRecall) cfg.addChild('filter_recall', this.filterRecall.clone());
+    // `unit::write`: the unit's weapons as they are, effects applied (read back by `fromConfig`).
+    for (const attack of this.attacks) cfg.addChild('attack', attack.toConfig());
     if (this.statuses.size > 0) {
       const statusCfg = cfg.addChild('status');
       for (const s of this.statuses) statusCfg.setAttribute(s, true);

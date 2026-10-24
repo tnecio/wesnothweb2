@@ -1,6 +1,6 @@
 export * from './gameConfig.js';
 export * from './attackPrediction.js';
-export * from './abilityEffects.js';
+export * from './abilities.js';
 export * from './combatStats.js';
 export * from './combat.js';
 export * from './move.js';

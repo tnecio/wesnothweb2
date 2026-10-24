@@ -963,6 +963,7 @@ const MODIFY_UNIT_FIELDS: Record<string, (u: Unit, cfg: WmlConfig, key: string) 
   // Phase 27a: modify_unit.lua writes any attribute of the stored unit (`unit::write`'s keys) before unstoring it.
   attacks_left: (u, cfg) => (u.attacksLeft = cfg.getNumber('attacks_left', u.attacksLeft)),
   max_attacks: (u, cfg) => (u.maxAttacksPerTurn = cfg.getNumber('max_attacks', u.maxAttacksPerTurn)),
+  level: (u, cfg) => (u.level = cfg.getNumber('level', u.level)),
   resting: (u, cfg) => (u.resting = cfg.getBoolean('resting', u.resting)),
   hidden: (u, cfg) => (u.hidden = cfg.getBoolean('hidden', u.hidden)),
   profile: (u, cfg) => (u.profile = cfg.getString('profile', u.profile)),
@@ -981,7 +982,7 @@ const MODIFY_UNIT_FIELDS: Record<string, (u: Unit, cfg: WmlConfig, key: string) 
 };
 
 /** Attributes `[modify_unit]` reads itself, or that `unit::write` keeps but this port's units do not (left as they are). */
-const MODIFY_UNIT_OTHER_KEYS = new Set(['mode', 'type', 'x', 'y', 'facing', 'id', 'underlying_id', 'gender', 'variation', 'race', 'alignment', 'level', 'cost', 'description', 'image', 'small_profile', 'random_traits', 'generate_name', 'goto_x', 'goto_y', 'flag_rgb', 'language_name', 'undead_variation', 'usage', 'portrait', 'image_icon']);
+const MODIFY_UNIT_OTHER_KEYS = new Set(['mode', 'type', 'x', 'y', 'facing', 'id', 'underlying_id', 'gender', 'variation', 'race', 'alignment', 'cost', 'description', 'image', 'small_profile', 'random_traits', 'generate_name', 'goto_x', 'goto_y', 'flag_rgb', 'language_name', 'undead_variation', 'usage', 'portrait', 'image_icon']);
 
 function actionModifyUnit(cfg: WmlConfig, ctx: EventContext): void {
   const filterCfg = cfg.child('filter');
@@ -1211,8 +1212,9 @@ function actionTransformUnit(cfg: WmlConfig, ctx: EventContext): void {
  *
  * `placement=` is walked in order and always falls back to `map` then
  * `recall`, as upstream; `passable=yes` makes the vacant-tile search
- * avoid terrain this unit cannot enter. Not ported: `location_id=`
- * (this port's `GameMap` has no named special locations yet).
+ * avoid terrain this unit cannot enter. For the `map` placements, a
+ * `location_id=` (a special location, or a side's start position) comes
+ * before `x,y=`.
  */
 function placeNewUnit(cfg: WmlConfig, ctx: EventContext, unit: Unit, side: number): Location | undefined {
   const passable = cfg.getBoolean('passable', false);
@@ -1230,7 +1232,8 @@ function placeNewUnit(cfg: WmlConfig, ctx: EventContext, unit: Unit, side: numbe
       const leader = ctx.board.unitsForSide(side).find((u) => u.canRecruit);
       loc = leader ? leader.location : ctx.board.map.startingPosition(side);
     } else if (place === 'map' || place === 'map_passable' || place === 'map_overwrite') {
-      loc = unit.location;
+      if (cfg.hasAttribute('location_id')) loc = ctx.board.map.specialLocation(cfg.getString('location_id'));
+      if (!loc.valid()) loc = unit.location;
     } else {
       continue; // an unknown placement is simply skipped, as upstream's own loop does
     }
