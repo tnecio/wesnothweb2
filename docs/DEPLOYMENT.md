@@ -13,6 +13,7 @@ and decisions), `ASSETS.md` (how the game data is split and cached) and the Phas
 | Deploy | `.github/workflows/deploy.yml`, on a `v*` tag (or started by hand) |
 | The game | https://wesnoth.tnec.io (also https://wesnothweb2.tomasz-necio.workers.dev): Cloudflare Workers static assets, Worker `wesnothweb2` |
 | Game media | https://wesnoth-data.tnec.io: R2 bucket `wesnothweb2-data` |
+| Statistics and bug reports | https://stats.wesnoth.fun: Worker `wesnoth-stats` (`apps/stats`), D1 `wesnoth-stats`, private R2 bucket `wesnoth-reports`; deployed by hand (below) |
 | Node | the version in `.nvmrc` (24), for CI, the deploy and local work |
 
 There is no staging environment: a tag deploys straight to production.
@@ -119,6 +120,59 @@ Cloudflare side, set up once by hand:
   covers only one subdomain level.
 
 Cloudflare creates the DNS records for both custom domains.
+
+## Statistics and bug reports (`apps/stats`, Phase 32)
+
+A small Worker of its own, separate from the game and deployed by hand: tag deploys never touch it. It
+takes the opt-in gameplay statistics (`POST /v1/events`, into D1) and bug reports (`POST /v1/reports`: the
+report into the private R2 bucket, a row in D1, and an email to you through Email Routing). See
+`apps/stats/src/handler.ts`.
+
+**Setting it up, once.** The Worker lives on **wesnoth.fun** (the game's future home); the game on
+wesnoth.tnec.io is allowed to call it meanwhile (`ALLOWED_ORIGINS`).
+
+0. Put wesnoth.fun on Cloudflare: dashboard → Add a domain → `wesnoth.fun` (Free plan), check the imported DNS
+   records, then at the registrar (Namecheap: Domain List → wesnoth.fun → Nameservers → Custom DNS) enter the
+   two nameservers Cloudflare gives. Wait until Cloudflare shows the domain as Active (minutes to hours).
+
+Then in `apps/stats`, logged in with `npx wrangler login`:
+
+1. `npx wrangler d1 create wesnoth-stats`, and put the `database_id` it prints into `wrangler.jsonc`
+   (commit it; the id is not a secret).
+2. `npx wrangler d1 migrations apply wesnoth-stats --remote`
+3. `npx wrangler r2 bucket create wesnoth-reports`, then
+   `npx wrangler r2 bucket lifecycle add wesnoth-reports expire-reports reports/ --expire-days 365`
+   (reports are deleted after a year; the Worker's daily cron deletes old D1 rows).
+4. Dashboard → `wesnoth.fun` → Email → Email Routing: enable it and let it set the domain's MX and SPF records
+   (they replace Namecheap's default email forwarding). Under Destination addresses, add and verify the address
+   reports should go to. The sender is `reports@wesnoth.fun` (`MAIL_FROM` in `wrangler.jsonc`). If email does
+   not work, reports are still stored and listed by `stats.mjs`.
+5. `npx wrangler secret put MAIL_TO` with that verified address (a secret so that it stays out of this
+   public repository).
+6. `npx wrangler deploy`. It creates the custom domain `stats.wesnoth.fun`;
+   `curl https://stats.wesnoth.fun/v1/health` answers `ok`.
+7. GitHub → Settings → Secrets and variables → Actions → **Variables**: `STATS_URL` =
+   `https://stats.wesnoth.fun`. The next game deploy builds it in (`VITE_STATS_URL`): the title screen
+   starts asking about statistics, and Report a bug can send. Until then the game behaves as before.
+
+**Reading it:**
+- `node apps/stats/scripts/stats.mjs [--days 30]`: per scenario, where runs got stuck, crashes by
+  signature, the latest reports.
+- `node apps/stats/scripts/report.mjs <id> [--save game.gz]`: one report (the id is in its email); `--save`
+  writes the attached game, which Load → Upload... in the game opens.
+
+**If reports are abused:** set `REPORTS_ENABLED` to `"false"` in `wrangler.jsonc` and deploy (the dialog then
+falls back to Copy / Download). Rate limits: 30 event batches and 5 reports a minute per IP.
+
+**Working on it locally:** `npx wrangler d1 migrations apply wesnoth-stats --local`, then
+`npx wrangler dev --local --port 8787 --var MAIL_TO:dev@example.com` (emails are written to
+`.wrangler/tmp/email/`). Run the game with `VITE_STATS_URL=http://localhost:8787`, or, when the browser
+reaches the dev server through a single forwarded port, with
+`STATS_PROXY=http://localhost:8787 VITE_STATS_URL=/__stats` (the dev server forwards `/__stats` to the
+Worker). `--local` on both scripts reads the local data. `apps/web/scripts/telemetry-playthrough.mjs` checks the whole path in a browser.
+
+Free-tier limits that matter: Workers 100k requests a day, D1 100k writes a day and 5 GB, R2 10 GB. A batch
+is one request and one write per event.
 
 ## Rolling back
 

@@ -97,7 +97,7 @@ async function titleScreen(browser) {
     const names = await page.$$eval('[data-testid="title-menu"] button', (els) => els.map((e) => e.textContent?.trim()));
     check(`[${label}] the title screen offers Campaigns, Load, Achievements, Preferences, Credits`, names.join() === 'Campaigns,Load,Achievements,Preferences,Credits', names.join());
     check(`[${label}] the version and the language button show`, /Version 1\.\d+\.\d+/.test(await page.textContent('[data-testid="title-version"]')) && /English/.test(await page.textContent('[data-testid="title-language"]')));
-    check(`[${label}] "Wesnoth on the Web" is the default tab, with links to upstream`, (await page.textContent('[data-testid="title-about-text"]')).trim().length > 20 && (await page.getAttribute('[data-testid="title-about-wesnoth-org"]', 'href')) === 'https://wesnoth.org' && (await page.getAttribute('[data-testid="title-about-donate"]', 'href')) === 'https://liberapay.com/Wesnoth/donate');
+    check(`[${label}] "Wesnoth on the Web" is the default tab, with a link to upstream`, (await page.textContent('[data-testid="title-about-text"]')).trim().length > 20 && (await page.getAttribute('[data-testid="title-about-wesnoth-org"]', 'href')) === 'https://wesnoth.org');
     await page.click('[data-testid="title-tab-tips"]');
     check(`[${label}] the Gameplay tips tab shows a tip`, (await page.textContent('[data-testid="tip-text"]')).trim().length > 20);
     const mute = page.locator('[data-testid="mute-toggle"]');

@@ -34,6 +34,17 @@ jobs:
       - uses: ./.github/actions/setup
       - run: npm run typecheck --workspaces --if-present
 
+  # Phase 32: the statistics Worker (apps/stats), tested in node with stand-ins for its bindings.
+  stats-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - name: vitest
+        working-directory: apps/stats
+        run: npx vitest run --reporter=default --reporter=github-actions
+
   # Phase 27a: upstream's own WML unit tests (data/test), run headlessly. Fails when a test that gave its
   # expected result (docs/completeness/wml-tests-baseline.json) no longer does.
   wml-tests:

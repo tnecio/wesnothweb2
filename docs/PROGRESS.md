@@ -6698,3 +6698,55 @@ follows upstream (see the plan's 27c notes).
 
 **Numbers:** completeness 754 -> 774 items done (115 partial, 14 missing). WML conformance unchanged at 973.
 Frame time on Liberty 1 is the same with standing animations on and off.
+
+## 2026-10-25: Phase 32 -- bug reports and opt-in gameplay statistics
+
+You asked for an easy way for players to send bug reports, crash or no crash, and for basic statistics to find
+where players get stuck, on a simple separate endpoint. Your decisions: statistics are opt-in, there is a
+random id per campaign run, and you hear about reports by email. (The plan first called this Phase 30, but
+that number was taken, by RNG modes.)
+
+- **S1, the Worker** (`apps/stats`, for https://stats.wesnoth.fun):
+  - `POST /v1/events`: batches of up to 20 events go into D1.
+  - `POST /v1/reports`: each report (up to 2 MB) goes into the private R2 bucket `wesnoth-reports`, gets a row
+    in D1, and triggers a summary email through the `send_email` binding. The address is the secret `MAIL_TO`,
+    so it stays out of the public repo.
+  - `GET /v1/health`.
+  - CORS allows only the game's origins. Requests are rate-limited per IP, and size and schema are validated
+    with one schema shared with the game. No IP or user agent is stored with events.
+  - A daily cron deletes events after 13 months and report rows after 12; an R2 lifecycle rule handles the
+    report bodies.
+  - Tested in node with stand-ins for D1, R2 and email (14 tests, a CI job of its own), and end to end under
+    `wrangler dev --local`.
+- **S2, the events:**
+  - `scenario_start`, `scenario_end` (result, turn limit, minutes), `game_load` (kind), `quit` (Quit to Menu
+    or the page closing mid-scenario, by `sendBeacon`), and `crash` (message and signature).
+  - Each event carries the campaign, scenario, difficulty, turn, run, build, language, device class and
+    browser family; times are rounded to the minute.
+  - Nothing is queued without consent and a server.
+  - `GameSession.runId` is random per game, kept in saves and carried into the next scenario. A save from
+    before it starts its own run.
+- **S3, Report a bug:**
+  - one dialog, opened from the game Menu, the title screen footer, and the error screen's new "Send
+    report...";
+  - fields: what happened, what was expected, an optional contact; attach the game (on by default) and the
+    recent log;
+  - the player gets a reference id, or Copy / Download when the report can't be sent.
+- **S4:**
+  - the title screen asks once; it never covers the menu (top right on a desktop, above the footer on a phone);
+  - the Preferences switch;
+  - a Privacy note in About, later removed with the bottom links when the About text was rewritten (user's call).
+- **S5:**
+  - `stats.mjs`: per-scenario starts, wins, defeats, quits, loads and crashes; the "stuck" list (runs whose last
+    event there is a quit or a defeat, with their attempts); crashes by signature; the latest reports;
+  - `report.mjs <id> [--save game.gz]`, whose save opens with Load → Upload...;
+  - `docs/DEPLOYMENT.md` has your one-time setup;
+  - the deploy reads the repository variable `STATS_URL`, so production is unchanged until you set it.
+- **Checks:**
+  - Worker 14 tests; UI telemetry and bug report 18; run id 3.
+  - `telemetry-playthrough.mjs` passes in a browser against the local Worker:
+    - No sends nothing;
+    - Yes sends each event, read back from the Worker's D1;
+    - a report arrives with the game;
+    - an unreachable server falls back to Copy / Download.
+

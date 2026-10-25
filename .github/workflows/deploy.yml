@@ -57,6 +57,9 @@ jobs:
           # Shown in error reports (and on the title screen): the tag, or the branch and run for a manual deploy.
           VITE_APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || format('{0}-run{1}', github.ref_name, github.run_number) }}
           VITE_APP_COMMIT: ${{ github.sha }}
+          # Phase 32: the statistics and bug-report Worker (apps/stats), from the repository variable STATS_URL
+          # (https://stats.wesnoth.fun). Unset, the game neither asks about statistics nor offers Send.
+          VITE_STATS_URL: ${{ vars.STATS_URL }}
         run: |
           npm run build --workspace=apps/web
           node apps/web/scripts/stage-dist.mjs

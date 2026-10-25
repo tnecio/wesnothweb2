@@ -18,6 +18,9 @@ export interface GameContext {
   scenarioId?: string;
   scenarioName?: string;
   turn?: number;
+  /** Phase 32: the campaign difficulty and run (`GameSession.runId`), for statistics and bug reports. */
+  difficulty?: string;
+  runId?: string;
   /** The current game as a save (`GameSession.toSaveData`), for reports the player chooses to include it in. */
   saveData?: () => unknown;
 }
@@ -84,12 +87,32 @@ function describe(value: unknown): { message: string; stack?: string; name?: str
   }
 }
 
+const errorListeners: ((error: CapturedError) => void)[] = [];
+
+/** Phase 32: calls `listener` with every error that is not benign (the opt-in statistics count crashes). */
+export function onCapturedError(listener: (error: CapturedError) => void): void {
+  errorListeners.push(listener);
+}
+
 /** Records `value` and puts it on screen, unless it is benign. The first error stays shown; later ones are counted. */
 export function reportError(value: unknown, source: CapturedError['source']): void {
   const { message, stack, name } = describe(value);
   if (isBenign(message, name)) return;
   errorState.count++;
-  if (!errorState.current) errorState.current = { message, stack, source, time: Date.now() };
+  const captured: CapturedError = { message, stack, source, time: Date.now() };
+  if (!errorState.current) errorState.current = captured;
+  for (const listener of errorListeners) {
+    try {
+      listener(captured);
+    } catch {
+      // A listener must not turn one error into two.
+    }
+  }
+}
+
+/** The recent console warnings and errors, oldest first, as a report shows them. */
+export function recentLog(): string[] {
+  return log.map((l) => `${new Date(l.time).toISOString().slice(11, 23)} ${l.level.toUpperCase()} ${l.text}`);
 }
 
 export function dismissError(): void {
@@ -147,7 +170,7 @@ export function buildReport(error: CapturedError, includeSave: boolean): string 
     error.stack ?? '(no stack)',
     '',
     `Recent console warnings and errors (${log.length}):`,
-    ...log.map((l) => `${new Date(l.time).toISOString().slice(11, 23)} ${l.level.toUpperCase()} ${l.text}`),
+    ...recentLog(),
   ];
   if (includeSave && ctx.saveData) {
     try {

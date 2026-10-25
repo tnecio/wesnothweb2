@@ -39,6 +39,22 @@ export default defineConfig(({ command }) => ({
   server: {
     port: 5173,
     host: true,
+    // Phase 32, development only: `STATS_PROXY=http://localhost:8787 VITE_STATS_URL=/__stats` sends the
+    // statistics and bug reports through this server to a local `wrangler dev` (apps/stats), so a browser that
+    // reaches the game through one forwarded port reaches the stats Worker too. The request is same-origin
+    // here; its Origin header is dropped so the Worker's CORS check (for the real deployment) lets it in.
+    ...(process.env['STATS_PROXY']
+      ? {
+          proxy: {
+            '/__stats': {
+              target: process.env['STATS_PROXY'],
+              rewrite: (path: string) => path.replace(/^\/__stats/, ''),
+              configure: (proxy: { on(event: 'proxyReq', handler: (req: { removeHeader(name: string): void }) => void): void }) =>
+                proxy.on('proxyReq', (req) => req.removeHeader('origin')),
+            },
+          },
+        }
+      : {}),
     fs: {
       // allow serving Wesnoth assets (images/audio/WML) from the submodule,
       // which lives outside apps/web

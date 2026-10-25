@@ -79,3 +79,7 @@ export {
 export { dataUrl, loadDataManifest } from './dataUrls.js';
 export { default as ErrorScreen } from './errors/ErrorScreen.svelte';
 export { installErrorReporting, reportError, setGameContext, buildInfo } from './errors/errorReporting.svelte.js';
+export { installTelemetry, telemetry, statsUrl } from './telemetry/stats.js';
+export { statsConsent, setStatsConsent } from './telemetry/consent.svelte.js';
+export { bugReportDialog, openBugReport } from './telemetry/bugReportDialog.svelte.js';
+export { default as BugReportDialog } from './telemetry/BugReportDialog.svelte';

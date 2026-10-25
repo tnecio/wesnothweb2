@@ -27,6 +27,8 @@
    */
   import { dataUrl } from './dataUrls.js';
   import { setGameContext } from './errors/errorReporting.svelte.js';
+  import { telemetry } from './telemetry/stats.js';
+  import { openBugReport } from './telemetry/bugReportDialog.svelte.js';
   import { setSideColorResolver } from './images/unitImageRef.js';
   import { ENGINE_IMAGES, GAME_IMAGES } from './gameData.js';
   import { tick, untrack } from 'svelte';
@@ -708,6 +710,8 @@
       scenarioId: activeSnapshot.scenario.id,
       scenarioName: session.scenarioName,
       turn: session.turnNumber,
+      difficulty: activeSnapshot.difficulty,
+      runId: session.runId,
       saveData: () => session.toSaveData(),
     }));
     return () => setGameContext(null);
@@ -867,7 +871,38 @@
     untrack(refreshTexts);
   });
 
+  /**
+   * Phase 32, the opt-in statistics (`telemetry/stats.ts`): when this scenario's play began (its start or the
+   * load it was resumed from), and the sessions whose end was already counted -- or was over before they were
+   * loaded, so a save of a finished scenario is not counted again.
+   */
+  let scenarioStartedAt = Date.now();
+  const endReported = new WeakSet<GameSession>();
+  const minutesPlayed = () => Math.round((Date.now() - scenarioStartedAt) / 60000);
+
+  /** `scenario_end`, once, the first time this scenario's result is known. */
+  function reportScenarioEnd(): void {
+    if (!session.scenarioResult || endReported.has(session) || replay) return;
+    endReported.add(session);
+    telemetry.track('scenario_end', { result: session.scenarioResult, ...(session.turnLimit !== null ? { turnsLimit: session.turnLimit } : {}), minutes: minutesPlayed() });
+  }
+
+  /** A save was loaded into this game: play of its scenario (re)starts from here. */
+  function reportLoad(kind: string): void {
+    if (session.scenarioResult) endReported.add(session);
+    scenarioStartedAt = Date.now();
+    telemetry.track('game_load', { kind });
+  }
+
+  /** Left mid-scenario (Quit to Menu, or the page closing): where a player may have given up. */
+  function reportQuit(): void {
+    if (session.scenarioResult || replay || phase === 'story') return;
+    telemetry.track('quit', { minutes: minutesPlayed() });
+    void telemetry.flush(true);
+  }
+
   function sync(message?: string | null): void {
+    reportScenarioEnd();
     // `mouse_events`: selecting one of your own units clicks (`select-unit.wav`, the UI group).
     const selectedUnit = session.selectedUnit;
     if (selectedUnit && selectedUnit !== lastSelectedForSound && selectedUnit.side === session.viewingSide && phase === 'playing') {
@@ -1312,6 +1347,10 @@
     void runStartupEvents();
   }
 
+  // Phase 32: a game opened from a save (the menu's Load Game, a link, the error screen's autosave). After a
+  // tick, so the game context the event reads is registered.
+  if (initialSave && !initialReplaySession) void tick().then(() => reportLoad('opened'));
+
   if (initialReplaySession) {
     void beginInitialReplay();
   } else if (startInReplay && initialSave) {
@@ -1338,6 +1377,8 @@
     eventsRunning = true;
     try {
       await boardReady();
+      scenarioStartedAt = Date.now();
+      telemetry.track('scenario_start');
       await session.runStartupEvents();
     } finally {
       eventsRunning = false;
@@ -2845,9 +2886,11 @@
       const targetScenario = found.data.scenarioId ?? found.meta.scenarioId;
       if (targetScenario && (targetScenario !== activeSnapshot.scenario.id || savedDifficulty(found.data) !== activeSnapshot.difficulty)) {
         await loadIntoScenario(targetScenario, found.data);
+        reportLoad(found.meta.kind ?? 'manual');
       } else {
         session.loadSaveData(found.data);
         phase = session.scenarioResult ? 'ended' : 'playing';
+        reportLoad(found.meta.kind ?? 'manual');
         sync(`Loaded "${name}" (turn ${found.data.turnNumber}).`);
       }
       // Keep the address bar honest about what is actually loaded, so a
@@ -3235,6 +3278,13 @@
       enabled: true,
       handler: () => (languageDialogOpen = true),
     },
+    // Phase 32: ours (the web port's own); a report carries where the player is, and the game if they choose.
+    {
+      id: 'report-bug',
+      label: `${tx('Report a Bug')}...`,
+      enabled: true,
+      handler: () => openBugReport(),
+    },
   ]));
   let actionCommands = $derived<Command[]>(bound([
     // Upstream's Actions menu starts with it (`data/themes/default.cfg`); `t` in `hotkeys.cfg`.
@@ -3574,7 +3624,7 @@
   }
 </script>
 
-<svelte:window onkeydown={handleGlobalKeydown} />
+<svelte:window onkeydown={handleGlobalKeydown} onpagehide={reportQuit} />
 
 <div class="game-shell">
   <!-- Polite live region for the keyboard cursor's hex; visually hidden. -->
@@ -3778,6 +3828,7 @@
       message={tw('Do you really want to quit?')}
       onYes={() => {
         quitConfirmOpen = false;
+        reportQuit();
         onQuitToMenu?.();
       }}
       onNo={() => (quitConfirmOpen = false)}

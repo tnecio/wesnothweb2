@@ -2472,6 +2472,33 @@ is a randomly generated campaign written almost entirely in Lua: 111 files, abou
 
 A plan is written when the phase is scheduled.
 
+## Phase 32 — Bug reports and opt-in gameplay statistics (added 2026-10-25)
+
+**Status: delivered 2026-10-25** (branch `telemetry`, one PR, see PROGRESS). User's request: let players send
+bug reports even without a crash, and gather basic statistics (scenario start and end, save loads, crashes)
+to find places where players cannot make progress -- without re-architecting the deployment.
+
+User decisions (2026-10-25):
+- **Statistics are opt-in:** asked once on the title screen, changeable in Preferences; nothing is sent
+  until the answer is yes.
+- **A random id per campaign run**, kept in its saves; no id per browser.
+- **New reports arrive by email**; the full report is stored privately.
+
+Delivered as five stages:
+- **S1, the Worker** (`apps/stats`, https://stats.wesnoth.fun): a separate Worker. D1 holds the events
+  and an index of reports, a private R2 bucket the reports, and Email Routing sends you a summary. It checks
+  CORS, rate-limits per IP, and validates every event and report against the schema it shares with the
+  game (`packages/ui/src/telemetry/schema.ts`). A daily cron handles retention. It is deployed by hand
+  (`docs/DEPLOYMENT.md`).
+- **S2, the game's events:** `scenario_start`, `scenario_end`, `game_load`, `quit`, `crash`; `GameSession.runId`.
+- **S3, Report a bug:** from the game Menu, the title screen and the error screen, with Copy / Download when
+  it cannot be sent.
+- **S4, consent:** the title screen question (its Details list what is sent and kept), and the Preferences switch. A Privacy note in About was removed again (user's call).
+- **S5, reading the data:** `apps/stats/scripts/stats.mjs` (per scenario, stuck runs, crash signatures)
+  and `report.mjs`.
+
+It is switched on in production by the repository variable `STATS_URL`, once the Worker is set up.
+
 ---
 
 ## Priority as of 2026-10-05

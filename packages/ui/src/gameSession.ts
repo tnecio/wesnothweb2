@@ -866,6 +866,11 @@ export interface EconomyInfo {
   unitCount: number;
 }
 
+/** Phase 32: a new campaign run's id (`GameSession.runId`). */
+function newRunId(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 /** `GameSession.timeOfDayReport`: the sidebar's time of day at a hex. */
 export interface TimeOfDayReport {
   readonly tod: TimeOfDayEntry;
@@ -1221,6 +1226,8 @@ export interface SaveGameData {
    * save made before difficulties (and for a debug scenario): the campaign's default.
    */
   difficulty?: string;
+  /** Phase 32: the campaign run this game belongs to (`GameSession.runId`). Absent in older saves. */
+  runId?: string;
   teams: readonly {
     side: number;
     gold: number;
@@ -1547,6 +1554,12 @@ export class GameSession {
    * "no incremental sync() between events" simplification.
    */
   lastHealAnimations: readonly HealOutcome[] | null = null;
+  /**
+   * Phase 32: which campaign run this game belongs to -- a random id made when a game starts, kept in its saves
+   * and carried into the next scenario (`startNextScenario`), so the opt-in statistics can tell one playthrough's
+   * retries and give-ups apart from another's. It identifies the run, not the player.
+   */
+  runId: string = newRunId();
 
   /**
    * What one `endTurn()` call showed, in the order it happened: each side's turn-start healing and poison
@@ -5210,6 +5223,7 @@ export class GameSession {
       scenarioId: this.snapshot.scenario.id,
       scenarioName: this.scenarioName,
       ...(this.snapshot.difficulty ? { difficulty: this.snapshot.difficulty } : {}),
+      runId: this.runId,
       schedule: this.schedule.exportState(),
       variables,
       choices: this.eventPump.ctx.choices.map((c) => ({ ...c })),
@@ -5268,6 +5282,8 @@ export class GameSession {
       this.log.unshift(tx("This save's map does not fit the scenario's; the scenario map is kept."));
     }
     if (data.variables) this.eventPump.ctx.variables.replaceAll(WmlConfig.fromJSON(data.variables));
+    // A save from before run ids starts a run of its own: it is not known to belong to the game it replaces.
+    this.runId = data.runId ?? newRunId();
     if (data.statistics) {
       this.campaignStats = CampaignStats.fromConfig(WmlConfig.fromJSON(data.statistics));
       this.board.statistics = new Statistics(this.campaignStats);
@@ -5744,6 +5760,8 @@ export class GameSession {
     session.eventPump.ctx.variables.replaceAll(finished.eventPump.ctx.variables.toConfig());
     // Phase 25: the campaign's statistics go on, with a new entry for this scenario.
     session.adoptCampaignStats(finished.campaignStats.clone());
+    // Phase 32: still the same campaign run.
+    session.runId = finished.runId;
     return session;
   }
 

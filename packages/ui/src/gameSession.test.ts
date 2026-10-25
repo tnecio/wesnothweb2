@@ -986,6 +986,41 @@ describe('GameSession weapon selection (attackerWeaponOptions / selectAttackerWe
   });
 });
 
+describe('GameSession.runId (Phase 32: one campaign run, for the opt-in statistics)', () => {
+  it('a new game gets a run id of its own, which its saves keep and loading them restores', () => {
+    const a = new GameSession(loadSnapshot());
+    const b = new GameSession(loadSnapshot());
+    expect(a.runId).toMatch(/^[0-9a-z-]{8,}$/);
+    expect(a.runId).not.toBe(b.runId);
+    const data = a.toSaveData();
+    expect(data.runId).toBe(a.runId);
+    expect(GameSession.fromSaveData(loadSnapshot(), data).runId).toBe(a.runId);
+    b.loadSaveData(data);
+    expect(b.runId).toBe(a.runId);
+  });
+
+  it('a save from before run ids starts a run of its own', () => {
+    const a = new GameSession(loadSnapshot());
+    const { runId: _, ...old } = a.toSaveData();
+    const loaded = GameSession.fromSaveData(loadSnapshot(), old);
+    expect(loaded.runId).toBeTruthy();
+    expect(loaded.runId).not.toBe(a.runId);
+    a.loadSaveData(old);
+    expect(a.runId).not.toBe(loaded.runId);
+  });
+
+  it('the next scenario is the same run', async () => {
+    const first = new GameSession(loadSnapshot());
+    await first.runStartupEvents();
+    const enemyLeader = first.board.unitsForSide(2).find((u) => u.canRecruit)!;
+    first.board.removeUnitAt(enemyLeader.location);
+    // @ts-expect-error -- calling the private checkForGameEnd directly, as the carryover tests above do.
+    first.checkForGameEnd();
+    const next = GameSession.startNextScenario(first, loadNextSnapshot());
+    expect(next.runId).toBe(first.runId);
+  });
+});
+
 describe('GameSession.confirmAttack shows the exchange before the attack\'s last events', () => {
   // `attack::perform` draws the blows as it fights them, then fires `attack end`: TSG's quintain speaks after
   // its fight, not before it (with the HP bars already at the end of it).
