@@ -11,8 +11,8 @@ and decisions), `ASSETS.md` (how the game data is split and cached) and the Phas
 | Source | https://github.com/tnecio/wesnothweb2 (public); `main` is protected, work lands through PRs |
 | CI | `.github/workflows/ci.yml`, on every push to every branch |
 | Deploy | `.github/workflows/deploy.yml`, on a `v*` tag (or started by hand) |
-| The game | https://wesnoth.tnec.io (also https://wesnothweb2.tomasz-necio.workers.dev): Cloudflare Workers static assets, Worker `wesnothweb2` |
-| Game media | https://wesnoth-data.tnec.io: R2 bucket `wesnothweb2-data` |
+| The game | https://wesnoth.fun (also https://wesnothweb2.tomasz-necio.workers.dev): Cloudflare Workers static assets, Worker `wesnothweb2`. https://wesnoth.tnec.io and https://www.wesnoth.fun redirect to it |
+| Game media | https://data.wesnoth.fun: R2 bucket `wesnothweb2-data` (also attached as wesnoth-data.tnec.io, for pages built before the move) |
 | Statistics and bug reports | https://stats.wesnoth.fun: Worker `wesnoth-stats` (`apps/stats`), D1 `wesnoth-stats`, private R2 bucket `wesnoth-reports`; deployed by hand (below) |
 | Node | the version in `.nvmrc` (24), for CI, the deploy and local work |
 
@@ -77,7 +77,7 @@ workflow) deploys the chosen branch, labelled `<branch>-run<N>`. Use that for te
    cross-origin, and Web Audio plays silence without it.
 4. **Build:**
    - `npm run build --workspace=apps/web` runs the scenario and atlas builds, then Vite, with
-     `VITE_GAME_DATA_URL=https://wesnoth-data.tnec.io/<prefix>` and the version and commit.
+     `VITE_GAME_DATA_URL=https://data.wesnoth.fun/<prefix>` and the version and commit.
    - Then `node apps/web/scripts/stage-dist.mjs` copies the app's own data into `dist/`. Each file goes to
      a content-hashed path `h/<hash>/<path>`, listed in a hashed `data-manifest.json` that `index.html`
      names.
@@ -114,12 +114,20 @@ Repository secrets (Settings → Secrets and variables → Actions):
 | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | the media upload (an R2 API token with Object Read & Write on `wesnothweb2-data`) |
 
 Cloudflare side, set up once by hand:
-- the `tnec.io` zone is in the same account;
-- the Worker has the custom domain `wesnoth.tnec.io`;
-- the bucket has the custom domain `wesnoth-data.tnec.io`, a sibling name because the free certificate
-  covers only one subdomain level.
+- the `wesnoth.fun` and `tnec.io` zones are in the same account;
+- the Worker has the custom domain `wesnoth.fun`;
+- the bucket has the custom domain `data.wesnoth.fun`, and still `wesnoth-data.tnec.io` (pages opened before the
+  move load their media from it);
+- redirect rules: in the `tnec.io` zone, `wesnoth.tnec.io` → `https://wesnoth.fun` + the path, 301, query string
+  kept; in the `wesnoth.fun` zone, `www` → the apex (the "Redirect from WWW to root" template, with a proxied
+  `AAAA www 100::` record for it to act on).
 
-Cloudflare creates the DNS records for both custom domains.
+Cloudflare creates the DNS records for the custom domains.
+
+**The move from wesnoth.tnec.io (2026-10).** The game lived at wesnoth.tnec.io, with media at
+wesnoth-data.tnec.io, until it moved to wesnoth.fun. The old address now redirects (user's call: a plain
+redirect). What players stored in their browsers there (saves, preferences, achievements) stays with that
+origin and is not carried over.
 
 ## Statistics and bug reports (`apps/stats`, Phase 32)
 
@@ -128,8 +136,8 @@ takes the opt-in gameplay statistics (`POST /v1/events`, into D1) and bug report
 report into the private R2 bucket, a row in D1, and an email to you through Email Routing). See
 `apps/stats/src/handler.ts`.
 
-**Setting it up, once.** The Worker lives on **wesnoth.fun** (the game's future home); the game on
-wesnoth.tnec.io is allowed to call it meanwhile (`ALLOWED_ORIGINS`).
+**Setting it up, once.** The Worker lives on **wesnoth.fun**, with the game; only the game's origins may call
+it (`ALLOWED_ORIGINS`).
 
 0. Put wesnoth.fun on Cloudflare: dashboard → Add a domain → `wesnoth.fun` (Free plan), check the imported DNS
    records, then at the registrar (Namecheap: Domain List → wesnoth.fun → Nameservers → Custom DNS) enter the
@@ -189,7 +197,7 @@ Old R2 prefixes are never deleted, so an older build still finds its media.
 | Dev server | `npm run dev --workspace=apps/web` (port 5173; builds scenario snapshots and atlases first when their inputs changed) |
 | Rebuild scenario snapshots | `npx tsx apps/web/scripts/rebuild-snapshots.mjs [id ...]` (not in git; `apps/web/scenario-list.json` says which scenarios exist) |
 | Lint / typecheck / tests | `npm run lint`, `npm run typecheck --workspaces`, `npm test --workspaces` |
-| Production build | `VITE_GAME_DATA_URL=https://wesnoth-data.tnec.io/<prefix> npm run build --workspace=apps/web && node apps/web/scripts/stage-dist.mjs` |
+| Production build | `VITE_GAME_DATA_URL=https://data.wesnoth.fun/<prefix> npm run build --workspace=apps/web && node apps/web/scripts/stage-dist.mjs` |
 | Serve that build like production | `cd apps/web && npx wrangler dev` (headers, SPA fallback, no upload) |
 | See what a media upload would do | `node apps/web/scripts/upload-game-data.mjs --dry-run` |
 | Check upstream content is unmodified | `node --import tsx apps/web/scripts/check-upstream-unmodified.mjs` |

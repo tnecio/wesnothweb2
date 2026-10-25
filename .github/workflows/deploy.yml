@@ -15,7 +15,7 @@ permissions:
 
 env:
   # The R2 bucket's custom domain; the build reads game media from <origin>/<prefix> (upload-game-data.mjs).
-  GAME_DATA_ORIGIN: https://wesnoth-data.tnec.io
+  GAME_DATA_ORIGIN: https://data.wesnoth.fun
   R2_BUCKET: wesnothweb2-data
 
 jobs:

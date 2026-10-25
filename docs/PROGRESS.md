@@ -6750,3 +6750,17 @@ that number was taken, by RNG modes.)
     - a report arrives with the game;
     - an unreachable server falls back to Copy / Download.
 
+## 2026-10-25: the game moves to wesnoth.fun
+
+You moved production from wesnoth.tnec.io to wesnoth.fun and chose a plain redirect.
+
+- **The game:** at https://wesnoth.fun. Its media is at https://data.wesnoth.fun, the same R2 bucket under a
+  second custom domain; wesnoth-data.tnec.io stays attached for pages opened before the move.
+- **The deploy:** `GAME_DATA_ORIGIN` points at data.wesnoth.fun, so the deploy's check step checks the new media
+  domain.
+- **Redirects:** wesnoth.tnec.io redirects to wesnoth.fun (path and query kept, 301), and www.wesnoth.fun to the
+  apex, both by Cloudflare redirect rules.
+- **Stats:** the Worker no longer accepts calls from wesnoth.tnec.io.
+- **Not carried over:** players' saves, preferences and achievements on the old address.
+- **The Cloudflare side** is recorded in `docs/DEPLOYMENT.md`.
+

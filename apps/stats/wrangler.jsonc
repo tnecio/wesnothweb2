@@ -25,8 +25,8 @@
     { "name": "REPORT_LIMIT", "namespace_id": "3002", "simple": { "limit": 5, "period": 60 } }
   ],
   "vars": {
-    // The game's origins: wesnoth.fun (its future home) and wesnoth.tnec.io (its home until the move).
-    "ALLOWED_ORIGINS": "https://wesnoth.fun,https://www.wesnoth.fun,https://wesnoth.tnec.io,https://wesnothweb2.tomasz-necio.workers.dev,http://localhost:5173",
+    // The game's origins (wesnoth.tnec.io now redirects to wesnoth.fun, and www.wesnoth.fun to the apex).
+    "ALLOWED_ORIGINS": "https://wesnoth.fun,https://www.wesnoth.fun,https://wesnothweb2.tomasz-necio.workers.dev,http://localhost:5173",
     "REPORTS_ENABLED": "true",
     // wesnoth.fun has Email Routing (docs/DEPLOYMENT.md).
     "MAIL_FROM": "reports@wesnoth.fun"
