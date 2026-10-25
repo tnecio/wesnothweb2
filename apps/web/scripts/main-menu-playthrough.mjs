@@ -6,8 +6,10 @@
  *   node apps/web/scripts/main-menu-playthrough.mjs --keyboard-only [...]
  *
  * Default run (mouse):
- *   1. the title screen: its four buttons, the version, the language button and a tip, at desktop and phone
- *      width and at a 150 % font scale (screenshots with --shots);
+ *   1. the title screen: its five buttons, the version, the language button, the mute button, the
+ *      "Wesnoth on the Web" / "Gameplay tips" tabs (the former default, with links to upstream; the
+ *      latter showing a tip), at desktop and phone width and at a 150 % font scale (screenshots with
+ *      --shots);
  *   2. Campaigns (key C): the filter finds Liberty, its Hard difficulty is chosen, Play opens the HARD build
  *      of the scenario (`/play/liberty?difficulty=HARD`, `session.snapshot.difficulty`);
  *   3. Ctrl+S saves it, Quit to Menu (with its confirmation) returns, Load resumes it: same difficulty, same turn;
@@ -90,12 +92,19 @@ async function titleScreen(browser) {
     page.on('pageerror', (e) => errors.push(String(e)));
     page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
     await openTitle(page);
-    await page.waitForSelector('[data-testid="tip-text"]', { timeout: 15000 });
+    await page.waitForSelector('[data-testid="title-about-text"]', { timeout: 15000 });
     await page.waitForTimeout(1200);
     const names = await page.$$eval('[data-testid="title-menu"] button', (els) => els.map((e) => e.textContent?.trim()));
     check(`[${label}] the title screen offers Campaigns, Load, Achievements, Preferences, Credits`, names.join() === 'Campaigns,Load,Achievements,Preferences,Credits', names.join());
     check(`[${label}] the version and the language button show`, /Version 1\.\d+\.\d+/.test(await page.textContent('[data-testid="title-version"]')) && /English/.test(await page.textContent('[data-testid="title-language"]')));
-    check(`[${label}] a tip shows`, (await page.textContent('[data-testid="tip-text"]')).trim().length > 20);
+    check(`[${label}] "Wesnoth on the Web" is the default tab, with links to upstream`, (await page.textContent('[data-testid="title-about-text"]')).trim().length > 20 && (await page.getAttribute('[data-testid="title-about-wesnoth-org"]', 'href')) === 'https://wesnoth.org' && (await page.getAttribute('[data-testid="title-about-donate"]', 'href')) === 'https://liberapay.com/Wesnoth/donate');
+    await page.click('[data-testid="title-tab-tips"]');
+    check(`[${label}] the Gameplay tips tab shows a tip`, (await page.textContent('[data-testid="tip-text"]')).trim().length > 20);
+    const mute = page.locator('[data-testid="mute-toggle"]');
+    await mute.click();
+    check(`[${label}] the mute button toggles its pressed state`, (await mute.getAttribute('aria-pressed')) === 'true');
+    await mute.click();
+    check(`[${label}] ...and back`, (await mute.getAttribute('aria-pressed')) === 'false');
     const box = await page.evaluate(() => {
       const rect = (sel) => document.querySelector(sel)?.getBoundingClientRect();
       const m = rect('[data-testid="title-menu"]');

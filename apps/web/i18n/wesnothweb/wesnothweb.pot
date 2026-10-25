@@ -150,7 +150,7 @@ msgstr ""
 msgid "Are you sure you want to clear map labels?"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:121
+#: packages/ui/src/menu/CreditsScreen.svelte:124
 msgid "Art and music credits (CSV)"
 msgstr ""
 
@@ -266,7 +266,7 @@ msgstr ""
 msgid "Delete \"$name\"? Press Delete again to confirm."
 msgstr ""
 
-#: packages/ui/src/menu/MainMenu.svelte:179
+#: packages/ui/src/menu/MainMenu.svelte:181
 msgid "Delete failed:"
 msgstr ""
 
@@ -274,7 +274,11 @@ msgstr ""
 msgid "Deselect"
 msgstr ""
 
-#: packages/ui/src/menu/MainMenu.svelte:181
+#: packages/ui/src/menu/TitleScreen.svelte:194
+msgid "Donate to Wesnoth on Liberapay"
+msgstr ""
+
+#: packages/ui/src/menu/MainMenu.svelte:183
 msgid "Download failed:"
 msgstr ""
 
@@ -314,6 +318,10 @@ msgstr ""
 msgid "Game board"
 msgstr ""
 
+#: packages/ui/src/menu/TitleScreen.svelte:180
+msgid "Gameplay tips"
+msgstr ""
+
 #: packages/ui/src/help/HelpBrowser.svelte:281 packages/ui/src/help/HelpBrowser.svelte:282
 msgid "Help topics"
 msgstr ""
@@ -346,11 +354,11 @@ msgstr ""
 msgid "Leadership: +$bonus|% damage"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:120
+#: packages/ui/src/menu/CreditsScreen.svelte:123
 msgid "Licences"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:119
+#: packages/ui/src/menu/CreditsScreen.svelte:122
 msgid "Licences and source code"
 msgstr ""
 
@@ -366,7 +374,7 @@ msgstr ""
 msgid "Loading scenario..."
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:98
+#: packages/ui/src/menu/CreditsScreen.svelte:101
 msgid "Loading..."
 msgstr ""
 
@@ -374,7 +382,7 @@ msgstr ""
 msgid "Log"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:145
+#: packages/ui/src/menu/TitleScreen.svelte:209
 msgid "Main menu"
 msgstr ""
 
@@ -450,7 +458,7 @@ msgstr ""
 msgid "Pause"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:115
+#: packages/ui/src/menu/CreditsScreen.svelte:118
 msgid "Pause scrolling"
 msgstr ""
 
@@ -478,7 +486,7 @@ msgstr ""
 msgid "Redid $action."
 msgstr ""
 
-#: packages/ui/src/menu/MainMenu.svelte:180
+#: packages/ui/src/menu/MainMenu.svelte:182
 msgid "Rename failed:"
 msgstr ""
 
@@ -514,7 +522,7 @@ msgstr ""
 msgid "Restart"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:115
+#: packages/ui/src/menu/CreditsScreen.svelte:118
 msgid "Resume scrolling"
 msgstr ""
 
@@ -582,7 +590,7 @@ msgstr ""
 msgid "Something went wrong"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:122 packages/ui/src/menu/TitleScreen.svelte:158
+#: packages/ui/src/menu/CreditsScreen.svelte:125 packages/ui/src/menu/TitleScreen.svelte:222
 msgid "Source code"
 msgstr ""
 
@@ -602,7 +610,7 @@ msgstr ""
 msgid "That save no longer exists."
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:96
+#: packages/ui/src/menu/CreditsScreen.svelte:99
 msgid "The credits could not be loaded."
 msgstr ""
 
@@ -630,8 +638,8 @@ msgstr ""
 msgid "Time of day: $bonus|% damage"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:131
-msgid "Tip of the day"
+#: packages/ui/src/menu/TitleScreen.svelte:167 packages/ui/src/menu/TitleScreen.svelte:169
+msgid "Title screen info"
 msgstr ""
 
 #: packages/ui/src/gameSession.ts:4356
@@ -650,7 +658,7 @@ msgstr ""
 msgid "Unmute"
 msgstr ""
 
-#: packages/ui/src/menu/MainMenu.svelte:182
+#: packages/ui/src/menu/MainMenu.svelte:184
 msgid "Upload failed:"
 msgstr ""
 
@@ -676,6 +684,14 @@ msgstr ""
 
 #: packages/ui/src/CombatSimulationDialog.svelte:46
 msgid "Vulnerability to $type ×$factor"
+msgstr ""
+
+#: packages/ui/src/menu/TitleScreen.svelte:163 packages/ui/src/menu/TitleScreen.svelte:180
+msgid "Wesnoth on the Web"
+msgstr ""
+
+#: packages/ui/src/menu/TitleScreen.svelte:188
+msgid "Wesnoth on the Web is an unofficial, fan-made port of Battle for Wesnoth, a free/libre open-source strategy game, with its interface rebuilt for both desktop and mobile."
 msgstr ""
 
 #: packages/ui/src/gameSession.ts:1051 packages/ui/src/gameSession.ts:1053
@@ -726,8 +742,12 @@ msgstr ""
 msgid "the state after this command differs from the recorded game"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:156
+#: packages/ui/src/menu/TitleScreen.svelte:220
 msgid "web $version"
+msgstr ""
+
+#: packages/ui/src/menu/TitleScreen.svelte:193
+msgid "wesnoth.org — the official game"
 msgstr ""
 
 #: packages/ui/src/gameSession.ts:1625

@@ -52,7 +52,7 @@ try {
       await page.goto(`${base}/play/${campaignId}?scenario=${encodeURIComponent(scenario)}`);
     } else {
       await page.goto(`${base}/`);
-      await page.waitForSelector('[data-testid="title-help"]', { timeout: 120000 });
+      await page.waitForSelector('[data-testid="title-screen"]', { timeout: 120000 });
       await page.keyboard.press('c');
       await page.waitForSelector(`[data-testid="campaign-${id}"]`, { timeout: 30000 });
       await page.click(`[data-testid="campaign-${id}"]`);

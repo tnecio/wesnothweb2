@@ -48,7 +48,9 @@ try {
     page.on('pageerror', (e) => errors.push(String(e)));
     page.on('console', (m) => m.type() === 'error' && /\[help\]/.test(m.text()) && errors.push(m.text()));
     await page.goto(base);
-    await page.waitForSelector('[data-testid="title-help"]', { timeout: 60000 });
+    await page.waitForSelector('[data-testid="title-tab-tips"]', { timeout: 60000 });
+    await page.click('[data-testid="title-tab-tips"]');
+    await page.waitForSelector('[data-testid="title-help"]', { timeout: 10000 });
 
     await page.click('[data-testid="title-help"]');
     check('the title screen Help button opens the help at the introduction', (await waitTitle(page, 'Introduction')) === 'Introduction');
@@ -194,7 +196,9 @@ message="After the help."
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(base);
-    await page.waitForSelector('[data-testid="title-help"]', { timeout: 60000 });
+    await page.waitForSelector('[data-testid="title-tab-tips"]', { timeout: 60000 });
+    await page.tap('[data-testid="title-tab-tips"]');
+    await page.waitForSelector('[data-testid="title-help"]', { timeout: 10000 });
     await page.tap('[data-testid="title-help"]');
     await waitTitle(page, 'Introduction');
     check('on a phone the help opens on the page, the tree hidden', (await page.$('.help .tree-panel')) === null);
