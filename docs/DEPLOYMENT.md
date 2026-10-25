@@ -157,8 +157,10 @@ falls back to Copy / Download). Rate limits: 30 event batches and 5 reports a mi
 
 **Working on it locally:** `npx wrangler d1 migrations apply wesnoth-stats --local`, then
 `npx wrangler dev --local --port 8787 --var MAIL_TO:dev@example.com` (emails are written to
-`.wrangler/tmp/email/`). Run the game with `VITE_STATS_URL=http://localhost:8787`; `--local` on both scripts
-reads the local data. `apps/web/scripts/telemetry-playthrough.mjs` checks the whole path in a browser.
+`.wrangler/tmp/email/`). Run the game with `VITE_STATS_URL=http://localhost:8787`, or, when the browser
+reaches the dev server through a single forwarded port, with
+`STATS_PROXY=http://localhost:8787 VITE_STATS_URL=/__stats` (the dev server forwards `/__stats` to the
+Worker). `--local` on both scripts reads the local data. `apps/web/scripts/telemetry-playthrough.mjs` checks the whole path in a browser.
 
 Free-tier limits that matter: Workers 100k requests a day, D1 100k writes a day and 5 GB, R2 10 GB. A batch
 is one request and one write per event.
