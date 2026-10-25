@@ -24,6 +24,7 @@
   import { dataUrl } from '../dataUrls.js';
   import { buildInfo } from '../errors/errorReporting.svelte.js';
   import { openBugReport } from '../telemetry/bugReportDialog.svelte.js';
+  import ConsentPrompt from '../telemetry/ConsentPrompt.svelte';
   import { AUTHOR_URL, SOURCE_URL, WESNOTH_DONATE_URL, WESNOTH_ORG_URL } from '../about.js';
   import titleImages from './titleImages.json';
 
@@ -198,6 +199,11 @@
               'All the game assets, including audio, graphics, animations, and scenarios are human-made (imported from the original Battle for Wesnoth). Only the TypeScript implementation code is largely vibe-coded, based on the original C++ code.',
             )}
           </p>
+          <!-- Phase 30: what leaves the player's browser, and when. -->
+          <p class="about-text privacy" dir="auto" data-testid="title-about-privacy">
+            <strong>{tx('Privacy')}:</strong>
+            {tx('this site sets no cookies. Gameplay statistics are sent only if you agree (Preferences), and a bug report only when you send one. Both go to the developer of this port, are stored with Cloudflare, and are deleted after 13 and 12 months.')}
+          </p>
           <div class="about-links">
             <a href={WESNOTH_ORG_URL} target="_blank" rel="noopener" data-testid="title-about-wesnoth-org">{tx('wesnoth.org — the official game')}</a>
             <a class="donate" href={WESNOTH_DONATE_URL} target="_blank" rel="noopener" data-testid="title-about-donate">{tx('Donate to support the original Battle for Wesnoth on Liberapay')}</a>
@@ -223,6 +229,8 @@
       <button class="large" title={t('Show Credits')} onclick={onCredits} data-testid="title-credits">{t('Credits')}</button>
     </nav>
   </div>
+
+  <ConsentPrompt />
 
   <div class="bar">
     <span class="version" data-testid="title-version" title={build.commit || undefined}

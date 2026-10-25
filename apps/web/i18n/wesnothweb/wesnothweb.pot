@@ -150,7 +150,7 @@ msgstr ""
 msgid "All"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:197
+#: packages/ui/src/menu/TitleScreen.svelte:198
 msgid "All the game assets, including audio, graphics, animations, and scenarios are human-made (imported from the original Battle for Wesnoth). Only the TypeScript implementation code is largely vibe-coded, based on the original C++ code."
 msgstr ""
 
@@ -290,7 +290,11 @@ msgstr ""
 msgid "Deselect"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:203
+#: packages/ui/src/telemetry/ConsentPrompt.svelte:26
+msgid "Details"
+msgstr ""
+
+#: packages/ui/src/menu/TitleScreen.svelte:209
 msgid "Donate to support the original Battle for Wesnoth on Liberapay"
 msgstr ""
 
@@ -300,6 +304,10 @@ msgstr ""
 
 #: packages/ui/src/errors/ErrorScreen.svelte:97 packages/ui/src/telemetry/BugReportDialog.svelte:124
 msgid "Download report"
+msgstr ""
+
+#: packages/ui/src/telemetry/ConsentPrompt.svelte:22
+msgid "Each event says which campaign, scenario, difficulty and turn it happened at, the game version, your language, whether you play on a phone or a computer, and your browser family. A random number for the campaign playthrough (kept in its saves) tells retries apart; nothing identifies you, and your IP address is not stored. The data is kept for 13 months. You can change your answer at any time in Preferences."
 msgstr ""
 
 #: packages/ui/src/help/HelpBrowser.svelte:258
@@ -326,6 +334,10 @@ msgstr ""
 msgid "Failed to load:"
 msgstr ""
 
+#: packages/ui/src/telemetry/ConsentPrompt.svelte:26
+msgid "Fewer details"
+msgstr ""
+
 #: packages/ui/src/AccessibilityPanel.svelte:21
 msgid "Font size"
 msgstr ""
@@ -334,8 +346,16 @@ msgstr ""
 msgid "Game board"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:181
+#: packages/ui/src/telemetry/ConsentPrompt.svelte:16
+msgid "Gameplay statistics"
+msgstr ""
+
+#: packages/ui/src/menu/TitleScreen.svelte:182
 msgid "Gameplay tips"
+msgstr ""
+
+#: packages/ui/src/telemetry/ConsentPrompt.svelte:18
+msgid "Help find bugs? With your permission the game sends anonymous statistics about which scenarios are started, won, lost or left unfinished, saves loaded and crashes. No cookies and no personal data."
 msgstr ""
 
 #: packages/ui/src/help/HelpBrowser.svelte:281 packages/ui/src/help/HelpBrowser.svelte:282
@@ -406,7 +426,7 @@ msgstr ""
 msgid "Log"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:218
+#: packages/ui/src/menu/TitleScreen.svelte:224
 msgid "Main menu"
 msgstr ""
 
@@ -444,6 +464,10 @@ msgstr ""
 
 #: packages/ui/src/LoadGameDialog.svelte:146
 msgid "No saves for this campaign."
+msgstr ""
+
+#: packages/ui/src/telemetry/ConsentPrompt.svelte:28
+msgid "No, thanks"
 msgstr ""
 
 #: packages/ui/src/RecruitDialog.svelte:131
@@ -498,6 +522,10 @@ msgstr ""
 msgid "Playing on from the end of the replay."
 msgstr ""
 
+#: packages/ui/src/menu/TitleScreen.svelte:204
+msgid "Privacy"
+msgstr ""
+
 #: packages/ui/src/gameSession.ts:4195
 msgid "Recalled $unit for $cost gold."
 msgstr ""
@@ -542,7 +570,7 @@ msgstr ""
 msgid "Report a Bug"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:232
+#: packages/ui/src/menu/TitleScreen.svelte:240
 msgid "Report a bug"
 msgstr ""
 
@@ -590,6 +618,10 @@ msgstr ""
 msgid "Send"
 msgstr ""
 
+#: packages/ui/src/PreferencesDialog.svelte:159
+msgid "Send anonymous gameplay statistics to help find bugs"
+msgstr ""
+
 #: packages/ui/src/errors/ErrorScreen.svelte:94
 msgid "Send report..."
 msgstr ""
@@ -634,7 +666,7 @@ msgstr ""
 msgid "Something went wrong"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:147 packages/ui/src/menu/TitleScreen.svelte:233
+#: packages/ui/src/menu/CreditsScreen.svelte:147 packages/ui/src/menu/TitleScreen.svelte:241
 msgid "Source code"
 msgstr ""
 
@@ -658,7 +690,7 @@ msgstr ""
 msgid "That save no longer exists."
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:189
+#: packages/ui/src/menu/TitleScreen.svelte:190
 msgid "The Battle for Wesnoth is an open source, turn-based strategy game with a high fantasy theme. Learn more about it at wesnoth.org."
 msgstr ""
 
@@ -702,7 +734,7 @@ msgstr ""
 msgid "Time of day: $bonus|% damage"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:168 packages/ui/src/menu/TitleScreen.svelte:170
+#: packages/ui/src/menu/TitleScreen.svelte:169 packages/ui/src/menu/TitleScreen.svelte:171
 msgid "Title screen info"
 msgstr ""
 
@@ -750,11 +782,11 @@ msgstr ""
 msgid "Vulnerability to $type ×$factor"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:164 packages/ui/src/menu/TitleScreen.svelte:181
+#: packages/ui/src/menu/TitleScreen.svelte:165 packages/ui/src/menu/TitleScreen.svelte:182
 msgid "Wesnoth on the Web"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:192
+#: packages/ui/src/menu/TitleScreen.svelte:193
 msgid "Wesnoth on the Web is an unofficial fan-made port of the Battle for Wesnoth, rebuilt in TypeScript and adapted to web and mobile interfaces. Currently it supports single-player mainline campaigns only, with add-ons and multiplayer support planned in the future. The port is in beta and there may still be noticeable bugs – please report them!"
 msgstr ""
 
@@ -764,6 +796,14 @@ msgstr ""
 
 #: packages/ui/src/telemetry/BugReportDialog.svelte:91
 msgid "What happened?"
+msgstr ""
+
+#: packages/ui/src/PreferencesDialog.svelte:157
+msgid "Which scenarios are started, won, lost or left unfinished, saves loaded and crashes; no personal data"
+msgstr ""
+
+#: packages/ui/src/telemetry/ConsentPrompt.svelte:29
+msgid "Yes, send statistics"
 msgstr ""
 
 #: packages/ui/src/gameSession.ts:1056 packages/ui/src/gameSession.ts:1058
@@ -814,11 +854,15 @@ msgstr ""
 msgid "the state after this command differs from the recorded game"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:229
+#: packages/ui/src/menu/TitleScreen.svelte:205
+msgid "this site sets no cookies. Gameplay statistics are sent only if you agree (Preferences), and a bug report only when you send one. Both go to the developer of this port, are stored with Cloudflare, and are deleted after 13 and 12 months."
+msgstr ""
+
+#: packages/ui/src/menu/TitleScreen.svelte:237
 msgid "web $version"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:202
+#: packages/ui/src/menu/TitleScreen.svelte:208
 msgid "wesnoth.org — the official game"
 msgstr ""
 

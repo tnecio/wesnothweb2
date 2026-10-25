@@ -20,7 +20,12 @@
   import { displayPrefs, IDLE_ANIM_RATE_RANGE, TURBO_SPEEDS, type DisplayPrefs } from './displayPrefs.js';
   import { readSetting, writeSetting } from './persistence.js';
   import { DEFAULT_AUTO_SAVE_MAX, INFINITE_AUTO_SAVES } from './save/naming.js';
-  import { t, tw } from './i18n/locale.js';
+  import { t, tw, tx } from './i18n/locale.js';
+  import { setStatsConsent, statsConsent } from './telemetry/consent.svelte.js';
+  import { statsUrl } from './telemetry/stats.js';
+
+  /** Phase 30: the opt-in statistics switch, in a build that has a statistics server. */
+  const statsAvailable = statsUrl() !== null;
   import type { AudioSettings } from './audio/settings.js';
 
   type PreferencesTab = 'general' | 'hotkeys' | 'display' | 'sound' | 'advanced';
@@ -148,6 +153,12 @@
           />
           <span class="value">{autoSaveMax === INFINITE_AUTO_SAVES ? t('∞') : autoSaveMax}</span>
         </label>
+        {#if statsAvailable}
+          <label class="check" title={tx('Which scenarios are started, won, lost or left unfinished, saves loaded and crashes; no personal data')}>
+            <input type="checkbox" checked={statsConsent.value === 'yes'} onchange={(e) => setStatsConsent(e.currentTarget.checked ? 'yes' : 'no')} data-testid="prefs-stats" />
+            <span>{tx('Send anonymous gameplay statistics to help find bugs')}</span>
+          </label>
+        {/if}
       {:else if tab === 'hotkeys'}
         <HotkeysPanel />
       {:else if tab === 'display'}
