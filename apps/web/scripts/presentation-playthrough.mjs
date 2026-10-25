@@ -17,6 +17,11 @@
  * - an attack's own events speak after its blows (`attack::perform`), on the debug combat scenario: an
  *   `[event] name=attack end` `[message]` (The South Guard's quintain) opens only once the fight has played.
  *
+ * - the status bar, as upstream's theme draws it (Dead Water 1): its `menubar.png` strip tiled at its own
+ *   size (never stretched, at any width), "Menu" and "Actions" as page text on the copper button frame, each
+ *   figure behind its icon with upstream's tooltip, and the time of day in the sidebar under the minimap,
+ *   following the hex under the pointer; on a phone turned sideways, the time of day is in the bar instead.
+ *
  * - lighting (S5), on Two Brothers 3 (its castle is a `[time_area]`, dark indoors): terrain, foreground
  *   and items lit hex by hex -- the light map inside the castle from the castle's colour, outside from the
  *   day's -- flags, grid and fog by the day's, units not at all; and combat in the castle at its lawful bonus.
@@ -29,11 +34,11 @@
  *   come with one, generated from their race's name generator, shown in the side panel.
  *
  *   node apps/web/scripts/presentation-playthrough.mjs [--base http://localhost:5173]
- *     [--only unit-effects,standing-idle,combat-anims,attack-end-order,lighting,linger,names]
+ *     [--only unit-effects,standing-idle,combat-anims,attack-end-order,status-bar,lighting,linger,names]
  *     [--shots <dir>]
  */
 import { chromium } from 'playwright';
-import { openScenario, performAttack, skipToPlay, untilPlayable, waitBoardReady } from './lib/browserFlows.mjs';
+import { hexPoint, openScenario, performAttack, skipToPlay, untilPlayable, waitBoardReady } from './lib/browserFlows.mjs';
 
 const args = process.argv.slice(2);
 const base = args.includes('--base') ? args[args.indexOf('--base') + 1] : 'http://localhost:5173';
@@ -362,6 +367,64 @@ ${anims}
     const at = await page.evaluate((n) => ({ ...window.__atMessage, played: window.__atMessage?.played.slice(n) }), before);
     check('the attack end message opens after the blows were played', !!at.played && at.played.includes('attack') && at.played.includes('defend'), at.played?.join(', '));
     await page.keyboard.press('Enter');
+    check('no page errors', errors.length === 0, errors.join(' | '));
+    await page.context().close();
+  }
+  if (runs('status-bar')) {
+    const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await openDeadWater(page);
+    const bar = () =>
+      page.evaluate(() => {
+        const el = document.querySelector('.top-bar');
+        const style = getComputedStyle(el);
+        const icons = [...el.querySelectorAll('.stat:not(.tod) img')];
+        return {
+          height: el.getBoundingClientRect().height,
+          image: style.backgroundImage,
+          size: style.backgroundSize,
+          repeat: style.backgroundRepeat,
+          buttons: [...el.querySelectorAll('.menu-button')].map((b) => b.textContent.trim()),
+          frame: getComputedStyle(el.querySelector('.menu-button'), '::before').borderImageSource,
+          icons: icons.length,
+          loaded: icons.every((i) => i.complete && i.naturalWidth > 0),
+          titles: [...el.querySelectorAll('.stat')].filter((s) => getComputedStyle(s).display !== 'none').map((s) => s.title.split('\n')[0]),
+          barTod: !!el.querySelector('.tod') && getComputedStyle(el.querySelector('.tod')).display !== 'none',
+          scrollsSideways: document.documentElement.scrollWidth > innerWidth,
+        };
+      });
+    let b = await bar();
+    check('the bar is upstream\'s strip, tiled at its own size (never stretched)', b.image.includes('menubar.png') && b.size.split(',').every((v) => v.trim() === 'auto') && b.repeat.startsWith('repeat-x'), `${b.size} / ${b.repeat}`);
+    check('...and as tall as the strip, 27px', Math.round(b.height) === 27, String(b.height));
+    check('"Menu" and "Actions" are page text on the copper button frame', b.buttons.join('|') === 'Menu|Actions' && b.frame.includes('menu_button_copper_H20'), `${b.buttons} ${b.frame}`);
+    check('every figure has its icon, loaded', b.icons === 6 && b.loaded, `${b.icons} icons`);
+    check('...and upstream\'s tooltip', b.titles.join('|') === 'Turn Number|Gold|Villages|Units|Upkeep|Net Income', b.titles.join('|'));
+    check('the bar shows no time of day on a desktop', !b.barTod);
+    const tod = () => page.evaluate(() => ({ shown: !!document.querySelector('[data-testid="tod-panel"]')?.offsetParent, title: document.querySelector('[data-testid="tod-panel"] .tod-image')?.title ?? '', stats: document.querySelector('[data-testid="tod-panel"] .tod-stats')?.textContent ?? '' }));
+    const atStart = await tod();
+    check('the sidebar shows the time of day and its place in the schedule', atStart.shown && /Time of day:/.test(atStart.title) && /^\d+\/\d+$/.test(atStart.stats), JSON.stringify(atStart));
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.waitForTimeout(800);
+    b = await bar();
+    check('wider, the strip is still tiled, not stretched', b.size.split(',').every((v) => v.trim() === 'auto') && Math.round(b.height) === 27, b.size);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.waitForTimeout(800);
+    // A hex under the pointer: the report follows it (Dead Water 1 has one schedule, so its text stays).
+    const p = await hexPoint(page, 10, 10);
+    await page.mouse.move(p.x, p.y);
+    await page.waitForTimeout(500);
+    const hovered = await tod();
+    check('...and follows the hex under the pointer', hovered.shown && hovered.stats === atStart.stats, JSON.stringify(hovered));
+    if (shots) await page.screenshot({ path: `${shots}/status-bar-desktop.png` });
+    // A phone on its side: the sidebar's time of day is hidden, the bar has it.
+    await page.setViewportSize({ width: 839, height: 412 });
+    await page.waitForTimeout(1200);
+    b = await bar();
+    const phoneTod = await tod();
+    check('on a phone turned sideways, the time of day is in the bar, not the sidebar', b.barTod && !phoneTod.shown, JSON.stringify({ bar: b.barTod, side: phoneTod.shown }));
+    check('...nothing scrolls sideways', !b.scrollsSideways);
+    if (shots) await page.screenshot({ path: `${shots}/status-bar-landscape.png` });
     check('no page errors', errors.length === 0, errors.join(' | '));
     await page.context().close();
   }

@@ -88,9 +88,14 @@ export interface AnchoredSequence {
 
 function timeOfDayInSequence(seq: AnchoredSequence, turnNumber: number): TimeOfDayEntry {
   if (seq.times.length === 0) return NEUTRAL_TIME_OF_DAY;
+  return seq.times[indexInSequence(seq, turnNumber)]!;
+}
+
+/** The index of the entry active on `turnNumber` (`tod_manager::get_current_time`). */
+function indexInSequence(seq: AnchoredSequence, turnNumber: number): number {
+  if (seq.times.length === 0) return 0;
   const raw = (seq.anchorIndex + (turnNumber - seq.anchorTurn)) % seq.times.length;
-  const idx = raw < 0 ? raw + seq.times.length : raw;
-  return seq.times[idx]!;
+  return raw < 0 ? raw + seq.times.length : raw;
 }
 
 /** One `[time_area]`: a named region following its own schedule instead of the global one. Mirrors `tod_manager::area_time_of_day`. */
@@ -164,6 +169,25 @@ export class Schedule {
       }
     }
     return this.timeOfDayForTurn(turnNumber);
+  }
+
+  /**
+   * `tod_manager::times(loc)` and `get_current_time(loc)`: the schedule `loc` follows (its `[time_area]`'s, as
+   * `timeOfDayAt` picks it, else the global one) and the index of its entry on `turnNumber`.
+   */
+  scheduleAt(loc: Location | undefined, turnNumber: number): { times: readonly TimeOfDayEntry[]; current: number } {
+    let seq = this.globalSchedule;
+    if (loc) {
+      const key = loc.key();
+      for (let i = this.areas.length - 1; i >= 0; i--) {
+        const area = this.areas[i]!;
+        if (area.schedule.times.length > 0 && area.hexes.has(key)) {
+          seq = area.schedule;
+          break;
+        }
+      }
+    }
+    return { times: seq.times, current: indexInSequence(seq, turnNumber) };
   }
 
   /** Every hex some `[time_area]` with a schedule covers (`"x,y"` keys). */

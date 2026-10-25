@@ -1177,6 +1177,21 @@ describe('GameSession.timeOfDayAt real [time_area] (Under the Burning Suns scena
     expect(campfireTod.id).not.toBe(globalTod.id);
     expect(farAwayTod.id).toBe(globalTod.id);
   });
+
+  it('the sidebar\'s time of day report follows the hex: its [time_area]\'s schedule there, the global one elsewhere or with no hex', async () => {
+    const session = new GameSession(loadUtbsTimeAreaSnapshot());
+    await session.runStartupEvents();
+    const campfire = session.timeOfDayReport(Location.fromWml(14, 10));
+    const farAway = session.timeOfDayReport(Location.fromWml(1, 1));
+    const global = session.timeOfDayReport(null);
+    expect(campfire.tod.id).toBe(session.timeOfDayAt(Location.fromWml(14, 10)).id);
+    expect(campfire.times).not.toBe(global.times);
+    expect(campfire.times[campfire.current]!.id).toBe(campfire.tod.id);
+    expect(farAway.times).toBe(global.times);
+    expect(global.tod.id).toBe(session.currentTimeOfDay.id);
+    expect(global.times[global.current]!.id).toBe(global.tod.id);
+    expect(global.times.length).toBe(session['schedule'].globalTimes.length);
+  });
 });
 
 describe('GameSession income/upkeep/village economy (real synth_economy_01: gold=40/income=2/village_gold=1)', () => {

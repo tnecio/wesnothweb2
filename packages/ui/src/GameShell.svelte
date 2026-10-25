@@ -155,6 +155,7 @@
   import type { AudioSettings } from './audio/settings.js';
   import MessageViewer from './MessageViewer.svelte';
   import GuiDialog from './GuiDialog.svelte';
+  import TimeOfDayPanel from './TimeOfDayPanel.svelte';
   import type { GuiDialogInteraction, SoundRequest, ResolvedStoryPart, FloatingLabelRequest, RgbColor, TString } from '@wesnothweb2/engine';
   import OverlayLabels, { type OverlayLabelView } from './OverlayLabels.svelte';
   import { stripPango } from './markup/pango.js';
@@ -739,6 +740,17 @@
   let statusMessage = $state(tx('Click one of your units to select it.'));
   /** Phase 14: the infobox's "terrain info for the hovered hex" -- kept in sync by `GameBoardView`'s `onHexHoverChange`. */
   let hoveredHexInfo = $state<HoveredHexInfo | null>(null);
+  /**
+   * The sidebar's time of day (`TimeOfDayPanel`): at the hex under the pointer, else the selected hex, else the
+   * global one, as upstream's `time_of_day` report picks it. Follows each sync (`timeOfDay`, `units`), as a
+   * turn, a `[time_area]` or a unit's illumination change it. None when the scenario has no schedule.
+   */
+  const todReport = $derived.by(() => {
+    void units;
+    if (!timeOfDay.id) return null;
+    const at = hoveredHexInfo ?? selectedHex;
+    return session.timeOfDayReport(at ? new Location(at.x, at.y) : null);
+  });
   /** What a screen reader says about the hex under the keyboard cursor; `describeHex`, updated as the cursor moves. */
   let cursorAnnouncement = $state('');
   /** Phase 14: the right-click context menu's position + which hex it's for, `null` when closed. */
@@ -3568,9 +3580,10 @@
   <!-- Polite live region for the keyboard cursor's hex; visually hidden. -->
   <div class="sr-only" role="status" aria-live="polite" aria-atomic="true" data-testid="cursor-announcement">{cursorAnnouncement}</div>
   <TopBar
-    scenarioName={ts(session.scenarioNameT)}
     {turnNumber}
     {activeSide}
+    flagIcon={session.board.getTeam(activeSide)?.flagIcon ?? ''}
+    flagColor={resolveSideColorId(session.board.getTeam(activeSide)?.color ?? '', activeSide, teamColors?.defaultColors ?? [])}
     {scenarioTurnsLimit}
     {timeOfDay}
     {gold}
@@ -3644,6 +3657,7 @@
           onToggle={(key) => displayPrefs.update({ minimap: { [key]: !displayPrefs.peek().minimap[key] } })}
           onZoomDefault={() => boardView?.zoomDefault()}
         />
+        {#if todReport}<div class="sidebar-tod"><TimeOfDayPanel report={todReport} /></div>{/if}
       {/snippet}
     </SidePanel>
   </div>
@@ -3932,6 +3946,15 @@
 </div>
 
 <style>
+  /* Upstream's sidebar time of day, under the minimap; on a phone the top bar shows it instead (TopBar.svelte). */
+  .sidebar-tod {
+    padding-top: 0.5rem;
+  }
+  @media (max-width: 720px), (max-height: 500px) {
+    .sidebar-tod {
+      display: none;
+    }
+  }
   /* Phase 24: the turn prompt's blindfold, under the prompt itself (Modal is z-index 200). */
   .blindfold {
     position: fixed;

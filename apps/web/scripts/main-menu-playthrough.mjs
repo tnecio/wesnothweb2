@@ -299,7 +299,7 @@ async function keyboardRun(browser) {
   check('scenario 1 is won by keys', await winByKeys(page));
   await press(page, 'Control+Space', 1000); // End Scenario
   await page.waitForFunction(() => window.__wesnoth?.session?.snapshot?.scenario?.id === 'synth_keyboard_02', null, { timeout: 60000 });
-  check('Ctrl+Space (End Scenario) continues into scenario 2', /2\/2/.test(await page.$eval('.scenario-name', (e) => e.textContent ?? '').catch(() => '')));
+  check('Ctrl+Space (End Scenario) continues into scenario 2', /2\/2/.test(await page.evaluate(() => window.__wesnoth?.session.scenarioName ?? '').catch(() => '')));
   await waitBoardReady(page);
   await page.waitForTimeout(3000);
   const won2 = await winByKeys(page);
