@@ -134,6 +134,14 @@ msgstr ""
 msgid "(viewing)"
 msgstr ""
 
+#: packages/ui/src/menu/TitleScreen.svelte:191
+msgid "<b>The Battle for Wesnoth</b> is an open source, turn-based strategy game with a high fantasy theme. Learn more about it at $link."
+msgstr ""
+
+#: packages/ui/src/menu/TitleScreen.svelte:201
+msgid "<b>Wesnoth on the Web</b> is an unofficial fan-made port of the Battle for Wesnoth, rebuilt in TypeScript and adapted to web and mobile interfaces. Currently it supports single-player mainline campaigns only, with add-ons and multiplayer support planned in the future. <b>The port is in beta</b> and there may still be noticeable bugs – please report them!"
+msgstr ""
+
 #: packages/ui/src/errors/ErrorScreen.svelte:84
 msgid "A report helps fix it. It stays on your device unless you send it yourself."
 msgstr ""
@@ -150,8 +158,8 @@ msgstr ""
 msgid "All"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:198
-msgid "All the game assets, including audio, graphics, animations, and scenarios are human-made (imported from the original Battle for Wesnoth). Only the TypeScript implementation code is largely vibe-coded, based on the original C++ code."
+#: packages/ui/src/menu/TitleScreen.svelte:207
+msgid "All the game assets, including audio, graphics, animations, and scenarios are imported from the original Battle for Wesnoth. Only the TypeScript implementation code is newly-written using LLM assistance, based on the original C++ code."
 msgstr ""
 
 #: packages/ui/src/GameShell.svelte:3851
@@ -292,10 +300,6 @@ msgstr ""
 
 #: packages/ui/src/telemetry/ConsentPrompt.svelte:26
 msgid "Details"
-msgstr ""
-
-#: packages/ui/src/menu/TitleScreen.svelte:209
-msgid "Donate to support the original Battle for Wesnoth on Liberapay"
 msgstr ""
 
 #: packages/ui/src/menu/MainMenu.svelte:183
@@ -522,10 +526,6 @@ msgstr ""
 msgid "Playing on from the end of the replay."
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:204
-msgid "Privacy"
-msgstr ""
-
 #: packages/ui/src/gameSession.ts:4195
 msgid "Recalled $unit for $cost gold."
 msgstr ""
@@ -690,10 +690,6 @@ msgstr ""
 msgid "That save no longer exists."
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:190
-msgid "The Battle for Wesnoth is an open source, turn-based strategy game with a high fantasy theme. Learn more about it at wesnoth.org."
-msgstr ""
-
 #: packages/ui/src/menu/CreditsScreen.svelte:121
 msgid "The credits could not be loaded."
 msgstr ""
@@ -786,10 +782,6 @@ msgstr ""
 msgid "Wesnoth on the Web"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:193
-msgid "Wesnoth on the Web is an unofficial fan-made port of the Battle for Wesnoth, rebuilt in TypeScript and adapted to web and mobile interfaces. Currently it supports single-player mainline campaigns only, with add-ons and multiplayer support planned in the future. The port is in beta and there may still be noticeable bugs – please report them!"
-msgstr ""
-
 #: packages/ui/src/telemetry/BugReportDialog.svelte:96
 msgid "What did you expect to happen? (optional)"
 msgstr ""
@@ -854,16 +846,8 @@ msgstr ""
 msgid "the state after this command differs from the recorded game"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:205
-msgid "this site sets no cookies. Gameplay statistics are sent only if you agree (Preferences), and a bug report only when you send one. Both go to the developer of this port, are stored with Cloudflare, and are deleted after 13 and 12 months."
-msgstr ""
-
 #: packages/ui/src/menu/TitleScreen.svelte:237
 msgid "web $version"
-msgstr ""
-
-#: packages/ui/src/menu/TitleScreen.svelte:208
-msgid "wesnoth.org — the official game"
 msgstr ""
 
 #: packages/ui/src/gameSession.ts:1638

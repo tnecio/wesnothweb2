@@ -6735,7 +6735,7 @@ that number was taken, by RNG modes.)
 - **S4:**
   - the title screen asks once; it never covers the menu (top right on a desktop, above the footer on a phone);
   - the Preferences switch;
-  - a Privacy note in About.
+  - a Privacy note in About, later removed with the bottom links when the About text was rewritten (user's call).
 - **S5:**
   - `stats.mjs`: per-scenario starts, wins, defeats, quits, loads and crashes; the "stuck" list (runs whose last
     event there is a quit or a defeat, with their attempts); crashes by signature; the latest reports;

@@ -25,7 +25,7 @@
   import { buildInfo } from '../errors/errorReporting.svelte.js';
   import { openBugReport } from '../telemetry/bugReportDialog.svelte.js';
   import ConsentPrompt from '../telemetry/ConsentPrompt.svelte';
-  import { AUTHOR_URL, SOURCE_URL, WESNOTH_DONATE_URL, WESNOTH_ORG_URL } from '../about.js';
+  import { AUTHOR_URL, SOURCE_URL, WESNOTH_ORG_URL } from '../about.js';
   import titleImages from './titleImages.json';
 
   /**
@@ -186,28 +186,28 @@
 
       <div class="tab-body" id={`title-panel-${activeTab}`} role="tabpanel" aria-labelledby={infoTabs.length > 1 ? `title-tab-${activeTab}` : undefined}>
         {#if activeTab === 'about'}
+          <!-- Each paragraph is one translatable string with Pango <b>; the first one's $link is wesnoth.org. -->
           <p class="about-text" dir="auto" data-testid="title-about-text">
-            {tx('The Battle for Wesnoth is an open source, turn-based strategy game with a high fantasy theme. Learn more about it at wesnoth.org.')}
+            {#each tx('<b>The Battle for Wesnoth</b> is an open source, turn-based strategy game with a high fantasy theme. Learn more about it at $link.').split('$link') as part, i (i)}{#if i > 0}<a
+                  class="about-link"
+                  href={WESNOTH_ORG_URL}
+                  target="_blank"
+                  rel="noopener"
+                  data-testid="title-about-wesnoth-org">wesnoth.org</a
+                >{/if}<Markup text={part} />{/each}
+          </p>
+          <p class="about-text" dir="auto">
+            <Markup
+              text={tx(
+                '<b>Wesnoth on the Web</b> is an unofficial fan-made port of the Battle for Wesnoth, rebuilt in TypeScript and adapted to web and mobile interfaces. Currently it supports single-player mainline campaigns only, with add-ons and multiplayer support planned in the future. <b>The port is in beta</b> and there may still be noticeable bugs – please report them!',
+              )}
+            />
           </p>
           <p class="about-text" dir="auto">
             {tx(
-              'Wesnoth on the Web is an unofficial fan-made port of the Battle for Wesnoth, rebuilt in TypeScript and adapted to web and mobile interfaces. Currently it supports single-player mainline campaigns only, with add-ons and multiplayer support planned in the future. The port is in beta and there may still be noticeable bugs – please report them!',
+              'All the game assets, including audio, graphics, animations, and scenarios are imported from the original Battle for Wesnoth. Only the TypeScript implementation code is newly-written using LLM assistance, based on the original C++ code.',
             )}
           </p>
-          <p class="about-text" dir="auto">
-            {tx(
-              'All the game assets, including audio, graphics, animations, and scenarios are human-made (imported from the original Battle for Wesnoth). Only the TypeScript implementation code is largely vibe-coded, based on the original C++ code.',
-            )}
-          </p>
-          <!-- Phase 32: what leaves the player's browser, and when. -->
-          <p class="about-text privacy" dir="auto" data-testid="title-about-privacy">
-            <strong>{tx('Privacy')}:</strong>
-            {tx('this site sets no cookies. Gameplay statistics are sent only if you agree (Preferences), and a bug report only when you send one. Both go to the developer of this port, are stored with Cloudflare, and are deleted after 13 and 12 months.')}
-          </p>
-          <div class="about-links">
-            <a href={WESNOTH_ORG_URL} target="_blank" rel="noopener" data-testid="title-about-wesnoth-org">{tx('wesnoth.org — the official game')}</a>
-            <a class="donate" href={WESNOTH_DONATE_URL} target="_blank" rel="noopener" data-testid="title-about-donate">{tx('Donate to support the original Battle for Wesnoth on Liberapay')}</a>
-          </div>
         {:else if tip}
           <p class="tip" dir="auto" data-testid="tip-text"><Markup text={ts(tip.text)} /></p>
           <p class="source" dir="auto"><Markup text={ts(tip.source)} /></p>
@@ -363,17 +363,9 @@
     font-size: 0.95rem;
     line-height: 1.4;
   }
-  .about-links {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.6rem 1.2rem;
-  }
-  .about-links a {
+  .about-link {
     color: #ffd54a;
     text-decoration: underline;
-  }
-  .about-links a.donate {
-    color: #e6dcae;
   }
   .mute-button {
     position: absolute;

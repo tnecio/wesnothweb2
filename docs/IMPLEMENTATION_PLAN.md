@@ -2493,7 +2493,7 @@ Delivered as five stages:
 - **S2, the game's events:** `scenario_start`, `scenario_end`, `game_load`, `quit`, `crash`; `GameSession.runId`.
 - **S3, Report a bug:** from the game Menu, the title screen and the error screen, with Copy / Download when
   it cannot be sent.
-- **S4, consent:** the title screen question, the Preferences switch, a Privacy note in About.
+- **S4, consent:** the title screen question (its Details list what is sent and kept), and the Preferences switch. A Privacy note in About was removed again (user's call).
 - **S5, reading the data:** `apps/stats/scripts/stats.mjs` (per scenario, stuck runs, crash signatures)
   and `report.mjs`.
 
