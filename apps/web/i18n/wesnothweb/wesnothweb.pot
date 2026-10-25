@@ -18,7 +18,7 @@ msgstr ""
 msgid "$attacker could attack $defender -- review the prediction and confirm."
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:272
+#: packages/ui/src/GameBoardView.svelte:275
 msgid "$name -- $units units, $width x $height hexes"
 msgstr ""
 
@@ -122,7 +122,7 @@ msgstr ""
 msgid "$unit's poison is cured."
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:1148
+#: packages/ui/src/GameBoardView.svelte:1151
 msgid "(drag or scroll to pan, Ctrl+scroll to zoom)"
 msgstr ""
 
@@ -134,11 +134,11 @@ msgstr ""
 msgid "(viewing)"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:191
+#: packages/ui/src/menu/TitleScreen.svelte:195
 msgid "<b>The Battle for Wesnoth</b> is an open source, turn-based strategy game with a high fantasy theme. Learn more about it at $link."
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:201
+#: packages/ui/src/menu/TitleScreen.svelte:205
 msgid "<b>Wesnoth on the Web</b> is an unofficial fan-made port of the Battle for Wesnoth, rebuilt in TypeScript and adapted to web and mobile interfaces. Currently it supports single-player mainline campaigns only, with add-ons and multiplayer support planned in the future. <b>The port is in beta</b> and there may still be noticeable bugs – please report them!"
 msgstr ""
 
@@ -158,11 +158,11 @@ msgstr ""
 msgid "All"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:207
+#: packages/ui/src/menu/TitleScreen.svelte:211
 msgid "All the game assets, including audio, graphics, animations, and scenarios are imported from the original Battle for Wesnoth. Only the TypeScript implementation code is newly-written using LLM assistance, based on the original C++ code."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3870
+#: packages/ui/src/GameShell.svelte:3871
 msgid "Are you sure you want to clear map labels?"
 msgstr ""
 
@@ -242,7 +242,7 @@ msgstr ""
 msgid "Collapse"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:4012
+#: packages/ui/src/GameShell.svelte:4013
 msgid "Continue playing"
 msgstr ""
 
@@ -346,7 +346,7 @@ msgstr ""
 msgid "Font size"
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:1160
+#: packages/ui/src/GameBoardView.svelte:1163
 msgid "Game board"
 msgstr ""
 
@@ -354,7 +354,7 @@ msgstr ""
 msgid "Gameplay statistics"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:182
+#: packages/ui/src/menu/TitleScreen.svelte:186
 msgid "Gameplay tips"
 msgstr ""
 
@@ -366,7 +366,7 @@ msgstr ""
 msgid "Help topics"
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:1150
+#: packages/ui/src/GameBoardView.svelte:1153
 msgid "Hex"
 msgstr ""
 
@@ -418,7 +418,7 @@ msgstr ""
 msgid "Loaded $name (turn $turn)."
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:1164 apps/web/src/PlayPage.svelte:126
+#: packages/ui/src/GameBoardView.svelte:1167 apps/web/src/PlayPage.svelte:126
 msgid "Loading scenario..."
 msgstr ""
 
@@ -430,7 +430,7 @@ msgstr ""
 msgid "Log"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:224
+#: packages/ui/src/menu/TitleScreen.svelte:228
 msgid "Main menu"
 msgstr ""
 
@@ -506,7 +506,7 @@ msgstr ""
 msgid "Overwrite"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:4007
+#: packages/ui/src/GameShell.svelte:4008
 msgid "Pause"
 msgstr ""
 
@@ -542,7 +542,7 @@ msgstr ""
 msgid "Rename failed:"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:4004
+#: packages/ui/src/GameShell.svelte:4005
 msgid "Replay controls"
 msgstr ""
 
@@ -570,7 +570,7 @@ msgstr ""
 msgid "Report a Bug"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:240
+#: packages/ui/src/menu/TitleScreen.svelte:244
 msgid "Report a bug"
 msgstr ""
 
@@ -578,7 +578,7 @@ msgstr ""
 msgid "Resistance to $type ×$factor"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:4009
+#: packages/ui/src/GameShell.svelte:4010
 msgid "Restart"
 msgstr ""
 
@@ -666,7 +666,7 @@ msgstr ""
 msgid "Something went wrong"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:150 packages/ui/src/menu/TitleScreen.svelte:241
+#: packages/ui/src/menu/CreditsScreen.svelte:150 packages/ui/src/menu/TitleScreen.svelte:245
 msgid "Source code"
 msgstr ""
 
@@ -730,7 +730,7 @@ msgstr ""
 msgid "Time of day: $bonus|% damage"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:169 packages/ui/src/menu/TitleScreen.svelte:171
+#: packages/ui/src/menu/TitleScreen.svelte:173 packages/ui/src/menu/TitleScreen.svelte:175
 msgid "Title screen info"
 msgstr ""
 
@@ -778,8 +778,12 @@ msgstr ""
 msgid "Vulnerability to $type ×$factor"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:165 packages/ui/src/menu/TitleScreen.svelte:182
+#: packages/ui/src/menu/TitleScreen.svelte:186
 msgid "Wesnoth on the Web"
+msgstr ""
+
+#: packages/ui/src/menu/TitleScreen.svelte:167
+msgid "Wesnoth on the Web: unofficial web port of the Battle for Wesnoth"
 msgstr ""
 
 #: packages/ui/src/telemetry/BugReportDialog.svelte:96
@@ -810,11 +814,11 @@ msgstr ""
 msgid "dismissal of $unit"
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:635
+#: packages/ui/src/GameBoardView.svelte:638
 msgid "failed to load: $error"
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:236
+#: packages/ui/src/GameBoardView.svelte:239
 msgid "loading scenario..."
 msgstr ""
 
@@ -822,7 +826,7 @@ msgstr ""
 msgid "magical"
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:1160
+#: packages/ui/src/GameBoardView.svelte:1163
 msgid "map"
 msgstr ""
 
@@ -846,7 +850,7 @@ msgstr ""
 msgid "the state after this command differs from the recorded game"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:237
+#: packages/ui/src/menu/TitleScreen.svelte:241
 msgid "web $version"
 msgstr ""
 
