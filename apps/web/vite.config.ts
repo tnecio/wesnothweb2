@@ -1,5 +1,9 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+// A plain .mjs helper, shared with scripts/upload-game-data.mjs.
+import { fixWebpAlphaFlag, webpHidesAlpha } from './scripts/lib/webpAlpha.mjs';
 
 export default defineConfig(({ command }) => ({
   plugins: [
@@ -19,6 +23,21 @@ export default defineConfig(({ command }) => ({
           // running version; a day's cache stops replayed scenarios refetching several MB of music.
           if (req.url && /^\/game-images\/.+\/(music|sounds)\//.test(req.url)) {
             res.setHeader('Cache-Control', 'public, max-age=86400');
+          }
+          // Phase 28's media upload fixes WebPs whose header hides their transparency (scripts/lib/webpAlpha.mjs);
+          // the dev server serves the same bytes, or Firefox shows Konrad's portrait on a white block here too.
+          if (req.url && /^\/game-images(-engine)?\/[^?]+\.webp(\?|$)/.test(req.url)) {
+            const file = path.join(server.config.publicDir, decodeURIComponent(req.url.split('?')[0]!));
+            try {
+              const bytes = fs.readFileSync(file);
+              if (webpHidesAlpha(bytes)) {
+                res.setHeader('Content-Type', 'image/webp');
+                res.end(fixWebpAlphaFlag(bytes));
+                return;
+              }
+            } catch {
+              // Not there: the static handler answers as it would.
+            }
           }
           next();
         });

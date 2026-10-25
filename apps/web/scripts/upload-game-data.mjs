@@ -28,14 +28,18 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AwsClient } from 'aws4fetch';
+import { fixWebpAlphaFlag } from './lib/webpAlpha.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const wesnoth = path.join(repoRoot, 'wesnoth');
 const dryRun = process.argv.includes('--dry-run');
 const bucket = process.env.R2_BUCKET || 'wesnothweb2-data';
 
-/** Bump when the processing below changes (2: WAV -> Ogg Vorbis), so a new prefix is uploaded. */
-const MEDIA_VERSION = 2;
+/**
+ * Bump when the processing below changes, so a new prefix is uploaded: 2, WAV -> Ogg Vorbis; 3, WebPs whose
+ * header hides their transparency get its alpha flag set (`lib/webpAlpha.mjs`).
+ */
+const MEDIA_VERSION = 3;
 /**
  * Bump when a source directory is added (2: `data/internal`, the resources campaigns include as binary paths):
  * the prefix stays, and only the new files are sent.
@@ -82,9 +86,9 @@ if (dryRun) {
 
 if (files.some((f) => f.transcode)) execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); // fail early without ffmpeg
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'game-data-'));
-/** The bytes to upload for `f`: the file itself, or its Ogg Vorbis conversion. */
+/** The bytes to upload for `f`: the file itself (a WebP with its alpha flag fixed, if need be), or its Ogg Vorbis conversion. */
 function body(f) {
-  if (!f.transcode) return fs.readFileSync(f.file);
+  if (!f.transcode) return f.file.toLowerCase().endsWith('.webp') ? fixWebpAlphaFlag(fs.readFileSync(f.file)) : fs.readFileSync(f.file);
   const out = path.join(scratch, `${f.key.replace(/[^A-Za-z0-9.-]/g, '_')}`);
   execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-i', f.file, '-c:a', 'libvorbis', '-q:a', '5', out]);
   const bytes = fs.readFileSync(out);
