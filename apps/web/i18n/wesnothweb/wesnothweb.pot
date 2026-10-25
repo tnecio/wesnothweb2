@@ -166,7 +166,7 @@ msgstr ""
 msgid "Are you sure you want to clear map labels?"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:146
+#: packages/ui/src/menu/CreditsScreen.svelte:149
 msgid "Art and music credits (CSV)"
 msgstr ""
 
@@ -402,11 +402,11 @@ msgstr ""
 msgid "Leadership: +$bonus|% damage"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:145
+#: packages/ui/src/menu/CreditsScreen.svelte:148
 msgid "Licences"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:144
+#: packages/ui/src/menu/CreditsScreen.svelte:147
 msgid "Licences and source code"
 msgstr ""
 
@@ -422,7 +422,7 @@ msgstr ""
 msgid "Loading scenario..."
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:123
+#: packages/ui/src/menu/CreditsScreen.svelte:126
 msgid "Loading..."
 msgstr ""
 
@@ -510,7 +510,7 @@ msgstr ""
 msgid "Pause"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:140
+#: packages/ui/src/menu/CreditsScreen.svelte:143
 msgid "Pause scrolling"
 msgstr ""
 
@@ -582,7 +582,7 @@ msgstr ""
 msgid "Restart"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:140
+#: packages/ui/src/menu/CreditsScreen.svelte:143
 msgid "Resume scrolling"
 msgstr ""
 
@@ -666,7 +666,7 @@ msgstr ""
 msgid "Something went wrong"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:147 packages/ui/src/menu/TitleScreen.svelte:241
+#: packages/ui/src/menu/CreditsScreen.svelte:150 packages/ui/src/menu/TitleScreen.svelte:241
 msgid "Source code"
 msgstr ""
 
@@ -690,7 +690,7 @@ msgstr ""
 msgid "That save no longer exists."
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:121
+#: packages/ui/src/menu/CreditsScreen.svelte:124
 msgid "The credits could not be loaded."
 msgstr ""
 
