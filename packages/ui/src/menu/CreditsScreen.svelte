@@ -21,11 +21,14 @@
   import { changeScrollSpeed, creditsBackground, creditsLines, DEFAULT_SCROLL_SPEED, type CreditsJson, type CreditsLine } from './credits.js';
 
   /**
-   * The port's own credit, ahead of every upstream group. Not in `credits.json` -- that file is
+   * The port's own credit (a section title and a name, styled like upstream's), ahead of every upstream group. Not in `credits.json` -- that file is
    * regenerated from upstream data alone (`build-campaigns.mjs`) and would drop a hand-added line on its
    * next rebuild.
    */
-  const PORT_CREDIT: CreditsLine = { kind: 'header', text: 'Wesnoth on the Web port: Tomasz Necio (tnec.io)' };
+  const PORT_CREDIT: CreditsLine[] = [
+    { kind: 'title', text: 'Web port' },
+    { kind: 'name', text: 'Tomasz Necio (tnec.io)' },
+  ];
 
   let { onClose, focusOn = undefined }: { onClose: () => void; focusOn?: string } = $props();
 
@@ -61,7 +64,7 @@
   });
 
   const lines = $derived(
-    data ? [PORT_CREDIT, ...creditsLines(data, (s) => ts(s), (a, b) => a.localeCompare(b, languageTag(locale.current)), focusOn)] : [],
+    data ? [...PORT_CREDIT, ...creditsLines(data, (s) => ts(s), (a, b) => a.localeCompare(b, languageTag(locale.current)), focusOn)] : [],
   );
 
   // The scroll: text enters at the bottom and moves up until the last line is half way up, then stays.
