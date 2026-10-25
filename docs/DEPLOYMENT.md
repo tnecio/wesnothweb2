@@ -136,8 +136,11 @@ report into the private R2 bucket, a row in D1, and an email to you through Emai
 3. `npx wrangler r2 bucket create wesnoth-reports`, then
    `npx wrangler r2 bucket lifecycle add wesnoth-reports expire-reports reports/ --expire-days 365`
    (reports are deleted after a year; the Worker's daily cron deletes old D1 rows).
-4. Dashboard → `tnec.io` → Email → Email Routing: enable it, and under Destination addresses add and verify
-   the address reports should go to. The sender is `stats@tnec.io` (`MAIL_FROM` in `wrangler.jsonc`).
+4. Dashboard → `tnec.io` → Email → Email Routing, for the **subdomain** `wesnoth-stats.tnec.io` only
+   (Settings → Subdomains). tnec.io's own mail is hosted elsewhere (MX `mail17.mydevil.net`), and enabling
+   Email Routing for the apex would replace that MX record. Under Destination addresses, add and verify the
+   address reports should go to. The sender is `reports@wesnoth-stats.tnec.io` (`MAIL_FROM` in
+   `wrangler.jsonc`). If email does not work, reports are still stored and listed by `stats.mjs`.
 5. `npx wrangler secret put MAIL_TO` with that verified address (a secret so that it stays out of this
    public repository).
 6. `npx wrangler deploy`. It creates the custom domain `wesnoth-stats.tnec.io`;

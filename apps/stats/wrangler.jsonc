@@ -27,7 +27,9 @@
   "vars": {
     "ALLOWED_ORIGINS": "https://wesnoth.tnec.io,https://wesnothweb2.tomasz-necio.workers.dev,http://localhost:5173",
     "REPORTS_ENABLED": "true",
-    "MAIL_FROM": "stats@tnec.io"
+    // On the subdomain with Email Routing (docs/DEPLOYMENT.md): tnec.io's own mail is hosted elsewhere, and
+    // turning Email Routing on for the apex would replace its MX record.
+    "MAIL_FROM": "reports@wesnoth-stats.tnec.io"
   },
   // The daily clean-up: events after 13 months, report rows after 12 (`cleanUp`).
   "triggers": { "crons": ["17 3 * * *"] }

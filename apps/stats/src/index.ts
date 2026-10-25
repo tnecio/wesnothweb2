@@ -3,7 +3,7 @@
  *
  * Bindings (`wrangler.jsonc`): D1 `DB`, R2 `REPORTS`, Email Routing `MAILER` (`send_email`), rate limiters
  * `EVENT_LIMIT` and `REPORT_LIMIT`. Variables: `ALLOWED_ORIGINS`, `REPORTS_ENABLED`, `MAIL_FROM` (an address on
- * the zone, e.g. `stats@tnec.io`). Secret: `MAIL_TO`, the verified address reports go to -- a secret so that it
+ * the Email Routing subdomain, `reports@wesnoth-stats.tnec.io`). Secret: `MAIL_TO`, the verified address reports go to -- a secret so that it
  * stays out of this public repository.
  */
 import { EmailMessage } from 'cloudflare:email';
