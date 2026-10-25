@@ -57,14 +57,14 @@ describe('a bug report', () => {
       calls.push({ url, init });
       return new Response(JSON.stringify({ id: '2026-10-25-abcd1234' }), { status: 201 });
     }) as unknown as typeof fetch;
-    const id = await sendBugReport('https://wesnoth-stats.tnec.io', buildBugReport({ description: 'x', includeSave: false, includeLog: false }, sources()), fetchImpl);
+    const id = await sendBugReport('https://stats.wesnoth.fun', buildBugReport({ description: 'x', includeSave: false, includeLog: false }, sources()), fetchImpl);
     expect(id).toBe('2026-10-25-abcd1234');
-    expect(calls[0]!.url).toBe('https://wesnoth-stats.tnec.io/v1/reports');
+    expect(calls[0]!.url).toBe('https://stats.wesnoth.fun/v1/reports');
     expect((calls[0]!.init.headers as Record<string, string>)['Content-Type']).toBe('text/plain');
   });
 
   it('a refused report rejects, so the dialog offers copy and download', async () => {
     const fetchImpl = (async () => new Response('too large', { status: 413 })) as unknown as typeof fetch;
-    await expect(sendBugReport('https://wesnoth-stats.tnec.io', buildBugReport({ description: 'x', includeSave: false, includeLog: false }, sources()), fetchImpl)).rejects.toThrow(/413/);
+    await expect(sendBugReport('https://stats.wesnoth.fun', buildBugReport({ description: 'x', includeSave: false, includeLog: false }, sources()), fetchImpl)).rejects.toThrow(/413/);
   });
 });

@@ -50,7 +50,7 @@ const event = (extra: Record<string, unknown> = {}) => ({ v: 1, type: 'scenario_
 function post(path: string, body: unknown, origin: string | null = ORIGIN): Request {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (origin) headers['Origin'] = origin;
-  return new Request(`https://wesnoth-stats.tnec.io${path}`, { method: 'POST', headers, body: typeof body === 'string' ? body : JSON.stringify(body) });
+  return new Request(`https://stats.wesnoth.fun${path}`, { method: 'POST', headers, body: typeof body === 'string' ? body : JSON.stringify(body) });
 }
 
 describe('POST /v1/events', () => {
@@ -164,14 +164,14 @@ describe('CORS and routing', () => {
   });
 
   it('answers the preflight for an allowed origin', async () => {
-    const res = await handle(new Request('https://wesnoth-stats.tnec.io/v1/reports', { method: 'OPTIONS', headers: { Origin: 'http://localhost:5173' } }), fakes().deps);
+    const res = await handle(new Request('https://stats.wesnoth.fun/v1/reports', { method: 'OPTIONS', headers: { Origin: 'http://localhost:5173' } }), fakes().deps);
     expect(res.status).toBe(204);
     expect(res.headers.get('Access-Control-Allow-Methods')).toMatch(/POST/);
   });
 
   it('answers the health check, and 404 elsewhere', async () => {
-    expect(await (await handle(new Request('https://wesnoth-stats.tnec.io/v1/health'), fakes().deps)).text()).toBe('ok');
-    expect((await handle(new Request('https://wesnoth-stats.tnec.io/admin', { headers: { Origin: ORIGIN } }), fakes().deps)).status).toBe(404);
+    expect(await (await handle(new Request('https://stats.wesnoth.fun/v1/health'), fakes().deps)).text()).toBe('ok');
+    expect((await handle(new Request('https://stats.wesnoth.fun/admin', { headers: { Origin: ORIGIN } }), fakes().deps)).status).toBe(404);
   });
 });
 

@@ -2485,7 +2485,7 @@ User decisions (2026-10-25):
 - **New reports arrive by email**; the full report is stored privately.
 
 Delivered as five stages:
-- **S1, the Worker** (`apps/stats`, https://wesnoth-stats.tnec.io): a separate Worker. D1 holds the events
+- **S1, the Worker** (`apps/stats`, https://stats.wesnoth.fun): a separate Worker. D1 holds the events
   and an index of reports, a private R2 bucket the reports, and Email Routing sends you a summary. It checks
   CORS, rate-limits per IP, and validates every event and report against the schema it shares with the
   game (`packages/ui/src/telemetry/schema.ts`). A daily cron handles retention. It is deployed by hand

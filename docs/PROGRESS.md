@@ -6706,7 +6706,7 @@ where players get stuck, on a simple separate endpoint. Your decisions: statisti
 random id per campaign run, and you hear about reports by email. (The plan first called this Phase 30, but
 that number was taken, by RNG modes.)
 
-- **S1, the Worker** (`apps/stats`, for https://wesnoth-stats.tnec.io):
+- **S1, the Worker** (`apps/stats`, for https://stats.wesnoth.fun):
   - `POST /v1/events`: batches of up to 20 events go into D1.
   - `POST /v1/reports`: each report (up to 2 MB) goes into the private R2 bucket `wesnoth-reports`, gets a row
     in D1, and triggers a summary email through the `send_email` binding. The address is the secret `MAIL_TO`,

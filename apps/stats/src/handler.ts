@@ -1,5 +1,5 @@
 /**
- * Phase 32: the statistics and bug-report Worker (https://wesnoth-stats.tnec.io), as plain functions over the
+ * Phase 32: the statistics and bug-report Worker (https://stats.wesnoth.fun), as plain functions over the
  * bindings it is given, so tests can run it in node with stand-ins (`index.ts` wires the real ones).
  *
  *   POST /v1/events   a batch of gameplay statistics events (opt-in in the game) -> D1 `events`

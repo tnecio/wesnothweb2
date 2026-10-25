@@ -5,7 +5,7 @@
   "name": "wesnoth-stats",
   "main": "src/index.ts",
   "compatibility_date": "2026-05-01",
-  "routes": [{ "pattern": "wesnoth-stats.tnec.io", "custom_domain": true }],
+  "routes": [{ "pattern": "stats.wesnoth.fun", "custom_domain": true }],
   "d1_databases": [
     {
       "binding": "DB",
@@ -25,11 +25,11 @@
     { "name": "REPORT_LIMIT", "namespace_id": "3002", "simple": { "limit": 5, "period": 60 } }
   ],
   "vars": {
-    "ALLOWED_ORIGINS": "https://wesnoth.tnec.io,https://wesnothweb2.tomasz-necio.workers.dev,http://localhost:5173",
+    // The game's origins: wesnoth.fun (its future home) and wesnoth.tnec.io (its home until the move).
+    "ALLOWED_ORIGINS": "https://wesnoth.fun,https://www.wesnoth.fun,https://wesnoth.tnec.io,https://wesnothweb2.tomasz-necio.workers.dev,http://localhost:5173",
     "REPORTS_ENABLED": "true",
-    // On the subdomain with Email Routing (docs/DEPLOYMENT.md): tnec.io's own mail is hosted elsewhere, and
-    // turning Email Routing on for the apex would replace its MX record.
-    "MAIL_FROM": "reports@wesnoth-stats.tnec.io"
+    // wesnoth.fun has Email Routing (docs/DEPLOYMENT.md).
+    "MAIL_FROM": "reports@wesnoth.fun"
   },
   // The daily clean-up: events after 13 months, report rows after 12 (`cleanUp`).
   "triggers": { "crons": ["17 3 * * *"] }

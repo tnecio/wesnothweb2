@@ -10,7 +10,7 @@ function setup(overrides: Partial<TelemetryDeps> = {}) {
   const sent: { url: string; body: unknown[]; beacon: boolean }[] = [];
   let consent = true;
   const telemetry = new Telemetry({
-    url: 'https://wesnoth-stats.tnec.io',
+    url: 'https://stats.wesnoth.fun',
     consented: () => consent,
     context: () => ({ campaignId: 'the_south_guard', scenarioId: '01_Born_to_the_Banner', difficulty: 'EASY', turn: 3, runId: 'run-1' }),
     environment: () => ({ build: 'v0.20.0', lang: 'pl_PL', device: 'phone', browser: 'firefox' }),
@@ -44,7 +44,7 @@ describe('the statistics queue', () => {
     telemetry.track('scenario_end', { result: 'defeat', turnsLimit: 12, minutes: 31 });
     await telemetry.flush();
     expect(sent).toHaveLength(1);
-    expect(sent[0]!.url).toBe('https://wesnoth-stats.tnec.io/v1/events');
+    expect(sent[0]!.url).toBe('https://stats.wesnoth.fun/v1/events');
     expect(sent[0]!.beacon).toBe(false);
     expect(sent[0]!.body[1]).toEqual({
       v: 1,
