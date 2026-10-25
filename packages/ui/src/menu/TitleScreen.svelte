@@ -162,7 +162,11 @@
   >{muted ? '\u{1F507}' : '\u{1F50A}'}</button>
 
   <h1 class="logo">
-    <img src={dataUrl('title-logo.png')} alt={tx('Wesnoth on the Web')} draggable="false" />
+    <img
+      src={dataUrl('logo2.png')}
+      alt={tx('Wesnoth on the Web: unofficial web port of the Battle for Wesnoth')}
+      draggable="false"
+    />
   </h1>
 
   <div class="stage">
