@@ -3111,13 +3111,25 @@
   // (`display_unit_hex`). Only the highlight and the sidebar: the speaker's
   // reach is not drawn, and the player's own selection comes back afterwards.
   // A narrator line clears it (`deselect_hex`).
+  // Real, reported bug: the speaker stayed the inspected unit after the message, so hovering the map drew
+  // routes from its hex though nothing was selected. What was inspected before comes back with the player's
+  // selection (the speaker's own line, if another message follows, takes over again).
+  let inspectedBeforeSpeaker: { speaker: Unit; previous: Unit | null } | null = null;
   $effect(() => {
     const message = currentMessage?.message;
     const at = message?.speakerLocation;
     const speaker = at && message.highlight ? session.board.unitAt(new Location(at.x, at.y)) : undefined;
     untrack(() => {
       speakerHex = speaker ? { x: speaker.location.x, y: speaker.location.y } : null;
-      if (speaker) session.inspectedUnit = speaker;
+      if (speaker) {
+        if (!inspectedBeforeSpeaker) inspectedBeforeSpeaker = { speaker, previous: session.inspectedUnit };
+        else inspectedBeforeSpeaker.speaker = speaker;
+        session.inspectedUnit = speaker;
+      } else if (inspectedBeforeSpeaker) {
+        const previous = inspectedBeforeSpeaker.previous;
+        if (session.inspectedUnit === inspectedBeforeSpeaker.speaker) session.inspectedUnit = previous && session.board.allUnits().includes(previous) ? previous : null;
+        inspectedBeforeSpeaker = null;
+      }
       syncHighlights();
     });
   });
