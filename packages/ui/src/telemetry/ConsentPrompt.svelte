@@ -15,11 +15,11 @@
 {#if available && statsConsent.value === 'unasked'}
   <aside class="consent" aria-label={tx('Gameplay statistics')} data-testid="stats-consent">
     <p>
-      {tx('Help find bugs? With your permission the game sends anonymous statistics about which scenarios are started, won, lost or left unfinished, saves loaded and crashes. No cookies and no personal data.')}
+      {tx('Help find bugs? With your permission the game sends anonymous statistics about which scenarios are started, won, lost or left unfinished, saves loaded and crashes. No cookies or personal data.')}
     </p>
     {#if details}
       <p class="details" data-testid="stats-consent-details">
-        {tx('Each event says which campaign, scenario, difficulty and turn it happened at, the game version, your language, whether you play on a phone or a computer, and your browser family. A random number for the campaign playthrough (kept in its saves) tells retries apart; nothing identifies you, and your IP address is not stored. The data is kept for 13 months. You can change your answer at any time in Preferences.')}
+        {tx('Each event says which campaign, scenario, difficulty and turn it happened at, the game version, your language, whether you play on a phone or a computer, and your browser family. A random ID per campaign playthrough tells retries apart without identifying you. Your IP address, User Agent, or any cookies are not stored. The data is kept for 13 months. You can change your answer at any time in Preferences.')}
       </p>
     {/if}
     <div class="buttons">
