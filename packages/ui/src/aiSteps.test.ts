@@ -62,7 +62,9 @@ describe('AI turns, action by action (Phase 29a)', () => {
     // The same game: board, log and replay.
     expect(shown.describeState()).toBe(headless.describeState());
     expect(shown.log).toEqual(headless.log);
-    expect(JSON.stringify(shown.toSaveData().replay)).toBe(JSON.stringify(headless.toSaveData().replay));
+    // The same game, but not the same campaign run: each session draws its own run id (Phase 32).
+    const sameGame = (key: string, value: unknown) => (key === 'runId' ? undefined : value);
+    expect(JSON.stringify(shown.toSaveData().replay, sameGame)).toBe(JSON.stringify(headless.toSaveData().replay, sameGame));
 
     // Several steps a turn, each with something to show, each seen with the board as it left it.
     expect(afterFirst).toBeGreaterThan(1);
