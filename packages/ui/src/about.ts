@@ -10,6 +10,9 @@ export const WESNOTH_ORG_URL = 'https://wesnoth.org';
 /** Upstream's Liberapay: donations go to the Wesnoth project, not to this (unofficial) port. */
 export const WESNOTH_DONATE_URL = 'https://liberapay.com/Wesnoth/donate';
 
+/** This port's author. */
+export const AUTHOR_URL = 'https://tnec.io';
+
 /** The licence files, as paths `dataUrl` resolves. */
 export const LICENSE_FILES = {
   readme: 'licenses/README.txt',

@@ -146,11 +146,15 @@ msgstr ""
 msgid "All"
 msgstr ""
 
+#: packages/ui/src/menu/TitleScreen.svelte:196
+msgid "All the game assets, including audio, graphics, animations, and scenarios are human-made (imported from the original Battle for Wesnoth). Only the TypeScript implementation code is largely vibe-coded, based on the original C++ code."
+msgstr ""
+
 #: packages/ui/src/GameShell.svelte:3800
 msgid "Are you sure you want to clear map labels?"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:124
+#: packages/ui/src/menu/CreditsScreen.svelte:146
 msgid "Art and music credits (CSV)"
 msgstr ""
 
@@ -274,8 +278,8 @@ msgstr ""
 msgid "Deselect"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:194
-msgid "Donate to Wesnoth on Liberapay"
+#: packages/ui/src/menu/TitleScreen.svelte:202
+msgid "Donate to support the original Battle for Wesnoth on Liberapay"
 msgstr ""
 
 #: packages/ui/src/menu/MainMenu.svelte:183
@@ -354,11 +358,11 @@ msgstr ""
 msgid "Leadership: +$bonus|% damage"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:123
+#: packages/ui/src/menu/CreditsScreen.svelte:145
 msgid "Licences"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:122
+#: packages/ui/src/menu/CreditsScreen.svelte:144
 msgid "Licences and source code"
 msgstr ""
 
@@ -374,7 +378,7 @@ msgstr ""
 msgid "Loading scenario..."
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:101
+#: packages/ui/src/menu/CreditsScreen.svelte:123
 msgid "Loading..."
 msgstr ""
 
@@ -382,7 +386,7 @@ msgstr ""
 msgid "Log"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:209
+#: packages/ui/src/menu/TitleScreen.svelte:217
 msgid "Main menu"
 msgstr ""
 
@@ -458,7 +462,7 @@ msgstr ""
 msgid "Pause"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:118
+#: packages/ui/src/menu/CreditsScreen.svelte:140
 msgid "Pause scrolling"
 msgstr ""
 
@@ -522,7 +526,7 @@ msgstr ""
 msgid "Restart"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:118
+#: packages/ui/src/menu/CreditsScreen.svelte:140
 msgid "Resume scrolling"
 msgstr ""
 
@@ -590,7 +594,7 @@ msgstr ""
 msgid "Something went wrong"
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:125 packages/ui/src/menu/TitleScreen.svelte:222
+#: packages/ui/src/menu/CreditsScreen.svelte:147 packages/ui/src/menu/TitleScreen.svelte:230
 msgid "Source code"
 msgstr ""
 
@@ -610,7 +614,11 @@ msgstr ""
 msgid "That save no longer exists."
 msgstr ""
 
-#: packages/ui/src/menu/CreditsScreen.svelte:99
+#: packages/ui/src/menu/TitleScreen.svelte:188
+msgid "The Battle for Wesnoth is an open source, turn-based strategy game with a high fantasy theme. Learn more about it at wesnoth.org."
+msgstr ""
+
+#: packages/ui/src/menu/CreditsScreen.svelte:121
 msgid "The credits could not be loaded."
 msgstr ""
 
@@ -690,8 +698,8 @@ msgstr ""
 msgid "Wesnoth on the Web"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:188
-msgid "Wesnoth on the Web is an unofficial, fan-made port of Battle for Wesnoth, a free/libre open-source strategy game, with its interface rebuilt for both desktop and mobile."
+#: packages/ui/src/menu/TitleScreen.svelte:191
+msgid "Wesnoth on the Web is an unofficial fan-made port of the Battle for Wesnoth, rebuilt in TypeScript and adapted to web and mobile interfaces. Currently it supports single-player mainline campaigns only, with add-ons and multiplayer support planned in the future. The port is in beta and there may still be noticeable bugs – please report them!"
 msgstr ""
 
 #: packages/ui/src/gameSession.ts:1051 packages/ui/src/gameSession.ts:1053
@@ -742,11 +750,11 @@ msgstr ""
 msgid "the state after this command differs from the recorded game"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:220
+#: packages/ui/src/menu/TitleScreen.svelte:228
 msgid "web $version"
 msgstr ""
 
-#: packages/ui/src/menu/TitleScreen.svelte:193
+#: packages/ui/src/menu/TitleScreen.svelte:201
 msgid "wesnoth.org — the official game"
 msgstr ""
 
