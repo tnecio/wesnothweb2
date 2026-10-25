@@ -9,6 +9,11 @@
   import { fmt, t, tx } from '../i18n/locale.js';
   import { listSaves, type SaveMeta } from '../persistence.js';
   import { buildReport, dismissError, errorState, gameContext } from './errorReporting.svelte.js';
+  import { openBugReport } from '../telemetry/bugReportDialog.svelte.js';
+  import { statsUrl } from '../telemetry/stats.js';
+
+  /** Phase 30: whether this build can send a report (`VITE_STATS_URL`). */
+  const canSend = statsUrl() !== null;
 
   let includeSave = $state(false);
   let copied = $state(false);
@@ -73,7 +78,11 @@
               : fmt(tx('Scenario: $scenario'), { scenario: context.scenarioName ?? context.scenarioId })}
           </p>
         {/if}
-        <p class="hint">{tx('A report helps fix it. It stays on your device unless you send it yourself.')}</p>
+        <p class="hint">
+          {canSend
+            ? tx('A report helps fix it. You can send it to the developer, or copy it and send it yourself.')
+            : tx('A report helps fix it. It stays on your device unless you send it yourself.')}
+        </p>
         {#if context.saveData}
           <label class="include">
             <input type="checkbox" bind:checked={includeSave} />
@@ -81,6 +90,9 @@
           </label>
         {/if}
         <div class="footer">
+          {#if canSend}
+            <button onclick={() => openBugReport(error)} data-testid="error-send">{tx('Send report...')}</button>
+          {/if}
           <button onclick={copy} data-testid="error-copy">{copied ? tx('Copied') : tx('Copy report')}</button>
           <button onclick={download}>{tx('Download report')}</button>
           <div class="spacer"></div>

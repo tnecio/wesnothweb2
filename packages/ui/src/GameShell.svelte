@@ -28,6 +28,7 @@
   import { dataUrl } from './dataUrls.js';
   import { setGameContext } from './errors/errorReporting.svelte.js';
   import { telemetry } from './telemetry/stats.js';
+  import { openBugReport } from './telemetry/bugReportDialog.svelte.js';
   import { setSideColorResolver } from './images/unitImageRef.js';
   import { ENGINE_IMAGES, GAME_IMAGES } from './gameData.js';
   import { tick, untrack } from 'svelte';
@@ -3276,6 +3277,13 @@
       label: `${t('Language')}...`,
       enabled: true,
       handler: () => (languageDialogOpen = true),
+    },
+    // Phase 30: ours (the web port's own); a report carries where the player is, and the game if they choose.
+    {
+      id: 'report-bug',
+      label: `${tx('Report a Bug')}...`,
+      enabled: true,
+      handler: () => openBugReport(),
     },
   ]));
   let actionCommands = $derived<Command[]>(bound([

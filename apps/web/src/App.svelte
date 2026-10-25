@@ -2,7 +2,7 @@
   import { router } from './router.svelte.js';
   import MenuPage from './MenuPage.svelte';
   import PlayPage from './PlayPage.svelte';
-  import { ErrorScreen, reportError } from '@wesnothweb2/ui';
+  import { BugReportDialog, ErrorScreen, bugReportDialog, reportError } from '@wesnothweb2/ui';
 
   const playCampaignId = $derived(/^\/play\/([^/]+)$/.exec(router.path)?.[1]);
 </script>
@@ -21,6 +21,10 @@
   {/snippet}
 </svelte:boundary>
 <ErrorScreen />
+<!-- Phase 30: "Report a bug", over whatever opened it (the game menu, the title screen, the error screen). -->
+{#if bugReportDialog.open}
+  <BugReportDialog />
+{/if}
 
 <style>
   .failed {

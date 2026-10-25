@@ -23,6 +23,7 @@
   import { ENGINE_IMAGES, GAME_IMAGES } from '../gameData.js';
   import { dataUrl } from '../dataUrls.js';
   import { buildInfo } from '../errors/errorReporting.svelte.js';
+  import { openBugReport } from '../telemetry/bugReportDialog.svelte.js';
   import { AUTHOR_URL, SOURCE_URL, WESNOTH_DONATE_URL, WESNOTH_ORG_URL } from '../about.js';
   import titleImages from './titleImages.json';
 
@@ -227,6 +228,8 @@
     <span class="version" data-testid="title-version" title={build.commit || undefined}
       >{fmt(t('Version $version'), { version })}{#if build.version !== 'dev'}<span class="build">&nbsp;· {fmt(tx('web $version'), { version: build.version })}</span>{/if}</span
     >
+    <!-- Phase 30: report a problem without a crash. -->
+    <button class="report-bug" onclick={() => openBugReport()} data-testid="title-report-bug">{tx('Report a bug')}</button>
     <a class="source" href={SOURCE_URL} target="_blank" rel="noopener" data-testid="title-source">{tx('Source code')}</a>
     <a class="author" href={AUTHOR_URL} target="_blank" rel="noopener" data-testid="title-author">tnec.io</a>
     <button class="language" title={t('Change the language')} onclick={onLanguage} data-testid="title-language">
@@ -444,8 +447,18 @@
   .build {
     opacity: 0.7;
   }
-  .source {
+  .report-bug {
     margin-left: auto;
+    margin-right: 0.8rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: inherit;
+    text-decoration: underline;
+    text-shadow: 0 0 3px #000;
+  }
+  .source {
     margin-right: 0.8rem;
     color: inherit;
     text-shadow: 0 0 3px #000;
