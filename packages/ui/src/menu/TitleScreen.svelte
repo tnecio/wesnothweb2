@@ -3,21 +3,27 @@
    * The title screen (`gui2::dialogs::title_screen`, `data/gui/themes/default/dialogs/title_screen.cfg`).
    *
    * Layout as upstream's: the stretched `maps/background.webp` with `maps/titlescreen.webp` fitted and centred
-   * over it, the logo 30 px from the top, the tip-of-the-day panel bottom-left and the button column
-   * bottom-right (both translucent panels), and a bar along the bottom with the version and the Language
-   * button. Help is in the tip panel, as upstream's. Multiplayer, the map editor, Add-ons and Community have
-   * no counterpart here; Achievements is Phase 25's.
+   * over it, the logo 30 px from the top, an info panel bottom-left and the button column bottom-right (both
+   * translucent panels), and a bar along the bottom with the version and the Language button. Help is in the
+   * tip tab, as upstream's. Multiplayer, the map editor, Add-ons and Community have no counterpart here;
+   * Achievements is Phase 25's.
+   *
+   * Deviation from upstream: the info panel is a two-tab strip, not a single tip-of-the-day panel --
+   * "Wesnoth on the Web" (what this port is, and a link to upstream and its donations) is the default tab,
+   * "Gameplay tips" (upstream's tip of the day) the second one, shown only while `showTips` is on. A mute
+   * button sits in the top-right corner (the same one the in-game top bar has).
    *
    * Presentational: it reports what was asked for; `MainMenu.svelte` owns the dialogs and the navigation.
    * Keys are upstream's (`hotkeys.cfg`): C campaigns, Ctrl+O load, Ctrl+P preferences, L language, Space
-   * credits, F1 help, Left/Right the tips. They do nothing while a dialog is open (`blocked`) or while typing.
+   * credits, F1 help, Left/Right the tips (switching to the tips tab if needed). They do nothing while a
+   * dialog is open (`blocked`) or while typing.
    */
   import { fmt, t, ts, tw, tx } from '../i18n/locale.js';
   import Markup from '../markup/Markup.svelte';
   import { ENGINE_IMAGES, GAME_IMAGES } from '../gameData.js';
   import { dataUrl } from '../dataUrls.js';
   import { buildInfo } from '../errors/errorReporting.svelte.js';
-  import { SOURCE_URL } from '../about.js';
+  import { SOURCE_URL, WESNOTH_DONATE_URL, WESNOTH_ORG_URL } from '../about.js';
   import titleImages from './titleImages.json';
 
   /**
@@ -45,6 +51,7 @@
     tips,
     showTips,
     blocked,
+    muted,
     onCampaigns,
     onLoad,
     onPreferences,
@@ -52,6 +59,7 @@
     onLanguage,
     onHelp,
     onAchievements,
+    onToggleMute,
   }: {
     /** Shown as "Version $version". */
     version: string;
@@ -60,6 +68,8 @@
     showTips: boolean;
     /** A dialog is open on top: the screen's own keys are off. */
     blocked: boolean;
+    /** Whether all audio is muted; drives the corner button (same state the in-game top bar shows). */
+    muted: boolean;
     onCampaigns: () => void;
     onLoad: () => void;
     onPreferences: () => void;
@@ -69,10 +79,28 @@
     onHelp: () => void;
     /** Phase 25: the achievements dialog. */
     onAchievements: () => void;
+    onToggleMute: () => void;
   } = $props();
 
   let tipIndex = $state(0);
   const tip = $derived(tips.length > 0 ? tips[Math.min(tipIndex, tips.length - 1)] : undefined);
+
+  type InfoTab = 'about' | 'tips';
+  /** The tips tab only exists while `showTips` is on; the about tab always does. */
+  const infoTabs: readonly InfoTab[] = $derived(showTips ? ['about', 'tips'] : ['about']);
+  let activeTab = $state<InfoTab>('about');
+  $effect(() => {
+    if (!infoTabs.includes(activeTab)) activeTab = 'about';
+  });
+
+  function onTabKey(e: KeyboardEvent): void {
+    const at = infoTabs.indexOf(activeTab);
+    const to = e.key === 'ArrowRight' ? at + 1 : e.key === 'ArrowLeft' ? at - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? infoTabs.length - 1 : null;
+    if (to === null) return;
+    e.preventDefault();
+    activeTab = infoTabs[(to + infoTabs.length) % infoTabs.length]!;
+    queueMicrotask(() => document.getElementById(`title-tab-${activeTab}`)?.focus());
+  }
 
   function isTyping(target: EventTarget | null): boolean {
     const el = target as HTMLElement | null;
@@ -92,8 +120,8 @@
       [{ key: ' ' }, onCredits],
       [{ key: 'F1' }, onHelp],
       [{ key: 'a', ctrl: true, shift: true }, onAchievements],
-      [{ key: 'ArrowRight' }, () => (tipIndex = stepTip(tipIndex, tips.length, false))],
-      [{ key: 'ArrowLeft' }, () => (tipIndex = stepTip(tipIndex, tips.length, true))],
+      [{ key: 'ArrowRight' }, () => showTips && ((activeTab = 'tips'), (tipIndex = stepTip(tipIndex, tips.length, false)))],
+      [{ key: 'ArrowLeft' }, () => showTips && ((activeTab = 'tips'), (tipIndex = stepTip(tipIndex, tips.length, true)))],
     ];
     for (const [key, action] of keys) {
       if (!matchesHotkey(e, key)) continue;
@@ -121,26 +149,63 @@
   <img class="backdrop" src={backdrop.src} srcset={backdrop.srcset} sizes="100vw" alt="" draggable="false" />
   <img class="picture" src={picture.src} srcset={picture.srcset} sizes="min(100vw, 1280px)" alt="" draggable="false" />
 
+  <button
+    class="mute-button"
+    class:muted
+    title={muted ? tx('Unmute') : t('Mute')}
+    aria-label={muted ? tx('Unmute') : t('Mute')}
+    aria-pressed={muted}
+    data-testid="mute-toggle"
+    onclick={onToggleMute}
+  >{muted ? '\u{1F507}' : '\u{1F50A}'}</button>
+
   <h1 class="logo">
     <img class="logo-bg" src="{ENGINE_IMAGES}/misc/logo-bg.png" alt="" draggable="false" />
     <img class="logo-fg" src="{ENGINE_IMAGES}/misc/logo.png" alt={tw('The Battle for Wesnoth')} draggable="false" />
   </h1>
 
   <div class="stage">
-    {#if showTips && tip}
-      <section class="panel tips" aria-label={tx('Tip of the day')} data-testid="tip-panel">
-        <p class="tip" dir="auto" data-testid="tip-text"><Markup text={ts(tip.text)} /></p>
-        <p class="source" dir="auto"><Markup text={ts(tip.source)} /></p>
-        <div class="tip-buttons">
-          <button class="small" title={t('Show Battle for Wesnoth help')} onclick={onHelp} data-testid="title-help">{t('Help')}</button>
-          <span class="spacer"></span>
-          <button class="small" title={t('Show previous tip of the day')} onclick={() => (tipIndex = stepTip(tipIndex, tips.length, true))} data-testid="tip-previous">{t('Previous')}</button>
-          <button class="small" title={t('Show next tip of the day')} onclick={() => (tipIndex = stepTip(tipIndex, tips.length, false))} data-testid="tip-next">{t('Next')}</button>
+    <section class="panel tips" aria-label={tx('Title screen info')} data-testid="tip-panel">
+      {#if infoTabs.length > 1}
+        <div class="tabs" role="tablist" aria-label={tx('Title screen info')} tabindex="-1" onkeydown={onTabKey}>
+          {#each infoTabs as id (id)}
+            <button
+              id={`title-tab-${id}`}
+              role="tab"
+              aria-selected={activeTab === id}
+              aria-controls={`title-panel-${id}`}
+              tabindex={activeTab === id ? 0 : -1}
+              class:on={activeTab === id}
+              data-testid={`title-tab-${id}`}
+              onclick={() => (activeTab = id)}
+            >{id === 'about' ? tx('Wesnoth on the Web') : tx('Gameplay tips')}</button>
+          {/each}
         </div>
-      </section>
-    {:else}
-      <span></span>
-    {/if}
+      {/if}
+
+      <div class="tab-body" id={`title-panel-${activeTab}`} role="tabpanel" aria-labelledby={infoTabs.length > 1 ? `title-tab-${activeTab}` : undefined}>
+        {#if activeTab === 'about'}
+          <p class="about-text" dir="auto" data-testid="title-about-text">
+            {tx(
+              'Wesnoth on the Web is an unofficial, fan-made port of Battle for Wesnoth, a free/libre open-source strategy game, with its interface rebuilt for both desktop and mobile.',
+            )}
+          </p>
+          <div class="about-links">
+            <a href={WESNOTH_ORG_URL} target="_blank" rel="noopener" data-testid="title-about-wesnoth-org">{tx('wesnoth.org — the official game')}</a>
+            <a class="donate" href={WESNOTH_DONATE_URL} target="_blank" rel="noopener" data-testid="title-about-donate">{tx('Donate to Wesnoth on Liberapay')}</a>
+          </div>
+        {:else if tip}
+          <p class="tip" dir="auto" data-testid="tip-text"><Markup text={ts(tip.text)} /></p>
+          <p class="source" dir="auto"><Markup text={ts(tip.source)} /></p>
+          <div class="tip-buttons">
+            <button class="small" title={t('Show Battle for Wesnoth help')} onclick={onHelp} data-testid="title-help">{t('Help')}</button>
+            <span class="spacer"></span>
+            <button class="small" title={t('Show previous tip of the day')} onclick={() => (tipIndex = stepTip(tipIndex, tips.length, true))} data-testid="tip-previous">{t('Previous')}</button>
+            <button class="small" title={t('Show next tip of the day')} onclick={() => (tipIndex = stepTip(tipIndex, tips.length, false))} data-testid="tip-next">{t('Next')}</button>
+          </div>
+        {/if}
+      </div>
+    </section>
 
     <nav class="panel menu" aria-label={tx('Main menu')} data-testid="title-menu">
       <button class="large" title={t('Start a new single player campaign')} onclick={onCampaigns} data-testid="title-campaigns" data-autofocus>{t('Campaigns')}</button>
@@ -247,6 +312,72 @@
   }
   .spacer {
     flex: 1;
+  }
+  .tabs {
+    display: flex;
+    gap: 0.25rem;
+    margin: -0.7rem -0.7rem 0.5rem;
+    padding: 0.4rem 0.7rem 0;
+    border-bottom: 1px solid #a89252;
+  }
+  .tabs button {
+    font-size: 0.9rem;
+    padding: 0.3rem 0.8rem;
+    border: 1px solid transparent;
+    border-bottom: 0;
+    border-radius: 4px 4px 0 0;
+    background: transparent;
+    color: #d8d0b8;
+  }
+  .tabs button.on {
+    border-color: #a89252;
+    background: rgba(0, 0, 0, 0.4);
+    color: #ffd54a;
+  }
+  .tab-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .about-text {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.4;
+  }
+  .about-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem 1.2rem;
+  }
+  .about-links a {
+    color: #ffd54a;
+    text-decoration: underline;
+  }
+  .about-links a.donate {
+    color: #e6dcae;
+  }
+  .mute-button {
+    position: absolute;
+    top: 0.7rem;
+    right: 0.7rem;
+    z-index: 5;
+    width: 2.3rem;
+    height: 2.3rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    line-height: 1;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.54);
+    border: 2px solid rgb(16, 22, 35);
+    box-shadow: inset 0 0 0 1px #a89252;
+  }
+  .mute-button:hover {
+    box-shadow: inset 0 0 0 1px #ffd54a;
+  }
+  .mute-button.muted {
+    opacity: 0.65;
   }
   .menu {
     display: flex;
