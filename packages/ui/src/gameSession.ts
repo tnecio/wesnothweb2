@@ -1820,14 +1820,33 @@ export class GameSession {
    * them stored under.
    */
   private readonly renderKeys = new WeakMap<Unit, number>();
+  /** The last `Unit` object keyed for each (non-zero) `underlying_id`, and its key -- see `inheritedRenderKey`. */
+  private readonly renderKeyOwners = new Map<number, { unit: Unit; key: number }>();
   private nextRenderKey = 1;
   renderKeyFor(unit: Unit): number {
     let key = this.renderKeys.get(unit);
     if (key === undefined) {
-      key = this.nextRenderKey++;
+      key = this.inheritedRenderKey(unit) ?? this.nextRenderKey++;
       this.renderKeys.set(unit, key);
     }
+    if (unit.underlyingId > 0) this.renderKeyOwners.set(unit.underlyingId, { unit, key });
     return key;
+  }
+
+  /**
+   * The render key a new `Unit` object takes over: the one its `underlying_id` had, when the object that had
+   * it is no longer on the board. `[unstore_unit]` (and every `MODIFY_UNIT`-style store/change/unstore) puts back
+   * a new object for the same unit, as upstream does; upstream's display follows the unit by its id, so the
+   * sprite here must too. Real, reported bug (report 2026-10-25-4e2c640e): The South Guard 1's
+   * `SILENTLY_LIMIT_LEADER_MOVES` re-stores Urza Mathin at the start of every bandit turn, so his move and
+   * attack were cued under a key no sprite had -- the attack played on a new sprite while the old one stood
+   * still until the next sync. Never two live units on one key: only a key whose owner has left the board.
+   */
+  private inheritedRenderKey(unit: Unit): number | undefined {
+    if (unit.underlyingId <= 0) return undefined;
+    const previous = this.renderKeyOwners.get(unit.underlyingId);
+    if (!previous || previous.unit === unit || this.board.allUnits().includes(previous.unit)) return undefined;
+    return previous.key;
   }
   private startupEventsRun = false;
   /**

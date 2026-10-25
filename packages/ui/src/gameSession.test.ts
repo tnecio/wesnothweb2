@@ -13,6 +13,7 @@ import {
   directionBetween,
   distanceBetween,
   parseConfig,
+  runActionSequence,
   backstabCheck,
   fillWeaponChoices,
   createTypeResolver,
@@ -983,6 +984,28 @@ describe('GameSession weapon selection (attackerWeaponOptions / selectAttackerWe
   it('returns an empty list when there is no pending attack', async () => {
     const session = new GameSession(loadSnapshot());
     expect(session.attackerWeaponOptions).toEqual([]);
+  });
+});
+
+describe('GameSession.renderKeyFor: a unit keeps its sprite through [store_unit]/[unstore_unit]', () => {
+  // Real, reported bug (report 2026-10-25-4e2c640e): The South Guard 1 re-stores Urza Mathin at every bandit turn
+  // (`MODIFY_UNIT`), and the new object got a new key -- his move and attack were cued for a sprite that did not exist.
+  it('the unit put back takes over its key; a different unit gets its own', async () => {
+    const session = new GameSession(loadSnapshot());
+    await session.runStartupEvents();
+    const run = (wml: string) => runActionSequence(parseConfig(wml), session['eventPump'].ctx);
+    const kai = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    expect(kai.underlyingId).toBeGreaterThan(0);
+    const key = session.renderKeyFor(kai);
+    void session.renderUnits;
+    run('[store_unit]\n[filter]\nid=Kai Krellis\n[/filter]\nvariable=kai\n[/store_unit]\n[set_variable]\nname=kai.moves\nvalue=1\n[/set_variable]\n[unstore_unit]\nvariable=kai\n[/unstore_unit]');
+    const putBack = session.board.allUnits().find((u) => u.id === 'Kai Krellis')!;
+    expect(putBack).not.toBe(kai);
+    expect(putBack.movesLeft).toBe(1);
+    expect(session.renderKeyFor(putBack)).toBe(key);
+    expect(session.renderUnits.find((u) => u.id === 'Kai Krellis')?.underlyingId).toBe(key);
+    const others = session.board.allUnits().filter((u) => u !== putBack).map((u) => session.renderKeyFor(u));
+    expect(others).not.toContain(key);
   });
 });
 
