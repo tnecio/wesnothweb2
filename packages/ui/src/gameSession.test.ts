@@ -986,6 +986,39 @@ describe('GameSession weapon selection (attackerWeaponOptions / selectAttackerWe
   });
 });
 
+describe('GameSession.confirmAttack shows the exchange before the attack\'s last events', () => {
+  // `attack::perform` draws the blows as it fights them, then fires `attack end`: TSG's quintain speaks after
+  // its fight, not before it (with the HP bars already at the end of it).
+  it('hands over the attackExchange beat, with the animation, before an attack end [message]', async () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    session['eventPump'].manager.addFromWml(parseConfig('[event]\nname=attack end\n[message]\nspeaker=narrator\nmessage=after\n[/message]\n[/event]').child('event')!);
+    const seen: string[] = [];
+    session.interactionHost = {
+      async handle(interaction) {
+        if (interaction.kind === 'beat' && interaction.beat.kind === 'attackExchange') {
+          seen.push(`exchange:${session.lastAttackAnimation?.result.blows.length ?? 0}`);
+          session.lastAttackAnimation = null;
+        } else if (interaction.kind === 'message') seen.push('message');
+        return {};
+      },
+    };
+    session.selectUnit(malKevek);
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    await session.confirmAttack();
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toMatch(/^exchange:[1-9]/);
+    expect(seen[1]).toBe('message');
+  });
+
+  it('without a display, lastAttackAnimation is still there afterwards', async () => {
+    const { session, malKevek, kaiKrellis } = withAdjacentLeaders();
+    session.selectUnit(malKevek);
+    await session.handleHexClick(kaiKrellis.location.x, kaiKrellis.location.y);
+    await session.confirmAttack();
+    expect(session.lastAttackAnimation?.attacker).toBe(malKevek);
+  });
+});
+
 describe('GameSession.confirmAttack zeroes the attacker\'s movement (real Wesnoth: attacking ends a unit\'s move)', () => {
   it('sets movesLeft to 0 after a real attack, even though the attacker never moved and had full movement left', async () => {
     const { session, malKevek, kaiKrellis } = withAdjacentLeaders();

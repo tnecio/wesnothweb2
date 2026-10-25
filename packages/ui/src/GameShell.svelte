@@ -929,6 +929,7 @@
       // every sprite straight to its target hex, which would both cut the
       // animation short and race the frame loop driving it (see that
       // method's own doc comment). `playCutsceneBeat` syncs when it's done.
+      if (interaction.kind === 'beat' && interaction.beat.kind === 'attackExchange') return playAttackExchange();
       if (interaction.kind === 'beat') return playCutsceneBeat(interaction.beat);
       if (interaction.kind === 'guiDialog') {
         sync();
@@ -1005,6 +1006,17 @@
   /** `unit_attack`: both fighters, with at least half a hex around them. */
   function followAttack(a: { x: number; y: number }, b: { x: number; y: number }): Promise<void> {
     return followAction([a, b], { addSpacing: 0.5 });
+  }
+
+  /**
+   * An attack just fought out (the `attackExchange` beat): its blows are shown before the attack's last events
+   * (`attack end`) run -- upstream draws them inside `attack::perform`. Not time-capped, as no attack is.
+   */
+  async function playAttackExchange(): Promise<InteractionResult> {
+    const anim = session.lastAttackAnimation;
+    session.lastAttackAnimation = null;
+    if (anim) await playAttack(anim, anim.attacker.location, anim.defender.location);
+    return {};
   }
 
   /** The player answered the message on screen (dismissed it, chose an option, typed something). */
@@ -2353,6 +2365,7 @@
     pendingPreview = null;
     attackerWeaponOptions = [];
     const message = await runPlayerAction(async () => {
+      // The blows play from inside (`playAttackExchange`), before `attack end`; this catches any left over.
       const result = await session.confirmAttack();
       const anim = session.lastAttackAnimation;
       session.lastAttackAnimation = null;

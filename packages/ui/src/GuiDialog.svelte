@@ -18,21 +18,49 @@
 
   /**
    * GUI2 sizes a window to its content. `Modal`'s box is an inline-size container (its dialogs re-flow to
-   * their own width), so it cannot shrink to content by itself: the content is laid out in a wide box, its
-   * root grid measured, and the box set to that width (never wider than the screen allows).
+   * their own width), so it cannot shrink to content by itself: the content is laid out, measured, and the box
+   * set to its width.
+   *
+   * Upstream lays a campaign's dialog out at its own fixed size; a phone has less room than any screen upstream
+   * runs on (The South Guard's tips are ~580px wide, its tutorial pictures beside the text). So on a small
+   * screen the content is first laid out no wider than the room there is -- a one-row grid (text | picture,
+   * button | button) wraps onto the next line -- and what still does not fit is scaled down: to the width
+   * always, to the height no further than `MIN_HEIGHT_FIT` (the rest scrolls).
    */
-  let content: HTMLDivElement | undefined = $state();
-  let boxWidth = $state('min(95vw, 70rem)');
+  const MIN_HEIGHT_FIT = 0.6;
+  let scaled: HTMLDivElement | undefined = $state();
+  let room = $state({ width: 0, height: 0 });
+  let natural = $state({ width: 0, height: 0 });
+  const scale = $derived(
+    natural.width > 0 && room.width > 0 ? Math.min(1, room.width / natural.width, Math.max(MIN_HEIGHT_FIT, room.height / natural.height)) : 1,
+  );
+  const boxWidth = $derived(natural.width > 0 ? `min(95vw, ${Math.ceil(natural.width * scale) + 36}px)` : 'min(95vw, 70rem)');
+
+  /** The room `Modal` gives its content: the whole screen less its padding on a phone (its media query; `.gui-dialog` then has no height cap), else 95vw by `.gui-dialog`'s 85vh. */
+  function measureRoom(): void {
+    const phone = window.matchMedia('(max-width: 720px), (max-height: 500px)').matches;
+    room = phone ? { width: window.innerWidth - 24, height: window.innerHeight - 24 } : { width: window.innerWidth * 0.95 - 36, height: window.innerHeight * 0.85 };
+  }
+
   $effect(() => {
     void dialog;
-    const root = content?.firstElementChild;
-    if (!root) return;
-    // Images arrive after the first layout: follow the content as it grows.
+    if (!scaled) return;
+    const el = scaled;
+    measureRoom();
+    // Images arrive after the first layout: follow the content as it grows. A transform leaves the layout
+    // size alone, so this is the unscaled size; `scrollWidth` catches content wider than the room.
     const observer = new ResizeObserver(() => {
-      boxWidth = `min(95vw, ${Math.ceil(root.getBoundingClientRect().width) + 36}px)`;
+      natural = { width: Math.max(el.offsetWidth, el.scrollWidth), height: Math.max(el.offsetHeight, el.scrollHeight) };
     });
-    observer.observe(root);
-    return () => observer.disconnect();
+    observer.observe(el);
+    // The screen turning (or the window resizing): `resize` can come before the new size settles, the page's
+    // own box changes only after.
+    const page = new ResizeObserver(measureRoom);
+    page.observe(document.documentElement);
+    return () => {
+      observer.disconnect();
+      page.disconnect();
+    };
   });
 
   function text(value: GuiText): string {
@@ -54,7 +82,12 @@
 {#snippet widget(node: GuiNode)}
   {#if node.visibility !== 'invisible'}
     {#if node.type === 'grid'}
-      <div class="grid" style="grid-template-columns: repeat({Math.max(1, ...node.rows.map((r) => r.length))}, auto); {visibility(node)}">
+      <!-- One row: a wrapping row, the same as a grid where there is room (see `boxWidth`). -->
+      <div
+        class="grid"
+        class:one-row={node.rows.length === 1}
+        style="grid-template-columns: repeat({Math.max(1, ...node.rows.map((r) => r.length))}, auto); {visibility(node)}"
+      >
         {#each node.rows as row}
           {#each row as cell}
             <div class="cell" style={cellStyle(cell)}>{@render widget(cell.widget)}</div>
@@ -135,7 +168,11 @@
 
 <Modal onClose={() => onAnswer({ value: -2 })} width={boxWidth}>
   {#snippet children()}
-    <div class="gui-dialog" data-testid="gui-dialog" bind:this={content}>{@render widget(dialog.root)}</div>
+    <div class="gui-dialog" data-testid="gui-dialog">
+      <div class="fit" style={natural.width > 0 ? `width: ${natural.width * scale}px; height: ${natural.height * scale}px;` : ''}>
+        <div class="scaled" bind:this={scaled} style="max-width: {room.width}px; transform: scale({scale});">{@render widget(dialog.root)}</div>
+      </div>
+    </div>
   {/snippet}
 </Modal>
 
@@ -144,8 +181,27 @@
     max-height: 85vh;
     overflow: auto;
   }
+  /* A phone: `Modal` fills the screen and scrolls its body; the whole of it is the dialog's. */
+  @media (max-width: 720px), (max-height: 500px) {
+    .gui-dialog {
+      max-height: none;
+    }
+  }
+  .fit {
+    overflow: hidden;
+    margin-inline: auto;
+  }
+  .scaled {
+    width: max-content;
+    transform-origin: 0 0;
+  }
   .grid {
     display: inline-grid;
+  }
+  .grid.one-row {
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: center;
   }
   /* GUI2 labels don't wrap unless their definition says so: the texts carry their own line breaks. */
   .label {

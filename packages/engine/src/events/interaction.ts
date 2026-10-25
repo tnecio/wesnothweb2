@@ -192,7 +192,12 @@ export type CutsceneBeat =
    * C1: `[story]` in an event (`gui.show_story`, `story_viewer::display`): the story screen, over the game.
    * Modal upstream, so the event goes on once the player has read it.
    */
-  | { readonly kind: 'story'; readonly parts: readonly ResolvedStoryPart[] };
+  | { readonly kind: 'story'; readonly parts: readonly ResolvedStoryPart[] }
+  /**
+   * A player's attack has been fought out (`attack::perform`'s blow loop, which upstream draws blow by blow as
+   * it goes): the display shows the exchange before `attack end` and the rest of the attack's events run.
+   */
+  | { readonly kind: 'attackExchange' };
 
 /** A cutscene beat waiting to be played out. */
 export interface BeatInteraction {
