@@ -3,9 +3,12 @@
    * The credits (`gui2::dialogs::end_credits`): every credit group scrolling up over a title-screen picture at
    * upstream's 100 px/s, Up doubling the speed (to 400) and Down halving it (to 50), Escape closing.
    *
-   * Two additions for the web: the scrolling can be paused (moving text that lasts more than a few seconds
-   * needs an off switch), and with `prefers-reduced-motion` it does not move at all, it is an ordinary
-   * scrollable list. The data (`credits.json`, ~30 KB) is fetched when the screen opens, not with the menu.
+   * Three additions for the web: the scrolling can be paused (moving text that lasts more than a few
+   * seconds needs an off switch); the viewport is always a native scroll container, so a wheel, a touch
+   * drag or the scrollbar can move it by hand too, on top of the auto-scroll -- upstream can't do that (it
+   * isn't backed by real scroll), but browsers are good at it, so there is no reason not to use it here;
+   * and with `prefers-reduced-motion` it does not move at all, it is an ordinary scrollable list. The data
+   * (`credits.json`, ~30 KB) is fetched when the screen opens, not with the menu.
    */
   import { dataUrl } from '../dataUrls.js';
   import { LICENSE_FILES, SOURCE_URL } from '../about.js';
@@ -88,7 +91,7 @@
         class="viewport"
         class:static={reduceMotion}
         bind:this={viewport}
-        tabindex={reduceMotion ? 0 : -1}
+        tabindex={0}
         style:background-image={background ? `url(${imageUrl(background.replace(/^data\//, ''))})` : undefined}
       >
         <div class="shade">
@@ -134,13 +137,11 @@
   .viewport {
     position: relative;
     height: min(30rem, 60vh);
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
     border: 1px solid #4a3d1e;
     border-radius: 4px;
     background: #05070c center / cover no-repeat;
-  }
-  .viewport.static {
-    overflow: auto;
   }
   .shade {
     min-height: 100%;

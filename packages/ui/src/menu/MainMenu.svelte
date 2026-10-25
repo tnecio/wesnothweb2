@@ -155,6 +155,8 @@
   {tips}
   showTips={menuPrefs.showTips}
   blocked={dialog !== null || helpBrowser.isOpen}
+  muted={audioSettings.muted}
+  onToggleMute={() => changeAudio({ muted: !audioSettings.muted })}
   onCampaigns={() => (dialog = 'campaigns')}
   onLoad={() => (dialog = 'load')}
   onPreferences={() => (dialog = 'preferences')}
