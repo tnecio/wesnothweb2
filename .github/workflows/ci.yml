@@ -34,7 +34,7 @@ jobs:
       - uses: ./.github/actions/setup
       - run: npm run typecheck --workspaces --if-present
 
-  # Phase 30: the statistics Worker (apps/stats), tested in node with stand-ins for its bindings.
+  # Phase 32: the statistics Worker (apps/stats), tested in node with stand-ins for its bindings.
   stats-worker:
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -1,4 +1,4 @@
--- Phase 30: the statistics Worker's tables (apps/stats). Applied with `wrangler d1 migrations apply wesnoth-stats`.
+-- Phase 32: the statistics Worker's tables (apps/stats). Applied with `wrangler d1 migrations apply wesnoth-stats`.
 
 -- One row per gameplay statistics event the game sent (opt-in). `data` holds the event type's own fields as
 -- JSON (`packages/ui/src/telemetry/schema.ts`'s EXTRA_FIELDS). No IP or user agent is kept.

@@ -872,7 +872,7 @@
   });
 
   /**
-   * Phase 30, the opt-in statistics (`telemetry/stats.ts`): when this scenario's play began (its start or the
+   * Phase 32, the opt-in statistics (`telemetry/stats.ts`): when this scenario's play began (its start or the
    * load it was resumed from), and the sessions whose end was already counted -- or was over before they were
    * loaded, so a save of a finished scenario is not counted again.
    */
@@ -1347,7 +1347,7 @@
     void runStartupEvents();
   }
 
-  // Phase 30: a game opened from a save (the menu's Load Game, a link, the error screen's autosave). After a
+  // Phase 32: a game opened from a save (the menu's Load Game, a link, the error screen's autosave). After a
   // tick, so the game context the event reads is registered.
   if (initialSave && !initialReplaySession) void tick().then(() => reportLoad('opened'));
 
@@ -3278,7 +3278,7 @@
       enabled: true,
       handler: () => (languageDialogOpen = true),
     },
-    // Phase 30: ours (the web port's own); a report carries where the player is, and the game if they choose.
+    // Phase 32: ours (the web port's own); a report carries where the player is, and the game if they choose.
     {
       id: 'report-bug',
       label: `${tx('Report a Bug')}...`,

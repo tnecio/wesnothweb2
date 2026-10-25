@@ -986,7 +986,7 @@ describe('GameSession weapon selection (attackerWeaponOptions / selectAttackerWe
   });
 });
 
-describe('GameSession.runId (Phase 30: one campaign run, for the opt-in statistics)', () => {
+describe('GameSession.runId (Phase 32: one campaign run, for the opt-in statistics)', () => {
   it('a new game gets a run id of its own, which its saves keep and loading them restores', () => {
     const a = new GameSession(loadSnapshot());
     const b = new GameSession(loadSnapshot());

@@ -1,5 +1,5 @@
 /**
- * Phase 30: the opt-in gameplay statistics (docs/IMPLEMENTATION_PLAN.md, Phase 30). The game reports a handful of
+ * Phase 32: the opt-in gameplay statistics (docs/IMPLEMENTATION_PLAN.md, Phase 32). The game reports a handful of
  * moments -- a scenario starting or ending, a save loaded, a scenario left unfinished, a crash -- so that places
  * where players get stuck (often a bug) show up in `apps/stats/scripts/stats.mjs`.
  *

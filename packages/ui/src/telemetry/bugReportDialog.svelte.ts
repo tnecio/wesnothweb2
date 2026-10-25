@@ -1,5 +1,5 @@
 /**
- * Phase 30: whether "Report a bug" is open, and for which error if it was opened from the error screen. One
+ * Phase 32: whether "Report a bug" is open, and for which error if it was opened from the error screen. One
  * dialog for the whole app (`App.svelte` renders `BugReportDialog`); the game menu, the title screen and the
  * error screen open it.
  */

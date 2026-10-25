@@ -18,7 +18,7 @@ export interface GameContext {
   scenarioId?: string;
   scenarioName?: string;
   turn?: number;
-  /** Phase 30: the campaign difficulty and run (`GameSession.runId`), for statistics and bug reports. */
+  /** Phase 32: the campaign difficulty and run (`GameSession.runId`), for statistics and bug reports. */
   difficulty?: string;
   runId?: string;
   /** The current game as a save (`GameSession.toSaveData`), for reports the player chooses to include it in. */
@@ -89,7 +89,7 @@ function describe(value: unknown): { message: string; stack?: string; name?: str
 
 const errorListeners: ((error: CapturedError) => void)[] = [];
 
-/** Phase 30: calls `listener` with every error that is not benign (the opt-in statistics count crashes). */
+/** Phase 32: calls `listener` with every error that is not benign (the opt-in statistics count crashes). */
 export function onCapturedError(listener: (error: CapturedError) => void): void {
   errorListeners.push(listener);
 }

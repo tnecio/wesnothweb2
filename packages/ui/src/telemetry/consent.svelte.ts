@@ -1,5 +1,5 @@
 /**
- * Phase 30: whether the player agreed to send anonymous gameplay statistics (user decision: opt-in). Asked once
+ * Phase 32: whether the player agreed to send anonymous gameplay statistics (user decision: opt-in). Asked once
  * on the title screen, changeable in Preferences, kept per browser. Until the answer is `yes` nothing is queued
  * or sent (`telemetry.ts`). Remembering the answer itself needs no consent: it is the player's own setting.
  *

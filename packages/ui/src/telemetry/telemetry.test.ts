@@ -1,5 +1,5 @@
 /**
- * Phase 30: the opt-in statistics queue (`telemetry.ts`) and the schema both it and the Worker use.
+ * Phase 32: the opt-in statistics queue (`telemetry.ts`) and the schema both it and the Worker use.
  */
 import { describe, expect, it } from 'vitest';
 import { Telemetry, browserFamily, crashSignature, deviceClass, type TelemetryDeps } from './telemetry.js';

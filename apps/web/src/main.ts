@@ -5,7 +5,7 @@ import App from './App.svelte';
 
 // First, so an error anywhere after this reaches the error screen (Phase 28 S6) instead of a frozen page.
 installErrorReporting();
-// Phase 30: the opt-in gameplay statistics (nothing is sent until the player agrees, or without VITE_STATS_URL).
+// Phase 32: the opt-in gameplay statistics (nothing is sent until the player agrees, or without VITE_STATS_URL).
 installTelemetry();
 
 // `?crashtest` throws a few seconds in, to check the error screen on a deployed build.

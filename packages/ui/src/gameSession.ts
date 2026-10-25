@@ -866,7 +866,7 @@ export interface EconomyInfo {
   unitCount: number;
 }
 
-/** Phase 30: a new campaign run's id (`GameSession.runId`). */
+/** Phase 32: a new campaign run's id (`GameSession.runId`). */
 function newRunId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -1226,7 +1226,7 @@ export interface SaveGameData {
    * save made before difficulties (and for a debug scenario): the campaign's default.
    */
   difficulty?: string;
-  /** Phase 30: the campaign run this game belongs to (`GameSession.runId`). Absent in older saves. */
+  /** Phase 32: the campaign run this game belongs to (`GameSession.runId`). Absent in older saves. */
   runId?: string;
   teams: readonly {
     side: number;
@@ -1555,7 +1555,7 @@ export class GameSession {
    */
   lastHealAnimations: readonly HealOutcome[] | null = null;
   /**
-   * Phase 30: which campaign run this game belongs to -- a random id made when a game starts, kept in its saves
+   * Phase 32: which campaign run this game belongs to -- a random id made when a game starts, kept in its saves
    * and carried into the next scenario (`startNextScenario`), so the opt-in statistics can tell one playthrough's
    * retries and give-ups apart from another's. It identifies the run, not the player.
    */
@@ -5760,7 +5760,7 @@ export class GameSession {
     session.eventPump.ctx.variables.replaceAll(finished.eventPump.ctx.variables.toConfig());
     // Phase 25: the campaign's statistics go on, with a new entry for this scenario.
     session.adoptCampaignStats(finished.campaignStats.clone());
-    // Phase 30: still the same campaign run.
+    // Phase 32: still the same campaign run.
     session.runId = finished.runId;
     return session;
   }

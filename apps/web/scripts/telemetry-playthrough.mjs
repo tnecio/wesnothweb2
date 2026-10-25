@@ -1,5 +1,5 @@
 /**
- * Phase 30: the opt-in statistics and "Report a bug", end to end in the real app.
+ * Phase 32: the opt-in statistics and "Report a bug", end to end in the real app.
  *
  *   # the stats Worker, locally, accepting this page's origin:
  *   (cd apps/stats && npx wrangler d1 migrations apply wesnoth-stats --local &&

@@ -1,5 +1,5 @@
 /**
- * Phase 30: what the game may send to the statistics Worker (`apps/stats`), and how the Worker checks it.
+ * Phase 32: what the game may send to the statistics Worker (`apps/stats`), and how the Worker checks it.
  * Shared by both sides, so it has no dependencies: the game builds events of these shapes, the Worker keeps
  * only these fields of these types and refuses anything else.
  *

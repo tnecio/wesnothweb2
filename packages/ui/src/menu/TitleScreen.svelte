@@ -199,7 +199,7 @@
               'All the game assets, including audio, graphics, animations, and scenarios are human-made (imported from the original Battle for Wesnoth). Only the TypeScript implementation code is largely vibe-coded, based on the original C++ code.',
             )}
           </p>
-          <!-- Phase 30: what leaves the player's browser, and when. -->
+          <!-- Phase 32: what leaves the player's browser, and when. -->
           <p class="about-text privacy" dir="auto" data-testid="title-about-privacy">
             <strong>{tx('Privacy')}:</strong>
             {tx('this site sets no cookies. Gameplay statistics are sent only if you agree (Preferences), and a bug report only when you send one. Both go to the developer of this port, are stored with Cloudflare, and are deleted after 13 and 12 months.')}
@@ -236,7 +236,7 @@
     <span class="version" data-testid="title-version" title={build.commit || undefined}
       >{fmt(t('Version $version'), { version })}{#if build.version !== 'dev'}<span class="build">&nbsp;· {fmt(tx('web $version'), { version: build.version })}</span>{/if}</span
     >
-    <!-- Phase 30: report a problem without a crash. -->
+    <!-- Phase 32: report a problem without a crash. -->
     <button class="report-bug" onclick={() => openBugReport()} data-testid="title-report-bug">{tx('Report a bug')}</button>
     <a class="source" href={SOURCE_URL} target="_blank" rel="noopener" data-testid="title-source">{tx('Source code')}</a>
     <a class="author" href={AUTHOR_URL} target="_blank" rel="noopener" data-testid="title-author">tnec.io</a>

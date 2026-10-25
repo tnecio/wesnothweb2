@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Phase 30: "Report a bug". The player says what happened (and, if they like, what they expected and how to
+   * Phase 32: "Report a bug". The player says what happened (and, if they like, what they expected and how to
    * reach them), chooses whether to attach the current game and the recent warnings and errors, and sends it to
    * the developer (`bugReport.ts`). On success they get a reference; when it cannot be sent (offline, no
    * report server in this build) they can copy or download the same report instead.

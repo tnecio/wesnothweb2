@@ -1,5 +1,5 @@
 /**
- * Phase 30: the game's one `Telemetry`, wired to the browser -- the player's consent, the running game's context
+ * Phase 32: the game's one `Telemetry`, wired to the browser -- the player's consent, the running game's context
  * (`setGameContext`), the build, the language and the device -- and the crash hook. `installTelemetry` runs once
  * at start-up (`apps/web/src/main.ts`).
  */

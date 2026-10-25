@@ -1,5 +1,5 @@
 /**
- * Phase 30: a bug report as the player sends it from "Report a bug" (or the error screen's "Send report"): what
+ * Phase 32: a bug report as the player sends it from "Report a bug" (or the error screen's "Send report"): what
  * they wrote, where in the game they are, and what they chose to attach -- the current game and the recent
  * warnings and errors. Sent to the statistics Worker (`apps/stats`, `POST /v1/reports`), which stores it and
  * emails the developer. When it cannot be sent, the same report can be copied or downloaded as text.

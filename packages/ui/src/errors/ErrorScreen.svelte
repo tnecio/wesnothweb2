@@ -12,7 +12,7 @@
   import { openBugReport } from '../telemetry/bugReportDialog.svelte.js';
   import { statsUrl } from '../telemetry/stats.js';
 
-  /** Phase 30: whether this build can send a report (`VITE_STATS_URL`). */
+  /** Phase 32: whether this build can send a report (`VITE_STATS_URL`). */
   const canSend = statsUrl() !== null;
 
   let includeSave = $state(false);

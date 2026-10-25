@@ -1,5 +1,5 @@
 /**
- * Phase 30: building, writing out and sending a bug report (`bugReport.ts`).
+ * Phase 32: building, writing out and sending a bug report (`bugReport.ts`).
  */
 import { describe, expect, it } from 'vitest';
 import { buildBugReport, bugReportText, sendBugReport, type BugReportSources } from './bugReport.js';

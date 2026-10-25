@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Phase 30: the one-time question on the title screen -- send anonymous gameplay statistics? (user decision:
+   * Phase 32: the one-time question on the title screen -- send anonymous gameplay statistics? (user decision:
    * opt-in). Shown only while unanswered, and only by a build that has a statistics server; it never blocks
    * the menu. "Details" lists exactly what is sent. The answer can be changed in Preferences.
    */

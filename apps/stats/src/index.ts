@@ -1,5 +1,5 @@
 /**
- * Phase 30: the Worker's entry point -- the real Cloudflare bindings handed to `handler.ts`.
+ * Phase 32: the Worker's entry point -- the real Cloudflare bindings handed to `handler.ts`.
  *
  * Bindings (`wrangler.jsonc`): D1 `DB`, R2 `REPORTS`, Email Routing `MAILER` (`send_email`), rate limiters
  * `EVENT_LIMIT` and `REPORT_LIMIT`. Variables: `ALLOWED_ORIGINS`, `REPORTS_ENABLED`, `MAIL_FROM` (an address on

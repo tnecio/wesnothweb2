@@ -24,7 +24,7 @@
   import { setStatsConsent, statsConsent } from './telemetry/consent.svelte.js';
   import { statsUrl } from './telemetry/stats.js';
 
-  /** Phase 30: the opt-in statistics switch, in a build that has a statistics server. */
+  /** Phase 32: the opt-in statistics switch, in a build that has a statistics server. */
   const statsAvailable = statsUrl() !== null;
   import type { AudioSettings } from './audio/settings.js';
 

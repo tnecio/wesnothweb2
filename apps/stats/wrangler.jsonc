@@ -1,4 +1,4 @@
-// Phase 30: the statistics and bug-report Worker (see src/handler.ts and docs/DEPLOYMENT.md). Deployed by hand,
+// Phase 32: the statistics and bug-report Worker (see src/handler.ts and docs/DEPLOYMENT.md). Deployed by hand,
 // separately from the game: `npx wrangler deploy` in this directory.
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",

@@ -1,5 +1,5 @@
 /**
- * Phase 30: the statistics Worker's handler, with in-memory stand-ins for D1, R2, email and the rate limiter.
+ * Phase 32: the statistics Worker's handler, with in-memory stand-ins for D1, R2, email and the rate limiter.
  */
 import { describe, expect, it } from 'vitest';
 import { cleanUp, handle, type Database, type Deps, type Statement } from '../src/handler.js';

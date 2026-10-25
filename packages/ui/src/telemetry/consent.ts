@@ -1,5 +1,5 @@
 /**
- * Phase 30: the player's answer to "send anonymous gameplay statistics?" (user decision: opt-in), as stored --
+ * Phase 32: the player's answer to "send anonymous gameplay statistics?" (user decision: opt-in), as stored --
  * the reactive store is `consent.svelte.ts`.
  */
 export type StatsConsent = 'unasked' | 'yes' | 'no';

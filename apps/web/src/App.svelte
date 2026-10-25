@@ -21,7 +21,7 @@
   {/snippet}
 </svelte:boundary>
 <ErrorScreen />
-<!-- Phase 30: "Report a bug", over whatever opened it (the game menu, the title screen, the error screen). -->
+<!-- Phase 32: "Report a bug", over whatever opened it (the game menu, the title screen, the error screen). -->
 {#if bugReportDialog.open}
   <BugReportDialog />
 {/if}
