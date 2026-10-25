@@ -91,7 +91,9 @@ import { HEX_STEP_MS, type UnitAnimationDef } from './animation/unitAnimation.js
 import { nextIdleTick, type AmbientAnimationPrefs, type AmbientAnimationSource, type AmbientAnimationEvent } from './animation/ambient.js';
 export { nextIdleTick, type AmbientAnimationPrefs, type AmbientAnimationSource, type AmbientAnimationEvent } from './animation/ambient.js';
 import { LABEL_FONT_SIZE, parseHaloFrames, type MapItemPoint, type MapLabelPoint } from './mapItems.js';
-import { layerAnimates, makeLayerSprite, type TerrainAnimation } from './terrainPositioning.js';
+import { layerAnimates, makeLayerSprite, usableFrames, type TerrainAnimation } from './terrainPositioning.js';
+import { FrameClock } from './frameClock.js';
+import { AtlasPages } from './atlasPages.js';
 import { ownTerrainGraphicsRules, type BuildingRule } from './terrain/terrainGraphicsRules.js';
 import { layoutTerrain, type TerrainLayout } from './terrain/terrainLayout.js';
 import { computeTerrainLayout } from './terrain/terrainLayoutClient.js';
@@ -491,6 +493,8 @@ function colorForTerrain(code: string): number {
 }
 
 export interface SnapshotBoardOptions {
+  /** Phase 33: the renderer the board is drawn by, which copies animation cycles into one texture each (`stripAtlas.ts`). */
+  renderer?: PIXI.Renderer;
   /** Base URL images are served from (see ImageCache.setImageBaseUrl). */
   imageBaseUrl?: string;
   /** Base URL `engine/`-prefixed references are served from (see ImageCache.setEngineImageBaseUrl). */
@@ -764,8 +768,16 @@ export class SnapshotBoard {
   private showSideColors = true;
   /** Phase 24: "Animate map" and "Animate water" (`setTerrainAnimation`). */
   private terrainAnimation: TerrainAnimation = { map: true, water: true };
-  /** The terrain's animation cycles, so a change to `terrainAnimation` reaches the ones already drawn. */
-  private animatedTerrain: { sprite: PIXI.AnimatedSprite; water: boolean }[] = [];
+  /**
+   * Phase 33: the one clock every looping board animation runs on -- the animated terrain images and the village
+   * flags (`frameClock.ts`); each asks it, as it ticks, whether its preference lets it run.
+   */
+  private readonly frameClock = new FrameClock();
+  /**
+   * Phase 33: the board's images copied into a few shared textures (`atlasPages.ts`): the terrain when it is drawn,
+   * a unit's frames as they are first shown. Null without the renderer (images then drawn from their own textures).
+   */
+  private atlas: AtlasPages | null = null;
   /**
    * Floating damage/heal numerals (`unit_display`'s `float_text`) -- rising,
    * fading red (damage) / green (heal) numbers drawn above a unit's hex.
@@ -830,11 +842,23 @@ export class SnapshotBoard {
     this.onHexRightClick = options.onHexRightClick;
     this.terrainGraphicsRules = options.terrainGraphicsRules;
     this.terrainGraphicsRulesUrl = options.terrainGraphicsRulesUrl;
+    // Phase 33: with the renderer at hand, the board's images are drawn from shared pages (`atlasPages.ts`).
+    if (options.renderer) {
+      const atlas = new AtlasPages(options.renderer);
+      this.atlas = atlas;
+      this.frameClock.useAtlas(atlas);
+      // The pages are this board's own textures: they go with it.
+      this.stage.on('destroyed', () => atlas.destroy());
+    }
     // Plain data: the snapshot may be a reactive proxy, which cannot be posted to the terrain worker.
     this.extraTerrainGraphicsRules = JSON.parse(JSON.stringify(ownTerrainGraphicsRules(snapshot))) as BuildingRule[];
     this.units = snapshot.units;
     this.teamColor = new Map(snapshot.teams.map((t) => [t.side, t.color]));
     this.teamFlag = new Map(snapshot.teams.map((t) => [t.side, t.flag ?? '']));
+    // Phase 33: the camera moves and scales `stage` (GameBoardView's `applyView`). As a render group, that is one
+    // transform for the GPU; otherwise every pan recomputed the world transform of each of the board's tens of
+    // thousands of sprites on the CPU.
+    this.stage.isRenderGroup = true;
     this.stage.addChild(
       this.terrainLayer,
       this.gridTopLayer,
@@ -879,6 +903,8 @@ export class SnapshotBoard {
     };
     // Phase 27c S3: each frame, the units at rest play their standing, idle or selection animations.
     this.unitLayer.onRender = () => this.tickAmbient(this.ambientFrozen ? 0 : performance.now());
+    // Phase 33: the terrain's and the flags' cycles, all on one time.
+    this.terrainLayer.onRender = () => this.frameClock.tick(performance.now());
     this.labelLayer.eventMode = 'none';
     this.moveInfoLayer.eventMode = 'none';
     this.hoverLayer.eventMode = 'none';
@@ -1135,7 +1161,7 @@ export class SnapshotBoard {
         for (const child of layer.removeChildren()) child.destroy({ children: true });
       }
       this.terrainHexContainers.clear();
-      this.animatedTerrain = [];
+      this.frameClock.prune();
       await this.drawTerrain();
       this.lastFogShroudKey = null; // the terrain was rebuilt: the overlay must be too
       this.updateFogShroud(this.lastFogShroud);
@@ -1204,14 +1230,15 @@ export class SnapshotBoard {
     // structure and made every frame ~10x slower, while rendering all
     // ~8,700 sprites unculled costs ~2ms of CPU (see GameBoardView).
     const hexContainer = (): PIXI.Container => new PIXI.Container();
+    // Phase 33: every image the terrain draws, copied into the board's pages at once (`atlasPages.ts`).
+    this.atlas?.place(perHex.flatMap((hex) => [...hex.bg, ...hex.fg].map((layer) => usableFrames(layer).map((u) => u.tex))));
     for (const hex of perHex) {
       const key = `${hex.x},${hex.y}`;
       const entry: { bg?: PIXI.Container; fg?: PIXI.Container } = {};
       if (hex.bg.length > 0) {
         const c = hexContainer();
         for (const layer of hex.bg) {
-          const sprite = makeLayerSprite(layer, hex.cx, hex.cy, this.terrainAnimation);
-          if (sprite instanceof PIXI.AnimatedSprite) this.animatedTerrain.push({ sprite, water: !!layer.water });
+          const sprite = makeLayerSprite(layer, hex.cx, hex.cy, this.frameClock, () => layerAnimates(layer, this.terrainAnimation), this.atlas ?? undefined);
           if (sprite) c.addChild(sprite);
         }
         this.terrainLayer.addChild(c);
@@ -1220,8 +1247,7 @@ export class SnapshotBoard {
       if (hex.fg.length > 0) {
         const c = hexContainer();
         for (const layer of hex.fg) {
-          const sprite = makeLayerSprite(layer, hex.cx, hex.cy, this.terrainAnimation);
-          if (sprite instanceof PIXI.AnimatedSprite) this.animatedTerrain.push({ sprite, water: !!layer.water });
+          const sprite = makeLayerSprite(layer, hex.cx, hex.cy, this.frameClock, () => layerAnimates(layer, this.terrainAnimation), this.atlas ?? undefined);
           if (sprite) c.addChild(sprite);
         }
         this.terrainForegroundLayer.addChild(c);
@@ -2018,9 +2044,12 @@ export class SnapshotBoard {
     const sample = sampleAnimation(anim, visual.lastUnit.facing ?? Direction.Indeterminate, t, hex, hex);
     if (sample.imagePath) {
       const ref = this.teamColoredRef(sample.imagePath, visual.lastSide, visual.flagRgb, visual.imageMods);
-      const texture = ImageCache.getRef(ref);
-      if (texture) {
-        if (sprite.texture !== texture) sprite.texture = texture;
+      const original = ImageCache.getRef(ref);
+      if (original) {
+        const texture = this.atlas?.get(original) ?? original;
+        // A frame not yet in the pages (its copy is made after this frame): the unit holds the frame it shows for
+        // one more tick, rather than showing the original and then the copy, two changes of texture source.
+        if (sprite.texture !== texture && !this.atlas?.pending(original)) sprite.texture = texture;
       } else {
         void ImageCache.resolve(ref);
       }
@@ -2053,9 +2082,10 @@ export class SnapshotBoard {
         if (texture) frames.push({ texture, time: f.durationMs });
       }
       if (frames.length === 0) continue;
-      const sprite = frames.length === 1 ? new PIXI.Sprite(frames[0]!.texture) : new PIXI.AnimatedSprite(frames);
+      const sprite = new PIXI.Sprite(frames[0]!.texture);
       sprite.anchor.set(0.5);
-      if (sprite instanceof PIXI.AnimatedSprite) sprite.play();
+      // Phase 33: a cycling halo runs on the board's one clock (`frameClock.ts`).
+      this.frameClock.add(sprite, frames.map((f) => ({ texture: f.texture, durationMs: Math.max(1, f.time) })));
       holder.addChild(sprite);
     }
     // Superseded (or the unit gone) while the textures loaded.
@@ -2239,7 +2269,9 @@ export class SnapshotBoard {
               if (sample.imagePath) {
                 const texture = await ImageCache.resolve(this.teamColoredRef(sample.imagePath, visual.lastSide, visual.flagRgb, visual.imageMods));
                 if (visual.container.destroyed) continue;
-                if (texture && visual.sprite && visual.sprite.texture !== texture) visual.sprite.texture = texture;
+                const shown = texture && (this.atlas?.get(texture) ?? texture);
+                // As `drawAmbientFrame`: a frame whose copy is pending waits a tick.
+                if (shown && visual.sprite && visual.sprite.texture !== shown && !this.atlas?.pending(texture!)) visual.sprite.texture = shown;
               }
               if (visual.sprite) {
                 visual.sprite.scale.x = sample.hflip ? -Math.abs(visual.sprite.scale.x) : Math.abs(visual.sprite.scale.x);
@@ -2595,10 +2627,11 @@ export class SnapshotBoard {
           sprite.position.set(cx, cy);
           this.itemHaloLayer.addChild(sprite);
         } else if (frames.length > 1) {
-          const sprite = new PIXI.AnimatedSprite(frames);
+          // Phase 33: on the board's one clock, as the terrain (a fire's flames, ...).
+          const sprite = new PIXI.Sprite(frames[0]!.texture);
           sprite.anchor.set(0.5);
           sprite.position.set(cx, cy);
-          sprite.play();
+          this.frameClock.add(sprite, frames.map((f) => ({ texture: f.texture, durationMs: Math.max(1, f.time) })));
           this.itemHaloLayer.addChild(sprite);
         }
       }
@@ -2618,18 +2651,8 @@ export class SnapshotBoard {
    * water" (`animate_water`: the `is_water` terrain images hold still), applied to what is already drawn.
    */
   setTerrainAnimation(animation: TerrainAnimation): void {
-    if (animation.map === this.terrainAnimation.map && animation.water === this.terrainAnimation.water) return;
+    // The clock asks each cycle whether it runs (`frameClock.ts`): the next tick holds or resumes them.
     this.terrainAnimation = { ...animation };
-    for (const { sprite, water } of this.animatedTerrain) {
-      if (sprite.destroyed) continue;
-      if (layerAnimates({ water }, animation)) sprite.play();
-      else sprite.gotoAndStop(0);
-    }
-    for (const child of this.villageLayer.children) {
-      if (!(child instanceof PIXI.AnimatedSprite) || child.totalFrames < 2) continue;
-      if (animation.map) child.play();
-      else child.gotoAndStop(0);
-    }
   }
 
   /**
@@ -2668,19 +2691,22 @@ export class SnapshotBoard {
       for (const side of new Set(owners.map((v) => v.side))) framesBySide.set(side, await this.villageFlagFrames(side));
       if (generation !== this.villageFlagsGeneration) return; // a newer ownership update replaced this one
       for (const child of this.villageLayer.removeChildren()) child.destroy();
+      this.frameClock.prune();
       for (const v of owners) {
         const frames = framesBySide.get(v.side) ?? [];
         if (frames.length === 0) continue;
         const { x: cx, y: cy } = hexToPixel(toHexCoord(v.x, v.y));
-        const flag = new PIXI.AnimatedSprite(frames);
+        const flag = new PIXI.Sprite(frames[0]!.texture);
         flag.anchor.set(0.5);
         flag.position.set(cx, cy);
         flag.width = TILE_SIZE;
         flag.height = TILE_SIZE;
-        // One phase per side, as upstream animates one flag per side.
-        flag.gotoAndPlay(this.flagStartFrame(v.side, frames.length));
+        // One phase per side, as upstream animates one flag per side: the side's start frame as a time offset.
         // "Animate map" off: `display::draw_hex` shows each flag's first frame.
-        if (frames.length === 1 || !this.terrainAnimation.map) flag.gotoAndStop(0);
+        const clockFrames = frames.map((f) => ({ texture: f.texture, durationMs: Math.max(1, f.time) }));
+        const start = this.flagStartFrame(v.side, frames.length);
+        const offsetMs = clockFrames.slice(0, start).reduce((sum, f) => sum + f.durationMs, 0);
+        this.frameClock.add(flag, clockFrames, { offsetMs, animates: () => this.terrainAnimation.map });
         this.villageLayer.addChild(flag);
       }
     })();

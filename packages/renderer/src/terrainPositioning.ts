@@ -17,6 +17,8 @@
 import * as PIXI from 'pixi.js'
 import { hexedRef, ImageCache } from './images/ImageCache'
 import { joinRef } from './images/ipf'
+import type { FrameClock } from './frameClock'
+import type { AtlasPages } from './atlasPages'
 
 /** One animation-cycle frame of a terrain image layer. */
 export interface TerrainFrame {
@@ -73,14 +75,27 @@ export function layerOffset(frame: TerrainFrame): { x: number; y: number } {
   return { x: frame.offsetX ?? 0, y: frame.offsetY ?? 0 }
 }
 
+/** A layer's frames whose (hexed) textures are loaded, each with its texture. */
+export function usableFrames(layer: TerrainLayer): { f: TerrainFrame; tex: PIXI.Texture }[] {
+  return (layer.frames ?? [])
+    .map(f => ({ f, tex: ImageCache.getRef(hexedRef(joinRef(f.path, f.mods))) }))
+    .filter((p): p is { f: TerrainFrame; tex: PIXI.Texture } => !!p.tex && !p.tex.destroyed)
+}
+
 /**
- * Build one sprite (or animated sprite) for one terrain layer, positioned at
- * hex-centre pixel `(px, py)` plus the layer's neighbour-hex offset.
+ * Build one sprite for one terrain layer, positioned at hex-centre pixel
+ * `(px, py)` plus the layer's neighbour-hex offset.
  *
  * `layer.frames` is an animation cycle: one frame means a static image,
- * several mean an `AnimatedSprite`. Drawing each frame as its own sprite
- * would stack all of them (e.g. all 13 water-wave frames superimposed as a
- * static ring) — grouping them here is what fixes that.
+ * several mean the sprite is handed to `clock` (`frameClock.ts`), which shows
+ * the frame the cycle has reached on the board's one shared time -- upstream
+ * animates every terrain image from the same clock. Drawing each frame as its
+ * own sprite would stack all of them (e.g. all 13 water-wave frames
+ * superimposed as a static ring) -- grouping them here is what fixes that.
+ * `animates` says, each time the clock ticks, whether this cycle runs (the
+ * "Animate map"/"Animate water" preferences, `layerAnimates`); when not, it
+ * holds its first frame. Without a clock the sprite shows the first frame.
+ * A still image is drawn from its copy in `atlas` when it has one (`atlasPages.ts`).
  *
  * Textures are requested hexed (`~HEXED()`, see `images/ImageCache.ts`), so
  * each is already cropped to the 72x72 hex box and clipped to the hex
@@ -94,28 +109,20 @@ export function makeLayerSprite(
   layer: TerrainLayer,
   px: number,
   py: number,
-  animation: TerrainAnimation = { map: true, water: true },
-): PIXI.Sprite | PIXI.AnimatedSprite | null {
+  clock?: FrameClock,
+  animates: () => boolean = () => true,
+  atlas?: AtlasPages,
+): PIXI.Sprite | null {
   const frames = layer.frames
   if (!frames || frames.length === 0) return null
 
-  const usable = frames
-    .map(f => ({ f, tex: ImageCache.getRef(hexedRef(joinRef(f.path, f.mods))) }))
-    .filter((p): p is { f: TerrainFrame; tex: PIXI.Texture } => !!p.tex && !p.tex.destroyed)
+  const usable = usableFrames(layer)
 
   if (usable.length === 0) return null
 
-  let sprite: PIXI.Sprite | PIXI.AnimatedSprite
-
-  if (usable.length === 1) {
-    sprite = new PIXI.Sprite(usable[0]!.tex)
-  } else {
-    const anim = new PIXI.AnimatedSprite(
-      usable.map(({ f, tex }) => ({ texture: tex, time: Math.max(1, f.durationMs) })),
-    )
-    anim.animationSpeed = 1
-    if (layerAnimates(layer, animation)) anim.play()
-    sprite = anim
+  const sprite = new PIXI.Sprite(usable.length === 1 && atlas ? atlas.copyOf(usable[0]!.tex) : usable[0]!.tex)
+  if (usable.length > 1 && clock) {
+    clock.add(sprite, usable.map(({ f, tex }) => ({ texture: tex, durationMs: Math.max(1, f.durationMs) })), { animates })
   }
 
   const { x: offsetX, y: offsetY } = layerOffset(usable[0]!.f)
