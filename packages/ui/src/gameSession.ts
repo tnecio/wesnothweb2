@@ -854,6 +854,8 @@ export interface EconomyInfo {
   incomePerVillage: number;
   /** Villages this side currently owns (`GameBoard.villageCount`). */
   villagesOwned: number;
+  /** The villages this side knows of: all of them, or with shroud only the unshrouded ones (the `villages` report's second number). */
+  villagesKnown: number;
   /** What this side's gold will change by at the start of its *next* turn: total income (base + per-village) minus any unsupported unit upkeep. Zero on turn 1, when no side has had income/upkeep applied yet -- see `endTurn`'s doc comment. */
   netIncome: number;
   /** This side's raw total upkeep (sum of `unit.level` for every non-leader unit) -- for the status bar's real `upkeep (total)` display, mirrors `side_upkeep`. */
@@ -862,6 +864,17 @@ export interface EconomyInfo {
   upkeepCharged: number;
   /** This side's current unit count -- for the status bar's real unit-count display. */
   unitCount: number;
+}
+
+/** `GameSession.timeOfDayReport`: the sidebar's time of day at a hex. */
+export interface TimeOfDayReport {
+  readonly tod: TimeOfDayEntry;
+  /** How much illumination raised (> 0) or lowered (< 0) the lawful bonus there (`time_of_day::bonus_modified`). */
+  readonly bonusModified: number;
+  readonly maxLiminalBonus: number;
+  /** The schedule there, and the index of the current entry. */
+  readonly times: readonly TimeOfDayEntry[];
+  readonly current: number;
 }
 
 /** One recruitable unit type, ready for the side panel's recruit list. */
@@ -2104,6 +2117,28 @@ export class GameSession {
       out.set(key, { red: tod.red, green: tod.green, blue: tod.blue, ...(tod.imageMask ? { mask: tod.imageMask } : {}) });
     }
     return out;
+  }
+
+  /**
+   * The sidebar's time of day at `hex` (`reports.cpp`'s `time_of_day_at` and `tod_stats_at`), or the global one
+   * with no hex: what the viewing side may see there (`get_visible_time_of_day_at` -- the global time under shroud,
+   * no illumination under fog), how much illumination changed its bonus, and its schedule with the current entry.
+   */
+  timeOfDayReport(hex: Location | null): TimeOfDayReport {
+    const side = this.viewingSide;
+    const shrouded = !!hex && this.board.isShrouded(side, hex);
+    const scheduleHex = hex && !shrouded ? hex : null;
+    let tod: TimeOfDayEntry;
+    let bonusModified = 0;
+    if (!hex || shrouded) tod = this.currentTimeOfDay;
+    else if (this.board.isFogged(side, hex)) tod = this.schedule.timeOfDayAt(hex, this.turnNumber);
+    else {
+      const base = this.schedule.timeOfDayAt(hex, this.turnNumber);
+      tod = this.timeOfDayAt(hex);
+      bonusModified = tod.lawfulBonus - base.lawfulBonus;
+    }
+    const { times, current } = this.schedule.scheduleAt(scheduleHex ?? undefined, this.turnNumber);
+    return { tod, bonusModified, maxLiminalBonus: this.schedule.maxLiminalBonus, times, current };
   }
 
   /**
@@ -4348,6 +4383,7 @@ export class GameSession {
       startGold: team?.startGold ?? 0,
       incomePerVillage: team?.incomePerVillage ?? 0,
       villagesOwned: this.board.villageCount(this.activeSide),
+      villagesKnown: team?.usesShroud() ? this.board.map.villages.filter((loc) => !this.board.isShrouded(this.activeSide, loc)).length : this.board.map.villages.length,
       netIncome: this.turnNumber > 1 ? this.totalIncomeFor(this.activeSide) - Math.max(0, expense) : 0,
       upkeepTotal,
       upkeepCharged: Math.max(0, expense),

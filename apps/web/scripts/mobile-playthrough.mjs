@@ -259,8 +259,8 @@ try {
   if (ended) {
     check('End Scenario is on screen', await visible('[data-testid="turn-button"]'));
     await tap('[data-testid="turn-button"]', 4000);
-    await page.waitForFunction(() => document.querySelector('.scenario-name')?.textContent?.includes('2/2'), null, { timeout: 60000 }).catch(() => {});
-    check('tapping End Scenario goes on into the next scenario', /2\/2/.test(await page.$eval('.scenario-name', (e) => e.textContent ?? '').catch(() => '')));
+    await page.waitForFunction(() => window.__wesnoth?.session.scenarioName.includes('2/2'), null, { timeout: 60000 }).catch(() => {});
+    check('tapping End Scenario goes on into the next scenario', /2\/2/.test(await page.evaluate(() => window.__wesnoth?.session.scenarioName ?? '').catch(() => '')));
     await waitBoardReady(page);
     for (let i = 0; i < 30; i++) {
       if (await page.$('.story')) await tap('.story .skip', 800);

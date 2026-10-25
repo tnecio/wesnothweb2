@@ -159,8 +159,8 @@ async function keyboardOnly(browser) {
     check('the fight ends the scenario: the player lingers, End Turn reading End Scenario', ended);
     if (ended) {
       await press(page, 'Control+Space', 4000);
-      await page.waitForFunction(() => document.querySelector('.scenario-name')?.textContent?.includes('2/2'), null, { timeout: 30000 }).catch(() => {});
-      check('Ctrl+Space (End Scenario) continues into the next scenario', /2\/2/.test(await page.$eval('.scenario-name', (e) => e.textContent ?? '').catch(() => '')));
+      await page.waitForFunction(() => window.__wesnoth?.session.scenarioName.includes('2/2'), null, { timeout: 30000 }).catch(() => {});
+      check('Ctrl+Space (End Scenario) continues into the next scenario', /2\/2/.test(await page.evaluate(() => window.__wesnoth?.session.scenarioName ?? '').catch(() => '')));
     }
 
     // save, load and the language picker, by keys

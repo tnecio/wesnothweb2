@@ -17,3 +17,12 @@ export function unitImageRef(image: string, side?: number): string {
   const id = sideColorId?.(side);
   return id ? `${image}~RC(magenta>${id})` : image;
 }
+
+/**
+ * A side's flag icon as the status bar shows it (`reports.cpp`'s `side_playing`): its `flag_icon=` (or
+ * `game_config::images::flag_icon`) recoloured from `game_config::flag_rgb` to the side's colour range.
+ */
+export function sideFlagRef(flagIcon: string, colorId: string | undefined): string {
+  const icon = flagIcon || 'flags/flag-icon.png';
+  return colorId ? `${icon}~RC(flag_green>${colorId})` : icon;
+}
