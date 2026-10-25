@@ -23,7 +23,7 @@
   import { ENGINE_IMAGES, GAME_IMAGES } from '../gameData.js';
   import { dataUrl } from '../dataUrls.js';
   import { buildInfo } from '../errors/errorReporting.svelte.js';
-  import { SOURCE_URL, WESNOTH_DONATE_URL, WESNOTH_ORG_URL } from '../about.js';
+  import { AUTHOR_URL, SOURCE_URL, WESNOTH_DONATE_URL, WESNOTH_ORG_URL } from '../about.js';
   import titleImages from './titleImages.json';
 
   /**
@@ -185,13 +185,21 @@
       <div class="tab-body" id={`title-panel-${activeTab}`} role="tabpanel" aria-labelledby={infoTabs.length > 1 ? `title-tab-${activeTab}` : undefined}>
         {#if activeTab === 'about'}
           <p class="about-text" dir="auto" data-testid="title-about-text">
+            {tx('The Battle for Wesnoth is an open source, turn-based strategy game with a high fantasy theme. Learn more about it at wesnoth.org.')}
+          </p>
+          <p class="about-text" dir="auto">
             {tx(
-              'Wesnoth on the Web is an unofficial, fan-made port of Battle for Wesnoth, a free/libre open-source strategy game, with its interface rebuilt for both desktop and mobile.',
+              'Wesnoth on the Web is an unofficial fan-made port of the Battle for Wesnoth, rebuilt in TypeScript and adapted to web and mobile interfaces. Currently it supports single-player mainline campaigns only, with add-ons and multiplayer support planned in the future. The port is in beta and there may still be noticeable bugs – please report them!',
+            )}
+          </p>
+          <p class="about-text" dir="auto">
+            {tx(
+              'All the game assets, including audio, graphics, animations, and scenarios are human-made (imported from the original Battle for Wesnoth). Only the TypeScript implementation code is largely vibe-coded, based on the original C++ code.',
             )}
           </p>
           <div class="about-links">
             <a href={WESNOTH_ORG_URL} target="_blank" rel="noopener" data-testid="title-about-wesnoth-org">{tx('wesnoth.org — the official game')}</a>
-            <a class="donate" href={WESNOTH_DONATE_URL} target="_blank" rel="noopener" data-testid="title-about-donate">{tx('Donate to Wesnoth on Liberapay')}</a>
+            <a class="donate" href={WESNOTH_DONATE_URL} target="_blank" rel="noopener" data-testid="title-about-donate">{tx('Donate to support the original Battle for Wesnoth on Liberapay')}</a>
           </div>
         {:else if tip}
           <p class="tip" dir="auto" data-testid="tip-text"><Markup text={ts(tip.text)} /></p>
@@ -220,6 +228,7 @@
       >{fmt(t('Version $version'), { version })}{#if build.version !== 'dev'}<span class="build">&nbsp;· {fmt(tx('web $version'), { version: build.version })}</span>{/if}</span
     >
     <a class="source" href={SOURCE_URL} target="_blank" rel="noopener" data-testid="title-source">{tx('Source code')}</a>
+    <a class="author" href={AUTHOR_URL} target="_blank" rel="noopener" data-testid="title-author">tnec.io</a>
     <button class="language" title={t('Change the language')} onclick={onLanguage} data-testid="title-language">
       {locale.currentInfo?.name ?? t('Language')}
     </button>
@@ -437,9 +446,15 @@
   }
   .source {
     margin-left: auto;
+    margin-right: 0.8rem;
+    color: inherit;
+    text-shadow: 0 0 3px #000;
+  }
+  .author {
     margin-right: 1rem;
     color: inherit;
     text-shadow: 0 0 3px #000;
+    opacity: 0.85;
   }
   .language {
     min-height: 1.75rem;

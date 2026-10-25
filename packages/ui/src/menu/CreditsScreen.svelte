@@ -4,10 +4,13 @@
    * upstream's 100 px/s, Up doubling the speed (to 400) and Down halving it (to 50), Escape closing.
    *
    * Three additions for the web: the scrolling can be paused (moving text that lasts more than a few
-   * seconds needs an off switch); the viewport is always a native scroll container, so a wheel, a touch
-   * drag or the scrollbar can move it by hand too, on top of the auto-scroll -- upstream can't do that (it
-   * isn't backed by real scroll), but browsers are good at it, so there is no reason not to use it here;
-   * and with `prefers-reduced-motion` it does not move at all, it is an ordinary scrollable list. The data
+   * seconds needs an off switch); the viewport is a native scroll container and the auto-scroll drives its
+   * `scrollTop` directly (padding above and below `.text` stands in for upstream's off-screen start and
+   * its "last line stops half way up"), so a wheel, a touch drag or the scrollbar move the same position
+   * the animation does -- including back up to the very top, which a transform-based scroll (visually
+   * offset, but not truly scrolled) could not give back once it had moved on. Upstream has nothing like
+   * this to lean on, but browsers are good at it, so there is no reason not to use it here. And with
+   * `prefers-reduced-motion` the text does not move at all, it is an ordinary scrollable list. The data
    * (`credits.json`, ~30 KB) is fetched when the screen opens, not with the menu.
    */
   import { dataUrl } from '../dataUrls.js';
@@ -15,7 +18,14 @@
   import { imageUrl } from '@wesnothweb2/renderer';
   import Modal from '../Modal.svelte';
   import { languageTag, locale, t, ts, tx } from '../i18n/locale.js';
-  import { changeScrollSpeed, creditsBackground, creditsLines, DEFAULT_SCROLL_SPEED, type CreditsJson } from './credits.js';
+  import { changeScrollSpeed, creditsBackground, creditsLines, DEFAULT_SCROLL_SPEED, type CreditsJson, type CreditsLine } from './credits.js';
+
+  /**
+   * The port's own credit, ahead of every upstream group. Not in `credits.json` -- that file is
+   * regenerated from upstream data alone (`build-campaigns.mjs`) and would drop a hand-added line on its
+   * next rebuild.
+   */
+  const PORT_CREDIT: CreditsLine = { kind: 'header', text: 'Wesnoth on the Web port: Tomasz Necio (tnec.io)' };
 
   let { onClose, focusOn = undefined }: { onClose: () => void; focusOn?: string } = $props();
 
@@ -24,7 +34,6 @@
   let background = $state<string | undefined>();
   let speed = $state(DEFAULT_SCROLL_SPEED);
   let paused = $state(false);
-  let offset = $state(0);
   let viewport = $state<HTMLDivElement | undefined>();
   let content = $state<HTMLDivElement | undefined>();
 
@@ -52,26 +61,39 @@
   });
 
   const lines = $derived(
-    data ? creditsLines(data, (s) => ts(s), (a, b) => a.localeCompare(b, languageTag(locale.current)), focusOn) : [],
+    data ? [PORT_CREDIT, ...creditsLines(data, (s) => ts(s), (a, b) => a.localeCompare(b, languageTag(locale.current)), focusOn)] : [],
   );
 
   // The scroll: text enters at the bottom and moves up until the last line is half way up, then stays.
+  // Padding above and below `.text` stands in for that (so `scrollTop` 0 is "nothing yet" and its max is
+  // "the last line half way up"), and each frame nudges the *current* `scrollTop` forward -- not a value
+  // computed independently of it -- so a manual scroll (anywhere, including back to the very top) just
+  // becomes the new starting point instead of being overwritten next frame.
   $effect(() => {
     if (reduceMotion || !viewport || !content || lines.length === 0) return;
+    const vh = viewport.clientHeight;
+    content.style.paddingTop = `${vh}px`;
+    content.style.paddingBottom = `${vh / 2}px`;
+    viewport.scrollTop = 0;
     let frame = 0;
     let last = performance.now();
-    offset = viewport.clientHeight;
     const step = (now: number): void => {
       const dt = Math.min(now - last, 100);
       last = now;
-      if (!paused && viewport && content) {
-        const stop = viewport.clientHeight / 2 - content.scrollHeight;
-        offset = Math.max(stop, offset - (speed * dt) / 1000);
+      if (!paused && viewport) {
+        const max = viewport.scrollHeight - viewport.clientHeight;
+        viewport.scrollTop = Math.min(max, viewport.scrollTop + (speed * dt) / 1000);
       }
       frame = requestAnimationFrame(step);
     };
     frame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      if (content) {
+        content.style.paddingTop = '';
+        content.style.paddingBottom = '';
+      }
+    };
   });
 
   function onKey(e: KeyboardEvent): void {
@@ -100,7 +122,7 @@
           {:else if data === null}
             <p class="note">{tx('Loading...')}</p>
           {:else}
-            <div class="text" bind:this={content} style:transform={reduceMotion ? undefined : `translateY(${offset}px)`} data-testid="credits-text">
+            <div class="text" bind:this={content} data-testid="credits-text">
               {#each lines as line}
                 {#if line.kind === 'gap'}
                   <div class="gap" aria-hidden="true"></div>
@@ -150,7 +172,6 @@
   .text {
     text-align: center;
     padding: 0 1rem;
-    will-change: transform;
   }
   .static .text {
     padding: 1rem;
