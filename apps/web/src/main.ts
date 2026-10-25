@@ -1,10 +1,12 @@
 import { mount } from 'svelte';
 import '@wesnothweb2/ui/src/fonts.css';
-import { accessibility, installErrorReporting, loadDataManifest, locale } from '@wesnothweb2/ui';
+import { accessibility, installErrorReporting, installTelemetry, loadDataManifest, locale } from '@wesnothweb2/ui';
 import App from './App.svelte';
 
 // First, so an error anywhere after this reaches the error screen (Phase 28 S6) instead of a frozen page.
 installErrorReporting();
+// Phase 30: the opt-in gameplay statistics (nothing is sent until the player agrees, or without VITE_STATS_URL).
+installTelemetry();
 
 // `?crashtest` throws a few seconds in, to check the error screen on a deployed build.
 if (new URLSearchParams(location.search).has('crashtest')) {
