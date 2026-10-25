@@ -465,10 +465,14 @@
     background-image: var(--button-h22-active);
   }
 
-  /* Narrow windows: the panels stack (tips under the menu) so both stay readable and the buttons reachable. */
+  /*
+   * Narrow windows: the panels stack (tips under the menu) so both stay readable and the buttons reachable.
+   * `order` rather than `column-reverse` puts the menu first: a reversed flex container that scrolls starts
+   * scrolled to its end, which hid the menu above the fold.
+   */
   @media (max-width: 720px) {
     .stage {
-      flex-direction: column-reverse;
+      flex-direction: column;
       align-items: stretch;
       justify-content: flex-start;
       gap: 0.6rem;
@@ -477,6 +481,7 @@
     }
     .menu {
       min-width: 0;
+      order: -1;
     }
     .tips {
       max-width: none;
