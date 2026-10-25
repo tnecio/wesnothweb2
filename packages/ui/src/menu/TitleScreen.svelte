@@ -18,7 +18,7 @@
    * credits, F1 help, Left/Right the tips (switching to the tips tab if needed). They do nothing while a
    * dialog is open (`blocked`) or while typing.
    */
-  import { fmt, t, ts, tw, tx } from '../i18n/locale.js';
+  import { fmt, t, ts, tx } from '../i18n/locale.js';
   import Markup from '../markup/Markup.svelte';
   import { ENGINE_IMAGES, GAME_IMAGES } from '../gameData.js';
   import { dataUrl } from '../dataUrls.js';
@@ -160,8 +160,7 @@
   >{muted ? '\u{1F507}' : '\u{1F50A}'}</button>
 
   <h1 class="logo">
-    <img class="logo-bg" src="{ENGINE_IMAGES}/misc/logo-bg.png" alt="" draggable="false" />
-    <img class="logo-fg" src="{ENGINE_IMAGES}/misc/logo.png" alt={tw('The Battle for Wesnoth')} draggable="false" />
+    <img src={dataUrl('title-logo.png')} alt={tx('Wesnoth on the Web')} draggable="false" />
   </h1>
 
   <div class="stage">
