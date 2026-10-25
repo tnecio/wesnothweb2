@@ -93,6 +93,7 @@
     colorAdjust = undefined,
     onSound,
     ambientAnimation,
+    desaturate = false,
     onHexClick,
     onHexRightClick,
     onHexHoverChange,
@@ -146,6 +147,8 @@
     onSound?: (files: string) => void;
     /** Phase 27c S3: a unit's standing, idle and selection animations (see `SnapshotBoard.setAmbientAnimations`). */
     ambientAnimation?: AmbientAnimationSource;
+    /** Fade the map to black and white: play is over (a defeat, while the player lingers on the map). */
+    desaturate?: boolean;
     /** The current global ToD's red=/green=/blue= colour shift (and `mask=`) -- see `SnapshotBoard.setLighting`. Omit for none (a scenario with no [time] schedule). */
     timeOfDay?: Pick<TimeOfDayEntry, 'red' | 'green' | 'blue' | 'imageMask'>;
     /** Phase 27c S5: the hexes a `[time_area]` lights otherwise, keyed `"x,y"` (`GameSession.timeAreaLighting`). */
@@ -1157,7 +1160,7 @@
     {/if}
   </p>
   <div class="canvas-wrap">
-    <div class="canvas-host" bind:this={canvasHost} role="application" aria-label={tx('Game board')} aria-roledescription={tx('map')}></div>
+    <div class="canvas-host" class:desaturated={desaturate} bind:this={canvasHost} role="application" aria-label={tx('Game board')} aria-roledescription={tx('map')}></div>
     {#if !firstRenderDone}
       <div class="board-loading" role="status" aria-live="polite" data-testid="board-loading">
         <div class="spinner" aria-hidden="true"></div>
@@ -1235,6 +1238,15 @@
     flex: 1 1 auto;
     min-height: 0;
     touch-action: none;
+    transition: filter 1.5s ease;
+  }
+  .canvas-host.desaturated {
+    filter: grayscale(1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .canvas-host {
+      transition: none;
+    }
   }
   /* Phase 23, a phone: the line is about the mouse (there is no hover under a finger), and the infobox shows the tapped hex's terrain.
      While the scenario loads (or failed to), it stays, without the mouse advice: it is the only sign of progress. */

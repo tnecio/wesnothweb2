@@ -3687,6 +3687,7 @@
         onViewportResize={() => boardResizeTick++}
         onSound={(files) => audio.playSound({ files, repeats: 0, group: 'sound' })}
         {ambientAnimation}
+        desaturate={lingering && session.scenarioResult === 'defeat'}
         {units}
         {selectedHex}
         cursorHex={cursorHex ?? armedMove}
