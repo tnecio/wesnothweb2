@@ -44,6 +44,9 @@ jobs:
       - name: vitest
         working-directory: apps/stats
         run: npx vitest run --reporter=default --reporter=github-actions
+      # The build and dev-server helpers' own tests (they read upstream files, so they run here, after the setup).
+      - name: node --test (apps/web/scripts/lib)
+        run: node --test apps/web/scripts/lib/*.test.mjs
 
   # Phase 27a: upstream's own WML unit tests (data/test), run headlessly. Fails when a test that gave its
   # expected result (docs/completeness/wml-tests-baseline.json) no longer does.

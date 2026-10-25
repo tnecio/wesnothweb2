@@ -3111,13 +3111,25 @@
   // (`display_unit_hex`). Only the highlight and the sidebar: the speaker's
   // reach is not drawn, and the player's own selection comes back afterwards.
   // A narrator line clears it (`deselect_hex`).
+  // Real, reported bug: the speaker stayed the inspected unit after the message, so hovering the map drew
+  // routes from its hex though nothing was selected. What was inspected before comes back with the player's
+  // selection (the speaker's own line, if another message follows, takes over again).
+  let inspectedBeforeSpeaker: { speaker: Unit; previous: Unit | null } | null = null;
   $effect(() => {
     const message = currentMessage?.message;
     const at = message?.speakerLocation;
     const speaker = at && message.highlight ? session.board.unitAt(new Location(at.x, at.y)) : undefined;
     untrack(() => {
       speakerHex = speaker ? { x: speaker.location.x, y: speaker.location.y } : null;
-      if (speaker) session.inspectedUnit = speaker;
+      if (speaker) {
+        if (!inspectedBeforeSpeaker) inspectedBeforeSpeaker = { speaker, previous: session.inspectedUnit };
+        else inspectedBeforeSpeaker.speaker = speaker;
+        session.inspectedUnit = speaker;
+      } else if (inspectedBeforeSpeaker) {
+        const previous = inspectedBeforeSpeaker.previous;
+        if (session.inspectedUnit === inspectedBeforeSpeaker.speaker) session.inspectedUnit = previous && session.board.allUnits().includes(previous) ? previous : null;
+        inspectedBeforeSpeaker = null;
+      }
       syncHighlights();
     });
   });
@@ -3608,7 +3620,14 @@
    * page" just because saving happens to be unavailable this moment.
    */
   function handleGlobalKeydown(e: KeyboardEvent): void {
-    if (e.repeat || e.defaultPrevented) return;
+    if (e.defaultPrevented) return;
+    // A game hotkey with Ctrl/Cmd/Alt is the game's even when it cannot run right now (a dialog or the
+    // opening is up): otherwise the browser's own shortcut fires -- real, reported bug: The South Guard's
+    // tip says "press Ctrl+R to recruit", and Firefox reloaded the page. Plain keys stay the dialog's.
+    if ((e.ctrlKey || e.metaKey || e.altKey) && !isTypingTarget(e.target) && hotkeyCommands.some((c) => c.hotkeys?.some((h) => matchesHotkey(e, h)))) {
+      e.preventDefault();
+    }
+    if (e.repeat) return;
     // 'story'/'ended' have their own keyboard handling (StoryViewer, Outro);
     // a suspended event's dialogue is handled by MessageViewer.
     if (phase !== 'playing' || eventsRunning) return;
@@ -3668,6 +3687,7 @@
         onViewportResize={() => boardResizeTick++}
         onSound={(files) => audio.playSound({ files, repeats: 0, group: 'sound' })}
         {ambientAnimation}
+        desaturate={lingering && session.scenarioResult === 'defeat'}
         {units}
         {selectedHex}
         cursorHex={cursorHex ?? armedMove}

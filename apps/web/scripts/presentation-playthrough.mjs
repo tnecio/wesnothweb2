@@ -27,7 +27,8 @@
  *   day's -- flags, grid and fog by the day's, units not at all; and combat in the castle at its lawful bonus.
  *
  * - the end of a scenario (S6), on the debug fog scenario: after a defeat the player lingers on the map --
- *   fog and shroud lifted and the enemy shown (`reveal_map`), every orb red, End Turn reading End Scenario --
+ *   fog and shroud lifted and the enemy shown (`reveal_map`), every orb red, the map faded to black and white,
+ *   End Turn reading End Scenario --
  *   and End Scenario goes back to the title screen.
  *
  * - random names (S7), on Dead Water 1: the units its WML gives no name (the merfolk citizens, the enemy's)
@@ -505,6 +506,9 @@ ${anims}
     const after = { ...(await seen()), orbs: await page.evaluate(() => window.__wesnoth.session.renderUnits.filter((u) => u.side === window.__wesnoth.session.viewingSide).map((u) => `${u.movesLeft}/${u.canMove}`)) };
     check('...the whole map shown, the enemy too (reveal_map)', after.hidden === 0 && after.villain, JSON.stringify(after));
     check('...and every unit of the player has ended its turn (red orbs)', after.orbs.every((o) => o === '0/false'), after.orbs.join(' '));
+    // The fade takes 1.5 s; the class is where it is going.
+    const grey = await page.evaluate(() => ({ cls: document.querySelector('.canvas-host').classList.contains('desaturated'), filter: getComputedStyle(document.querySelector('.canvas-host')).filter }));
+    check('...and the map fades to black and white: play is over', grey.cls && /grayscale/.test(grey.filter), JSON.stringify(grey));
     await page.click('[data-testid="turn-button"]');
     const title = await page.waitForSelector('[data-testid="title-screen"]', { timeout: 30000 }).catch(() => null);
     check('End Scenario after a defeat returns to the title screen', title !== null);

@@ -93,6 +93,7 @@
     colorAdjust = undefined,
     onSound,
     ambientAnimation,
+    desaturate = false,
     onHexClick,
     onHexRightClick,
     onHexHoverChange,
@@ -146,6 +147,8 @@
     onSound?: (files: string) => void;
     /** Phase 27c S3: a unit's standing, idle and selection animations (see `SnapshotBoard.setAmbientAnimations`). */
     ambientAnimation?: AmbientAnimationSource;
+    /** Fade the map to black and white: play is over (a defeat, while the player lingers on the map). */
+    desaturate?: boolean;
     /** The current global ToD's red=/green=/blue= colour shift (and `mask=`) -- see `SnapshotBoard.setLighting`. Omit for none (a scenario with no [time] schedule). */
     timeOfDay?: Pick<TimeOfDayEntry, 'red' | 'green' | 'blue' | 'imageMask'>;
     /** Phase 27c S5: the hexes a `[time_area]` lights otherwise, keyed `"x,y"` (`GameSession.timeAreaLighting`). */
@@ -259,6 +262,12 @@
   /** Resolves once the first full render -- terrain, then units, highlights, fog -- is on screen (or failed); see `whenReady`. */
   let markReady: () => void = () => {};
   const readyPromise = new Promise<void>((resolve) => (markReady = resolve));
+  /**
+   * Whether that first render is done. Until then a spinner covers the board: building a big map can take a
+   * while, after the story and when `[replace_map]` remounts the board (real, reported: nothing showed there).
+   */
+  let firstRenderDone = $state(false);
+  void readyPromise.then(() => (firstRenderDone = true));
   /** The mounted PixiJS app, reactive so the `paused` effect below runs once it exists. */
   let pixiApp: PIXI.Application | undefined = $state.raw();
   /** Phase 17 `[lock_view]`: the player's own pan/zoom is off while a cutscene owns the camera. */
@@ -1150,10 +1159,67 @@
       {/if}
     {/if}
   </p>
-  <div class="canvas-host" bind:this={canvasHost} role="application" aria-label={tx('Game board')} aria-roledescription={tx('map')}></div>
+  <div class="canvas-wrap">
+    <div class="canvas-host" class:desaturated={desaturate} bind:this={canvasHost} role="application" aria-label={tx('Game board')} aria-roledescription={tx('map')}></div>
+    {#if !firstRenderDone}
+      <div class="board-loading" role="status" aria-live="polite" data-testid="board-loading">
+        <div class="spinner" aria-hidden="true"></div>
+        <p>{tx('Loading scenario...')}</p>
+      </div>
+    {/if}
+  </div>
 </div>
 
 <style>
+  .canvas-wrap {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  /* The same spinner as the page's "Loading scenario..." (apps/web/src/PlayPage.svelte). */
+  .board-loading {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.25rem;
+    background: #181818;
+    font-family: var(--font-ui);
+  }
+  .board-loading p {
+    margin: 0;
+    font-size: 1.5rem;
+    letter-spacing: 0.02em;
+    color: #e4c860;
+  }
+  .board-loading .spinner {
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 50%;
+    border: 4px solid rgba(138, 106, 46, 0.35);
+    border-top-color: #e4c860;
+    animation: board-spin 0.9s linear infinite;
+  }
+  @keyframes board-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes board-pulse {
+    50% {
+      opacity: 0.4;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .board-loading .spinner {
+      animation: board-pulse 2s ease-in-out infinite;
+    }
+  }
   .board-view {
     flex: 1 1 auto;
     min-width: 0;
@@ -1172,6 +1238,15 @@
     flex: 1 1 auto;
     min-height: 0;
     touch-action: none;
+    transition: filter 1.5s ease;
+  }
+  .canvas-host.desaturated {
+    filter: grayscale(1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .canvas-host {
+      transition: none;
+    }
   }
   /* Phase 23, a phone: the line is about the mouse (there is no hover under a finger), and the infobox shows the tapped hex's terrain.
      While the scenario loads (or failed to), it stays, without the mouse advice: it is the only sign of progress. */
