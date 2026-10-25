@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
-import { WmlConfig, parseConfig, writeWml, recordedCommandToWml, type GameBoardSnapshot } from '@wesnothweb2/engine';
+import { WmlConfig, parseConfig, writeWml, recordedCommandToWml, runActionSequence, type GameBoardSnapshot } from '@wesnothweb2/engine';
 import { GameSession } from '../gameSession.js';
 import { fromWesnothSave, toWesnothSave, type WesnothCampaignInfo } from './wesnothSave.js';
 import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
@@ -292,6 +292,47 @@ function missingFrom(expected: WmlConfig, actual: WmlConfig, at: string): string
   }
   return problems;
 }
+
+describe('a game downloaded and uploaded again is the same game (Download / Upload)', () => {
+  /** Everything a player would notice: the game's own description of itself, each side's settings and what it sees. */
+  function picture(session: GameSession) {
+    return {
+      state: session.describeState(),
+      sides: session.board.teams().map((t) => {
+        const cfg = t.toConfig();
+        for (const key of ['shroud_data', 'fog_data']) cfg.removeAttribute(key);
+        cfg.removeChildren('variables');
+        return cfg.toJSON();
+      }),
+      visibility: session.hexVisibility.map((h) => `${h.x},${h.y}:${h.visibility}`).join(' '),
+    };
+  }
+  const roundTrip = (session: GameSession) =>
+    GameSession.fromSaveData(loadSnapshot(), fromWesnothSave(parseConfig(writeWml(toWesnothSave(session.toSaveData(), loadSnapshot(), DEAD_WATER)))).save);
+
+  it('a side changed by WML comes back as it was changed, not as the scenario declared it', async () => {
+    // Real, reported bug: Heir to the Throne 1 turns Konrad's shroud off when he leaves home; the download wrote the
+    // scenario's shroud=yes back, and the save came back shrouded but for the hexes already seen.
+    const session = new GameSession(loadSnapshot());
+    await session.runStartupEvents();
+    runActionSequence(parseConfig('[modify_side]\nside=1\nshroud=yes\nfog=yes\nincome=7\nrecruit=Merman Fighter\n[/modify_side]'), session['eventPump'].ctx);
+    const team = session.board.getTeam(1)!;
+    expect([team.shroud.enabled, team.fog.enabled, team.income]).toEqual([true, true, 7]);
+    const back = roundTrip(session).board.getTeam(1)!;
+    expect([back.shroud.enabled, back.fog.enabled, back.income, [...back.canRecruit]]).toEqual([true, true, 7, ['Merman Fighter']]);
+    runActionSequence(parseConfig('[modify_side]\nside=1\nshroud=no\nfog=no\n[/modify_side]'), session['eventPump'].ctx);
+    const off = roundTrip(session).board.getTeam(1)!;
+    expect([off.shroud.enabled, off.fog.enabled]).toEqual([false, false]);
+  });
+
+  it('loads into exactly what the save made here loads into: state, sides and what each hex shows', async () => {
+    const session = new GameSession(loadSnapshot());
+    await session.runStartupEvents();
+    await session.endTurn();
+    const native = GameSession.fromSaveData(loadSnapshot(), session.toSaveData());
+    expect(picture(roundTrip(session))).toEqual(picture(native));
+  });
+});
 
 describe('Phase 18b: the command log as a real [replay], both ways', () => {
   it('exports a game played here as [replay_start] + its whole [replay], and reads that [replay] back', async () => {

@@ -201,9 +201,14 @@ export function fromWesnothSave(cfg: WmlConfig): ImportedWesnothSave {
 
   for (const sideCfg of snapshot.children('side')) {
     const side = sideCfg.getNumber('side', teams.length + 1);
+    // The side's own settings (`team::write`: shroud=, fog=, income=, recruit=, ...), read back as a save made
+    // here keeps them (`Team.applyConfig`); its units and villages are read separately below.
+    const config = sideCfg.clone();
+    for (const tag of ['unit', 'village', 'ai']) config.removeChildren(tag);
     teams.push({
       side,
       gold: sideCfg.getNumber('gold', 0),
+      config: config.toJSON(),
       shroudData: optString(sideCfg, 'shroud_data'),
       fogData: optString(sideCfg, 'fog_data'),
       villages: sideCfg.children('village').map((v) => {
@@ -386,6 +391,18 @@ function sidesToWml(save: SaveGameData, templates: Map<number, WmlConfig>): WmlC
     const cfg = templates.get(team.side)?.clone() ?? new WmlConfig();
     cfg.removeChildren('unit');
     cfg.removeChildren('village');
+    // The side as it is now (`team::write`, `Team.toConfig`) over what the scenario declared. Real, reported
+    // bug: Heir to the Throne 1 turns Konrad's shroud off when he leaves home ([modify_side] shroud=no), the
+    // download wrote the scenario's shroud=yes, and the save came back shrouded but for the hexes seen so far.
+    if (team.config) {
+      const live = WmlConfig.fromJSON(team.config);
+      for (const key of live.attributeNames()) cfg.setAttribute(key, live.getRaw(key)!);
+      const variables = live.child('variables');
+      if (variables) {
+        cfg.removeChildren('variables');
+        cfg.addChild('variables', variables.clone());
+      }
+    }
     cfg.setAttribute('side', team.side);
     cfg.setAttribute('gold', team.gold);
     if (team.shroudData !== undefined) cfg.setAttribute('shroud_data', team.shroudData);
