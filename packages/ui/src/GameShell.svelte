@@ -3608,7 +3608,14 @@
    * page" just because saving happens to be unavailable this moment.
    */
   function handleGlobalKeydown(e: KeyboardEvent): void {
-    if (e.repeat || e.defaultPrevented) return;
+    if (e.defaultPrevented) return;
+    // A game hotkey with Ctrl/Cmd/Alt is the game's even when it cannot run right now (a dialog or the
+    // opening is up): otherwise the browser's own shortcut fires -- real, reported bug: The South Guard's
+    // tip says "press Ctrl+R to recruit", and Firefox reloaded the page. Plain keys stay the dialog's.
+    if ((e.ctrlKey || e.metaKey || e.altKey) && !isTypingTarget(e.target) && hotkeyCommands.some((c) => c.hotkeys?.some((h) => matchesHotkey(e, h)))) {
+      e.preventDefault();
+    }
+    if (e.repeat) return;
     // 'story'/'ended' have their own keyboard handling (StoryViewer, Outro);
     // a suspended event's dialogue is handled by MessageViewer.
     if (phase !== 'playing' || eventsRunning) return;
