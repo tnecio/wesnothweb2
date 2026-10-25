@@ -140,7 +140,7 @@ describe('consent and crash signatures', () => {
   });
 
   it('a crash signature is the message and the first code position, without the host or hashed path', () => {
-    const stack = 'TypeError: x is undefined\n    at playAttack (https://wesnoth.tnec.io/assets/index-3f9a2c.js:120:44)\n    at run (https://wesnoth.tnec.io/assets/index-3f9a2c.js:80:3)';
+    const stack = 'TypeError: x is undefined\n    at playAttack (https://wesnoth.fun/assets/index-3f9a2c.js:120:44)\n    at run (https://wesnoth.tnec.io/assets/index-3f9a2c.js:80:3)';
     expect(crashSignature('x is undefined', stack)).toBe('x is undefined @ playAttack (index-3f9a2c.js:120:44)');
     expect(crashSignature('boom', undefined)).toBe('boom');
   });

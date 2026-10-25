@@ -19,7 +19,7 @@ engine's dependencies (SDL, Boost, etc.) unchanged.
 See [docs/](docs/) for the architecture and implementation plan, and
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for CI, releases and deployment.
 
-Play it at https://wesnoth.tnec.io.
+Play it at https://wesnoth.fun.
 
 ## Contributing
 

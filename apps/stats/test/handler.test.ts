@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { cleanUp, handle, type Database, type Deps, type Statement } from '../src/handler.js';
 
-const ORIGIN = 'https://wesnoth.tnec.io';
+const ORIGIN = 'https://wesnoth.fun';
 
 interface Fakes {
   deps: Deps;

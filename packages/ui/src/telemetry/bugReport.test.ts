@@ -8,7 +8,7 @@ import { validateReport } from './schema.js';
 const sources = (overrides: Partial<BugReportSources> = {}): BugReportSources => ({
   environment: { build: 'v0.20.0', lang: 'en_US', device: 'desktop', browser: 'firefox' },
   userAgent: 'Mozilla/5.0 Firefox/140.0',
-  page: 'https://wesnoth.tnec.io/play/the_south_guard',
+  page: 'https://wesnoth.fun/play/the_south_guard',
   context: { campaignId: 'the_south_guard', scenarioId: '01_Born_to_the_Banner', scenarioName: 'Born to the Banner', turn: 2, runId: 'run-1', saveData: () => ({ version: 2, turnNumber: 2 }) },
   log: () => ['12:00:00.000 WARN [wml] something odd'],
   ...overrides,
