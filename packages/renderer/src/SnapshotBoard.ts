@@ -1944,13 +1944,24 @@ export class SnapshotBoard {
   }
 
   private async renderUnits(): Promise<void> {
-    const seen = new Set<string>();
+    const seen = new Set(this.units.map((unit) => spriteKey(unit)));
 
-    for (const unit of this.units) {
-      seen.add(spriteKey(unit));
-      const visual = await this.updateOneUnit(unit);
-      // A recruit hidden for its animation (`ensureUnitVisual`) is shown by the next full pass at the latest.
-      if (!visual.container.destroyed) visual.container.visible = true;
+    // Phase 33: all at once -- one at a time, a big board's units appeared one by one, each waiting for the last
+    // one's images -- then in the snapshot's order, which is the order they are drawn in.
+    const visuals = await Promise.all(
+      this.units.map(async (unit) => {
+        const visual = await this.updateOneUnit(unit);
+        // A recruit hidden for its animation (`ensureUnitVisual`) is shown by the next full pass at the latest.
+        if (!visual.container.destroyed) visual.container.visible = true;
+        return visual;
+      }),
+    );
+    const ordered = visuals.map((v) => v.container).filter((c) => !c.destroyed && c.parent === this.unitLayer);
+    const rest = this.unitLayer.children.filter((c) => !ordered.includes(c as PIXI.Container));
+    const wanted = [...ordered, ...rest];
+    if (wanted.some((c, i) => this.unitLayer.children[i] !== c)) {
+      this.unitLayer.removeChildren();
+      this.unitLayer.addChild(...wanted);
     }
 
     for (const [key, visual] of this.unitVisuals) {
