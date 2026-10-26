@@ -10,8 +10,12 @@
  *   (`random_synced.cpp`'s `synced_rng`). A reload before an attack gets a
  *   new seed and so a new roll; a replay stays exact, and a divergence stays
  *   inside the one action that caused it.
- * - **Inside an action, `deterministic` mode**: the whole game's own stream
- *   (`rng_proxy` over `gamedata->rng()`), for tests and AI benchmarks.
+ * - **Inside an action, `deterministic` mode** ("Predictable RNG"): the whole
+ *   game's own stream (`rng_proxy` over `gamedata->rng()`), so reloading a
+ *   save does not change an attack's outcome. Also tests and AI benchmarks.
+ * - **`biased` mode** ("Reduced RNG"): the same stream as `deterministic`
+ *   (`get_rng_for_action` treats them alike); its attacks also deal their
+ *   hits out evenly (`combat.ts`'s `dealBiasedHits`).
  * - **Outside any action**: `unsynced` -- AI decisions, the `ai turn` event,
  *   anything upstream runs through its default, non-replayed generator.
  *   Deterministic from the session's seed here, so headless runs repeat.
@@ -23,7 +27,7 @@
 import { Rng } from './Rng.js';
 import { MtRng } from './MtRng.js';
 
-export type RandomMode = 'per_action' | 'deterministic';
+export type RandomMode = 'per_action' | 'deterministic' | 'biased';
 
 export class SyncedRng extends Rng {
   private action: { rng: MtRng | null } | null = null;
@@ -71,7 +75,7 @@ export class SyncedRng extends Rng {
     const action = this.action;
     if (!action) return this.unsynced.getNextRandom();
     this.onSyncedDraw();
-    if (this.mode === 'deterministic') return this.game.getNextRandom();
+    if (this.mode === 'deterministic' || this.mode === 'biased') return this.game.getNextRandom();
     if (!action.rng) {
       const rng = new MtRng(0);
       rng.seedRandom(this.seedProvider(), 0);

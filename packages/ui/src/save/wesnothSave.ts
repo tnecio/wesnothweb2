@@ -53,6 +53,7 @@ import {
   recordedCommandToWml,
   recordedCommandsFromWml,
   type GameBoardSnapshot,
+  type RandomMode,
   type RecordedCommand,
   type WmlConfigJson,
 } from '@wesnothweb2/engine';
@@ -274,6 +275,8 @@ export function fromWesnothSave(cfg: WmlConfig): ImportedWesnothSave {
       campaignId: campaignIdFromWesnoth(cfg.getString('campaign', '')),
       // `game_classification::difficulty`: the campaign difficulty define the save was played at.
       difficulty: cfg.getString('difficulty', '') || undefined,
+      // Phase 30: `game_classification::random_mode` ('' is upstream's default, a fresh seed per action).
+      randomMode: randomModeFromWesnoth(cfg.getString('random_mode', '')),
       teams,
       units,
       recall,
@@ -531,6 +534,7 @@ export function toWesnothSave(
     out.setAttribute('campaign_name', campaign.name);
     out.setAttribute('abbrev', campaign.abbrev);
     out.setAttribute('difficulty', save.difficulty ?? campaign.difficulty ?? 'NORMAL');
+    out.setAttribute('random_mode', !save.randomMode || save.randomMode === 'per_action' ? '' : save.randomMode);
     out.setAttribute('label', label);
     out.setAttribute('end_credits', true);
     // See `WesnothCampaignInfo.define`: without these the game loads the
@@ -719,3 +723,8 @@ function carryoverSides(save: SaveGameData, campaign: WesnothCampaignInfo): WmlC
  * build still opens it.
  */
 export const WESNOTH_CONTENT_VERSION = '1.19.21';
+
+/** Phase 30: `game_classification::random_mode` as this port's mode (`''`, or anything unknown, is the default). */
+function randomModeFromWesnoth(value: string): RandomMode {
+  return value === 'deterministic' || value === 'biased' ? value : 'per_action';
+}

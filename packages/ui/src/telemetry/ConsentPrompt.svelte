@@ -19,7 +19,7 @@
     </p>
     {#if details}
       <p class="details" data-testid="stats-consent-details">
-        {tx('Each event says which campaign, scenario, difficulty and turn it happened at, the game version, your language, whether you play on a phone or a computer, and your browser family. A random ID per campaign playthrough tells retries apart without identifying you. Your IP address, User Agent, or any cookies are not stored. The data is kept for 13 months. You can change your answer at any time in Preferences.')}
+        {tx('Each event says which campaign, scenario, difficulty and turn it happened at (a scenario starting or ending also says the combat mode), the game version, your language, whether you play on a phone or a computer, and your browser family. A random ID per campaign playthrough tells retries apart without identifying you. Your IP address, User Agent, or any cookies are not stored. The data is kept for 13 months. You can change your answer at any time in Preferences.')}
       </p>
     {/if}
     <div class="buttons">

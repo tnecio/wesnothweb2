@@ -89,6 +89,36 @@ export interface AttackOptions extends UnitStatsOptions {
    * a resolver, as opposed to not applicable at all.
    */
   readonly resolveType?: (id: string) => UnitType | undefined;
+  /**
+   * Phase 30: "Reduced RNG" (`random_mode=biased`, `attack.cpp`'s `use_prng_`). At a side's first strike of a
+   * round, its hits are dealt out among its strikes: `cth * strikes / 100` of them, plus one more with the
+   * remainder's chance, at random places. See `dealBiasedHits`.
+   */
+  readonly biasedHits?: boolean;
+}
+
+/**
+ * `attack::perform_hit`'s `use_prng_` branch: a side's hit queue for its `strikes` strikes at `chanceToHit`. The
+ * strikes pop it from the end. Draws exactly as upstream: one `get_random_int(0, 99)` when there is a remainder,
+ * then one `get_random_int(0, remaining - 1)` per hit.
+ */
+export function dealBiasedHits(rng: Rng, chanceToHit: number, strikes: number): boolean[] {
+  const total = chanceToHit * strikes;
+  let hits = Math.trunc(total / 100);
+  const additionalHitChance = total % 100;
+  if (additionalHitChance > 0 && rng.getRandomInt(0, 99) < additionalHitChance) hits++;
+  const queue: boolean[] = [];
+  const indexes: number[] = [];
+  for (let i = 0; i < strikes; i++) {
+    queue.push(false);
+    indexes.push(i);
+  }
+  for (let i = 0; i < hits; i++) {
+    const n = rng.getRandomInt(0, indexes.length - 1);
+    queue[indexes[n]!] = true;
+    indexes.splice(n, 1);
+  }
+  return queue;
 }
 
 function directionTo(from: Location, to: Location): Direction {
@@ -280,13 +310,25 @@ export function executeAttack(
     plagueSpawn = { type: plagueType, at: deadLoc, spawned: true };
   };
 
+  // Phase 30: Reduced RNG's hit queues (`prng_attacker_`, `prng_defender_`).
+  const biasedAttacker: boolean[] = [];
+  const biasedDefender: boolean[] = [];
   const performHit = (attackerTurn: boolean): boolean => {
     const striker = attackerTurn ? attacker : defender;
     const target = attackerTurn ? defender : attacker;
     const strikerStats = attackerTurn ? aStats : dStats;
     const strikerDamage = attackerTurn ? attackerEffectiveDamage : defenderEffectiveDamage;
 
-    const roll = rng.getRandomInt(0, 99);
+    let roll: number;
+    if (options.biasedHits) {
+      // Phase 30: the side's queue, filled at its first strike of the round (`n_attacks_` strikes left, at the
+      // chance to hit of that moment); a queued hit rolls 0, a miss 99, and the usual test follows.
+      const queue = attackerTurn ? biasedAttacker : biasedDefender;
+      if (queue.length === 0) queue.push(...dealBiasedHits(rng, strikerStats.chanceToHit, attackerTurn ? aBlowsLeft : dBlowsLeft));
+      roll = queue.pop() ? 0 : 99;
+    } else {
+      roll = rng.getRandomInt(0, 99);
+    }
     const hit = roll < strikerStats.chanceToHit;
     const damage = hit ? strikerDamage : 0;
 

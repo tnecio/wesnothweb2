@@ -66,6 +66,13 @@ describe('POST /v1/events', () => {
     expect(JSON.parse(f.rows[1]!.values.at(-1) as string)).toEqual({ result: 'victory', turnsLimit: 12, minutes: 9 });
   });
 
+  it('Phase 30: keeps the combat mode of a scenario start and end in its JSON', async () => {
+    const f = fakes();
+    await handle(post('/v1/events', [event({ rng: 'reduced' }), event({ type: 'scenario_end', result: 'defeat', minutes: 3, rng: 'predictable' })]), f.deps);
+    expect(JSON.parse(f.rows[0]!.values.at(-1) as string)).toEqual({ rng: 'reduced' });
+    expect(JSON.parse(f.rows[1]!.values.at(-1) as string)).toEqual({ result: 'defeat', minutes: 3, rng: 'predictable' });
+  });
+
   it('drops unknown fields', async () => {
     const f = fakes();
     await handle(post('/v1/events', [event({ ip: '1.2.3.4', userAgent: 'x' })]), f.deps);

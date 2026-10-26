@@ -33,6 +33,15 @@
  * upstream's `rng::default_instance()` -- never the game's synced RNG). The
  * AI evaluates a great many hypothetical fights; without these it was most
  * of an AI turn.
+ *
+ * ## Reduced RNG (Phase 30, not upstream)
+ *
+ * Under "Reduced RNG" (`random_mode=biased`) a side's strikes are not
+ * independent: each round deals out a fixed number of hits among them
+ * (`combat.ts`'s `dealBiasedHits`). Upstream's prediction ignores that and
+ * shows the unbiased odds; here `simulateCombat(..., { biased: true })`
+ * computes the real ones (`biasedFight`), for the player's damage
+ * calculations. The AI keeps upstream's prediction.
  */
 
 import { RngDeterministic } from '../rng/RngDeterministic.js';
@@ -1087,12 +1096,15 @@ export class Combatant {
   poisoned: number;
   slowed: number;
   private summary: Summary = [[], []];
+  /** Not yet fought: its state is its stats' (what `biasedFight` starts from). */
+  private fresh: boolean;
 
   constructor(
     public readonly stats: BattleContextUnitStats,
     prev?: Combatant,
   ) {
     this.hpDist = new Array(stats.maxHp + 1).fill(0);
+    this.fresh = !prev;
     if (prev) {
       this.summary = [prev.summary[0].slice(), prev.summary[1].slice()];
       this.hpDist = prev.hpDist.slice();
@@ -1124,12 +1136,15 @@ export class Combatant {
    * Can be called repeatedly (e.g. once per attacker facing the same
    * defender) for cumulative results, mirroring upstream's usage pattern.
    */
-  fight(opponent: Combatant, levelupConsidered = true): void {
+  fight(opponent: Combatant, levelupConsidered = true, options: PredictionOptions = {}): void {
     // If defender has firststrike and we don't, reverse (defender's blows go first).
     if (opponent.stats.firststrike && !this.stats.firststrike) {
-      opponent.fight(this, levelupConsidered);
+      opponent.fight(this, levelupConsidered, options);
       return;
     }
+    const bothFresh = this.fresh && opponent.fresh;
+    this.fresh = false;
+    opponent.fresh = false;
 
     const notHit = { self: 1.0, opp: 1.0 };
 
@@ -1142,7 +1157,10 @@ export class Combatant {
     const split = splitSummary(this.stats, this.summary);
     const oppSplit = splitSummary(opponent.stats, opponent.summary);
 
-    if (fightComplexity(split.length, oppSplit.length, this.stats, opponent.stats) > MONTE_CARLO_SIMULATION_THRESHOLD && monteCarloAllowed) {
+    if (options.biased && bothFresh) {
+      // Phase 30: Reduced RNG's real odds (a combatant carried over from an earlier fight keeps upstream's).
+      biasedFight(this.stats, opponent.stats, this.summary, opponent.summary, notHit, levelupConsidered);
+    } else if (fightComplexity(split.length, oppSplit.length, this.stats, opponent.stats) > MONTE_CARLO_SIMULATION_THRESHOLD && monteCarloAllowed) {
       // A very complex fight: a Monte Carlo simulation instead of exact probabilities.
       complexFight(true, this.stats, opponent.stats, this.stats.numBlows, opponent.stats.numBlows, this.summary, opponent.summary, notHit, levelupConsidered, split, oppSplit, this.slowed, opponent.slowed);
     } else if (split.length === 1 && oppSplit.length === 1) {
@@ -1244,9 +1262,212 @@ export function simulateCombat(
   attacker: BattleContextUnitStats,
   defender: BattleContextUnitStats,
   levelupConsidered = true,
+  options: PredictionOptions = {},
 ): { attacker: Combatant; defender: Combatant } {
   const a = new Combatant(attacker);
   const d = new Combatant(defender);
-  a.fight(d, levelupConsidered);
+  a.fight(d, levelupConsidered, options);
   return { attacker: a, defender: d };
+}
+
+export interface PredictionOptions {
+  /** Phase 30: the game is in Reduced RNG (`random_mode=biased`): predict with its hit queues (`biasedFight`). */
+  biased?: boolean;
+}
+
+/** Above this many hit patterns of both sides in a round, `biasedFight` samples them instead of listing them all. */
+const BIASED_PATTERN_LIMIT = 1 << 16;
+/** How many pattern pairs a round samples above the limit. */
+const BIASED_SAMPLES = 4096;
+
+/**
+ * Reduced RNG's hit patterns for `strikes` strikes at `chanceToHit`: `floor(cth * strikes / 100)` hits, or one
+ * more with the remainder's chance, every placement of them equally likely (`combat.ts`'s `dealBiasedHits`).
+ * Each pattern lists the strikes in the order they are struck.
+ */
+export function biasedPatterns(chanceToHit: number, strikes: number): { hits: boolean[]; prob: number }[] {
+  if (strikes <= 0) return [{ hits: [], prob: 1 }];
+  const total = chanceToHit * strikes;
+  const base = Math.trunc(total / 100);
+  const extra = (total % 100) / 100;
+  const counts: [number, number][] = extra > 0 ? [[base, 1 - extra], [base + 1, extra]] : [[base, 1]];
+  const out: { hits: boolean[]; prob: number }[] = [];
+  for (const [k, pk] of counts) {
+    if (pk <= 0 || k > strikes) continue;
+    const placements: boolean[][] = [];
+    const place = (from: number, left: number, acc: boolean[]) => {
+      if (acc.length === strikes) {
+        if (left === 0) placements.push(acc.slice());
+        return;
+      }
+      if (left > 0) {
+        acc.push(true);
+        place(from + 1, left - 1, acc);
+        acc.pop();
+      }
+      if (strikes - acc.length > left) {
+        acc.push(false);
+        place(from + 1, left, acc);
+        acc.pop();
+      }
+    };
+    place(0, k, []);
+    for (const hits of placements) out.push({ hits, prob: pk / placements.length });
+  }
+  return out;
+}
+
+/** One state of a Reduced RNG fight (`self` strikes first in each round). */
+interface BiasedState {
+  selfHp: number;
+  oppHp: number;
+  selfSlowed: boolean;
+  oppSlowed: boolean;
+  selfHit: boolean;
+  oppHit: boolean;
+  /** Petrified, or someone died: no more strikes. */
+  over: boolean;
+}
+
+/**
+ * The fight under Reduced RNG, as `combat.ts` resolves it (`executeAttack` with `biasedHits`), as exact
+ * probabilities: round by round over the distribution of states, every hit pattern of both sides weighted as
+ * `biasedPatterns` deals them. `stats` is the side that strikes first. Fills both summaries (by hp, not slowed and
+ * slowed) and the chances of never being hit, then applies level-ups as upstream's prediction does: both sides'
+ * only when `stats` can advance -- but to the outcomes themselves (a forced level-up heals every survivor, a
+ * kill-dependent one every survivor that killed).
+ */
+function biasedFight(stats: BattleContextUnitStats, oppStats: BattleContextUnitStats, summary: Summary, oppSummary: Summary, notHit: NotHit, levelupConsidered: boolean): void {
+  const damageOf = (s: BattleContextUnitStats, slowed: boolean) => (slowed ? s.slowDamage : s.damage);
+  const selfPatterns = biasedPatterns(stats.chanceToHit, stats.numBlows);
+  const oppPatterns = biasedPatterns(oppStats.chanceToHit, oppStats.numBlows);
+  const pairs: { self: boolean[]; opp: boolean[]; prob: number }[] = [];
+  if (selfPatterns.length * oppPatterns.length <= BIASED_PATTERN_LIMIT) {
+    for (const a of selfPatterns) for (const b of oppPatterns) pairs.push({ self: a.hits, opp: b.hits, prob: a.prob * b.prob });
+  } else {
+    // Too many to list: a sample, drawn from the prediction generator as upstream's Monte Carlo does.
+    const rng = predictionRng();
+    const pick = (patterns: { hits: boolean[]; prob: number }[]) => patterns[rng.getRandomElement(patterns.map((p) => p.prob))]!.hits;
+    for (let i = 0; i < BIASED_SAMPLES; i++) pairs.push({ self: pick(selfPatterns), opp: pick(oppPatterns), prob: 1 / BIASED_SAMPLES });
+  }
+
+  /** One round from `state`, with these patterns: `combat.ts`'s strike loop, `self` first. */
+  const playRound = (state: BiasedState, selfHits: boolean[], oppHits: boolean[]): BiasedState => {
+    const s = { ...state };
+    let selfLeft = stats.numBlows;
+    let oppLeft = oppStats.numBlows;
+    let si = 0;
+    let oi = 0;
+    const strike = (selfTurn: boolean): boolean => {
+      const hit = selfTurn ? selfHits[si++]! : oppHits[oi++]!;
+      const striker = selfTurn ? stats : oppStats;
+      if (selfTurn) selfLeft--;
+      else oppLeft--;
+      if (!hit) return true;
+      const strikerSlowed = selfTurn ? s.selfSlowed : s.oppSlowed;
+      const targetHp = selfTurn ? s.oppHp : s.selfHp;
+      const damage = damageOf(striker, strikerSlowed);
+      const damageDone = Math.min(targetHp, damage);
+      const newTargetHp = targetHp - damage;
+      if (selfTurn) s.oppHit = true;
+      else s.selfHit = true;
+      if (striker.drains) {
+        const strikerHp = selfTurn ? s.selfHp : s.oppHp;
+        let drain = Math.trunc((damageDone * striker.drainPercent) / 100) + striker.drainConstant;
+        drain = Math.min(drain, striker.maxHp - strikerHp);
+        drain = Math.max(drain, 1 - strikerHp);
+        if (selfTurn) s.selfHp = strikerHp + drain;
+        else s.oppHp = strikerHp + drain;
+      }
+      if (newTargetHp <= 0) {
+        if (selfTurn) s.oppHp = 0;
+        else s.selfHp = 0;
+        s.over = true;
+        return false;
+      }
+      if (selfTurn) s.oppHp = newTargetHp;
+      else s.selfHp = newTargetHp;
+      if (striker.slows) {
+        if (selfTurn) s.oppSlowed = true;
+        else s.selfSlowed = true;
+      }
+      if (striker.petrifies) {
+        s.over = true;
+        return false;
+      }
+      return true;
+    };
+    while (selfLeft > 0 || oppLeft > 0) {
+      if (selfLeft > 0 && !strike(true)) break;
+      if (oppLeft > 0 && !strike(false)) break;
+    }
+    return s;
+  };
+
+  const keyOf = (s: BiasedState) => `${s.selfHp},${s.oppHp},${+s.selfSlowed},${+s.oppSlowed},${+s.selfHit},${+s.oppHit},${+s.over}`;
+  let states = new Map<string, { state: BiasedState; prob: number }>();
+  const start: BiasedState = {
+    selfHp: Math.min(stats.hp, stats.maxHp),
+    oppHp: Math.min(oppStats.hp, oppStats.maxHp),
+    selfSlowed: stats.isSlowed,
+    oppSlowed: oppStats.isSlowed,
+    selfHit: false,
+    oppHit: false,
+    over: false,
+  };
+  states.set(keyOf(start), { state: start, prob: 1 });
+  const rounds = Math.max(stats.rounds, oppStats.rounds);
+  for (let round = 0; round < rounds; round++) {
+    const next = new Map<string, { state: BiasedState; prob: number }>();
+    const add = (state: BiasedState, prob: number) => {
+      const key = keyOf(state);
+      const entry = next.get(key);
+      if (entry) entry.prob += prob;
+      else next.set(key, { state, prob });
+    };
+    let going = false;
+    for (const { state, prob } of states.values()) {
+      if (state.over) {
+        add(state, prob);
+        continue;
+      }
+      going = true;
+      for (const pair of pairs) add(playRound(state, pair.self, pair.opp), prob * pair.prob);
+    }
+    states = next;
+    if (!going) break;
+  }
+
+  // Level-ups, as upstream's prediction considers them (only when `stats` can advance).
+  const selfForced = stats.experience + combatXpOf(oppStats.level) >= stats.maxExperience;
+  const selfOnKill = stats.experience + killXpOf(oppStats.level) >= stats.maxExperience;
+  const oppForced = oppStats.experience + combatXpOf(stats.level) >= oppStats.maxExperience;
+  const oppOnKill = oppStats.experience + killXpOf(stats.level) >= oppStats.maxExperience;
+  const levelups = levelupConsidered && stats.canAdvance;
+
+  const self: [number[], number[]] = [new Array(stats.maxHp + 1).fill(0), new Array(stats.maxHp + 1).fill(0)];
+  const opp: [number[], number[]] = [new Array(oppStats.maxHp + 1).fill(0), new Array(oppStats.maxHp + 1).fill(0)];
+  let selfNotHit = 0;
+  let oppNotHit = 0;
+  for (const { state, prob } of states.values()) {
+    let { selfHp, oppHp, selfSlowed, oppSlowed } = state;
+    if (levelups && selfHp > 0 && (selfForced || (selfOnKill && oppHp === 0))) {
+      selfHp = stats.maxHp;
+      selfSlowed = false;
+    }
+    if (levelups && oppHp > 0 && (oppForced || (oppOnKill && selfHp === 0))) {
+      oppHp = oppStats.maxHp;
+      oppSlowed = false;
+    }
+    self[selfSlowed ? 1 : 0][selfHp]! += prob;
+    opp[oppSlowed ? 1 : 0][oppHp]! += prob;
+    if (!state.selfHit) selfNotHit += prob;
+    if (!state.oppHit) oppNotHit += prob;
+  }
+  summary[0] = self[0];
+  summary[1] = self[1];
+  oppSummary[0] = opp[0];
+  oppSummary[1] = opp[1];
+  notHit.self = selfNotHit;
+  notHit.opp = oppNotHit;
 }

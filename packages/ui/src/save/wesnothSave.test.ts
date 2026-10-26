@@ -52,6 +52,16 @@ describe('fromWesnothSave (importing a real 1.16.9 Wesnoth save)', () => {
     expect(toWesnothSave({ ...fresh, difficulty: undefined }, loadSnapshot(), DEAD_WATER).getString('difficulty')).toBe('NORMAL');
   });
 
+  it('Phase 30: reads random_mode (the real save has the default, empty) and writes each mode back as upstream names it', () => {
+    expect(original.getString('random_mode', '')).toBe('');
+    expect(imported.save.randomMode).toBe('per_action');
+    for (const [mode, written] of [['per_action', ''], ['deterministic', 'deterministic'], ['biased', 'biased']] as const) {
+      const out = toWesnothSave({ ...imported.save, wesnothExtras: undefined, randomMode: mode }, loadSnapshot(), DEAD_WATER);
+      expect(out.getString('random_mode', 'missing')).toBe(written);
+      expect(fromWesnothSave(out).save.randomMode).toBe(mode);
+    }
+  });
+
   it('reads the scenario, campaign and turn the file actually says', () => {
     expect(imported.version).toBe('1.16.9');
     expect(imported.label).toBe('DW-Invasion!');

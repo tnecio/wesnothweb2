@@ -4,6 +4,7 @@
  *
  *   node apps/web/scripts/main-menu-playthrough.mjs [--base http://localhost:5173] [--headed] [--shots <dir>]
  *   node apps/web/scripts/main-menu-playthrough.mjs --keyboard-only [...]
+ *   node apps/web/scripts/main-menu-playthrough.mjs --combat [...]   (Phase 30: only the Combat menu)
  *
  * Default run (mouse):
  *   1. the title screen: its five buttons, the version, the language button, the mute button, the
@@ -37,6 +38,8 @@ const arg = (name, fallback) => {
 const base = arg('base', 'http://localhost:5173');
 const headed = args.includes('--headed');
 const keyboardOnly = args.includes('--keyboard-only');
+/** `--combat`: only the Combat menu's checks (Phase 30). */
+const onlyCombat = args.includes('--combat');
 const shotsDir = arg('shots', undefined);
 if (shotsDir) fs.mkdirSync(shotsDir, { recursive: true });
 
@@ -201,6 +204,47 @@ async function twoBrothersDefault(browser) {
   await context.close();
 }
 
+/**
+ * Phase 30: the Combat menu. It opens at Default RNG with upstream's three choices and shows the choice's
+ * tooltip; Reduced RNG starts the campaign in that mode (`?rng=reduced`); and the damage calculations follow it.
+ */
+async function combatMenu(browser) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await openTitle(page);
+  await press(page, 'c', 700);
+  await filterFor(page, 'brothers');
+  await press(page, 'ArrowDown', 400);
+  const options = await page.$$eval('[data-testid="rng-menu"] option', (els) => els.map((e) => `${e.value}:${e.textContent.trim()}`));
+  check('the Combat menu offers upstream\'s three modes', options.join() === 'per_action:Default RNG,deterministic:Predictable RNG,biased:Reduced RNG', options.join());
+  check('...opening at Default RNG', (await page.inputValue('[data-testid="rng-menu"]')) === 'per_action');
+  await page.selectOption('[data-testid="rng-menu"]', 'biased');
+  check("...and showing the choice's tooltip: its first paragraph, the whole on hover", /much more consistent/.test(await page.textContent('[data-testid="rng-help"]')) && /always hit at least once and miss at least once/.test(await page.getAttribute('[data-testid="rng-menu"]', 'title')));
+  await shot(page, 'campaigns-combat-menu');
+  await page.click('[data-testid="campaign-play"]');
+  await page.waitForURL(/\/play\/two_brothers\?difficulty=EASY&rng=reduced/, { timeout: 15000 });
+  await waitSession(page);
+  check('Play starts the campaign in Reduced RNG', (await page.evaluate(() => window.__wesnoth.session.randomMode)) === 'biased');
+  check('...and a save made now records it', (await page.evaluate(() => window.__wesnoth.session.toSaveData().randomMode)) === 'biased');
+  // The damage calculations: the same matchup's predicted outcome under the session's mode, and under Default.
+  const odds = await page.evaluate(() => {
+    const s = window.__wesnoth.session;
+    const a = s.board.unitsForSide(1).find((u) => u.attacks.length > 0);
+    const d = s.board.allUnits().find((u) => u.side !== a.side && u.attacks.length > 0);
+    const kill = () => s.buildPreviewHere(a, d, 0).preview.defender.hpDist.map((p) => Math.round(p * 1e6) / 1e6).join(' ');
+    const reduced = kill();
+    s.rng.mode = 'per_action';
+    const plain = kill();
+    s.rng.mode = 'biased';
+    return { reduced, plain };
+  });
+  check('the damage calculations use Reduced RNG\'s odds (not the Default ones)', odds.reduced !== odds.plain, JSON.stringify(odds));
+  check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await context.close();
+}
+
 async function completionFilter(browser) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await context.newPage();
@@ -358,7 +402,7 @@ async function keyboardRun(browser) {
     }
     if (key === 'Control+p') {
       await press(page, 'ArrowRight', 300);
-      check('the Preferences tabs work by arrow keys (Sound)', /Music/.test(await page.$eval('[role="tabpanel"]', (e) => e.textContent ?? '')));
+      check('the Preferences tabs work by arrow keys (Sound)', /Music/.test(await page.$eval('.modal-box [role="tabpanel"]', (e) => e.textContent ?? '')));
     }
     await press(page, 'Escape', 500);
     check(`${label.split(' ')[0]} Escape closes it`, (await dialogs(page)).length === 0);
@@ -376,10 +420,13 @@ const browser = await chromium.launch({ headless: !headed });
 try {
   if (keyboardOnly) {
     await keyboardRun(browser);
+  } else if (onlyCombat) {
+    await combatMenu(browser);
   } else {
     await titleScreen(browser);
     await libertyHard(browser);
     await twoBrothersDefault(browser);
+    await combatMenu(browser);
     await completionFilter(browser);
   }
 } finally {

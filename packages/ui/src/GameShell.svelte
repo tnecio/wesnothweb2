@@ -113,6 +113,7 @@
   import { fetchScenarioSnapshot } from './scenarioFetch.js';
   import { markCampaignCompleted } from './menu/completedStore.js';
   import { campaignCredits, type CreditsJson } from './menu/credits.js';
+  import { randomModeParam } from './menu/randomModes.js';
   import { downloadSave, importSaveFile } from './save/saveManager.js';
   import {
     scenarioLabel,
@@ -158,7 +159,7 @@
   import MessageViewer from './MessageViewer.svelte';
   import GuiDialog from './GuiDialog.svelte';
   import TimeOfDayPanel from './TimeOfDayPanel.svelte';
-  import type { GuiDialogInteraction, SoundRequest, ResolvedStoryPart, FloatingLabelRequest, RgbColor, TString } from '@wesnothweb2/engine';
+  import type { GuiDialogInteraction, SoundRequest, ResolvedStoryPart, FloatingLabelRequest, RgbColor, TString, RandomMode } from '@wesnothweb2/engine';
   import OverlayLabels, { type OverlayLabelView } from './OverlayLabels.svelte';
   import { stripPango } from './markup/pango.js';
   import AdvancementDialog from './AdvancementDialog.svelte';
@@ -184,6 +185,7 @@
     campaign = null,
     initialSave = null,
     startInReplay = false,
+    randomMode = 'per_action',
     onOpenSave = undefined,
     campaigns = [],
     onQuitToMenu = undefined,
@@ -214,6 +216,8 @@
      * then choosing Show Replay from the in-game Load dialog would.
      */
     startInReplay?: boolean;
+    /** Phase 30: a new campaign's random mode (the campaign dialog's Combat menu); a save brings its own. */
+    randomMode?: RandomMode;
     /**
      * Ask the host to open `saveName` in `campaignId` -- i.e. to put that
      * campaign and save in the URL and mount accordingly. Called when a
@@ -419,10 +423,10 @@
    */
   const initialReplaySession = initialSave && startInReplay ? GameSession.forReplay(activeSnapshot, initialSave, { ...SESSION_OPTIONS, onSound: undefined, onVolume: undefined }) : null;
   // Resuming a save builds the session from it instead (Phase 26) -- see
-  // the `initialSave` prop. `startupEventsRun` comes back true with it, so
+  // the `initialSave` prop. A new game takes `randomMode` once, as it starts. `startupEventsRun` comes back true with it, so
   // `runStartupEvents` below is skipped as well.
   let session = $state.raw(
-    initialReplaySession ?? (initialSave ? GameSession.fromSaveData(activeSnapshot, initialSave, SESSION_OPTIONS) : new GameSession(activeSnapshot, SESSION_OPTIONS)),
+    initialReplaySession ?? (initialSave ? GameSession.fromSaveData(activeSnapshot, initialSave, SESSION_OPTIONS) : new GameSession(activeSnapshot, { ...SESSION_OPTIONS, randomMode: untrack(() => randomMode) })),
   );
   /**
    * Phase 28c: which map the board is drawn from -- `session.board.mapVersion`, bumped by `[replace_map]`. The
@@ -884,7 +888,12 @@
   function reportScenarioEnd(): void {
     if (!session.scenarioResult || endReported.has(session) || replay) return;
     endReported.add(session);
-    telemetry.track('scenario_end', { result: session.scenarioResult, ...(session.turnLimit !== null ? { turnsLimit: session.turnLimit } : {}), minutes: minutesPlayed() });
+    telemetry.track('scenario_end', {
+      result: session.scenarioResult,
+      ...(session.turnLimit !== null ? { turnsLimit: session.turnLimit } : {}),
+      minutes: minutesPlayed(),
+      rng: randomModeParam(session.randomMode),
+    });
   }
 
   /** A save was loaded into this game: play of its scenario (re)starts from here. */
@@ -1378,7 +1387,7 @@
     try {
       await boardReady();
       scenarioStartedAt = Date.now();
-      telemetry.track('scenario_start');
+      telemetry.track('scenario_start', { rng: randomModeParam(session.randomMode) });
       await session.runStartupEvents();
     } finally {
       eventsRunning = false;
@@ -3629,8 +3638,11 @@
     }
     if (e.repeat) return;
     // 'story'/'ended' have their own keyboard handling (StoryViewer, Outro);
-    // a suspended event's dialogue is handled by MessageViewer.
-    if (phase !== 'playing' || eventsRunning) return;
+    // a suspended event's dialogue is handled by MessageViewer. Lingering on a
+    // finished scenario ('ended'), the End Turn hotkey is End Scenario, as the
+    // button is -- without it a keyboard player could not leave a won scenario.
+    const endScenarioKey = lingering && hotkeyCommands.find((c) => c.id === 'end-turn')?.hotkeys?.some((h) => matchesHotkey(e, h));
+    if ((phase !== 'playing' && !endScenarioKey) || eventsRunning) return;
     if (dialogOpen() || contextMenuAt !== null || isTypingTarget(e.target)) return;
     // Enter or Space on a focused button is that button's own activation (a keyboard user who Tabbed to
     // Menu or End Turn), not the cursor's "select / move / attack".

@@ -1773,6 +1773,11 @@ export class GameSession {
    * `SyncedRng`.
    */
   private readonly rng: SyncedRng;
+
+  /** Phase 30: the game's random mode (the campaign dialog's Combat menu, upstream's `random_mode`). */
+  get randomMode(): RandomMode {
+    return this.rng.mode;
+  }
   /**
    * The whole-game stream, held separately because only `MtRng` exposes the
    * seed and draw count a save has to record and restore (`random_seed`/
@@ -2766,6 +2771,8 @@ export class GameSession {
     const result = performAttack(this.board, this.rng, attackerLoc, cmd.weapon, defenderLoc, defenderWeapon, {
       ...this.attackOptions(attackerLoc, defenderLoc),
       attackCostPaid: true,
+      // Phase 30: Reduced RNG deals every attack's hits out evenly, the AI's too (`attack.cpp`'s `use_prng_`).
+      biasedHits: this.rng.mode === 'biased',
       raise: this.raiseEvent,
       // `last breath`/`die`, fired from inside `performAttack`'s own
       // callback: a plain function, so these cannot suspend -- their
@@ -4581,7 +4588,8 @@ export class GameSession {
       defenderWeapon,
       options: { attackerLawfulBonus, defenderLawfulBonus, maxLiminalBonus: this.schedule.maxLiminalBonus },
     });
-    const { attacker: aCombatant, defender: dCombatant } = simulateCombat(aStats, dStats);
+    // Phase 30: under Reduced RNG, the odds of its hit queues (upstream shows the unbiased ones).
+    const { attacker: aCombatant, defender: dCombatant } = simulateCombat(aStats, dStats, true, { biased: this.rng.mode === 'biased' });
 
     // The breakdown the dialogs show, from the same specials context the stats used.
     const specials = new SpecialsContext(
@@ -5760,7 +5768,8 @@ export class GameSession {
     const goldCarryover = finished.computeGoldCarryoverResult(nextSnapshot);
     const carriedOverUnits = computeCarryoverRecruits(finished.board, finished.playerSide, nextSnapshot.scenarioConfigJson);
 
-    const session = new GameSession(nextSnapshot, { music: finished.music, ...options, goldCarryover });
+    // Phase 30: the random mode goes on, as upstream's carryover keeps `random_mode` (`savegame.cpp`).
+    const session = new GameSession(nextSnapshot, { music: finished.music, ...options, randomMode: finished.rng.mode, goldCarryover });
     const team = session.board.getTeam(session.playerSide);
     if (team) team.gold = goldCarryover.nextScenarioGold;
     for (const unit of carriedOverUnits) {

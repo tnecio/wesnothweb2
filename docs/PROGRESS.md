@@ -6786,3 +6786,23 @@ You reported that Heir to the Throne 1 animates and pans poorly once Konrad leav
 - **Cost:** Heir to the Throne 1 fills 12 pages (2048², 16 MB of GPU memory each), about what its ~5,000 hex
   images took on their own; PixiJS unloads the originals once they are no longer drawn.
 - **Still to check:** frame times on real hardware (your laptop and a phone).
+
+## 2026-10-26: Phase 30 -- combat RNG modes
+
+The campaign dialog has upstream's **Combat:** menu: Default, Predictable and Reduced RNG.
+
+- **Predictable RNG** (`deterministic`) draws every action from the game's saved stream. Reloading a save
+  before an attack gives the same result.
+- **Reduced RNG** (`biased`) uses that stream and deals each side's hits out evenly, exactly as `attack.cpp`
+  does. Example: 50% × 2 strikes always hits once.
+- **The damage calculations** under Reduced RNG show its real odds (computed exactly, and checked against
+  thousands of real fights); upstream shows the unbiased ones. The AI's own estimates stay upstream's.
+- **The mode is kept:**
+  - in saves;
+  - into the next scenario;
+  - in downloaded Wesnoth saves (`random_mode`).
+- **The menu** opens at Default RNG each time, as upstream's does. It sits beside Play, so Difficulty keeps its
+  full width on phones.
+- **The opt-in statistics** record the mode on scenario starts and ends. `stats.mjs` splits results by it. The
+  stats Worker needs a redeploy to keep the new field.
+
