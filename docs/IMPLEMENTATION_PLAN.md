@@ -2501,6 +2501,29 @@ It is switched on in production by the repository variable `STATS_URL`, once the
 
 ---
 
+## Phase 33 — Map rendering performance on large maps (added 2026-10-25)
+
+**Status: delivered 2026-10-26** (branch `perf-large-maps`, one PR, see PROGRESS). User's report: Heir to the
+Throne 1, once Konrad leaves home (56×26 hexes, 43 units), animates and pans poorly.
+
+Causes, measured (`apps/web/scripts/perf-playthrough.mjs`):
+- **PixiJS rebuilt its render instructions nearly every frame.** Every image was its own texture source; a sprite
+  changing to another source (each animated terrain image, each unit's standing and idle frames) forces a rebuild
+  of all ~16,000 objects.
+- **Hundreds of draw calls a frame**, since a batch holds at most 16 sources.
+- **Each pan re-transformed every object** on the CPU: the camera's container was not a render group.
+- 748 `AnimatedSprite`s, each with its own ticker callback.
+- Not a cause: the lighting filters, which PixiJS already clips to the screen.
+
+Delivered:
+- **One clock** (`packages/renderer/src/frameClock.ts`) for terrain animations, village flags and halos, on one
+  shared time as upstream; a texture is set only when the frame changes; the animation preferences are kept.
+- **Atlas pages** (`packages/renderer/src/atlasPages.ts`): the board's images copied, pixel for pixel, into a few
+  2048² textures -- the terrain when drawn (each animation cycle on one page), a unit's frames as first shown (the
+  unit holds its frame one tick until the copy exists).
+- **The board's stage is a render group**, so a pan moves one transform.
+- **Units load concurrently**, then are put in the snapshot's order.
+
 ## Priority as of 2026-10-05
 
 Explicit user direction (2026-09-23), superseding the 2026-09-12 list.

@@ -6764,3 +6764,25 @@ You moved production from wesnoth.tnec.io to wesnoth.fun and chose a plain redir
 - **Not carried over:** players' saves, preferences and achievements on the old address.
 - **The Cloudflare side** is recorded in `docs/DEPLOYMENT.md`.
 
+## 2026-10-26: Phase 33 -- map rendering performance on large maps
+
+You reported that Heir to the Throne 1 animates and pans poorly once Konrad leaves home.
+
+- **Measured** by `apps/web/scripts/perf-playthrough.mjs` on two committed fixtures (that board at dawn and at
+  night, built by `packages/ui/scripts/build-perf-fixture.ts`). On this VM (software WebGL, ~1 frame a second),
+  day:
+
+  | | Before | After |
+  |---|---|---|
+  | JS per frame, idle | 35 ms | ~4-5 ms |
+  | Instruction rebuilds | nearly every frame (24 ms a frame) | ~0.1 a second |
+  | Draw calls per frame | hundreds | ~14 |
+  | JS per frame, panning | 96 ms | ~15 ms |
+
+- **The fixes:** one animation clock instead of 748 `AnimatedSprite`s; the board's images copied into a few shared
+  atlas pages (byte for byte -- the script compares a sample on every run), so animation frames change in place
+  and the board batches into a handful of draws; the board's stage a render group; units loaded concurrently.
+- **Not changed:** the lighting filters, which PixiJS already clips to the screen.
+- **Cost:** Heir to the Throne 1 fills 12 pages (2048², 16 MB of GPU memory each), about what its ~5,000 hex
+  images took on their own; PixiJS unloads the originals once they are no longer drawn.
+- **Still to check:** frame times on real hardware (your laptop and a phone).
