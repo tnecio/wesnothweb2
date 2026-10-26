@@ -588,6 +588,7 @@
       registerUnitBundles(units);
 
       const newBoard = new SnapshotBoard(snapshot, {
+        renderer: app.renderer,
         imageBaseUrl: GAME_IMAGES,
         engineImageBaseUrl: ENGINE_IMAGES,
         onHexClick: wrappedOnHexClick,
