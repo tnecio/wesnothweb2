@@ -113,6 +113,7 @@
   import { fetchScenarioSnapshot } from './scenarioFetch.js';
   import { markCampaignCompleted } from './menu/completedStore.js';
   import { campaignCredits, type CreditsJson } from './menu/credits.js';
+  import { randomModeParam } from './menu/randomModes.js';
   import { downloadSave, importSaveFile } from './save/saveManager.js';
   import {
     scenarioLabel,
@@ -887,7 +888,12 @@
   function reportScenarioEnd(): void {
     if (!session.scenarioResult || endReported.has(session) || replay) return;
     endReported.add(session);
-    telemetry.track('scenario_end', { result: session.scenarioResult, ...(session.turnLimit !== null ? { turnsLimit: session.turnLimit } : {}), minutes: minutesPlayed() });
+    telemetry.track('scenario_end', {
+      result: session.scenarioResult,
+      ...(session.turnLimit !== null ? { turnsLimit: session.turnLimit } : {}),
+      minutes: minutesPlayed(),
+      rng: randomModeParam(session.randomMode),
+    });
   }
 
   /** A save was loaded into this game: play of its scenario (re)starts from here. */
@@ -1381,7 +1387,7 @@
     try {
       await boardReady();
       scenarioStartedAt = Date.now();
-      telemetry.track('scenario_start');
+      telemetry.track('scenario_start', { rng: randomModeParam(session.randomMode) });
       await session.runStartupEvents();
     } finally {
       eventsRunning = false;

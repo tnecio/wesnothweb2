@@ -114,8 +114,8 @@ try {
   check('Quit to Menu mid-scenario sends quit', types().includes('quit'), types().join(','));
   const start = events.find((e) => e.type === 'scenario_start');
   check(
-    '...with the campaign, scenario, run and coarse environment, and nothing else',
-    start?.campaign === 'synthetic_keyboard' && typeof start?.scenario === 'string' && start?.run === runId && start?.device === 'desktop' && start?.browser === 'chrome',
+    '...with the campaign, scenario, run, combat mode (Phase 30) and coarse environment, and nothing else',
+    start?.campaign === 'synthetic_keyboard' && typeof start?.scenario === 'string' && start?.run === runId && start?.device === 'desktop' && start?.browser === 'chrome' && start?.rng === 'default',
     JSON.stringify(start),
   );
 

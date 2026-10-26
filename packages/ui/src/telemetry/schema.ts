@@ -38,8 +38,9 @@ export const COMMON_FIELDS = {
 
 /** Each event type's own fields. */
 export const EXTRA_FIELDS = {
-  scenario_start: {},
-  scenario_end: { result: str(16), turnsLimit: num, minutes: num },
+  // Phase 30: `rng` is the Combat menu's mode: `default`, `predictable` or `reduced`.
+  scenario_start: { rng: str(16) },
+  scenario_end: { result: str(16), turnsLimit: num, minutes: num, rng: str(16) },
   game_load: { kind: str(32) },
   quit: { minutes: num },
   crash: { message: str(300), signature: str(400), source: str(16) },

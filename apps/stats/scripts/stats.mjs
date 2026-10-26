@@ -6,6 +6,8 @@
  * Prints, for the last N days:
  *   - per scenario: runs, starts, victories, defeats, quits, loads, crashes, and the average turn at which
  *     players quit or lost;
+ *   - (Phase 30) per scenario and combat mode (Default, Predictable or Reduced RNG): starts, victories and
+ *     defeats -- events from before the mode was recorded count as Default, the only mode there was;
  *   - where runs got stuck: the scenarios where a campaign run's last event is a quit or a defeat, and it never
  *     won there -- with how many times those runs started or loaded it (many attempts and no win is the
  *     pattern a bug often leaves);
@@ -50,6 +52,20 @@ console.table(
     WHERE received >= '${since}' AND campaign IS NOT NULL
     GROUP BY campaign, scenario
     ORDER BY campaign, scenario`),
+);
+
+console.log(`\nPer scenario and combat mode, since ${since.slice(0, 10)}:`);
+console.table(
+  query(`
+    SELECT campaign, scenario, COALESCE(${result('rng')}, 'default') AS combat,
+      COUNT(DISTINCT run) AS runs,
+      SUM(type = 'scenario_start') AS starts,
+      SUM(type = 'scenario_end' AND ${result('result')} = 'victory') AS wins,
+      SUM(type = 'scenario_end' AND ${result('result')} = 'defeat') AS defeats
+    FROM events
+    WHERE received >= '${since}' AND campaign IS NOT NULL AND type IN ('scenario_start', 'scenario_end')
+    GROUP BY campaign, scenario, combat
+    ORDER BY campaign, scenario, combat`),
 );
 
 console.log('\nWhere runs got stuck (last event a quit or defeat, never won there):');

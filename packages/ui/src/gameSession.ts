@@ -1773,6 +1773,11 @@ export class GameSession {
    * `SyncedRng`.
    */
   private readonly rng: SyncedRng;
+
+  /** Phase 30: the game's random mode (the campaign dialog's Combat menu, upstream's `random_mode`). */
+  get randomMode(): RandomMode {
+    return this.rng.mode;
+  }
   /**
    * The whole-game stream, held separately because only `MtRng` exposes the
    * seed and draw count a save has to record and restore (`random_seed`/
