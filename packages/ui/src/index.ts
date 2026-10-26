@@ -35,6 +35,7 @@ export { fromWesnothSave, toWesnothSave, type WesnothCampaignInfo, type Imported
 export { wesnothCampaignInfo, campaignAbbrev, defaultDifficulty, type CampaignInfo, type CampaignDifficulty } from './save/campaign.js';
 export { fetchCampaigns, parseCampaigns, type Campaign } from './campaigns.js';
 export { default as MainMenu } from './menu/MainMenu.svelte';
+export { RANDOM_MODE_CHOICES, randomModeFromParam, randomModeParam, type RandomModeChoice } from './menu/randomModes.js';
 export { fetchScenarioSnapshot } from './scenarioFetch.js';
 export { fetchLuaData, luaDataFiles, setLuaDataFiles, type LuaDataFiles } from './luaData.js';
 export {

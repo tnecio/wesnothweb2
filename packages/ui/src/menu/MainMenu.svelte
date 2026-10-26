@@ -8,7 +8,7 @@
    * everything that pulls in) is not fetched until the host opens it.
    */
   import { onMount } from 'svelte';
-  import { playStoryMusic } from '@wesnothweb2/engine';
+  import { playStoryMusic, type RandomMode } from '@wesnothweb2/engine';
   import { getAudioEngine } from '../audio/audioEngine.js';
   import type { AudioSettings } from '../audio/settings.js';
   import { installUiSounds } from '../audio/uiSounds.js';
@@ -37,7 +37,7 @@
     onResume,
   }: {
     /** Start `campaign` at `difficulty` (undefined for a campaign with none). */
-    onPlay: (campaign: Campaign, difficulty: string | undefined) => void;
+    onPlay: (campaign: Campaign, difficulty: string | undefined, randomMode: RandomMode) => void;
     /** Resume save `saveName`, which belongs to `campaignId`. */
     onResume: (campaignId: string, saveName: string, replay: boolean) => void;
   } = $props();
@@ -109,9 +109,9 @@
   }
 
   /** Opens the campaign dialog. A campaign chosen there is started by the host. */
-  function play(campaign: Campaign, difficulty: string | undefined): void {
+  function play(campaign: Campaign, difficulty: string | undefined, randomMode: RandomMode): void {
     dialog = null;
-    onPlay(campaign, difficulty);
+    onPlay(campaign, difficulty, randomMode);
   }
 
   /**

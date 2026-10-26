@@ -4,8 +4,9 @@
    *
    * Left: a filter box, Name / Timeline sort toggles, the completion filter, and the campaign list (icon, name
    * and victory laurel; debug campaigns after the real ones, under their own heading). Right: the selected
-   * campaign's image and description over its background picture, and its difficulty choices. The Combat RNG
-   * and Modifications menus of upstream's dialog are not ported (RNG modes are Phase 30).
+   * campaign's image and description over its background picture, its difficulty choices, and (Phase 30) the
+   * Combat menu: the random mode, opening at Default RNG every time as upstream's does. The Modifications menu
+   * of upstream's dialog is not ported.
    *
    * The keyboard works as upstream's does: the filter box has the focus, typing filters, Up/Down move through
    * the list, Enter plays. Presentational: it reports the choice; `MainMenu.svelte` navigates.
@@ -17,6 +18,8 @@
   import { locale, t, ts, tx } from '../i18n/locale.js';
   import { languageTag } from '../i18n/locale.js';
   import { defaultDifficulty } from '../save/campaign.js';
+  import type { RandomMode } from '@wesnothweb2/engine';
+  import { RANDOM_MODE_CHOICES } from './randomModes.js';
   import type { Campaign } from '../campaigns.js';
   import { matchesSearch, nextSort, searchWords, sortCampaigns, type SortState } from './campaignList.js';
   import {
@@ -40,8 +43,11 @@
   }: {
     campaigns: readonly Campaign[];
     completed: CompletedCampaigns;
-    /** `difficulty` is the chosen `[difficulty] define=`, undefined for a campaign that has none. */
-    onPlay: (campaign: Campaign, difficulty: string | undefined) => void;
+    /**
+     * `difficulty` is the chosen `[difficulty] define=`, undefined for a campaign that has none; `randomMode` the
+     * Combat menu's choice.
+     */
+    onPlay: (campaign: Campaign, difficulty: string | undefined, randomMode: RandomMode) => void;
     onCancel: () => void;
   } = $props();
 
@@ -51,6 +57,9 @@
   let selectedId = $state<string | null>(null);
   /** The difficulty picked for each campaign this session; a campaign not in here is at its default. */
   let picked = $state<Record<string, string>>({});
+  /** The Combat menu (`rng_menu`): Default RNG whenever the dialog opens. */
+  let randomMode = $state<RandomMode>('per_action');
+  const randomModeChoice = $derived(RANDOM_MODE_CHOICES.find((c) => c.mode === randomMode) ?? RANDOM_MODE_CHOICES[0]!);
 
   const COMPLETION_LABELS: Record<CompletionFilter, () => string> = {
     'not-completed': () => t('Not Completed'),
@@ -97,7 +106,7 @@
   }
 
   function play(): void {
-    if (selected) onPlay(selected, chosen);
+    if (selected) onPlay(selected, chosen, randomMode);
   }
 
   function onListKey(e: KeyboardEvent): void {
@@ -219,6 +228,16 @@
       </div>
 
       <div class="options">
+        <label class="label" for="rng-menu">{t('Combat:')}</label>
+        <div class="rng">
+          <select id="rng-menu" bind:value={randomMode} title={randomModeChoice.tooltip()} aria-describedby="rng-help" data-testid="rng-menu">
+            {#each RANDOM_MODE_CHOICES as c (c.mode)}
+              <option value={c.mode} title={c.tooltip()}>{c.label()}</option>
+            {/each}
+          </select>
+          <!-- The tooltip, shown: a phone has no hover. -->
+          <p class="rng-help" id="rng-help" dir="auto" data-testid="rng-help">{randomModeChoice.tooltip()}</p>
+        </div>
         <span class="label" id="difficulty-label">{t('Difficulty:')}</span>
         <div class="difficulty" role="radiogroup" aria-labelledby="difficulty-label" aria-disabled={difficulties.length === 0} data-testid="difficulty-menu">
           {#each difficulties as d, i (d.define)}
@@ -451,6 +470,26 @@
   }
   .label {
     padding-top: 0.35rem;
+  }
+  .rng {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    max-width: 18rem;
+  }
+  .rng select {
+    font: inherit;
+    padding: 0.3rem 0.4rem;
+    border-radius: 4px;
+    border: 1px solid #4a3d1e;
+    background: #0a0d15;
+    color: inherit;
+  }
+  .rng-help {
+    margin: 0;
+    font-size: 0.8rem;
+    opacity: 0.8;
+    white-space: pre-line;
   }
   .difficulty {
     display: flex;

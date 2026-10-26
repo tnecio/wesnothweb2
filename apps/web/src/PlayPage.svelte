@@ -9,7 +9,7 @@
    * see `GameShell.svelte`'s `continueToNextScenario`; that's a
    * within-campaign concern, not a page/URL change).
    */
-  import type { GameBoardSnapshot } from '@wesnothweb2/engine';
+  import type { GameBoardSnapshot, RandomMode } from '@wesnothweb2/engine';
   import {
     GameShell,
     defaultDifficulty,
@@ -18,6 +18,7 @@
     fetchScenarioSnapshot,
     fetchStoryAssets,
     loadGame,
+    randomModeFromParam,
     tx,
     type Campaign,
     type SaveGameData,
@@ -37,6 +38,8 @@
   let initialSave = $state<SaveGameData | null>(null);
   /** `?replay=1` alongside `?save=<name>`: open straight into that save's replay, matching the title screen's "Show replay" (Phase 26/21). */
   let startInReplay = $state(false);
+  /** Phase 30: `?rng=` (the campaign dialog's Combat menu) for a new campaign. */
+  let randomMode = $state<RandomMode>('per_action');
   /** Every campaign, so the in-game load dialog can name the campaign any save belongs to. */
   let allCampaigns = $state<Campaign[]>([]);
 
@@ -106,6 +109,7 @@
       allCampaigns = campaigns;
       initialSave = save;
       startInReplay = replayRequested;
+      randomMode = randomModeFromParam(params.get('rng'));
       status = 'ready';
     })().catch((err) => {
       if (cancelled) return;
@@ -134,7 +138,7 @@
     <!-- No {#key} needed here: App.svelte already keys PlayPage itself on
          campaignId, so a campaign change always tears down this whole
          component (and GameShell inside it) from scratch. -->
-    <GameShell {snapshot} {storyAssets} {campaign} {initialSave} {startInReplay} campaigns={allCampaigns} onOpenSave={openSave} onQuitToMenu={() => router.navigate('/')} />
+    <GameShell {snapshot} {storyAssets} {campaign} {initialSave} {startInReplay} {randomMode} campaigns={allCampaigns} onOpenSave={openSave} onQuitToMenu={() => router.navigate('/')} />
   {/if}
 </main>
 

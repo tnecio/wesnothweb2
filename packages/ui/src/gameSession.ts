@@ -4583,7 +4583,8 @@ export class GameSession {
       defenderWeapon,
       options: { attackerLawfulBonus, defenderLawfulBonus, maxLiminalBonus: this.schedule.maxLiminalBonus },
     });
-    const { attacker: aCombatant, defender: dCombatant } = simulateCombat(aStats, dStats);
+    // Phase 30: under Reduced RNG, the odds of its hit queues (upstream shows the unbiased ones).
+    const { attacker: aCombatant, defender: dCombatant } = simulateCombat(aStats, dStats, true, { biased: this.rng.mode === 'biased' });
 
     // The breakdown the dialogs show, from the same specials context the stats used.
     const specials = new SpecialsContext(
@@ -5762,7 +5763,8 @@ export class GameSession {
     const goldCarryover = finished.computeGoldCarryoverResult(nextSnapshot);
     const carriedOverUnits = computeCarryoverRecruits(finished.board, finished.playerSide, nextSnapshot.scenarioConfigJson);
 
-    const session = new GameSession(nextSnapshot, { music: finished.music, ...options, goldCarryover });
+    // Phase 30: the random mode goes on, as upstream's carryover keeps `random_mode` (`savegame.cpp`).
+    const session = new GameSession(nextSnapshot, { music: finished.music, ...options, randomMode: finished.rng.mode, goldCarryover });
     const team = session.board.getTeam(session.playerSide);
     if (team) team.gold = goldCarryover.nextScenarioGold;
     for (const unit of carriedOverUnits) {
