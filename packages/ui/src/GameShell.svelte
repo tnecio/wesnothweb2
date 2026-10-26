@@ -3638,8 +3638,11 @@
     }
     if (e.repeat) return;
     // 'story'/'ended' have their own keyboard handling (StoryViewer, Outro);
-    // a suspended event's dialogue is handled by MessageViewer.
-    if (phase !== 'playing' || eventsRunning) return;
+    // a suspended event's dialogue is handled by MessageViewer. Lingering on a
+    // finished scenario ('ended'), the End Turn hotkey is End Scenario, as the
+    // button is -- without it a keyboard player could not leave a won scenario.
+    const endScenarioKey = lingering && hotkeyCommands.find((c) => c.id === 'end-turn')?.hotkeys?.some((h) => matchesHotkey(e, h));
+    if ((phase !== 'playing' && !endScenarioKey) || eventsRunning) return;
     if (dialogOpen() || contextMenuAt !== null || isTypingTarget(e.target)) return;
     // Enter or Space on a focused button is that button's own activation (a keyboard user who Tabbed to
     // Menu or End Turn), not the cursor's "select / move / attack".

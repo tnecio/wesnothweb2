@@ -228,16 +228,6 @@
       </div>
 
       <div class="options">
-        <label class="label" for="rng-menu">{t('Combat:')}</label>
-        <div class="rng">
-          <select id="rng-menu" bind:value={randomMode} title={randomModeChoice.tooltip()} aria-describedby="rng-help" data-testid="rng-menu">
-            {#each RANDOM_MODE_CHOICES as c (c.mode)}
-              <option value={c.mode} title={c.tooltip()}>{c.label()}</option>
-            {/each}
-          </select>
-          <!-- The tooltip, shown: a phone has no hover. -->
-          <p class="rng-help" id="rng-help" dir="auto" data-testid="rng-help">{randomModeChoice.tooltip()}</p>
-        </div>
         <span class="label" id="difficulty-label">{t('Difficulty:')}</span>
         <div class="difficulty" role="radiogroup" aria-labelledby="difficulty-label" aria-disabled={difficulties.length === 0} data-testid="difficulty-menu">
           {#each difficulties as d, i (d.define)}
@@ -266,6 +256,18 @@
       </div>
 
       <div class="footer">
+        <div class="combat">
+          <label class="label" for="rng-menu">{t('Combat:')}</label>
+          <div class="rng">
+            <select id="rng-menu" bind:value={randomMode} title={randomModeChoice.tooltip()} aria-describedby="rng-help" data-testid="rng-menu">
+              {#each RANDOM_MODE_CHOICES as c (c.mode)}
+                <option value={c.mode} title={c.tooltip()}>{c.label()}</option>
+              {/each}
+            </select>
+            <!-- The tooltip's first paragraph, shown (a phone has no hover); its example is in the hover tooltip. -->
+            <p class="rng-help" id="rng-help" dir="auto" data-testid="rng-help">{randomModeChoice.tooltip().split('\n\n')[0]}</p>
+          </div>
+        </div>
         <span class="spacer"></span>
         <button class="primary" disabled={!selected} onclick={play} data-testid="campaign-play">{t('game^Play')}</button>
         <button onclick={onCancel} data-testid="campaign-cancel">{t('Cancel')}</button>
@@ -489,7 +491,6 @@
     margin: 0;
     font-size: 0.8rem;
     opacity: 0.8;
-    white-space: pre-line;
   }
   .difficulty {
     display: flex;
@@ -540,8 +541,21 @@
   }
   .footer {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
-    align-items: center;
+    align-items: flex-end;
+  }
+  /* Phase 30: the Combat menu, left of Play as upstream's bottom row has it. */
+  .combat {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+  }
+  /* A short screen (a phone held sideways) keeps the room for the campaign list: the help is in the tooltip. */
+  @media (max-height: 500px) {
+    .rng-help {
+      display: none;
+    }
   }
   .spacer {
     flex: 1;

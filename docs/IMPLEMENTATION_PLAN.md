@@ -1593,7 +1593,7 @@ What was delivered, and where it differs from the sketch above:
 - **Campaign dialog** with search, Name/Timeline sort, completion filter,
   laurels (upstream's exact rules), a difficulty chooser and debug campaigns
   set apart. Completion is recorded on a campaign's last victory. **Not
-  built:** the Combat RNG and Modifications menus (RNG modes are now Phase 30).
+  built:** the Modifications menu. (The Combat RNG menu was added by Phase 30, 2026-10-26.)
 - **Preferences** is an interim tabbed dialog (Display: font size, orb
   colours, show tips; Sound); Phase 24 adds the rest. In a game it replaces
   the separate Audio and Accessibility entries (Ctrl+P).
@@ -2434,30 +2434,35 @@ catches up before the AI goes on.
 - this section marked delivered;
 - a PR, merged and tagged only when you say so.
 
-## Phase 30 — Combat RNG modes (added 2026-09-27, deliberately last)
+## Phase 30 — Combat RNG modes (added 2026-09-27)
 
-**Status: not started.** Split out of Phase 21 (user's call, 2026-09-27):
-the campaign dialog's "Combat:" menu is omitted there, and this phase —
-after CI/CD (28) and the AI (29) — makes sure it is not forgotten.
+**Status: delivered 2026-10-26** (branch `rng-modes`, one PR, see PROGRESS). Split out of Phase 21 (user's
+call, 2026-09-27); the campaign dialog's "Combat:" menu had been left out there.
 
-- Upstream's three modes (`campaign_dialog.cfg` `rng_menu`,
-  `singleplayer.cpp:60-97`, `synced_context::get_rng_for_action`):
-  **Default RNG** (`random_mode=""`: each action gets a fresh seed),
-  **Predictable RNG** (`"deterministic"`: actions draw from the game's
-  saved RNG, so reloading a save does not change an attack's outcome) and
-  **Reduced RNG** (`"biased"`: `attack.cpp:739` `use_prng_`, hits and
-  misses made more consistent).
-- First establish which of these the port's current behaviour actually
-  matches: Phase 26 restores the RNG position on load, which is what
-  "Predictable" means upstream.
-- `random_mode` recorded in `SaveGameData`, carried over between
-  scenarios, and written/read by the Wesnoth save converter
-  (`game_classification`, `savegame.cpp:607`).
-- The menu added to Phase 21's campaign selection dialog with upstream's
-  labels and tooltips.
-- **Milestone**: the same attack, reloaded from a save, gives the same
-  result under Predictable and may differ under Default; Reduced RNG's
-  hit distribution matches upstream's on a fixed seed.
+Upstream's three modes (`campaign_dialog.cfg` `rng_menu`, `singleplayer.cpp`, `synced_context::get_rng_for_action`):
+
+| Menu | `random_mode` | Behaviour |
+|---|---|---|
+| Default RNG | `""` (`per_action` here) | each action gets a fresh seed; reloading before an attack re-rolls it |
+| Predictable RNG | `deterministic` | actions draw from the game's saved stream; reloading does not change an attack's outcome |
+| Reduced RNG | `biased` | the same stream, and each side's hits in a round dealt out as `⌊cth·n/100⌋`, or one more with the remainder's chance (`attack.cpp` `use_prng_`) |
+
+User decisions (2026-10-26):
+- The menu opens at Default RNG every time, as upstream's does.
+- The opt-in statistics record the mode.
+- **The damage calculations show Reduced RNG's real odds.** Upstream's show the unbiased ones; this is a
+  deliberate improvement. The AI keeps upstream's prediction.
+
+Delivered:
+- Engine: `SyncedRng`'s `biased` mode; `combat.ts`'s `dealBiasedHits` and `AttackOptions.biasedHits`, for the
+  AI's attacks too; and `attackPrediction.ts`'s exact `biasedFight`. The last enumerates every hit pattern of
+  both sides each round, and is checked against thousands of real fights.
+- Session: the mode is saved, loaded, carried into the next scenario, and read and written by the Wesnoth save
+  converter (`random_mode`).
+- UI: the Combat menu, with upstream's labels and tooltips, beside Play. It travels to the game as `?rng=`.
+- Statistics: `rng` on `scenario_start`/`scenario_end`; `stats.mjs` splits results by mode.
+- **Milestone met:** reloading before an attack repeats it under Predictable and Reduced RNG, and can change it
+  under Default (`packages/ui/src/randomModes.test.ts`).
 
 ## Phase 31 — World Conquest (added 2026-10-05)
 
@@ -2571,8 +2576,7 @@ pulled forward and delivered 2026-09-22.
 15. **Phase 27** (feature completeness assessment; delivered 2026-10-10), then **Phases 27a** (correctness fixes and upstream's WML tests as a conformance suite; delivered 2026-10-11), **27b** (the ability and special pipeline; delivered 2026-10-12) and **27c** (presentation gaps; delivered 2026-10-13); then **Phase 28d**
    (performance budgets, cross-browser, offline; split from Phase 28).
 16. **Phase 31** (World Conquest), not yet scheduled.
-17. **Phase 30** (combat RNG modes, split from Phase 21) — last, after
-   everything above.
+17. **Phase 30** (combat RNG modes, split from Phase 21) — delivered 2026-10-26.
 
 ### Old → new phase numbers
 
