@@ -452,6 +452,7 @@ export class AiContext {
           resolveType: this.host.resolveType,
           raise: this.host.raise,
           fire: this.host.fire,
+          biasedHits: (this.host.rng as { mode?: string }).mode === 'biased',
         });
     this.recentAttackLocs.push(defenderLoc);
     this.bumpGamestateChange();

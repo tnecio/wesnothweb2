@@ -2766,6 +2766,8 @@ export class GameSession {
     const result = performAttack(this.board, this.rng, attackerLoc, cmd.weapon, defenderLoc, defenderWeapon, {
       ...this.attackOptions(attackerLoc, defenderLoc),
       attackCostPaid: true,
+      // Phase 30: Reduced RNG deals every attack's hits out evenly, the AI's too (`attack.cpp`'s `use_prng_`).
+      biasedHits: this.rng.mode === 'biased',
       raise: this.raiseEvent,
       // `last breath`/`die`, fired from inside `performAttack`'s own
       // callback: a plain function, so these cannot suspend -- their

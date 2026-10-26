@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MtRng } from '../../src/rng/MtRng.js';
 import { SyncedRng } from '../../src/rng/SyncedRng.js';
 
-function make(mode: 'per_action' | 'deterministic', seeds: string[]) {
+function make(mode: 'per_action' | 'deterministic' | 'biased', seeds: string[]) {
   const asked: string[] = [];
   const rng = new SyncedRng(new MtRng(1), new MtRng(2), mode, () => {
     const s = seeds.shift()!;
@@ -48,6 +48,18 @@ describe('SyncedRng', () => {
     expect(v).toBe(new MtRng(1).getNextRandom());
     expect(rng.game.getRandomCalls()).toBe(1);
     expect(asked).toEqual([]);
+  });
+
+  it('uses the whole-game stream in biased mode too, as get_rng_for_action treats it like deterministic', () => {
+    const { rng, asked } = make('biased', []);
+    let draws = 0;
+    rng.onSyncedDraw = () => draws++;
+    rng.beginAction();
+    const v = rng.nextRandom();
+    rng.endAction();
+    expect(v).toBe(new MtRng(1).getNextRandom());
+    expect(asked).toEqual([]);
+    expect(draws).toBe(1);
   });
 
   it('reports every synced draw, and refuses nested actions', () => {
