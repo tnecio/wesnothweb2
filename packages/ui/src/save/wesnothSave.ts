@@ -57,7 +57,20 @@ import {
   type RecordedCommand,
   type WmlConfigJson,
 } from '@wesnothweb2/engine';
-import type { SaveGameData, SavedUnit } from '../gameSession.js';
+import { NATIVE_PERSISTENT_TAGS, type SaveGameData, type SavedUnit } from '../gameSession.js';
+
+/** `is_handled_file_tag` (`game_lua_kernel.cpp`): the scenario/snapshot tags the engine reads itself. */
+const HANDLED_FILE_TAGS: ReadonlySet<string> = new Set([
+  'color_palette', 'color_range', 'display', 'end_level_data', 'era', 'event', 'generator', 'label', 'lua', 'map',
+  'menu_item', 'modification', 'modify_unit_type', 'music', 'options', 'side', 'sound_source', 'story',
+  'terrain_graphics', 'time', 'time_area', 'tunnel', 'undo_stack', 'variables',
+]);
+
+/**
+ * A `[snapshot]` child that is the Lua content's own (`game_lua_kernel::load_game` hands it to `on_load`;
+ * `save_game` writes what `on_save` returns): neither the engine's nor one this port reads itself.
+ */
+const isLuaContentTag = (tag: string): boolean => !HANDLED_FILE_TAGS.has(tag) && !NATIVE_PERSISTENT_TAGS.has(tag);
 
 /**
  * The campaign identity a save file carries, which this port keeps in a
@@ -277,6 +290,8 @@ export function fromWesnothSave(cfg: WmlConfig): ImportedWesnothSave {
       difficulty: cfg.getString('difficulty', '') || undefined,
       // Phase 30: `game_classification::random_mode` ('' is upstream's default, a fresh seed per action).
       randomMode: randomModeFromWesnoth(cfg.getString('random_mode', '')),
+      // The content's own tags (a tutorial hint...), for `on_load`.
+      ...luaTagsFromSnapshot(snapshot),
       teams,
       units,
       recall,
@@ -655,6 +670,10 @@ export function toWesnothSave(
     snapCfg.removeChildren('event');
     for (const e of save.events) snapCfg.addChild('event', WmlConfig.fromJSON(e));
   }
+  // The content's own tags, as `save_game` writes what `on_save` returned: the save's, not the scenario's or an
+  // imported file's earlier ones.
+  for (const tag of new Set(snapCfg.allChildren().map((c) => c.tag))) if (isLuaContentTag(tag)) snapCfg.removeChildren(tag);
+  for (const { tag, config } of (save.luaTags ? WmlConfig.fromJSON(save.luaTags) : new WmlConfig()).allChildren()) snapCfg.addChild(tag, config);
   if (save.usedItems && save.usedItems.length > 0) {
     snapCfg.removeChildren('used_items');
     const used = snapCfg.addChild('used_items');
@@ -727,4 +746,11 @@ export const WESNOTH_CONTENT_VERSION = '1.19.21';
 /** Phase 30: `game_classification::random_mode` as this port's mode (`''`, or anything unknown, is the default). */
 function randomModeFromWesnoth(value: string): RandomMode {
   return value === 'deterministic' || value === 'biased' ? value : 'per_action';
+}
+
+/** `SaveGameData.luaTags` from a real save's `[snapshot]`: its Lua content tags (`isLuaContentTag`), if any. */
+function luaTagsFromSnapshot(snapshot: WmlConfig): { luaTags?: WmlConfigJson } {
+  const tags = new WmlConfig();
+  for (const { tag, config } of snapshot.allChildren()) if (isLuaContentTag(tag)) tags.addChild(tag, config.clone());
+  return tags.allChildren().length > 0 ? { luaTags: tags.toJSON() } : {};
 }
