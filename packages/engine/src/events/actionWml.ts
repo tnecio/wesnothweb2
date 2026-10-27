@@ -1240,6 +1240,8 @@ function placeNewUnit(cfg: WmlConfig, ctx: EventContext, unit: Unit, side: numbe
       loc = leader ? leader.location : ctx.board.map.startingPosition(side);
     } else if (place === 'map' || place === 'map_passable' || place === 'map_overwrite') {
       if (cfg.hasAttribute('location_id')) loc = ctx.board.map.specialLocation(cfg.getString('location_id'));
+      // `find_location`: the tag's own x,y (a unit from the recall list has no location of its own).
+      if (!loc.valid() && cfg.hasAttribute('x') && cfg.hasAttribute('y')) loc = Location.fromWml(cfg.getNumber('x', 0), cfg.getNumber('y', 0));
       if (!loc.valid()) loc = unit.location;
     } else {
       continue; // an unknown placement is simply skipped, as upstream's own loop does
@@ -1307,6 +1309,25 @@ function* actionUnit(cfg: WmlConfig, ctx: EventContext): Flow {
   const team = ctx.board.getTeam(side);
   if (!team) {
     ctx.log('error', `wrong side in [unit] tag - no such side: ${side}`);
+    return;
+  }
+  // `unit_creator::add_unit`: a unit with this id on the side's recall list is the one placed -- as it is, the
+  // tag only saying where -- and every unit with the id leaves the list. Real, reported bug: Of Pearls and
+  // Pirates 1's [side] leader Thea, on the recall list for want of a starting position, stayed there when the
+  // prestart [unit] id=Thea put "her" on the map, and could be recalled as a second Thea.
+  const id = cfg.getString('id', '');
+  const recalled = id !== '' ? ctx.board.recallList(side).find((u) => u.id === id) : undefined;
+  if (recalled) {
+    const at = placeNewUnit(cfg, ctx, recalled, side);
+    if (!at) {
+      ctx.log('info', `[unit]: side ${side}'s recall list already has a unit with id=${id}`);
+      return;
+    }
+    for (const u of ctx.board.recallList(side).filter((r) => r.id === id)) ctx.board.removeFromRecallList(side, u.underlyingId);
+    recalled.location = at;
+    ctx.board.addUnit(recalled);
+    ctx.board.captureVillage(at, side);
+    if (cfg.getBoolean('animate', false)) yield* playBeat({ kind: 'unitAppear', unit: recalled });
     return;
   }
   let unit: Unit;
