@@ -866,6 +866,13 @@ export interface EconomyInfo {
   unitCount: number;
 }
 
+/**
+ * The persistent tags core Lua registers (`lua/wml/items.lua`, `object.lua`, `objectives.lua`) for state this
+ * port saves itself (`SaveGameData.items`, `nextItemName`, `usedItems`, `objectiveConfigs`): left out of
+ * `SaveGameData.luaTags`, so a load does not restore them twice.
+ */
+export const NATIVE_PERSISTENT_TAGS: ReadonlySet<string> = new Set(['item', 'next_item_name', 'used_items', 'objectives']);
+
 /** Phase 32: a new campaign run's id (`GameSession.runId`). */
 function newRunId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -1349,6 +1356,12 @@ export interface SaveGameData {
   objectiveConfigs?: { side: number; cfg: WmlConfigJson }[];
   /** Phase 18b: upstream's `random_mode`; absent means `per_action`. */
   randomMode?: RandomMode;
+  /**
+   * The content's own saved tags (`game_lua_kernel::save_game`): what `wesnoth.game_events.on_save` returned,
+   * given back to `on_load` when the game is loaded -- Lua's `wesnoth.persistent_tags`, e.g. Heir to the Throne
+   * Classic's tutorial hint. The tags this port saves itself (`NATIVE_PERSISTENT_TAGS`) are left out.
+   */
+  luaTags?: WmlConfigJson;
   /** Upstream's `do_healing`: false only until the scenario's first side turn has started. Absent: true once startup events ran. */
   doHealing?: boolean;
   /**
@@ -5275,6 +5288,7 @@ export class GameSession {
       objectivesShown: [...this.eventPump.ctx.objectivesBySide].map(([side, objectives]) => ({ side, cfg: objectives.source.toJSON() })),
       objectiveConfigs: [...this.eventPump.ctx.objectivesConfigBySide].map(([side, cfg]) => ({ side, cfg: cfg.toJSON() })),
       randomMode: this.rng.mode,
+      ...this.luaTagsForSave(),
       doHealing: this.doHealing,
       ...(this.replayStartData ? { replay: { start: this.replayStartData, commands: this.recorder.toJSON() } } : {}),
       undoStack: this.saveUndoStack(),
@@ -5414,6 +5428,17 @@ export class GameSession {
     if (data.schedule) this.schedule.importState(data.schedule);
     this.clearSelection();
     this.restoreUndoStack(data.undoStack);
+    // `game_lua_kernel::load_game`: the content's own saved tags, last, as upstream reads them once the game is set up.
+    if (data.luaTags && this.luaRuntime) runFlow(this.luaRuntime.loadTagsFlow(WmlConfig.fromJSON(data.luaTags)), this.collectResponder);
+  }
+
+  /** `toSaveData`'s `luaTags`: `on_save`'s tags but the ones this port saves itself; none when there are none. */
+  private luaTagsForSave(): { luaTags?: WmlConfigJson } {
+    if (!this.luaRuntime) return {};
+    const saved = runFlow(this.luaRuntime.saveTagsFlow(), this.collectResponder);
+    const tags = new WmlConfig();
+    for (const { tag, config } of saved.allChildren()) if (!NATIVE_PERSISTENT_TAGS.has(tag)) tags.addChild(tag, config);
+    return tags.allChildren().length > 0 ? { luaTags: tags.toJSON() } : {};
   }
 
   /** `[undo_stack]` as a save stores it -- units named by where they stand now. */

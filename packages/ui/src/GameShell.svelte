@@ -352,6 +352,18 @@
   }
 
   /**
+   * Every overlay label gone: another game state takes over (the next scenario, a loaded save, a replay), as
+   * upstream's labels go with the play controller they were made under (`font::floating_label_context`). A
+   * loaded game's own (a tutorial hint, through Lua's `persistent_tags`) come back as it loads. Real, reported
+   * bug: Heir to the Throne Classic's "Victory" hint, shown for good, stayed on screen into the next scenario.
+   */
+  function clearOverlayLabels(): void {
+    for (const timers of overlayLabelTimers.values()) for (const timer of timers) clearTimeout(timer);
+    overlayLabelTimers.clear();
+    overlayLabels = [];
+  }
+
+  /**
    * `display::announce`: a message in the middle of the map area, a third of the way down, for 1.6 s in
    * `font::NORMAL_COLOR` at `SIZE_FLOAT_LABEL`. A new one replaces the last (`discard_previous`).
    */
@@ -2897,6 +2909,7 @@
         await loadIntoScenario(targetScenario, found.data);
         reportLoad(found.meta.kind ?? 'manual');
       } else {
+        clearOverlayLabels();
         session.loadSaveData(found.data);
         phase = session.scenarioResult ? 'ended' : 'playing';
         reportLoad(found.meta.kind ?? 'manual');
@@ -2946,6 +2959,7 @@
     if (scenarioId !== activeSnapshot.scenario.id || savedDifficulty(data) !== activeSnapshot.difficulty) {
       replaySnapshot = await snapshotFor(scenarioId, savedDifficulty(data));
     }
+    clearOverlayLabels();
     const replaySession = GameSession.forReplay(replaySnapshot, data, { ...SESSION_OPTIONS, onSound: undefined, onVolume: undefined });
     if (!replaySession) return;
     activeSnapshot = replaySnapshot;
@@ -3034,6 +3048,7 @@
     activeSnapshot = nextSnapshot;
     cursorHex = null; // the keyboard cursor belongs to the board it was on
     resetScenarioEnd();
+    clearOverlayLabels();
     session = GameSession.fromSaveData(nextSnapshot, data, SESSION_OPTIONS);
     session.interactionHost = interactionHost;
     storyParts = [];
@@ -3169,6 +3184,7 @@
       await endOfScenarioSaves();
       // The campaign carries its difficulty into every following scenario, as the real game does.
       const [nextSnapshot, nextStoryAssets] = await Promise.all([snapshotFor(nextId), storyAssetsFor(nextId)]);
+      clearOverlayLabels();
       const nextSession = GameSession.startNextScenario(session, nextSnapshot, SESSION_OPTIONS);
       const nextStoryParts = nextSession.storyParts();
 

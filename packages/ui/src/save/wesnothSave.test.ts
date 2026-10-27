@@ -62,6 +62,18 @@ describe('fromWesnothSave (importing a real 1.16.9 Wesnoth save)', () => {
     }
   });
 
+  it("the Lua content's own tags: read from [snapshot], written back there, and only the save's", () => {
+    const withHint = original.clone();
+    withHint.child('snapshot')!.addChild('hint_message').setAttribute('message', 'Recall your veterans.');
+    const read = fromWesnothSave(withHint).save;
+    expect(read.luaTags?.children?.map((c) => c.tag)).toEqual(['hint_message']);
+    const out = toWesnothSave({ ...read, wesnothExtras: undefined }, loadSnapshot(), DEAD_WATER);
+    expect(out.child('snapshot')!.children('hint_message').map((c) => c.getString('message'))).toEqual(['Recall your veterans.']);
+    // A save whose content has none left writes none, even over an imported file that had one.
+    const cleared = toWesnothSave({ ...read, luaTags: undefined }, loadSnapshot(), DEAD_WATER);
+    expect(cleared.child('snapshot')!.children('hint_message')).toEqual([]);
+  });
+
   it('reads the scenario, campaign and turn the file actually says', () => {
     expect(imported.version).toBe('1.16.9');
     expect(imported.label).toBe('DW-Invasion!');

@@ -349,10 +349,23 @@ async function keyboardRun(browser) {
   await press(page, 'Enter', 800);
   await page.waitForSelector('.modal-box', { timeout: 15000 });
   await press(page, 'Enter', 700);
+  // An overlay shown until removed, at the victory -- as Heir to the Throne Classic's tutorial shows its "Victory"
+  // hint. It must not outlive the scenario (real, reported bug: it stayed on screen into the next one).
+  await page.evaluate(() =>
+    window.__wesnoth.addEvent(`[event]
+name=victory
+[lua]
+code=<< wesnoth.interface.add_overlay_text("Victory overlay", { duration = "unlimited" }) >>
+[/lua]
+[/event]`),
+  );
   check('scenario 1 is won by keys', await winByKeys(page));
+  check('...and the victory overlay is shown', (await page.$$eval('[data-testid="overlay-label"]', (els) => els.map((e) => e.textContent))).some((t) => t.includes('Victory overlay')));
   await press(page, 'Control+Space', 1000); // End Scenario
   await page.waitForFunction(() => window.__wesnoth?.session?.snapshot?.scenario?.id === 'synth_keyboard_02', null, { timeout: 60000 });
   check('Ctrl+Space (End Scenario) continues into scenario 2', /2\/2/.test(await page.evaluate(() => window.__wesnoth?.session.scenarioName ?? '').catch(() => '')));
+  const leftOver = await page.$$eval('[data-testid="overlay-label"]', (els) => els.map((e) => e.textContent));
+  check("...and scenario 1's overlay is gone", !leftOver.some((t) => t.includes('Victory overlay')), leftOver.join(' | '));
   await waitBoardReady(page);
   await page.waitForTimeout(3000);
   const won2 = await winByKeys(page);

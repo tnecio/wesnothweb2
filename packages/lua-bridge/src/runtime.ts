@@ -329,8 +329,28 @@ export class LuaRuntime {
     yield* this.runChunk(`wesnoth.game_events.${name}(${Math.trunc(x)}, ${Math.trunc(y)})`, `=${name}`);
   }
 
+  /**
+   * `game_lua_kernel::save_game`: the tags `wesnoth.game_events.on_save` returns -- the content's
+   * `wesnoth.persistent_tags` (`lua/core/persistent_tags.lua`), e.g. Heir to the Throne Classic's tutorial hint
+   * -- as one config whose children are those tags.
+   */
+  *saveTagsFlow(): Flow<WmlConfig> {
+    const [result] = yield* this.evalChunk('return wesnoth.game_events.on_save()', '=on_save');
+    return result instanceof WmlConfig ? result : new WmlConfig();
+  }
+
+  /** `game_lua_kernel::load_game`: `wesnoth.game_events.on_load` with a save's tags (`saveTagsFlow`'s children). */
+  *loadTagsFlow(tags: WmlConfig): Flow {
+    yield* this.runChunk('wesnoth.game_events.on_load(...)', '=on_load', tags);
+  }
+
   /** Runs a chunk of Lua with `args` as its `...` (the `[lua]` tag). */
   *runChunk(code: string, chunkName: string, args?: WmlConfig): Flow {
+    yield* this.evalChunk(code, chunkName, args);
+  }
+
+  /** `runChunk`, giving back the chunk's return values. */
+  private *evalChunk(code: string, chunkName: string, args?: WmlConfig): Flow<unknown[]> {
     const T = this.newThread();
     try {
       if (lauxlib.luaL_loadbuffer(T.state, to_luastring(code), null, to_luastring(chunkName)) !== lua.LUA_OK) {
@@ -338,7 +358,7 @@ export class LuaRuntime {
       }
       if (args) this.kernel.pushConfig(T.state, args);
       else lua.lua_pushnil(T.state);
-      yield* this.drive(T.state, 1);
+      return yield* this.drive(T.state, 1);
     } finally {
       this.release(T.ref);
     }
