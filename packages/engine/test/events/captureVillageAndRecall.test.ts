@@ -383,3 +383,33 @@ to_variable=new_lich
     expect([stored?.getNumber('x'), stored?.getNumber('y'), stored?.getNumber('hitpoints')]).toEqual([3, 4, 7]);
   });
 });
+
+describe('[unit] with the id of a recall-list unit (unit_creator::add_unit)', () => {
+  it('puts that unit on the map, as it is, instead of making a second one', () => {
+    const { board, castleLoc } = makeBoard();
+    const hero = Unit.create(makeUnitType('Hero', 12), 1, Location.NULL, { id: 'Hero' });
+    hero.experience = 7;
+    board.addToRecallList(1, hero);
+    const { manager, pump } = makePump(board);
+
+    manager.addFromWml(parseWml(`
+[event]
+name=go
+[unit]
+type=mover
+id=Hero
+side=1
+x=${castleLoc.wmlX}
+y=${castleLoc.wmlY}
+[/unit]
+[/event]
+`).child('event')!);
+    pump.fire('go');
+
+    expect(board.unitAt(castleLoc)).toBe(hero);
+    expect(hero.experience).toBe(7);
+    expect(board.recallList(1)).toEqual([]);
+    expect(board.allUnits().filter((u) => u.id === 'Hero')).toHaveLength(1);
+  });
+});
+
