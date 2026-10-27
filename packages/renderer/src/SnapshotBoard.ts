@@ -2332,6 +2332,14 @@ export class SnapshotBoard {
               const rest = cue.restAt === 'dst' ? dst : src;
               visual.container.x = rest.x;
               visual.container.y = rest.y;
+              // The unit stands there now, facing the way it last walked: the rest animations, which place the
+              // sprite on `lastUnit`'s hex, keep it there until the next `updateUnits` brings the real unit.
+              // Real, reported bug: an AI action that moves several units (one `updateUnits` after all of them)
+              // left each one snapping back to the hex it had left, then all jumping forward at the end.
+              if (cue.restAt === 'dst') {
+                const facing = cue.legs?.[cue.legs.length - 1]?.direction ?? visual.lastUnit.facing;
+                visual.lastUnit = { ...visual.lastUnit, x: cue.dstHex.x, y: cue.dstHex.y, ...(facing !== undefined ? { facing } : {}) };
+              }
               visual.container.visible = true;
               if (visual.sprite) visual.sprite.alpha = 1;
               if (visual.overlay) visual.overlay.alpha = 0;

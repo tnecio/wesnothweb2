@@ -9,6 +9,8 @@
  *   1. The AI's actions reach the display one at a time (several steps), and the board view changes
  *      several times while the AI's turn is still on -- not once, at the end.
  *   2. The board view matches the game when the turn comes back.
+ *   2b. A unit's sprite stays where its move animation left it until the board view next catches up -- real,
+ *      reported bug: an AI action moving several units left each one snapping back to the hex it had left.
  *   3. Dead Water: a `recruit` [message] on the AI's first action (its recruits) is shown while the AI's turn
  *      is still on, and the AI goes on after it is dismissed.
  *   4. No page errors.
@@ -69,13 +71,36 @@ message="${text}"
     // Every frame while another side's turn is on: the units the board view shows, and the frame gaps.
     await page.evaluate(() => {
       const w = window.__wesnoth;
-      window.__aiTurn = { shownStates: [], maxGap: 0, steps0: w.aiSteps() };
+      window.__aiTurn = { shownStates: [], maxGap: 0, steps0: w.aiSteps(), snapBacks: [] };
+      // Where each moved unit's animation left it (sprite key -> pixel), until the board view catches up.
+      const board = window.__wesnothDebug.board();
+      const moved = new Map();
+      const play = board.playAnimations.bind(board);
+      board.playAnimations = async (cues, ...rest) => {
+        await play(cues, ...rest);
+        for (const cue of cues) {
+          const v = board.unitVisuals.get(cue.key);
+          if (cue.restAt === 'dst' && v && !v.container.destroyed) moved.set(cue.key, { x: v.container.x, y: v.container.y });
+        }
+      };
+      const update = board.updateUnits.bind(board);
+      board.updateUnits = async (...a) => {
+        await update(...a);
+        moved.clear();
+      };
       let last = performance.now();
       let lastShown = '';
       const watch = () => {
         const now = performance.now();
         if (w.otherSidesTurn !== null) {
           window.__aiTurn.maxGap = Math.max(window.__aiTurn.maxGap, now - last);
+          for (const [key, at] of moved) {
+            const v = board.unitVisuals.get(key);
+            if (v && !v.container.destroyed && v.cues === 0 && (Math.abs(v.container.x - at.x) > 4 || Math.abs(v.container.y - at.y) > 4)) {
+              if (window.__aiTurn.snapBacks.length < 5) window.__aiTurn.snapBacks.push({ key, at, now: { x: Math.round(v.container.x), y: Math.round(v.container.y) } });
+              moved.delete(key);
+            }
+          }
           const shown = w.shownUnits().join(' ');
           if (shown !== lastShown) window.__aiTurn.shownStates.push(w.aiSteps());
           lastShown = shown;
@@ -127,6 +152,7 @@ message="${text}"
       return JSON.stringify(session) === JSON.stringify(w.shownUnits());
     });
     check(`${run.label}: the board view matches the game when the turn comes back`, synced);
+    check(`${run.label}: a moved unit's sprite stays where its move animation left it`, watched.snapBacks.length === 0, JSON.stringify(watched.snapBacks));
     if (run.message) {
       check(`${run.label}: an AI recruit's message is shown during the AI's turn`, !!messageAt && messageAt.side !== start.side && messageAt.other !== null, JSON.stringify(messageAt));
       check(`${run.label}: ...and the AI goes on after it`, !!messageAt && !!back && back.steps > messageAt.steps, `message at step ${messageAt?.steps}, turn ended at ${back?.steps}`);
