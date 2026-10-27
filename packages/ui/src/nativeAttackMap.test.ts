@@ -66,7 +66,8 @@ parts[#parts + 1] = tostring(calls)
 wml.variables.attack_maps = table.concat(parts, ' # ')`,
     '=attack_map_test',
   ), autoRespond);
-  return s.eventPump.ctx.variables.get('attack_maps') as unknown as string;
+  const pump = (s as unknown as { eventPump: { ctx: { variables: { get(name: string): unknown } } } }).eventPump;
+  return pump.ctx.variables.get('attack_maps') as string;
 }
 
 describe('the native attack map (battle_calcs.get_attack_map)', () => {
