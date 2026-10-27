@@ -2,7 +2,7 @@
  * `wesnoth.paths` and `wesnoth.simulate_combat` (`game_lua_kernel.cpp`: `intf_find_reach`, `intf_find_path`,
  * `intf_find_vacant_tile`, `intf_simulate_combat`), on the engine's own pathfinder and battle simulation.
  */
-import { Location as LocationClass, type Location } from '@wesnothweb2/engine/src/model/Location.js';
+import { Location as LocationClass, getAdjacentTiles, type Location } from '@wesnothweb2/engine/src/model/Location.js';
 import { createJammingMap, unitVisionPath } from '@wesnothweb2/engine/src/actions/vision.js';
 import type { Unit } from '@wesnothweb2/engine/src/model/Unit.js';
 import { reachableHexes, findVacantTile, ShortestPathCalculator } from '@wesnothweb2/engine/src/pathfind/pathfind.js';
@@ -15,6 +15,8 @@ import { Unit as UnitClass } from '@wesnothweb2/engine/src/model/Unit.js';
 import { argError, checkInteger, lua, to_luastring, pushString, tableGet, toBoolean, type LuaKernel, type LuaState } from '../kernel.js';
 import type { GameKernelHost } from './host.js';
 import type { LuaUnits } from './units.js';
+import { findUnits } from '@wesnothweb2/engine/src/events/filter.js';
+import { WmlConfig } from '@wesnothweb2/engine/src/wml/config.js';
 
 export function installPaths(k: LuaKernel, host: GameKernelHost, units: LuaUnits): void {
   const ctx = () => host.ctx();
@@ -44,6 +46,42 @@ export function installPaths(k: LuaKernel, host: GameKernelHost, units: LuaUnits
     return side;
   };
 
+  /**
+   * `intf_find_reach`'s search: where `unit` can go, with the options of the table at `arg` (0 or a nil/none
+   * argument: none) -- `ignore_units`, `ignore_visibility`, `ignore_teleport`, `max_cost` (upstream reads the
+   * additional turns from it) and `viewing_side`.
+   */
+  const reachOf = (T: LuaState, unit: Unit, arg: number) => {
+    let viewingSide = unit.side;
+    let ignoreUnits = false;
+    let seeAll = false;
+    let ignoreTeleport = false;
+    let additionalTurns = 0;
+    if (arg > 0 && lua.lua_istable(T, arg)) {
+      ignoreUnits = tableBool(T, arg, 'ignore_units');
+      seeAll = tableBool(T, arg, 'ignore_visibility');
+      ignoreTeleport = tableBool(T, arg, 'ignore_teleport');
+      // Upstream reads additional turns from `max_cost` here.
+      additionalTurns = Math.trunc(tableNumber(T, arg, 'max_cost', 0));
+      viewingSide = viewingSideOpt(T, arg, viewingSide);
+    } else if (arg > 0 && !lua.lua_isnoneornil(T, arg)) argError(T, arg, 'table expected');
+    const board = ctx().board;
+    return reachableHexes(board, unit, {
+      forceIgnoreZoc: ignoreUnits,
+      ignoreUnits,
+      allowTeleport: !ignoreTeleport,
+      viewingTeam: board.getTeam(viewingSide),
+      additionalTurns,
+      seeAll,
+    }).destinations.values();
+  };
+  const sideFilter = (side: number): WmlConfig => {
+    const cfg = new WmlConfig();
+    cfg.setAttribute('side', side);
+    return cfg;
+  };
+  const lauxlibLen = (T: LuaState, idx: number): number => lua.lua_rawlen(T, idx);
+
   k.defineAll(['wesnoth', 'paths'], {
     find_reach: (T) => {
       let arg = 1;
@@ -56,29 +94,7 @@ export function installPaths(k: LuaKernel, host: GameKernelHost, units: LuaUnits
         unit = found;
       }
       arg++;
-      let viewingSide = unit.side;
-      let ignoreUnits = false;
-      let seeAll = false;
-      let ignoreTeleport = false;
-      let additionalTurns = 0;
-      if (lua.lua_istable(T, arg)) {
-        ignoreUnits = tableBool(T, arg, 'ignore_units');
-        seeAll = tableBool(T, arg, 'ignore_visibility');
-        ignoreTeleport = tableBool(T, arg, 'ignore_teleport');
-        // Upstream reads additional turns from `max_cost` here.
-        additionalTurns = Math.trunc(tableNumber(T, arg, 'max_cost', 0));
-        viewingSide = viewingSideOpt(T, arg, viewingSide);
-      } else if (!lua.lua_isnoneornil(T, arg)) return argError(T, arg, 'table expected');
-      const board = ctx().board;
-      const res = reachableHexes(board, unit, {
-        forceIgnoreZoc: ignoreUnits,
-        ignoreUnits,
-        allowTeleport: !ignoreTeleport,
-        viewingTeam: board.getTeam(viewingSide),
-        additionalTurns,
-        seeAll,
-      });
-      const steps = res.destinations.values();
+      const steps = reachOf(T, unit, arg);
       lua.lua_createtable(T, steps.length, 0);
       steps.forEach((s, i) => {
         k.pushNamedTuple(T, ['x', 'y', 'moves_left']);
@@ -89,6 +105,86 @@ export function installPaths(k: LuaKernel, host: GameKernelHost, units: LuaUnits
         lua.lua_pushinteger(T, s.moveLeft);
         lua.lua_rawseti(T, -2, 3);
         lua.lua_rawseti(T, -2, i + 1);
+      });
+      return 1;
+    },
+
+    /**
+     * Not upstream API: `ai/lua/battle_calcs.lua`'s `get_attack_map(units, cfg)` worked out natively (see
+     * `installNativeAttackMap`). Returns the merged map as a flat array `{x, y, units, hitpoints, ...}`, in the
+     * order the Lua version first inserts each hex, and leaves the board as the Lua version leaves it.
+     */
+    __port_attack_map: (T) => {
+      if (!lua.lua_istable(T, 1)) return argError(T, 1, 'table expected');
+      const cfgIdx = lua.lua_istable(T, 2) ? 2 : 0;
+      const board = ctx().board;
+      const current = host.currentSide();
+      const cfgMaxMoves = cfgIdx ? tableBool(T, cfgIdx, 'max_moves') : false;
+      const count = lauxlibLen(T, 1);
+      const order: Location[] = [];
+      const merged = new Map<string, { units: number; hitpoints: number }>();
+      for (let i = 1; i <= count; i++) {
+        lua.lua_geti(T, 1, i);
+        const unit = units.check(T, -1);
+        lua.lua_pop(T, 1);
+        // `get_attack_map_unit`: the unit's own moves, or (for a unit of another side, or `max_moves`) its full moves.
+        const maxMoves = cfgMaxMoves || unit.side !== current;
+        const oldMoves = unit.movesLeft;
+        if (maxMoves) unit.movesLeft = unit.maxMoves;
+        // For a unit of another side, the current side's units with moves left are taken off the map (they
+        // will have moved by then), as `extract` and `to_map` do: each put back at the end of the board's list.
+        const lifted: Unit[] = [];
+        if (unit.side !== current) {
+          for (const u of findUnits(board, sideFilter(current))) {
+            if (u.movesLeft > 0) {
+              lifted.push(u);
+              board.removeUnitAt(u.location);
+            }
+          }
+        }
+        const reach = reachOf(T, unit, cfgIdx);
+        for (const u of lifted) {
+          board.removeUnitAt(u.location);
+          board.addUnit(u);
+        }
+        // This unit's map, in its own first-insertion order: each reachable hex, then its neighbours on the map.
+        const own = new Set<string>();
+        const ownOrder: Location[] = [];
+        const add = (loc: Location) => {
+          const key = `${loc.x},${loc.y}`;
+          if (own.has(key)) return;
+          own.add(key);
+          ownOrder.push(loc);
+        };
+        for (const step of reach) {
+          add(step.curr);
+          for (const adj of getAdjacentTiles(step.curr)) if (board.map.onBoard(adj)) add(adj);
+        }
+        // `union_merge`: added in the order this unit's map lists them; a hex already there keeps its place.
+        for (const loc of ownOrder) {
+          const key = `${loc.x},${loc.y}`;
+          const entry = merged.get(key);
+          if (entry) {
+            entry.units += 1;
+            entry.hitpoints += unit.hitpoints;
+          } else {
+            merged.set(key, { units: 1, hitpoints: unit.hitpoints });
+            order.push(loc);
+          }
+        }
+        if (maxMoves) unit.movesLeft = oldMoves;
+      }
+      lua.lua_createtable(T, order.length * 4, 0);
+      order.forEach((loc, i) => {
+        const entry = merged.get(`${loc.x},${loc.y}`)!;
+        lua.lua_pushinteger(T, loc.wmlX);
+        lua.lua_rawseti(T, -2, i * 4 + 1);
+        lua.lua_pushinteger(T, loc.wmlY);
+        lua.lua_rawseti(T, -2, i * 4 + 2);
+        lua.lua_pushinteger(T, entry.units);
+        lua.lua_rawseti(T, -2, i * 4 + 3);
+        lua.lua_pushinteger(T, entry.hitpoints);
+        lua.lua_rawseti(T, -2, i * 4 + 4);
       });
       return 1;
     },
@@ -238,6 +334,42 @@ export function installPaths(k: LuaKernel, host: GameKernelHost, units: LuaUnits
     pushSimWeapon(k, units, T, sim.defenderStats, def.attacks[sim.defenderWeaponIndex], sim.defenderWeaponIndex);
     return 4;
   });
+
+  installNativeAttackMap(k);
+}
+
+/**
+ * Not upstream: `ai/lua/battle_calcs.lua`'s `get_attack_map`, which the default AI's `retreat_injured` (and
+ * `grab_villages`, several micro AIs) call, worked out by `wesnoth.paths.__port_attack_map` instead of in Lua.
+ * The result is the same location sets, filled in the same order (this VM's tables iterate in insertion order),
+ * and the board ends as the Lua version leaves it -- only faster. In this interpreted Lua it took the AI a second
+ * or two for each evaluation on a 40-unit map, all of it with the page frozen (real, reported bug: Northern
+ * Rebirth 1, "everything freezes while the AI thinks"). The module is patched the first time `wesnoth.require`
+ * returns it, wherever it is loaded from.
+ */
+function installNativeAttackMap(k: LuaKernel): void {
+  k.run(
+    `local require = wesnoth.require
+local patched = setmetatable({}, { __mode = 'k' })
+wesnoth.require = function(...)
+  local m = require(...)
+  if type(m) == 'table' and not patched[m] and rawget(m, 'get_attack_map') and rawget(m, 'get_attack_map_unit') then
+    patched[m] = true
+    local LS = require 'location_set'
+    m.get_attack_map = function(units, cfg)
+      local flat = wesnoth.paths.__port_attack_map(units, cfg)
+      local map = { units = LS.create(), hitpoints = LS.create() }
+      for i = 1, #flat, 4 do
+        map.units:insert(flat[i], flat[i + 1], flat[i + 2])
+        map.hitpoints:insert(flat[i], flat[i + 1], flat[i + 3])
+      end
+      return map
+    end
+  end
+  return m
+end`,
+    '=native_attack_map',
+  );
 }
 
 /**
