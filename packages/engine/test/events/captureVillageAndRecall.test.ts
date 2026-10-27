@@ -160,10 +160,10 @@ side=1
     expect(board.villageCount(1)).toBe(2);
   });
 
-  it('without side= (and no [filter_side] support) is a no-op, logged rather than silently ignored', () => {
+  it('without side= or [filter_side], the matching villages belong to no side (`set_owner(loc, nil)`)', () => {
     const { board, villageLoc } = makeBoard();
-    const logs: string[] = [];
-    const { manager, pump } = makePump(board, (level, msg) => logs.push(`${level}: ${msg}`));
+    board.captureVillage(villageLoc, 2);
+    const { manager, pump } = makePump(board);
 
     manager.addFromWml(parseWml(`
 [event]
@@ -177,7 +177,57 @@ y=${villageLoc.wmlY}
     pump.fire('go');
 
     expect(board.villageOwner(villageLoc)).toBeUndefined();
-    expect(logs.some((l) => l.includes('[capture_village]'))).toBe(true);
+  });
+
+  it('[filter_side] names the side: the first one it matches', () => {
+    const { board, villageLoc } = makeBoard();
+    const { manager, pump } = makePump(board);
+
+    manager.addFromWml(parseWml(`
+[event]
+name=go
+[capture_village]
+x=${villageLoc.wmlX}
+y=${villageLoc.wmlY}
+[filter_side]
+side=2
+[/filter_side]
+[/capture_village]
+[/event]
+`).child('event')!);
+    pump.fire('go');
+
+    expect(board.villageOwner(villageLoc)).toBe(2);
+  });
+
+  it("{STARTING_VILLAGES}: variables inside [and] are substituted, so only the villages in the radius are taken", () => {
+    // Real, reported bug: read without its variables, the radius filter matched every village (Son of the
+    // Black Eye 1 began with all of them Alber's). A village at (0,4) and one at (4,4); the side starts at (0,0).
+    const terrainData = makeTerrainData();
+    const rows = ['Gg,Gg,Gg,Gg,Gg', 'Gg,Gg,Gg,Gg,Gg', 'Gg,Gg,Gg,Gg,Gg', 'Gg,Gg,Gg,Gg,Gg', 'Gg^Vh,Gg,Gg,Gg,Gg^Vh'];
+    const board = new GameBoard(GameMap.fromMapString(rows.join('\n'), terrainData, 0));
+    board.addTeam(new Team(1));
+    const { manager, pump } = makePump(board);
+    pump.ctx.variables.set('start.x', 1);
+    pump.ctx.variables.set('start.y', 1);
+
+    manager.addFromWml(parseWml(`
+[event]
+name=go
+[capture_village]
+side=1
+terrain=*^V*
+[and]
+x,y=$start.x,$start.y
+radius=4
+[/and]
+[/capture_village]
+[/event]
+`).child('event')!);
+    pump.fire('go');
+
+    expect(board.villageOwner(new Location(0, 4))).toBe(1);
+    expect(board.villageOwner(new Location(4, 4))).toBeUndefined();
   });
 });
 

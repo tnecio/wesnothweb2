@@ -91,7 +91,8 @@ import { MapFormulaCallable, parseFormula, Variant } from '../formula/index.js';
 import { FLOATING_LABEL_COLOR, parseRgbString } from './floatingLabels.js';
 import { isFlow, runFlow, type Flow, type MessageOption, type MessageTexts, type Responder, type TextInputSpec } from './interaction.js';
 import { conditionalPassed } from './conditionalWml.js';
-import { findUnits, locationMatchesFilter, unitMatchesFilter } from './filter.js';
+import { findLocations, findUnits, unitMatchesFilter } from './filter.js';
+import { sideMatchesFilter } from './sideFilter.js';
 import { actionLabel } from './labelsWml.js';
 import { actionItem, actionRemoveItem, actionStoreItems } from './itemsWml.js';
 import { actionLiftFog, actionPlaceShroud, actionRemoveShroud, actionResetFog } from './shroudWml.js';
@@ -1153,13 +1154,17 @@ function* actionObject(cfg: WmlConfig, ctx: EventContext): Flow {
 }
 
 /** `wml_actions.remove_object`: every matching unit loses its `object_id=` objects and is rebuilt. */
-function actionRemoveObject(cfg: WmlConfig, ctx: EventContext): void {
+function actionRemoveObject(raw: WmlConfig, ctx: EventContext): void {
+  // A vconfig: variables substituted in the filter's children too, not only its own attributes.
+  const cfg = ctx.variables.expandConfigDeep(raw);
   const id = cfg.getString('object_id', '');
   for (const unit of findUnits(ctx.board, cfg)) unit.removeModifications(id === '' ? {} : { id }, ['object'], effectEnvFor(ctx, unit));
 }
 
 /** `wml_actions.remove_trait`: every matching unit loses the `trait_id=` trait and is rebuilt. */
-function actionRemoveTrait(cfg: WmlConfig, ctx: EventContext): void {
+function actionRemoveTrait(raw: WmlConfig, ctx: EventContext): void {
+  // A vconfig: variables substituted in the filter's children too, not only its own attributes.
+  const cfg = ctx.variables.expandConfigDeep(raw);
   const id = cfg.getString('trait_id', '');
   for (const unit of findUnits(ctx.board, cfg)) unit.removeModifications(id === '' ? {} : { id }, ['trait'], effectEnvFor(ctx, unit));
 }
@@ -1170,7 +1175,9 @@ function actionRemoveTrait(cfg: WmlConfig, ctx: EventContext): void {
  * no `transform_to=`, upstream levels the unit up in place keeping its hit
  * points and experience; that path advances to its first `advances_to=`.
  */
-function actionTransformUnit(cfg: WmlConfig, ctx: EventContext): void {
+function actionTransformUnit(raw: WmlConfig, ctx: EventContext): void {
+  // A vconfig: variables substituted in the filter's children too, not only its own attributes.
+  const cfg = ctx.variables.expandConfigDeep(raw);
   const to = cfg.getString('transform_to', '');
   for (const unit of findUnits(ctx.board, cfg)) {
     const env = effectEnvFor(ctx, unit);
@@ -1409,17 +1416,38 @@ function actionDisallowRecruit(cfg: WmlConfig, ctx: EventContext): void {
  * WML event isn't fired by this action either way yet, see
  * `move.ts`/`GameBoard.captureVillage`'s own doc comments on that gap).
  */
-function actionCaptureVillage(cfg: WmlConfig, ctx: EventContext): void {
-  if (!cfg.hasAttribute('side')) {
-    ctx.log('warn', '[capture_village] without side= (or [filter_side], not yet supported) is a no-op');
-    return;
-  }
-  const side = cfg.getNumber('side', 0);
-  for (const loc of ctx.board.map.villages) {
-    if (locationMatchesFilter(loc, cfg)) {
-      ctx.board.captureVillage(loc, side);
+/**
+ * `wml_actions.capture_village` (`wml-tags.lua`): every village the tag matches as a location filter
+ * (`wesnoth.map.find(cfg)`, variables substituted throughout as a vconfig reads them) goes to `side=`, or the
+ * first side `[filter_side]` matches -- or to no side, when neither names one (`wesnoth.map.set_owner(loc, nil)`).
+ * Real, reported bug: the filter used to be read without its variables, so `{STARTING_VILLAGES}`'s
+ * `x,y=$temp_starting_location.x,...` matched every village, and each side in turn took them all (Son of the
+ * Black Eye 1 began with every village Alber's).
+ */
+function actionCaptureVillage(raw: WmlConfig, ctx: EventContext): void {
+  const cfg = ctx.variables.expandConfigDeep(raw);
+  let side = 0;
+  if (cfg.hasAttribute('side')) {
+    side = cfg.getNumber('side', Number.NaN);
+    if (!Number.isInteger(side)) {
+      ctx.log('error', 'invalid side in [capture_village]');
+      return;
     }
   }
+  const filterSide = cfg.child('filter_side');
+  if (filterSide) {
+    if (cfg.hasAttribute('side')) {
+      ctx.log('error', 'duplicate side information in [capture_village]');
+      return;
+    }
+    side = ctx.board.teams().find((t) => sideMatchesFilter(ctx.board, filterSide, t))?.side ?? 0;
+  }
+  // The location filter is the tag itself; `side=`, `fire_event=` and `[filter_side]` are not location keys.
+  const filter = cfg.clone();
+  filter.removeAttribute('side');
+  filter.removeAttribute('fire_event');
+  filter.removeChildren('filter_side');
+  for (const loc of findLocations(ctx.board, filter)) ctx.board.captureVillage(loc, side);
 }
 
 /**
@@ -1434,7 +1462,9 @@ function actionCaptureVillage(cfg: WmlConfig, ctx: EventContext): void {
  * Not ported: the leader's own `recall_filter=` (no unit carries one here), and `show=`/`fire_event=` (the
  * `recall` event is not fired by this port for any recall yet).
  */
-function actionRecall(cfg: WmlConfig, ctx: EventContext): void {
+function actionRecall(raw: WmlConfig, ctx: EventContext): void {
+  // A vconfig: variables substituted in the filter's children too, not only its own attributes.
+  const cfg = ctx.variables.expandConfigDeep(raw);
   const board = ctx.board;
   const unitFilterCfg = new WmlConfig();
   for (const name of cfg.attributeNames()) {
