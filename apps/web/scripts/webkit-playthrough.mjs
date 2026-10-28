@@ -13,8 +13,13 @@
  *      in the background: "Load failed") do not bring up the error screen -- the reported "crashes".
  *   3. The game's own error does (`?crashtest`).
  *   4. The South Guard starts: its board is drawn, with no page error.
+ *   5. Its terrain has the colours Chromium draws (the board's mean colour, the same view): WebKit uploads a
+ *      worker's `transferToImageBitmap` straight, and every translucent pixel used to draw far too bright
+ *      (`ImageCache.transferredBitmapsUploadStraight`; reported on Of Pearls and Pirates 1).
  */
-import { webkit, devices } from 'playwright';
+import { webkit, chromium, devices } from 'playwright';
+import { skipToPlay } from './lib/browserFlows.mjs';
+import { PNG } from 'pngjs';
 
 const args = process.argv.slice(2);
 const base = args.includes('--base') ? args[args.indexOf('--base') + 1] : 'http://localhost:5173';
@@ -25,6 +30,18 @@ function check(label, ok, detail = '') {
 }
 
 const browser = await webkit.launch();
+
+/** The board's mean colour once play has started, with the camera where the scenario puts it (a screenshot). */
+async function boardColour(page) {
+  await page.waitForSelector('[data-testid="board-loading"]', { state: 'detached', timeout: 600000 });
+  await skipToPlay(page, 600000);
+  await page.waitForTimeout(4000);
+  const box = await page.locator('canvas').first().boundingBox();
+  const shot = PNG.sync.read(await page.screenshot({ clip: { x: box.x + box.width * 0.2, y: box.y + box.height * 0.2, width: box.width * 0.6, height: box.height * 0.4 } }));
+  const sum = [0, 0, 0];
+  for (let i = 0; i < shot.data.length; i += 4) for (let c = 0; c < 3; c++) sum[c] += shot.data[i + c];
+  return sum.map((v) => Math.round(v / (shot.data.length / 4)));
+}
 const errorScreen = async (page) => (await page.locator('text=Something went wrong').count()) > 0;
 
 async function open(url) {
@@ -72,6 +89,23 @@ try {
   await page.waitForSelector('canvas', { timeout: 300000 });
   await page.waitForTimeout(5000);
   check('The South Guard starts, with no page error', errors.length === 0 && !(await errorScreen(page)), errors.slice(0, 2).join(' | '));
+
+  const webkitColour = await boardColour(page);
+  await page.context().close();
+  const reference = await chromium.launch();
+  try {
+    const { defaultBrowserType: _unused, ...iphone } = devices['iPhone 15'];
+    const cpage = await (await reference.newContext(iphone)).newPage();
+    await cpage.addInitScript(() => localStorage.setItem('wesnothweb2.statsConsent', 'no'));
+    await cpage.goto(`${base}/play/the_south_guard?difficulty=EASY`, { waitUntil: 'load', timeout: 120000 });
+    await cpage.waitForFunction(() => !!window.__wesnoth?.session, null, { timeout: 300000 });
+    await cpage.waitForSelector('canvas', { timeout: 300000 });
+    const chromiumColour = await boardColour(cpage);
+    const diff = Math.max(...webkitColour.map((c, i) => Math.abs(c - chromiumColour[i])));
+    check("the terrain's colours are Chromium's (board mean RGB)", diff <= 6, `WebKit ${webkitColour.join(',')} vs Chromium ${chromiumColour.join(',')}`);
+  } finally {
+    await reference.close();
+  }
 } finally {
   await browser.close();
 }
