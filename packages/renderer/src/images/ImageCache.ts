@@ -162,6 +162,13 @@ class ImageCacheImpl {
 
   private toTexture(bmp: CompositedImage | ImageBitmap): PIXI.Texture {
     if (typeof ImageBitmap !== 'undefined' && bmp instanceof ImageBitmap) {
+      if (transferredBitmapsUploadStraight()) {
+        // WebKit (Safari): drawn onto a canvas, whose upload premultiplies as PixiJS asks (see the probe).
+        const canvas = makeTextureCanvas(bmp.width, bmp.height)
+        canvas.getContext('2d')!.drawImage(bmp, 0, 0)
+        bmp.close()
+        return new PIXI.Texture({ source: new PIXI.CanvasSource({ resource: canvas as unknown as HTMLCanvasElement }) })
+      }
       // Worker result: the composited pixels, transferred without copying.
       return new PIXI.Texture({ source: new PIXI.ImageSource({ resource: bmp }) })
     }
@@ -199,3 +206,54 @@ class ImageCacheImpl {
 }
 
 export const ImageCache = new ImageCacheImpl()
+
+let uploadsStraight: boolean | null = null
+
+/**
+ * Whether this browser uploads a worker's `transferToImageBitmap` result to WebGL with its colour not
+ * premultiplied, though PixiJS asks for it (`UNPACK_PREMULTIPLY_ALPHA_WEBGL`): WebKit does, Chromium does not.
+ * Every translucent pixel then draws far too bright -- real, reported: Of Pearls and Pirates 1's terrain "way off"
+ * on Safari, its transitions glaring. Probed once: a half-transparent red pixel, uploaded as PixiJS uploads an
+ * ImageBitmap, read back. (The worker cannot fix it itself: WebKit's worker crashes making a bitmap from a
+ * canvas, and premultiplies a transferred one twice.)
+ */
+export function transferredBitmapsUploadStraight(): boolean {
+  if (uploadsStraight !== null) return uploadsStraight
+  uploadsStraight = false
+  try {
+    if (typeof OffscreenCanvas === 'undefined') return uploadsStraight
+    const source = new OffscreenCanvas(1, 1)
+    const ctx = source.getContext('2d')
+    if (!ctx) return uploadsStraight
+    ctx.fillStyle = 'rgba(255, 0, 0, 0.502)'
+    ctx.fillRect(0, 0, 1, 1)
+    const bitmap = source.transferToImageBitmap()
+    const gl = new OffscreenCanvas(1, 1).getContext('webgl')
+    if (!gl) return uploadsStraight
+    const texture = gl.createTexture()
+    gl.bindTexture(gl.TEXTURE_2D, texture)
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bitmap)
+    const framebuffer = gl.createFramebuffer()
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer)
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0)
+    const pixel = new Uint8Array(4)
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
+    uploadsStraight = pixel[3]! > 0 && pixel[0]! > 200
+    bitmap.close()
+    gl.getExtension('WEBGL_lose_context')?.loseContext()
+  } catch {
+    uploadsStraight = false
+  }
+  return uploadsStraight
+}
+
+/** A canvas for one texture's pixels: a DOM canvas (WebKit uploads an OffscreenCanvas to WebGL as black). */
+function makeTextureCanvas(width: number, height: number): OffscreenCanvas | HTMLCanvasElement {
+  if (typeof document === 'undefined') return new OffscreenCanvas(width, height)
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  return canvas
+}
+
