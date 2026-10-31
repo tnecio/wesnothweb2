@@ -3,8 +3,10 @@ name: Safari
 # The game in Apple's browsers, on GitHub's macOS runners (free for a public repository): real desktop Safari
 # and Mobile Safari in an iOS simulator, driven by safaridriver (apps/web/scripts/safari-webdriver.mjs), and
 # Playwright's WebKit on macOS (apps/web/scripts/webkit-playthrough.mjs). Players reported crashes and wrong
-# colours on Safari, and nothing else here runs it. Run by hand: the runners have no GPU, so each run takes a
-# while and says nothing about speed. Screenshots and results.json are kept as the run's artifacts.
+# colours on Safari, and nothing else here runs it. Run by hand: each run takes 10-15 minutes, and a virtual
+# machine's GPU says little about a player's speed. Desktop Safari there decodes no image for scripts, so its
+# board stays empty (safari-webdriver.mjs skips that check); the iOS simulator draws it.
+# Screenshots and results.json are kept as the run's artifacts.
 on:
   workflow_dispatch:
   # And when the checks themselves change (a workflow can be run by hand only once it is on main).

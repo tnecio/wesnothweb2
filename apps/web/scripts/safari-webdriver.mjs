@@ -11,7 +11,13 @@
  *   - waits until the page is ready (the title screen, or the board with play started);
  *   - fails if the game's error screen is up, or the page reported an error (collected from `error` and
  *     `unhandledrejection` once the page has loaded: earlier ones only show as the error screen);
- *   - saves a screenshot and the board's mean colour (results.json), to compare with another browser's.
+ *   - checks the board is drawn: WebGL's pixels at its centre, read right after one of the game's draws, are not
+ *     just the clear colour;
+ *   - saves a screenshot, the board's mean colour and the page's console warnings (results.json).
+ * Before the scenarios it tries each way the game decodes images on a terrain image (`<img>`,
+ * `createImageBitmap`, `ImageDecoder`, a worker's OffscreenCanvas, the WebGL upload). Desktop Safari on the
+ * runners decodes none of them (InvalidStateError, while the iOS simulator decodes all): there the board
+ * checks are skipped.
  *
  * Needs the dev server (`window.__wesnoth` is how it knows play has started).
  */
@@ -30,6 +36,7 @@ const label = simulator ? `iOS simulator (${simulator})` : 'desktop Safari';
 mkdirSync(out, { recursive: true });
 
 const failures = [];
+let canDecode = true;
 const results = { target: label, checks: [] };
 function check(name, ok, detail = '') {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${detail ? ` -- ${detail}` : ''}`);
@@ -275,6 +282,10 @@ async function scenario(name, path) {
     console.log(`     ${JSON.stringify(page)}`);
     check(`${name} starts, with no error`, !shown && errors.length === 0, shown ?? errors.slice(0, 2).join(' | '));
     console.log(`     ${seconds} s to play; board mean RGB ${colour.join(',')}`);
+    if (canDecode) {
+      const centre = page?.gl?.centreMean;
+      check(`${name}: the board is drawn`, Array.isArray(centre) && centre.slice(0, 3).some((c) => Math.abs(c - 0x11) > 8), `WebGL centre ${JSON.stringify(centre)} (the clear colour is 17,17,17)`);
+    }
   } catch (e) {
     await screenshot(name).catch(() => {});
     check(`${name} starts, with no error`, false, String(e.message ?? e));
@@ -306,11 +317,16 @@ try {
     return { renderer: info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER), maxTexture: gl.getParameter(gl.MAX_TEXTURE_SIZE) };`).catch((e) => String(e));
   console.log(`     WebGL 2: ${JSON.stringify(results.webgl)}`);
 
-  await scenario('south-guard-1', '/play/the_south_guard?difficulty=EASY');
-  await scenario('pearls-and-pirates-1', '/play/of_pearls_and_pirates?difficulty=NORMAL');
-  // Last: Playwright's Linux WebKit crashes the page on the worker step.
   results.imagePipeline = await imagePipeline();
   console.log(`     image pipeline: ${JSON.stringify(results.imagePipeline)}`);
+  // Desktop Safari on GitHub's macOS runners decodes no image a script asks for (every way throws
+  // InvalidStateError, while the same build on an iOS simulator decodes them all): the board cannot be drawn
+  // there, which is the runner's, not the game's. Its other checks still hold.
+  canDecode = Array.isArray(results.imagePipeline?.img);
+  if (!canDecode) console.log('     this browser decodes no image for scripts here: the board checks are skipped');
+
+  await scenario('south-guard-1', '/play/the_south_guard?difficulty=EASY');
+  await scenario('pearls-and-pirates-1', '/play/of_pearls_and_pirates?difficulty=NORMAL');
 } finally {
   writeFileSync(join(out, 'results.json'), JSON.stringify(results, null, 2));
   await wd('DELETE', `/session/${sid}`).catch(() => {});
