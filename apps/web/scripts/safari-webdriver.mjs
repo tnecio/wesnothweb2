@@ -84,7 +84,13 @@ const collectErrors = () =>
       window.__safariErrors = [];
       addEventListener('error', (e) => __safariErrors.push('error: ' + (e.error && e.error.stack || e.message)));
       addEventListener('unhandledrejection', (e) => __safariErrors.push('rejection: ' + (e.reason && e.reason.stack || e.reason)));
+      window.__safariConsole = [];
+      for (const level of ['warn', 'error']) {
+        const original = console[level].bind(console);
+        console[level] = (...a) => { if (__safariConsole.length < 100) __safariConsole.push(level + ': ' + a.map(String).join(' ').slice(0, 300)); original(...a); };
+      }
     }`);
+const consoleLines = () => run('return window.__safariConsole || []');
 const pageErrors = () => run('return window.__safariErrors || []');
 const errorScreen = () => run(`const s = document.querySelector('[data-testid="error-screen"] .message'); return s ? s.textContent : null`);
 
@@ -160,6 +166,59 @@ const pageState = () =>
   }).catch((e) => String(e.message ?? e));
 
 /**
+ * How this browser handles each step an image takes before the board draws it, on a real terrain image
+ * (opaque grass): the mean RGBA each way gives, which should all be about the same.
+ */
+const imagePipeline = () =>
+  wd('POST', `/session/${sid}/execute/async`, {
+    script: `
+      const done = arguments[arguments.length - 1];
+      const url = '/game-images/core/images/terrain/grass/green.png';
+      const out = { ImageDecoder: typeof ImageDecoder, OffscreenCanvas: typeof OffscreenCanvas, userAgent: navigator.userAgent };
+      const mean = (data) => { const s = [0, 0, 0, 0]; for (let i = 0; i < data.length; i++) s[i % 4] += data[i]; return s.map((v) => Math.round(v / (data.length / 4))); };
+      const drawn = (source, w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.drawImage(source, 0, 0); return mean(g.getImageData(0, 0, w, h).data); };
+      const glMean = (source) => {
+        const c = document.createElement('canvas'); c.width = 8; c.height = 8;
+        const x = Math.floor(source.width / 2) - 4, y = Math.floor(source.height / 2) - 4;
+        const gl = c.getContext('webgl', { preserveDrawingBuffer: true });
+        const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+        const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+        const px = new Uint8Array(8 * 8 * 4); gl.readPixels(x, y, 8, 8, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        return { mean: mean(px), error: gl.getError() };
+      };
+      const step = async (name, f) => { try { out[name] = await f(); } catch (e) { out[name] = 'threw: ' + e; } };
+      (async () => {
+        const blob = await (await fetch(url)).blob();
+        out.type = blob.type;
+        await step('img', async () => { const i = new Image(); i.src = URL.createObjectURL(blob); await i.decode(); return drawn(i, i.width, i.height); });
+        await step('createImageBitmap', async () => { const b = await createImageBitmap(blob, { colorSpaceConversion: 'none' }); return [b.width, b.height, drawn(b, b.width, b.height)]; });
+        await step('createImageBitmapToWebGL', async () => glMean(await createImageBitmap(blob, { colorSpaceConversion: 'none' })));
+        await step('ImageDecoder', async () => {
+          if (typeof ImageDecoder === 'undefined') return 'none';
+          const d = new ImageDecoder({ data: await blob.arrayBuffer(), type: blob.type, premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+          const { image } = await d.decode();
+          const buf = new Uint8Array(image.allocationSize()); await image.copyTo(buf);
+          const r = [image.format, image.codedWidth, image.codedHeight, mean(buf)]; image.close(); d.close(); return r;
+        });
+        await step('worker', () => new Promise((resolve) => {
+          const code = 'onmessage = async (e) => { try { const b = await createImageBitmap(e.data, { colorSpaceConversion: "none" });'
+            + ' const c = new OffscreenCanvas(b.width, b.height); const g = c.getContext("2d"); g.drawImage(b, 0, 0);'
+            + ' const s = [0,0,0,0]; const d = g.getImageData(0, 0, b.width, b.height).data; for (let i = 0; i < d.length; i++) s[i % 4] += d[i];'
+            + ' const t = c.transferToImageBitmap(); postMessage({ inWorker: s.map((v) => Math.round(v / (d.length / 4))), bitmap: t }, [t]); } catch (err) { postMessage({ error: String(err) }); } };';
+          const w = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
+          w.onmessage = (e) => { const r = e.data; if (r.bitmap) { r.transferredTo2d = drawn(r.bitmap, r.bitmap.width, r.bitmap.height); r.transferredToWebGL = glMean(r.bitmap); delete r.bitmap; } resolve(r); w.terminate(); };
+          w.onerror = (e) => resolve('worker error: ' + e.message);
+          w.postMessage(blob);
+          setTimeout(() => resolve('worker timed out'), 15000);
+        }));
+        done(out);
+      })().catch((e) => done('threw: ' + e));`,
+    args: [],
+  }).catch((e) => String(e.message ?? e));
+
+/**
  * Dismisses the story screens and opening dialogues, as `skipToPlay` does in the Playwright checks (by clicking:
  * the story with Escape, a message by a click anywhere). Done when nothing has come up for 8 s.
  */
@@ -200,7 +259,9 @@ async function scenario(name, path) {
     const shown = await errorScreen();
     const errors = await pageErrors();
     const page = await pageState();
-    results[name] = { seconds, colour, errors, errorScreen: shown, page };
+    const logged = await consoleLines();
+    results[name] = { seconds, colour, errors, errorScreen: shown, page, console: logged };
+    if (logged.length > 0) console.log(`     console (${logged.length}):\n       ${logged.slice(0, 15).join('\n       ')}`);
     console.log(`     ${JSON.stringify(page)}`);
     check(`${name} starts, with no error`, !shown && errors.length === 0, shown ?? errors.slice(0, 2).join(' | '));
     console.log(`     ${seconds} s to play; board mean RGB ${colour.join(',')}`);
@@ -237,6 +298,9 @@ try {
 
   await scenario('south-guard-1', '/play/the_south_guard?difficulty=EASY');
   await scenario('pearls-and-pirates-1', '/play/of_pearls_and_pirates?difficulty=NORMAL');
+  // Last: Playwright's Linux WebKit crashes the page on the worker step.
+  results.imagePipeline = await imagePipeline();
+  console.log(`     image pipeline: ${JSON.stringify(results.imagePipeline)}`);
 } finally {
   writeFileSync(join(out, 'results.json'), JSON.stringify(results, null, 2));
   await wd('DELETE', `/session/${sid}`).catch(() => {});
