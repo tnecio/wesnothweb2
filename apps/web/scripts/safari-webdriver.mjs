@@ -192,6 +192,16 @@ const imagePipeline = () =>
       (async () => {
         const blob = await (await fetch(url)).blob();
         out.type = blob.type;
+        const head = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
+        out.bytes = [blob.size, Array.from(head).join(',')];
+        await step('imgFromUrl', async () => { const i = new Image(); i.src = url; await i.decode(); return drawn(i, i.width, i.height); });
+        await step('createImageBitmapFromImg', async () => { const i = new Image(); i.src = url; await i.decode(); const b = await createImageBitmap(i); return [b.width, drawn(b, b.width, b.height)]; });
+        await step('canvasBlobRoundTrip', async () => {
+          const c = document.createElement('canvas'); c.width = 4; c.height = 4; const g = c.getContext('2d'); g.fillStyle = '#3080c0'; g.fillRect(0, 0, 4, 4);
+          const made = await new Promise((r) => c.toBlob(r, 'image/png'));
+          const b = await createImageBitmap(made); return [made.size, drawn(b, 4, 4)];
+        });
+        await step('arrayBufferBlob', async () => { const b = await createImageBitmap(new Blob([await blob.arrayBuffer()], { type: 'image/png' })); return drawn(b, b.width, b.height); });
         await step('img', async () => { const i = new Image(); i.src = URL.createObjectURL(blob); await i.decode(); return drawn(i, i.width, i.height); });
         await step('createImageBitmap', async () => { const b = await createImageBitmap(blob, { colorSpaceConversion: 'none' }); return [b.width, b.height, drawn(b, b.width, b.height)]; });
         await step('createImageBitmapToWebGL', async () => glMean(await createImageBitmap(blob, { colorSpaceConversion: 'none' })));
