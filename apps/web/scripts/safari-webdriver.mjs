@@ -76,7 +76,6 @@ async function press(key) {
   });
 }
 const ESCAPE = '';
-const ENTER = '';
 
 /** Collects the page's errors from now on (in `window.__safariErrors`). */
 const collectErrors = () =>
@@ -109,22 +108,41 @@ function meanColour(png) {
   return sum.map((v) => Math.round(v / n));
 }
 
-/** Dismisses the story screens and opening dialogues, as `skipToPlay` does in the Playwright checks. */
+/** Whether the page is drawing: frames in a second, visibility, the board canvas's size. */
+const pageState = () =>
+  wd('POST', `/session/${sid}/execute/async`, {
+    script: `
+      const done = arguments[arguments.length - 1];
+      let frames = 0;
+      const tick = () => { frames++; requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+      setTimeout(() => {
+        const c = document.querySelector('canvas');
+        done({ framesPerSecond: frames, visibility: document.visibilityState, focus: document.hasFocus(),
+          canvas: c ? [c.width, c.height, c.clientWidth, c.clientHeight] : null, dpr: devicePixelRatio });
+      }, 1000);`,
+    args: [],
+  }).catch((e) => String(e.message ?? e));
+
+/**
+ * Dismisses the story screens and opening dialogues, as `skipToPlay` does in the Playwright checks (by clicking:
+ * the story with Escape, a message by a click anywhere). Done when nothing has come up for 8 s.
+ */
 async function skipToPlay() {
   const started = Date.now();
   let quiet = 0;
   while (Date.now() - started < timeout) {
     const state = await run(`
       if (document.querySelector('.story')) return 'story';
-      if (document.querySelector('.window[role="dialog"], [data-testid="gui-dialog"]')) return 'dialogue';
+      const message = document.querySelector('.wml-message-open');
+      if (message) { message.click(); return 'message'; }
       const ok = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'OK');
       if (ok) { ok.click(); return 'ok'; }
       return null;`).catch(() => 'navigating');
     if (state === 'story') await press(ESCAPE);
-    else if (state === 'dialogue') await press(ENTER);
     if (state) quiet = 0;
-    else if (++quiet >= 3) return;
-    await sleep(500);
+    else if (++quiet >= 8) return;
+    await sleep(1000);
   }
   throw new Error('still in a pre-play screen');
 }
@@ -144,7 +162,9 @@ async function scenario(name, path) {
     const colour = meanColour(shot);
     const shown = await errorScreen();
     const errors = await pageErrors();
-    results[name] = { seconds, colour, errors, errorScreen: shown };
+    const page = await pageState();
+    results[name] = { seconds, colour, errors, errorScreen: shown, page };
+    console.log(`     ${JSON.stringify(page)}`);
     check(`${name} starts, with no error`, !shown && errors.length === 0, shown ?? errors.slice(0, 2).join(' | '));
     console.log(`     ${seconds} s to play; board mean RGB ${colour.join(',')}`);
   } catch (e) {
