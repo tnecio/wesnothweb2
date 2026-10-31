@@ -1,0 +1,135 @@
+name: Safari
+
+# The game in Apple's browsers, on GitHub's macOS runners (free for a public repository): real desktop Safari
+# and Mobile Safari in an iOS simulator, driven by safaridriver (apps/web/scripts/safari-webdriver.mjs), and
+# Playwright's WebKit on macOS (apps/web/scripts/webkit-playthrough.mjs). Players reported crashes and wrong
+# colours on Safari, and nothing else here runs it. Run by hand: the runners have no GPU, so each run takes a
+# while and says nothing about speed. Screenshots and results.json are kept as the run's artifacts.
+on:
+  workflow_dispatch:
+  # And when the checks themselves change (a workflow can be run by hand only once it is on main).
+  push:
+    paths: ['.github/workflows/safari.yml', 'apps/web/scripts/safari-webdriver.mjs']
+
+permissions:
+  contents: read
+
+jobs:
+  # The generated files the dev server serves (not in git), built on Linux as CI builds them.
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - id: inputs
+        run: echo "hash=$(node --import tsx apps/web/scripts/rebuild-snapshots.mjs --inputs-hash)" >> "$GITHUB_OUTPUT"
+      - id: cache
+        uses: actions/cache@v6
+        with:
+          path: apps/web/public/scenarios
+          key: scenarios-${{ steps.inputs.outputs.hash }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: npm run build:scenarios --workspace=apps/web
+      - run: |
+          npm run build:atlases --workspace=apps/web
+          npm run build:lua --workspace=apps/web
+          npm run build:help --workspace=apps/web
+      - uses: actions/upload-artifact@v7
+        with:
+          name: generated
+          path: |
+            apps/web/public/scenarios
+            apps/web/public/atlases
+            apps/web/public/lua
+            apps/web/public/help
+          include-hidden-files: true
+          retention-days: 1
+
+  safari:
+    name: ${{ matrix.target }}
+    needs: prepare
+    runs-on: macos-15
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [desktop Safari, iOS simulator, Playwright WebKit]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v8
+        with:
+          name: generated
+          path: apps/web/public
+
+      - name: Start the dev server
+        working-directory: apps/web
+        run: |
+          nohup npx vite --host --port 5173 --strictPort > "$RUNNER_TEMP/vite.log" 2>&1 &
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:5173/ && break; sleep 2; done
+          curl -sf -o /dev/null http://localhost:5173/ || { cat "$RUNNER_TEMP/vite.log"; exit 1; }
+          # Transform the app's modules once, so the browsers' first load is not also the server's.
+          curl -sf -o /dev/null http://localhost:5173/src/main.ts || true
+          sw_vers; system_profiler SPDisplaysDataType | grep -E 'Chipset|Metal|Resolution' || true
+
+      - if: matrix.target != 'Playwright WebKit'
+        name: Start safaridriver
+        run: |
+          sudo safaridriver --enable
+          nohup safaridriver --port 4444 > "$RUNNER_TEMP/safaridriver.log" 2>&1 &
+          sleep 2
+
+      - if: matrix.target == 'desktop Safari'
+        working-directory: apps/web
+        run: node scripts/safari-webdriver.mjs --out "$RUNNER_TEMP/results"
+
+      - if: matrix.target == 'iOS simulator'
+        id: sim
+        name: Boot an iPhone simulator
+        run: |
+          xcrun simctl list devices available | grep -E 'iPhone' | head -n 20
+          device=$(xcrun simctl list devices available | grep -oE 'iPhone 1[0-9]( Pro)? \(' | head -n 1 | sed 's/ ($//')
+          echo "device=$device" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          # Safari's Settings > Advanced > Remote Automation, which safaridriver needs on iOS.
+          xcrun simctl spawn booted defaults write com.apple.mobilesafari RemoteAutomationEnabled -bool true || true
+          xcrun simctl spawn booted defaults write com.apple.WebKit.WebDriver RemoteAutomationEnabled -bool true || true
+
+      - if: matrix.target == 'iOS simulator'
+        id: simdriver
+        working-directory: apps/web
+        run: node scripts/safari-webdriver.mjs --simulator "${{ steps.sim.outputs.device }}" --out "$RUNNER_TEMP/results"
+
+      # Without WebDriver on the simulator, the pages still open and leave screenshots to look at.
+      - if: always() && matrix.target == 'iOS simulator' && steps.simdriver.outcome == 'failure'
+        name: Screenshots without WebDriver
+        run: |
+          mkdir -p "$RUNNER_TEMP/results/plain"
+          for page in "" "play/the_south_guard?difficulty=EASY" "play/of_pearls_and_pirates?difficulty=NORMAL"; do
+            name=$(echo "${page:-title}" | tr '/?=' '___')
+            xcrun simctl openurl booted "http://localhost:5173/$page"
+            for t in 60 120 180; do
+              sleep 60
+              xcrun simctl io booted screenshot "$RUNNER_TEMP/results/plain/$name-$t.png"
+            done
+          done
+
+      - if: matrix.target == 'Playwright WebKit'
+        working-directory: apps/web
+        run: |
+          npx playwright install webkit chromium
+          node scripts/webkit-playthrough.mjs
+
+      - if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/results"
+          cp "$RUNNER_TEMP"/*.log "$RUNNER_TEMP/results/" 2>/dev/null || true
+          [ -f "$RUNNER_TEMP/results/results.json" ] && cat "$RUNNER_TEMP/results/results.json" || true
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: ${{ runner.temp }}/results
+          retention-days: 14
