@@ -118,8 +118,43 @@ const pageState = () =>
       requestAnimationFrame(tick);
       setTimeout(() => {
         const c = document.querySelector('canvas');
-        done({ framesPerSecond: frames, visibility: document.visibilityState, focus: document.hasFocus(),
-          canvas: c ? [c.width, c.height, c.clientWidth, c.clientHeight] : null, dpr: devicePixelRatio });
+        const state = { framesPerSecond: frames, visibility: document.visibilityState, focus: document.hasFocus(),
+          canvas: c ? [c.width, c.height, c.clientWidth, c.clientHeight] : null, dpr: devicePixelRatio };
+        if (!c) return done(state);
+        const style = getComputedStyle(c);
+        const rect = c.getBoundingClientRect();
+        state.css = { display: style.display, visibility: style.visibility, opacity: style.opacity,
+          rect: [rect.x, rect.y, rect.width, rect.height].map(Math.round),
+          atCentre: (document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) || {}).tagName };
+        // The drawing buffer is cleared once composited, so read it right after one of the game's own draws
+        // (the board redraws only when something changes: up to 5 s for one, then a resize to force one).
+        const gl = c.getContext('webgl2') || c.getContext('webgl');
+        if (!gl) return done(state);
+        state.gl = { lost: gl.isContextLost(), attributes: gl.getContextAttributes() };
+        const draw = gl.drawElements;
+        let sampled = false;
+        const finish = () => {
+          gl.drawElements = draw;
+          clearTimeout(nudge);
+          clearTimeout(giveUp);
+          done(state);
+        };
+        gl.drawElements = function (...a) {
+          draw.apply(this, a);
+          if (sampled) return;
+          sampled = true;
+          queueMicrotask(() => {
+            const w = 64, h = 64, px = new Uint8Array(w * h * 4);
+            gl.readPixels(Math.floor(gl.drawingBufferWidth / 2 - w / 2), Math.floor(gl.drawingBufferHeight / 2 - h / 2), w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+            const sum = [0, 0, 0, 0];
+            for (let i = 0; i < px.length; i++) sum[i % 4] += px[i];
+            state.gl.centreMean = sum.map((v) => Math.round(v / (w * h)));
+            state.gl.error = gl.getError();
+            finish();
+          });
+        };
+        const nudge = setTimeout(() => dispatchEvent(new Event('resize')), 5000);
+        const giveUp = setTimeout(() => { state.gl.centreMean = 'no draw in 10 s'; finish(); }, 10000);
       }, 1000);`,
     args: [],
   }).catch((e) => String(e.message ?? e));
@@ -134,6 +169,8 @@ async function skipToPlay() {
   while (Date.now() - started < timeout) {
     const state = await run(`
       if (document.querySelector('.story')) return 'story';
+      const option = document.querySelector('.wml-message-open button.option');
+      if (option) { option.click(); return 'option'; }
       const message = document.querySelector('.wml-message-open');
       if (message) { message.click(); return 'message'; }
       const ok = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'OK');
