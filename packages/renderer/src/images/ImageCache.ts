@@ -111,7 +111,18 @@ class ImageCacheImpl {
 
   /** Starts a new board's era; pass the result to `evictUnusedSince` once that board has loaded. */
   beginBoard(): number {
+    this.releaseDecoded()
     return ++this.era
+  }
+
+  /**
+   * Drops the decoded source images (bundle sheets, and the images cut from them) in this thread and every worker:
+   * at a new board, and once it has loaded. They were kept for the life of the tab, in each worker -- hundreds of MB
+   * on a phone. A later image decodes its sheet again.
+   */
+  private releaseDecoded(): void {
+    this.compositor.clear()
+    this.pool?.clearDecoded()
   }
 
   /**
@@ -121,6 +132,7 @@ class ImageCacheImpl {
    * WebKit). An image dropped and needed again is composited again.
    */
   evictUnusedSince(era: number): { count: number; bytes: number } {
+    this.releaseDecoded()
     let count = 0
     let bytes = 0
     for (const [ref, tex] of this.textures) {
