@@ -11,7 +11,7 @@ const emptyTerrainData = TerrainTypeData.fromConfigs([]);
 
 /** Phase 29 (real AI port) additions: `Unit.goto`, `UnitType.usage`, `Unit.toConfig()`. */
 
-function makeType(usage = ''): UnitType {
+function makeType(usage = '', advancesTo: string[] = []): UnitType {
   const weapon = new AttackType('sword', 'sword', 'blade', 'melee', 1, 1, 5, 3, 1, 1, 0, 0, undefined, []);
   return new UnitType(
     'Grunt',
@@ -27,7 +27,7 @@ function makeType(usage = ''): UnitType {
     15,
     -1,
     500,
-    [],
+    advancesTo,
     '',
     true,
     false,
@@ -123,5 +123,25 @@ describe('Unit.toConfig', () => {
     const rebuilt = Unit.fromConfig(cfg, () => type);
     expect(rebuilt.guardian).toBe(true);
     expect(rebuilt.hasStatus('poisoned')).toBe(true);
+  });
+
+  // `unit::write` writes `advances_to=` (and race, language_name): the stronger-AMLAs resource's "already at their
+  // max level" hint fires on `pre advance` when `$unit.advances_to` is empty -- with it missing, an Archer advancing
+  // to Longbowman got the hint (reported on The South Guard).
+  it('writes advances_to (empty at the highest level), race and language_name, and reads advances_to back', () => {
+    const archer = makeType('', ['Longbowman', 'Ranger']);
+    const cfg = Unit.create(archer, 1, new Location(0, 0)).toConfig();
+    expect(cfg.getString('advances_to')).toBe('Longbowman,Ranger');
+    expect(cfg.getString('race')).toBe('orc');
+    expect(cfg.getString('language_name')).toBe('Grunt');
+    expect(Unit.create(makeType(), 1, new Location(0, 0)).toConfig().getString('advances_to', 'missing')).toBe('');
+
+    const changed = cfg.clone();
+    changed.setAttribute('advances_to', 'Ranger');
+    expect(Unit.fromConfig(changed, () => archer).advancesTo).toEqual(['Ranger']);
+    changed.setAttribute('advances_to', 'null');
+    expect(Unit.fromConfig(changed, () => archer).advancesTo).toEqual([]);
+    changed.setAttribute('advances_to', '');
+    expect(Unit.fromConfig(changed, () => archer).advancesTo).toEqual(['Longbowman', 'Ranger']);
   });
 });

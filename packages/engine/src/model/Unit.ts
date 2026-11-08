@@ -526,6 +526,10 @@ export class Unit {
     if (cfg.hasAttribute('max_experience')) unit.maxExperience = Math.max(1, cfg.getNumber('max_experience'));
     if (cfg.hasAttribute('level')) unit.level = cfg.getNumber('level');
     if (cfg.hasAttribute('undead_variation')) unit.undeadVariation = cfg.getString('undead_variation');
+    // `unit::init`: `advances_to=null` is nowhere; an empty list keeps the type's.
+    const advancesTo = cfg.getString('advances_to', '').split(',').map((t) => t.trim()).filter((t) => t !== '');
+    if (advancesTo.length === 1 && advancesTo[0] === 'null') unit.advancesTo = [];
+    else if (advancesTo.length > 0) unit.advancesTo = advancesTo;
     if (cfg.hasAttribute('max_attacks')) unit.maxAttacksPerTurn = Math.max(0, cfg.getNumber('max_attacks'));
     if (cfg.hasChild('attack')) unit.attacks = cfg.children('attack').map((a) => AttackType.fromConfig(a));
     const ai = cfg.child('ai');
@@ -602,6 +606,11 @@ export class Unit {
     cfg.setAttribute('experience', this.experience);
     cfg.setAttribute('max_experience', this.maxExperience);
     cfg.setAttribute('level', this.level);
+    // `unit::write`: where it advances to (empty at its highest level -- what the stronger-AMLAs resource's
+    // "already at their max level" hint tests on `$unit.advances_to`), its race and its type's name.
+    cfg.setAttribute('advances_to', this.advancesTo.join(','));
+    cfg.setAttribute('race', this.type.raceId);
+    cfg.setAttribute('language_name', this.type.nameT ?? this.type.name);
     cfg.setAttribute('undead_variation', this.undeadVariation);
     cfg.setAttribute('canrecruit', this.canRecruit);
     cfg.setAttribute('resting', this.resting);
