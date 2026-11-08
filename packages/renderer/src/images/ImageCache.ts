@@ -100,7 +100,40 @@ class ImageCacheImpl {
   /** As get(), for a reference already joined (e.g. by hexedRef). */
   getRef(ref: string): PIXI.Texture | null {
     const tex = this.textures.get(ref)
-    return tex && !tex.destroyed ? tex : null
+    if (!tex || tex.destroyed) return null
+    this.used.set(ref, this.era)
+    return tex
+  }
+
+  /** When each cached image was last asked for: the board era (`beginBoard`) it was asked for in. */
+  private readonly used = new Map<string, number>()
+  private era = 0
+
+  /** Starts a new board's era; pass the result to `evictUnusedSince` once that board has loaded. */
+  beginBoard(): number {
+    return ++this.era
+  }
+
+  /**
+   * Drops every cached image not asked for since `era` began: once a new board has loaded, what only the previous
+   * scenario drew. Without it the cache only grew -- every image of every scenario played in the tab -- and on
+   * iPhones Safari killed the tab moving on to The South Guard 2 (174 MB of image pixels by then, measured in
+   * WebKit). An image dropped and needed again is composited again.
+   */
+  evictUnusedSince(era: number): { count: number; bytes: number } {
+    let count = 0
+    let bytes = 0
+    for (const [ref, tex] of this.textures) {
+      if ((this.used.get(ref) ?? -1) >= era) continue
+      if (!tex.destroyed) {
+        bytes += tex.source.pixelWidth * tex.source.pixelHeight * 4
+        tex.destroy(true)
+      }
+      this.textures.delete(ref)
+      this.used.delete(ref)
+      count++
+    }
+    return { count, bytes }
   }
 
   /** Resolve and cache a set of refs (bulk, low priority). Failures are logged, never thrown. */
@@ -119,6 +152,7 @@ class ImageCacheImpl {
 
   private resolveRef(ref: string, priority: RenderPriority): Promise<PIXI.Texture | null> {
     const existing = this.textures.get(ref)
+    this.used.set(ref, this.era)
     if (existing && !existing.destroyed) return Promise.resolve(existing)
 
     const inFlight = this.pending.get(ref)
@@ -129,6 +163,7 @@ class ImageCacheImpl {
         if (!bmp) return null
         const tex = this.toTexture(bmp)
         this.textures.set(ref, tex)
+        this.used.set(ref, this.era)
         return tex
       })
       .catch(err => {
@@ -194,6 +229,7 @@ class ImageCacheImpl {
   clear(): void {
     for (const tex of this.textures.values()) tex.destroy(true)
     this.textures.clear()
+    this.used.clear()
     this.pending.clear()
     this.compositor.clear()
     this.pool?.cancelAll()

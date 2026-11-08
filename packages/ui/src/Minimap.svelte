@@ -79,6 +79,8 @@
 
   /** The tile at `path`, if loaded; starts loading it (and repaints once it arrives) otherwise. */
   function tile(path: string): CanvasImageSource | null {
+    // A texture the image cache has since dropped (`evictUnusedSince`, a new board) is fetched again.
+    if (images.get(path)?.destroyed) images.delete(path);
     if (!images.has(path)) {
       images.set(path, null);
       void ImageCache.resolve(path).then((tex) => {
