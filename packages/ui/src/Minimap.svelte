@@ -26,6 +26,7 @@
     minimapPointToBoard,
     minimapHexRect,
     ImageCache,
+    drawableOf,
     imageUrl,
     type MinimapInput,
     type MinimapOptions,
@@ -86,7 +87,7 @@
       });
     }
     const tex = images.get(path);
-    return tex && !tex.destroyed ? (tex.source.resource as CanvasImageSource) : null;
+    return tex && !tex.destroyed ? drawableOf(tex) : null;
   }
 
   const list = $derived<MinimapDrawList | null>(input ? buildMinimap(input, options, style) : null);

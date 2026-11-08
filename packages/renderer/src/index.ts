@@ -14,6 +14,7 @@ export {
 
 export {
   ImageCache,
+  drawableOf,
   hexedRef,
   todRef,
   imageUrl,
