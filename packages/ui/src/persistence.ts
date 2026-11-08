@@ -15,8 +15,11 @@
  *
  * Compression via the native `CompressionStream`/`DecompressionStream`
  * APIs (Chromium/Firefox/Safari all ship these) rather than pulling in a
- * gzip library -- one less dependency, and the stored value is then
- * already a gzip `Blob`, which is exactly what a download needs.
+ * gzip library -- one less dependency. The gzip bytes are stored as an
+ * `ArrayBuffer`, not a `Blob`: WebKit cannot store a Blob in IndexedDB in an
+ * ephemeral session (Safari's Private Browsing), so every save failed there
+ * ("Autosave failed: save transaction failed"). Saves written as Blobs before
+ * are still read.
  */
 
 const DB_NAME = 'wesnothweb2-saves';
@@ -75,7 +78,8 @@ async function gzipJson(data: unknown): Promise<Blob> {
   return await new Response(cs.readable).blob();
 }
 
-async function gunzipJson<T>(blob: Blob): Promise<T> {
+async function gunzipJson<T>(stored: ArrayBuffer | Blob): Promise<T> {
+  const blob = stored instanceof Blob ? stored : new Blob([stored]);
   const ds = new DecompressionStream('gzip');
   const decompressed = blob.stream().pipeThrough(ds);
   const text = await new Response(decompressed).text();
@@ -83,7 +87,8 @@ async function gunzipJson<T>(blob: Blob): Promise<T> {
 }
 
 interface StoredSave extends SaveMeta {
-  blob: Blob;
+  /** The gzip bytes: an ArrayBuffer, or a Blob in saves written before. */
+  blob: ArrayBuffer | Blob;
 }
 
 /** Everything but the name and timestamp, which `saveGame` supplies itself. */
@@ -91,7 +96,7 @@ export type SaveDetails = Omit<SaveMeta, 'name' | 'savedAt'>;
 
 /** Writes (or overwrites) a named save slot. */
 export async function saveGame(name: string, details: SaveDetails, data: unknown): Promise<void> {
-  const blob = await gzipJson(data);
+  const blob = await (await gzipJson(data)).arrayBuffer();
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
