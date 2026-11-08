@@ -266,6 +266,25 @@ function stage(name) {
   console.log(`@stage ${name.replace(/\s+/g, '_')} ${(Date.now() / 1000).toFixed(0)}`);
 }
 
+/** Wins the scenario on screen and plays on into the next (`next`, whose id matches `idPattern`). */
+async function winAndContinue(won, next, idPattern) {
+  try {
+    await run(`
+      window.__wesnoth.addEvent('[event]\\nname=select\\n[endlevel]\\nresult=victory\\n[/endlevel]\\n[/event]');
+      const leader = window.__wesnoth.session.board.allUnits().find((u) => u.side === 1 && u.canRecruit);
+      window.__wesnoth.clickHex(leader.location.x, leader.location.y);`);
+    await skipToPlay();
+    await waitFor('End Scenario', `return (document.querySelector('[data-testid="turn-button"]')?.textContent ?? '').trim() === 'End Scenario'`, 120000);
+    stage(`${won} won`);
+    await run(`document.querySelector('[data-testid="turn-button"]').click()`);
+    await waitFor(next, `return /${idPattern}/.test(window.__wesnoth?.session?.snapshot?.scenario?.id ?? '')`, 300000);
+    await scenario(next, '', { navigate: false });
+  } catch (e) {
+    await screenshot(next).catch(() => {});
+    check(`${next} starts after ${won} is won`, false, String(e.message ?? e));
+  }
+}
+
 async function scenario(name, path, { navigate = true } = {}) {
   const started = Date.now();
   stage(`${name} start`);
@@ -339,23 +358,12 @@ try {
   if (!canDecode) console.log('     this browser decodes no image for scripts here: the board checks are skipped');
 
   await scenario('south-guard-1', '/play/the_south_guard?difficulty=EASY');
-  // On to The South Guard 2, as a player does: where Safari on an iPhone 12 mini killed the tab. The victory is
-  // forced (a WML event on selecting the leader), then End Scenario, the story, the next board.
-  try {
-    await run(`
-      window.__wesnoth.addEvent('[event]\\nname=select\\n[endlevel]\\nresult=victory\\n[/endlevel]\\n[/event]');
-      const leader = window.__wesnoth.session.board.allUnits().find((u) => u.side === 1 && u.canRecruit);
-      window.__wesnoth.clickHex(leader.location.x, leader.location.y);`);
-    await skipToPlay();
-    await waitFor('End Scenario', `return (document.querySelector('[data-testid="turn-button"]')?.textContent ?? '').trim() === 'End Scenario'`, 120000);
-    stage('south-guard-1 won');
-    await run(`document.querySelector('[data-testid="turn-button"]').click()`);
-    await waitFor('scenario 2', `return /Proven/.test(window.__wesnoth?.session?.snapshot?.scenario?.id ?? '')`, 300000);
-    await scenario('south-guard-2', '', { navigate: false });
-  } catch (e) {
-    await screenshot('south-guard-2').catch(() => {});
-    check('south-guard-2 starts after 1 is won', false, String(e.message ?? e));
-  }
+  // On to The South Guard 2, as a player goes (the victory forced by a WML event on selecting the leader, then End
+  // Scenario, the story, the next board), and 3 -- opened on its own: 2 leads to an interlude whose companion
+  // choice is the campaign's own dialog. Safari on an iPhone 12 mini killed the tab moving on to each; 3's map is
+  // mostly animated water.
+  await winAndContinue('south-guard-1', 'south-guard-2', 'Proven');
+  await scenario('south-guard-3', '/play/the_south_guard?difficulty=EASY&scenario=03_Vale_of_Tears');
   await scenario('pearls-and-pirates-1', '/play/of_pearls_and_pirates?difficulty=NORMAL');
 } finally {
   writeFileSync(join(out, 'results.json'), JSON.stringify(results, null, 2));
