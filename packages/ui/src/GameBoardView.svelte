@@ -1246,6 +1246,10 @@
     min-height: 0;
     touch-action: none;
     transition: filter 1.5s ease;
+    /* A long press opens the context menu; it must not also select text or bring up iOS's callout. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
   }
   .canvas-host.desaturated {
     filter: grayscale(1);
