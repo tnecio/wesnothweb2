@@ -52,10 +52,15 @@ function shardOf(ref: string, size: number): number {
 const MAX_IN_FLIGHT_PER_WORKER = 8
 const READY_TIMEOUT_MS = 10000
 
-/** Workers to start: leave one core for the main thread, at most 4. */
+/**
+ * Workers to start: leave one core for the main thread, at most 2, and 1 on a touch screen. Each worker decodes
+ * the bundle sheets it cuts images from for itself (The South Guard's terrain: ~100 MB decoded), so every worker
+ * costs that much memory again; with 4, Safari on iPhones ran out of memory and killed the tab.
+ */
 export function defaultPoolSize(): number {
   const cores = typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 2
-  return Math.max(1, Math.min(4, cores - 1))
+  const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
+  return Math.max(1, Math.min(touch ? 1 : 2, cores - 1))
 }
 
 export class CompositorPool {
@@ -175,6 +180,11 @@ export class CompositorPool {
     }
     for (const job of this.waiting.values()) job.resolve(null)
     this.waiting.clear()
+    for (const slot of this.slots) slot.worker.postMessage({ type: 'clear' } satisfies ToCompositorWorker)
+  }
+
+  /** Drops every worker's decoded images (bundle sheets and the images cut from them), leaving jobs running. */
+  clearDecoded(): void {
     for (const slot of this.slots) slot.worker.postMessage({ type: 'clear' } satisfies ToCompositorWorker)
   }
 
