@@ -16,8 +16,6 @@
   "env": {
     "staging": {
       "name": "wesnothweb2-staging",
-      // Also on workers.dev, as production is (a custom domain alone turns it off).
-      "workers_dev": true,
       "routes": [{ "pattern": "staging.wesnoth.fun", "custom_domain": true }],
       "assets": { "directory": "./dist", "not_found_handling": "single-page-application" }
     }
