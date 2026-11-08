@@ -96,7 +96,8 @@ jobs:
         env:
           DATA: ${{ env.GAME_DATA_ORIGIN }}/${{ steps.data.outputs.prefix }}
         run: |
-          site=$(grep -oE 'https://[^ ]+\.workers\.dev' apps/web/deploy.log | head -n 1)
+          # Staging has only its custom domain (no workers.dev address).
+          if [ "$STAGING" = true ]; then site=https://staging.wesnoth.fun; else site=$(grep -oE 'https://[^ ]+\.workers\.dev' apps/web/deploy.log | head -n 1); fi
           echo "Deployed to $site" | tee -a "$GITHUB_STEP_SUMMARY"
           # A first deploy's workers.dev address takes a minute or two to answer, so retry for up to ~3 minutes.
           check() {
@@ -108,11 +109,7 @@ jobs:
             echo "$code $1"; return 1
           }
           check "$site/"
-          # Staging's own address: a new custom domain's certificate can take a few minutes, so only a warning.
-          if [ "$STAGING" = true ]; then
-            check https://staging.wesnoth.fun/ || echo "::warning::https://staging.wesnoth.fun/ does not answer yet"
-            curl -sI "$site/" | grep -i '^x-robots-tag'
-          fi
+          if [ "$STAGING" = true ]; then curl -sI "$site/" | grep -i '^x-robots-tag'; fi
           check "$site/play/liberty"
           check "$site/scenarios/_core.json"
           check "$DATA/game-images/core/images/maps/titlescreen.webp"

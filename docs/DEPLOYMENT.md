@@ -12,7 +12,7 @@ and decisions), `ASSETS.md` (how the game data is split and cached) and the Phas
 | CI | `.github/workflows/ci.yml`, on every push to every branch |
 | Deploy | `.github/workflows/deploy.yml`: a `v*` tag on `main` to production, a `staging-*` tag on any branch to staging (or started by hand) |
 | The game | https://wesnoth.fun (also https://wesnothweb2.tomasz-necio.workers.dev): Cloudflare Workers static assets, Worker `wesnothweb2`. https://wesnoth.tnec.io and https://www.wesnoth.fun redirect to it |
-| Staging | https://staging.wesnoth.fun (also https://wesnothweb2-staging.tomasz-necio.workers.dev): Worker `wesnothweb2-staging`, public, same media and stats Worker as production (see Staging below) |
+| Staging | https://staging.wesnoth.fun: Worker `wesnothweb2-staging`, public, same media and stats Worker as production (see Staging below) |
 | Game media | https://data.wesnoth.fun: R2 bucket `wesnothweb2-data` (also attached as wesnoth-data.tnec.io, for pages built before the move) |
 | Statistics and bug reports | https://stats.wesnoth.fun: Worker `wesnoth-stats` (`apps/stats`), D1 `wesnoth-stats`, private R2 bucket `wesnoth-reports`; deployed by hand (below) |
 | Node | the version in `.nvmrc` (24), for CI, the deploy and local work |
@@ -69,12 +69,13 @@ git tag staging-safari-1 <any commit or branch>
 git push origin staging-safari-1
 ```
 
-A `staging-*` tag, on any branch, deploys that commit to **https://staging.wesnoth.fun** (also
-https://wesnothweb2-staging.tomasz-necio.workers.dev), the Worker `wesnothweb2-staging`
+A `staging-*` tag, on any branch, deploys that commit to **https://staging.wesnoth.fun**, the Worker
+`wesnothweb2-staging`
 (`wrangler deploy --env staging`, `apps/web/wrangler.jsonc`). Use it to try a branch on a phone, or show it to
 someone, before merging. It differs from production in:
 - the build version, which is the tag's name, on the title screen and in reports;
 - an `X-Robots-Tag: noindex` header on every path (`stage-dist.mjs --noindex`);
+- no workers.dev address, only its custom domain;
 - nothing else: it is public, reads the same game media (the same bucket and prefix, so a staging deploy
   uploads nothing unless it pins a new submodule commit), and sends statistics and bug reports to the same
   stats Worker, where its builds (`staging-*`) tell them apart.
