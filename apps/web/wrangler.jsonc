@@ -10,5 +10,14 @@
     "directory": "./dist",
     // Client-side routes (/play/<campaign>?...) get index.html on a hard refresh.
     "not_found_handling": "single-page-application"
+  },
+  // Staging (`staging-*` tags from any branch, deploy.yml): its own Worker on staging.wesnoth.fun, sharing the game
+  // media bucket with production. `wrangler deploy --env staging`.
+  "env": {
+    "staging": {
+      "name": "wesnothweb2-staging",
+      "routes": [{ "pattern": "staging.wesnoth.fun", "custom_domain": true }],
+      "assets": { "directory": "./dist", "not_found_handling": "single-page-application" }
+    }
   }
 }
