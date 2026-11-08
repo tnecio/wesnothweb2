@@ -82,9 +82,17 @@ jobs:
           nohup safaridriver --port 4444 > "$RUNNER_TEMP/safaridriver.log" 2>&1 &
           sleep 2
 
+      # Safari's content processes' memory every 2 s (the simulator's run on the host too), split by the script's
+      # stages in the summary below: Safari on iPhones killed the tab for memory.
+      - if: matrix.target != 'Playwright WebKit'
+        name: Sample Safari's memory
+        run: |
+          mkdir -p "$RUNNER_TEMP/results"
+          nohup bash -c 'while true; do echo "$(date +%s) $(ps -axo pid=,rss=,command= | awk "/com.apple.WebKit.WebContent/ && !/awk/ {printf \"%s:%d \", \$1, \$2}")"; sleep 2; done' > "$RUNNER_TEMP/results/memory.log" 2>&1 &
+
       - if: matrix.target == 'desktop Safari'
         working-directory: apps/web
-        run: node scripts/safari-webdriver.mjs --out "$RUNNER_TEMP/results"
+        run: node scripts/safari-webdriver.mjs --out "$RUNNER_TEMP/results" | tee "$RUNNER_TEMP/results/run.log"
 
       - if: matrix.target == 'iOS simulator'
         id: sim
@@ -102,7 +110,7 @@ jobs:
       - if: matrix.target == 'iOS simulator'
         id: simdriver
         working-directory: apps/web
-        run: node scripts/safari-webdriver.mjs --simulator "${{ steps.sim.outputs.device }}" --out "$RUNNER_TEMP/results"
+        run: node scripts/safari-webdriver.mjs --simulator "${{ steps.sim.outputs.device }}" --out "$RUNNER_TEMP/results" | tee "$RUNNER_TEMP/results/run.log"
 
       # Without WebDriver on the simulator, the pages still open and leave screenshots to look at.
       - if: always() && matrix.target == 'iOS simulator' && steps.simdriver.outcome == 'failure'
@@ -123,6 +131,31 @@ jobs:
         run: |
           npx playwright install webkit chromium
           node scripts/webkit-playthrough.mjs
+
+      - if: always() && matrix.target != 'Playwright WebKit'
+        name: Memory by stage
+        run: |
+          node -e '
+            const fs = require("fs"), dir = process.env.RUNNER_TEMP + "/results";
+            const samples = fs.readFileSync(dir + "/memory.log", "utf8").trim().split("\n").map((l) => {
+              const [t, ...procs] = l.trim().split(/\s+/);
+              const kb = procs.map((p) => +p.split(":")[1] || 0);
+              return { t: +t, max: Math.max(0, ...kb), sum: kb.reduce((a, b) => a + b, 0) };
+            });
+            const stages = (fs.existsSync(dir + "/run.log") ? fs.readFileSync(dir + "/run.log", "utf8") : "").split("\n")
+              .map((l) => /^@stage (\S+) (\d+)/.exec(l)).filter(Boolean).map((m) => ({ name: m[1], t: +m[2] }));
+            const lines = ["| From | Until | Largest WebContent process (peak) |", "|---|---|---|"];
+            for (let i = 0; i < stages.length; i++) {
+              const from = stages[i].t, until = stages[i + 1]?.t ?? Infinity;
+              const peak = Math.max(0, ...samples.filter((s) => s.t >= from && s.t < until).map((s) => s.max));
+              lines.push(`| ${stages[i].name} | ${stages[i + 1]?.name ?? "end"} | ${(peak / 1024).toFixed(0)} MB |`);
+            }
+            lines.push("", `Peak over the run: ${(Math.max(0, ...samples.map((s) => s.max)) / 1024).toFixed(0)} MB`);
+            console.log(lines.join("\n"));
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### ${process.env.TARGET}: memory\n\n` + lines.join("\n") + "\n");
+          '
+        env:
+          TARGET: ${{ matrix.target }}
 
       - if: always()
         run: |
