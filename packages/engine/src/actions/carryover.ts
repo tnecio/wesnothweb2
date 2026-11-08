@@ -169,14 +169,24 @@ export function computeGoldCarryover(input: GoldCarryoverInput): GoldCarryoverRe
   return { finishingBonusPerTurn, turnsLeft, finishingBonus, carryoverGoldValue, nextScenarioGold };
 }
 
-/** Unit ids inline-declared directly inside one `[side]` block: the leader's own `id=` plus any nested `[leader]`/`[unit] id=`. Deliberately does NOT look at `[recall]` children (those name units already ON the recall list, not a fresh re-declaration that should suppress carryover) or events elsewhere in the scenario (e.g. `{RECALL_LOYAL_UNITS}`, which upstream calls from a `prestart` `[event]`, not from `[side]` itself -- see this module's doc comment on why that auto-placement isn't replicated). */
+/**
+ * Unit ids inline-declared directly inside one `[side]` block -- the leader's own `id=` plus any nested
+ * `[leader]`/`[unit] id=` -- that create a unit: only one with a `type=` does (`team_builder::handle_unit` skips
+ * one "with no type information"). A `[side] id=Delfador` with no type (The Deceiver's Gambit 1 and 3) names the
+ * side but makes no leader: Delfador comes from the carried-over recall list (`{RECALL_XY Delfador ...}`). Real,
+ * reported bug: he was left out of the carryover as if re-declared, and the campaign lost its hero. Deliberately
+ * does NOT look at `[recall]` children (those name units already ON the recall list, not a fresh re-declaration
+ * that should suppress carryover) or events elsewhere in the scenario (e.g. `{RECALL_LOYAL_UNITS}`, which upstream
+ * calls from a `prestart` `[event]`, not from `[side]` itself -- see this module's doc comment on why that
+ * auto-placement isn't replicated).
+ */
 function inlineDeclaredIds(sideCfg: WmlConfig): Set<string> {
   const ids = new Set<string>();
   const leaderId = sideCfg.getString('id', '');
-  if (leaderId) ids.add(leaderId);
+  if (leaderId && sideCfg.getString('type', '') !== '') ids.add(leaderId);
   for (const unitCfg of [...sideCfg.children('leader'), ...sideCfg.children('unit')]) {
     const id = unitCfg.getString('id', '');
-    if (id) ids.add(id);
+    if (id && unitCfg.getString('type', '') !== '') ids.add(id);
   }
   return ids;
 }

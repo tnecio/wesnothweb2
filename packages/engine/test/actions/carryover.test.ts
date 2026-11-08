@@ -243,6 +243,7 @@ describe('computeCarryoverRecruits', () => {
     const side = nextScenario.addChild('side');
     side.setAttribute('side', 1);
     side.setAttribute('id', 'Kai Krellis'); // {SIDE_1} always re-declares Kai Krellis fresh.
+    side.setAttribute('type', 'Merman Child King');
 
     const board = makeBoard();
     const survivors = computeCarryoverRecruits(board, 1, nextScenario.toJSON());
@@ -254,9 +255,18 @@ describe('computeCarryoverRecruits', () => {
     const nextScenario = new WmlConfig();
     const side = nextScenario.addChild('side');
     side.setAttribute('side', 1);
-    side.addChild('leader').setAttribute('id', 'Kai Krellis');
+    side.addChild('leader').setAttribute('id', 'Kai Krellis').setAttribute('type', 'Merman Child King');
     const survivors = computeCarryoverRecruits(makeBoard(), 1, nextScenario.toJSON());
     expect(survivors.map((u) => u.id).sort()).toEqual(['', 'Cylanna']);
+  });
+
+  it("carries a unit the next [side] names without a type= (no unit made: The Deceiver's Gambit's [side] id=Delfador)", () => {
+    const nextScenario = new WmlConfig();
+    const side = nextScenario.addChild('side');
+    side.setAttribute('side', 1);
+    side.setAttribute('id', 'Kai Krellis');
+    const ids = computeCarryoverRecruits(makeBoard(), 1, nextScenario.toJSON()).map((u) => u.id);
+    expect(ids).toContain('Kai Krellis');
   });
 
   it('matches real 01_Invasion.cfg -> 02_Flight.cfg: Kai Krellis excluded, everyone else carried', () => {
@@ -288,6 +298,7 @@ describe('computeCarryoverRecruits', () => {
     const side = nextScenario.addChild('side');
     side.setAttribute('side', 1);
     side.setAttribute('id', 'Kai Krellis');
+    side.setAttribute('type', 'Merman Child King');
 
     const survivors = computeCarryoverRecruits(board, 1, nextScenario.toJSON());
     expect(survivors.map((u) => u.id).sort()).toEqual(['', 'Cylanna', 'Gwabbo']);
