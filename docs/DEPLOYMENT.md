@@ -87,7 +87,12 @@ labelled `<branch>-run<N>`.
 
 ## What a deploy does (`deploy.yml`)
 
-1. **Scenario snapshots:** restored from the CI cache, or built.
+1. **Scenario snapshots** (`apps/web/scripts/snapshot-cache.mjs`): restored from the media bucket, where they
+   are kept as `snapshot-cache/scenarios-<inputs hash>.tar.zst` (~8 MB). If the set is not there, the build makes
+   it and the deploy uploads it after the build, for every later deploy (production or staging, any ref). A
+   lifecycle rule (`apps/web/r2-lifecycle.json`) deletes each set 30 days after its upload, so old sets do not
+   pile up; at most one deploy a month rebuilds a set that was still current. GitHub's own cache is not used
+   here: it is scoped to a ref and evicted after 7 days unused, so tag deploys kept missing it.
 2. **Game media to R2** (`apps/web/scripts/upload-game-data.mjs`):
    - It uploads every image, music and sound file of the submodule's `data/core`, `data/campaigns`,
      `images/` and `sounds/`, about 20.6k files and 516 MiB.
@@ -98,7 +103,8 @@ labelled `<branch>-run<N>`.
      bump or a `MEDIA_VERSION` change. It uses R2's S3 API (about 7 minutes for a full upload) and skips
      objects already there if interrupted.
 3. **Bucket CORS** (`apps/web/r2-cors.json`): GET/HEAD from any origin. The app reads media
-   cross-origin, and Web Audio plays silence without it.
+   cross-origin, and Web Audio plays silence without it. **Bucket lifecycle** (`apps/web/r2-lifecycle.json`):
+   the snapshot cache's 30-day expiry, and Cloudflare's default abort of unfinished multipart uploads.
 4. **Build:**
    - `npm run build --workspace=apps/web` runs the scenario and atlas builds, then Vite, with
      `VITE_GAME_DATA_URL=https://data.wesnoth.fun/<prefix>` and the version and commit.

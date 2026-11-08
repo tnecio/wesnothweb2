@@ -47,12 +47,14 @@ jobs:
         run: echo "Deploying $GITHUB_REF_NAME to staging (https://staging.wesnoth.fun)" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: ./.github/actions/setup
 
-      - id: inputs
-        run: echo "hash=$(node --import tsx apps/web/scripts/rebuild-snapshots.mjs --inputs-hash)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v6
-        with:
-          path: apps/web/public/scenarios
-          key: scenarios-${{ steps.inputs.outputs.hash }}
+      # The built scenario snapshots, kept in the media bucket by their inputs' hash (snapshot-cache.mjs): GitHub's
+      # cache is per ref and evicted after a week unused, so tag deploys kept rebuilding them.
+      - name: Restore the scenario snapshots
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: node apps/web/scripts/snapshot-cache.mjs restore
 
       - name: Upload game media to R2
         id: data
@@ -65,12 +67,14 @@ jobs:
           node apps/web/scripts/upload-game-data.mjs | tee upload.log
           echo "prefix=$(tail -n 1 upload.log)" >> "$GITHUB_OUTPUT"
 
-      - name: Allow cross-origin reads of the game media
+      - name: Bucket CORS (cross-origin reads of the game media) and lifecycle (the snapshot cache's expiry)
         working-directory: apps/web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx wrangler r2 bucket cors set "$R2_BUCKET" --file r2-cors.json --force
+        run: |
+          npx wrangler r2 bucket cors set "$R2_BUCKET" --file r2-cors.json --force
+          npx wrangler r2 bucket lifecycle set "$R2_BUCKET" --file r2-lifecycle.json --force
 
       - name: Build
         env:
@@ -84,6 +88,13 @@ jobs:
         run: |
           npm run build --workspace=apps/web
           node apps/web/scripts/stage-dist.mjs $([ "$STAGING" = true ] && echo --noindex)
+
+      - name: Save the scenario snapshots
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: node apps/web/scripts/snapshot-cache.mjs save
 
       - name: Deploy to Cloudflare Workers
         working-directory: apps/web
