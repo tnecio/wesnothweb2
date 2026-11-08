@@ -274,8 +274,16 @@
   let viewLocked = false;
   const readyLabel = $derived(fmt(tx('$name -- $units units, $width x $height hexes'), { name: snapshot.scenario.name, units: units.length, width: snapshot.map.width, height: snapshot.map.height }));
 
+  /**
+   * Bumped to rebuild the board on a new canvas after its WebGL context was lost (`onContextLost`), which also
+   * reruns the effect below.
+   */
+  let boardGeneration = $state(0);
+  const MAX_CONTEXT_REBUILDS = 2;
+
   $effect(() => {
     if (!canvasHost) return;
+    void boardGeneration;
     const host = canvasHost;
     let app: PIXI.Application | undefined;
     let cancelled = false;
@@ -546,6 +554,7 @@
         return;
       }
       installSubtractBlend(app.renderer);
+      guardLostContext(app);
       host.appendChild(app.canvas);
       pixiApp = app;
       // Real, reported bug (bugs3.md #3): unit sprites always rendered in
@@ -709,6 +718,37 @@
   }
 
   const destroyedApps = new WeakSet<PIXI.Application>();
+
+  /**
+   * Safari on iPhones drops the board's WebGL context (memory pressure, the GPU process restarting), and PixiJS
+   * keeps rendering into it: the first shader it then compiles throws ("Argument 1 ('shader') to
+   * WebGL2RenderingContext.shaderSource must be an instance of WebGLShader", reported on staging and in the
+   * statistics). Renders are skipped while the context is lost, and the board is rebuilt on a new canvas (a
+   * restored context would not bring back what was drawn into render textures, the atlas pages): up to
+   * `MAX_CONTEXT_REBUILDS` times, then it stays blank with the reason shown.
+   */
+  function guardLostContext(app: PIXI.Application): void {
+    const renderer = app.renderer;
+    const context = (renderer as { context?: { isLost?: boolean } }).context;
+    const render = renderer.render.bind(renderer);
+    renderer.render = ((...args: Parameters<typeof render>) => {
+      if (context?.isLost) return;
+      return render(...args);
+    }) as typeof renderer.render;
+    app.canvas.addEventListener('webglcontextlost', () => {
+      if (destroyedApps.has(app) || pixiApp !== app) return;
+      console.warn(`[board] the WebGL context was lost (rebuilds so far: ${boardGeneration})`);
+      if (boardGeneration >= MAX_CONTEXT_REBUILDS) {
+        status = tx('The graphics stopped working (the browser lost the WebGL context). Reload the page to continue.');
+        return;
+      }
+      // Outside the event: the rebuild destroys this canvas.
+      setTimeout(() => {
+        status = tx('loading scenario...');
+        boardGeneration++;
+      }, 0);
+    });
+  }
 
   function registerUnitBundles(list: readonly SnapshotUnit[]): void {
     ImageCache.addAtlasManifests(new Set(list.map((unit) => dataUrl(unitBundleManifestUrl(unit.typeId)))), { prefetch: true });
