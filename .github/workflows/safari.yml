@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
   # And when the checks themselves change (a workflow can be run by hand only once it is on main).
   push:
-    paths: ['.github/workflows/safari.yml', 'apps/web/scripts/safari-webdriver.mjs']
+    paths: ['.github/workflows/safari.yml', 'apps/web/scripts/safari-webdriver.mjs', 'apps/web/scripts/sample-memory.mjs']
 
 permissions:
   contents: read
@@ -88,7 +88,7 @@ jobs:
         name: Sample Safari's memory
         run: |
           mkdir -p "$RUNNER_TEMP/results"
-          nohup bash -c 'while true; do echo "$(date +%s) $(ps -axo pid=,rss=,command= | awk "/com.apple.WebKit.WebContent/ && !/awk/ {printf \"%s:%d \", \$1, \$2}")"; sleep 2; done' > "$RUNNER_TEMP/results/memory.log" 2>&1 &
+          nohup node apps/web/scripts/sample-memory.mjs > "$RUNNER_TEMP/results/memory.log" 2>&1 &
 
       - if: matrix.target == 'desktop Safari'
         working-directory: apps/web
@@ -139,18 +139,20 @@ jobs:
             const fs = require("fs"), dir = process.env.RUNNER_TEMP + "/results";
             const samples = fs.readFileSync(dir + "/memory.log", "utf8").trim().split("\n").map((l) => {
               const [t, ...procs] = l.trim().split(/\s+/);
-              const kb = procs.map((p) => +p.split(":")[1] || 0);
-              return { t: +t, max: Math.max(0, ...kb), sum: kb.reduce((a, b) => a + b, 0) };
+              const rss = procs.map((p) => +p.split(":")[1] || 0), foot = procs.map((p) => +p.split(":")[2] || 0);
+              return { t: +t, max: Math.max(0, ...rss), foot: Math.max(0, ...foot) };
             });
             const stages = (fs.existsSync(dir + "/run.log") ? fs.readFileSync(dir + "/run.log", "utf8") : "").split("\n")
               .map((l) => /^@stage (\S+) (\d+)/.exec(l)).filter(Boolean).map((m) => ({ name: m[1], t: +m[2] }));
-            const lines = ["| From | Until | Largest WebContent process (peak) |", "|---|---|---|"];
+            const lines = ["| From | Until | Largest WebContent process: resident (peak) | footprint (peak) |", "|---|---|---|---|"];
             for (let i = 0; i < stages.length; i++) {
               const from = stages[i].t, until = stages[i + 1]?.t ?? Infinity;
-              const peak = Math.max(0, ...samples.filter((s) => s.t >= from && s.t < until).map((s) => s.max));
-              lines.push(`| ${stages[i].name} | ${stages[i + 1]?.name ?? "end"} | ${(peak / 1024).toFixed(0)} MB |`);
+              const within = samples.filter((s) => s.t >= from && s.t < until);
+              const peak = (k) => (Math.max(0, ...within.map((s) => s[k])) / 1024).toFixed(0) + " MB";
+              lines.push(`| ${stages[i].name} | ${stages[i + 1]?.name ?? "end"} | ${peak("max")} | ${peak("foot")} |`);
             }
-            lines.push("", `Peak over the run: ${(Math.max(0, ...samples.map((s) => s.max)) / 1024).toFixed(0)} MB`);
+            const all = (k) => (Math.max(0, ...samples.map((s) => s[k])) / 1024).toFixed(0) + " MB";
+            lines.push("", `Peak over the run: resident ${all("max")}, footprint ${all("foot")}`);
             console.log(lines.join("\n"));
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### ${process.env.TARGET}: memory\n\n` + lines.join("\n") + "\n");
           '
