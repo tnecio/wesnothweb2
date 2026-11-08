@@ -530,6 +530,8 @@
       // plain `app.render()` of the whole unculled board costs ~2ms of CPU.
       // Sprite count is not the bottleneck; see SnapshotBoard's
       // `installHitArea` for what actually was.
+      // What the previous board drew and this one does not is dropped from the image cache once this one has loaded.
+      const imageEra = ImageCache.beginBoard();
       app = new PIXI.Application();
       const [, teamColors] = await Promise.all([
         app.init({
@@ -633,6 +635,10 @@
       newBoard.updateVillageOwnership(villageOwners);
       newBoard.updateFogShroud(hexVisibility);
       newBoard.setLighting(currentLighting());
+      if (!cancelled) {
+        const dropped = ImageCache.evictUnusedSince(imageEra);
+        if (dropped.count > 0) console.debug(`[board] dropped ${dropped.count} cached images (${(dropped.bytes / 1e6).toFixed(0)} MB) the previous board drew`);
+      }
     })()
       .catch((err) => {
         console.error(err);
