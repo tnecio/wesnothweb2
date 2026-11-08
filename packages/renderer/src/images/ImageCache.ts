@@ -163,11 +163,10 @@ class ImageCacheImpl {
   private toTexture(bmp: CompositedImage | ImageBitmap): PIXI.Texture {
     if (typeof ImageBitmap !== 'undefined' && bmp instanceof ImageBitmap) {
       if (transferredBitmapsUploadStraight()) {
-        // WebKit (Safari): drawn onto a canvas, whose upload premultiplies as PixiJS asks (see the probe).
-        const canvas = makeTextureCanvas(bmp.width, bmp.height)
-        canvas.getContext('2d')!.drawImage(bmp, 0, 0)
+        // WebKit (Safari): its pixels, premultiplied here and uploaded as they are (see the probe).
+        const texture = premultipliedTexture(bmp)
         bmp.close()
-        return new PIXI.Texture({ source: new PIXI.CanvasSource({ resource: canvas as unknown as HTMLCanvasElement }) })
+        return texture
       }
       // Worker result: the composited pixels, transferred without copying.
       return new PIXI.Texture({ source: new PIXI.ImageSource({ resource: bmp }) })
@@ -248,12 +247,62 @@ export function transferredBitmapsUploadStraight(): boolean {
   return uploadsStraight
 }
 
-/** A canvas for one texture's pixels: a DOM canvas (WebKit uploads an OffscreenCanvas to WebGL as black). */
-function makeTextureCanvas(width: number, height: number): OffscreenCanvas | HTMLCanvasElement {
-  if (typeof document === 'undefined') return new OffscreenCanvas(width, height)
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  return canvas
+const drawables = new WeakMap<PIXI.TextureSource, CanvasImageSource>()
+
+/**
+ * What a 2D canvas can draw for `texture` (the minimap draws terrain tiles this way): its resource, or for a WebKit
+ * buffer of premultiplied pixels (`premultipliedTexture`) a canvas made from it once.
+ */
+export function drawableOf(texture: PIXI.Texture): CanvasImageSource | null {
+  const source = texture.source
+  const resource = source.resource as unknown
+  if (!(resource instanceof Uint8Array)) return (resource as CanvasImageSource) ?? null
+  let drawable = drawables.get(source)
+  if (!drawable) {
+    const straight = new Uint8ClampedArray(resource)
+    for (let i = 0; i < straight.length; i += 4) {
+      const a = straight[i + 3]!
+      if (a === 0 || a === 255) continue
+      for (let c = 0; c < 3; c++) straight[i + c] = Math.round((straight[i + c]! * 255) / a)
+    }
+    const canvas = Object.assign(document.createElement('canvas'), { width: source.pixelWidth, height: source.pixelHeight })
+    canvas.getContext('2d')!.putImageData(new ImageData(straight, source.pixelWidth, source.pixelHeight), 0, 0)
+    drawables.set(source, (drawable = canvas))
+  }
+  return drawable
 }
 
+let scratch: { canvas: OffscreenCanvas | HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null = null
+
+/**
+ * `bitmap` as a texture of premultiplied pixels, for WebKit (`transferredBitmapsUploadStraight`): read through one
+ * shared canvas, premultiplied in place, and uploaded as a buffer PixiJS sends as it is. An earlier fix kept a canvas
+ * per texture, which WebKit then uploaded premultiplied; a big board has thousands of images, and on iPhones the
+ * canvases (each with its own backing surface) ran Safari out of memory when The South Guard 1 grew its map: "A
+ * problem repeatedly occurred" (reported on staging).
+ */
+function premultipliedTexture(bitmap: ImageBitmap): PIXI.Texture {
+  const { width, height } = bitmap
+  if (!scratch || scratch.canvas.width < width || scratch.canvas.height < height) {
+    const w = Math.max(width, scratch?.canvas.width ?? 0)
+    const h = Math.max(height, scratch?.canvas.height ?? 0)
+    // A DOM canvas where there is one: WebKit's OffscreenCanvas is what misbehaves (see the probe).
+    const canvas = typeof document === 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h })
+    const ctx = canvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D | null
+    if (!ctx) throw new Error('no 2D canvas to read an image through')
+    scratch = { canvas, ctx }
+  }
+  const { ctx } = scratch
+  ctx.clearRect(0, 0, width, height)
+  ctx.drawImage(bitmap, 0, 0)
+  const pixels = ctx.getImageData(0, 0, width, height).data
+  for (let i = 0; i < pixels.length; i += 4) {
+    const a = pixels[i + 3]!
+    if (a === 255) continue
+    pixels[i] = Math.round((pixels[i]! * a) / 255)
+    pixels[i + 1] = Math.round((pixels[i + 1]! * a) / 255)
+    pixels[i + 2] = Math.round((pixels[i + 2]! * a) / 255)
+  }
+  const resource = new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength)
+  return new PIXI.Texture({ source: new PIXI.BufferImageSource({ resource, width, height, alphaMode: 'premultiplied-alpha' }) })
+}
