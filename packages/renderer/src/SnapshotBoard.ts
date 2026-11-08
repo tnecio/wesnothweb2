@@ -94,6 +94,7 @@ import { LABEL_FONT_SIZE, parseHaloFrames, type MapItemPoint, type MapLabelPoint
 import { layerAnimates, makeLayerSprite, usableFrames, type TerrainAnimation } from './terrainPositioning.js';
 import { FrameClock } from './frameClock.js';
 import { AtlasPages } from './atlasPages.js';
+import { thinAnimations } from './terrain/thinAnimations.js';
 import { ownTerrainGraphicsRules, type BuildingRule } from './terrain/terrainGraphicsRules.js';
 import { layoutTerrain, type TerrainLayout } from './terrain/terrainLayout.js';
 import { computeTerrainLayout } from './terrain/terrainLayoutClient.js';
@@ -493,6 +494,13 @@ function colorForTerrain(code: string): number {
 }
 
 export interface SnapshotBoardOptions {
+  /**
+   * Keep every `n`-th frame of the terrain's animation cycles (`thinAnimations`; 1, the default, keeps all): 3 on a
+   * device short of memory (`memoryConstrained`).
+   */
+  terrainFrameStride?: number;
+  /** "Animate map" and "Animate water" as the board starts (`setTerrainAnimation` changes them later). */
+  terrainAnimation?: TerrainAnimation;
   /** Phase 33: the renderer the board is drawn by, which copies animation cycles into one texture each (`stripAtlas.ts`). */
   renderer?: PIXI.Renderer;
   /** Base URL images are served from (see ImageCache.setImageBaseUrl). */
@@ -768,6 +776,10 @@ export class SnapshotBoard {
   private showSideColors = true;
   /** Phase 24: "Animate map" and "Animate water" (`setTerrainAnimation`). */
   private terrainAnimation: TerrainAnimation = { map: true, water: true };
+  /** `SnapshotBoardOptions.terrainFrameStride`. */
+  private readonly terrainFrameStride: number = 1;
+  /** The animation preferences the drawn terrain was built for (`thinAnimations` left out what they held still). */
+  private builtTerrainAnimation: TerrainAnimation = { map: true, water: true };
   /**
    * Phase 33: the one clock every looping board animation runs on -- the animated terrain images and the village
    * flags (`frameClock.ts`); each asks it, as it ticks, whether its preference lets it run.
@@ -842,6 +854,8 @@ export class SnapshotBoard {
     this.onHexRightClick = options.onHexRightClick;
     this.terrainGraphicsRules = options.terrainGraphicsRules;
     this.terrainGraphicsRulesUrl = options.terrainGraphicsRulesUrl;
+    this.terrainFrameStride = Math.max(1, Math.floor(options.terrainFrameStride ?? 1));
+    if (options.terrainAnimation) this.terrainAnimation = { ...options.terrainAnimation };
     // Phase 33: with the renderer at hand, the board's images are drawn from shared pages (`atlasPages.ts`).
     if (options.renderer) {
       const atlas = new AtlasPages(options.renderer);
@@ -1213,7 +1227,10 @@ export class SnapshotBoard {
    * layers into `terrainLayer` (under units), foreground layers (rare -- tall
    * structural pieces) into `terrainForegroundLayer` (over units).
    */
-  private async renderTerrainReal(layout: TerrainLayout): Promise<void> {
+  private async renderTerrainReal(fullLayout: TerrainLayout): Promise<void> {
+    // Only the frames that will be drawn are built (`thinAnimations`).
+    this.builtTerrainAnimation = { ...this.terrainAnimation };
+    const layout = thinAnimations(fullLayout, { stride: this.terrainFrameStride, animation: this.builtTerrainAnimation });
     const perHex = layout.hexes.map((hex) => {
       const { x: cx, y: cy } = hexToPixel(toHexCoord(hex.x, hex.y));
       return { ...hex, cx, cy };
@@ -2672,6 +2689,9 @@ export class SnapshotBoard {
   setTerrainAnimation(animation: TerrainAnimation): void {
     // The clock asks each cycle whether it runs (`frameClock.ts`): the next tick holds or resumes them.
     this.terrainAnimation = { ...animation };
+    // A cycle held still when the terrain was drawn has only its first frame: turned on, it is drawn again.
+    const built = this.builtTerrainAnimation;
+    if ((animation.map && !built.map) || (animation.water && !built.water)) void this.updateTerrain(this.terrain);
   }
 
   /**
