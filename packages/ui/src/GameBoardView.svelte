@@ -64,6 +64,7 @@
     DEFAULT_ZOOM,
     ScrollAnimation,
     scrollWarps,
+    memoryConstrained,
     edgeScrollAmount,
     type View,
     type ScrollType,
@@ -610,6 +611,10 @@
         },
         // Phase 28a P3: the rules (~17.5 MB JSON) are fetched, parsed and matched in a worker.
         terrainGraphicsRulesUrl: dataUrl('terrain-graphics-rules.json'),
+        // Short of memory (iOS, or <= 4 GB): every third frame of animated terrain; and only what the
+        // animation preferences let run is built at all.
+        terrainFrameStride: memoryConstrained() ? 3 : 1,
+        terrainAnimation: { map: displayPrefs.peek().animateMap, water: displayPrefs.peek().animateWater },
       });
       await newBoard.render();
       if (cancelled) {
