@@ -100,7 +100,52 @@ class ImageCacheImpl {
   /** As get(), for a reference already joined (e.g. by hexedRef). */
   getRef(ref: string): PIXI.Texture | null {
     const tex = this.textures.get(ref)
-    return tex && !tex.destroyed ? tex : null
+    if (!tex || tex.destroyed) return null
+    this.used.set(ref, this.era)
+    return tex
+  }
+
+  /** When each cached image was last asked for: the board era (`beginBoard`) it was asked for in. */
+  private readonly used = new Map<string, number>()
+  private era = 0
+
+  /** Starts a new board's era; pass the result to `evictUnusedSince` once that board has loaded. */
+  beginBoard(): number {
+    this.releaseDecoded()
+    return ++this.era
+  }
+
+  /**
+   * Drops the decoded source images (bundle sheets, and the images cut from them) in this thread and every worker:
+   * at a new board, and once it has loaded. They were kept for the life of the tab, in each worker -- hundreds of MB
+   * on a phone. A later image decodes its sheet again.
+   */
+  private releaseDecoded(): void {
+    this.compositor.clear()
+    this.pool?.clearDecoded()
+  }
+
+  /**
+   * Drops every cached image not asked for since `era` began: once a new board has loaded, what only the previous
+   * scenario drew. Without it the cache only grew -- every image of every scenario played in the tab -- and on
+   * iPhones Safari killed the tab moving on to The South Guard 2 (174 MB of image pixels by then, measured in
+   * WebKit). An image dropped and needed again is composited again.
+   */
+  evictUnusedSince(era: number): { count: number; bytes: number } {
+    this.releaseDecoded()
+    let count = 0
+    let bytes = 0
+    for (const [ref, tex] of this.textures) {
+      if ((this.used.get(ref) ?? -1) >= era) continue
+      if (!tex.destroyed) {
+        bytes += tex.source.pixelWidth * tex.source.pixelHeight * 4
+        tex.destroy(true)
+      }
+      this.textures.delete(ref)
+      this.used.delete(ref)
+      count++
+    }
+    return { count, bytes }
   }
 
   /** Resolve and cache a set of refs (bulk, low priority). Failures are logged, never thrown. */
@@ -119,6 +164,7 @@ class ImageCacheImpl {
 
   private resolveRef(ref: string, priority: RenderPriority): Promise<PIXI.Texture | null> {
     const existing = this.textures.get(ref)
+    this.used.set(ref, this.era)
     if (existing && !existing.destroyed) return Promise.resolve(existing)
 
     const inFlight = this.pending.get(ref)
@@ -129,6 +175,7 @@ class ImageCacheImpl {
         if (!bmp) return null
         const tex = this.toTexture(bmp)
         this.textures.set(ref, tex)
+        this.used.set(ref, this.era)
         return tex
       })
       .catch(err => {
@@ -162,6 +209,12 @@ class ImageCacheImpl {
 
   private toTexture(bmp: CompositedImage | ImageBitmap): PIXI.Texture {
     if (typeof ImageBitmap !== 'undefined' && bmp instanceof ImageBitmap) {
+      if (transferredBitmapsUploadStraight()) {
+        // WebKit (Safari): its pixels, premultiplied here and uploaded as they are (see the probe).
+        const texture = premultipliedTexture(bmp)
+        bmp.close()
+        return texture
+      }
       // Worker result: the composited pixels, transferred without copying.
       return new PIXI.Texture({ source: new PIXI.ImageSource({ resource: bmp }) })
     }
@@ -188,6 +241,7 @@ class ImageCacheImpl {
   clear(): void {
     for (const tex of this.textures.values()) tex.destroy(true)
     this.textures.clear()
+    this.used.clear()
     this.pending.clear()
     this.compositor.clear()
     this.pool?.cancelAll()
@@ -199,3 +253,104 @@ class ImageCacheImpl {
 }
 
 export const ImageCache = new ImageCacheImpl()
+
+let uploadsStraight: boolean | null = null
+
+/**
+ * Whether this browser uploads a worker's `transferToImageBitmap` result to WebGL with its colour not
+ * premultiplied, though PixiJS asks for it (`UNPACK_PREMULTIPLY_ALPHA_WEBGL`): WebKit does, Chromium does not.
+ * Every translucent pixel then draws far too bright -- real, reported: Of Pearls and Pirates 1's terrain "way off"
+ * on Safari, its transitions glaring. Probed once: a half-transparent red pixel, uploaded as PixiJS uploads an
+ * ImageBitmap, read back. (The worker cannot fix it itself: WebKit's worker crashes making a bitmap from a
+ * canvas, and premultiplies a transferred one twice.)
+ */
+export function transferredBitmapsUploadStraight(): boolean {
+  if (uploadsStraight !== null) return uploadsStraight
+  uploadsStraight = false
+  try {
+    if (typeof OffscreenCanvas === 'undefined') return uploadsStraight
+    const source = new OffscreenCanvas(1, 1)
+    const ctx = source.getContext('2d')
+    if (!ctx) return uploadsStraight
+    ctx.fillStyle = 'rgba(255, 0, 0, 0.502)'
+    ctx.fillRect(0, 0, 1, 1)
+    const bitmap = source.transferToImageBitmap()
+    const gl = new OffscreenCanvas(1, 1).getContext('webgl')
+    if (!gl) return uploadsStraight
+    const texture = gl.createTexture()
+    gl.bindTexture(gl.TEXTURE_2D, texture)
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bitmap)
+    const framebuffer = gl.createFramebuffer()
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer)
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0)
+    const pixel = new Uint8Array(4)
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
+    uploadsStraight = pixel[3]! > 0 && pixel[0]! > 200
+    bitmap.close()
+    gl.getExtension('WEBGL_lose_context')?.loseContext()
+  } catch {
+    uploadsStraight = false
+  }
+  return uploadsStraight
+}
+
+const drawables = new WeakMap<PIXI.TextureSource, CanvasImageSource>()
+
+/**
+ * What a 2D canvas can draw for `texture` (the minimap draws terrain tiles this way): its resource, or for a WebKit
+ * buffer of premultiplied pixels (`premultipliedTexture`) a canvas made from it once.
+ */
+export function drawableOf(texture: PIXI.Texture): CanvasImageSource | null {
+  const source = texture.source
+  const resource = source.resource as unknown
+  if (!(resource instanceof Uint8Array)) return (resource as CanvasImageSource) ?? null
+  let drawable = drawables.get(source)
+  if (!drawable) {
+    const straight = new Uint8ClampedArray(resource)
+    for (let i = 0; i < straight.length; i += 4) {
+      const a = straight[i + 3]!
+      if (a === 0 || a === 255) continue
+      for (let c = 0; c < 3; c++) straight[i + c] = Math.round((straight[i + c]! * 255) / a)
+    }
+    const canvas = Object.assign(document.createElement('canvas'), { width: source.pixelWidth, height: source.pixelHeight })
+    canvas.getContext('2d')!.putImageData(new ImageData(straight, source.pixelWidth, source.pixelHeight), 0, 0)
+    drawables.set(source, (drawable = canvas))
+  }
+  return drawable
+}
+
+let scratch: { canvas: OffscreenCanvas | HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null = null
+
+/**
+ * `bitmap` as a texture of premultiplied pixels, for WebKit (`transferredBitmapsUploadStraight`): read through one
+ * shared canvas, premultiplied in place, and uploaded as a buffer PixiJS sends as it is. An earlier fix kept a canvas
+ * per texture, which WebKit then uploaded premultiplied; a big board has thousands of images, and on iPhones the
+ * canvases (each with its own backing surface) ran Safari out of memory when The South Guard 1 grew its map: "A
+ * problem repeatedly occurred" (reported on staging).
+ */
+function premultipliedTexture(bitmap: ImageBitmap): PIXI.Texture {
+  const { width, height } = bitmap
+  if (!scratch || scratch.canvas.width < width || scratch.canvas.height < height) {
+    const w = Math.max(width, scratch?.canvas.width ?? 0)
+    const h = Math.max(height, scratch?.canvas.height ?? 0)
+    // A DOM canvas where there is one: WebKit's OffscreenCanvas is what misbehaves (see the probe).
+    const canvas = typeof document === 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h })
+    const ctx = canvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D | null
+    if (!ctx) throw new Error('no 2D canvas to read an image through')
+    scratch = { canvas, ctx }
+  }
+  const { ctx } = scratch
+  ctx.clearRect(0, 0, width, height)
+  ctx.drawImage(bitmap, 0, 0)
+  const pixels = ctx.getImageData(0, 0, width, height).data
+  for (let i = 0; i < pixels.length; i += 4) {
+    const a = pixels[i + 3]!
+    if (a === 255) continue
+    pixels[i] = Math.round((pixels[i]! * a) / 255)
+    pixels[i + 1] = Math.round((pixels[i + 1]! * a) / 255)
+    pixels[i + 2] = Math.round((pixels[i + 2]! * a) / 255)
+  }
+  const resource = new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength)
+  return new PIXI.Texture({ source: new PIXI.BufferImageSource({ resource, width, height, alphaMode: 'premultiplied-alpha' }) })
+}

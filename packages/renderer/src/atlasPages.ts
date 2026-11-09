@@ -134,6 +134,7 @@ export class AtlasPages {
         let scene = scenes.get(page)
         if (!scene) scenes.set(page, (scene = new PIXI.Container()))
         addPadded(scene, texture, x + PAD, y + PAD)
+        if (texture.frame.width === texture.source.width && texture.frame.height === texture.source.height) this.ownImage.add(texture.source)
         const copy = new PIXI.Texture({
           source: page.source,
           frame: new PIXI.Rectangle(x + PAD, y + PAD, Math.ceil(texture.frame.width), Math.ceil(texture.frame.height)),
@@ -143,11 +144,23 @@ export class AtlasPages {
       })
       if (group.length > 1) this.cycles.set(this.cycleKey(group), copies)
     }
+    const copied = new Set<PIXI.TextureSource>()
     for (const [page, scene] of scenes) {
       this.renderer.render({ container: scene, target: page, clear: false })
+      for (const sprite of scene.children as PIXI.Sprite[]) copied.add(sprite.texture.source)
       scene.destroy({ children: true })
     }
+    // The originals' own GPU copies are no longer drawn: released now rather than by PixiJS's texture GC a minute
+    // later, so a board that grows (The South Guard 1 when its map is replaced) does not hold both at once -- on
+    // iPhones that ran Safari out of memory. Only a source an image has to itself (not a shared terrain bundle,
+    // which other images still draw from); it is uploaded again if it is ever drawn.
+    for (const source of copied) {
+      if (this.ownImage.has(source)) source.unload()
+    }
   }
+
+  /** Sources that are one image each (an image fills it), noted as they are placed. */
+  private readonly ownImage = new WeakSet<PIXI.TextureSource>()
 
   /** `texture`'s copy, if it has one, else `texture`. */
   copyOf(texture: PIXI.Texture): PIXI.Texture {

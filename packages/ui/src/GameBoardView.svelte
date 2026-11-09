@@ -64,6 +64,7 @@
     DEFAULT_ZOOM,
     ScrollAnimation,
     scrollWarps,
+    memoryConstrained,
     edgeScrollAmount,
     type View,
     type ScrollType,
@@ -530,6 +531,8 @@
       // plain `app.render()` of the whole unculled board costs ~2ms of CPU.
       // Sprite count is not the bottleneck; see SnapshotBoard's
       // `installHitArea` for what actually was.
+      // What the previous board drew and this one does not is dropped from the image cache once this one has loaded.
+      const imageEra = ImageCache.beginBoard();
       app = new PIXI.Application();
       const [, teamColors] = await Promise.all([
         app.init({
@@ -599,6 +602,10 @@
         },
         // Phase 28a P3: the rules (~17.5 MB JSON) are fetched, parsed and matched in a worker.
         terrainGraphicsRulesUrl: dataUrl('terrain-graphics-rules.json'),
+        // Short of memory (iOS, or <= 4 GB): every third frame of animated terrain; and only what the
+        // animation preferences let run is built at all.
+        terrainFrameStride: memoryConstrained() ? 3 : 1,
+        terrainAnimation: { map: displayPrefs.peek().animateMap, water: displayPrefs.peek().animateWater },
       });
       await newBoard.render();
       if (cancelled) {
@@ -633,6 +640,10 @@
       newBoard.updateVillageOwnership(villageOwners);
       newBoard.updateFogShroud(hexVisibility);
       newBoard.setLighting(currentLighting());
+      if (!cancelled) {
+        const dropped = ImageCache.evictUnusedSince(imageEra);
+        if (dropped.count > 0) console.debug(`[board] dropped ${dropped.count} cached images (${(dropped.bytes / 1e6).toFixed(0)} MB) the previous board drew`);
+      }
     })()
       .catch((err) => {
         console.error(err);
@@ -1240,6 +1251,10 @@
     min-height: 0;
     touch-action: none;
     transition: filter 1.5s ease;
+    /* A long press opens the context menu; it must not also select text or bring up iOS's callout. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
   }
   .canvas-host.desaturated {
     filter: grayscale(1);

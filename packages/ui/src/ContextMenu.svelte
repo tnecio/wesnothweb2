@@ -69,6 +69,11 @@
     padding: 0.25rem 0;
     font-family: var(--font-ui);
     font-size: 0.85rem;
+    /* Opened by a long press on touch screens: the press that is still held must not go on to select the menu's
+       text or bring up iOS's callout (reported on an iPhone). */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
   }
   .context-menu button {
     font: inherit;
