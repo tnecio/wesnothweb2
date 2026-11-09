@@ -10,13 +10,14 @@ and decisions), `ASSETS.md` (how the game data is split and cached) and the Phas
 |---|---|
 | Source | https://github.com/tnecio/wesnothweb2 (public); `main` is protected, work lands through PRs |
 | CI | `.github/workflows/ci.yml`, on every push to every branch |
-| Deploy | `.github/workflows/deploy.yml`, on a `v*` tag (or started by hand) |
+| Deploy | `.github/workflows/deploy.yml`: a `v*` tag on `main` to production, a `staging-*` tag on any branch to staging (or started by hand) |
 | The game | https://wesnoth.fun (also https://wesnothweb2.tomasz-necio.workers.dev): Cloudflare Workers static assets, Worker `wesnothweb2`. https://wesnoth.tnec.io and https://www.wesnoth.fun redirect to it |
+| Staging | https://staging.wesnoth.fun: Worker `wesnothweb2-staging`, public, same media and stats Worker as production (see Staging below) |
 | Game media | https://data.wesnoth.fun: R2 bucket `wesnothweb2-data` (also attached as wesnoth-data.tnec.io, for pages built before the move) |
 | Statistics and bug reports | https://stats.wesnoth.fun: Worker `wesnoth-stats` (`apps/stats`), D1 `wesnoth-stats`, private R2 bucket `wesnoth-reports`; deployed by hand (below) |
 | Node | the version in `.nvmrc` (24), for CI, the deploy and local work |
 
-There is no staging environment: a tag deploys straight to production.
+A `v*` tag deploys to production; a `staging-*` tag deploys to staging first, from any branch.
 
 ## Making a change
 
@@ -58,12 +59,40 @@ git push origin v0.2.0
 
 The tag starts `deploy.yml`, which takes about 3 minutes, or about 10 when game media must be uploaded
 (see below). Use semantic-ish versions; the tag is what players see on the title screen
-("Version 1.19.21 · web v0.2.0") and in error reports. A deploy started by hand (Actions → Deploy → Run
-workflow) deploys the chosen branch, labelled `<branch>-run<N>`. Use that for testing, not releases.
+("Version 1.19.21 · web v0.2.0") and in error reports. A `v*` tag deploys only from a commit on `main`: the
+workflow fails otherwise.
+
+### Staging
+
+```sh
+git tag staging-safari-1 <any commit or branch>
+git push origin staging-safari-1
+```
+
+A `staging-*` tag, on any branch, deploys that commit to **https://staging.wesnoth.fun**, the Worker
+`wesnothweb2-staging`
+(`wrangler deploy --env staging`, `apps/web/wrangler.jsonc`). Use it to try a branch on a phone, or show it to
+someone, before merging. It differs from production in:
+- the build version, which is the tag's name, on the title screen and in reports;
+- an `X-Robots-Tag: noindex` header on every path (`stage-dist.mjs --noindex`);
+- no workers.dev address, only its custom domain;
+- nothing else: it is public, reads the same game media (the same bucket and prefix, so a staging deploy
+  uploads nothing unless it pins a new submodule commit), and sends statistics and bug reports to the same
+  stats Worker, where its builds (`staging-*`) tell them apart.
+
+Production and staging deploy independently (one concurrency group each). Staging costs nothing extra on the
+free plan: static-asset requests are free and unmetered, and the media is shared. A deploy started by hand
+(Actions → Deploy → Run workflow) deploys the chosen branch to the chosen target (staging by default),
+labelled `<branch>-run<N>`.
 
 ## What a deploy does (`deploy.yml`)
 
-1. **Scenario snapshots:** restored from the CI cache, or built.
+1. **Scenario snapshots** (`apps/web/scripts/snapshot-cache.mjs`): restored from the media bucket, where they
+   are kept as `snapshot-cache/scenarios-<inputs hash>.tar.zst` (~8 MB). If the set is not there, the build makes
+   it and the deploy uploads it after the build, for every later deploy (production or staging, any ref). A
+   lifecycle rule (`apps/web/r2-lifecycle.json`) deletes each set 30 days after its upload, so old sets do not
+   pile up; at most one deploy a month rebuilds a set that was still current. GitHub's own cache is not used
+   here: it is scoped to a ref and evicted after 7 days unused, so tag deploys kept missing it.
 2. **Game media to R2** (`apps/web/scripts/upload-game-data.mjs`):
    - It uploads every image, music and sound file of the submodule's `data/core`, `data/campaigns`,
      `images/` and `sounds/`, about 20.6k files and 516 MiB.
@@ -74,7 +103,8 @@ workflow) deploys the chosen branch, labelled `<branch>-run<N>`. Use that for te
      bump or a `MEDIA_VERSION` change. It uses R2's S3 API (about 7 minutes for a full upload) and skips
      objects already there if interrupted.
 3. **Bucket CORS** (`apps/web/r2-cors.json`): GET/HEAD from any origin. The app reads media
-   cross-origin, and Web Audio plays silence without it.
+   cross-origin, and Web Audio plays silence without it. **Bucket lifecycle** (`apps/web/r2-lifecycle.json`):
+   the snapshot cache's 30-day expiry, and Cloudflare's default abort of unfinished multipart uploads.
 4. **Build:**
    - `npm run build --workspace=apps/web` runs the scenario and atlas builds, then Vite, with
      `VITE_GAME_DATA_URL=https://data.wesnoth.fun/<prefix>` and the version and commit.
@@ -109,13 +139,13 @@ Repository secrets (Settings → Secrets and variables → Actions):
 
 | Secret | Used for |
 |---|---|
-| `CLOUDFLARE_API_TOKEN` | `wrangler deploy` and `wrangler r2 bucket cors set` (Workers Scripts: Edit, Workers R2 Storage: Edit) |
+| `CLOUDFLARE_API_TOKEN` | `wrangler deploy` and `wrangler r2 bucket cors set` (Workers Scripts: Edit, Workers R2 Storage: Edit; for staging's custom domain also Zone → Workers Routes: Edit and DNS: Edit on `wesnoth.fun`) |
 | `CLOUDFLARE_ACCOUNT_ID` | the same, and the R2 S3 endpoint |
 | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | the media upload (an R2 API token with Object Read & Write on `wesnothweb2-data`) |
 
 Cloudflare side, set up once by hand:
 - the `wesnoth.fun` and `tnec.io` zones are in the same account;
-- the Worker has the custom domain `wesnoth.fun`;
+- the Worker has the custom domain `wesnoth.fun` (staging's Worker gets `staging.wesnoth.fun` from its config);
 - the bucket has the custom domain `data.wesnoth.fun`, and still `wesnoth-data.tnec.io` (pages opened before the
   move load their media from it);
 - redirect rules: in the `tnec.io` zone, `wesnoth.tnec.io` → `https://wesnoth.fun` + the path, 301, query string

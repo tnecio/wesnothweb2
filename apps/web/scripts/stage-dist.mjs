@@ -13,9 +13,10 @@
  * - Writes `_headers`: Vite's hashed `assets/` and `h/` are immutable; `index.html` keeps Cloudflare's default
  *   (revalidate with an ETag). Rules that match the same path merge their values, so each Cache-Control rule
  *   must own a disjoint prefix.
+ *   With `--noindex` (staging), every path also says `X-Robots-Tag: noindex`, so search engines leave it out.
  * - Fails if the upload would break a Workers limit: 20,000 files per version, 25 MiB per file (with margin).
  *
- * Run: node apps/web/scripts/stage-dist.mjs   (after `npm run build --workspace=apps/web`)
+ * Run: node apps/web/scripts/stage-dist.mjs [--noindex]   (after `npm run build --workspace=apps/web`)
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -84,6 +85,7 @@ fs.writeFileSync(
     '  Cache-Control: public, max-age=31536000, immutable',
     '/h/*',
     '  Cache-Control: public, max-age=31536000, immutable',
+    ...(process.argv.includes('--noindex') ? ['/*', '  X-Robots-Tag: noindex'] : []),
     '',
   ].join('\n'),
 );
