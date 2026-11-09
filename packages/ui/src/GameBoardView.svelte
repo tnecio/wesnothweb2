@@ -998,6 +998,8 @@
       camera: () => ({ ...viewState(), zoom: zoomLevel() }),
       /** Phase 22: whether the grid overlay shows, over how many hexes. */
       grid: () => board?.gridState() ?? null,
+      /** How many fog/shroud sprites are on screen. */
+      fogSprites: () => board?.fogShroudSpriteCount() ?? null,
       /** Phase 22: start a camera scroll to hex (x, y) (engine 0-based) the way `type` asks; resolves on arrival. */
       scrollToHex: (x: number, y: number, type: ScrollType) => scrollToHex(x, y, type),
       /** Live sprite positions, for debugging movement animation glitches -- see `SnapshotBoard.unitSpritePositions`. */
