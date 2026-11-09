@@ -11,6 +11,7 @@
  * where WML and Lua problems are logged.
  */
 import { untrack } from 'svelte';
+import { isForeignError, isNetworkFailure } from './errorKinds.js';
 
 /** Where the player is, read when a report is built. Registered by the running game. */
 export interface GameContext {
@@ -131,8 +132,22 @@ let installed = false;
 export function installErrorReporting(): void {
   if (installed || typeof window === 'undefined') return;
   installed = true;
-  window.addEventListener('error', (e) => reportError(e.error ?? e.message, 'error'));
-  window.addEventListener('unhandledrejection', (e) => reportError(e.reason, 'rejection'));
+  window.addEventListener('error', (e) => {
+    // Another origin's script (an extension, a content blocker): logged, not the game breaking.
+    if (isForeignError(e, window.location.origin)) {
+      console.warn('[error] in a script that is not the game\'s:', e.message, e.filename ?? '');
+      return;
+    }
+    reportError(e.error ?? e.message, 'error');
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    // A request nobody waited for that failed on the network (iOS cancels them in the background).
+    if (isNetworkFailure(e.reason)) {
+      console.warn('[error] a request failed:', describe(e.reason).message);
+      return;
+    }
+    reportError(e.reason, 'rejection');
+  });
   for (const level of ['warn', 'error'] as const) {
     const original = console[level].bind(console);
     console[level] = (...args: unknown[]) => {
