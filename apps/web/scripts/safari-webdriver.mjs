@@ -245,8 +245,9 @@ async function skipToPlay() {
   while (Date.now() - started < timeout) {
     const state = await run(`
       if (document.querySelector('.story')) return 'story';
-      const option = document.querySelector('.wml-message-open button.option');
-      if (option) { option.click(); return 'option'; }
+      // The last choice: The South Guard 1's is "Skip tutorial", which replaces the map with the full one.
+      const options = document.querySelectorAll('.wml-message-open button.option');
+      if (options.length > 0) { options[options.length - 1].click(); return 'option'; }
       const message = document.querySelector('.wml-message-open');
       if (message) { message.click(); return 'message'; }
       const ok = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'OK');
@@ -260,16 +261,47 @@ async function skipToPlay() {
   throw new Error('still in a pre-play screen');
 }
 
-async function scenario(name, path) {
-  const started = Date.now();
+/** A line the workflow's memory summary splits its samples by (`@stage <name> <unix seconds>`). */
+function stage(name) {
+  console.log(`@stage ${name.replace(/\s+/g, '_')} ${(Date.now() / 1000).toFixed(0)}`);
+}
+
+/** Wins the scenario on screen and plays on into the next (`next`, whose id matches `idPattern`). */
+async function winAndContinue(won, next, idPattern) {
   try {
-    await wd('POST', `/session/${sid}/url`, { url: `${base}${path}` });
+    await run(`
+      window.__wesnoth.addEvent('[event]\\nname=select\\n[endlevel]\\nresult=victory\\n[/endlevel]\\n[/event]');
+      const leader = window.__wesnoth.session.board.allUnits().find((u) => u.side === 1 && u.canRecruit);
+      window.__wesnoth.clickHex(leader.location.x, leader.location.y);`);
+    await skipToPlay();
+    await waitFor('End Scenario', `return (document.querySelector('[data-testid="turn-button"]')?.textContent ?? '').trim() === 'End Scenario'`, 120000);
+    stage(`${won} won`);
+    await run(`document.querySelector('[data-testid="turn-button"]').click()`);
+    await waitFor(next, `return /${idPattern}/.test(window.__wesnoth?.session?.snapshot?.scenario?.id ?? '')`, 300000);
+    await scenario(next, '', { navigate: false });
+  } catch (e) {
+    await screenshot(next).catch(() => {});
+    check(`${next} starts after ${won} is won`, false, String(e.message ?? e));
+  }
+}
+
+async function scenario(name, path, { navigate = true } = {}) {
+  const started = Date.now();
+  stage(`${name} start`);
+  try {
+    if (navigate) await wd('POST', `/session/${sid}/url`, { url: `${base}${path}` });
     await waitFor('the page', 'return document.readyState === "complete"', 120000);
     await collectErrors();
     await waitFor('the game session', 'return !!(window.__wesnoth && window.__wesnoth.session) || !!document.querySelector(\'[data-testid="error-screen"]\')');
     await waitFor('the board', 'return !document.querySelector(\'[data-testid="board-loading"]\') || !!document.querySelector(\'[data-testid="error-screen"]\')');
     if (!(await errorScreen())) await skipToPlay();
+    // A replaced map rebuilds the board (The South Guard 1's skipped tutorial): wait for it and its dialogue too.
+    if (await run('return !!document.querySelector(\'[data-testid="board-loading"]\')')) {
+      await waitFor('the rebuilt board', 'return !document.querySelector(\'[data-testid="board-loading"]\') || !!document.querySelector(\'[data-testid="error-screen"]\')');
+      if (!(await errorScreen())) await skipToPlay();
+    }
     await sleep(5000);
+    stage(`${name} playing`);
     const seconds = Math.round((Date.now() - started) / 1000);
     const shot = await screenshot(name);
     const colour = meanColour(shot);
@@ -326,6 +358,12 @@ try {
   if (!canDecode) console.log('     this browser decodes no image for scripts here: the board checks are skipped');
 
   await scenario('south-guard-1', '/play/the_south_guard?difficulty=EASY');
+  // On to The South Guard 2, as a player goes (the victory forced by a WML event on selecting the leader, then End
+  // Scenario, the story, the next board), and 3 -- opened on its own: 2 leads to an interlude whose companion
+  // choice is the campaign's own dialog. Safari on an iPhone 12 mini killed the tab moving on to each; 3's map is
+  // mostly animated water.
+  await winAndContinue('south-guard-1', 'south-guard-2', 'Proven');
+  await scenario('south-guard-3', '/play/the_south_guard?difficulty=EASY&scenario=03_Vale_of_Tears');
   await scenario('pearls-and-pirates-1', '/play/of_pearls_and_pirates?difficulty=NORMAL');
 } finally {
   writeFileSync(join(out, 'results.json'), JSON.stringify(results, null, 2));
