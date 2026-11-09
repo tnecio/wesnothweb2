@@ -10,11 +10,11 @@ msgstr ""
 msgid "$amount|g"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:5047
+#: packages/ui/src/gameSession.ts:5060
 msgid "$attacker attacked $defender: $hits/$blows blows landed."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4917
+#: packages/ui/src/gameSession.ts:4930
 msgid "$attacker could attack $defender -- review the prediction and confirm."
 msgstr ""
 
@@ -26,7 +26,7 @@ msgstr ""
 msgid "$name volume"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:1626
+#: packages/ui/src/gameSession.ts:1639
 msgid "$name, $type, side $side, $hp of $maxhp HP, $moves of $maxmoves moves"
 msgstr ""
 
@@ -34,95 +34,95 @@ msgstr ""
 msgid "$percent|%"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4973
+#: packages/ui/src/gameSession.ts:4986
 msgid "$striker drains $amount HP."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4970
+#: packages/ui/src/gameSession.ts:4983
 msgid "$striker hits $target for $damage damage ($chance|% chance to hit)."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4975
+#: packages/ui/src/gameSession.ts:4988
 msgid "$striker is destroyed by the drain!"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4975
+#: packages/ui/src/gameSession.ts:4988
 msgid "$striker loses $amount HP to drain."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4971
+#: packages/ui/src/gameSession.ts:4984
 msgid "$striker misses $target ($chance|% chance to hit)."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4980
+#: packages/ui/src/gameSession.ts:4993
 msgid "$target dies!"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4979
+#: packages/ui/src/gameSession.ts:4992
 msgid "$target is petrified!"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4977
+#: packages/ui/src/gameSession.ts:4990
 msgid "$target is poisoned."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4978
+#: packages/ui/src/gameSession.ts:4991
 msgid "$target is slowed."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:1621
+#: packages/ui/src/gameSession.ts:1634
 msgid "$terrain, $defense|% defense"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:5225
+#: packages/ui/src/gameSession.ts:5238
 msgid "$unit advances to $type!"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:5232
+#: packages/ui/src/gameSession.ts:5245
 msgid "$unit gains $advancement!"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:3247
+#: packages/ui/src/gameSession.ts:3260
 msgid "$unit heals $amount HP$healers."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4746
+#: packages/ui/src/gameSession.ts:4759
 msgid "$unit moved, and will go on next turn."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4747
+#: packages/ui/src/gameSession.ts:4760
 msgid "$unit moved."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:841
+#: packages/ui/src/GameShell.svelte:853
 msgid "$unit selected."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4744
+#: packages/ui/src/gameSession.ts:4757
 msgid "$unit stopped: units sighted."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:3249
+#: packages/ui/src/gameSession.ts:3262
 msgid "$unit takes $amount poison damage."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4742
+#: packages/ui/src/gameSession.ts:4755
 msgid "$unit was ambushed!"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:5048 packages/ui/src/gameSession.ts:5049
+#: packages/ui/src/gameSession.ts:5061 packages/ui/src/gameSession.ts:5062
 msgid "$unit was slain!"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4725
+#: packages/ui/src/gameSession.ts:4738
 msgid "$unit will move there on a later turn."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:3251
+#: packages/ui/src/gameSession.ts:3264
 msgid "$unit's poison is cured."
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:1152
+#: packages/ui/src/GameBoardView.svelte:1192
 msgid "(drag or scroll to pan, Ctrl+scroll to zoom)"
 msgstr ""
 
@@ -162,7 +162,7 @@ msgstr ""
 msgid "All the game assets, including audio, graphics, animations, and scenarios are imported from the original Battle for Wesnoth. Only the TypeScript implementation code is newly-written using LLM assistance, based on the original C++ code."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3880
+#: packages/ui/src/GameShell.svelte:3899
 msgid "Are you sure you want to clear map labels?"
 msgstr ""
 
@@ -194,11 +194,11 @@ msgstr ""
 msgid "Backstab: ×2 damage"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4210 packages/ui/src/gameSession.ts:4220
+#: packages/ui/src/gameSession.ts:4223 packages/ui/src/gameSession.ts:4233
 msgid "Cannot recall $unit there."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4176 packages/ui/src/gameSession.ts:4183
+#: packages/ui/src/gameSession.ts:4189 packages/ui/src/gameSession.ts:4196
 msgid "Cannot recruit $unit there."
 msgstr ""
 
@@ -218,11 +218,11 @@ msgstr ""
 msgid "Choose which unit to advance to:"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:840
+#: packages/ui/src/GameShell.svelte:852
 msgid "Click a free castle tile to place your recalled unit."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:839
+#: packages/ui/src/GameShell.svelte:851
 msgid "Click a free castle tile to place your recruit."
 msgstr ""
 
@@ -230,7 +230,7 @@ msgstr ""
 msgid "Click for help"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:748 packages/ui/src/GameShell.svelte:842
+#: packages/ui/src/GameShell.svelte:760 packages/ui/src/GameShell.svelte:854
 msgid "Click one of your units to select it."
 msgstr ""
 
@@ -242,7 +242,7 @@ msgstr ""
 msgid "Collapse"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:4022
+#: packages/ui/src/GameShell.svelte:4041
 msgid "Continue playing"
 msgstr ""
 
@@ -254,19 +254,19 @@ msgstr ""
 msgid "Copy report"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3552 packages/ui/src/hotkeys.ts:74
+#: packages/ui/src/GameShell.svelte:3568 packages/ui/src/hotkeys.ts:74
 msgid "Cursor Down"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3549 packages/ui/src/hotkeys.ts:71
+#: packages/ui/src/GameShell.svelte:3565 packages/ui/src/hotkeys.ts:71
 msgid "Cursor Left"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3550 packages/ui/src/hotkeys.ts:72
+#: packages/ui/src/GameShell.svelte:3566 packages/ui/src/hotkeys.ts:72
 msgid "Cursor Right"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3551 packages/ui/src/hotkeys.ts:73
+#: packages/ui/src/GameShell.svelte:3567 packages/ui/src/hotkeys.ts:73
 msgid "Cursor Up"
 msgstr ""
 
@@ -274,15 +274,15 @@ msgstr ""
 msgid "Debug campaigns"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:836 packages/ui/src/gameSession.ts:5811
+#: packages/ui/src/GameShell.svelte:848 packages/ui/src/gameSession.ts:5836
 msgid "Defeat."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:3203
+#: packages/ui/src/gameSession.ts:3216
 msgid "Defeat... time has run out."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:5830
+#: packages/ui/src/gameSession.ts:5855
 msgid "Defeat... your side has fallen."
 msgstr ""
 
@@ -294,7 +294,7 @@ msgstr ""
 msgid "Delete failed:"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3564
+#: packages/ui/src/GameShell.svelte:3580
 msgid "Deselect"
 msgstr ""
 
@@ -326,7 +326,7 @@ msgstr ""
 msgid "Experience"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3197
+#: packages/ui/src/GameShell.svelte:3213
 msgid "Failed to continue:"
 msgstr ""
 
@@ -346,7 +346,7 @@ msgstr ""
 msgid "Font size"
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:1164
+#: packages/ui/src/GameBoardView.svelte:1204
 msgid "Game board"
 msgstr ""
 
@@ -366,7 +366,7 @@ msgstr ""
 msgid "Help topics"
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:1154
+#: packages/ui/src/GameBoardView.svelte:1194
 msgid "Hex"
 msgstr ""
 
@@ -390,7 +390,7 @@ msgstr ""
 msgid "Its reference is $id."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3359 packages/ui/src/LabelSettingsDialog.svelte:30 packages/ui/src/hotkeys.ts:68
+#: packages/ui/src/GameShell.svelte:3375 packages/ui/src/LabelSettingsDialog.svelte:30 packages/ui/src/hotkeys.ts:68
 msgid "Label Settings"
 msgstr ""
 
@@ -414,11 +414,11 @@ msgstr ""
 msgid "Load latest autosave"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3045
+#: packages/ui/src/GameShell.svelte:3060
 msgid "Loaded $name (turn $turn)."
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:1168 apps/web/src/PlayPage.svelte:130
+#: packages/ui/src/GameBoardView.svelte:1208 apps/web/src/PlayPage.svelte:130
 msgid "Loading scenario..."
 msgstr ""
 
@@ -442,7 +442,7 @@ msgstr ""
 msgid "Minimap"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3400
+#: packages/ui/src/GameShell.svelte:3416
 msgid "Move Here"
 msgstr ""
 
@@ -478,11 +478,11 @@ msgstr ""
 msgid "Not enough gold (needs $cost, have $gold)"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4213
+#: packages/ui/src/gameSession.ts:4226
 msgid "Not enough gold to recall $unit (needs $cost, have $gold)."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4179
+#: packages/ui/src/gameSession.ts:4192
 msgid "Not enough gold to recruit $unit (needs $cost, have $gold)."
 msgstr ""
 
@@ -506,7 +506,7 @@ msgstr ""
 msgid "Overwrite"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:4017
+#: packages/ui/src/GameShell.svelte:4036
 msgid "Pause"
 msgstr ""
 
@@ -518,23 +518,23 @@ msgstr ""
 msgid "Pause the music while the window is hidden"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3341
+#: packages/ui/src/GameShell.svelte:3357
 msgid "Place Label (Team)"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3023
+#: packages/ui/src/GameShell.svelte:3037
 msgid "Playing on from the end of the replay."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4221
+#: packages/ui/src/gameSession.ts:4234
 msgid "Recalled $unit for $cost gold."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4184
+#: packages/ui/src/gameSession.ts:4197
 msgid "Recruited $unit for $cost gold."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:5572
+#: packages/ui/src/gameSession.ts:5597
 msgid "Redid $action."
 msgstr ""
 
@@ -542,31 +542,31 @@ msgstr ""
 msgid "Rename failed:"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:4014
+#: packages/ui/src/GameShell.svelte:4033
 msgid "Replay controls"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2998
+#: packages/ui/src/GameShell.svelte:3012
 msgid "Replay finished."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2934 packages/ui/src/GameShell.svelte:2962
+#: packages/ui/src/GameShell.svelte:2947 packages/ui/src/GameShell.svelte:2976
 msgid "Replay of $name: $total actions."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2997
+#: packages/ui/src/GameShell.svelte:3011
 msgid "Replay out of sync at action $index ($command): $message"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3005
+#: packages/ui/src/GameShell.svelte:3019
 msgid "Replay paused."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2998
+#: packages/ui/src/GameShell.svelte:3012
 msgid "Replay: action $index of $total."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3305 packages/ui/src/telemetry/BugReportDialog.svelte:72
+#: packages/ui/src/GameShell.svelte:3321 packages/ui/src/telemetry/BugReportDialog.svelte:72
 msgid "Report a Bug"
 msgstr ""
 
@@ -578,7 +578,7 @@ msgstr ""
 msgid "Resistance to $type ×$factor"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:4019
+#: packages/ui/src/GameShell.svelte:4038
 msgid "Restart"
 msgstr ""
 
@@ -586,7 +586,7 @@ msgstr ""
 msgid "Resume scrolling"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:838
+#: packages/ui/src/GameShell.svelte:850
 msgid "Review the attack prediction, then confirm or cancel."
 msgstr ""
 
@@ -602,11 +602,11 @@ msgstr ""
 msgid "Scenario: $scenario, turn $turn"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3555
+#: packages/ui/src/GameShell.svelte:3571
 msgid "Select / Move / Attack"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3398
+#: packages/ui/src/GameShell.svelte:3414
 msgid "Select Unit"
 msgstr ""
 
@@ -642,11 +642,11 @@ msgstr ""
 msgid "Show the infobox"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:1420
+#: packages/ui/src/GameShell.svelte:1432
 msgid "Side $side"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:3105
+#: packages/ui/src/gameSession.ts:3118
 msgid "Side $side ($name)"
 msgstr ""
 
@@ -678,7 +678,7 @@ msgstr ""
 msgid "Story"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:1479
+#: packages/ui/src/GameShell.svelte:1491
 msgid "Tap again to move here."
 msgstr ""
 
@@ -686,7 +686,7 @@ msgstr ""
 msgid "Thank you! Your report was sent."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:2869
+#: packages/ui/src/GameShell.svelte:2881
 msgid "That save no longer exists."
 msgstr ""
 
@@ -698,6 +698,10 @@ msgstr ""
 msgid "The game hit an error it did not expect. You can try to carry on, but it may not behave correctly."
 msgstr ""
 
+#: packages/ui/src/GameBoardView.svelte:742
+msgid "The graphics stopped working (the browser lost the WebGL context). Reload the page to continue."
+msgstr ""
+
 #: packages/ui/src/telemetry/BugReportDialog.svelte:114
 msgid "The report also says which version of the game and which browser you use. It goes to the developer of this web port and is deleted after a year."
 msgstr ""
@@ -706,7 +710,7 @@ msgstr ""
 msgid "The report could not be sent ($reason). You can copy or download it and send it yourself."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:5309
+#: packages/ui/src/gameSession.ts:5323
 msgid "This save's map does not fit the scenario's; the scenario map is kept."
 msgstr ""
 
@@ -734,11 +738,11 @@ msgstr ""
 msgid "Title screen info"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4395
+#: packages/ui/src/gameSession.ts:4408
 msgid "Turn $turn -- side $side ($team)'s turn."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:5551
+#: packages/ui/src/gameSession.ts:5576
 msgid "Undid $action."
 msgstr ""
 
@@ -746,7 +750,7 @@ msgstr ""
 msgid "Units show an orb that says whether they can still act. Pick colours you can tell apart."
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:3279 packages/ui/src/TopBar.svelte:218 packages/ui/src/TopBar.svelte:218
+#: packages/ui/src/GameShell.svelte:3295 packages/ui/src/TopBar.svelte:218 packages/ui/src/TopBar.svelte:218
 msgid "Unmute"
 msgstr ""
 
@@ -762,15 +766,15 @@ msgstr ""
 msgid "User interface"
 msgstr ""
 
-#: packages/ui/src/GameShell.svelte:836 packages/ui/src/gameSession.ts:5811
+#: packages/ui/src/GameShell.svelte:848 packages/ui/src/gameSession.ts:5836
 msgid "Victory!"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:5830
+#: packages/ui/src/gameSession.ts:5855
 msgid "Victory! The enemy has been defeated."
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:4927 packages/ui/src/gameSession.ts:4948
+#: packages/ui/src/gameSession.ts:4940 packages/ui/src/gameSession.ts:4961
 msgid "Viewing $unit."
 msgstr ""
 
@@ -802,23 +806,23 @@ msgstr ""
 msgid "Yes, send statistics"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:1056 packages/ui/src/gameSession.ts:1058
+#: packages/ui/src/gameSession.ts:1063 packages/ui/src/gameSession.ts:1065
 msgid "a unit"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:5232
+#: packages/ui/src/gameSession.ts:5245
 msgid "an advancement"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:1058
+#: packages/ui/src/gameSession.ts:1065
 msgid "dismissal of $unit"
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:639
+#: packages/ui/src/GameBoardView.svelte:648
 msgid "failed to load: $error"
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:239
+#: packages/ui/src/GameBoardView.svelte:239 packages/ui/src/GameBoardView.svelte:747
 msgid "loading scenario..."
 msgstr ""
 
@@ -826,7 +830,7 @@ msgstr ""
 msgid "magical"
 msgstr ""
 
-#: packages/ui/src/GameBoardView.svelte:1164
+#: packages/ui/src/GameBoardView.svelte:1204
 msgid "map"
 msgstr ""
 
@@ -834,19 +838,19 @@ msgstr ""
 msgid "marksman"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:1052
+#: packages/ui/src/gameSession.ts:1059
 msgid "move"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:1056
+#: packages/ui/src/gameSession.ts:1063
 msgid "recall of $unit"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:1054
+#: packages/ui/src/gameSession.ts:1061
 msgid "recruit of $type"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:5622
+#: packages/ui/src/gameSession.ts:5647
 msgid "the state after this command differs from the recorded game"
 msgstr ""
 
@@ -854,11 +858,11 @@ msgstr ""
 msgid "web $version"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:1638
+#: packages/ui/src/gameSession.ts:1651
 msgid "you can attack it"
 msgstr ""
 
-#: packages/ui/src/gameSession.ts:1637
+#: packages/ui/src/gameSession.ts:1650
 msgid "you can move here"
 msgstr ""
 
