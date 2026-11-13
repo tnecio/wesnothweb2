@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GameSession } from './gameSession.js';
-import { getAdjacentTiles } from '@wesnothweb2/engine';
+import { getAdjacentTiles, parseConfig, runActionSequence } from '@wesnothweb2/engine';
 import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 
 /**
@@ -47,6 +47,27 @@ describe('The South Guard', () => {
       expect(problems).toEqual(expected);
     });
   }
+
+  // The stronger-AMLAs resource the campaign loads says "already at their max level" on `pre advance` when
+  // `$unit.advances_to` is empty -- which it always was, `unit::write`'s advances_to being missing: a Bowman
+  // advancing to Longbowman got it (reported on an iPhone).
+  it('01_Born_to_the_Banner: the max-level hint comes for a unit at its highest level, not a Bowman advancing to Longbowman', async () => {
+    const { session } = start('01_Born_to_the_Banner');
+    await session.runStartupEvents();
+    const ctx = session['eventPump'].ctx;
+    const run = (wml: string) => runActionSequence(parseConfig(wml), ctx);
+    const advance = (type: string, id: string, x: number) => {
+      const before = ctx.messages.length;
+      run(`[unit]\nside=1\ntype=${type}\nid=${id}\nx,y=${x},2\n[/unit]`);
+      const unit = session.board.allUnits().find((u) => u.id === id)!;
+      unit.experience = unit.maxExperience; // one level's worth
+      run(`[store_unit]\n[filter]\nid=${id}\n[/filter]\nvariable=u\n[/store_unit]\n[unstore_unit]\nvariable=u\nadvance=yes\n[/unstore_unit]`);
+      return ctx.messages.slice(before).some((m) => /already at their max level/.test(m.message));
+    };
+    expect(advance('Bowman', 'bow', 3)).toBe(false);
+    expect(session.board.allUnits().find((u) => u.id === 'bow')!.type.id).toBe('Longbowman');
+    expect(advance('Master Bowman', 'master', 5)).toBe(true);
+  });
 
   it('01_Born_to_the_Banner: in the tutorial, Mari (South_Guard,quintain) is the player\'s ally and never attacks Deoran', async () => {
     const { session } = start('01_Born_to_the_Banner');
