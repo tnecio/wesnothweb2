@@ -1293,6 +1293,7 @@ export class SnapshotBoard {
     this.lastFogShroudKey = this.terrainHexContainers.size > 0 ? key : null;
     this.lastFogShroud = hexes;
     if (hexes.length === 0) {
+      this.fogShroudGeneration++; // a draw still loading must not bring the fog back
       this.fogShroudLayer.removeChildren().forEach((child) => child.destroy());
       for (const c of this.terrainHexContainers.values()) {
         if (c.bg) c.bg.visible = true;
@@ -1303,8 +1304,23 @@ export class SnapshotBoard {
     void this.drawFogShroud(hexes);
   }
 
-  /** Async half of `updateFogShroud` -- loads whatever fog/void/transition images this call needs, then swaps the layer in one go. */
+  /** How many fog/shroud sprites are on screen (for browser checks). */
+  fogShroudSpriteCount(): number {
+    return this.fogShroudLayer.children.length;
+  }
+
+  /** Bumped by each `drawFogShroud`: a draw overtaken by a newer one is dropped (`drawFogShroud`). */
+  private fogShroudGeneration = 0;
+
+  /**
+   * Async half of `updateFogShroud`: loads whatever fog/void/transition images this call needs, then swaps the
+   * layer (and the shrouded hexes' terrain) in one go. Nothing on screen changes until every sprite is ready, and a
+   * draw that a newer one has overtaken changes nothing: it used to empty the layer first and add sprites as their
+   * images resolved, and calls could finish out of order -- each AI move recomputes the view, so on a slow device the
+   * fog was seen to blink (The South Guard 4, on an iPhone).
+   */
   private async drawFogShroud(hexes: readonly FogShroudHex[]): Promise<void> {
+    const generation = ++this.fogShroudGeneration;
     const visAt = new Map<string, FogShroudHex['visibility']>();
     for (const h of hexes) visAt.set(`${h.x},${h.y}`, h.visibility);
     const neighborsOf = (loc: Location): FogShroudHex['visibility'][] =>
@@ -1313,12 +1329,6 @@ export class SnapshotBoard {
     const perHex: Array<{ cx: number; cy: number; images: string[] }> = [];
     const refs = new Set<string>();
     for (const h of hexes) {
-      const key = `${h.x},${h.y}`;
-      const containers = this.terrainHexContainers.get(key);
-      const shrouded = h.visibility === 'shrouded';
-      if (containers?.bg) containers.bg.visible = !shrouded;
-      if (containers?.fg) containers.fg.visible = !shrouded;
-
       const images = hexOverlayImages(h.x, h.y, h.visibility, neighborsOf(new Location(h.x, h.y)), defaultAssetExists);
       if (images.length === 0) continue;
       const { x: cx, y: cy } = hexToPixel(toHexCoord(h.x, h.y));
@@ -1332,13 +1342,22 @@ export class SnapshotBoard {
       for (const img of images) refs.add(img);
     }
 
-    await ImageCache.preload(refs);
+    const textures = new Map<string, PIXI.Texture | null>();
+    await Promise.all([...refs].map(async (ref) => textures.set(ref, await ImageCache.resolve(ref))));
+    if (generation !== this.fogShroudGeneration || this.fogShroudLayer.destroyed) return;
 
+    // Everything ready: the swap, with no await from here on.
+    for (const h of hexes) {
+      const containers = this.terrainHexContainers.get(`${h.x},${h.y}`);
+      const shrouded = h.visibility === 'shrouded';
+      if (containers?.bg) containers.bg.visible = !shrouded;
+      if (containers?.fg) containers.fg.visible = !shrouded;
+    }
     this.fogShroudLayer.removeChildren().forEach((child) => child.destroy());
     for (const hex of perHex) {
       for (const img of hex.images) {
-        const texture = await ImageCache.resolve(img);
-        if (!texture) continue;
+        const texture = textures.get(img);
+        if (!texture || texture.destroyed) continue;
         const sprite = new PIXI.Sprite(texture);
         sprite.anchor.set(0.5);
         sprite.x = hex.cx;
