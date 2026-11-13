@@ -45,4 +45,17 @@ describe('thinAnimations', () => {
     expect(paths(thin, 'bg', 0)).toEqual(['ocean01.png'])
     expect(paths(thin, 'fg', 0)).toEqual(['brazier-lit1.png'])
   })
+
+  // The weather macros' rain (`ADD_WEATHER_RAIN`): an empty 0 ms first frame, then five rain frames of 80 ms. Thinned
+  // with it, the empty frame took 160 ms of each 400 and the rain blinked (Choice in the Fog, on an iPhone).
+  it('leaves out a 0 ms frame while the cycle runs, and keeps it as the frame a held cycle shows', () => {
+    const rain = [{ path: 'weather/noweather.png', mods: '', durationMs: 0 }, ...Array.from({ length: 5 }, (_, i) => ({ path: `weather/rain/rain-${i + 1}.png`, mods: '~O(0.5)', durationMs: 80 }))]
+    const l: TerrainLayout = { hexes: [{ x: 0, y: 0, bg: [], fg: [{ frames: rain }] }], refs: [] }
+    const running = thinAnimations(l, { stride: 3, animation: { map: true, water: true } })
+    expect(paths(running, 'fg', 0)).toEqual(['rain-1.png', 'rain-4.png'])
+    expect(running.hexes[0]!.fg[0]!.frames.map((f) => f.durationMs)).toEqual([240, 160])
+    expect(period(running, 'fg', 0)).toBe(400)
+    const held = thinAnimations(l, { stride: 3, animation: { map: false, water: true } })
+    expect(paths(held, 'fg', 0)).toEqual(['noweather.png'])
+  })
 })
