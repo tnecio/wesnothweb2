@@ -682,6 +682,15 @@ export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBo
     if (u.experience !== undefined) unit.experience = u.experience;
     if (u.maxExperience !== undefined) unit.maxExperience = u.maxExperience;
     board.assignUnitId(unit);
+    unitsByKey.set(unitKeyFor(u), unit);
+    // A unit with no hex (a side's leader without a starting position, a `[side] [unit]` without `x,y`) goes to its
+    // side's recall list, as `unit_creator::add_unit` puts it (`add_to_recall`): it used to be put on the map at
+    // "nowhere", where the AI then tried to move it (Lua AI errors "invalid location" in Winds of Fate 3) and
+    // `[recall]` did not find it (Legend of Wesmere 13's Olurf, Secrets of the Ancients' Ras-Tabahn, ...).
+    if (!unit.location.valid()) {
+      board.addToRecallList(unit.side, unit);
+      continue;
+    }
     board.addUnit(unit);
     // Mirrors `GameBoard.fromConfig`'s own initial-placement capture (real
     // `unit_creator`'s default `allow_get_village=true`) -- this snapshot's
@@ -689,7 +698,6 @@ export function gameBoardFromSnapshot(snapshot: GameBoardSnapshot): LoadedGameBo
     // re-deriving it here from each unit's real starting position gives
     // the same result without needing a new snapshot field.
     board.captureVillage(unit.location, unit.side);
-    unitsByKey.set(unitKeyFor(u), unit);
   }
 
   // The sides' recall lists (a leader with no hex for it, `[unit] x,y=recall`), rebuilt in full.
