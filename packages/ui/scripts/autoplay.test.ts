@@ -21,6 +21,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readScenarioSnapshot } from '@wesnothweb2/engine/src/snapshot/snapshotFiles.node.js';
 import { GameSession } from '../src/gameSession.js';
+import { runFlow, type Flow, type Responder } from '@wesnothweb2/engine';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const scenariosDir = path.join(repoRoot, 'apps/web/public/scenarios');
@@ -51,6 +52,18 @@ interface ScenarioResult {
 function record(r: ScenarioResult): void {
   fs.appendFileSync(out, JSON.stringify(r) + '\n');
   console.log(`${r.campaign}/${r.scenario}: ${r.result} in ${r.turns} turns, ${r.seconds} s${r.problems.length ? `, ${r.problems.length} problem(s)` : ''}${r.error ? ` -- ${r.error}` : ''}`);
+}
+
+/** Ends `session` as won: the result, then the end-of-scenario events a won scenario fires. */
+function forceVictory(session: GameSession): void {
+  const s = session as unknown as { scenarioResult: string; scenarioEndEventsFired: boolean; scenarioEndFlow: () => Flow; collectResponder: Responder };
+  s.scenarioResult = 'victory';
+  s.scenarioEndEventsFired = false;
+  try {
+    runFlow(s.scenarioEndFlow(), s.collectResponder);
+  } catch (e) {
+    console.log(`forced victory's end events failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 const yieldNow = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -123,8 +136,10 @@ describe.skipIf(!wanted)('autoplay', () => {
         }
         const result = await playScenario(session, campaign.id, scenarioId, problems);
         record(result);
-        // On to the next scenario as after a victory, whatever happened here.
-        if (session.scenarioResult !== 'victory') (session as unknown as { scenarioResult: string }).scenarioResult = 'victory';
+        // On to the next scenario as after a victory, whatever happened here -- through the game's own end of a won
+        // scenario (`scenarioEndFlow`: local_victory, victory, scenario_end), whose events store what the next
+        // scenario brings back (The Rise of Wesnoth 5 stores the Lady at its victory).
+        if (session.scenarioResult !== 'victory') forceVictory(session);
         let next = session.nextScenarioId;
         if (next && (next === scenarioId || seen.has(next))) {
           // The next scenario is chosen in play ([endlevel] next_scenario=, as Choice in the Fog's alliance), which a
