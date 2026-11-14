@@ -70,11 +70,9 @@ const CAMPAIGNS: Record<string, CampaignCase> = {
       '21_The_Plan': ["error: [unstore_unit]: variable 'jessica_store' doesn't contain unit data", 'error: [move_unit_fake] missing required type='],
     },
   },
-  Legend_of_Wesmere: {
-    playThrough: '01_The_Uprooting',
-    // Landar, a hero carried over since scenario 1, is stored and put back.
-    expectedProblems: { '13_News_from_the_Front': ["error: [unstore_unit]: variable 'landar_store' doesn't exist"] },
-  },
+  // 13 declares Landar in its [side] (placement=leader): he is placed beside Kalenz even opened on its own, and
+  // its stored-and-put-back Landar finds him.
+  Legend_of_Wesmere: { playThrough: '01_The_Uprooting' },
   Son_Of_The_Black_Eye: { playThrough: '01_End_of_Peace' },
   Under_the_Burning_Suns: { playThrough: '05_A_Subterranean_Struggle' },
   Secrets_of_the_Ancients: { playThrough: '01_Slipping_Away' },
