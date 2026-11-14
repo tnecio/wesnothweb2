@@ -499,3 +499,45 @@ describe('event priority (event_handlers::cmp over the reversed range)', () => {
     expect(pump.ctx.variables.getString('order')).toBe('highablow');
   });
 });
+
+// `wml-conditionals.lua` adds `formula=` (the variable as `value`, WFL's 0 false) and `blank=` to [variable]:
+// Eastern Invasion 10 times its waves with `{VARIABLE_CONDITIONAL turn_number formula "(value%12)=..."}`.
+describe('[variable] formula= and blank=', () => {
+  const check = (setup: string, condition: string) =>
+    fire(`
+      [event]
+        name=go
+        ${setup}
+        [if]
+          [variable]
+            ${condition}
+          [/variable]
+          [then]
+            [set_variable]
+              name=result
+              value=yes
+            [/set_variable]
+          [/then]
+          [else]
+            [set_variable]
+              name=result
+              value=no
+            [/set_variable]
+          [/else]
+        [/if]
+      [/event]`).ctx.variables.get('result');
+  const n = (v: number) => `[set_variable]\nname=n\nvalue=${v}\n[/set_variable]`;
+
+  it('evaluates the formula with the variable as value', () => {
+    expect(check(n(26), 'name=n\nformula="(value%12)=2"')).toBe(true);
+    expect(check(n(27), 'name=n\nformula="(value%12)=2"')).toBe(false);
+    expect(check(n(5), 'name=n\nformula="value * 2"')).toBe(true);
+    expect(check(n(0), 'name=n\nformula="value"')).toBe(false); // 0 is false
+  });
+
+  it('blank= tests whether the variable is set', () => {
+    expect(check('', 'name=nothing\nblank=yes')).toBe(true);
+    expect(check(n(1), 'name=n\nblank=yes')).toBe(false);
+    expect(check(n(1), 'name=n\nblank=no')).toBe(true);
+  });
+});
