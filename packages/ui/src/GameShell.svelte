@@ -1557,11 +1557,17 @@
       return;
     }
     const hex = pointerHex;
+    // A selected unit's planned multi-turn move, while the pointer is on the unit or there is none (a touch screen).
+    const sel = session.selectedUnit;
+    if (sel && (!hex || (hex.x === sel.location.x && hex.y === sel.location.y))) {
+      route = session.selectedGotoRoute();
+      if (!hex) return;
+    }
     if (!hex) return;
     const from = session.attackFrom(hex, previousHex, previousFreeHex);
     if (from) attackIndicator = { src: from, dst: hex };
     const dest = from ?? hex;
-    route = session.routePreview(dest.x, dest.y);
+    route = session.routePreview(dest.x, dest.y) ?? route;
     const hover = session.hoverPreview(hex.x, hex.y);
     if (hover) {
       hoverReach = hover.reach;

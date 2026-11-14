@@ -3743,6 +3743,21 @@ export class GameSession {
   }
 
   /**
+   * The route of the selected unit's standing multi-turn order (`goto`), when it has one -- shown while the pointer is
+   * on the unit itself, or when there is no pointer. Upstream shows it on hovering the unit with nothing selected
+   * (`hoverPreview`); a touch screen has no hover, so a planned move was never seen again on a phone. Only the player's
+   * own side and allied human sides, as `hoverPreview`.
+   */
+  selectedGotoRoute(): RouteOverlay | null {
+    const unit = this.selectedUnit;
+    if (!unit?.goto || !this.board.map.onBoard(unit.goto) || unit.location.equals(unit.goto)) return null;
+    const viewer = this.board.getTeam(this.viewingSide);
+    const team = this.board.getTeam(unit.side);
+    if (!viewer || !team || viewer.isEnemy(team) || this.isAiSide(unit.side)) return null;
+    return this.routeOverlay(unit, unit.goto);
+  }
+
+  /**
    * Phase 28b: `mouse_handler::show_reach_for_unit` -- the pointer resting
    * on a unit while nothing is selected shows where it can go (another
    * side's with full moves) and, for a unit of the player's own or an
