@@ -148,7 +148,6 @@ import {
   type HealOutcome,
   computeGoldCarryover,
   findVictoryEndlevelGoldConfig,
-  computeCarryoverRecruits,
   scheduleFromScenarioConfigJson,
   parseTimes,
   findLocations,
@@ -1297,6 +1296,8 @@ export interface SaveGameData {
   nextTeleportGroupId?: number;
   /** The "carried over N gold" result this scenario was entered with, for the UI banner (it is derived from the *previous* scenario, so it cannot be recomputed here). */
   goldCarryover?: GoldCarryoverResult | null;
+  /** The carryover held through a scenario without the player's side (`GameSession.heldCarryover`). */
+  heldCarryover?: { units: SavedUnit[]; goldValue: number; add: boolean } | null;
   /**
    * Present only on a save *imported* from a real Wesnoth `.gz`: that
    * file's own tree, minus the `[side]` blocks this session regenerates
@@ -2546,6 +2547,12 @@ export class GameSession {
     if (this.scenarioResult && !this.scenarioEndEventsFired) yield* this.scenarioEndFlow();
     return result;
   }
+
+  /**
+   * The player side's carryover (units, gold and how it adds) held through a scenario without that side, for the next
+   * scenario that has it -- as upstream's carryover keeps sides a scenario does not use. Null otherwise.
+   */
+  heldCarryover: { units: Unit[]; goldValue: number; add: boolean } | null = null;
 
   /** Whether `scenarioEndFlow` has run (saved, so a loaded finished game does not run it again). */
   private scenarioEndEventsFired = false;
@@ -5270,6 +5277,9 @@ export class GameSession {
       startupEventsRun: this.startupEventsRun,
       rng: { seed: this.mtRng.getRandomSeedStr(), calls: this.mtRng.getRandomCalls() },
       goldCarryover: this.goldCarryover,
+      heldCarryover: this.heldCarryover
+        ? { units: this.heldCarryover.units.map((u) => savedUnitFields(u)), goldValue: this.heldCarryover.goldValue, add: this.heldCarryover.add }
+        : null,
       tunnels: this.board.tunnels.toConfigs().map((c) => c.toJSON()),
       nextTeleportGroupId: this.board.tunnels.nextTeleportGroupId,
       usedItems: [...this.eventPump.ctx.usedItems],
@@ -5359,6 +5369,10 @@ export class GameSession {
     }
     if (data.rng) this.mtRng.seedRandom(data.rng.seed, data.rng.calls);
     if (data.goldCarryover !== undefined) this.goldCarryover = data.goldCarryover;
+    if (data.heldCarryover) {
+      const held = data.heldCarryover;
+      this.heldCarryover = { units: held.units.map((u) => this.unitFromSave(u, Location.NULL)), goldValue: held.goldValue, add: held.add };
+    }
     this.board.tunnels.loadConfigs((data.tunnels ?? []).map((c) => WmlConfig.fromJSON(c)), data.nextTeleportGroupId ?? 0);
     this.rng.mode = data.randomMode ?? 'per_action';
     this.eventPump.ctx.usedItems = new Set(data.usedItems ?? []);
@@ -5772,17 +5786,17 @@ export class GameSession {
    * session that just ended in victory) -- the generic `next_scenario=`
    * mechanism this class's own module doc comment describes. Computes real
    * gold carryover (`computeGoldCarryover`, exposed afterward via
-   * `goldCarryover`) and populates the new session's recall list with every
-   * surviving player-side unit not inline-re-declared in `nextSnapshot`'s
-   * own `[side]` (`computeCarryoverRecruits`) -- see both functions' own
-   * doc comments for the exact, documented simplifications (locating the
-   * `[endlevel]` via a static config walk rather than a real fired event;
-   * a persistent hero like Kai Krellis excluded by id, so his level/XP does
-   * not persist across the transition).
+   * `goldCarryover`) and carries every surviving player-side unit over as
+   * upstream's `unit_creator::add_unit` does: a unit the next scenario's
+   * `[side]` declares (by id) is the carried one, put where the declaration
+   * placed it; the rest go on the recall list. A next scenario without the
+   * player's side (story only) holds all of it (`heldCarryover`) for the one
+   * after. The `[endlevel]` is still located via a static config walk rather
+   * than a real fired event (see `computeGoldCarryover`'s doc comment).
    *
    * `finished`'s board is left untouched (nothing here mutates it) -- the
    * carried-over `Unit` instances are the same live objects, simply added
-   * to the new board's recall list, mirroring `fromSaveData`'s "build a
+   * to the new board, mirroring `fromSaveData`'s "build a
    * fresh session rather than mutate one in place" pattern. Callers should
    * just stop using `finished` once this returns.
    */
@@ -5790,20 +5804,65 @@ export class GameSession {
     if (finished.scenarioResult !== 'victory') {
       throw new Error('GameSession.startNextScenario: can only continue from a session that ended in victory.');
     }
-    const goldCarryover = finished.computeGoldCarryoverResult(nextSnapshot);
-    const carriedOverUnits = computeCarryoverRecruits(finished.board, finished.playerSide, nextSnapshot.scenarioConfigJson);
+    // Upstream's carryover keeps a side's units and gold until a scenario has that side again: a scenario without
+    // it (Legend of Wesmere 12, Revelations, is story only, with no [side]) passes them on. They were dropped,
+    // and Kalenz's whole army -- Landar, Cleodil -- was gone from scenario 13 on.
+    const held = finished.heldCarryover;
+    let goldCarryover: GoldCarryoverResult;
+    let carriedOverUnits: Unit[];
+    let carryAdd: boolean;
+    if (held) {
+      const declared = nextSnapshot.teams.find((t) => t.side === finished.playerSide)?.gold ?? 100;
+      goldCarryover = {
+        finishingBonusPerTurn: 0,
+        turnsLeft: 0,
+        finishingBonus: 0,
+        carryoverGoldValue: held.goldValue,
+        nextScenarioGold: held.add ? declared + held.goldValue : Math.max(held.goldValue, declared),
+      };
+      carriedOverUnits = [...held.units];
+      carryAdd = held.add;
+    } else {
+      goldCarryover = finished.computeGoldCarryoverResult(nextSnapshot);
+      carriedOverUnits = [...finished.board.unitsForSide(finished.playerSide), ...finished.board.recallList(finished.playerSide)];
+      carryAdd = findVictoryEndlevelGoldConfig(finished.snapshot.scenarioConfigJson).carryoverAdd;
+    }
 
     // Phase 30: the random mode goes on, as upstream's carryover keeps `random_mode` (`savegame.cpp`).
     const session = new GameSession(nextSnapshot, { music: finished.music, ...options, randomMode: finished.rng.mode, goldCarryover });
     const team = session.board.getTeam(session.playerSide);
+    if (!team) {
+      // No player side here: everything is held for the next scenario that has it.
+      session.heldCarryover = { units: held ? held.units : carriedOverUnits, goldValue: goldCarryover.carryoverGoldValue, add: carryAdd };
+    }
     if (team) team.gold = goldCarryover.nextScenarioGold;
-    for (const unit of carriedOverUnits) {
+    const side = session.playerSide;
+    for (const unit of team ? carriedOverUnits : []) {
       // game_board::new_scenario: a carried-over unit starts the next
       // scenario healed, unafflicted, with temporary modifications gone.
       const env = effectEnvFor(session.eventPump.ctx, unit);
       unit.newScenario(env);
       unit.newTurn(env);
-      session.board.addToRecallList(session.playerSide, unit);
+      // `unit_creator::add_unit`: a unit the scenario's [side] declares (its leader, a [unit] with an id) is the carried
+      // one, if the recall list has it -- placed where the declaration put it, its level, experience and traits kept.
+      // The port used to make it anew from the scenario file: a hero who levelled up (Konrad, Kalenz) started each
+      // scenario as declared, and Legend of Wesmere's companions lost what they had gained.
+      const fresh = unit.id ? session.board.allUnits().find((u) => u.side === side && u.id === unit.id) : undefined;
+      if (fresh) {
+        const loc = fresh.location;
+        session.board.removeUnitAt(loc);
+        unit.location = loc;
+        session.board.addUnit(unit);
+        continue;
+      }
+      const recall = session.board.recallList(side);
+      const index = unit.id ? recall.findIndex((u) => u.id === unit.id) : -1;
+      if (index >= 0) {
+        session.board.removeFromRecallList(side, recall[index]!.underlyingId);
+        session.board.insertIntoRecallList(side, unit, index);
+        continue;
+      }
+      session.board.addToRecallList(side, unit);
     }
     // Phase 17: WML variables cross the scenario boundary, as upstream's
     // carryover does -- Two Brothers 2 picks the castle passwords and
