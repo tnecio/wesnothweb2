@@ -25,8 +25,8 @@
  * (`core/about.cfg`, `core/about_i18n.cfg`) and each shipped campaign's `[about]` sections,
  * with their translatable titles. Sections without entries are dropped, as upstream does.
  *
- * Phase 25: `packages/ui/src/achievements.json` is `data/achievements.cfg`'s groups (all but the tutorial's and
- * multiplayer's, which the port does not ship)
+ * Phase 25: `packages/ui/src/achievements.json` is `data/achievements.cfg`'s groups (all but multiplayer's, which
+ * the port does not ship)
  * (bundled: events need them as soon as a game starts).
  *
  * `tips.json` is the title screen's tip-of-the-day source (`data/tips.cfg`, translatable text and
@@ -174,8 +174,9 @@ fs.writeFileSync(path.join(repoRoot, 'apps/web/public/tips.json'), JSON.stringif
 // name their file directly), since the achievements dialog also opens from the title screen, outside any
 // campaign.
 // `content_for=` is the content's own name, not always its campaign id (HttT's is `heir_2_the_throne`); every
-// group is kept but the tutorial's and multiplayer Survivals', content the port does not ship.
-const UNSHIPPED_ACHIEVEMENT_CONTENT = new Set(['tutorial', 'wesnoth_MP_survivals']);
+// group is kept but multiplayer Survivals', content the port does not ship. The tutorial's is kept: Heir to the
+// Throne Classic ships its scenarios, and they [progress_achievement] content_for=tutorial.
+const UNSHIPPED_ACHIEVEMENT_CONTENT = new Set(['wesnoth_MP_survivals']);
 const shippedDirs = manifest.campaigns.filter((c) => c.wesnothId).map((c) => c.wesnothId);
 /** An icon as a rooted image path: `data/...` names its file; else core's, else the first shipped campaign's that has it. */
 function rootIcon(icon) {
