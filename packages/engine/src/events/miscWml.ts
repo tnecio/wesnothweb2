@@ -319,7 +319,9 @@ export function actionTerrain(raw: WmlConfig, ctx: EventContext): void {
   }
   const code = parseTerrainCode(terrain);
   if (!(layer === 'overlay' && terrain === '^') && !ctx.board.map.isKnownTerrain(code)) {
-    ctx.log('error', `[terrain] invalid terrain=${terrain}`);
+    // As `gamemap::set_terrain`: an unknown terrain changes nothing, silently (merge_terrains gives NONE_TERRAIN).
+    // Mainline has one: Eastern Invasion 17a's `Cud^Li`, an overlay defined nowhere.
+    ctx.log('debug', `[terrain] unknown terrain=${terrain}: nothing changed`);
     return;
   }
   const mode = layer.toUpperCase() as MergeMode;
