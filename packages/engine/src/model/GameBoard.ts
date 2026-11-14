@@ -310,7 +310,14 @@ export class GameBoard {
     return this.recallLists.get(side) ?? [];
   }
 
+  /**
+   * A unit on a recall list is nowhere on the map: its location is cleared, as upstream's recall-list units have none.
+   * A unit kept its last hex, so `x,y=recall` in a filter did not see it as recalled: Liberty 3 stores the side's
+   * units with `[not] x,y=recall,recall` and then looks each up on the map (`[unit_worth]`), and units carried over
+   * onto the recall list were stored too ("[unit_worth]'s filter didn't match any unit").
+   */
   addToRecallList(side: number, unit: Unit): void {
+    unit.location = Location.NULL;
     const list = this.recallLists.get(side);
     if (list) list.push(unit);
     else this.recallLists.set(side, [unit]);
@@ -318,6 +325,7 @@ export class GameBoard {
 
   /** Puts `unit` back at `index` of `side`'s recall list (clamped to its end) -- an undone recall or dismissal returns to the slot it came from. */
   insertIntoRecallList(side: number, unit: Unit, index: number): void {
+    unit.location = Location.NULL;
     const list = this.recallLists.get(side);
     if (!list) {
       this.recallLists.set(side, [unit]);
