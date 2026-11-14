@@ -11,6 +11,8 @@
  *   AUTOPLAY=all ...                                     every mainline campaign
  *   AUTOPLAY=The_South_Guard AUTOPLAY_FROM=05a_The_Long_March ...   from that scenario on (no carryover into it)
  *   AUTOPLAY_ONLY=1 ...                                  just that one scenario
+ *   AUTOPLAY_CARRY=fresh ...                             after a scenario the AI lost, carry over from it won just after
+ *                                                        its opening events (no hero lost to the AI)
  *
  * Each scenario appends one JSON line to AUTOPLAY_OUT: the result (`victory`, `defeat`, `turn-limit`, `timeout`,
  * `crash`), turns played, seconds, and the errors and unsupported-WML warnings logged.
@@ -139,7 +141,22 @@ describe.skipIf(!wanted)('autoplay', () => {
         // On to the next scenario as after a victory, whatever happened here -- through the game's own end of a won
         // scenario (`scenarioEndFlow`: local_victory, victory, scenario_end), whose events store what the next
         // scenario brings back (The Rise of Wesnoth 5 stores the Lady at its victory).
-        if (session.scenarioResult !== 'victory') forceVictory(session);
+        if (session.scenarioResult !== 'victory') {
+          if (process.env['AUTOPLAY_CARRY'] === 'fresh') {
+            // The AI lost: a hero whose death ends the game may be dead, and every later scenario that stores him
+            // would complain (Lady Jessene in The Rise of Wesnoth). Carry over from the same scenario won just after
+            // its opening events instead -- everyone alive, as a player who won it has them.
+            const fresh = previous ? GameSession.startNextScenario(previous, readScenarioSnapshot(file), { seed: 1 }) : new GameSession(readScenarioSnapshot(file), { seed: 1 });
+            fresh.interactionHost = session.interactionHost;
+            try {
+              await fresh.runStartupEvents();
+            } catch {
+              // Its errors were recorded with the played one.
+            }
+            forceVictory(fresh);
+            session = fresh;
+          } else forceVictory(session);
+        }
         let next = session.nextScenarioId;
         if (next && (next === scenarioId || seen.has(next))) {
           // The next scenario is chosen in play ([endlevel] next_scenario=, as Choice in the Fog's alliance), which a
