@@ -27,7 +27,8 @@
 
 import type { WmlConfig } from '../wml/config.js';
 import type { EventContext } from './context.js';
-import { findLocations, findUnits } from './filter.js';
+import { findLocations, findUnits, gameStateSymbols } from './filter.js';
+import { MapFormulaCallable, parseFormula, Variant } from '../formula/index.js';
 import { findSides } from './sideFilter.js';
 
 /** Parses a WML count= range list ("1-infinity", "2", "1-3,5") the same way `have_unit`'s count= does. */
@@ -99,6 +100,27 @@ function variableMatches(cfg: WmlConfig, ctx: EventContext): boolean {
   if (cfg.hasAttribute('boolean_equals')) return boolValue === cfg.getBoolean('boolean_equals');
   if (cfg.hasAttribute('boolean_not_equals')) return boolValue !== cfg.getBoolean('boolean_not_equals');
   if (cfg.hasAttribute('contains')) return strValue.includes(wmlString(cfg.getRaw('contains')));
+  // `wml-conditionals.lua`'s additions: `formula=` (the variable as `value`; WFL's 0 is false) and `blank=`.
+  // Eastern Invasion 10 times its waves with `formula="(value%12)=..."` on `turn_number`.
+  if (cfg.hasAttribute('formula')) {
+    if (cfg.hasAttribute('as_type')) ctx.log('warn', `[variable] formula= as_type=${cfg.getString('as_type')} is not supported; the variable is used as it is`);
+    try {
+      const formulaValue =
+        value === undefined || value === null
+          ? Variant.null_()
+          : typeof value === 'boolean'
+            ? Variant.int(value ? 1 : 0)
+            : typeof value === 'number'
+              ? Number.isInteger(value) ? Variant.int(value) : Variant.decimalFromNumber(value)
+              : Variant.string(String(value));
+      const result = parseFormula(cfg.getString('formula'), gameStateSymbols(ctx.board)).evaluate(new MapFormulaCallable().add('value', formulaValue));
+      return result.asBool();
+    } catch (e) {
+      ctx.log('error', `[variable] formula= ${cfg.getString('formula')}: ${e instanceof Error ? e.message : String(e)}`);
+      return false;
+    }
+  }
+  if (cfg.hasAttribute('blank')) return cfg.getBoolean('blank') === (value === undefined);
 
   ctx.log('error', `[variable] name='${name}' found with no comparison attribute`);
   return true;
