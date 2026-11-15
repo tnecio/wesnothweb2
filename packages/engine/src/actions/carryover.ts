@@ -221,8 +221,12 @@ export function findSideConfig(scenarioConfigJson: WmlConfigJson, side: number):
  * into scenario 3 as real Wesnoth does.
  */
 export function computeCarryoverRecruits(board: GameBoard, playerSide: number, nextScenarioConfigJson: WmlConfigJson): Unit[] {
+  return withoutReDeclared([...board.unitsForSide(playerSide), ...board.recallList(playerSide)], playerSide, nextScenarioConfigJson);
+}
+
+/** `units` but those the next scenario's `[side]` declares itself (`inlineDeclaredIds`): they are made anew there. */
+export function withoutReDeclared(units: readonly Unit[], playerSide: number, nextScenarioConfigJson: WmlConfigJson): Unit[] {
   const nextSideCfg = findSideConfig(nextScenarioConfigJson, playerSide);
   const declaredIds = nextSideCfg ? inlineDeclaredIds(nextSideCfg) : new Set<string>();
-  const notReDeclared = (u: Unit): boolean => !(u.id && declaredIds.has(u.id));
-  return [...board.unitsForSide(playerSide).filter(notReDeclared), ...board.recallList(playerSide).filter(notReDeclared)];
+  return units.filter((u) => !(u.id && declaredIds.has(u.id)));
 }

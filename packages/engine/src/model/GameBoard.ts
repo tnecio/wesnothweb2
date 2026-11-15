@@ -19,6 +19,25 @@ import { NONE_TERRAIN, TerrainTypeData, type MergeMode, type TerrainCode } from 
 import type { WmlConfig } from '../wml/config.js';
 import type { Statistics, StatsUnit } from '../statistics/statistics.js';
 
+/**
+ * `unit_creator::find_location` for a `[side]` unit: its own x,y if on the map; else, in order, each `placement=` entry
+ * (`leader`/`leader_passable`: beside the side's leader, or its starting position without one; `map`: its x,y) and
+ * then the recall list (an invalid location). An occupied hex gives the nearest free one, as `find_vacant_tile` does.
+ */
+function placeSideUnit(board: GameBoard, map: GameMap, side: number, unit: Unit, placement: string): Location {
+  const free = (loc: Location): Location => (board.unitAt(loc) ? (findVacantTile(board, loc) ?? Location.NULL) : loc);
+  if (unit.location.valid() && map.onBoard(unit.location)) return free(unit.location);
+  for (const place of [...placement.split(',').map((p) => p.trim()).filter(Boolean), 'map', 'recall']) {
+    if (place === 'recall') return Location.NULL;
+    if (place === 'leader' || place === 'leader_passable') {
+      const leader = board.allUnits().find((u) => u.side === side && u.canRecruit);
+      const at = leader ? leader.location : map.startingPosition(side);
+      if (at.valid()) return free(at);
+    }
+  }
+  return Location.NULL;
+}
+
 export class GameBoard {
   map: GameMap;
   /** Indexed by side number (1-based); `teams.get(side)`, not an array, since sides need not be contiguous once eliminated. */
@@ -458,8 +477,18 @@ export class GameBoard {
         board.addUnit(leader);
         board.captureVillage(leader.location, leader.side);
       }
+      // `team_builder::place_units` -> `unit_creator::add_unit` / `find_location`: a unit with no free hex of its own
+      // goes where its `placement=` says (then `map`, then the recall list) -- `leader` is beside the side's leader.
+      // Legend of Wesmere declares Kalenz's companions this way (`placement=leader`, no x,y); they all went to the same
+      // "nowhere" hex, each replacing the last, and only one was left -- off the map.
       for (const unitCfg of sideCfg.children('unit')) {
         const unit = Unit.fromConfig(unitCfg, resolveType);
+        const placed = placeSideUnit(board, map, team.side, unit, unitCfg.getString('placement', ''));
+        if (!placed.valid()) {
+          board.addToRecallList(team.side, unit);
+          continue;
+        }
+        unit.location = placed;
         board.addUnit(unit);
         board.captureVillage(unit.location, unit.side);
       }
