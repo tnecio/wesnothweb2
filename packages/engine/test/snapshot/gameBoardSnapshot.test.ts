@@ -153,6 +153,16 @@ describe('gameBoardFromSnapshot', () => {
     expect(attacker.maxExperience).toBe(35);
   });
 
+  it('a unit with no hex goes to its side\'s recall list, as unit_creator puts it, not onto the map at "nowhere"', () => {
+    const snapshot = tinySnapshot();
+    snapshot.units[0]!.x = -1000;
+    snapshot.units[0]!.y = -1000;
+    const { board } = gameBoardFromSnapshot(snapshot);
+    expect(board.allUnits().some((u) => u.id === 'attacker')).toBe(false);
+    expect(board.allUnits().every((u) => u.location.valid())).toBe(true);
+    expect(board.recallList(snapshot.units[0]!.side).map((u) => u.id)).toContain('attacker');
+  });
+
   it('omitting experience/maxExperience (older/static snapshots) falls back to the real type default, same as before this fix', () => {
     const { unitsByKey } = gameBoardFromSnapshot(tinySnapshot());
     const attacker = unitsByKey.get(unitKeyFor({ id: 'attacker', x: 0, y: 0 }))!;
